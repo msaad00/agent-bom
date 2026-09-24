@@ -434,3 +434,36 @@ def test_cross_node_expansion_pins_generation_without_continuation_cursor(store)
         store.incident_edges_page(tenant_id=tenant, scan_id=graph.scan_id, node_id="A", snapshot_generation=generation)
     current = store.incident_edges_page(tenant_id=tenant, scan_id=graph.scan_id, node_id="A")
     assert current["snapshot_generation"] != generation
+
+
+@pytest.mark.parametrize("field", ["node_id", "scan_id"])
+def test_incident_page_rejects_nul_identifiers(store, field):
+    with pytest.raises(ValueError, match="NUL"):
+        store.incident_edges_page(tenant_id="nul-test", **{"node_id": "hub", "scan_id": "scan", field: "bad\x00id"})
+
+
+def test_incident_page_rejects_nul_cursor_position(store):
+    import base64
+    import json
+
+    save_fixture(store, "nul-cursor")
+    first = store.incident_edges_page(tenant_id="nul-cursor", scan_id="scan", node_id="hub", limit=1)
+    token = json.loads(base64.urlsafe_b64decode(first["next_cursor"]))
+    token["after"][0] = "bad\x00id"
+    cursor = base64.urlsafe_b64encode(json.dumps(token).encode()).decode()
+    with pytest.raises(ValueError, match="cursor"):
+        store.incident_edges_page(tenant_id="nul-cursor", scan_id="scan", node_id="hub", cursor=cursor)
+
+
+def test_snapshot_identity_changes_on_replacement_and_is_tenant_scoped(store):
+    save_fixture(store, "identity-a")
+    save_fixture(store, "identity-b")
+    first = store.snapshot_identity(tenant_id="identity-a", scan_id="scan")
+    assert first[0] == "scan" and len(first[1]) == 32
+    assert store.snapshot_identity(tenant_id="identity-a") == first
+    other = store.snapshot_identity(tenant_id="identity-b", scan_id="scan")
+    assert other != first
+    save_fixture(store, "identity-a")
+    assert store.snapshot_identity(tenant_id="identity-a", scan_id="scan") != first
+    assert store.snapshot_identity(tenant_id="identity-b", scan_id="scan") == other
+    assert store.snapshot_identity(tenant_id="identity-missing", scan_id="scan") == ("scan", "")

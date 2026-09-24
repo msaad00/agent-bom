@@ -271,6 +271,8 @@ class GraphStoreProtocol(Protocol):
 
     def snapshots_by_ids(self, *, tenant_id: str, scan_ids: set[str]) -> list[dict[str, Any]]: ...
 
+    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]: ...
+
     def graph_history(self, *, tenant_id: str = "", limit: int = 50, since: str | None = None) -> dict[str, Any]: ...
 
     def evidence_manifest(
@@ -1470,7 +1472,9 @@ class SQLiteGraphStore:
         snapshot_generation: str | None = None,
     ) -> dict[str, Any] | None:
         """One snapshot read, bounded incident edges, no impact traversal."""
-        from agent_bom.graph.adjacency_page import incident_edge_page
+        from agent_bom.graph.adjacency_page import incident_edge_page, validate_graph_identifiers
+
+        validate_graph_identifiers(tenant_id, scan_id, node_id, snapshot_generation or "")
 
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
@@ -1653,6 +1657,27 @@ class SQLiteGraphStore:
                     "node_budget": compliance_node_budget,
                 },
             }
+        finally:
+            conn.close()
+
+    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+        """Resolve one durable snapshot generation, including latest, atomically."""
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
+        conn = self._open_ro_conn()
+        if conn is None:
+            return scan_id, ""
+        try:
+            if scan_id:
+                row = conn.execute(
+                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?", (tenant_id, scan_id)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = ? AND snapshot_kind = 'scan' "
+                    "ORDER BY created_at DESC, scan_id DESC LIMIT 1",
+                    (tenant_id,),
+                ).fetchone()
+            return (str(row[0]), str(row[1])) if row else (scan_id, "")
         finally:
             conn.close()
 

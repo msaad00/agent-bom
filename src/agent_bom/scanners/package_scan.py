@@ -1618,10 +1618,19 @@ async def scan_packages(
         _logger.debug("coverage-gap detection skipped: %s", exc)
 
     # Only call OSV for packages not already covered by the local DB, except when
-    # the release has sparse advisory coverage (EOL) — then force OSV online.
+    # the archive is stale or the release has sparse advisory coverage (EOL).
     from agent_bom.coverage import osv_fallback_db_keys
 
     force_osv_keys = osv_fallback_db_keys(scannable, gaps=coverage_gaps) if not scan_offline else set()
+    sparse_osv_keys = force_osv_keys.copy()
+    # A covered archive is only authoritative while fresh. Online scans keep
+    # cached findings as fallback, but must look for newer advisories even when
+    # a stale archive already contains the package or its entire ecosystem.
+    if not scan_offline and local_db_targets:
+        from agent_bom.vuln_freshness import compute_freshness
+
+        if compute_freshness().stale:
+            force_osv_keys.update(_db_key(package) for package in local_db_targets)
     inventory_ecosystems = {eco for package in scannable for eco in _db_ecosystems_for_package(package)}
     covered_ecos = _scanners_patchable("_db_covered_ecosystems")(inventory_ecosystems)
     # Either an exact package hit or a declared complete ecosystem archive is
@@ -1634,8 +1643,9 @@ async def scan_packages(
         or _db_key(p) in force_osv_keys
     ]
     if force_osv_keys:
-        _logger.info("Forcing OSV lookup for %d package(s) on sparse distro release(s)", len(force_osv_keys))
-        _emit_scan_warning(f"sparse release OSV fallback for {len(force_osv_keys)} package(s)")
+        _logger.info("Refreshing OSV coverage for %d package(s) with stale or sparse local evidence", len(force_osv_keys))
+    if sparse_osv_keys:
+        _emit_scan_warning(f"sparse local DB OSV fallback for {len(sparse_osv_keys)} package(s)")
 
     if scan_offline or (scan_prefer_local_db and not osv_targets):
         if scan_offline:

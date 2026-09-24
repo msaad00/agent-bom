@@ -40,6 +40,9 @@ class _GraphStore:
             UnifiedEdge(source="package:requests", target="vuln:CVE-2026-0001", relationship=RelationshipType.VULNERABLE_TO),
         ]
 
+    def snapshot_identity(self, **_kwargs):
+        return "scan-1", "test-generation"
+
     def attack_paths(self, **_kwargs):
         return "scan-1", "2026-05-14T18:00:00Z", [self.path], 1
 
@@ -395,3 +398,44 @@ def test_mcp_prerequisite_evidence_matches_rest_without_inventing_exploitability
     assert mcp["evidenceDimensions"]["exploitability"] == api["evidenceDimensions"]["exploitability"]
     assert mcp["evidenceDimensions"]["exploitability"]["status"] == "unavailable"
     assert mcp["evidenceDimensions"]["exploitability"]["verdict"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("materialized", [False, True])
+async def test_exposure_cursor_rejects_replacement_with_same_time_and_count(topology_store, materialized):
+    graph = topology_store.load_graph(scan_id="topology", tenant_id="default")
+    if materialized:
+        for index in range(3):
+            graph.attack_paths.append(
+                AttackPath(
+                    source="agent:a",
+                    target=f"vuln:{index}",
+                    hops=["agent:a", "server:s", "pkg:p", f"vuln:{index}"],
+                    edges=["uses", "depends_on", "vulnerable_to"],
+                    composite_risk=80 - index,
+                )
+            )
+        topology_store.save_graph(graph)
+    first = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
+    graph.nodes["agent:a"].label = "Replacement agent"
+    topology_store.save_graph(graph)
+    second = json.loads(
+        await exposure_paths_impl(limit=1, cursor=first["pagination"]["next_cursor"], _get_graph_store=lambda: topology_store)
+    )
+    assert second["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
+
+
+@pytest.mark.asyncio
+async def test_exposure_page_rejects_replacement_during_hydration(topology_store, monkeypatch):
+    original = topology_store.nodes_by_ids
+
+    def replace_after_nodes(**kwargs):
+        nodes = original(**kwargs)
+        graph = topology_store.load_graph(scan_id="topology", tenant_id="default")
+        graph.nodes["agent:a"].label = "Replaced during read"
+        topology_store.save_graph(graph)
+        return nodes
+
+    monkeypatch.setattr(topology_store, "nodes_by_ids", replace_after_nodes)
+    payload = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
+    assert payload["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"

@@ -765,3 +765,29 @@ def test_sanitize_sensitive_payload_cache_is_field_sensitive():
     result = sanitize_sensitive_payload({"name": value, "api_token": value})
 
     assert result == {"name": value, "api_token": "***REDACTED***"}
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("edgeIds", ["pkg:pypi:pyyaml@5.3->vulnerable_to->vuln:CVE-2020-14343"]),
+        ("purl", "pkg:rpm/redhat/openssl-libs@1:3.0.7-28.el9_4"),
+        ("node_ids", ["pkg:maven:org.apache.logging.log4j:log4j-core@2.14.1"]),
+        ("identifier", "org.apache.logging.log4j:log4j-core@2.14.1"),
+        ("auth_mode", "network-no-auth-observed"),
+        ("auth_mode", "workload_identity"),
+    ],
+)
+def test_report_coordinates_survive_payload_redaction(key, value):
+    from agent_bom.security import sanitize_sensitive_payload
+
+    assert sanitize_sensitive_payload({key: value}) == {key: value}
+
+
+@pytest.mark.parametrize("key", ["purl", "node_id", "edgeIds", "identifier", "auth_mode"])
+def test_report_identifier_fields_do_not_exempt_embedded_secrets(key):
+    from agent_bom.security import sanitize_sensitive_payload
+
+    opaque = "q7V9mK2xR8pL4nT6wY1cF3hJ5sD0aB2eG8uN9zQ6XkI="
+    value = f"pkg:npm/{opaque}@1.0"
+    assert sanitize_sensitive_payload({key: value})[key] != value

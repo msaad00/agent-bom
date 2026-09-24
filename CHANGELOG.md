@@ -19,6 +19,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Match fix-first agent filters by canonical identity or display label, expose additional loaded Context relationships, and simplify security-area summaries.
+- Refresh stale local vulnerability coverage through OSV during online scans while preserving offline behavior.
+- Preserve structured report identifiers during redaction without exempting embedded credentials.
+- Bind exposure pagination to snapshot generations and reject NUL graph identifiers before database access.
 
 - Calculate CVSS v4 scores with the macrovector algorithm, preserving the correct severity at build-gate thresholds.
 - Keep curated demo agent discovery independent of host configuration and serve matching agent detail and lifecycle routes.

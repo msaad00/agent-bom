@@ -18307,6 +18307,7 @@ paths:
           description: Exact canonical node ID
           maxLength: 4096
           minLength: 1
+          pattern: ^[^\x00]*$
           title: Node Id
           type: string
       - description: Snapshot ID; latest initially. Reuse the returned ID for subsequent
@@ -18317,6 +18318,7 @@ paths:
         schema:
           anyOf:
           - maxLength: 4096
+            pattern: ^[^\x00]*$
             type: string
           - type: 'null'
           description: Snapshot ID; latest initially. Reuse the returned ID for subsequent
@@ -18456,6 +18458,7 @@ paths:
         name: node_id
         required: true
         schema:
+          pattern: ^[^\x00]*$
           title: Node Id
           type: string
       - description: Scan ID
@@ -18464,7 +18467,8 @@ paths:
         required: false
         schema:
           anyOf:
-          - type: string
+          - pattern: ^[^\x00]*$
+            type: string
           - type: 'null'
           description: Scan ID
           title: Scan Id
@@ -18506,6 +18510,7 @@ paths:
         name: node_id
         required: true
         schema:
+          pattern: ^[^\x00]*$
           title: Node Id
           type: string
       - description: Scan ID; latest if omitted
@@ -18514,7 +18519,8 @@ paths:
         required: false
         schema:
           anyOf:
-          - type: string
+          - pattern: ^[^\x00]*$
+            type: string
           - type: 'null'
           description: Scan ID; latest if omitted
           title: Scan Id
@@ -18565,6 +18571,7 @@ paths:
         name: node_id
         required: true
         schema:
+          pattern: ^[^\x00]*$
           title: Node Id
           type: string
       - description: Scan ID
@@ -18573,7 +18580,8 @@ paths:
         required: false
         schema:
           anyOf:
-          - type: string
+          - pattern: ^[^\x00]*$
+            type: string
           - type: 'null'
           description: Scan ID
           title: Scan Id
@@ -18615,6 +18623,7 @@ paths:
         name: node_id
         required: true
         schema:
+          pattern: ^[^\x00]*$
           title: Node Id
           type: string
       - description: Scan ID; latest if omitted
@@ -18623,7 +18632,8 @@ paths:
         required: false
         schema:
           anyOf:
-          - type: string
+          - pattern: ^[^\x00]*$
+            type: string
           - type: 'null'
           description: Scan ID; latest if omitted
           title: Scan Id

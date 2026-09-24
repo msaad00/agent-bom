@@ -31,6 +31,12 @@ NODE_COLUMNS = (
 )
 
 
+def validate_graph_identifiers(*values: str) -> None:
+    """Reject values PostgreSQL cannot represent, including on an empty store."""
+    if any("\x00" in value for value in values):
+        raise ValueError("Graph identifiers cannot contain NUL")
+
+
 def incident_edge_page(
     conn: Any,
     *,
@@ -46,6 +52,7 @@ def incident_edge_page(
     edge_from_row: Callable[[Any], Any],
 ) -> dict[str, Any] | None:
     """Read inside the caller's transaction; materialize at most 2*(limit+1) edges."""
+    validate_graph_identifiers(tenant_id, scan_id, node_id, snapshot_generation or "")
     if direction not in {"in", "out", "both"}:
         raise ValueError("direction must be in, out, or both")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
@@ -58,7 +65,11 @@ def incident_edge_page(
             token = json.loads(base64.b64decode(cursor, altchars=b"-_", validate=True))
             if not isinstance(token, dict) or token.get("v") != 1:
                 raise ValueError
-            if not isinstance(token.get("after"), list) or len(token["after"]) != 3 or not all(isinstance(v, str) for v in token["after"]):
+            if (
+                not isinstance(token.get("after"), list)
+                or len(token["after"]) != 3
+                or not all(isinstance(v, str) and "\x00" not in v for v in token["after"])
+            ):
                 raise ValueError
         except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
             raise ValueError("Invalid incident-edge cursor") from exc

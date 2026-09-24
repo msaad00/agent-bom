@@ -174,3 +174,13 @@ def test_cross_node_expansion_requires_same_snapshot_generation(boundary):
     assert (
         fetch(boundary, node_id="peer", snapshot_generation=current["snapshot_generation"], scan_id=current["scan_id"]).status_code == 200
     )
+
+
+@pytest.mark.parametrize("route", ["incident-edges", "node-neighbors", "node-context"])
+@pytest.mark.parametrize("field", ["node_id", "scan_id"])
+def test_graph_identity_rejects_nul_before_store_access(boundary, monkeypatch, route, field):
+    client, store, _, tokens = boundary
+    for method in ("incident_edges_page", "node_context", "latest_snapshot_id"):
+        monkeypatch.setattr(store, method, lambda **kwargs: pytest.fail("invalid identifier reached database"))
+    response = client.get(f"/v1/graph/{route}", params={"node_id": ROOT, field: "bad\x00id"}, headers=tokens["tenant-a"])
+    assert response.status_code == 422

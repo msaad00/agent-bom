@@ -603,6 +603,22 @@ class PostgresGraphStore:
                 conn.rollback()
                 logger.warning("Skipping optional Postgres graph trigram indexes: %s", type(exc).__name__)
 
+    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+        """Resolve a generation within the authenticated tenant's connection."""
+        tenant_id = normalize_graph_tenant_id(tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            if scan_id:
+                row = conn.execute(
+                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s", (tenant_id, scan_id)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = %s AND snapshot_kind = 'scan' "
+                    "ORDER BY created_at DESC, scan_id DESC LIMIT 1",
+                    (tenant_id,),
+                ).fetchone()
+        return (str(row[0]), str(row[1])) if row else (scan_id, "")
+
     def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         snapshot_kind = normalize_snapshot_kind(snapshot_kind)
@@ -2070,7 +2086,9 @@ class PostgresGraphStore:
         snapshot_generation: str | None = None,
     ) -> dict[str, Any] | None:
         """One tenant-scoped MVCC read, without full incident or impact reads."""
-        from agent_bom.graph.adjacency_page import incident_edge_page
+        from agent_bom.graph.adjacency_page import incident_edge_page, validate_graph_identifiers
+
+        validate_graph_identifiers(tenant_id, scan_id, node_id, snapshot_generation or "")
 
         tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool, repeatable_read=True) as conn:

@@ -1265,6 +1265,9 @@ class _RecordingGraphStore:
         self.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
         self.presets: dict[str, dict] = {}
 
+    def snapshot_identity(self, **_kwargs):
+        return self.graph.scan_id, "test-generation"
+
     def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str | None = None) -> str:
         self.calls.append(("latest_snapshot_id", tenant_id, snapshot_kind))
         return self.graph.scan_id

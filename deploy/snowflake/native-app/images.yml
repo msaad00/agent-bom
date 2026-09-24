@@ -4,7 +4,7 @@ repository_path: agent_bom_provider/spcs/agent_bom_repo
 images:
   - name: agent-bom
     context: .
-    dockerfile: deploy/docker/Dockerfile.snowpark
+    dockerfile: deploy/docker/Dockerfile.native-app
   - name: agent-bom-ui
     context: ui
     dockerfile: ui/Dockerfile

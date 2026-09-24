@@ -3,6 +3,7 @@
  * nodes/edges for the /context page.
  */
 
+import { FLOW_NODE_TYPES } from "@/lib/graph-entity-mapping";
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
 import type {
   LineageNodeData,
@@ -111,47 +112,6 @@ const KIND_TO_NODE_TYPE: Record<string, LineageNodeType> = {
   service_account: "serviceAccount",
 };
 
-const NODE_TYPE_TO_RENDERER: Record<LineageNodeType, string> = {
-  provider: "providerNode",
-  agent: "agentNode",
-  server: "serverNode",
-  package: "packageNode",
-  vulnerability: "vulnNode",
-  misconfiguration: "misconfigNode",
-  credential: "credentialNode",
-  tool: "toolNode",
-  model: "modelNode",
-  framework: "frameworkNode",
-  dataset: "datasetNode",
-  container: "containerNode",
-  cloudResource: "cloudResourceNode",
-  org: "providerNode",
-  account: "providerNode",
-  user: "userNode",
-  group: "groupNode",
-  role: "credentialNode",
-  policy: "credentialNode",
-  serviceAccount: "serviceAccountNode",
-  servicePrincipal: "serviceAccountNode",
-  federatedIdentity: "serviceAccountNode",
-  environment: "environmentNode",
-  fleet: "fleetNode",
-  cluster: "clusterNode",
-  sharedServer: "sharedServerNode",
-  managedIdentity: "managedIdentityNode",
-  accessGrant: "accessGrantNode",
-  accessPolicy: "accessPolicyNode",
-  driftIncident: "driftIncidentNode",
-  dataStore: "dataStoreNode",
-  directory: "containerNode",
-  sourceFile: "packageNode",
-  configFile: "packageNode",
-  codeModule: "packageNode",
-  ciJob: "toolNode",
-  apiGateway: "cloudResourceNode",
-  toolCall: "toolNode",
-  blueprint: "accessPolicyNode",
-};
 
 // ─── Edge colors ─────────────────────────────────────────────────────────────
 
@@ -326,7 +286,7 @@ export function buildContextFlowGraph(
 
       return {
         id: n.id,
-        type: NODE_TYPE_TO_RENDERER[nodeType] ?? "serverNode",
+        type: FLOW_NODE_TYPES[nodeType] ?? "serverNode",
         data: nodeData,
         position: { x: 0, y: 0 },
       };

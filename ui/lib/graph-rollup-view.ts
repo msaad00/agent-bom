@@ -2,49 +2,8 @@ import type { Edge, Node } from "@xyflow/react";
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
 import type { GraphRollupContainer, GraphRollupEdge } from "@/lib/api-types";
-import { lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
+import { FLOW_NODE_TYPES, lineageNodeTypeForEntity } from "@/lib/graph-entity-mapping";
 
-const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
-  provider: "providerNode",
-  agent: "agentNode",
-  org: "providerNode",
-  account: "providerNode",
-  user: "userNode",
-  group: "groupNode",
-  role: "credentialNode",
-  policy: "credentialNode",
-  serviceAccount: "serviceAccountNode",
-  servicePrincipal: "serviceAccountNode",
-  federatedIdentity: "serviceAccountNode",
-  environment: "environmentNode",
-  fleet: "fleetNode",
-  cluster: "clusterNode",
-  server: "serverNode",
-  sharedServer: "sharedServerNode",
-  package: "packageNode",
-  vulnerability: "vulnNode",
-  credential: "credentialNode",
-  tool: "toolNode",
-  model: "modelNode",
-  framework: "frameworkNode",
-  dataset: "datasetNode",
-  container: "containerNode",
-  cloudResource: "cloudResourceNode",
-  misconfiguration: "misconfigNode",
-  managedIdentity: "managedIdentityNode",
-  accessGrant: "accessGrantNode",
-  accessPolicy: "accessPolicyNode",
-  driftIncident: "driftIncidentNode",
-  dataStore: "dataStoreNode",
-  directory: "containerNode",
-  sourceFile: "packageNode",
-  configFile: "packageNode",
-  codeModule: "packageNode",
-  ciJob: "toolNode",
-  apiGateway: "cloudResourceNode",
-  toolCall: "toolNode",
-  blueprint: "accessPolicyNode",
-};
 
 const MIN_COLUMNS = 3;
 // NodeCard renders up to 300px wide. Position columns by the rendered maximum

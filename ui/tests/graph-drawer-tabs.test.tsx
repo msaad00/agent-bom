@@ -82,6 +82,26 @@ describe("graph entity drawer tabs", () => {
     trigger.remove();
   });
 
+  it("summarizes unavailable location once and keeps evidence provenance separate", () => {
+    render(<GraphEntityDrawer data={richNode()} onClose={noop} enrich={false} />);
+    expect(screen.getByText("Location metadata is not recorded.")).toBeTruthy();
+    expect(screen.queryByText("Provider:")).toBeNull();
+    expect(screen.queryByText("Account/project:")).toBeNull();
+    expect(screen.getByText("Evidence sources:")).toBeTruthy();
+    expect(screen.getByText("osv")).toBeTruthy();
+    expect(screen.queryByText(/upstream connections 5/i)).toBeNull();
+  });
+
+  it("preserves recorded location and last seen while naming missing location fields once", () => {
+    const data = { ...richNode(), lastSeen: "2026-09-24", attributes: { ...richNode().attributes, provider: "aws", region: "us-east-1" } };
+    render(<GraphEntityDrawer data={data} onClose={noop} enrich={false} />);
+    expect(screen.getByText("aws")).toBeTruthy();
+    expect(screen.getByText("us-east-1")).toBeTruthy();
+    expect(screen.getByText("2026-09-24")).toBeTruthy();
+    expect(screen.getByText("Not recorded: account/project, environment.")).toBeTruthy();
+    expect(screen.queryByText("Location metadata is not recorded.")).toBeNull();
+  });
+
   it("renders a tab per populated group instead of one long column", () => {
     render(<GraphEntityDrawer data={richNode()} onClose={noop} enrich={false} />);
 
@@ -176,7 +196,13 @@ describe("graph entity drawer tabs", () => {
     const inspect = vi.fn();
     render(<GraphEntityDrawer data={richNode()} scanId="scan-proof" onClose={noop} onInspectNode={inspect} />);
     fireEvent.click(screen.getByTestId("graph-drawer-tab-relationships"));
-    fireEvent.click(await screen.findByRole("button", { name: "Incoming · vulnerable to · package:sample" }));
+    const relationship = await screen.findByRole("button", { name: "Incoming · vulnerable to · package:sample" });
+    const counts = screen.getByText("Relationship counts");
+    expect(counts.closest("details")?.open).toBe(false);
+    expect(relationship.compareDocumentPosition(counts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(counts);
+    expect(screen.getByText("Returned incoming edges")).toBeTruthy();
+    fireEvent.click(relationship);
     expect(inspect).toHaveBeenCalledWith("package:sample");
     expect(api.getGraphNode).toHaveBeenCalledWith("vuln:cve-2024-9999", "scan-proof");
   });

@@ -8,7 +8,7 @@ import { GraphRollupCountNotice } from "@/components/graph-rollup-count-notice";
 import { completeDirectedHopCount, visibleGraphFocus } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Background,
   Controls,
@@ -32,7 +32,6 @@ import {
   FullscreenButton,
   GraphInteractionToolbar,
 } from "@/components/graph-chrome";
-import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
 import {
   GraphDriftTimeline,
   type DriftScrubberPair,
@@ -194,25 +193,12 @@ import {
   type GraphScenarioViewState,
 } from "@/lib/graph-scenario";
 
-// The whole current-scan graph loads in one request (no numbered pagination).
-// The bound matches the interactive render budget: past it, the overview
-// aggregates dense neighborhoods rather than splitting the topology across
-// pages, so edges never vanish across a page boundary.
-//
-// Deliberately NOT raised to `/v1/graph`'s own `limit <= 5000` ceiling, though
-// the demo estate now projects ~6,700 nodes and 5,000 would show more of them.
-// Measured against the seeded estate, `limit=5000` costs **3.19 s** versus
-// **0.77 s** at 3,000 — the response carries ~19k edges rather than ~9k — and
-// the WebGL overview can only draw
-// `LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES` of whatever arrives. Paying three
-// seconds of page load for nodes the canvas then discards is a worse trade than
-// showing fewer.
-//
-// Past this budget the canvas is the wrong surface, and the honest ones are
-// already fast: `/v1/graph/rollup` aggregates the COMPLETE snapshot in ~136 ms
-// (~387 ms drilling into the org), and `/v1/findings` carries every finding.
-// The completeness banner below names the budget and points at them.
-const GRAPH_FULL_FETCH_LIMIT = LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES;
+// Start with a small ranked selection. The API also returns supporting ancestors;
+// this request limit is not a promise about returned or rendered node counts.
+// Full-estate search and scope summaries remain independent of this selection.
+export function graphFetchLimitForSnapshot(scanId: string, expandedScanId: string | null): number {
+  return scanId && scanId === expandedScanId ? LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES : 250;
+}
 
 const GraphDriftLegend = dynamic(
   () =>
@@ -701,10 +687,12 @@ function GraphPageInner() {
   const { session, loading: authLoading } = useAuthState();
   const [snapshotRetry, setSnapshotRetry] = useState(0);
   const [graphRetry, setGraphRetry] = useState(0);
+  const [expandedGraphScanId, setExpandedGraphScanId] = useState<string | null>(null);
   const loadedGraphScope = useRef<string | null>(null);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
+  const graphFetchLimit = graphFetchLimitForSnapshot(selectedScanId, expandedGraphScanId);
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
   const [scenarios, setScenarios] = useState<GraphScenario[]>([]);
   const [selectedScenarioId, setSelectedScenarioId] = useState(() =>
@@ -843,7 +831,6 @@ function GraphPageInner() {
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   // Seed filters from URL on first render so /graph?agent=...&severity=high
@@ -1114,13 +1101,9 @@ function GraphPageInner() {
         staticOnly: filters.runtimeMode === "static",
         dynamicOnly: filters.runtimeMode === "dynamic",
         maxDepth: filters.maxDepth,
-        // No numbered pagination: fetch the whole current-scan graph (bounded
-        // by the render budget) in one shot. Scale is handled downstream by
-        // sibling clustering, level-of-detail, and the WebGL overview — never
-        // by splitting one topology across pages, which would sever edges that
-        // cross a page boundary.
+        // Larger selections are opt-in; preserve the server completeness fields.
         offset: 0,
-        limit: GRAPH_FULL_FETCH_LIMIT,
+        limit: graphFetchLimit,
       })
       .then((result) => {
         if (cancelled) return;
@@ -1147,6 +1130,7 @@ function GraphPageInner() {
     filters.severity,
     investigationMode,
     graphRetry,
+    graphFetchLimit,
     serverFilterKey,
   ]);
 
@@ -1623,26 +1607,13 @@ function GraphPageInner() {
     }
     const next = nextParams.toString();
     const url = next ? `${pathname}?${next}` : pathname;
-    // Guard against an infinite navigation loop. router.replace() in the App
-    // Router applies history/useSearchParams updates asynchronously through a
-    // transition, so neither useSearchParams() nor window.location.search is
-    // guaranteed to reflect the URL we just wrote by the time this effect
-    // re-runs. Comparing against either one therefore never settled and
-    // router.replace fired on every render (dozens of navigations/second),
-    // which hung Playwright screenshots on "waiting for navigation to finish".
-    // Remembering the last URL we synced breaks the loop regardless of when
-    // the router catches up; a genuine filter change produces a new target.
+    // Filters are client state. Synchronize their shareable URL without an
+    // App Router navigation/server-component request on every interaction.
+    // Next integrates native history updates with useSearchParams.
     if (lastSyncedUrlRef.current === url) return;
     lastSyncedUrlRef.current = url;
     if (next === currentSearch.toString()) return;
-    // Capture mode is a deterministic, local proof surface. Keep its filter
-    // URL shareable without starting an App Router navigation that can cancel
-    // in-flight chunks while Playwright is validating the page.
-    if (captureMode) {
-      history.replaceState(history.state, "", url);
-      return;
-    }
-    router.replace(url, { scroll: false });
+    history.replaceState(null, "", url);
   }, [
     activeScopePreset,
     attackPathLens,
@@ -1654,7 +1625,6 @@ function GraphPageInner() {
     rollupDismissed,
     rollupNavigationActive,
     rollupStack,
-    router,
     searchParams,
     selectedAttackPathKey,
     selectedScanId,
@@ -1971,7 +1941,7 @@ function GraphPageInner() {
     return canvasLayoutNodes.map((node) => {
       const isFocused = node.id === activeFocusId;
       const isConnected = localNeighborhoodIds.has(node.id);
-      const dimmed = !isConnected;
+      const dimmed = !isConnected && node.type !== "clusterPillNode";
       return {
         ...node,
         className: composeFocusClass(node.className, isFocused, dimmed),
@@ -2050,7 +2020,13 @@ function GraphPageInner() {
         };
       });
     }
-    return nodes;
+    // Group pills are navigation controls, not evidence-bearing assets. Keep
+    // their expand action legible without implying that members pass a lens.
+    return nodes.map((node) => node.type === "clusterPillNode" ? {
+      ...node,
+      className: (node.className ?? "").replace(/\blineage-node-dim\b/g, ""),
+      data: { ...node.data, dimmed: false },
+    } : node);
   }, [
     baseDisplayNodes,
     driftIndex,
@@ -2819,13 +2795,8 @@ function GraphPageInner() {
     }
   };
 
-  // No numbered pagination — the full current-scan graph loads at once (see the
-  // fetch effect). Two independent cuts can still make that partial: the render
-  // budget (surfaces as `pagination.has_more`) and the API's load-time node
-  // budget, which trims the snapshot BEFORE paging and therefore leaves
-  // `has_more` false while `completeness.truncated` is the only record of the
-  // loss. `graphResponseIsTruncated` reads both so a bounded estate can never
-  // render as the whole one.
+  // The ranked selection and server traversal can independently be partial.
+  // Never infer completeness from has_more alone.
   const graphTruncated = graphResponseIsTruncated(graphData);
   if (loadingSnapshots) {
     return (
@@ -4018,31 +3989,25 @@ function GraphPageInner() {
           {loadingGraph && graphData && <GraphRefreshOverlay />}
 
           {graphTruncated && !rollupCanvasOwnsPresentation && (
-            <div className="mt-2 border-t border-outline/80 px-1 pt-2">
-              <GraphCompletenessBanner
-                completeness={
-                  graphData?.completeness ?? {
-                    status: "truncated",
-                    truncated: true,
-                    complete: false,
-                    sampled: false,
-                    returned: displayNodes.length,
-                    reason: `Partial canvas: up to ${GRAPH_FULL_FETCH_LIMIT.toLocaleString()} nodes ranked by severity. Filter or focus, or open the complete estate roll-up.`,
-                  }
-                }
-                onLoadMore={returnToSummary}
-                loadMoreLabel="Browse scopes"
-                visibleCount={displayNodes.length}
-                omittedCount={
-                  graphData?.completeness?.total == null
-                    ? undefined
-                    : Math.max(
-                        0,
-                        graphData.completeness.total - displayNodes.length,
-                      )
-                }
-              />
-            </div>
+            <details className="mt-2 border-t border-outline pt-2 text-xs text-ink-secondary" data-testid="graph-partial-view">
+              <summary className="cursor-pointer">
+                Partial view · {(graphData?.nodes.length ?? 0).toLocaleString()} nodes loaded
+                {activeSnapshot && activeSnapshot.node_count > (graphData?.nodes.length ?? 0)
+                  ? ` · ${activeSnapshot.node_count.toLocaleString()} in snapshot`
+                  : activeSnapshot ? null : " · snapshot total unavailable"}
+              </summary>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="min-w-0 flex-1">
+                  {investigationMode ? "This investigation reached a traversal limit." : `This selection requests up to ${graphFetchLimit.toLocaleString()} ranked assets plus supporting ancestors.`} Filters, traversal and rendering limits can exclude context. Search and scope summaries cover the snapshot independently.
+                </p>
+                <button type="button" onClick={returnToSummary} className="graph-chip-neutral">Browse scopes</button>
+                {!investigationMode && graphFetchLimit < LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES && (
+                  <button type="button" disabled={loadingGraph} onClick={() => setExpandedGraphScanId(selectedScanId)} className="graph-chip-neutral">
+                    Load broader map (up to {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} ranked assets)
+                  </button>
+                )}
+              </div>
+            </details>
           )}
 
           </div>

@@ -3,6 +3,7 @@
  * Background styling used across all graph views (Lineage, Mesh, Context, Attack Flow).
  */
 
+import { GRAPH_LAYER_ENTITY_TYPES } from "@/lib/graph-entity-mapping";
 import type {
   LineageNodeData,
   LineageNodeType,
@@ -36,50 +37,9 @@ export const BACKGROUND_GAP = 24;
 
 const SHARED_SERVER_COLOR = "#22d3ee";
 
-export const LINEAGE_NODE_GRAPH_KIND: Record<
-  LineageNodeType,
-  GraphNodeKindKey | null
-> = {
-  provider: "provider",
-  agent: "agent",
-  server: "server",
-  sharedServer: "server",
-  package: "package",
-  vulnerability: "vulnerability",
-  misconfiguration: "misconfiguration",
-  credential: "credential",
-  tool: "tool",
-  model: "model",
-  framework: "framework",
-  dataset: "dataset",
-  container: "container",
-  cloudResource: "cloud_resource",
-  org: "org",
-  account: "account",
-  user: "user",
-  group: "group",
-  role: "role",
-  policy: "policy",
-  serviceAccount: "service_account",
-  servicePrincipal: "service_principal",
-  federatedIdentity: "federated_identity",
-  environment: "environment",
-  fleet: "fleet",
-  cluster: "cluster",
-  managedIdentity: "managed_identity",
-  accessGrant: "access_grant",
-  accessPolicy: "access_policy",
-  driftIncident: "drift_incident",
-  dataStore: "data_store",
-  directory: "directory",
-  sourceFile: "source_file",
-  configFile: "config_file",
-  codeModule: "code_module",
-  ciJob: "ci_job",
-  apiGateway: "api_gateway",
-  toolCall: "tool_call",
-  blueprint: "blueprint",
-};
+export const LINEAGE_NODE_GRAPH_KIND = Object.fromEntries(
+  Object.entries(GRAPH_LAYER_ENTITY_TYPES).map(([type, kinds]) => [type, kinds[0]]),
+) as Record<LineageNodeType, GraphNodeKindKey | null>;
 
 function generatedMetaForNodeType(nodeType: LineageNodeType) {
   const kind = LINEAGE_NODE_GRAPH_KIND[nodeType];

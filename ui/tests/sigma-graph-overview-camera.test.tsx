@@ -17,7 +17,7 @@ const harness = vi.hoisted(() => ({ instances: [] as Array<{
   killed: boolean;
   events: Record<string, () => void>;
   getNodeDisplayData: (id: string) => { x: number; y: number } | undefined;
-  settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> };
+  settings: { edgeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown>; nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> };
 }> }));
 
 vi.mock("@/lib/use-capture-mode", () => ({ useCaptureMode: () => false }));
@@ -28,6 +28,7 @@ vi.mock("@/lib/graph-canvas-theme", () => {
     label: "#111111",
     selected: "#00ff00",
     dimmed: "#444444",
+    stage: "#eeeeee",
   };
   return { useGraphCanvasPalette: () => palette };
 });
@@ -63,11 +64,12 @@ vi.mock("sigma", () => {
       killed = false;
       events: Record<string, () => void> = {};
 
-      constructor(_graph: unknown, _container: unknown, public settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> }) {
+      constructor(_graph: unknown, _container: unknown, public settings: { edgeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown>; nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> }) {
         harness.instances.push(this);
       }
 
       getCamera() { return this.camera; }
+      getDimensions() { return { width: 800, height: 600 }; }
       getNodeDisplayData(id: string): { x: number; y: number } | undefined { return id === "agent:a" ? { x: 0.2, y: 0.7 } : { x: 0.8, y: 0.1 }; }
       getSetting() { return () => undefined; }
       setSetting() { return this; }
@@ -119,7 +121,7 @@ describe("SigmaGraphOverview camera persistence", () => {
     const reduce = harness.instances.at(-1)!.settings.nodeReducer;
     const attrs = { color: "#abcdef", size: 2, hidden: true };
     expect(reduce("package:a", attrs).color).toBe("#abcdef");
-    expect(reduce("isolated", attrs).color).toBe("#444444");
+    expect(reduce("isolated", attrs).color).toBe("#eeeeee");
     expect(reduce("isolated", attrs).hidden).toBe(false);
     expect(reduce("package:a", attrs).hidden).toBe(false);
     expect(reduce("agent:a", attrs).color).toBe("#00ff00");
@@ -128,6 +130,20 @@ describe("SigmaGraphOverview camera persistence", () => {
     expect(select).toHaveBeenCalledWith("package:a");
     fireEvent.click(screen.getByRole("button", { name: "Clear focus" }));
     expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it("shows edges only for a focused asset and can frame its connections", async () => {
+    const { rerender } = render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} />);
+    await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+    const instance = harness.instances.at(-1)!;
+    expect(instance.settings.edgeReducer("uses:a", { size: 1 }).hidden).toBe(true);
+    rerender(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} selectedId="agent:a" />);
+    expect(harness.instances.at(-1)!.settings.edgeReducer("uses:a", { size: 1 }).hidden).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Fit connections" }));
+    expect(harness.instances.at(-1)!.camera.state.x).toBeCloseTo(0.5);
+    expect(harness.instances.at(-1)!.camera.state.y).toBeCloseTo(0.4);
+    fireEvent.click(screen.getByRole("button", { name: "Fit map" }));
+    expect(harness.instances.at(-1)!.camera.state).toEqual({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 });
   });
 
   it("does not retain focus when the selected ID is absent from the returned graph", async () => {

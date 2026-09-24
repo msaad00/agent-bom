@@ -137,7 +137,7 @@ export function buildGraphTextAlternative(
   const headline =
     summary.nodes === model.nodes.length && summary.edges === model.edges.length
       ? `Graph of ${scope}. ${summary.findings.toLocaleString()} findings, of which ${summary.criticalFindings.toLocaleString()} critical; ${summary.credentials.toLocaleString()} credentials and ${summary.tools.toLocaleString()} tools.`
-      : `Graph of ${scope} in scope. The overview draws the highest-signal ${drawn}; ${model.omittedNodeCount.toLocaleString()} nodes and ${model.omittedEdgeCount.toLocaleString()} relationships are omitted from it. ${summary.findings.toLocaleString()} findings, of which ${summary.criticalFindings.toLocaleString()} critical; ${summary.credentials.toLocaleString()} credentials and ${summary.tools.toLocaleString()} tools.`;
+      : `Graph of ${scope} in scope. The overview contains the highest-signal ${drawn}; ${model.omittedNodeCount.toLocaleString()} nodes and ${model.omittedEdgeCount.toLocaleString()} relationships are omitted from it. ${summary.findings.toLocaleString()} findings, of which ${summary.criticalFindings.toLocaleString()} critical; ${summary.credentials.toLocaleString()} credentials and ${summary.tools.toLocaleString()} tools.`;
 
   return {
     headline,
@@ -150,6 +150,6 @@ export function buildGraphTextAlternative(
     rows,
     rowsNote: `Listing ${rows.length.toLocaleString()} of ${visibleNodes.length.toLocaleString()} drawn nodes, highest severity and most connected first.`,
     connections,
-    connectionsNote: `Listing ${connections.length.toLocaleString()} of ${visibleEdges.length.toLocaleString()} drawn relationships, busiest first.`,
+    connectionsNote: `Listing ${connections.length.toLocaleString()} of ${visibleEdges.length.toLocaleString()} available relationships, busiest first.`,
   };
 }

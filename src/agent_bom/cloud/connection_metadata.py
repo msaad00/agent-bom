@@ -17,7 +17,7 @@ _PROVIDER_FIELDS: dict[str, frozenset[str]] = {
     "aws": frozenset({"member_role_name"}),
     "azure": frozenset({"tenant_id", "subscription_id", "auth_mode", "credential_binding"}),
     "gcp": frozenset({"project_id", "auth_mode", "credential_binding"}),
-    "snowflake": frozenset({"account", "user", "role", "warehouse"}),
+    "snowflake": frozenset({"account", "user", "role", "warehouse", "auth_mode", "credential_binding"}),
     "database": frozenset({"engine", "database", "schemas", "include_tables", "publicly_accessible"}),
 }
 

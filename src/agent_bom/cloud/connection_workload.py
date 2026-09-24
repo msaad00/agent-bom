@@ -20,14 +20,14 @@ from pydantic import BaseModel, ConfigDict
 from agent_bom.api.connection_store import CloudConnectionRecord
 from agent_bom.cloud.connection_broker import ConnectionBrokerError
 
-_MODES = {"azure": {"managed_identity", "workload_identity"}, "gcp": {"workload_identity"}}
+_MODES = {"azure": {"managed_identity", "workload_identity"}, "gcp": {"workload_identity"}, "snowflake": {"workload_identity"}}
 _READ_ONLY = "https://www.googleapis.com/auth/cloud-platform.read-only"
 
 
 class WorkloadBinding(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     tenant_id: str
-    provider: Literal["azure", "gcp"]
+    provider: Literal["azure", "gcp", "snowflake"]
     auth_mode: Literal["managed_identity", "workload_identity"]
     role_ref: str
     scope_id: str
@@ -69,7 +69,7 @@ def resolve_binding(record: CloudConnectionRecord) -> WorkloadBinding:
         document = json.loads(raw)
         binding = WorkloadBinding.model_validate(document["bindings"][ref])
         expires = datetime.fromisoformat(binding.expires_at.replace("Z", "+00:00"))
-        scope_key = "subscription_id" if record.provider == "azure" else "project_id"
+        scope_key = {"azure": "subscription_id", "gcp": "project_id", "snowflake": "account"}[record.provider]
         if (
             not binding.enabled
             or expires.tzinfo is None
@@ -92,11 +92,27 @@ def resolve_binding(record: CloudConnectionRecord) -> WorkloadBinding:
                 raise ValueError("directory mismatch")
             if binding.audience:
                 raise ValueError("unexpected Azure audience")
+        elif record.provider == "snowflake":
+            from agent_bom.cloud.snowflake_spcs_auth import native_app_mode
+
+            # Delegation must match this service's injected account. Callers may
+            # not choose another user, role, warehouse, token file, or audience.
+            if (
+                not native_app_mode()
+                or binding.scope_id != os.environ.get("SNOWFLAKE_ACCOUNT", "").strip()
+                or binding.role_ref != binding.scope_id
+                or binding.inventory_scope != "account"
+                or binding.directory_tenant_id
+                or binding.audience
+                or binding.token_file_path
+                or set(record.auth_params) - {"account", "auth_mode", "credential_binding", "inventory_scope"}
+            ):
+                raise ValueError("Snowflake workload binding mismatch")
         elif not re.fullmatch(
             r"//iam\.googleapis\.com/projects/[0-9]+/locations/global/workloadIdentityPools/[^/]+/providers/[^/]+", binding.audience
         ) or not re.fullmatch(r"[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.iam\.gserviceaccount\.com", binding.role_ref):
             raise ValueError("invalid Google trust target")
-        if mode == "workload_identity" and not Path(binding.token_file_path).is_absolute():
+        if mode == "workload_identity" and record.provider != "snowflake" and not Path(binding.token_file_path).is_absolute():
             raise ValueError("workload token file must be operator configured")
         return binding
     except Exception as exc:
@@ -116,6 +132,15 @@ def broker_workload(record: CloudConnectionRecord) -> Any:
             return WorkloadIdentityCredential(
                 tenant_id=binding.directory_tenant_id, client_id=binding.role_ref, token_file_path=binding.token_file_path
             )
+        if binding.provider == "snowflake":
+            import snowflake.connector
+
+            from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity
+
+            params: dict[str, Any] = {}
+            if not apply_spcs_workload_identity(params) or params["account"] != binding.scope_id:
+                raise ValueError("Snowflake workload context changed")
+            return snowflake.connector.connect(**params)
         from google.auth import identity_pool, impersonated_credentials
 
         source = identity_pool.Credentials(

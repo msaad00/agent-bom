@@ -1178,7 +1178,7 @@ def _run_snowflake_connection_scan(
 ) -> dict[str, Any]:
     """Broker a Snowflake read-only connection and run discovery + estate sweep + CIS.
 
-    Opens one brokered key-pair connection and threads it into ``snowflake.discover``
+    Opens one brokered connection and threads it into ``snowflake.discover``
     (agents), ``enrich_report_with_snowflake_estate`` (accounts / warehouses /
     databases / roles / users → typed graph nodes, parity with the AWS/Azure/GCP
     connection scans), and Snowflake CIS ``run_benchmark`` so a single read-only
@@ -1242,7 +1242,7 @@ def _run_snowflake_connection_scan(
         "inventory": inventory_summary,
         "cis_benchmark": _cis_summary(cis_dict),
         "audit_metadata": _scan_audit_metadata(
-            "Scan ran against a read-only Snowflake key-pair connection brokered from the stored connection. "
+            "Scan ran against a Snowflake connection brokered from the stored connection. "
             "Discovery, estate sweep, and CIS are read-only; no object is mutated and no secret value is returned."
         ),
     }

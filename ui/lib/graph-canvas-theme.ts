@@ -22,6 +22,8 @@ export interface GraphCanvasPalette {
   stage: string;
   /** Node labels drawn over the stage. */
   label: string;
+  /** Text inside Sigma's fixed white hover bubble. */
+  hoverLabel: string;
   /** The selected node, which must read as brighter than every data colour. */
   selected: string;
   /** Nodes muted because something else is selected. */
@@ -39,12 +41,14 @@ export interface GraphCanvasPalette {
  */
 const TOKEN_FALLBACKS: Record<ThemeMode, Record<string, string>> = {
   dark: {
+    "--graph-hover-label": "#111827",
     "--background": "#14161d",
     "--foreground": "#f4f5f8",
     "--text-secondary": "#d0d4dc",
     "--text-tertiary": "#a8aebc",
   },
   light: {
+    "--graph-hover-label": "#111827",
     "--background": "#e6eaf1",
     "--foreground": "#12141a",
     "--text-secondary": "#374151",
@@ -60,6 +64,7 @@ export function getGraphCanvasPalette(mode: ThemeMode = "dark"): GraphCanvasPale
   return {
     stage: token("--background"),
     label: foreground,
+    hoverLabel: token("--graph-hover-label"),
     selected: foreground,
     dimmed: tertiary,
     defaultNode: tertiary,

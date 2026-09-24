@@ -239,9 +239,12 @@ artifact is a tenant-bound SCIM user or group under `/scim/v2/Users` or
 The SCIM tenant is resolved only from server configuration, not from the IdP
 payload. Mapped tokens are rejected when blank, duplicated, or bound to a
 reserved tenant ID. Error and posture surfaces do not include token material.
-SCIM deactivation updates provisioned lifecycle state; runtime OIDC, SAML,
-reverse-proxy, browser-session, and API-key access is revoked by the upstream
-auth provider or the API key lifecycle endpoints.
+SCIM deactivation constrains runtime access for matching provisioned identities
+and revokes tenant API keys bound by principal ID, SCIM subject, or legacy
+owner/name. Repeated deactivation retries credential cleanup after a storage
+failure. Send `active` as a JSON boolean; other types return a SCIM 400 error
+without changing lifecycle state. Upstream IdP sessions and unrelated service
+credentials still require their own lifecycle controls.
 
 The data-boundary contract exposes this as
 `payload_tenant_attributes_ignored=true`, with tenant source

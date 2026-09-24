@@ -726,3 +726,48 @@ def test_scim_store_fails_closed_without_postgres_for_multi_replica(monkeypatch:
 
     with pytest.raises(RuntimeError, match="AGENT_BOM_POSTGRES_URL"):
         _get_scim_store()
+
+
+@pytest.mark.parametrize("value", ["false", "true", None, 0, 1, [], {}])
+@pytest.mark.parametrize("operation", ["create", "replace", "patch", "patch_object"])
+def test_scim_rejects_non_boolean_active(scim_client: TestClient, value: object, operation: str) -> None:
+    payload = {"userName": "strict-active@example.com", "active": value}
+    if operation == "create":
+        response = scim_client.post("/scim/v2/Users", headers=_headers(), json=payload)
+    else:
+        created = scim_client.post("/scim/v2/Users", headers=_headers(), json={"userName": payload["userName"]})
+        user_id = created.json()["id"]
+        url = f"/scim/v2/Users/{user_id}"
+        if operation == "replace":
+            response = scim_client.put(url, headers=_headers(), json=payload)
+        else:
+            patch = {"op": "replace", "path": "active", "value": value}
+            if operation == "patch_object":
+                patch = {"op": "replace", "value": {"active": value}}
+            response = scim_client.patch(url, headers=_headers(), json={"Operations": [patch]})
+        assert scim_client.get(url, headers=_headers()).json()["active"] is True
+    assert response.status_code == 400
+    assert response.json()["schemas"] == ["urn:ietf:params:scim:api:messages:2.0:Error"]
+
+
+def test_scim_inactive_retry_completes_failed_revocation(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.routes.scim import _save_scim_user, _user_from_payload
+
+    store = InMemorySCIMStore()
+    user = _user_from_payload("tenant-alpha", {"userName": "retry@example.com", "active": False})
+    attempts = []
+
+    def revoke(tenant_id: str, user: object) -> int:
+        attempts.append(tenant_id)
+        if len(attempts) == 1:
+            raise RuntimeError("simulated credential store outage")
+        return 1
+
+    monkeypatch.setattr("agent_bom.api.scim.revoke_credentials_for_scim_user", revoke)
+    with pytest.raises(RuntimeError, match="simulated credential store outage"):
+        _save_scim_user(store, user, previously_active=True)
+    saved = store.get_user("tenant-alpha", user.user_id)
+    assert saved is not None and saved.active is False
+    retried = _save_scim_user(store, saved, previously_active=saved.active)
+    assert retried.active is False
+    assert attempts == ["tenant-alpha", "tenant-alpha"]

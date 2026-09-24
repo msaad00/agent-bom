@@ -3575,3 +3575,22 @@ def test_neighbor_lookup_without_snapshot_never_hydrates(recording_graph_store, 
     assert body["total_neighbors"] is None
     assert body["completeness"]["reason"] == "snapshot_not_found"
     assert not any(call[0] in {"node_context", "nodes_by_ids"} for call in recording_graph_store.calls)
+
+
+@pytest.mark.parametrize(
+    "selector,expected",
+    [
+        ("agent:cursor", True),
+        ("cursor", True),
+        ("Cursor IDE Agent", True),
+        ("agent:other", False),
+        ("cur", False),
+        ("pkg:cursor", False),
+    ],
+)
+def test_fix_first_agent_focus_accepts_canonical_identity(selector, expected):
+    graph = UnifiedGraph(scan_id="focus")
+    graph.add_node(UnifiedNode(id="agent:cursor", entity_type=EntityType.AGENT, label="Cursor IDE Agent"))
+    graph.add_node(UnifiedNode(id="pkg:cursor", entity_type=EntityType.PACKAGE, label="cursor"))
+    path = AttackPath(source="agent:cursor", target="pkg:cursor", hops=["agent:cursor", "pkg:cursor"], edges=["uses"], composite_risk=1)
+    assert graph_routes._path_matches_focus(graph, path, cve="", package="", agent=selector) is expected

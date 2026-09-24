@@ -18,6 +18,7 @@ import {
   CircleX,
   SearchCheck,
   SlidersHorizontal,
+  Info,
 } from "lucide-react";
 
 import type { InventorySummaryResponse, OverviewResponse } from "@/lib/api";
@@ -290,10 +291,6 @@ export function OverviewCockpit({
       ? "—"
       : undefined;
 
-  const coverageSummary = coverage?.length
-    ? `${coverage.length} security disciplines`
-    : "Security findings and operational context";
-
   return (
     <div className="space-y-7">
       {localReport && <p className="text-sm text-ink-secondary">Local report only. Findings are not linked to tenant investigations or live coverage.</p>}
@@ -352,8 +349,8 @@ export function OverviewCockpit({
               loading={loading || complianceLoading || scanScopeLoading} scanScopeKnown={scans !== null} />}
           </Collapsible>
         </section>
-        <section aria-label="Findings by discipline" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
-          <Collapsible bare title="Findings by discipline" subtitle={coverageSummary} titleClassName={SECTION_TITLE_CLASS} defaultOpen>
+        <section aria-label="Findings by security area" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
+          <Collapsible bare title="Findings by security area" titleClassName={SECTION_TITLE_CLASS} defaultOpen>
             {loading && !domains ? (
               <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
             ) : overviewUnavailable && !domains ? (
@@ -442,13 +439,33 @@ const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; o
 
 function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
   const [showSeverity, setShowSeverity] = useState(false);
+  const [showCoverageHelp, setShowCoverageHelp] = useState(false);
+  const coverageHelpId = useId();
   const lanesId = useId();
   if (!coverage || coverage.length === 0) return null;
   return (
     <div className="@container pt-1" data-testid="overview-security-coverage">
-      <p className="mb-3 text-xs leading-relaxed text-ink-secondary">
-        Overlapping finding counts, not additive. Zero findings does not establish assessment coverage.
-      </p>
+      <div className="relative mb-3 flex items-center gap-2 text-xs leading-relaxed text-ink-secondary">
+        <p>Findings may appear in multiple areas.</p>
+        <button
+          type="button"
+          aria-label="About assessment coverage"
+          aria-expanded={showCoverageHelp}
+          aria-controls={coverageHelpId}
+          aria-describedby={showCoverageHelp ? coverageHelpId : undefined}
+          onClick={() => setShowCoverageHelp(!showCoverageHelp)}
+          onBlur={() => setShowCoverageHelp(false)}
+          onKeyDown={(event) => { if (event.key === "Escape") setShowCoverageHelp(false); }}
+          className="shrink-0 rounded-md p-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+        >
+          <Info className="h-4 w-4" aria-hidden="true" />
+        </button>
+        {showCoverageHelp && (
+          <span id={coverageHelpId} role="tooltip" className="absolute left-0 top-full z-10 mt-1 max-w-full rounded-lg border border-outline bg-surface p-3 text-ink shadow-lg">
+            Zero findings does not establish assessment coverage.
+          </span>
+        )}
+      </div>
       <button type="button" aria-expanded={showSeverity} aria-controls={lanesId} onClick={() => setShowSeverity(!showSeverity)} className="mb-2 rounded-md py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
         {showSeverity ? "Hide severity breakdown" : "Show severity breakdown"}
       </button>

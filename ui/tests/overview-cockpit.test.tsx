@@ -80,7 +80,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getAllByRole("region", { name: "Selected risk" })).toHaveLength(1);
     await userEvent.click(screen.getByRole("tab", { name: "Posture" }));
     expect(screen.getByText("Posture score · 0–100, higher is better")).toBeVisible();
-    expect(screen.getByRole("region", { name: "Findings by discipline" }).parentElement).toBe(screen.getByRole("region", { name: "Compliance & frameworks" }).parentElement);
+    expect(screen.getByRole("region", { name: "Findings by security area" }).parentElement).toBe(screen.getByRole("region", { name: "Compliance & frameworks" }).parentElement);
   });
 
   it("keeps risk mappings in a separate disclosure when evaluated controls are available", async () => {
@@ -169,8 +169,8 @@ describe("OverviewCockpit", () => {
     expect(lanes).toBeVisible();
     expect(within(lanes).getAllByRole("link")[0]).toHaveTextContent("Cloud security (CSPM)");
     expect(within(lanes).getByText("AI security (AISPM)")).toBeVisible();
-    const toggle = screen.getByRole("button", { name: /^Findings by discipline/ });
-    expect(toggle).toHaveTextContent("2 security disciplines");
+    const toggle = screen.getByRole("button", { name: /^Findings by security area/ });
+    expect(toggle).not.toHaveTextContent("security disciplines");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     toggle.focus();
     await user.keyboard("{Enter}");
@@ -191,7 +191,7 @@ describe("OverviewCockpit", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveFocus();
     expect(screen.getByText(/Control evaluation unavailable/i)).not.toBeVisible();
-    expect(screen.getByRole("button", { name: /^Findings by discipline/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^Findings by security area/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("tab", { name: "Posture" })).toHaveAttribute("aria-selected", "true");
   });
 
@@ -332,16 +332,24 @@ describe("OverviewCockpit", () => {
     ].map((lane) => ({ ...lane, evidence_status: "complete" as const, count_exact: true }));
     render(<OverviewCockpit {...baseProps} domains={sampleDomains} coverage={coverage} />);
 
-    expect(screen.getByRole("button", { name: /Findings by discipline/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Findings by security area/i })).toBeVisible();
     const section = screen.getByTestId("overview-security-coverage");
     expect(section).toBeInTheDocument();
-    // Lanes are labeled as overlapping disciplines so a user never sums them.
-    expect(within(section).getByText(/overlapping finding counts/i)).toBeInTheDocument();
-    expect(screen.getByText(/not additive/i)).toBeInTheDocument();
+    // Areas may overlap; their counts must not be added together.
     // The magnitude must carry its unit. A bare number under a heading called
     // CSPM reads as assets, accounts or data stores depending on the reader —
     // all wrong. These are findings, which is what the severity chips sum to.
-    expect(screen.getByText(/Zero findings does not establish assessment coverage/i)).toBeInTheDocument();
+    expect(screen.getByText("Findings may appear in multiple areas.")).toBeInTheDocument();
+    const coverageHelp = screen.getByRole("button", { name: "About assessment coverage" });
+    expect(coverageHelp).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    coverageHelp.focus();
+    const keyboard = userEvent.setup();
+    await keyboard.keyboard("{Enter}");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Zero findings does not establish assessment coverage.");
+    await keyboard.keyboard("{Escape}");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(coverageHelp).toHaveFocus();
     expect(screen.getAllByText(/^findings?$/i).length).toBeGreaterThan(0);
     // Each lane links to its domain-filtered findings view.
     expect(screen.getByTestId("coverage-lane-cspm")).toHaveAttribute("href", "/findings?domain=cspm");

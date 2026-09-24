@@ -55,6 +55,9 @@ def test_native_refuses_unmounted_directory(entrypoint, monkeypatch):
 @pytest.fixture
 def prepared_runtime(entrypoint, monkeypatch, tmp_path):
     """Exercise real files; simulate privilege syscalls without changing pytest uid."""
+    # prepare_state writes os.environ directly; isolate additions even when
+    # a variable was absent before the test (delenv alone cannot restore it).
+    monkeypatch.setattr(entrypoint.os, "environ", dict(os.environ))
     entrypoint.STATE = str(tmp_path)
     entrypoint.UID = os.getuid()
     entrypoint.GID = os.getgid()

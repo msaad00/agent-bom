@@ -54,9 +54,22 @@ describe("GraphRollupDecisionSurface", () => {
     render(<GraphRollupDecisionSurface items={[item("root"), item("neighbor")]} edges={
       Array.from({ length: 15 }, () => ({ source: "neighbor", target: "root", count: 2, relationships: ["uses"] }))
     } onDrill={vi.fn()} onInvestigate={vi.fn()} />);
-    expect(screen.getAllByText("Scope neighbor → Scope root")).toHaveLength(24);
-    expect(screen.getAllByText("Showing 12 of 15 rows. Use Traverse to investigate further.")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Inspect relationship endpoint Scope neighbor (neighbor)" })).toHaveLength(24);
+    expect(screen.getAllByText("Showing 12 of 15 rows.")).toHaveLength(2);
     expect(screen.getAllByText(/do not establish runtime execution/)).toHaveLength(2);
+  });
+
+  it("investigates the exact endpoint when labels collide and keeps unknown endpoints literal", () => {
+    const onInvestigate = vi.fn();
+    const selected = item("prod", { label: "Shared name" });
+    render(<GraphRollupDecisionSurface items={[selected, item("dev", { label: "Shared name" })]}
+      edges={[{ source: "prod", target: "external-id", count: 1, relationships: ["stores"] }]}
+      onDrill={vi.fn()} onInvestigate={onInvestigate} />);
+    fireEvent.click(screen.getByRole("button", { name: "Inspect relationship endpoint Shared name (prod)" }));
+    expect(onInvestigate).toHaveBeenCalledWith(selected);
+    expect(screen.getByText("external-id")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /external-id/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Coverage may be incomplete/)).toBeInTheDocument();
   });
 
   it("keeps an explicit return to summary available from the graph", () => {

@@ -95,7 +95,7 @@ export function GraphRollupDecisionSurface({
     for (const item of items) counts.set(item.entity_type, (counts.get(item.entity_type) ?? 0) + 1);
     return [...counts].sort(([a], [b]) => a.localeCompare(b));
   }, [items]);
-  const labels = useMemo(() => new Map(items.map((item) => [item.id, item.label])), [items]);
+  const nodesById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const incident = useMemo(() => {
     const index = new Map<string, GraphRollupEdge[]>();
     for (const edge of edges) {
@@ -289,11 +289,19 @@ export function GraphRollupDecisionSurface({
                 <p className="my-2 text-ink-tertiary">Returned relationships only. These do not establish runtime execution or authorized access.</p>
                 <ul className="max-h-48 space-y-2 overflow-y-auto">
                   {itemEdges.slice(0, 12).map((edge, index) => <li key={`${edge.source}:${edge.target}:${index}`} className="break-words [overflow-wrap:anywhere]">
-                    {labels.get(edge.source) ?? edge.source} → {labels.get(edge.target) ?? edge.target}
+                    {[edge.source, edge.target].map((id, endpoint) => {
+                      const node = nodesById.get(id);
+                      return <span key={`${endpoint}:${id}`}>
+                        {endpoint === 1 && <span aria-label="to"> → </span>}
+                        {node ? <button type="button" onClick={() => onInvestigate(node)} aria-label={`Inspect relationship endpoint ${node.label} (${id})`} title={id} className="text-sky-700 underline underline-offset-2 dark:text-sky-300">{node.label}</button> : <span title="Endpoint details are outside the returned scope">{id}</span>}
+                      </span>;
+                    })}
                     <span className="block text-ink-tertiary">{edge.relationships.map((kind) => kind.replaceAll("_", " ")).join(", ")} · {edge.count} underlying relationships</span>
                   </li>)}
                 </ul>
-                {itemEdges.length > 12 && <p className="mt-2">Showing 12 of {itemEdges.length} rows. Use Traverse to investigate further.</p>}
+                {itemEdges.length > 12 && <p className="mt-2">Showing 12 of {itemEdges.length} rows.</p>}
+                {itemEdges.length > 12 && <button type="button" onClick={() => onInvestigate(item)} className="mt-2 text-sky-700 underline dark:text-sky-300">Inspect connections for {item.label}</button>}
+                {itemEdges.length === 0 && <p>No relationship rows returned for this node. Coverage may be incomplete.</p>}
               </details>
               {(item.aggregate.toxic_combo || item.aggregate.internet_exposed) && <div className="col-span-2 flex flex-wrap gap-1.5 text-[10px] md:col-span-3">
                 {item.aggregate.toxic_combo ? (

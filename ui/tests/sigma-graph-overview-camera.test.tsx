@@ -19,15 +19,16 @@ const harness = vi.hoisted(() => ({ instances: [] as Array<{
 }> }));
 
 vi.mock("@/lib/use-capture-mode", () => ({ useCaptureMode: () => false }));
-vi.mock("@/lib/graph-canvas-theme", () => ({
-  useGraphCanvasPalette: () => ({
+vi.mock("@/lib/graph-canvas-theme", () => {
+  const palette = {
     defaultEdge: "#999999",
     defaultNode: "#777777",
     label: "#111111",
     selected: "#00ff00",
     dimmed: "#444444",
-  }),
-}));
+  };
+  return { useGraphCanvasPalette: () => palette };
+});
 
 vi.mock("sigma", () => {
   class CameraMock {
@@ -40,6 +41,8 @@ vi.mock("sigma", () => {
       this.state = { ...this.state, ...next };
       return this;
     }
+
+    getState() { return this.state; }
 
     on(event: string, listener: (state: typeof this.state) => void) {
       if (event === "updated") this.listeners.add(listener);
@@ -62,6 +65,7 @@ vi.mock("sigma", () => {
       }
 
       getCamera() { return this.camera; }
+      getNodeDisplayData(id: string) { return id === "agent:a" ? { x: 0.2, y: 0.7 } : { x: 0.8, y: 0.1 }; }
       getSetting() { return () => undefined; }
       setSetting() { return this; }
       on() { return this; }
@@ -200,4 +204,23 @@ describe("SigmaGraphOverview camera persistence", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 100));
     expect(readSigmaCameraPresentation(window.localStorage, key)).toEqual(saved);
   });
+});
+
+
+it("frames deliberate search and neighbor selection without resetting later manual pan", async () => {
+  const { rerender } = render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} />);
+  await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+  fireEvent.click(screen.getByText("Map controls"));
+  fireEvent.change(screen.getByLabelText("Find a displayed asset"), { target: { value: "Agent A" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agent A · agent:a" }));
+  await waitFor(() => expect(harness.instances.at(-1)!.camera.state).toMatchObject({ x: 0.2, y: 0.7, ratio: 0.3 }));
+  fireEvent.click(screen.getByText("Explore connected assets"));
+  fireEvent.click(screen.getByRole("button", { name: "Package A (package)" }));
+  await waitFor(() => expect(harness.instances.at(-1)!.camera.state).toMatchObject({ x: 0.8, y: 0.1, ratio: 0.3 }));
+  const manual = { x: 0.6, y: 0.4, ratio: 0.7, angle: 0 };
+  harness.instances.at(-1)!.camera.emit(manual);
+  const before = harness.instances.at(-1)!.camera.setCalls.length;
+  rerender(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} />);
+  expect(harness.instances.at(-1)!.camera.setCalls.length).toBe(before);
+  expect(harness.instances.at(-1)!.camera.state).toEqual(manual);
 });

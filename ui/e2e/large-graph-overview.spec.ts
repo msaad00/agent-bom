@@ -690,11 +690,23 @@ for (const theme of ["light", "dark"] as const) {
       await sigma.getByLabel("Map grouping").selectOption("environment");
       await expect(sigma.getByText(/Environment groups/)).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`environment-overview-${theme}-${width}.png`), fullPage: true });
+      const canvas = sigma.getByTestId("sigma-graph-overview-canvas");
+      const bounds = (await canvas.boundingBox())!;
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width * 0.9, bounds.y + bounds.height * 0.8, { steps: 8 });
+      await page.mouse.up();
       await sigma.getByLabel("Find a displayed asset").fill("agent:large");
       await sigma.getByRole("button", { name: "Large Estate Agent · agent:large", exact: true }).click();
       await expect(sigma.getByLabel("Focused graph asset")).toBeVisible();
       await expect(sigma.getByRole("button", { name: "Clear focus" })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`environment-map-${theme}-${width}.png`), fullPage: true });
+      if (width === 1440) {
+        await sigma.getByText("Explore connected assets", { exact: true }).click();
+        await sigma.getByRole("button", { name: "large-package-0 (package)", exact: true }).click();
+        await expect(sigma.getByLabel("Focused graph asset")).toContainText("large-package-0");
+        await page.screenshot({ path: testInfo.outputPath(`neighbor-focus-${theme}.png`), fullPage: true });
+      }
       if (width === 390) await page.getByRole("complementary").getByRole("button", { name: "Close", exact: true }).click();
       else await sigma.getByRole("button", { name: "Clear focus" }).click();
       await expect(sigma.getByLabel("Focused graph asset")).toHaveCount(0);

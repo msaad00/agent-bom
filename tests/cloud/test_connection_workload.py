@@ -194,3 +194,67 @@ def test_sdk_construction_failure_never_exposes_provider_error(binding: dict[str
     with pytest.raises(ConnectionBrokerError) as error:
         broker_session(record())
     assert "private-canary-token" not in str(error.value)
+
+
+@pytest.fixture
+def snowflake_binding(binding: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> CloudConnectionRecord:
+    binding.update(provider="snowflake", role_ref="account-a", scope_id="account-a", directory_tenant_id="", token_file_path="")
+    binding["_write"]()
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP", "true")
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "account-a")
+    monkeypatch.setenv("SNOWFLAKE_HOST", "account-a.snowflakecomputing.com")
+    candidate = record("snowflake")
+    candidate.role_ref = "account-a"
+    candidate.auth_params.pop("project_id")
+    candidate.auth_params["account"] = "account-a"
+    return candidate
+
+
+def test_snowflake_workload_uses_rotating_injected_identity(
+    snowflake_binding: CloudConnectionRecord, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+    connector = types.ModuleType("snowflake.connector")
+    connector.connect = lambda **kw: calls.append(kw)  # type: ignore[attr-defined]
+    package = types.ModuleType("snowflake")
+    package.connector = connector  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "snowflake", package)
+    monkeypatch.setitem(sys.modules, "snowflake.connector", connector)
+    monkeypatch.delenv("SNOWFLAKE_TOKEN_FILE_PATH", raising=False)
+    broker_session(snowflake_binding)
+    assert calls == [
+        {
+            "account": "account-a",
+            "host": "account-a.snowflakecomputing.com",
+            "authenticator": "oauth",
+            "token_file_path": "/snowflake/session/token",
+        }
+    ]
+
+
+@pytest.mark.parametrize("mutation", ["tenant", "account", "outside", "revoked", "expired", "role", "token_file", "organization", "host"])
+def test_snowflake_workload_fails_closed(
+    snowflake_binding: CloudConnectionRecord, binding: dict[str, Any], monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    if mutation == "tenant":
+        snowflake_binding.tenant_id = "other"
+    elif mutation == "account":
+        monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "other")
+    elif mutation == "outside":
+        monkeypatch.delenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP")
+    elif mutation == "revoked":
+        binding["enabled"] = False
+    elif mutation == "expired":
+        binding["expires_at"] = "2000-01-01T00:00:00Z"
+    elif mutation == "role":
+        snowflake_binding.auth_params["role"] = "ACCOUNTADMIN"
+    elif mutation == "token_file":
+        binding["token_file_path"] = "/another/token"
+    elif mutation == "organization":
+        snowflake_binding.inventory_scope = "organization"
+        binding["inventory_scope"] = "organization"
+    else:
+        monkeypatch.delenv("SNOWFLAKE_HOST")
+    binding["_write"]()
+    with pytest.raises(ConnectionBrokerError):
+        broker_session(snowflake_binding)

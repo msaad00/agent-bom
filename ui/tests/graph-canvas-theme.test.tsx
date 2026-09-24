@@ -25,6 +25,7 @@ const CANVAS_SURFACES = ["components/sigma-graph-overview.tsx"] as const;
 const HEX_LITERAL = /#[0-9a-fA-F]{3,8}\b/g;
 
 const TOKENS = [
+  "--graph-hover-label",
   "--background",
   "--foreground",
   "--text-tertiary",
@@ -50,10 +51,12 @@ describe("getGraphCanvasPalette", () => {
     root.style.setProperty("--text-tertiary", "rgb(85, 98, 122)");
     root.style.setProperty("--text-secondary", "rgb(55, 65, 81)");
 
+    root.style.setProperty("--graph-hover-label", "rgb(17, 24, 39)");
     const palette = getGraphCanvasPalette();
     expect(palette).toEqual({
       stage: "rgb(230, 234, 241)",
       label: "rgb(18, 20, 26)",
+      hoverLabel: "rgb(17, 24, 39)",
       selected: "rgb(18, 20, 26)",
       dimmed: "rgb(85, 98, 122)",
       defaultNode: "rgb(85, 98, 122)",
@@ -70,6 +73,8 @@ describe("getGraphCanvasPalette", () => {
     for (const value of [...Object.values(dark), ...Object.values(light)]) {
       expect(value).toMatch(/^#[0-9a-f]{6}$/);
     }
+    expect(light.hoverLabel).toBe("#111827");
+    expect(dark.hoverLabel).toBe(light.hoverLabel);
     expect(light.stage).not.toBe(dark.stage);
     expect(light.label).not.toBe(dark.label);
   });

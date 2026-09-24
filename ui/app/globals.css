@@ -111,6 +111,8 @@
    * baking in a dark palette.
    */
   --graph-minimap-mask: rgba(24, 24, 27, 0.82);
+  /* Sigma draws a white hover bubble in both themes. */
+  --graph-hover-label: #111827;
   --graph-agent: #34d399;
   --graph-server: #38bdf8;
   --graph-package: #fbbf24;

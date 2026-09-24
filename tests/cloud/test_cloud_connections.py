@@ -2181,7 +2181,9 @@ def test_connection_legacy_public_metadata_drops_undeclared_and_secret_values() 
     assert record.auth_params["client_secret"] == "private-canary-value"
 
 
-def test_create_workload_connection_without_storing_secret(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("native_mode", [False, True])
+def test_create_workload_connection_without_storing_secret(tmp_path: Any, monkeypatch: pytest.MonkeyPatch, native_mode: bool) -> None:
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP", "true" if native_mode else "false")
     path = tmp_path / "bindings.json"
     path.write_text(
         json.dumps(
@@ -2223,11 +2225,13 @@ def test_create_workload_connection_without_storing_secret(tmp_path: Any, monkey
     assert response.json()["status"] == "pending"
     assert response.json()["capability_probe_status"] == "not_run"
     capabilities = client.get("/v1/cloud/connections", headers=_proxy_headers()).json()["workload_auth_modes"]
-    assert capabilities == {
+    expected_modes = {
         "azure": ["managed_identity", "workload_identity"],
         "gcp": ["workload_identity"],
-        "snowflake": ["workload_identity"],
     }
+    if native_mode:
+        expected_modes["snowflake"] = ["workload_identity"]
+    assert capabilities == expected_modes
     assert str(path) not in response.text
     forbidden = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers(tenant="other-tenant"))
     assert forbidden.status_code == 400

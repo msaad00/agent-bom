@@ -108,6 +108,11 @@ POLICY: dict[str, BasePolicy] = {
         expected_tags=("3.12.13-slim",),
         rationale="Cloud-SDK collector; Debian slim for boto3/azure/google wheel compatibility (grpcio, cryptography).",
     ),
+    "deploy/keycloak/Dockerfile": BasePolicy(
+        image="quay.io/keycloak/keycloak",
+        expected_tags=("26.7.4",),
+        rationale="Separate production OAuth issuer; official security-patched image pinned for repeatable deployment.",
+    ),
     ".clusterfuzzlite/Dockerfile": BasePolicy(
         image="gcr.io/oss-fuzz-base/base-builder-python",
         expected_tags=(),

@@ -961,6 +961,7 @@ describe("ConnectionsPage — Sources segment (unified table)", () => {
     ["aws", {}, "AWS AssumeRole"],
     ["azure", { auth_mode: "managed_identity", credential_binding: "operator-binding", client_secret: SECRET }, "Managed identity"],
     ["gcp", { auth_mode: "workload_identity", credential_binding: "operator-binding" }, "Workload identity"],
+    ["snowflake", { auth_mode: "workload_identity", credential_binding: "operator-binding" }, "Native App workload identity"],
     ["azure", {}, "Client secret (legacy)"],
   ])("shows recorded %s configuration without implying verified coverage", async (provider, auth_params, mode) => {
     apiMock.listCloudConnections.mockResolvedValue({ connections: [{ ...CREATED_RECORD, provider, auth_params,
@@ -1645,6 +1646,7 @@ describe("Connections initial workspace", () => {
 });
 
 it.each([
+  { provider: "snowflake", label: /Snowflake/, mode: "workload_identity", role: "account-a", scope: { account: "account-a" } },
   { provider: "gcp", label: /Google Cloud/, mode: "workload_identity", role: "agent-bom@proj.iam.gserviceaccount.com", scope: { project_id: "proj-123" } },
   { provider: "azure", label: /Microsoft Azure/, mode: "managed_identity", role: "client-123", scope: { tenant_id: "tenant-123", subscription_id: "sub-123" } },
 ])("requires an operator binding for advertised $provider workload authentication", async ({ provider, label, mode, role, scope }) => {
@@ -1660,12 +1662,16 @@ it.each([
   expect(within(wizard).getByText("Operator-managed workload binding")).toBeInTheDocument();
   fireEvent.click(within(wizard).getByRole("button", { name: /Next/ }));
   fireEvent.change(within(wizard).getByPlaceholderText("Production account"), { target: { value: "Bound account" } });
-  fireEvent.change(within(wizard).getByLabelText(provider === "gcp" ? "Service account email" : "Client ID (app registration)"), { target: { value: role } });
+  fireEvent.change(within(wizard).getByLabelText(provider === "gcp" ? "Service account email" : provider === "snowflake" ? "Account" : "Client ID (app registration)"), { target: { value: role } });
   for (const [key, value] of Object.entries(scope)) {
+    if (provider === "snowflake") continue;
     const field = { project_id: "Project ID", tenant_id: "Tenant ID", subscription_id: "Subscription ID" }[key]!;
     fireEvent.change(within(wizard).getByLabelText(field), { target: { value } });
   }
   expect(wizard.querySelector('input[type="password"], textarea')).toBeNull();
+  if (provider === "snowflake") {
+    for (const label of ["User", "Role", "Warehouse"]) expect(within(wizard).queryByLabelText(label)).not.toBeInTheDocument();
+  }
   fireEvent.click(within(wizard).getByRole("button", { name: "Create connection" }));
   expect(apiMock.createCloudConnection).not.toHaveBeenCalled();
   expect(within(wizard).getByText("Operator binding ID is required.")).toBeInTheDocument();

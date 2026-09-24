@@ -118,7 +118,7 @@ function OwnedContextView({ owner }: { owner: string }) {
   </section>;
 }
 
-function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string }) {
+export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { scanId: string; owner: string; initialRootId?: string }) {
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -131,7 +131,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
   const [selector, setSelector] = useState<GraphAgentsResponse | null>(null);
   const [selectorBusy, setSelectorBusy] = useState(false);
   const [selectorError, setSelectorError] = useState<string | null>(null);
-  const [rootId, setRootId] = useState("");
+  const [rootId, setRootId] = useState(initialRootId);
   const [direction, setDirection] = useState<IncidentDirection>("both");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
@@ -201,6 +201,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
         {rootId && selector?.agents.length && !selector.agents.some(agent => agent.id === rootId) ? <option value={rootId}>{rootId}</option> : null}
         {selector?.agents.map(agent => <option key={agent.id} value={agent.id}>{agent.label} · {agent.id}</option>)}
       </select></label>
+      {selector && <span className="text-xs text-[var(--text-secondary)]">{selector.pagination.total.toLocaleString()} {query ? "matching" : "recorded"} agents · snapshot scope</span>}
       {selector?.pagination.next_cursor && <button className="context-action" disabled={selectorBusy} onClick={() => setCursor(selector.pagination.next_cursor || undefined)}>Next agents</button>}
       {cursor && <button className="context-action" onClick={() => setCursor(undefined)}>First agents</button>}
       <details className="relative"><summary className="context-action cursor-pointer">Search &amp; direction</summary><div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] p-3">
@@ -219,7 +220,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">
       <div aria-label="Persisted neighborhood canvas" className="relative h-[32rem] lg:h-[36rem] min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
-        {!!layout.nodes.length && <ReactFlow key={JSON.stringify([focus, focusId, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.08, minZoom: focusId ? (mobile ? 0.75 : 0.85) : 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
+        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.08, minZoom: focusId ? (mobile ? 0.75 : 0.85) : 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} /><Controls className={CONTROLS_CLASS} />
         </ReactFlow>}

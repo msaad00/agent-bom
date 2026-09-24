@@ -205,28 +205,33 @@ for (const theme of ["light", "dark"] as const) {
 
 for (const theme of ["light", "dark"] as const) {
   for (const width of [1440, 390]) {
-    test(`advertised workload binding wizard ${theme} ${width}`, async ({ page }, testInfo) => {
+    for (const provider of ["gcp", "snowflake"] as const) test(`advertised ${provider} workload binding wizard ${theme} ${width}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
       await routeConnections(page);
       await page.route("**/v1/cloud/connections", route => route.fulfill({ json: {
-        connections: [], count: 0, workload_auth_modes: { gcp: ["workload_identity"] },
+        connections: [], count: 0, workload_auth_modes: { [provider]: ["workload_identity"] },
       } }));
       await page.goto("/connections");
       await page.getByRole("button", { name: "Add cloud account" }).click();
       const wizard = page.getByRole("dialog", { name: "Add cloud account" });
-      await wizard.getByRole("button", { name: /Google Cloud/ }).click();
+      await wizard.getByRole("button", { name: provider === "gcp" ? /Google Cloud/ : /Snowflake/ }).click();
       await expect(wizard.getByRole("combobox", { name: "Authentication method" })).toHaveValue("workload_identity");
       await wizard.getByRole("button", { name: "Next", exact: true }).click();
       await expect(wizard.getByText("Operator-managed workload binding")).toBeVisible();
       await wizard.getByRole("button", { name: "Next", exact: true }).click();
       await wizard.getByPlaceholder("Production account").fill("Bound GCP account");
-      await wizard.getByLabel("Service account email").fill("agent-bom@project.iam.gserviceaccount.com");
-      await wizard.getByLabel("Project ID").fill("project");
+      if (provider === "gcp") {
+        await wizard.getByLabel("Service account email").fill("agent-bom@project.iam.gserviceaccount.com");
+        await wizard.getByLabel("Project ID").fill("project");
+      } else {
+        await wizard.getByLabel("Account", { exact: true }).fill("account-a");
+        for (const label of ["User", "Role", "Warehouse"]) await expect(wizard.getByLabel(label, { exact: true })).toHaveCount(0);
+      }
       await wizard.getByLabel("Operator binding ID", { exact: true }).fill("readonly-prod");
       await expect(wizard.locator('input[type="password"], textarea')).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath(`workload-binding-${theme}-${width}.png`), fullPage: true });
+      await page.screenshot({ path: testInfo.outputPath(`workload-binding-${provider}-${theme}-${width}.png`), fullPage: true });
       await page.keyboard.press("Escape");
       await expect(wizard).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Add cloud account" })).toBeFocused();

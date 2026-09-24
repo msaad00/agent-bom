@@ -1,5 +1,6 @@
 """Prepare one Native App block mount, then permanently drop API privileges."""
 
+import fcntl
 import os
 import secrets
 import stat
@@ -28,24 +29,7 @@ def prepare_state() -> None:
     # Store the signing key with the evidence so restart does not invalidate the
     # audit chain. A volume backup contains both and needs equivalent protection.
     key_path = STATE + "/audit-hmac.key"
-    try:
-        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    except FileExistsError:
-        fd = os.open(key_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        try:
-            info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != UID or info.st_nlink != 1 or info.st_mode & 0o077:
-                raise RuntimeError("Native App audit key permissions are invalid")
-            value = os.read(fd, 129)
-            if len(value) != 64 or any(c not in b"0123456789abcdef" for c in value):
-                raise RuntimeError("Native App audit key is invalid")
-        finally:
-            os.close(fd)
-    else:
-        with os.fdopen(fd, "wb") as key:
-            key.write(secrets.token_hex(32).encode("ascii"))
-            key.flush()
-            os.fsync(key.fileno())
+    _prepare_audit_key()
     # An exclusive probe verifies write access after privilege reduction.
     probe = STATE + "/.write-probe-" + secrets.token_hex(16)
     fd = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -62,6 +46,46 @@ def prepare_state() -> None:
         if os.environ.get(name, value) != value:
             raise RuntimeError("Native App persistence configuration does not match its volume")
         os.environ[name] = value
+
+
+def _prepare_audit_key() -> None:
+    """Publish only a flushed, complete key; serialize cooperating restarts."""
+    directory = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(directory, fcntl.LOCK_EX)
+        key_name = "audit-hmac.key"
+        try:
+            fd = os.open(key_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        except FileNotFoundError:
+            temporary = ".audit-key-" + secrets.token_hex(16)
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+            try:
+                with os.fdopen(fd, "wb") as key:
+                    key.write(secrets.token_hex(32).encode("ascii"))
+                    key.flush()
+                    os.fsync(key.fileno())
+                # The directory lock protects cooperating initializers; rename
+                # atomically publishes the complete key on this same mount.
+                # An interruption before this point leaves no canonical key.
+                os.rename(temporary, key_name, src_dir_fd=directory, dst_dir_fd=directory)
+            finally:
+                try:
+                    os.unlink(temporary, dir_fd=directory)
+                except FileNotFoundError:
+                    pass
+            os.fsync(directory)
+        else:
+            try:
+                info = os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != UID or info.st_nlink != 1 or info.st_mode & 0o077:
+                    raise RuntimeError("Native App audit key permissions are invalid")
+                value = os.read(fd, 129)
+                if len(value) != 64 or any(c not in b"0123456789abcdef" for c in value):
+                    raise RuntimeError("Native App audit key is invalid")
+            finally:
+                os.close(fd)
+    finally:
+        os.close(directory)
 
 
 def main() -> None:

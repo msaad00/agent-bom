@@ -42,6 +42,16 @@ expired, revoked, or mismatched configuration fails closed without legacy
 credential fallback. A binding delegates use of the service identity; it does
 not prove read-only Snowflake grants. Review the service's actual privileges.
 
+## Connection wizard
+
+After operator configuration, open **Connections → Add cloud account → Snowflake**
+and select **Native App workload identity**. Enter the injected account and the
+operator binding ID. The wizard does not collect a user, private key, role,
+warehouse or token path for this mode. Create the connection, verify access,
+then dispatch a scan. The mode is advertised only by a control plane configured
+for Native App deployment; advertisement alone does not prove valid bindings,
+provider privileges or completed collection.
+
 ## Create, dispatch, retrieve
 
 Inbound SPCS gateway identity is not automatically mapped to an Agent-Bom

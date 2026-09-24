@@ -4,6 +4,7 @@ import importlib.util
 import os
 import secrets
 import subprocess
+import sys
 import textwrap
 import time
 from pathlib import Path
@@ -207,3 +208,60 @@ def test_native_docker_replacement_preserves_tenant_graph_and_audit():
     finally:
         docker("rm", "-f", name, check=False)
         docker("volume", "rm", name, check=False)
+
+
+def test_failed_key_write_never_publishes_empty_key(prepared_runtime, monkeypatch):
+    entrypoint, state, _ = prepared_runtime
+    original_fsync = entrypoint.os.fsync
+    monkeypatch.setattr(entrypoint.os, "fsync", lambda _: (_ for _ in ()).throw(OSError("write interrupted")))
+    with pytest.raises(OSError):
+        entrypoint.prepare_state()
+    assert not Path(entrypoint.STATE, "audit-hmac.key").exists()
+    monkeypatch.setattr(entrypoint.os, "fsync", original_fsync)
+    state["uid"] = 0
+    entrypoint.prepare_state()
+    assert len(Path(entrypoint.STATE, "audit-hmac.key").read_bytes()) == 64
+
+
+def test_key_is_complete_before_atomic_publication(prepared_runtime, monkeypatch):
+    entrypoint, _, _ = prepared_runtime
+    original_rename = entrypoint.os.rename
+    published = []
+
+    def checked_rename(source, target, **kwargs):
+        assert len(Path(entrypoint.STATE, source).read_bytes()) == 64
+        assert not Path(entrypoint.STATE, target).exists()
+        published.append(target)
+        return original_rename(source, target, **kwargs)
+
+    monkeypatch.setattr(entrypoint.os, "rename", checked_rename)
+    entrypoint.prepare_state()
+    assert published == ["audit-hmac.key"]
+    assert Path(entrypoint.STATE, "audit-hmac.key").stat().st_nlink == 1
+
+
+def test_concurrent_initializers_keep_one_complete_key(tmp_path):
+    script = """
+import hashlib, importlib.util, os, pathlib, sys
+spec = importlib.util.spec_from_file_location("entrypoint", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.STATE = sys.argv[2]
+module.UID = os.getuid()
+module._prepare_audit_key()
+print(hashlib.sha256(pathlib.Path(module.STATE, "audit-hmac.key").read_bytes()).hexdigest())
+"""
+    processes = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(ENTRYPOINT), str(tmp_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        for _ in range(4)
+    ]
+    outputs = []
+    for process in processes:
+        output, error = process.communicate(timeout=15)
+        assert process.returncode == 0, error
+        outputs.append(output.strip())
+    assert len(set(outputs)) == 1
+    assert len((tmp_path / "audit-hmac.key").read_bytes()) == 64
+    assert not list(tmp_path.glob(".audit-key-*"))

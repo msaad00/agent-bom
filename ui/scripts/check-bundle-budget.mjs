@@ -123,9 +123,9 @@ const BUDGETS = {
   // The September dependency batch (including Lucide 1.42 icon data) measures
   // 3981.1 KiB versus 3936.5 KiB on main (+1.13%). Keep 18.9 KiB of headroom
   // at 4000 KiB; the largest-chunk and shared-runtime caps remain unchanged.
-  // Conditional IAM evidence disclosure measures 4001.0 KiB total (1.1 KiB added).
-  // Allow 7 KiB of build variance; shared-runtime and largest-chunk caps stay fixed.
-  totalClientJsBytes: 4_104_192,
+  // Sharing the persisted neighborhood renderer removes duplicate mesh UI.
+  // Restore the 4000 KiB ceiling; shared-runtime and largest-chunk caps stay fixed.
+  totalClientJsBytes: 4_096_000,
   largestChunkBytes: 950_000,
   sharedAppBytes: 450_000,
 };

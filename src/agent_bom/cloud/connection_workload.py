@@ -40,8 +40,10 @@ class WorkloadBinding(BaseModel):
 
 
 def supported_workload_modes() -> dict[str, list[str]]:
-    """Supported adapters only; this does not advertise any tenant's bindings."""
-    return {provider: sorted(modes) for provider, modes in _MODES.items()}
+    """Adapters usable in this deployment, not proof of configured bindings."""
+    from agent_bom.cloud.snowflake_spcs_auth import native_app_mode
+
+    return {provider: sorted(modes) for provider, modes in _MODES.items() if provider != "snowflake" or native_app_mode()}
 
 
 def workload_mode(provider: str, params: dict[str, Any]) -> str:

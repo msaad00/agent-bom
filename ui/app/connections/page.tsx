@@ -249,8 +249,8 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
   {
     value: "snowflake",
     label: "Snowflake",
-    tagline: "Read-only key-pair connection",
-    permissions: "Read-only governance role (key-pair auth)",
+    tagline: "Read-only account connection",
+    permissions: "Read-only governance access",
     cli: "agent-bom connect snowflake",
     readiness: "live",
     roleField: {
@@ -918,7 +918,7 @@ function ConnectionsHub() {
         for (const [provider, values] of Object.entries(advertised)) {
           if (!Array.isArray(values)) continue;
           modes[provider] = values.filter((value): value is string => typeof value === "string" &&
-            (provider === "azure" ? ["managed_identity", "workload_identity"].includes(value) : provider === "gcp" && value === "workload_identity"));
+            (provider === "azure" ? ["managed_identity", "workload_identity"].includes(value) : ["gcp", "snowflake"].includes(provider) && value === "workload_identity"));
         }
       }
       setWorkloadAuthModes(modes);
@@ -2968,6 +2968,7 @@ function ConnectionEvidenceSummary({ connection }: { connection: CloudConnection
   const mode = connection.auth_params?.auth_mode;
   const recordedCredential = connection.credential_present || connection.has_external_id;
   const authentication = connection.provider === "azure" && mode === "managed_identity" ? "Managed identity"
+    : connection.provider === "snowflake" && mode === "workload_identity" ? "Native App workload identity"
     : ["azure", "gcp"].includes(connection.provider) && mode === "workload_identity" ? "Workload identity"
     : mode ? "Unrecognized authentication mode"
     : !recordedCredential ? "Not recorded"
@@ -3678,6 +3679,8 @@ function AddConnectionWizard({
   const supportedAuthModes = workloadAuthModes[provider.value] ?? [];
   const selectedAuthMode = form.auth.auth_mode ?? supportedAuthModes[0] ?? "";
   const usesWorkloadBinding = supportedAuthModes.includes(selectedAuthMode);
+  const usesSnowflakeWorkload = provider.value === "snowflake" && usesWorkloadBinding;
+  const activeAuthFields = usesSnowflakeWorkload ? [] : provider.authFields;
   const isAws = provider.value === "aws";
   const managedTrialProviders = managedTrialEnvelope?.providers ?? [];
 
@@ -3839,7 +3842,7 @@ function AddConnectionWizard({
       return;
     }
     const authParams: Record<string, string> = {};
-    for (const field of provider.authFields) {
+    for (const field of activeAuthFields) {
       const value = (form.auth[field.key] ?? "").trim();
       if (!value) {
         setFormError(`${field.label} is required.`);
@@ -3850,6 +3853,7 @@ function AddConnectionWizard({
     if (usesWorkloadBinding) {
       const binding = (form.auth.credential_binding ?? "").trim();
       if (!binding) { setFormError("Operator binding ID is required."); return; }
+      if (usesSnowflakeWorkload) authParams.account = roleRef;
       authParams.auth_mode = selectedAuthMode;
       authParams.credential_binding = binding;
     }
@@ -3990,8 +3994,8 @@ function AddConnectionWizard({
                   <label className="block text-sm">
                     <span className="mb-2 block font-medium">Authentication method</span>
                     <select aria-label="Authentication method" value={selectedAuthMode} onChange={(event) => setForm(current => ({ ...current, external_id: "", auth: { ...current.auth, auth_mode: event.target.value, credential_binding: "" } }))} className="w-full rounded-lg border border-outline bg-surface p-2">
-                      {supportedAuthModes.map((mode, index) => <option key={mode} value={mode}>{mode === "managed_identity" ? "Managed identity" : "Workload identity"}{index === 0 ? " (recommended)" : ""}</option>)}
-                      <option value="">Encrypted {provider.value === "gcp" ? "service-account key" : "client secret"} (legacy)</option>
+                      {supportedAuthModes.map((mode, index) => <option key={mode} value={mode}>{mode === "managed_identity" ? "Managed identity" : provider.value === "snowflake" ? "Native App workload identity" : "Workload identity"}{index === 0 ? " (recommended)" : ""}</option>)}
+                      <option value="">Encrypted {provider.value === "gcp" ? "service-account key" : provider.value === "snowflake" ? "private key" : "client secret"} (legacy)</option>
                     </select>
                     <span className="mt-1 block text-xs text-ink-secondary">Workload authentication requires an operator-configured binding. Access is verified separately.</span>
                   </label>
@@ -4012,7 +4016,7 @@ function AddConnectionWizard({
             {step === 1 && usesWorkloadBinding ? (
               <section aria-label="Workload setup" className="space-y-3 text-sm">
                 <h3 className="font-semibold">Operator-managed workload binding</h3>
-                <p>Ask your operator for a read-only binding ID for this tenant, provider, identity and subscription or project. The control plane exchanges the configured workload identity for provider credentials.</p>
+                <p>{usesSnowflakeWorkload ? "Requires a control plane running inside the Snowflake Native App. Ask your operator for a read-only binding matching this tenant and the service’s injected account. The service uses Snowflake’s rotating workload identity; user, role, warehouse and token paths cannot be selected here." : "Ask your operator for a read-only binding ID for this tenant, provider, identity and subscription or project. The control plane exchanges the configured workload identity for provider credentials."}</p>
                 <p className="text-ink-secondary">Enter the binding ID in the next step. No password, client secret or service-account key is collected. Creating a connection does not prove access; use Verify after creation.</p>
                 <p className="text-ink-secondary">The operator manages the binding’s scope, expiry and revocation. No file path or credential should be pasted into the binding field.</p>
               </section>
@@ -4223,7 +4227,7 @@ function AddConnectionWizard({
                     className={`w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500 ${provider.roleField.mono ? "font-mono" : ""}`}
                   />
                 </label>
-                {provider.authFields.map((field) => (
+                {activeAuthFields.map((field) => (
                   <label key={field.key} className="block">
                     <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                       {field.label}

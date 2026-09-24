@@ -199,7 +199,7 @@ export function SigmaGraphOverview({
           enableEdgeEvents: false,
           hideEdgesOnMove: true,
           hideLabelsOnMove: true,
-          itemSizesReference: "positions",
+          itemSizesReference: grouping === "environment" ? "screen" : "positions",
           labelColor: { color: palette.label },
           // Label level-of-detail. The grid keeps at most a handful of labels
           // per cell so they never overlap into a smear; the size threshold
@@ -308,7 +308,7 @@ export function SigmaGraphOverview({
       rendererRef.current = null;
       container.replaceChildren();
     };
-  }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette]);
+  }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette, grouping]);
 
   const focused = selectedNodeId && model.graph.hasNode(selectedNodeId) ? selectedNodeId : null;
   const neighbors = focused ? model.graph.neighbors(focused).filter((id) => id !== focused) : [];

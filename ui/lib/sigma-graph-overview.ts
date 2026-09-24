@@ -161,7 +161,7 @@ export function buildSigmaGraphOverviewModel(
       label: node.label,
       x: node.x,
       y: node.y,
-      size: node.size,
+      size: grouping === "environment" ? Math.min(3, node.size / 2) : node.size,
       color: node.color,
       nodeType: node.nodeType,
       severity: node.severity,

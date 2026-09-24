@@ -3219,7 +3219,7 @@ async function main() {
       await preparePosture(dashboardPage);
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
       await frameworks.getByText("NIST AI RMF", { exact: false }).first().waitFor({ state: "visible" });
-      const findings = dashboardPage.getByRole("region", { name: "Findings by discipline", exact: true });
+      const findings = dashboardPage.getByRole("region", { name: "Findings by security area", exact: true });
       const [frameworkBox, findingsBox] = await Promise.all([frameworks.boundingBox(), findings.boundingBox()]);
       if (!frameworkBox || !findingsBox || Math.abs(frameworkBox.y - findingsBox.y) > 2
           || frameworkBox.x + frameworkBox.width > findingsBox.x) {
@@ -3231,7 +3231,7 @@ async function main() {
     }, {
       ...postureAssertions,
       expectedText: [...postureAssertions.expectedText, "NIST AI RMF", "NIST SP 800-53", "CMMC 2.0", /Risk mappings/i],
-      viewportSelectors: ['section[aria-label="Compliance & frameworks"]', 'section[aria-label="Findings by discipline"]', '[role="tabpanel"][aria-label="Posture"]', "#demo-estate-watermark"],
+      viewportSelectors: ['section[aria-label="Compliance & frameworks"]', 'section[aria-label="Findings by security area"]', '[role="tabpanel"][aria-label="Posture"]', "#demo-estate-watermark"],
       readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 1440, minFontPx: 12 },
     });
     await overviewPage.close();

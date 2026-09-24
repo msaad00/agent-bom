@@ -65,6 +65,16 @@ enforced multi-provider remediation. GCP remains `partial` with
 `rate_limited_after_page_2`; the demo never turns missing evidence into a
 complete posture claim.
 
+## Agent configuration relationships
+
+In the graph, generated third-party agents name explicit synthetic model and
+framework dependencies. Select an agent to inspect its `serves_model` and
+`uses_framework` relationships; the fleet's agent type uses the same framework
+record. Framework nodes represent shared logical dependencies, not observed
+runtime deployments. These associations do not prove an invocation, data
+transfer, or exploitability. Agents with only a model-family label remain
+unlinked until an exact model reference is supplied.
+
 ## Posture findings over the estate
 
 The estate also carries posture findings, so the correlation is demonstrated at

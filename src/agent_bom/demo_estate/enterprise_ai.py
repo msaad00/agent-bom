@@ -458,7 +458,44 @@ def build_third_party_ai_assets(
                 },
             )
         )
-    return tuple(assets)
+    # Declare fictional agent configuration explicitly. These are logical
+    # framework dependencies shared by this synthetic estate, not observed
+    # deployments or inferred model usage from provider/family/location.
+    frameworks = ("LangChain", "LangGraph", "CrewAI")
+    framework_ids = {}
+    if agent_ids:
+        for name in frameworks:
+            framework_id = f"framework:demo:{name.lower()}"
+            framework_ids[name] = framework_id
+            assets.append(
+                EstateAsset(
+                    asset_id=framework_id,
+                    tenant_id=tenant_id,
+                    provider="framework",
+                    resource_type="framework",
+                    native_id=f"framework://demo/{name.lower()}",
+                    display_name=name,
+                    environment="shared",
+                    account_scope="northstar-health-ai",
+                    region="global",
+                    owner=f"ai-platform@{_TENANT_DOMAIN}",
+                    cost_center="AI-410",
+                    tags={"synthetic": "true", AI_LANE_TAG: "third_party", "logical_dependency": "true"},
+                )
+            )
+    model_ids = [asset.asset_id for asset in assets if asset.resource_type in {"hosted_model", "model_artifact"}]
+    configured = []
+    for asset in assets:
+        if asset.asset_id not in agent_ids:
+            configured.append(asset)
+            continue
+        position = agent_ids.index(asset.asset_id)
+        framework = frameworks[position % len(frameworks)]
+        tags = {**asset.tags, "agent_framework": framework, "uses_framework": framework_ids[framework]}
+        if model_ids:
+            tags["uses_model"] = model_ids[position % len(model_ids)]
+        configured.append(asset.model_copy(update={"tags": tags}))
+    return tuple(configured)
 
 
 # ── Delivery and runtime: repositories, workflows, clusters, images ──────────

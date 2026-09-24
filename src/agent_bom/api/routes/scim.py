@@ -78,6 +78,13 @@ def _optional_str(value: object) -> str | None:
     return text or None
 
 
+def _active_boolean(value: Any) -> bool:
+    """SCIM active is a JSON boolean; malformed values must not change lifecycle."""
+    if not isinstance(value, bool):
+        raise HTTPException(status_code=400, detail="active must be a boolean")
+    return value
+
+
 def _user_from_payload(
     tenant_id: str,
     body: dict[str, Any],
@@ -97,7 +104,7 @@ def _user_from_payload(
         emails = body.get("emails", [])
         groups = [str(group.get("value", "")).strip() for group in body.get("groups", []) if isinstance(group, dict) and group.get("value")]
         external_id = _optional_str(body.get("externalId"))
-        active = bool(body.get("active", True))
+        active = _active_boolean(body.get("active", True))
         roles = extract_scim_roles(body)
     else:
         emails = body.get("emails", existing.emails if existing else [])
@@ -105,7 +112,7 @@ def _user_from_payload(
         external_id = _optional_str(body.get("externalId"))
         if external_id is None and existing is not None:
             external_id = existing.external_id
-        active = bool(body.get("active", existing.active if existing else True))
+        active = _active_boolean(body.get("active", existing.active if existing else True))
         roles = extract_scim_roles(body, existing_roles=existing.roles if existing else None)
     if not isinstance(emails, list):
         raise HTTPException(status_code=400, detail="emails must be a list")
@@ -224,7 +231,7 @@ def _apply_user_patch(user: SCIMUser, body: dict[str, Any]) -> SCIMUser:
             raise HTTPException(status_code=400, detail="Only add and replace patch operations are supported")
         if isinstance(value, dict) and not path:
             if "active" in value:
-                user.active = bool(value["active"])
+                user.active = _active_boolean(value["active"])
             if "displayName" in value:
                 user.display_name = str(value["displayName"]).strip()
             if "userName" in value:
@@ -235,7 +242,7 @@ def _apply_user_patch(user: SCIMUser, body: dict[str, Any]) -> SCIMUser:
                 user.roles = extract_scim_roles(value, existing_roles=user.roles)
             continue
         if path == "active":
-            user.active = bool(value)
+            user.active = _active_boolean(value)
         elif path == "displayName":
             user.display_name = str(value or "").strip()
         elif path == "userName":
@@ -284,7 +291,9 @@ def _member_entries_from_value(value: object) -> list[dict[str, Any]]:
 
 
 def _maybe_revoke_scim_credentials(user: SCIMUser, *, previously_active: bool) -> None:
-    if previously_active and not user.active:
+    # Retry credential cleanup even if a prior request persisted inactivity before
+    # the credential store failed. Revocation is idempotent.
+    if not user.active:
         from agent_bom.api.scim import revoke_credentials_for_scim_user
 
         revoke_credentials_for_scim_user(user.tenant_id, user)

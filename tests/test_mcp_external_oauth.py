@@ -53,14 +53,16 @@ async def test_approved_token_is_read_only(verifier, signing_key):
         {"scope": "admin"},
         {"scope": ["read"]},
         {"exp": 1},
-        {"exp": int(time.time()) + 7200},
-        {"iat": int(time.time()) + 30},
+        lambda: {"exp": int(time.time()) + 7200},
+        lambda: {"iat": int(time.time()) + 30},
         {"iat": True},
         {"sub": None},
     ],
 )
 @pytest.mark.asyncio
 async def test_rejects_invalid_claims(verifier, signing_key, changes):
+    # Resolve relative timestamps at execution, after potentially slow collection.
+    changes = changes() if callable(changes) else changes
     assert await verifier.verify_token(token(signing_key, **changes)) is None
 
 

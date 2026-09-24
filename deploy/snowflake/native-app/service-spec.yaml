@@ -3,11 +3,18 @@ spec:
     - name: agent-bom
       image: /agent_bom_provider/spcs/agent_bom_repo/agent-bom:v0_106_0
       env:
-        AGENT_BOM_STORE_BACKEND: snowflake
+        AGENT_BOM_DB: /var/lib/agent-bom/control-plane.db
+        AGENT_BOM_GRAPH_DB: /var/lib/agent-bom/control-plane.db
+        AGENT_BOM_STATE_DIR: /var/lib/agent-bom
+        AGENT_BOM_AUDIT_HMAC_KEY_FILE: /var/lib/agent-bom/audit-hmac.key
+        AGENT_BOM_REQUIRE_AUDIT_HMAC: "1"
+        AGENT_BOM_CONTROL_PLANE_REPLICAS: "1"
         AGENT_BOM_SNOWFLAKE_NATIVE_APP: "1"
         AGENT_BOM_MCP_MODE: "0"
         AGENT_BOM_LOG_LEVEL: "INFO"
       volumeMounts:
+        - name: evidence
+          mountPath: /var/lib/agent-bom
         - name: tmp
           mountPath: /tmp/agent-bom
       readinessProbe:
@@ -39,6 +46,13 @@ spec:
           cpu: 1
 
   volumes:
+    - name: evidence
+      source: block
+      size: 4Gi
+      blockConfig:
+        encryption: SNOWFLAKE_FULL
+        snapshotOnDelete: true
+        snapshotDeleteAfter: 7d
     - name: tmp
       source: local
       size: 1Gi

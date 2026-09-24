@@ -370,6 +370,7 @@ def build_third_party_ai_assets(
                 )
             )
 
+    server_ids = [asset.asset_id for asset in assets if asset.resource_type == "server"]
     agent_ids: list[str] = []
     for index in range(agents):
         role = _AGENT_ROLES[index % len(_AGENT_ROLES)]
@@ -389,6 +390,9 @@ def build_third_party_ai_assets(
         }
         if account.identities:
             tags["uses_identity"] = account.identities[seed % len(account.identities)]
+        if server_ids:
+            # One declared synthetic association shared by graph and fleet views.
+            tags["uses_server"] = server_ids[index % len(server_ids)]
         assets.append(
             EstateAsset(
                 asset_id=agent_id,

@@ -266,6 +266,10 @@ so they cannot regress silently, but they are not part of this reference.
 ## MCP server: how remote clients are told to reach us
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_MCP_OAUTH_AUDIENCE` | `str` | `''` | — |
+| `AGENT_BOM_MCP_OAUTH_ISSUER` | `str` | `''` | Opt-in external issuer for the remote MCP resource server. Read at startup. |
+| `AGENT_BOM_MCP_OAUTH_JWKS_URI` | `str` | `''` | — |
+| `AGENT_BOM_MCP_OAUTH_SUBJECTS` | `str` | `''` | — |
 | `AGENT_BOM_MCP_PUBLIC_URL` | `str` | `''` | The externally reachable base URL of a hosted MCP deployment, used for the OAuth issuer / resource-server URL advertised in the 401 challenge.  The server otherwise derives that from the socket it binds. Behind any proxy (Railway, Cloud Run |
 
 ## Multi-provider LLM harness (issue #3206)

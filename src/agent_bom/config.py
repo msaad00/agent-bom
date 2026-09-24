@@ -804,6 +804,11 @@ A2A_AUTH_REQUIRE_SIGNED_TOKENS = _bool("AGENT_BOM_A2A_AUTH_REQUIRE_SIGNED_TOKENS
 # Blank falls back to the bind address, which is correct for local runs where
 # the two are the same thing.
 MCP_PUBLIC_URL = _str("AGENT_BOM_MCP_PUBLIC_URL", "")
+# Opt-in external issuer for the remote MCP resource server. Read at startup.
+MCP_OAUTH_ISSUER = _str("AGENT_BOM_MCP_OAUTH_ISSUER", "")
+MCP_OAUTH_AUDIENCE = _str("AGENT_BOM_MCP_OAUTH_AUDIENCE", "")
+MCP_OAUTH_JWKS_URI = _str("AGENT_BOM_MCP_OAUTH_JWKS_URI", "")
+MCP_OAUTH_SUBJECTS = _str("AGENT_BOM_MCP_OAUTH_SUBJECTS", "")
 
 # ── MCP / agent→MCP auth posture ──────────────────────────────────────────
 # Governance thresholds for the MCP server auth posture evaluator

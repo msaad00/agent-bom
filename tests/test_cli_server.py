@@ -534,7 +534,7 @@ def test_mcp_server_cmd_allows_remote_bind_with_bearer_token():
         )
 
     assert result.exit_code == 0
-    mock_create.assert_called_once_with(host="0.0.0.0", port=8423, bearer_token="test-token", profile="scan")
+    mock_create.assert_called_once_with(host="0.0.0.0", port=8423, bearer_token="test-token", profile="scan", oauth_enabled=False)
     mock_server.run.assert_called_once_with(transport="sse")
     assert "Bearer token required" in result.output
     assert "Transport" in result.output

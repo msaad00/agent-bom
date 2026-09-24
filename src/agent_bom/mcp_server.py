@@ -527,6 +527,7 @@ def create_mcp_server(
     port: int = 8000,
     bearer_token: str | None = None,
     profile: str = "scan",
+    oauth_enabled: bool = False,
 ):
     """Create an MCP server exposing the selected bounded tool profile.
 
@@ -548,6 +549,7 @@ def create_mcp_server(
         bearer_token=bearer_token,
         version=__version__,
         profile=profile,
+        oauth_enabled=oauth_enabled,
         token_verifier_factory=lambda token: _StaticBearerTokenVerifier(
             token,
             os.environ.get("AGENT_BOM_MCP_OPERATOR_TOKEN"),
@@ -1407,7 +1409,7 @@ def create_mcp_server(
 
     attach_metadata_routes(
         mcp,
-        auth_required=bool(bearer_token),
+        auth_required=bool(bearer_token or oauth_enabled),
         tool_metrics_snapshot=_tool_metrics_snapshot,
         profile=profile,
     )

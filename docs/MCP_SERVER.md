@@ -133,10 +133,11 @@ Supply both through the deployment's secure environment mechanism. The one-hour
 bound limits remaining acceptance, not proof of when the token was created.
 Local stdio does not use these HTTP credentials or require a token expiry.
 
-MCP HTTP authentication uses operator-provisioned bearer credentials. The MCP
+By default, MCP HTTP authentication uses operator-provisioned bearer credentials.
+For an external OAuth issuer with renewable credentials, see [Remote MCP OAuth](MCP_OAUTH.md). The MCP
 server does not expose an embedded OAuth authorization server or accept tokens
-previously minted by that embedded issuer. Unattended dynamic registration and
-OAuth token issuance are unavailable: PKCE alone does not establish permission
+previously minted by that embedded issuer. Embedded dynamic registration and
+OAuth token issuance remain unavailable: PKCE alone does not establish permission
 to read the server's private evidence. Configure the existing bearer credential
 in the client through its supported secure credential mechanism. API SSO/OIDC
 and gateway authentication are separate surfaces.
@@ -359,3 +360,9 @@ or OIDC bearer credential in the server environment; the API verifies its exact
 source scope, tenant and lifetime (at most one hour). MCP write authorization
 remains independently required. See [runtime producer authentication](CLOUD_CONNECT.md#runtime-producer-authentication)
 for source registration, rotation and migration from shared-secret producers.
+
+## External OAuth for remote clients
+
+For renewable read-only access using an operator-owned issuer, see
+[Remote MCP OAuth](MCP_OAUTH.md). This opt-in mode leaves API/UI SSO and SAML
+unchanged and requires explicitly approved identities.

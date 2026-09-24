@@ -28,6 +28,23 @@ arguments. Keep database traffic on Railway's private network. Configure volume
 backups and verify restoration before relying on this service for production.
 The example is single-replica, not a high-availability configuration.
 
+Configure the Keycloak service's **Settings** explicitly before deploying:
+
+| Setting | Value |
+| --- | --- |
+| Builder / Dockerfile path | Dockerfile / `Dockerfile` |
+| Healthcheck Path | `/realms/master/.well-known/openid-configuration` |
+| Healthcheck Timeout | `300` seconds |
+| Restart Policy / Max restart retries | On Failure / `3` |
+| Replicas | `1` |
+| Serverless | Disabled |
+
+Review the staged changes to confirm they affect only the issuer service, then
+apply them. Verify the deployment passes its health check and the settings are
+still present after reloading the dashboard. New services cannot opt into
+Railway's deprecated [Config as Code](https://docs.railway.com/config-as-code),
+so this example does not rely on a `railway.json` file.
+
 The health check requests the master realm discovery document. After startup,
 create a dedicated realm and clients following [MCP OAuth setup](../../docs/MCP_OAUTH.md).
 Verify that realm's issuer, signing keys, token lifetime, audience and authorized

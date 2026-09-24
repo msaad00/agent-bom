@@ -51,9 +51,7 @@ function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
 export default function Dashboard() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
-  const [agentCount, setAgentCount] = useState<number>(0);
   const [jobsLoading, setJobsLoading] = useState(true);
-  const [agentsLoading, setAgentsLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   // Differentiate "API down" from "API rejected my request" (#2196 audit fix).
@@ -176,31 +174,21 @@ export default function Dashboard() {
       }
     }
 
-    async function loadAgents() {
-      setAgentsLoading(true);
-      try {
-        const agentsRes = await api.listAgents();
-        if (cancelled) return;
-        setAgentCount(agentsRes?.count ?? 0);
-      } catch {
-        if (cancelled) return;
-        setAgentCount(0);
-      } finally {
-        if (!cancelled) setAgentsLoading(false);
-      }
-    }
-
     void loadJobs();
-    void loadAgents();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const hasOverviewSnapshot = Boolean(overview?.finding_counts);
   useEffect(() => {
+    // Wait for the summary contract before deciding whether an older server
+    // needs report hydration. Current servers already supply ranked findings.
+    if (postureOverviewLoading) return;
+    let cancelled = false;
     async function hydrateDetails() {
-      if (apiError) {
+      if (apiError || hasOverviewSnapshot) {
         setDetailJobs([]);
         setDetailLoading(false);
         return;
@@ -225,15 +213,16 @@ export default function Dashboard() {
         const hydrated = fullJobs
           .filter((job): job is ScanJob => Boolean(job))
           .sort((a, b) => b.created_at.localeCompare(a.created_at));
-        setDetailJobs(hydrated);
+        if (!cancelled) setDetailJobs(hydrated);
       } catch {
-        setDetailJobs([]);
+        if (!cancelled) setDetailJobs([]);
       } finally {
-        setDetailLoading(false);
+        if (!cancelled) setDetailLoading(false);
       }
     }
     void hydrateDetails();
-  }, [jobs, apiError]);
+    return () => { cancelled = true; };
+  }, [jobs, apiError, hasOverviewSnapshot, postureOverviewLoading]);
 
   // When API is down but user imported a local report, synthesise a fake job
   // so all downstream useMemo aggregators work without changes.
@@ -364,15 +353,14 @@ export default function Dashboard() {
     return pkgs.size;
   }, [doneJobs]);
 
-  // Derive agent count from imported report when API is unavailable
-  const effectiveAgentCount = importedReport
-    ? (importedReport.agents?.length ?? 0)
-    : agentCount;
   const summaryStats = useMemo(() => {
     const latest = effectiveRecentJobs.find((job) => job.status === "done" && job.summary);
     return latest?.summary ?? null;
   }, [effectiveRecentJobs]);
-  const displayedAgentCount = importedReport ? (importedReport.agents?.length ?? 0) : (agentsLoading ? null : effectiveAgentCount);
+  // Inventory includes connected, cloud and ingested sources in the selected
+  // snapshot. Host discovery is a different scope and must not stand in for it.
+  const displayedAgentCount = importedReport ? (importedReport.agents?.length ?? 0)
+    : inventoryLoading || !inventorySummary ? null : (inventorySummary.by_type.agent ?? null);
   const summaryReady = !jobsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
@@ -387,8 +375,10 @@ export default function Dashboard() {
   const displayedCredentialExposure = importedReport
     ? credentialExposureCount
     : (overview?.headline.credential_exposed ?? 0);
-  const displayedReachableTools = detailsReady ? reachableToolCount : null;
-  const displayedPackages = detailsReady
+  const displayedReachableTools = detailsReady && (importedReport || !hasOverviewSnapshot) ? reachableToolCount : null;
+  const displayedPackages = hasOverviewSnapshot && !importedReport
+    ? (inventoryLoading || !inventorySummary ? null : (inventorySummary.by_type.package ?? null))
+    : detailsReady
     ? (totalPackages > 0 ? totalPackages : (seededEvidence ? (summaryStats?.total_packages ?? 0) : totalPackages))
     : (summaryStats?.total_packages ?? 0);
 

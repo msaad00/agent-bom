@@ -186,7 +186,7 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     images = re.findall(r'<img src="docs/images/([^"]+-live.png)"', readme)
     assert images == [
         "dashboard-live.png",
-        "dashboard-paths-live.png",
+        "context-map-live.png",
         "correlation-graph-live.png",
         "dependency-map-live.png",
         "remediation-live.png",

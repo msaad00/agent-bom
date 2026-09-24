@@ -312,6 +312,9 @@ async def exposure_paths_impl(
         )
     tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
 
+    if scan_id and "\x00" in scan_id:
+        return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Invalid graph snapshot identifier.")
+
     # Cursors locate evidence; authorization always comes from the caller's
     # tenant. Pin the snapshot and filter so a new scan cannot shift page two.
     scope = hashlib.sha256(json.dumps([tenant_id, float(min_risk)]).encode()).hexdigest()
@@ -328,6 +331,7 @@ async def exposure_paths_impl(
                 or continuation.get("scope") != scope
                 or not isinstance(continuation.get("scan"), str)
                 or not continuation["scan"]
+                or "\x00" in continuation["scan"]
                 or (scan_id and scan_id != continuation["scan"])
                 or type(continuation.get("offset")) is not int
                 or not 0 < continuation["offset"] <= 100_000_000
@@ -345,10 +349,11 @@ async def exposure_paths_impl(
             _get_graph_store = _default_get_graph_store
 
         store = _get_graph_store()
+        pinned_scan_id, generation = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=scan_id or "")
         effective_scan_id, created_at, paths, total = await asyncio.to_thread(
             store.attack_paths,
             tenant_id=tenant_id,
-            scan_id=scan_id or "",
+            scan_id=pinned_scan_id,
             offset=offset,
             limit=limit + 1,
         )
@@ -375,7 +380,7 @@ async def exposure_paths_impl(
             path_source = "derived_graph_paths"
             derivation_truncated = graph.completeness.truncated
         revision = hashlib.sha256(
-            json.dumps([path_source, effective_scan_id, created_at, total, derived_revision], default=str).encode()
+            json.dumps([path_source, effective_scan_id, generation, created_at, total, derived_revision], default=str).encode()
         ).hexdigest()
         if continuation and continuation["revision"] != revision:
             return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
@@ -387,6 +392,9 @@ async def exposure_paths_impl(
             store.edges_for_node_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids, induced_only=True
         )
         stats = await asyncio.to_thread(store.snapshot_stats, tenant_id=tenant_id, scan_id=effective_scan_id)
+        final_identity = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=pinned_scan_id)
+        if final_identity != (pinned_scan_id, generation) or (paths and not generation):
+            return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
         nodes_by_id = {node.id: node for node in nodes}
         payload = {
             "schema_version": "v1",

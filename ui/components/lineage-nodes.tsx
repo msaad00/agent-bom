@@ -32,6 +32,7 @@ export type LineageNodeData = {
   firstSeen?: string | undefined;
   lastSeen?: string | undefined;
   dataSources?: string[] | undefined;
+  dimensions?: import("@/lib/graph-schema").NodeDimensions | undefined;
   complianceTags?: string[] | undefined;
   attributes?: Record<string, unknown> | undefined;
   neighborCount?: number | undefined;

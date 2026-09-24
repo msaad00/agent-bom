@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type Sigma from "sigma";
 import type { Edge, Node } from "@xyflow/react";
-import { Activity, GitBranch, Layers3, Network, ShieldAlert, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 import { GraphLegend } from "@/components/graph-chrome";
 import { GraphTextAlternative } from "@/components/graph-text-alternative";
@@ -39,6 +39,8 @@ type SigmaGraphOverviewProps = {
   legendItems: LegendItem[];
   embedded?: boolean;
   onNodeSelect?: (nodeId: string) => void;
+  selectedId?: string | null;
+  onClearSelection?: () => void;
   presentationScope?: GraphPresentationScope;
   presentationEnabled?: boolean;
 } & (
@@ -55,33 +57,6 @@ type SigmaGraphOverviewProps = {
       edges?: never;
     }
 );
-
-function StatPill({
-  icon: Icon,
-  label,
-  value,
-  tone = "zinc",
-}: {
-  icon: typeof Network;
-  label: string;
-  value: string;
-  tone?: "zinc" | "red" | "amber" | "emerald";
-}) {
-  const toneClass = {
-    zinc: "border-[var(--border-subtle)] bg-[var(--background)]/70 text-[var(--text-secondary)]",
-    red: "border-red-500/30 bg-red-500/10 dark:bg-red-950/25 text-red-800 dark:text-red-100",
-    amber: "border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/25 text-amber-800 dark:text-amber-100",
-    emerald: "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-100",
-  }[tone];
-
-  return (
-    <div className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 ${toneClass}`}>
-      <Icon className="h-4 w-4 shrink-0" />
-      <span className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">{label}</span>
-      <span className="ml-auto shrink-0 font-mono text-sm font-semibold">{value}</span>
-    </div>
-  );
-}
 
 function RelationshipRail({ items }: { items: Array<{ relationship: string; count: number }> }) {
   if (items.length === 0) return null;
@@ -118,16 +93,25 @@ export function SigmaGraphOverview({
   legendItems,
   embedded = false,
   onNodeSelect,
+  selectedId,
+  onClearSelection,
   presentationScope,
   presentationEnabled = true,
 }: SigmaGraphOverviewProps) {
   const captureMode = useCaptureMode();
+  const [assetQuery, setAssetQuery] = useState("");
+  const [grouping, setGrouping] = useState<"type" | "environment">("type");
+  const controlsRef = useRef<HTMLDetailsElement | null>(null);
+  const groupLabelsRef = useRef<HTMLDivElement | null>(null);
   const palette = useGraphCanvasPalette();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const onNodeSelectRef = useRef<SigmaGraphOverviewProps["onNodeSelect"]>(onNodeSelect);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [localSelectedId, setSelectedNodeId] = useState<string | null>(null);
+  const selectedNodeId = selectedId === undefined ? localSelectedId : selectedId;
+  const onClearRef = useRef(onClearSelection);
+  const neighborsRef = useRef(new Set<string>());
   const [renderError, setRenderError] = useState<string | null>(null);
   const hasPresentationScope = presentationScope !== undefined;
   const presentationTenantId = presentationScope?.tenantId ?? "";
@@ -142,7 +126,7 @@ export function SigmaGraphOverview({
           subject: presentationSubject,
           snapshotId: presentationSnapshotId,
           lens: presentationLens,
-          scope: presentationFilterScope,
+          scope: grouping === "type" ? presentationFilterScope : `${presentationFilterScope}:grouping=environment`,
         })
       : null,
     [
@@ -152,6 +136,7 @@ export function SigmaGraphOverview({
       presentationSnapshotId,
       presentationSubject,
       presentationTenantId,
+      grouping,
     ],
   );
   const cameraOwner = useMemo(
@@ -166,20 +151,23 @@ export function SigmaGraphOverview({
   const model = useMemo(
     () =>
       graph
-        ? buildSigmaGraphOverviewModelFromUnifiedGraph(graph, filters)
-        : buildSigmaGraphOverviewModel(nodes, edges),
-    [edges, filters, graph, nodes],
+        ? buildSigmaGraphOverviewModelFromUnifiedGraph(graph, filters, grouping)
+        : buildSigmaGraphOverviewModel(nodes, edges, grouping),
+    [edges, filters, graph, nodes, grouping],
   );
   const isBudgeted = model.overview.omittedNodeCount > 0 || model.overview.omittedEdgeCount > 0;
 
   useEffect(() => {
-    selectedNodeIdRef.current = selectedNodeId;
+    const valid = selectedNodeId !== null && model.graph.hasNode(selectedNodeId);
+    selectedNodeIdRef.current = valid ? selectedNodeId : null;
+    neighborsRef.current = new Set(valid ? model.graph.neighbors(selectedNodeId) : []);
     rendererRef.current?.refresh();
-  }, [selectedNodeId]);
+  }, [selectedNodeId, model]);
 
   useEffect(() => {
     onNodeSelectRef.current = onNodeSelect;
-  }, [onNodeSelect]);
+    onClearRef.current = onClearSelection;
+  }, [onNodeSelect, onClearSelection]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -231,7 +219,8 @@ export function SigmaGraphOverview({
           zIndex: true,
           nodeReducer: (node, data) => {
             const selected = selectedNodeIdRef.current === node;
-            const dimmedBySelection = selectedNodeIdRef.current !== null && !selected;
+            const neighbor = neighborsRef.current.has(node);
+            const dimmedBySelection = selectedNodeIdRef.current !== null && !selected && !neighbor;
             return {
               ...data,
               color: selected ? palette.selected : data.color,
@@ -258,12 +247,28 @@ export function SigmaGraphOverview({
           },
         });
         rendererRef.current = renderer;
+        const positionGroupLabels = () => {
+          if (!renderer || !groupLabelsRef.current) return;
+          const activeRenderer = renderer;
+          const dimensions = activeRenderer.getDimensions();
+          model.groups.forEach((group, index) => {
+            const label = groupLabelsRef.current?.children[index] as HTMLElement | undefined;
+            if (!label) return;
+            const position = activeRenderer.graphToViewport({ x: group.x, y: group.y });
+            const beside = activeRenderer.graphToViewport({ x: group.x + 120, y: group.y });
+            const readable = dimensions.width >= 640 && (model.groups.length <= 4 || Math.abs(beside.x - position.x) >= 65);
+            label.style.display = readable && position.x >= 0 && position.y >= 0 && position.x <= dimensions.width && position.y <= dimensions.height ? "block" : "none";
+            label.style.transform = `translate(${Math.max(112, Math.min(dimensions.width - 112, position.x))}px, ${Math.max(52, position.y - label.offsetHeight)}px) translateX(-50%)`;
+          });
+        };
+        renderer.on("afterRender", positionGroupLabels);
         renderer.on("clickNode", ({ node }) => {
           setSelectedNodeId(node);
           onNodeSelectRef.current?.(node);
         });
         renderer.on("clickStage", () => {
           setSelectedNodeId(null);
+          onClearRef.current?.();
         });
         const camera = renderer.getCamera();
         const savedCamera = cameraPersistenceEnabled && cameraStorageKey
@@ -305,6 +310,9 @@ export function SigmaGraphOverview({
     };
   }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette]);
 
+  const focused = selectedNodeId && model.graph.hasNode(selectedNodeId) ? selectedNodeId : null;
+  const neighbors = focused ? model.graph.neighbors(focused).filter((id) => id !== focused) : [];
+
   return (
     <div
       className={`flex h-full flex-col overflow-hidden bg-[var(--background)] ${
@@ -324,6 +332,21 @@ export function SigmaGraphOverview({
             Select an asset to investigate its related evidence. Use Summary to drill into groups.
           </span>
         </div>
+        <details ref={controlsRef} className="mt-2 text-xs text-ink-secondary">
+          <summary className="cursor-pointer">Map controls</summary>
+          <label className="mt-2 flex flex-col gap-1">Find a displayed asset
+            <input value={assetQuery} onChange={(event) => setAssetQuery(event.target.value)} className="rounded border border-outline bg-background px-2 py-1 text-foreground" placeholder="Name or exact ID" />
+          </label>
+          {assetQuery.trim() && <ul className="mt-2 max-h-36 overflow-y-auto">
+            {model.overview.nodes.filter((node) => `${node.id} ${node.label}`.toLowerCase().includes(assetQuery.trim().toLowerCase())).slice(0, 10).map((node) => <li key={node.id}><button type="button" className="break-all py-1 text-left text-sky-700 dark:text-sky-300" onClick={() => { setSelectedNodeId(node.id); if (controlsRef.current) controlsRef.current.open = false; onNodeSelectRef.current?.(node.id); }}>{node.label} · {node.id}</button></li>)}
+            <li className="mt-1 text-ink-tertiary">Up to 10 matches from displayed assets. Use graph search for broader coverage.</li>
+          </ul>}
+        <label className="mt-2 flex items-center gap-2 text-xs text-ink-secondary">Group displayed assets by
+          <select aria-label="Map grouping" value={grouping} onChange={(event) => setGrouping(event.target.value as "type" | "environment")} className="rounded border border-outline bg-background px-2 py-1 text-foreground">
+            <option value="type">Asset type</option><option value="environment">Environment</option>
+          </select>
+        </label>
+        </details>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
           <span>
             Displayed: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes,{" "}
@@ -335,27 +358,48 @@ export function SigmaGraphOverview({
             </span>
           )}
         </div>
+        <details className="mt-2 text-xs text-ink-secondary">
+          <summary className="cursor-pointer">Graph summary</summary>
         <div className="mt-2">
           <RelationshipRail items={model.summary.topRelationships} />
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-5">
-          <StatPill icon={Layers3} label="Nodes" value={model.summary.nodes.toLocaleString()} tone="emerald" />
-          <StatPill icon={GitBranch} label="Edges" value={model.summary.edges.toLocaleString()} />
-          <StatPill icon={ShieldAlert} label="Findings" value={model.summary.findings.toLocaleString()} tone="amber" />
-          <StatPill icon={ShieldAlert} label="Critical" value={model.summary.criticalFindings.toLocaleString()} tone="red" />
-          <StatPill icon={Activity} label="Creds/tools" value={`${model.summary.credentials}/${model.summary.tools}`} />
-        </div>
+        <p className="mt-2 text-xs text-ink-secondary">{model.summary.findings.toLocaleString()} findings · {model.summary.criticalFindings.toLocaleString()} critical · {model.summary.credentials.toLocaleString()} credentials · {model.summary.tools.toLocaleString()} tools</p>
+        </details>
       </div>
 
+      {focused && <div className="border-b border-outline bg-surface px-3 py-2 text-xs" aria-label="Focused graph asset">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 break-words"><strong>{model.graph.getNodeAttribute(focused, "label")}</strong> · {neighbors.length} connected assets in this displayed graph</p>
+          <button type="button" className="graph-chip-neutral" onClick={() => { setSelectedNodeId(null); onClearSelection?.(); }}>Clear focus</button>
+        </div>
+        <details className="mt-2">
+          <summary className="cursor-pointer">Explore connected assets</summary>
+          <p className="my-2 text-ink-secondary">Recorded connections, not proof of authorized access or execution. Open an asset’s details to inspect evidence or expand beyond this view.</p>
+          <ul className="max-h-40 space-y-1 overflow-y-auto">
+            {neighbors.slice(0, 12).map((id) => <li key={id}><button type="button" className="text-sky-700 underline dark:text-sky-300" title={id} onClick={() => { setSelectedNodeId(id); onNodeSelectRef.current?.(id); }}>{model.graph.getNodeAttribute(id, "label")} <span className="text-ink-secondary">({model.graph.getNodeAttribute(id, "nodeType")})</span></button></li>)}
+          </ul>
+          {neighbors.length > 12 && <p>Showing 12 of {neighbors.length} connected assets. Use the details panel to investigate further.</p>}
+          {neighbors.length === 0 && <p>No connected assets are present in this displayed scope.</p>}
+        </details>
+      </div>}
       <div className="relative min-h-0 flex-1 bg-[var(--background)]">
         <div
           ref={containerRef}
-          className={`h-full w-full ${embedded ? "min-h-[28rem]" : "min-h-[58vh]"}`}
+          className="h-full min-h-[20rem] w-full"
           role="img"
           aria-label="WebGL security graph overview"
           aria-describedby="sigma-graph-overview-text"
           data-testid="sigma-graph-overview-canvas"
         />
+        <div ref={groupLabelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          {model.groups.map((group) => <div key={group.key} className="absolute left-0 top-0 hidden max-w-52 rounded border border-outline bg-surface/95 px-2 py-1 text-center text-xs text-foreground">{group.label}<span className="block text-ink-secondary">{group.count} displayed assets</span></div>)}
+        </div>
+        {model.groups.length > 0 && <details className="absolute left-3 top-3 max-w-64 rounded border border-outline bg-surface/95 p-2 text-xs">
+          <summary className="cursor-pointer">Environment groups ({model.groups.length})</summary>
+          <p className="my-2 text-ink-secondary">Grouped by recorded provider, account and environment. Unknown fields stay unknown. Map labels appear on wider views; this list remains available at every size.</p>
+          <ul className="max-h-40 overflow-y-auto">{model.groups.slice(0, 20).map((group) => <li key={group.key} className="mb-2 break-words">{group.label} · {group.count} displayed</li>)}</ul>
+          {model.groups.length > 20 && <p>Showing 20 of {model.groups.length} groups. Use Summary to narrow the scope.</p>}
+        </details>}
         <GraphTextAlternative
           id="sigma-graph-overview-text"
           renderer="Estate map"

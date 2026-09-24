@@ -135,6 +135,13 @@ export function GraphEntityDrawer({
   ) : undefined;
   const showNextAction = !(pathname === "/graph" && nextAction.label === "Inspect in lineage");
 
+  const locationValue = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = enriched.attributes?.[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+    return "Unknown";
+  };
   const headerSlot = (
     <div className="space-y-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -151,6 +158,18 @@ export function GraphEntityDrawer({
           </span>
         ) : null}
       </div>
+      <details className="text-xs text-ink-secondary">
+        <summary className="cursor-pointer">Location and evidence source</summary>
+        <dl className="mt-2 space-y-1 break-words [overflow-wrap:anywhere]">
+          <div><dt className="inline font-semibold">Provider: </dt><dd className="inline">{enriched.dimensions?.cloud_provider || locationValue("provider", "cloud_provider")}</dd></div>
+          <div><dt className="inline font-semibold">Account/project: </dt><dd className="inline">{locationValue("account_scope", "account_id", "project_id", "subscription_id")}</dd></div>
+          <div><dt className="inline font-semibold">Environment: </dt><dd className="inline">{enriched.dimensions?.environment || locationValue("environment")}</dd></div>
+          <div><dt className="inline font-semibold">Region: </dt><dd className="inline">{locationValue("region", "location")}</dd></div>
+          <div><dt className="inline font-semibold">Evidence sources: </dt><dd className="inline">{enriched.dataSources?.join(", ") || "Unknown"}</dd></div>
+          <div><dt className="inline font-semibold">Last seen: </dt><dd className="inline">{enriched.lastSeen || "Unknown"}</dd></div>
+        </dl>
+        {(enriched.nodeType === "dataStore" || enriched.nodeType === "dataset") && <p className="mt-2">Storage metadata does not establish data contents or successful reads. Inspect permission and runtime receipts separately.</p>}
+      </details>
       {nodeId ? (
         <p className="truncate font-mono text-[10px] text-[color:var(--text-tertiary)]" title={nodeId}>
           id · {nodeId}

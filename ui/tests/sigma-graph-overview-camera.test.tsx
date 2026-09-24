@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SigmaGraphOverview } from "@/components/sigma-graph-overview";
@@ -15,6 +15,7 @@ const harness = vi.hoisted(() => ({ instances: [] as Array<{
     emit: (state: { x: number; y: number; angle: number; ratio: number }) => void;
   };
   killed: boolean;
+  settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> };
 }> }));
 
 vi.mock("@/lib/use-capture-mode", () => ({ useCaptureMode: () => false }));
@@ -56,7 +57,7 @@ vi.mock("sigma", () => {
       camera = new CameraMock();
       killed = false;
 
-      constructor() {
+      constructor(_graph: unknown, _container: unknown, public settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> }) {
         harness.instances.push(this);
       }
 
@@ -99,6 +100,30 @@ describe("SigmaGraphOverview camera persistence", () => {
         setItem: (key: string, value: string) => { values.set(key, value); },
       } satisfies Storage,
     });
+  });
+
+  it("keeps connected assets visible, dims unrelated assets and clears controlled focus", async () => {
+    const clear = vi.fn();
+    const select = vi.fn();
+    render(<SigmaGraphOverview nodes={[...nodes, { id: "isolated", position: { x: 200, y: 0 }, data: { label: "Other", nodeType: "agent" } }]} edges={edges} legendItems={[]} selectedId="agent:a" onClearSelection={clear} onNodeSelect={select} />);
+    await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+    const reduce = harness.instances.at(-1)!.settings.nodeReducer;
+    const attrs = { color: "#abcdef", size: 2 };
+    expect(reduce("package:a", attrs).color).toBe("#abcdef");
+    expect(reduce("isolated", attrs).color).toBe("#444444");
+    expect(reduce("agent:a", attrs).color).toBe("#00ff00");
+    fireEvent.click(screen.getByText("Explore connected assets"));
+    fireEvent.click(screen.getByRole("button", { name: "Package A (package)" }));
+    expect(select).toHaveBeenCalledWith("package:a");
+    fireEvent.click(screen.getByRole("button", { name: "Clear focus" }));
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it("does not retain focus when the selected ID is absent from the returned graph", async () => {
+    render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} selectedId="outside-scope" />);
+    await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+    expect(screen.queryByLabelText("Focused graph asset")).not.toBeInTheDocument();
+    expect(harness.instances.at(-1)!.settings.nodeReducer("agent:a", { color: "#abcdef", size: 2 }).color).toBe("#abcdef");
   });
 
   it("restores a valid camera instead of applying the default framing", async () => {

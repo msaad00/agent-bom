@@ -386,6 +386,7 @@ function toLineageData(
     firstSeen: node.first_seen,
     lastSeen: node.last_seen,
     dataSources: node.data_sources ?? [],
+    dimensions: node.dimensions,
     complianceTags: node.compliance_tags ?? [],
     attributes,
     isCritical: isCriticalNode(node),

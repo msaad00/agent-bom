@@ -3,7 +3,7 @@
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 import { relationshipEdgeTypes } from "@/components/relationship-edge";
 import { GraphRollupCountNotice } from "@/components/graph-rollup-count-notice";
-import { completeDirectedHopCount } from "@/lib/security-graph-focus";
+import { completeDirectedHopCount, visibleGraphFocus } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -1890,7 +1890,12 @@ function GraphPageInner() {
   // pinned (click) — falling back to whatever is hovered. Pinning
   // survives until the operator clicks the empty pane or pins another
   // node. Hover never overrides a pin.
-  const activeFocusId = pinnedFocusId ?? hoveredNodeId;
+  const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];
+  const canvasLayoutNodes = rollupNavigationActive
+    ? (aggregated.nodes as Node<LineageNodeData>[])
+    : lineageLayoutNodes;
+  const requestedFocusId = pinnedFocusId ?? hoveredNodeId;
+  const activeFocusId = visibleGraphFocus(canvasLayoutNodes, requestedFocusId);
   const localNeighborhoodIds = useMemo(
     () =>
       activeFocusId
@@ -1944,10 +1949,6 @@ function GraphPageInner() {
     rollupActive: rollupNavigationActive,
   });
 
-  const lineageLayoutNodes = layoutNodes as Node<LineageNodeData>[];
-  const canvasLayoutNodes = rollupNavigationActive
-    ? (aggregated.nodes as Node<LineageNodeData>[])
-    : lineageLayoutNodes;
   const baseDisplayNodes = useMemo<Node<LineageNodeData>[]>(() => {
     if (blastRadius) {
       return canvasLayoutNodes.map((node) => {
@@ -2509,6 +2510,9 @@ function GraphPageInner() {
       // Cluster-pill click → restore the absorbed siblings in place. We
       // never open the detail panel for a synthetic cluster node.
       if (isClusterPillNode(node as Node<LineageNodeData>)) {
+        // The pill disappears on expansion, so its mouse-leave may never fire.
+        setHoveredNodeId(null);
+        setPinnedFocusId(null);
         const id = node.id;
         setExpandedClusterIds((current) => {
           const next = new Set(current);
@@ -3990,6 +3994,13 @@ function GraphPageInner() {
               edges={displayEdges}
               legendItems={legendItems}
               onNodeSelect={onLargeGraphNodeSelect}
+              selectedId={selectedNodeId}
+              onClearSelection={() => {
+                setSelectedNode(null);
+                setSelectedNodeId(null);
+                setPinnedFocusId(null);
+                setHoveredNodeId(null);
+              }}
               presentationScope={presentationScope}
               presentationEnabled={!authLoading && Boolean(session)}
             />
@@ -4092,10 +4103,13 @@ function GraphPageInner() {
               data={selectedNode}
               onInspectNode={(rootId) => void loadRootInvestigation({ rootId })}
               scanId={selectedScanId || undefined}
-              enrich={Boolean(investigationMode)}
+              enrich={Boolean(selectedScanId)}
+              onExpandNeighbors={selectedNodeId ? () => void loadRootInvestigation({ rootId: selectedNodeId }) : undefined}
               onClose={() => {
                 setSelectedNode(null);
                 setSelectedNodeId(null);
+                setPinnedFocusId(null);
+                setHoveredNodeId(null);
               }}
               blastRadiusActive={blastRadius?.rootId === selectedNodeId}
               blastRadiusLoading={loadingBlast}

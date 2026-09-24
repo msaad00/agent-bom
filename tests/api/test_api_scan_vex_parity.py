@@ -78,6 +78,48 @@ def test_iter_scan_findings_prefers_unified_stream_over_blast_radius():
     assert rows[0].get("symbol_reachability") != "reachable"
 
 
+@pytest.mark.parametrize("reachable", [True, False, None])
+def test_blast_graph_evidence_survives_public_finding_projection(reachable):
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    job = _scan_job()
+    agents = ["agent:cloud:planner"] if reachable is True else []
+    distance = 2 if reachable is True else None
+    job.result = {
+        "blast_radius": [
+            {
+                "vulnerability_id": "CVE-2024-7000",
+                "package": "demo-lib@1.0.0",
+                "severity": "high",
+                "graph_reachable": reachable,
+                "graph_min_hop_distance": distance,
+                "graph_reachable_from_agents": agents,
+            }
+        ]
+    }
+    rows = _iter_scan_findings(job)
+    assert len(rows) == 1
+    public = safe_finding_response_payload(rows[0])
+    assert public["graph_reachable"] is reachable
+    assert public["graph_min_hop_distance"] == distance
+    assert public["graph_reachable_from_agents"] == agents
+
+
+def test_blast_agent_label_alone_does_not_establish_graph_reachability():
+    from agent_bom.finding_scope import safe_finding_response_payload
+
+    row = _finding_from_blast_radius(
+        {
+            "vulnerability_id": "CVE-2024-7000",
+            "package": "demo-lib@1.0.0",
+            "affected_agents": ["planner"],
+            "graph_reachable": True,
+        },
+        _scan_job(),
+    )
+    assert safe_finding_response_payload(row)["graph_reachable"] is None
+
+
 def test_iter_scan_findings_collapses_three_representations_to_canonical():
     """Regression for #3883: the unified/blast/package trio for one CVE folds
     to a single list row that carries non-null cve_id/title/finding_type, with

@@ -1683,3 +1683,59 @@ def test_postgres_audit_filtered_totals_match_paginated_rows():
     assert store.list_entries(**filters, limit=1, offset=2) == []
     assert store.count(**{**filters, "tenant_id": f"other-{tenant}"}) == 0
     assert store.count(**{**filters, "resource": "absent/"}) == 0
+
+
+@pytest.mark.parametrize("score,assessed", [(0.0, True), (9.0, False)])
+def test_graph_risk_assessment_digest_and_webhook_preserve_tenant_bound_evidence(score, assessed):
+    """The live JSON projection preserves assessed zero and legacy unknown scores."""
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_graph import PostgresGraphStore
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+    from agent_bom.graph.webhooks import _graph_node_ref, compute_delta_alerts
+
+    suffix = uuid4().hex
+    tenant_a, tenant_b = f"risk-a-{suffix}", f"risk-b-{suffix}"
+    scan_id = f"risk-scan-{suffix}"
+    store = PostgresGraphStore()
+    original = UnifiedNode(id="agent:shared-risk", entity_type=EntityType.AGENT, label="Shared logical ID", risk_score=score)
+    if assessed:
+        original.mark_risk_assessed(basis="integration_fixture", scope="recorded_fixture_signals")
+    expected = original.risk_assessment
+    token = set_current_tenant(tenant_a)
+    try:
+        graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_a)
+        graph.add_node(original)
+        store.save_graph(graph)
+        loaded = store.load_graph(scan_id=scan_id, tenant_id=tenant_a)
+        assert loaded is not None
+        assert loaded.nodes[original.id].risk_score == score
+        assert loaded.nodes[original.id].risk_assessment == expected
+        digest = store.prior_delta_digest(scan_id=scan_id, tenant_id=tenant_a)
+        assert digest.nodes[original.id].risk_score == score
+        assert digest.nodes[original.id].risk_assessment == expected
+        new_graph = UnifiedGraph(scan_id=f"empty-{suffix}", tenant_id=tenant_a)
+        full_alerts = compute_delta_alerts(loaded, new_graph)
+        assert full_alerts
+        assert compute_delta_alerts(digest, new_graph) == full_alerts
+        ref = _graph_node_ref(digest, original.id, role="removed")
+        assert ref is not None
+        assert ref["attributes"]["risk_assessment_status"] == expected["status"]
+        if assessed:
+            assert ref["attributes"]["risk_assessment_basis"] == expected["basis"]
+            assert ref["attributes"]["risk_assessment_scope"] == expected["scope"]
+    finally:
+        reset_current_tenant(token)
+
+    token = set_current_tenant(tenant_b)
+    try:
+        assert not store.prior_delta_digest(scan_id=scan_id, tenant_id=tenant_b).nodes
+        # Forging the explicit tenant argument cannot override the connection's RLS tenant.
+        assert not store.prior_delta_digest(scan_id=scan_id, tenant_id=tenant_a).nodes
+    finally:
+        reset_current_tenant(token)
+
+    token = set_current_tenant(tenant_a)
+    try:
+        store.delete_tenant(tenant_id=tenant_a)
+    finally:
+        reset_current_tenant(token)

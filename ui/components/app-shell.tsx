@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 
 import { AuthGate } from "@/components/auth-gate";
-import { DemoEstateLabel } from "@/components/demo-estate-label";
 import { Nav } from "@/components/nav";
 import {
   SidebarLayoutProvider,
@@ -18,7 +17,7 @@ function ShellMain({ children }: { children: React.ReactNode }) {
       id="main-content"
       className={`min-h-screen pt-16 transition-[padding-left] duration-200 ${mainContentPaddingClass(collapsed)}`}
     >
-      <div className="mx-auto w-full max-w-[2560px] px-4 py-6 sm:px-6 lg:px-8"><DemoEstateLabel />{children}</div>
+      <div className="mx-auto w-full max-w-[2560px] px-4 py-6 sm:px-6 lg:px-8">{children}</div>
     </main>
   );
 }

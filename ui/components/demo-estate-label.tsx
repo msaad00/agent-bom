@@ -3,18 +3,16 @@
 import Link from "next/link";
 
 import { useCaptureMode, useReferenceEvidenceLabMode } from "@/lib/use-capture-mode";
-import { useDeploymentContext } from "@/hooks/use-deployment-context";
 
 function hasDemoSeedSources(scanSources: string[] | undefined): boolean {
   if (!scanSources?.length) return false;
   return scanSources.some((source) => source.includes("demo"));
 }
 
-export function DemoEstateLabel() {
+export function DemoEstateLabel({ scanSources }: { scanSources?: string[] | undefined }) {
   const captureMode = useCaptureMode();
   const referenceEvidenceLab = useReferenceEvidenceLabMode();
-  const { counts } = useDeploymentContext();
-  const visible = captureMode || hasDemoSeedSources(counts?.scan_sources);
+  const visible = captureMode || hasDemoSeedSources(scanSources);
 
   if (!visible) return null;
 
@@ -24,7 +22,7 @@ export function DemoEstateLabel() {
         ? "/security-graph?lens=attack-path&scan=reference-evidence-correlation-v1"
         : "/demo-estate"}
       id="demo-estate-watermark"
-      className={`mb-3 block w-fit max-w-full truncate rounded-full border border-emerald-500/40 bg-[color:var(--surface-elevated)]/95 px-3 py-1 font-medium uppercase tracking-[0.1em] text-emerald-700 shadow-md shadow-black/20 transition hover:border-emerald-500/70 hover:text-emerald-800 dark:text-emerald-200 dark:hover:text-emerald-100 ${
+      className={`block w-fit shrink-0 max-w-full truncate rounded-full border border-emerald-500/40 bg-[color:var(--surface-elevated)]/95 px-3 py-1 font-medium uppercase tracking-[0.1em] text-emerald-700 shadow-md shadow-black/20 transition hover:border-emerald-500/70 hover:text-emerald-800 dark:text-emerald-200 dark:hover:text-emerald-100 ${
         referenceEvidenceLab
           ? "max-w-[min(32rem,calc(100vw-1.5rem))]"
           : "max-w-[min(18rem,calc(100vw-1.5rem))]"
@@ -35,7 +33,7 @@ export function DemoEstateLabel() {
     >
       {referenceEvidenceLab
         ? <><span className="sm:hidden">Reference lab — modeled local</span><span className="hidden sm:inline">Reference evidence lab — modeled local infrastructure</span></>
-        : "Demo data — sample environment"}
+        : <><span className="lg:hidden">Demo data</span><span className="hidden lg:inline">Demo data — sample environment</span></>}
     </Link>
   );
 }

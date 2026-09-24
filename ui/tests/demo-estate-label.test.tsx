@@ -7,7 +7,7 @@ vi.mock("@/hooks/use-deployment-context", () => ({ useDeploymentContext: () => (
 
 describe("DemoEstateLabel", () => {
   it("keeps disclosure in document flow so it cannot cover graph controls", () => {
-    render(<DemoEstateLabel />);
+    render(<DemoEstateLabel scanSources={["demo"]} />);
     const badge = screen.getByRole("link", { name: "Open the synthetic enterprise demo story" });
     expect(badge).toHaveTextContent("Demo data — sample environment");
     expect(badge).toHaveClass("block");

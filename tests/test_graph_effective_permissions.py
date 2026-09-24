@@ -558,3 +558,72 @@ def test_missing_condition_context_does_not_prove_admin_equivalence(operator):
     stats = apply_effective_permissions(g)
     assert stats["admin_via_evaluation"] == 0
     assert g.nodes["role:helper"].attributes.get("admin_equivalent") is not True
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"Bool": {"aws:MultiFactorAuthPresent": "true"}},
+        {"IpAddress": {"aws:SourceIp": "192.0.2.0/24"}},
+        {"StringEquals": {"aws:RequestedRegion": "us-east-1"}},
+    ],
+)
+def test_conditioned_admin_is_distinct_from_denied_authority(condition):
+    g = UnifiedGraph(scan_id="conditional", tenant_id="t")
+    g.add_node(
+        UnifiedNode(
+            id="role:r",
+            entity_type=EntityType.ROLE,
+            label="r",
+            attributes={"policy_document": {"Statement": [{"Effect": "Allow", "Action": "*:*", "Resource": "*", "Condition": condition}]}},
+        )
+    )
+    apply_effective_permissions(g)
+    attrs = g.nodes["role:r"].attributes
+    assert attrs["admin_equivalence_status"] == "conditional_admin"
+    assert attrs.get("admin_equivalent") is not True
+
+
+def test_account_wide_iam_admin_is_detected_with_scope():
+    g = UnifiedGraph(scan_id="account-admin", tenant_id="t")
+    g.add_node(
+        UnifiedNode(
+            id="role:r",
+            entity_type=EntityType.ROLE,
+            label="r",
+            attributes={
+                "policy_document": {"Statement": [{"Effect": "Allow", "Action": "iam:*", "Resource": "arn:aws:iam::123456789012:*"}]}
+            },
+        )
+    )
+    apply_effective_permissions(g)
+    attrs = g.nodes["role:r"].attributes
+    assert attrs["admin_equivalence_status"] == "admin"
+    assert attrs["admin_equivalent"] is True
+    assert attrs["admin_equivalence_resource_scopes"] == ["arn:aws:iam::123456789012:*"]
+    # Rebuilding a changed policy cannot leave the original positive flag behind.
+    g.nodes["role:r"].attributes["policy_document"]["Statement"][0]["Effect"] = "Deny"
+    apply_effective_permissions(g)
+    assert g.nodes["role:r"].attributes["admin_equivalence_status"] == "not_admin"
+    assert g.nodes["role:r"].attributes.get("admin_equivalent") is not True
+
+
+def test_explicit_deny_cannot_become_conditional_admin():
+    g = UnifiedGraph(scan_id="denied-admin", tenant_id="t")
+    g.add_node(
+        UnifiedNode(
+            id="role:r",
+            entity_type=EntityType.ROLE,
+            label="r",
+            attributes={
+                "policy_document": {
+                    "Statement": [
+                        {"Effect": "Allow", "Action": "*", "Resource": "*", "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}}},
+                        {"Effect": "Deny", "Action": "*", "Resource": "*"},
+                    ]
+                }
+            },
+        )
+    )
+    apply_effective_permissions(g)
+    assert g.nodes["role:r"].attributes["admin_equivalence_status"] == "not_admin"

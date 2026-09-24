@@ -19,7 +19,9 @@ scale: principals and chain depth are capped.
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
@@ -106,11 +108,83 @@ def _iter_policy_documents(attrs: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return docs
 
 
+def _admin_resource_scopes(policies: Sequence[NormalizedIamPolicy]) -> list[str]:
+    """Only account-wide IAM ARNs extend the unrestricted probes.
+
+    A specific user/role ARN or a path-scoped wildcard is not account-wide.
+    Keep the original scope in evidence rather than substituting Resource '*'.
+    """
+    return sorted(
+        {
+            resource
+            for policy in policies
+            for statement in policy.statements
+            if statement.effect == "Allow"
+            for resource in statement.resources
+            if re.fullmatch(r"arn:[a-z0-9-]+:iam::[0-9]{12}:\*", resource)
+        }
+    )
+
+
 def _admin_equivalence_decisions(policies: Sequence[NormalizedIamPolicy]) -> set[IamDecision]:
-    """Retain explicit-deny precedence and indeterminate results for admin probes."""
-    return {
-        evaluate_identity_policies(policies, action=action, resource=resource).decision for action, resource in _ADMIN_EQUIVALENCE_PROBES
+    """Retain deny precedence and uncertainty for global and account-wide probes."""
+    probes = [*_ADMIN_EQUIVALENCE_PROBES]
+    for resource in _admin_resource_scopes(policies):
+        probes.extend((action, resource) for action, _ in _ADMIN_EQUIVALENCE_PROBES if action.startswith("iam:"))
+    return {evaluate_identity_policies(policies, action=action, resource=resource).decision for action, resource in probes}
+
+
+def _potential_conditional_admin(policies: Sequence[NormalizedIamPolicy]) -> bool:
+    """Identify broad conditional grants, without claiming their conditions hold.
+
+    Remove Allow conditions only for classification. Deny conditions and
+    incomplete-policy markers remain intact, so unresolved restrictions cannot
+    produce a confirmed grant or override an explicit deny.
+    """
+    supported = {
+        "Bool",
+        "Null",
+        "StringEquals",
+        "StringNotEquals",
+        "StringLike",
+        "StringNotLike",
+        "ArnEquals",
+        "ArnNotEquals",
+        "ArnLike",
+        "ArnNotLike",
+        "IpAddress",
+        "NotIpAddress",
+        "DateEquals",
+        "DateNotEquals",
+        "DateLessThan",
+        "DateLessThanEquals",
+        "DateGreaterThan",
+        "DateGreaterThanEquals",
+        "NumericEquals",
+        "NumericNotEquals",
+        "NumericLessThan",
+        "NumericLessThanEquals",
+        "NumericGreaterThan",
+        "NumericGreaterThanEquals",
     }
+    for policy in policies:
+        for statement in policy.statements:
+            for operator, _, _ in statement.conditions:
+                parts = operator.split(":")
+                if len(parts) > 2 or (len(parts) == 2 and parts[0] not in {"ForAllValues", "ForAnyValue"}):
+                    return False
+                if parts[-1].removesuffix("IfExists") not in supported:
+                    return False
+    relaxed = [
+        replace(
+            policy,
+            statements=tuple(
+                replace(statement, conditions=()) if statement.effect == "Allow" else statement for statement in policy.statements
+            ),
+        )
+        for policy in policies
+    ]
+    return IamDecision.ALLOW in _admin_equivalence_decisions(relaxed)
 
 
 def _normalized_policies_for(principal: UnifiedNode, attached_policies: Sequence[UnifiedNode]) -> list[NormalizedIamPolicy]:
@@ -279,6 +353,20 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
         evidence_authoritative = bool(docs) and all(d.completeness is EvidenceCompleteness.COMPLETE for d in docs)
         basis: str | None = None
         decisions = _admin_equivalence_decisions(docs) if docs else set()
+        pnode = graph.nodes.get(p.id) or p
+        # Re-evaluation must not retain a previous unconditional admin label.
+        pnode.attributes.pop("admin_equivalent", None)
+        pnode.attributes.pop("admin_equivalence_basis", None)
+        pnode.attributes["admin_equivalence_status"] = "unknown"
+        pnode.attributes["admin_equivalence_resource_scopes"] = _admin_resource_scopes(docs)
+        if evidence_authoritative:
+            if IamDecision.ALLOW in decisions:
+                pnode.attributes["admin_equivalence_status"] = "admin"
+            elif IamDecision.INDETERMINATE in decisions:
+                if _potential_conditional_admin(docs):
+                    pnode.attributes["admin_equivalence_status"] = "conditional_admin"
+            elif p.id not in admin_with_unavailable_policy:
+                pnode.attributes["admin_equivalence_status"] = "not_admin"
         if IamDecision.ALLOW in decisions:
             # Real policy evaluation ALLOWs an unrestricted admin/escalation action.
             basis = "policy_evaluation"

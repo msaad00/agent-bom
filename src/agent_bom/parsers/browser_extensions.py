@@ -273,13 +273,21 @@ def _chrome_profile_dirs() -> list[Path]:
 
     profile_dirs: list[Path] = []
     for base in candidates:
-        if not base.exists():
-            continue
-        if (base / "Default").is_dir():
-            profile_dirs.append(base / "Default")
-        for d in base.iterdir():
-            if d.is_dir() and d.name.startswith("Profile "):
-                profile_dirs.append(d)
+        try:
+            if not base.exists():
+                continue
+            if (base / "Default").is_dir():
+                profile_dirs.append(base / "Default")
+            for d in base.iterdir():
+                if d.is_dir() and d.name.startswith("Profile "):
+                    profile_dirs.append(d)
+        except OSError:
+            from agent_bom.scanners.state import record_scan_warning
+
+            # Do not log raw OS errors: profile paths can contain personal data.
+            message = "Browser extension discovery skipped an unreadable Chromium profile directory; coverage is incomplete"
+            logger.warning(message)
+            record_scan_warning(message)
     return profile_dirs
 
 

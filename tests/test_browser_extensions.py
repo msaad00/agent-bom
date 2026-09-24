@@ -416,3 +416,31 @@ def test_firefox_profile_dirs_returns_list():
     assert isinstance(dirs, list)
     for d in dirs:
         assert isinstance(d, Path)
+
+
+def test_denied_browser_directory_does_not_abort_other_profiles(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from agent_bom.parsers import browser_extensions as browser
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(browser.os, "uname", lambda: SimpleNamespace(sysname="Darwin"))
+    root = tmp_path / "Library" / "Application Support"
+    denied = root / "Google" / "Chrome"
+    denied.mkdir(parents=True)
+    accessible = root / "Microsoft Edge" / "Default"
+    accessible.mkdir(parents=True)
+    original = Path.iterdir
+
+    def entries(path):
+        if path == denied:
+            raise PermissionError("private path must not leak")
+        return original(path)
+
+    monkeypatch.setattr(Path, "iterdir", entries)
+    warning = Mock()
+    monkeypatch.setattr("agent_bom.scanners.state.record_scan_warning", warning)
+    assert accessible in browser._chrome_profile_dirs()
+    warning.assert_called_once()
+    assert "private path" not in warning.call_args.args[0]

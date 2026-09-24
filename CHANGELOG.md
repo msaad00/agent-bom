@@ -18,6 +18,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Distinguish conditional and unknown IAM admin evidence, recognize account-wide IAM policy scope, and expose the assessment in collapsible identity details.
+- Continue browser extension discovery when a Chromium profile directory is unreadable and mark the resulting coverage gap.
+
 - Match fix-first agent filters by canonical identity or display label, expose additional loaded Context relationships, and simplify security-area summaries.
 - Refresh stale local vulnerability coverage through OSV during online scans while preserving offline behavior.
 - Preserve structured report identifiers during redaction without exempting embedded credentials.

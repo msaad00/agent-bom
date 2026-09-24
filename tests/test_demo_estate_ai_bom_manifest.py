@@ -101,3 +101,41 @@ def test_seeding_twice_does_not_duplicate_the_fleet(seeded_stores: str) -> None:
 
     assert result["seeded"] is False, result
     assert after == before, (before, after)
+
+
+def test_fleet_server_counts_and_observations_share_declared_links(seeded_stores):
+    from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store
+    from agent_bom.demo_estate.enterprise_composition import build_demo_estate
+
+    estate = build_demo_estate(tenant_id=seeded_stores)
+    agents = [a for a in estate.assets if a.resource_type == "agent"]
+    servers = {a.asset_id for a in estate.assets if a.resource_type == "server"}
+    generated = [a for a in agents if a.tags.get("agent_role")]
+    assert generated and all(a.tags.get("uses_server") in servers for a in generated)
+    fleet = {a.agent_id: a for a in _get_fleet_store().list_by_tenant(seeded_stores)}
+    observations = {o.server_stable_id: o for o in _get_mcp_observation_store().list_by_tenant(seeded_stores)}
+    for agent in agents:
+        target = agent.tags.get("uses_server")
+        assert fleet[f"demo-fleet-{agent.asset_id}"].server_count == int(target in servers)
+    for server in servers:
+        expected = sorted(a.display_name for a in agents if a.tags.get("uses_server") == server)
+        assert sorted(observations[server].source_agents) == expected
+        assert observations[server].agent_name == (expected[0] if expected else "")
+
+
+def test_old_demo_associations_are_repaired_once(seeded_stores):
+    from agent_bom.api.stores import _get_fleet_store
+    from agent_bom.demo_estate.showcase_graph import seed_showcase_fleet_and_runtime
+
+    store = _get_fleet_store()
+    old = next(a for a in store.list_by_tenant(seeded_stores) if a.agent_id.startswith("demo-fleet-"))
+    old.tags = [tag for tag in old.tags if tag != "demo-associations-v2"]
+    old.server_count = 999
+    store.put(old)
+    unrelated = old.model_copy(update={"agent_id": "customer-agent", "name": "Customer agent"})
+    store.put(unrelated)
+    assert seed_showcase_fleet_and_runtime(tenant_id=seeded_stores)["seeded"] is True
+    refreshed = next(a for a in store.list_by_tenant(seeded_stores) if a.agent_id == old.agent_id)
+    assert refreshed.server_count <= 1
+    assert next(a for a in store.list_by_tenant(seeded_stores) if a.agent_id == "customer-agent") == unrelated
+    assert seed_showcase_fleet_and_runtime(tenant_id=seeded_stores)["seeded"] is False

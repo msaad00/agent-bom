@@ -380,3 +380,12 @@ def test_container_package_dependencies_follow_consumption_direction(projected, 
             assert (asset.asset_id, image, "depends_on") in pairs
             checked["workload"] += 1
     assert checked["package"] > 0 and checked["workload"] > 0
+
+
+def test_declared_agent_server_links_are_projected(estate, projected):
+    graph, _ = projected
+    agents = [a for a in estate.assets if a.resource_type == "agent" and a.tags.get("agent_role")]
+    assert agents and all(a.tags.get("uses_server") for a in agents)
+    for agent in agents:
+        matching = [e for e in graph.edges if e.source == agent.asset_id and e.target == agent.tags["uses_server"]]
+        assert any(e.relationship == RelationshipType.USES for e in matching)

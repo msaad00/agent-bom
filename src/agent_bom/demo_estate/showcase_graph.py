@@ -36,7 +36,8 @@ SHOWCASE_BASELINE_SCAN_ID = "showcase-baseline"
 # ``Remediation`` object frozen to its Python repr, and a running demo would have
 # served that snapshot forever. The seven-day gap is the drift lens's window and
 # is preserved on every bump.
-_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
+# The September 24 seed adds declared agent/server associations shared with fleet.
+_SHOWCASE_CURRENT_TARGET = datetime(2026, 9, 24, 0, 0, 0, tzinfo=timezone.utc)
 _SHOWCASE_IMPORT_NOW = datetime.now(timezone.utc)
 # Preserve the deterministic target once it is in the past. Before then, clamp
 # to the current UTC day's start so a release candidate never presents a
@@ -276,7 +277,9 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
 
     Same contract as :func:`seed_showcase_identities`: idempotent, independent
     of the graph seed, and only ever under demo-estate mode, so a restart or an
-    already-seeded graph still leaves the AI BOM populated.
+    already-seeded graph still leaves the AI BOM populated. Older synthetic
+    association revisions are refreshed once so fleet counts and graph links
+    agree; non-demo fleet records are not rewritten.
     """
     from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
     from agent_bom.api.mcp_observation_store import MCPObservation
@@ -285,7 +288,9 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
 
     fleet_store = _get_fleet_store()
     observation_store = _get_mcp_observation_store()
-    if any(a.agent_id.startswith("demo-fleet-") for a in fleet_store.list_by_tenant(tenant_id)):
+    association_revision = "demo-associations-v2"
+    existing = [a for a in fleet_store.list_by_tenant(tenant_id) if a.agent_id.startswith("demo-fleet-")]
+    if existing and all(association_revision in a.tags for a in existing):
         return {"seeded": False, "reason": "fleet_present"}
 
     estate = build_demo_estate(tenant_id=tenant_id)
@@ -300,6 +305,12 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
 
     now = datetime.now(timezone.utc).isoformat()
     agents = by_type.get("agent", [])
+    server_ids = {asset.asset_id for asset in servers}
+    agents_by_server: dict[str, list[str]] = {}
+    for agent in agents:
+        target = agent.tags.get("uses_server", "")
+        if target in server_ids:
+            agents_by_server.setdefault(target, []).append(agent.display_name)
     for index, asset in enumerate(agents):
         # Deterministic spread so the fleet reads like a managed estate rather
         # than one uniform block. A real fleet is mostly approved with a tail of
@@ -322,9 +333,9 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
                 lifecycle_state=state,
                 owner=str(asset.tags.get("owner") or "platform-engineering"),
                 environment=asset.environment or "production",
-                tags=[t for t in (asset.environment, asset.provider) if t],
+                tags=[t for t in (asset.environment, asset.provider, association_revision) if t],
                 trust_score=round(0.55 + ((index % 9) / 20.0), 2),
-                server_count=len(servers[index % max(1, len(servers)) : index % max(1, len(servers)) + 2]),
+                server_count=int(asset.tags.get("uses_server", "") in server_ids),
                 tenant_id=tenant_id,
                 last_discovery=now,
                 last_scan=now,
@@ -335,20 +346,21 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
 
     for index, asset in enumerate(servers):
         tools = tools_by_server.get(asset.asset_id, [])
+        source_agents = sorted(agents_by_server.get(asset.asset_id, []))
         observation_store.put(
             MCPObservation(
                 tenant_id=tenant_id,
                 observation_id=f"demo-obs-{asset.asset_id}",
                 server_stable_id=asset.asset_id,
                 server_name=asset.display_name,
-                agent_name=agents[index % len(agents)].display_name if agents else "",
+                agent_name=source_agents[0] if source_agents else "",
                 transport=str(asset.tags.get("transport") or "streamable-http"),
                 url=asset.native_id if str(asset.native_id).startswith("http") else None,
                 auth_mode=str(asset.tags.get("auth_mode") or "bearer"),
                 credential_env_vars=[],
                 observed_via=["demo-estate"],
                 scan_sources=["demo-estate"],
-                source_agents=[a.display_name for a in agents[index % max(1, len(agents)) : index % max(1, len(agents)) + 2]],
+                source_agents=source_agents,
                 configured_locally=False,
                 fleet_present=True,
                 gateway_registered=index % 3 != 0,

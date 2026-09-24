@@ -157,6 +157,7 @@ GRAPH_CANVAS_NODE_BUDGET = 5000
 # becomes a real edge, which is the difference between "we have AI assets" and
 # "this AI service reaches that data through that identity".
 _TOPOLOGY_TAGS: tuple[tuple[str, RelationshipType], ...] = (
+    ("uses_server", RelationshipType.USES),
     ("uses_identity", RelationshipType.ASSUMES),
     ("reads_data", RelationshipType.CAN_ACCESS),
     ("delegates_to", RelationshipType.DELEGATED_TO),

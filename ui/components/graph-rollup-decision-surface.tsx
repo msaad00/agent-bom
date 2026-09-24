@@ -88,21 +88,45 @@ export function GraphRollupDecisionSurface({
 }) {
   const [filter, setFilter] = useState<RiskFilter>("priority");
   const [page, setPage] = useState(0);
+  const [query, setQuery] = useState("");
+  const [entityType, setEntityType] = useState("");
+  const types = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(item.entity_type, (counts.get(item.entity_type) ?? 0) + 1);
+    return [...counts].sort(([a], [b]) => a.localeCompare(b));
+  }, [items]);
+  const labels = useMemo(() => new Map(items.map((item) => [item.id, item.label])), [items]);
+  const incident = useMemo(() => {
+    const index = new Map<string, GraphRollupEdge[]>();
+    for (const edge of edges) {
+      for (const id of new Set([edge.source, edge.target])) {
+        const rows = index.get(id) ?? [];
+        rows.push(edge);
+        index.set(id, rows);
+      }
+    }
+    return index;
+  }, [edges]);
   const priorityCount = useMemo(() => items.filter(isPriority).length, [items]);
   const exposedCount = useMemo(
     () => items.filter((item) => item.aggregate.internet_exposed).length,
     [items],
   );
   const filtered = useMemo(() => {
-    const ranked = [...items].sort((a, b) =>
+    const search = query.trim().toLowerCase();
+    const ranked = items.filter((item) =>
+      (!entityType || item.entity_type === entityType) &&
+      (!search || [item.label, item.id, ...Object.values(item.context ?? {})]
+        .some((value) => String(value).toLowerCase().includes(search))),
+    ).sort((a, b) =>
       (SEVERITY_RANK[effectiveSeverity(b)] ?? 0) - (SEVERITY_RANK[effectiveSeverity(a)] ?? 0));
     if (filter === "all") return ranked;
     if (filter === "exposed") {
       return ranked.filter((item) => item.aggregate.internet_exposed);
     }
     const priority = ranked.filter(isPriority);
-    return priority.length > 0 ? priority : ranked;
-  }, [filter, items]);
+    return priorityCount > 0 ? priority : ranked;
+  }, [filter, items, query, entityType, priorityCount]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const compactLayout = visible.length <= 3;
@@ -120,7 +144,7 @@ export function GraphRollupDecisionSurface({
 
   useEffect(() => {
     setPage(0);
-  }, [filter, items]);
+  }, [filter, items, query, entityType]);
 
   return (
     <section
@@ -175,12 +199,30 @@ export function GraphRollupDecisionSurface({
         </span>
       </div>
 
+      <details className="border-b border-outline px-4 py-2 text-xs">
+        <summary className="cursor-pointer text-ink-secondary">Filter nodes and scopes{query || entityType ? " · active" : ""}</summary>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <label className="flex min-w-0 basis-full flex-col gap-1 sm:flex-1 sm:basis-0">Search this scope
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, ID or environment" className="min-w-0 rounded border border-outline bg-background p-2 text-foreground" />
+          </label>
+          <label className="flex flex-col gap-1">Asset type
+            <select value={entityType} onChange={(event) => setEntityType(event.target.value)} className="rounded border border-outline bg-background p-2 text-foreground">
+              <option value="">All types ({items.length})</option>
+              {types.map(([type, count]) => <option key={type} value={type}>{type.replaceAll("_", " ")} ({count})</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => { setQuery(""); setEntityType(""); }} className="graph-chip-neutral self-end">Clear filters</button>
+        </div>
+        <p className="mt-2 text-ink-tertiary">Type counts cover returned nodes at this level, before filters.</p>
+      </details>
+      {filtered.length === 0 && <p role="status" className="p-4 text-sm text-ink-secondary">No nodes match these filters in the returned scope.</p>}
       <div
         data-testid="graph-rollup-card-grid"
         className={`grid max-h-[min(60vh,34rem)] gap-2 overflow-y-auto p-3 ${cardGridClass}`}
       >
         {visible.map((item) => {
-          const relation = relationEvidence(item.id, edges);
+          const itemEdges = incident.get(item.id) ?? [];
+          const relation = relationEvidence(item.id, itemEdges);
           const severity = effectiveSeverity(item);
           const critical = item.aggregate.severity_counts.critical ?? 0;
           const high = item.aggregate.severity_counts.high ?? 0;
@@ -242,6 +284,17 @@ export function GraphRollupDecisionSurface({
                   </button>
                 )}
               </div>
+              <details className="col-span-2 text-xs text-ink-secondary md:col-span-3">
+                <summary className="cursor-pointer">Recorded relationships ({itemEdges.length} {itemEdges.length === 1 ? "row" : "rows"})</summary>
+                <p className="my-2 text-ink-tertiary">Returned relationships only. These do not establish runtime execution or authorized access.</p>
+                <ul className="max-h-48 space-y-2 overflow-y-auto">
+                  {itemEdges.slice(0, 12).map((edge, index) => <li key={`${edge.source}:${edge.target}:${index}`} className="break-words [overflow-wrap:anywhere]">
+                    {labels.get(edge.source) ?? edge.source} → {labels.get(edge.target) ?? edge.target}
+                    <span className="block text-ink-tertiary">{edge.relationships.map((kind) => kind.replaceAll("_", " ")).join(", ")} · {edge.count} underlying relationships</span>
+                  </li>)}
+                </ul>
+                {itemEdges.length > 12 && <p className="mt-2">Showing 12 of {itemEdges.length} rows. Use Traverse to investigate further.</p>}
+              </details>
               {(item.aggregate.toxic_combo || item.aggregate.internet_exposed) && <div className="col-span-2 flex flex-wrap gap-1.5 text-[10px] md:col-span-3">
                 {item.aggregate.toxic_combo ? (
                   <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-200">{item.has_children ? "Toxic combination in scope" : "Toxic combination"}</span>

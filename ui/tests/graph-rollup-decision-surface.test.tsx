@@ -32,6 +32,33 @@ function item(
 }
 
 describe("GraphRollupDecisionSurface", () => {
+  it("combines type and context search without inventing matches", () => {
+    render(<GraphRollupDecisionSurface items={[
+      item("prod-agent", { entity_type: "agent", context: { environment: "production" } }),
+      item("dev-agent", { entity_type: "agent", context: { environment: "development" } }),
+      item("prod-server", { entity_type: "server", context: { environment: "production" } }),
+    ]} edges={[]} onDrill={vi.fn()} onInvestigate={vi.fn()} />);
+    fireEvent.click(screen.getByText("Filter nodes and scopes"));
+    fireEvent.change(screen.getByLabelText("Asset type"), { target: { value: "agent" } });
+    fireEvent.change(screen.getByLabelText("Search this scope"), { target: { value: "production" } });
+    expect(screen.getByText("Scope prod-agent")).toBeInTheDocument();
+    expect(screen.queryByText("Scope dev-agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Scope prod-server")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search this scope"), { target: { value: "absent" } });
+    expect(screen.getByRole("status")).toHaveTextContent("No nodes match");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("Scope dev-agent")).toBeInTheDocument();
+  });
+
+  it("bounds relationship details and preserves direction and type", () => {
+    render(<GraphRollupDecisionSurface items={[item("root"), item("neighbor")]} edges={
+      Array.from({ length: 15 }, () => ({ source: "neighbor", target: "root", count: 2, relationships: ["uses"] }))
+    } onDrill={vi.fn()} onInvestigate={vi.fn()} />);
+    expect(screen.getAllByText("Scope neighbor → Scope root")).toHaveLength(24);
+    expect(screen.getAllByText("Showing 12 of 15 rows. Use Traverse to investigate further.")).toHaveLength(2);
+    expect(screen.getAllByText(/do not establish runtime execution/)).toHaveLength(2);
+  });
+
   it("keeps an explicit return to summary available from the graph", () => {
     const onSummary = vi.fn();
     const onGraph = vi.fn();

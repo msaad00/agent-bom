@@ -1533,3 +1533,43 @@ for (const proof of [{ theme: "light", width: 1440 }, { theme: "dark", width: 14
     await expect(page.getByText(/not.*scan|scan.*not/i).first()).toBeVisible();
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`environment scope filters and evidence remain readable ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeCockpit(page, 200, { rollupItemCount: 30 });
+      await page.goto(`/graph?scan=${scanId}&rollup=1`);
+      const surface = page.getByTestId("graph-rollup-decision-surface");
+      await expect(surface).toBeVisible();
+      await surface.getByText("Filter nodes and scopes", { exact: true }).click();
+      await surface.getByRole("button", { name: "All 30", exact: true }).click();
+      await surface.getByLabel("Search this scope").fill("production");
+      await expect(surface.locator("article")).toHaveCount(1);
+      await surface.getByText("Recorded relationships (1 row)", { exact: true }).click();
+      await expect(surface.getByText(/do not establish runtime execution/)).toBeVisible();
+      expect(await surface.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`environment-focus-${theme}-${width}.png`), fullPage: true });
+    });
+  }
+}
+
+test("environment scope filtering stays bounded with 3000 returned scopes", async ({ page }, testInfo) => {
+  await routeCockpit(page, 3000, { rollupItemCount: 3000 });
+  await page.goto(`/graph?scan=${scanId}&rollup=1`);
+  const surface = page.getByTestId("graph-rollup-decision-surface");
+  await expect(surface).toBeVisible();
+  await surface.getByRole("button", { name: "All 3000", exact: true }).click();
+  await expect(surface.locator("article")).toHaveCount(12);
+  await surface.getByText("Filter nodes and scopes", { exact: true }).click();
+  const durations: number[] = [];
+  for (let index = 0; index < 10; index += 1) {
+    const start = performance.now();
+    await surface.getByLabel("Search this scope").fill(index % 2 ? "production" : "development");
+    await expect(surface.locator("article")).toHaveCount(1);
+    durations.push(performance.now() - start);
+  }
+  console.info("Scope filter fixture max milliseconds:", Math.max(...durations).toFixed(1));
+  await testInfo.attach("filter-timing-fixture", { body: JSON.stringify({ scopes: 3000, samples_ms: durations, max_ms: Math.max(...durations), note: "Local browser automation with mocked API; excludes production backend latency." }), contentType: "application/json" });
+});

@@ -18,6 +18,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Match fix-first agent filters by canonical identity or display label, expose additional loaded Context relationships, and simplify security-area summaries.
+
 - Calculate CVSS v4 scores with the macrovector algorithm, preserving the correct severity at build-gate thresholds.
 - Keep curated demo agent discovery independent of host configuration and serve matching agent detail and lifecycle routes.
 - Accept unknown severity when importing JSON reports.

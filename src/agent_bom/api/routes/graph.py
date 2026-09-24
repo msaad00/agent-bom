@@ -873,15 +873,17 @@ def _path_matches_focus(graph: UnifiedGraph, path: AttackPath, *, cve: str, pack
         if package_n not in package_labels and package_n not in package_names:
             return False
     if agent_n:
-        agent_labels = {
-            norm(label)
-            for label in _node_labels_for_types(
-                graph,
-                path.hops,
-                {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
-            )
-        }
-        if agent_n not in agent_labels:
+        agent_selectors: set[str] = set()
+        for hop in path.hops:
+            node = graph.nodes.get(hop)
+            if node is None or node.entity_type not in {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT}:
+                continue
+            agent_selectors.update((norm(node.id), norm(node.label)))
+            # Local agent links carry the name used by the canonical agent:<name>
+            # ID. Never strip arbitrary cloud/source prefixes or match substrings.
+            if node.entity_type == EntityType.AGENT and node.id.startswith("agent:"):
+                agent_selectors.add(norm(node.id.removeprefix("agent:")))
+        if agent_n not in agent_selectors:
             return False
     return True
 

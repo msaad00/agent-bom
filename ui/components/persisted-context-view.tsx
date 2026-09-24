@@ -226,7 +226,7 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
           </div>
           {!!pages.length && selected.id !== rootId && <p className="text-xs">Collapse also clears later expansions.</p>}
           <p className="text-sm text-[var(--text-secondary)]">{incident.length} loaded relationships for this entity. {lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p>
-          <div className="max-h-64 space-y-2 overflow-y-auto">{incident.slice(0, 24).map(item => <button key={JSON.stringify([item.source, item.target, item.relationship])} className="context-connection" onClick={() => setSelectedEdge(JSON.stringify([item.source, item.target, item.relationship]))}><span className="block text-xs">{item.direction === "bidirectional" ? "Bidirectional ↔" : item.direction === "directed" ? (item.source === selected.id ? "Outgoing →" : "← Incoming") : "Related ·"} {recordedLabel(String(item.relationship))}</span><span className="block break-words">{label(item.source === selected.id ? item.target : item.source)}</span></button>)}</div>
+          <LoadedRelationshipList key={selected.id} nodeId={selected.id} incident={incident} label={label} onSelect={setSelectedEdge} />
         </> : <p>Choose a persisted agent to begin.</p>}
         <details><summary className="cursor-pointer font-semibold">Loaded entities ({graph.nodes.length})</summary>
           <label className="block py-2 text-xs">Find loaded entity<input aria-label="Find loaded entity" className="context-action mt-1 w-full" value={loadedQuery} onChange={event => setLoadedQuery(event.target.value)} placeholder="Name or exact identifier" /></label>
@@ -239,4 +239,24 @@ function SnapshotNeighborhood({ scanId, owner }: { scanId: string; owner: string
       </aside>
     </div>
   </>;
+}
+
+/** Presentation paging only: these relationships are already loaded evidence. */
+export function LoadedRelationshipList({ nodeId, incident, label, onSelect }: {
+  nodeId: string; incident: UnifiedEdge[]; label: (id: string) => string; onSelect: (id: string) => void;
+}) {
+  const [visibleCount, setVisibleCount] = useState(24);
+  const shown = Math.min(visibleCount, incident.length);
+  return <div>
+    <p className="mb-2 text-xs text-[var(--text-secondary)]" role="status">Showing {shown} of {incident.length} loaded relationships</p>
+    <div className="max-h-64 space-y-2 overflow-y-auto">{incident.slice(0, visibleCount).map(item =>
+      <button key={JSON.stringify([item.source, item.target, item.relationship])} className="context-connection" onClick={() => onSelect(JSON.stringify([item.source, item.target, item.relationship]))}>
+        <span className="block text-xs">{item.direction === "bidirectional" ? "Bidirectional ↔" : item.direction === "directed" ? (item.source === nodeId ? "Outgoing →" : "← Incoming") : "Related ·"} {recordedLabel(String(item.relationship))}</span>
+        <span className="block break-words">{label(item.source === nodeId ? item.target : item.source)}</span>
+      </button>)}</div>
+    <div className="mt-2 flex flex-wrap gap-2">
+      {shown < incident.length && <button className="context-action" onClick={() => setVisibleCount(count => count + 24)}>Show {Math.min(24, incident.length - shown)} more relationships</button>}
+      {visibleCount > 24 && <button className="context-action" onClick={() => setVisibleCount(24)}>Show fewer relationships</button>}
+    </div>
+  </div>;
 }

@@ -370,7 +370,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(await page.getByRole("button", {name: /^Compliance & frameworks/}).getByText("Compliance & frameworks", {exact: true}).evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.waitForTimeout(350);
       await page.getByRole("tab", { name: "Posture", exact: true }).click();
-      const panels = await Promise.all(["Risk overview", "Compliance & frameworks", "Findings by discipline"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
+      const panels = await Promise.all(["Risk overview", "Compliance & frameworks", "Findings by security area"].map((name) => page.getByRole("region", { name, exact: true }).boundingBox()));
       const [risks, compliance, coverage] = panels;
       const score = (await page.getByTestId("overview-posture-score").boundingBox())!;
       const issues = (await page.getByTestId("overview-severity-issue-strip").boundingBox())!;
@@ -419,7 +419,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByTestId("overview-score-explainer").screenshot({ path: testInfo.outputPath(`score-pressure-${theme}-${width}.png`) });
       await scoreToggle.focus();
       await page.keyboard.press("Enter");
-      const coverageToggle = page.getByRole("button", { name: /^Findings by discipline/ });
+      const coverageToggle = page.getByRole("button", { name: /^Findings by security area/ });
       await coverageToggle.focus();
       await page.keyboard.press("Enter");
       await expect(unavailableLane).not.toBeVisible();

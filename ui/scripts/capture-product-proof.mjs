@@ -3225,7 +3225,7 @@ async function main() {
     }, {
       ...postureAssertions,
       expectedText: [...postureAssertions.expectedText, "NIST AI RMF", "NIST SP 800-53", "CMMC 2.0", /Risk mappings/i],
-      viewportSelectors: ['section[aria-label="Compliance & frameworks"]', '[role="tabpanel"][aria-labelledby]', "#demo-estate-watermark"],
+      viewportSelectors: ['section[aria-label="Compliance & frameworks"]', '[role="tabpanel"][aria-label="Posture"]', "#demo-estate-watermark"],
       readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 920, minFontPx: 12 },
     });
     await overviewPage.close();

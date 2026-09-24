@@ -157,3 +157,8 @@ export function buildFocusedGraphData(
     },
   };
 }
+
+/** A removed cluster or filtered asset cannot remain the canvas focus. */
+export function visibleGraphFocus(nodes: ReadonlyArray<{ id: string }>, requestedId: string | null): string | null {
+  return requestedId !== null && nodes.some((node) => node.id === requestedId) ? requestedId : null;
+}

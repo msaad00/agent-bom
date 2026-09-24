@@ -91,6 +91,7 @@ export function mergeGraphNodeDetail(
       ? detail.node.compliance_tags
       : base.complianceTags,
     attributes: mergedAttributes,
+    dimensions: detail.node.dimensions ?? base.dimensions,
     ...(base.nodeType === "vulnerability" ? {
       description: typeof mergedAttributes.summary === "string" && mergedAttributes.summary ? mergedAttributes.summary : typeof mergedAttributes.description === "string" ? mergedAttributes.description : base.description,
       cvssScore: typeof mergedAttributes.cvss_score === "number" ? mergedAttributes.cvss_score : base.cvssScore,

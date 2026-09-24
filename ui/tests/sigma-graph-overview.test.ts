@@ -192,3 +192,24 @@ describe("sigma graph overview", () => {
     expect(model.summary.criticalFindings).toBe(1);
   });
 });
+
+describe("environment map groups", () => {
+  it("keeps account boundaries and unknown metadata without inventing graph entities", () => {
+    const nodes = [
+      node("a", { dimensions: { cloud_provider: "aws", environment: "prod" }, attributes: { account_id: "one" } }),
+      node("b", { dimensions: { cloud_provider: "aws", environment: "prod" }, attributes: { account_id: "two" } }),
+      node("c", { dataSources: ["production-import"] }),
+    ];
+    const edges = [edge("cross", "a", "b")];
+    const model = buildSigmaGraphOverviewModel(nodes, edges, "environment");
+    expect(model.groups.map((group) => group.label)).toContain("aws / one / prod");
+    expect(model.groups.map((group) => group.label)).toContain("aws / two / prod");
+    expect(model.groups.map((group) => group.label)).toContain("Provider unknown / Account unknown / Environment unknown");
+    expect(model.graph.order).toBe(3);
+    expect(model.graph.size).toBe(1);
+    expect(model.graph.source("cross")).toBe("a");
+    expect(model.graph.target("cross")).toBe("b");
+    expect(new Set(model.overview.nodes.map((item) => `${item.x}:${item.y}`)).size).toBe(3);
+    expect(buildSigmaGraphOverviewModel(nodes, edges, "environment").groups).toEqual(model.groups);
+  });
+});

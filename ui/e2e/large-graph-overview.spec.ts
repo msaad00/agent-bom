@@ -154,8 +154,12 @@ function buildLargeGraph() {
   };
 }
 
-async function routeLargeGraphPage(page: Page) {
+async function routeLargeGraphPage(page: Page, environmentFixture = false) {
   const graph = buildLargeGraph();
+  if (environmentFixture) graph.nodes.forEach((item, index) => {
+    item.dimensions = { cloud_provider: "aws", environment: index % 3 ? "production" : "development" };
+    item.attributes = { ...item.attributes, account_scope: index % 2 ? "payments" : "analytics", region: "us-east-1" };
+  });
   const root = graph.nodes.find((entry) => entry.id === "pkg:42") ?? graph.nodes[0];
   const focusedNodes = graph.nodes.filter((entry) => ["agent:large", "pkg:41", "pkg:42", "pkg:43"].includes(entry.id));
   const focusedEdges = graph.edges.filter((entry) =>
@@ -670,3 +674,69 @@ for (const theme of ["light", "dark"] as const) {
     await page.screenshot({ path: testInfo.outputPath(`compact-leaf-${theme}.png`), fullPage: true });
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`environment map focus and controls ${theme} ${width}`, async ({ page }, testInfo) => {
+      test.setTimeout(60_000);
+      await routeLargeGraphPage(page, true);
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.goto("/graph?vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package&rollup=0");
+      const sigma = page.getByTestId("sigma-graph-overview");
+      await expect(sigma).toBeVisible();
+      await expectSigmaCanvases(page);
+      await sigma.getByText("Map controls", { exact: true }).click();
+      await sigma.getByLabel("Map grouping").selectOption("environment");
+      await expect(sigma.getByText(/Environment groups/)).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`environment-overview-${theme}-${width}.png`), fullPage: true });
+      await sigma.getByLabel("Find a displayed asset").fill("agent:large");
+      await sigma.getByRole("button", { name: "Large Estate Agent · agent:large", exact: true }).click();
+      await expect(sigma.getByLabel("Focused graph asset")).toBeVisible();
+      await expect(sigma.getByRole("button", { name: "Clear focus" })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`environment-map-${theme}-${width}.png`), fullPage: true });
+      if (width === 390) await page.getByRole("complementary").getByRole("button", { name: "Close", exact: true }).click();
+      else await sigma.getByRole("button", { name: "Clear focus" }).click();
+      await expect(sigma.getByLabel("Focused graph asset")).toHaveCount(0);
+    });
+  }
+}
+
+test("estate map renders a recorded scan without fabricating environment metadata", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  await routeLargeGraphPage(page);
+  const { readFile } = await import("node:fs/promises");
+  const artifact = process.env.GRAPH_SCAN_ARTIFACT;
+  const fixture = buildLargeGraph();
+  fixture.nodes = [node("agent:dependencies", "agent", "Dependency fixture"), ...Array.from({ length: 701 }, (_, i) => node(`dependency:${i}`, "package", `dependency-${i}`))];
+  fixture.edges = fixture.nodes.slice(1).map(item => edge("agent:dependencies", item.id, "depends_on"));
+  fixture.stats = { ...fixture.stats, total_nodes: fixture.nodes.length, total_edges: fixture.edges.length, severity_counts: { high: 0 }, node_types: { agent: 1, package: 701, vulnerability: 0 }, relationship_types: { uses: 0, depends_on: 701, vulnerable_to: 0, related_to: 0 } };
+  const graph = artifact ? JSON.parse(await readFile(artifact, "utf8")) : fixture;
+  // The builder artifact is the stored graph; the API adds its response pagination envelope.
+  const response = { ...graph, pagination: { total: graph.nodes.length, offset: 0, limit: graph.nodes.length, has_more: false } };
+  await page.route("**/v1/graph?**", route => route.fulfill({ json: response }));
+  await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: { ...response, pagination: { total: graph.attack_paths.length, offset: 0, limit: 100, has_more: false } } }));
+  await page.route("**/v1/graph/snapshots?**", route => route.fulfill({ json: [{ scan_id: graph.scan_id, created_at: graph.created_at, node_count: graph.nodes.length, edge_count: graph.edges.length, risk_summary: graph.stats.severity_counts }] }));
+  const start = performance.now();
+  await page.goto("/graph?rollup=0&vulnOnly=0&severity=&layers=agent,server,package,framework,vulnerability,container,cloudResource,tool,credential");
+  // Real dependency scans collapse sibling packages initially; expand through the public control.
+  const collapsedPackages = page.getByRole("button", { name: /^Expand \d+ members$/ });
+  await expect(collapsedPackages.first()).toBeVisible();
+  await collapsedPackages.first().click();
+  const sigma = page.getByTestId("sigma-graph-overview");
+  await expect(sigma).toBeVisible();
+  await expectSigmaCanvases(page);
+  const readyMs = performance.now() - start;
+  await sigma.getByText("Map controls", { exact: true }).click();
+  const groupingStart = performance.now();
+  await sigma.getByLabel("Map grouping").selectOption("environment");
+  await expect(sigma.getByText(/Environment groups/)).toBeVisible();
+  const groupingMs = performance.now() - groupingStart;
+  console.info(JSON.stringify({ evidence: artifact ? "local offline repository scan" : "synthetic CI fixture", nodes: graph.nodes.length, edges: graph.edges.length, readyMs, groupingMs }));
+  await sigma.getByText(/Environment groups/).click();
+  await expect(sigma.getByText(/Unknown fields stay unknown/)).toBeVisible();
+  await expect(sigma.getByText(`Displayed: ${graph.nodes.length.toLocaleString()}/${graph.nodes.length.toLocaleString()} nodes, ${graph.edges.length.toLocaleString()}/${graph.edges.length.toLocaleString()} edges.`, { exact: true })).toBeVisible();
+  await expectSigmaCanvases(page);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.screenshot({ path: testInfo.outputPath("recorded-scan-map.png"), fullPage: true });
+});

@@ -14,6 +14,7 @@ import {
   focusCorrelationPathTarget,
   latestCompletedCorrelation,
   layersForFocusedPath,
+  visibleGraphFocus,
   selectInitialGraphSnapshot,
 } from "@/lib/security-graph-focus";
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
@@ -340,4 +341,12 @@ describe("correlation outcome focus", () => {
     expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, truncated: true }, receipts[2]!] })).toBeNull();
     expect(completeDirectedHopCount({ ...attackPath, analysis: {status: "complete"}, edges: ["uses", "depends_on", "vulnerable_to"], hop_evidence: [receipt, { ...receipts[1]!, source_snapshot_ids: [] }, receipts[2]!] })).toBeNull();
   });
+});
+
+it("clears a removed cluster focus after expansion without hiding its members", () => {
+  expect(visibleGraphFocus([{ id: "cluster:packages" }], "cluster:packages")).toBe("cluster:packages");
+  const expanded = [{ id: "package:a" }, { id: "package:b" }];
+  expect(visibleGraphFocus(expanded, "cluster:packages")).toBeNull();
+  expect(visibleGraphFocus(expanded, "package:a")).toBe("package:a");
+  expect(visibleGraphFocus(expanded, null)).toBeNull();
 });

@@ -39,6 +39,28 @@ content scan, complete lineage map or proof of sensitive records. Ingesting
 inventory or a scan report does not by itself ingest the contents of those stores.
 Source coverage and missing location or access evidence must be evaluated separately.
 
+## Explore an estate map
+
+Open **Investigation** for a completed scan and switch to the broad graph view.
+Large displayed graphs use the bounded estate map; smaller investigations retain
+the detailed relationship canvas.
+
+1. Expand **Map controls** and group displayed assets by **Environment** to use
+   their recorded provider, account/project and environment. Missing metadata
+   stays unknown; an evidence source name is not treated as an environment.
+2. Find a displayed asset by name or ID, or select it on the map. Its connected
+   assets remain highlighted while unrelated assets fade. Counts cover the
+   displayed graph and may exclude assets outside its draw budget or filters.
+3. Use the shared details panel to inspect **Location and evidence source** and
+   directional relationships, then expand the investigation to load related
+   evidence. Use graph search or **Summary** to investigate beyond the displayed
+   subset.
+
+Environment groups arrange existing assets without creating graph relationships.
+A highlighted connection preserves the recorded relationship; it does not establish
+permission, successful access or exploitation. The map reports displayed node and
+edge counts and retains a text alternative for the rendered overview.
+
 ## Reachability truth
 
 Every path distinguishes executable evidence from investigation context:

@@ -46,6 +46,7 @@ export interface SigmaGraphOverviewModel {
   graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
   overview: LargeGraphOverviewModel;
   summary: LargeGraphOverviewSummary;
+  groups: Array<{ key: string; label: string; x: number; y: number; count: number }>;
 }
 
 const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
@@ -113,8 +114,42 @@ function edgeIsHighlighted(
 export function buildSigmaGraphOverviewModel(
   nodes: Node<LineageNodeData>[],
   edges: Edge[],
+  grouping: "type" | "environment" = "type",
 ): SigmaGraphOverviewModel {
   const overview = buildLargeGraphOverviewModel(nodes, edges);
+  const groups: SigmaGraphOverviewModel["groups"] = [];
+  if (grouping === "environment") {
+    const source = new Map(nodes.map((node) => [node.id, node.data]));
+    const scopes = new Map<string, { label: string; nodes: typeof overview.nodes }>();
+    for (const node of overview.nodes) {
+      const data = source.get(node.id);
+      const attrs = data?.attributes ?? {};
+      const text = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : "";
+      const provider = text(data?.dimensions?.cloud_provider) || text(attrs.provider) || text(attrs.cloud_provider);
+      const account = text(attrs.account_scope) || text(attrs.account_id) || text(attrs.project_id) || text(attrs.subscription_id);
+      const environment = text(data?.dimensions?.environment) || text(attrs.environment);
+      const parts = [provider || "Provider unknown", account || "Account unknown", environment || "Environment unknown"];
+      const key = JSON.stringify(parts);
+      const scope = scopes.get(key) ?? { label: parts.join(" / "), nodes: [] };
+      scope.nodes.push(node);
+      scopes.set(key, scope);
+    }
+    // Presentational groups never introduce synthetic assets or relationships.
+    const cellSize = Math.max(240, ...[...scopes.values()].map((scope) => Math.ceil(Math.sqrt(scope.nodes.length)) * 40 + 140));
+    const groupColumns = Math.max(1, Math.ceil(Math.sqrt(scopes.size)));
+    let groupIndex = 0;
+    for (const [key, scope] of [...scopes].sort(([a], [b]) => a.localeCompare(b))) {
+      const left = (groupIndex % groupColumns) * cellSize;
+      const top = -Math.floor(groupIndex / groupColumns) * cellSize;
+      const columns = Math.max(1, Math.ceil(Math.sqrt(scope.nodes.length)));
+      scope.nodes.sort((a, b) => a.id.localeCompare(b.id)).forEach((node, index) => {
+        node.x = left + (index % columns) * 40;
+        node.y = top - Math.floor(index / columns) * 40;
+      });
+      groups.push({ key, label: scope.label, x: left + (columns - 1) * 20, y: top + 40, count: scope.nodes.length });
+      groupIndex += 1;
+    }
+  }
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     allowSelfLoops: true,
     multi: true,
@@ -126,7 +161,7 @@ export function buildSigmaGraphOverviewModel(
       label: node.label,
       x: node.x,
       y: node.y,
-      size: node.size,
+      size: grouping === "environment" ? Math.min(3, node.size / 2) : node.size,
       color: node.color,
       nodeType: node.nodeType,
       severity: node.severity,
@@ -163,6 +198,7 @@ export function buildSigmaGraphOverviewModel(
 
   return {
     graph,
+    groups,
     overview,
     summary: summarizeLargeGraphOverview(nodes, edges),
   };
@@ -171,7 +207,8 @@ export function buildSigmaGraphOverviewModel(
 export function buildSigmaGraphOverviewModelFromUnifiedGraph(
   graph: UnifiedGraphData,
   filters: UnifiedGraphFlowFilters = SIGMA_DEFAULT_FILTERS,
+  grouping: "type" | "environment" = "type",
 ): SigmaGraphOverviewModel {
   const flow = buildUnifiedFlowGraph(graph, filters);
-  return buildSigmaGraphOverviewModel(flow.nodes, flow.edges);
+  return buildSigmaGraphOverviewModel(flow.nodes, flow.edges, grouping);
 }

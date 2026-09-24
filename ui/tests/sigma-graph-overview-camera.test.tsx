@@ -108,9 +108,11 @@ describe("SigmaGraphOverview camera persistence", () => {
     render(<SigmaGraphOverview nodes={[...nodes, { id: "isolated", position: { x: 200, y: 0 }, data: { label: "Other", nodeType: "agent" } }]} edges={edges} legendItems={[]} selectedId="agent:a" onClearSelection={clear} onNodeSelect={select} />);
     await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
     const reduce = harness.instances.at(-1)!.settings.nodeReducer;
-    const attrs = { color: "#abcdef", size: 2 };
+    const attrs = { color: "#abcdef", size: 2, hidden: true };
     expect(reduce("package:a", attrs).color).toBe("#abcdef");
     expect(reduce("isolated", attrs).color).toBe("#444444");
+    expect(reduce("isolated", attrs).hidden).toBe(false);
+    expect(reduce("package:a", attrs).hidden).toBe(false);
     expect(reduce("agent:a", attrs).color).toBe("#00ff00");
     fireEvent.click(screen.getByText("Explore connected assets"));
     fireEvent.click(screen.getByRole("button", { name: "Package A (package)" }));

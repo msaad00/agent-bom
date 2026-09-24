@@ -225,7 +225,8 @@ export function SigmaGraphOverview({
               ...data,
               color: selected ? palette.selected : data.color,
               forceLabel: selected || data.forceLabel,
-              hidden: data.hidden,
+              // Parent focus marks unrelated nodes hidden; retain them as faded context here.
+              hidden: selectedNodeIdRef.current ? false : data.hidden,
               highlighted: selected || data.highlighted,
               size: selected ? data.size * 1.65 : data.size,
               zIndex: selected ? 4 : data.zIndex,
@@ -240,7 +241,7 @@ export function SigmaGraphOverview({
             return {
               ...data,
               color: selectedEdge ? data.color : selected ? palette.dimmed : data.color,
-              hidden: data.hidden,
+              hidden: selectedEdge ? false : data.hidden,
               size: selectedEdge ? data.size * 2.3 : data.size,
               zIndex: selectedEdge ? 3 : data.zIndex,
             };

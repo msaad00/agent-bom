@@ -74,6 +74,34 @@ The current MCP specification prefers Client ID Metadata Documents; dynamic
 registration is retained for backward compatibility. Configure only the
 mechanism required by tested clients and preserve explicit authorization.
 
+## Familiar sign-in for people
+
+Keycloak can broker Google, GitHub, Microsoft Entra ID, or an organization's
+SAML/OIDC provider. Configure the provider's application registration and exact
+Keycloak callback URI, then enable only the providers used by the deployment.
+For a developer-facing installation, Google and GitHub are useful entry points;
+enterprise installations can present a single company SSO option. Avoid a long
+list of unused login buttons.
+
+The interactive flow is MCP client → Keycloak → chosen identity provider →
+Keycloak consent → MCP client. Use authorization code with PKCE S256. Keycloak
+issues the access token for the MCP audience; Google/GitHub login tokens are not
+accepted as MCP access tokens. Successful social login alone must not grant MCP
+access: approve the resulting Keycloak subject explicitly. Do not automatically
+link accounts based only on an unverified email address.
+
+Provider credentials belong in Keycloak's protected configuration, never the MCP
+client, repository, or browser bundle. CI uses its separate service account and
+does not open a browser. Existing API/UI SSO remains independently configured.
+See the [Keycloak identity brokering guide](https://www.keycloak.org/docs/latest/server_admin/#_identity_broker).
+
+### Railway issuer deployment
+
+The [Keycloak deployment example](../deploy/keycloak/README.md) builds an
+optimized, pinned image backed by PostgreSQL. Deploy the issuer separately,
+verify realm discovery, and then configure the resource server above. Deploying
+an issuer does not enable a social provider or authorize an MCP client by itself.
+
 ## Fresh credentials for CI probes
 
 Configure repository variables:

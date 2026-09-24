@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.0",
-  "captured_at": "2026-09-24T03:51:15.744Z",
-  "source_commit": "66f22d1870ff2bd79c8b06a9ca854c3a964acdd3",
+  "captured_at": "2026-09-24T16:25:33.592Z",
+  "source_commit": "60854395cc38d5c1dc69e456bf740caac613fc58",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:c088e21e52a523575048f68b244ec577d5893a001d0de44135db41a6bf4134b3",
+  "capture_inputs_sha256": "sha256:ee497f3f014ad154c650c903aa12205f9425bd129aff5ee2693f30aeda80f360",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -68,7 +68,7 @@
       "page": "/connections?capture=1",
       "scope": "Connections hub — scalable connector gallery across cloud, code, AI, and data sources",
       "visible_version": "0.106.0",
-      "sha256": "sha256:d78630098eb399dbc4415570a1c0aa51b8553678655b3596ef1874b80c01582d"
+      "sha256": "sha256:244f253530aaf510b1ced2baba0a9b8b844ff6853125b779bb33fff321a01bca"
     },
     {
       "presentation": "dark desktop",
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.0",
-      "sha256": "sha256:5c575bc3a38d15e3b513a03c71bf7a1fb11728ab482ae55e9c01c16a3b3972ab"
+      "sha256": "sha256:5dc4548cfd82e74ac7428b45ff1f19336ff97d37ef87ece7dfbd8e17c6840bee"
     },
     {
       "presentation": "dark desktop",
@@ -97,10 +97,10 @@
     {
       "presentation": "dark desktop",
       "path": "mesh-live.png",
-      "page": "/graph?lens=mesh&capture=1",
-      "scope": "Multi-agent mesh with shared filesystem MCP, labeled edges, and both IDE + SRE agents in scope",
+      "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
+      "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.106.0",
-      "sha256": "sha256:4e3014fdee1da9852360e1ebd6653ff23ecde4e05fd9642266e769fe94caf9ff"
+      "sha256": "sha256:7922a9e8a4dd9889814413af8e9d7b318a25c64460179f31e5070f75f614a9a7"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.0",
-      "sha256": "sha256:00dfa4136ddafabc81198368b65cd864dce8935f749bd2965bada9ec87eb74af"
+      "sha256": "sha256:356c40c4c572dc2b6213f5c02293b3744f89079b48f61e3c76dd263ce2a6c08e"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -241,7 +241,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.106.0",
-      "sha256": "sha256:de8fd45a0381d7f212300d3cc9eafd8a03b48a0b8eb85d25493d99b798b12da0"
+      "sha256": "sha256:ee2d498269afe9a6e8ebeaed40a5de7c9e5097301d04c131727fe8525b4c7328"
     },
     {
       "presentation": "dark desktop",

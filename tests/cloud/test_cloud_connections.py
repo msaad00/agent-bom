@@ -2223,9 +2223,78 @@ def test_create_workload_connection_without_storing_secret(tmp_path: Any, monkey
     assert response.json()["status"] == "pending"
     assert response.json()["capability_probe_status"] == "not_run"
     capabilities = client.get("/v1/cloud/connections", headers=_proxy_headers()).json()["workload_auth_modes"]
-    assert capabilities == {"azure": ["managed_identity", "workload_identity"], "gcp": ["workload_identity"]}
+    assert capabilities == {
+        "azure": ["managed_identity", "workload_identity"],
+        "gcp": ["workload_identity"],
+        "snowflake": ["workload_identity"],
+    }
     assert str(path) not in response.text
     forbidden = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers(tenant="other-tenant"))
     assert forbidden.status_code == 400
     assert str(path) not in forbidden.text
     assert client.post("/v1/cloud/connections", json={**body, "external_id": "secret-canary"}, headers=_proxy_headers()).status_code == 400
+
+
+def test_native_workload_connection_dispatch_persists_result(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.stores import _get_store
+    from agent_bom.cloud import snowflake as discovery
+    from agent_bom.cloud import snowflake_cis_benchmark
+
+    binding_path = tmp_path / "bindings.json"
+    binding_path.write_text(
+        json.dumps(
+            {
+                "bindings": {
+                    "native-read": {
+                        "tenant_id": "tenant-alpha",
+                        "provider": "snowflake",
+                        "auth_mode": "workload_identity",
+                        "role_ref": "account-a",
+                        "scope_id": "account-a",
+                        "expires_at": "2099-01-01T00:00:00Z",
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("AGENT_BOM_CONNECTION_WORKLOAD_BINDINGS_FILE", str(binding_path))
+    monkeypatch.setenv("AGENT_BOM_SNOWFLAKE_NATIVE_APP", "true")
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "account-a")
+    monkeypatch.setenv("SNOWFLAKE_HOST", "account-a.snowflakecomputing.com")
+    conn = _FakeSnowflakeConn()
+    connector = types.ModuleType("snowflake.connector")
+    connector.connect = lambda **kw: conn  # type: ignore[attr-defined]
+    package = types.ModuleType("snowflake")
+    package.connector = connector  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "snowflake", package)
+    monkeypatch.setitem(sys.modules, "snowflake.connector", connector)
+    monkeypatch.setattr(discovery, "discover", lambda **kw: ([], []))
+    monkeypatch.setattr(discovery, "enrich_report_with_snowflake_estate", lambda *args, **kw: None)
+    monkeypatch.setattr(snowflake_cis_benchmark, "run_benchmark", lambda **kw: _FakeProviderCIS())
+    body = {
+        "provider": "snowflake",
+        "display_name": "Native account",
+        "role_ref": "account-a",
+        "auto_scan_on_create": False,
+        "auth_params": {"account": "account-a", "auth_mode": "workload_identity", "credential_binding": "native-read"},
+    }
+    client = TestClient(_app())
+    assert client.post("/v1/cloud/connections", json=body).status_code in {401, 403}
+    assert client.post("/v1/cloud/connections", json=body, headers=_proxy_headers(tenant="other")).status_code == 400
+    created = client.post("/v1/cloud/connections", json=body, headers=_proxy_headers())
+    assert created.status_code == 201
+    assert created.json()["has_external_id"] is False
+    cid = created.json()["id"]
+    assert client.post(f"/v1/cloud/connections/{cid}/scan").status_code in {401, 403}
+    accepted = client.post(f"/v1/cloud/connections/{cid}/scan", headers=_proxy_headers())
+    assert accepted.status_code == 202
+    job_id = accepted.json()["job_id"]
+    result = _wait_for_scan_job(client, job_id)
+    assert result["status"] == "done"
+    job = _get_store().get(job_id, "tenant-alpha")
+    assert job is not None and job.result is not None
+    assert job.source_id == f"cloud-connection:{cid}"
+    assert job.result["scan_sources"] == ["cloud_connection", "cloud:snowflake"]
+    assert job.result["snowflake_cis_benchmark"]["total"] == 2
+    assert _get_store().get(job_id, "other") is None
+    assert conn.closed

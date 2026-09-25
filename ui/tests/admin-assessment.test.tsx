@@ -11,6 +11,18 @@ it("discloses conditional evidence and recorded resource scope", () => {
   expect(screen.getByText(/request context has not been verified/)).toBeInTheDocument();
   expect(screen.getByText(/Scope: arn:aws:iam::123456789012/)).toBeInTheDocument();
 });
+it.each([
+  [{ escalates_to_admin: true }, /Can assume an admin role\./],
+  [{ escalates_to_conditional_admin: true }, /Can assume a conditional admin role\. Its conditions have not been verified\./],
+])("keeps confirmed and conditional admin escalation distinct", (escalation, text) => {
+  render(<AdminAssessment attributes={{ admin_equivalence_status: "unknown", ...escalation }} />);
+  expect(screen.getByText(text)).toBeInTheDocument();
+  expect(screen.getAllByText(/Can assume/)).toHaveLength(1);
+});
+it("omits escalation text when no admin escalation was derived", () => {
+  render(<AdminAssessment attributes={{ admin_equivalence_status: "not_admin", can_escalate_privilege: true }} />);
+  expect(screen.queryByText(/Can assume/)).not.toBeInTheDocument();
+});
 it("does not invent an assessment for legacy snapshots", () => {
   const { container } = render(<AdminAssessment attributes={{ admin_equivalent: false }} />);
   expect(container).toBeEmptyDOMElement();

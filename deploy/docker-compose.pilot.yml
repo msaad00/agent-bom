@@ -28,12 +28,16 @@ services:
       api
       --host 0.0.0.0
       --port 8422
-      --persist /home/abom/.agent-bom/jobs.db
+      --persist ${AGENT_BOM_PILOT_JOBS_DB:-/home/abom/.agent-bom/jobs.db}
       --cors-origins http://localhost:3000,http://127.0.0.1:3000
       --allow-insecure-no-auth
     environment:
       AGENT_BOM_DB_PATH: /home/abom/.agent-bom/vulns.db
       AGENT_BOM_DEPLOYMENT_ENV: pilot-loopback
+      # Demo estate data lives in /home/abom/.agent-bom/demo-estate, never in the
+      # pilot's product stores; install.sh --demo-estate also points
+      # AGENT_BOM_PILOT_JOBS_DB there. The API refuses to start in demo mode if
+      # --persist still targets the product state dir.
       AGENT_BOM_DEMO_ESTATE: ${AGENT_BOM_DEMO_ESTATE:-0}
       AGENT_BOM_SKIP_UPDATE_CHECK: "1"
       # Local no-auth pilots resolve to a role. Default to analyst so a first-run

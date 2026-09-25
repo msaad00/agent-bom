@@ -27,16 +27,17 @@ from agent_bom.analytics_retention import (
 )
 from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.config import LOCAL_ANALYTICS_DB
+from agent_bom.storage import state_home
 
 SCHEMA_VERSION = 4
-DEFAULT_LOCAL_ANALYTICS_PATH = Path.home() / ".agent-bom" / "local-analytics.sqlite"
+DEFAULT_LOCAL_ANALYTICS_FILENAME = "local-analytics.sqlite"
 
 
 def local_analytics_path() -> Path:
     """Return the configured local analytics database path."""
     if LOCAL_ANALYTICS_DB:
         return Path(LOCAL_ANALYTICS_DB).expanduser()
-    return DEFAULT_LOCAL_ANALYTICS_PATH
+    return state_home.state_path(DEFAULT_LOCAL_ANALYTICS_FILENAME)
 
 
 class LocalAnalyticsStore:

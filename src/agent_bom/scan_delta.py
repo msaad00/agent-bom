@@ -19,11 +19,14 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.package_utils import vulnerability_occurrence_key
+from agent_bom.storage import state_home
 
 _logger = logging.getLogger(__name__)
 
-# Default path for auto-saved baselines
-_DEFAULT_BASELINE_PATH = Path.home() / ".agent-bom" / "baseline.json"
+
+def default_baseline_path() -> Path:
+    """Default path for auto-saved baselines, under the active state dir."""
+    return state_home.state_path("baseline.json")
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +82,7 @@ def save_baseline(scan_json: dict, path: str | Path | None = None) -> Path:
     Writes to ``path`` (or ``~/.agent-bom/baseline.json`` by default).
     Returns the path written.
     """
-    p = Path(path) if path else _DEFAULT_BASELINE_PATH
+    p = Path(path) if path else default_baseline_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(scan_json, indent=2), encoding="utf-8")
     return p

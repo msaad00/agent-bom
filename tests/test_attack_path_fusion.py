@@ -324,6 +324,15 @@ def test_node_boost_recognizes_admin_equivalent():
     assert _node_boost(admin) > _node_boost(plain)
 
 
+def test_node_boost_ranks_conditional_admin_escalation_between_plain_and_confirmed():
+    def boost(**attrs):
+        return _node_boost(
+            UnifiedNode(id="u", entity_type=EntityType.USER, label="u", attributes={"can_escalate_privilege": True, **attrs})
+        )
+
+    assert boost() < boost(escalates_to_conditional_admin=True) < boost(escalates_to_admin=True)
+
+
 def test_node_boost_deprioritizes_mitigated_toxic_but_keeps_it():
     # A WAF-fronted (mitigated) toxic node scores below a bare toxic node, yet is
     # not zeroed out — honesty: de-prioritized, not hidden.

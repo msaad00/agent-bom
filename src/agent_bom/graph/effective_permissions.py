@@ -70,6 +70,15 @@ _MAX_DEPTH = 6
 _MAX_PERMISSION_WITNESSES = 16
 
 _ANALYZER = "effective_permissions"
+# Between plain escalation (8.5) and confirmed admin escalation (9.0): the target
+# holds broad admin authority, but only under unverified request conditions.
+_CONDITIONAL_ADMIN_ESCALATION_RISK = 8.75
+_ESCALATION_ADMIN_ATTRIBUTES = (
+    "escalates_to_admin",
+    "escalates_to_conditional_admin",
+    "admin_escalation_confidence",
+    "admin_escalation_targets",
+)
 _ADMIN_PRIVILEGE_KEYWORDS = ("administratoraccess", "fullaccess", "poweruseraccess", "iamfullaccess", "*:*", "admin", "owner", "root")
 
 # Admin-equivalence probes for real IAM evaluation. A policy that ALLOWs any of
@@ -108,11 +117,20 @@ def _iter_policy_documents(attrs: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return docs
 
 
+# Every IAM resource in one account (``arn:aws:iam::123456789012:*``) or in any
+# account (``arn:aws:iam::*:*``). ``iam:*`` over either lets an identity attach
+# AdministratorAccess to itself. Path-scoped forms (``:role/app/*``) are not
+# account-wide and stay excluded.
+_ACCOUNT_WIDE_IAM_ARN = re.compile(r"arn:(?:aws(?:-[a-z]+)*|\*):iam:\*?:(?:[0-9]{12}|\*):\*")
+
+
 def _admin_resource_scopes(policies: Sequence[NormalizedIamPolicy]) -> list[str]:
     """Only account-wide IAM ARNs extend the unrestricted probes.
 
     A specific user/role ARN or a path-scoped wildcard is not account-wide.
     Keep the original scope in evidence rather than substituting Resource '*'.
+    Each scope is probed as-is, so a Deny whose resource pattern covers it
+    (``*``, the same ARN, or a broader glob) still takes precedence.
     """
     return sorted(
         {
@@ -121,7 +139,7 @@ def _admin_resource_scopes(policies: Sequence[NormalizedIamPolicy]) -> list[str]
             for statement in policy.statements
             if statement.effect == "Allow"
             for resource in statement.resources
-            if re.fullmatch(r"arn:[a-z0-9-]+:iam::[0-9]{12}:\*", resource)
+            if _ACCOUNT_WIDE_IAM_ARN.fullmatch(resource)
         }
     )
 
@@ -342,6 +360,10 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
     #      AdministratorAccess attached alongside a single malformed statement
     #      still fails toward flagging a possible admin (safe direction).
     admin_principals: set[str] = set()
+    # Broad admin grants whose Allow conditions (MFA, source IP, region, ...)
+    # have not been verified. They feed escalation analysis as a distinct,
+    # lower-confidence target and never set ``admin_equivalent``.
+    conditional_admin_principals: set[str] = set()
     admin_via_evaluation = 0
     admin_via_scanner = 0
     admin_via_heuristic = 0
@@ -365,6 +387,7 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
             elif IamDecision.INDETERMINATE in decisions:
                 if _potential_conditional_admin(docs):
                     pnode.attributes["admin_equivalence_status"] = "conditional_admin"
+                    conditional_admin_principals.add(p.id)
             elif p.id not in admin_with_unavailable_policy:
                 pnode.attributes["admin_equivalence_status"] = "not_admin"
         if IamDecision.ALLOW in decisions:
@@ -510,15 +533,44 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
                 )
             )
             edges_added += 1
+        for stale in _ESCALATION_ADMIN_ATTRIBUTES:
+            principal.attributes.pop(stale, None)
         if escalated:
             principal.attributes["can_escalate_privilege"] = True
             to_admin = bool(assumed & admin_principals)
+            to_conditional_admin = not to_admin and bool(assumed & conditional_admin_principals)
+            admin_targets = sorted(assumed & (admin_principals | conditional_admin_principals))
             if to_admin:
                 principal.attributes["escalates_to_admin"] = True
+                principal.attributes["admin_escalation_confidence"] = "confirmed"
+            elif to_conditional_admin:
+                principal.attributes["escalates_to_conditional_admin"] = True
+                principal.attributes["admin_escalation_confidence"] = "conditional"
+            if admin_targets:
+                principal.attributes["admin_escalation_targets"] = [
+                    {
+                        "principal_id": target_id,
+                        "admin_equivalence_status": "admin" if target_id in admin_principals else "conditional_admin",
+                    }
+                    for target_id in admin_targets[:_MAX_PERMISSION_WITNESSES]
+                ]
             exposed = sorted(
                 rid for rid in escalated if graph.nodes.get(rid) and coerce_truthy(graph.nodes[rid].attributes.get("internet_exposed"))
             )
-            risk = 9.5 if exposed else (9.0 if to_admin else 8.5)
+            if exposed:
+                risk = 9.5
+            elif to_admin:
+                risk = 9.0
+            elif to_conditional_admin:
+                risk = _CONDITIONAL_ADMIN_ESCALATION_RISK
+            else:
+                risk = 8.5
+            if to_admin:
+                target_phrase = "an admin-privileged role"
+            elif to_conditional_admin:
+                target_phrase = "a role with conditional admin permissions (conditions not verified)"
+            else:
+                target_phrase = "another role"
             graph.interaction_risks.append(
                 InteractionRisk(
                     pattern="privilege_escalation",
@@ -526,7 +578,7 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
                     risk_score=risk,
                     description=(
                         f"{principal.label} reaches {len(escalated)} additional resource(s) by assuming "
-                        + ("an admin-privileged role" if to_admin else "another role")
+                        + target_phrase
                         + (f", including {len(exposed)} internet-exposed." if exposed else ".")
                     ),
                     owasp_agentic_tag=None,
@@ -553,6 +605,7 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
             "has_permission_edges": edges_added,
             "privilege_escalations": escalations,
             "admin_principals": len(admin_principals),
+            "conditional_admin_principals": len(conditional_admin_principals),
             "inactive_source_edges": inactive_edges,
             "invalid_source_validity": invalid_validity,
         },
@@ -561,6 +614,7 @@ def apply_effective_permissions(graph: UnifiedGraph, *, at: datetime | None = No
         "has_permission_edges": edges_added,
         "privilege_escalations": escalations,
         "admin_principals": len(admin_principals),
+        "conditional_admin_principals": len(conditional_admin_principals),
         "admin_via_evaluation": admin_via_evaluation,
         "admin_via_scanner": admin_via_scanner,
         "admin_via_heuristic": admin_via_heuristic,

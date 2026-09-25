@@ -17,7 +17,11 @@ import click
 from agent_bom.samples import write_first_run_sample
 
 QUICKSTART_SCAN_TIMEOUT_SECONDS = 300
-DURABLE_LOCAL_CONTROL_PLANE_DB = Path.home() / ".agent-bom" / "control-plane.db"
+
+
+def _durable_local_control_plane_db() -> Path:
+    """The printed durable control-plane path, resolved against the current HOME."""
+    return Path.home() / ".agent-bom" / "control-plane.db"
 
 
 class _GraphReceipt(TypedDict):
@@ -241,7 +245,7 @@ def _run_quickstart(
 def _resolve_quickstart_databases(environment: dict[str, str]) -> tuple[Path, Path]:
     """Resolve the child scan and printed control-plane database paths."""
 
-    control_plane_db = _durable_sqlite_path(environment.get("AGENT_BOM_DB") or str(DURABLE_LOCAL_CONTROL_PLANE_DB))
+    control_plane_db = _durable_sqlite_path(environment.get("AGENT_BOM_DB") or str(_durable_local_control_plane_db()))
     graph_db = _durable_sqlite_path(environment.get("AGENT_BOM_GRAPH_DB") or str(control_plane_db))
     return control_plane_db, graph_db
 
@@ -304,7 +308,7 @@ def _control_plane_command(*, control_plane_db: Path, graph_db: Path, port: int)
     environment.append("AGENT_BOM_NO_AUTH_ROLE=analyst")
     persisted = (
         "~/.agent-bom/control-plane.db"
-        if control_plane_db == DURABLE_LOCAL_CONTROL_PLANE_DB.expanduser().resolve()
+        if control_plane_db == _durable_local_control_plane_db().expanduser().resolve()
         else shlex.quote(str(control_plane_db))
     )
     return f"{' '.join(environment)} agent-bom serve --persist {persisted} --host 127.0.0.1 --port {port} --allow-insecure-no-auth"

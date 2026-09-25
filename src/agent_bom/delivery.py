@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +486,7 @@ def default_delivery_store_path() -> Path:
     shared = os.environ.get("AGENT_BOM_DB", "").strip()
     if shared:
         return Path(shared).expanduser()
-    return Path.home() / ".agent-bom" / "db" / "delivery.db"
+    return state_home.state_path("db", "delivery.db")
 
 
 # ── Payload preview (redacted) ───────────────────────────────────────────────

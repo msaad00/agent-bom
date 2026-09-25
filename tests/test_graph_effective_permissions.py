@@ -627,3 +627,119 @@ def test_explicit_deny_cannot_become_conditional_admin():
     )
     apply_effective_permissions(g)
     assert g.nodes["role:r"].attributes["admin_equivalence_status"] == "not_admin"
+
+
+def _policy_role(role_id, statements):
+    return UnifiedNode(id=role_id, entity_type=EntityType.ROLE, label=role_id, attributes={"policy_document": {"Statement": statements}})
+
+
+@pytest.mark.parametrize(
+    ("resource", "expected_status"),
+    [
+        # iam:* over every IAM resource in any account can attach AdministratorAccess to itself.
+        ("arn:aws:iam::*:*", "admin"),
+        ("arn:aws:iam::111122223333:*", "admin"),
+        ("arn:aws-us-gov:iam::*:*", "admin"),
+        # A path-scoped wildcard is not account-wide IAM authority.
+        ("arn:aws:iam::*:role/app/*", "not_admin"),
+        ("arn:aws:iam::111122223333:user/dev", "not_admin"),
+    ],
+)
+def test_iam_wildcard_account_scope_is_admin_equivalent(resource, expected_status):
+    g = UnifiedGraph(scan_id="wildcard-account", tenant_id="t")
+    g.add_node(_policy_role("role:r", [{"Effect": "Allow", "Action": "iam:*", "Resource": resource}]))
+    apply_effective_permissions(g)
+    attrs = g.nodes["role:r"].attributes
+    assert attrs["admin_equivalence_status"] == expected_status
+    assert (attrs.get("admin_equivalent") is True) is (expected_status == "admin")
+
+
+def test_wildcard_account_iam_scope_still_honors_explicit_deny():
+    g = UnifiedGraph(scan_id="wildcard-deny", tenant_id="t")
+    g.add_node(
+        _policy_role(
+            "role:r",
+            [
+                {"Effect": "Allow", "Action": "iam:*", "Resource": "arn:aws:iam::*:*"},
+                {"Effect": "Deny", "Action": "iam:*", "Resource": "*"},
+            ],
+        )
+    )
+    apply_effective_permissions(g)
+    assert g.nodes["role:r"].attributes["admin_equivalence_status"] == "not_admin"
+    assert g.nodes["role:r"].attributes.get("admin_equivalent") is not True
+
+
+def test_read_only_iam_wildcard_is_not_admin():
+    g = UnifiedGraph(scan_id="read-only", tenant_id="t")
+    g.add_node(_policy_role("role:r", [{"Effect": "Allow", "Action": "iam:Get*", "Resource": "*"}]))
+    apply_effective_permissions(g)
+    assert g.nodes["role:r"].attributes["admin_equivalence_status"] == "not_admin"
+    assert g.nodes["role:r"].attributes.get("admin_equivalent") is not True
+
+
+def _escalation_graph(target):
+    g = UnifiedGraph(scan_id="escalation", tenant_id="t")
+    g.add_node(UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev"))
+    g.add_node(target)
+    g.add_node(UnifiedNode(id="cloud:x", entity_type=EntityType.CLOUD_RESOURCE, label="x"))
+    g.add_edge(UnifiedEdge(source="user:dev", target=target.id, relationship=RelationshipType.ASSUMES))
+    g.add_edge(UnifiedEdge(source=target.id, target="cloud:x", relationship=RelationshipType.CAN_ACCESS))
+    return g
+
+
+def test_escalation_to_conditional_admin_is_reported_as_conditional():
+    mfa = {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
+    g = _escalation_graph(_policy_role("role:breakglass", [{"Effect": "Allow", "Action": "*:*", "Resource": "*", "Condition": mfa}]))
+    stats = apply_effective_permissions(g)
+
+    target = g.nodes["role:breakglass"].attributes
+    assert target["admin_equivalence_status"] == "conditional_admin"
+    assert target.get("admin_equivalent") is not True
+
+    dev = g.nodes["user:dev"].attributes
+    # Conditional authority participates in escalation analysis, but is never
+    # reported as a confirmed admin escalation.
+    assert dev.get("escalates_to_admin") is not True
+    assert dev["escalates_to_conditional_admin"] is True
+    assert dev["admin_escalation_confidence"] == "conditional"
+    assert dev["admin_escalation_targets"] == [{"principal_id": "role:breakglass", "admin_equivalence_status": "conditional_admin"}]
+    assert stats["conditional_admin_principals"] == 1
+
+    esc = [r for r in g.interaction_risks if r.pattern == "privilege_escalation"]
+    assert len(esc) == 1
+    assert 8.5 < esc[0].risk_score < 9.0
+    assert "conditional" in esc[0].description
+
+
+def test_confirmed_admin_escalation_wins_over_conditional():
+    g = _escalation_graph(_policy_role("role:admin", [{"Effect": "Allow", "Action": "*", "Resource": "*"}]))
+    g.add_node(
+        _policy_role(
+            "role:cond",
+            [{"Effect": "Allow", "Action": "*", "Resource": "*", "Condition": {"IpAddress": {"aws:SourceIp": "192.0.2.0/24"}}}],
+        )
+    )
+    g.add_edge(UnifiedEdge(source="user:dev", target="role:cond", relationship=RelationshipType.ASSUMES))
+    apply_effective_permissions(g)
+    dev = g.nodes["user:dev"].attributes
+    assert dev["escalates_to_admin"] is True
+    assert dev.get("escalates_to_conditional_admin") is not True
+    assert dev["admin_escalation_confidence"] == "confirmed"
+    assert dev["admin_escalation_targets"] == [
+        {"principal_id": "role:admin", "admin_equivalence_status": "admin"},
+        {"principal_id": "role:cond", "admin_equivalence_status": "conditional_admin"},
+    ]
+    esc = [r for r in g.interaction_risks if r.pattern == "privilege_escalation"]
+    assert esc[0].risk_score == 9.0
+
+
+def test_escalation_to_non_admin_role_has_no_admin_targets():
+    g = _escalation_graph(_policy_role("role:reader", [{"Effect": "Allow", "Action": "iam:Get*", "Resource": "*"}]))
+    apply_effective_permissions(g)
+    dev = g.nodes["user:dev"].attributes
+    assert dev["can_escalate_privilege"] is True
+    assert dev.get("escalates_to_admin") is not True
+    assert dev.get("escalates_to_conditional_admin") is not True
+    assert "admin_escalation_targets" not in dev
+    assert [r.risk_score for r in g.interaction_risks if r.pattern == "privilege_escalation"] == [8.5]

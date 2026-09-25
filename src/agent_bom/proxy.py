@@ -52,6 +52,7 @@ from agent_bom.security import (
     sanitize_text,
     validate_arguments,
 )
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +419,7 @@ def _proxy_audit_delivery_paths(
 ) -> AuditDeliveryPaths:
     """Resolve restart-stable, secret-free proxy audit backlog paths."""
 
-    state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    state_dir = state_home.state_dir()
     identity = "\x00".join((control_plane_url.rstrip("/"), tenant_id, source_id))
     return audit_delivery_paths(state_dir, surface="proxy", identity=identity)
 
@@ -521,7 +522,7 @@ def _gateway_policy_cache_path() -> Path:
     configured = os.environ.get("AGENT_BOM_PROXY_POLICY_CACHE_PATH")
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / ".agent-bom" / "cache" / "gateway-policies.json"
+    return state_home.state_path("cache", "gateway-policies.json")
 
 
 def _gateway_policy_cache_signature_path(cache_path: Path) -> Path:

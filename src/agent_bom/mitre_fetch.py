@@ -24,6 +24,8 @@ from typing import Optional
 
 import httpx
 
+from agent_bom.storage import state_home
+
 logger = logging.getLogger(__name__)
 
 # Pinned official first-party STIX releases (supply-chain hygiene: an immutable
@@ -64,13 +66,19 @@ TOP_TACTIC_PHASE_NAMES = frozenset(
 _CATALOG_SCHEMA_VERSION = 1
 _FETCH_TIMEOUT = 60
 _BUNDLED_CATALOG_PATH = Path(__file__).with_name("data") / "mitre_attack_catalog.json"
-_DEFAULT_SYNC_PATH = Path.home() / ".agent-bom" / "catalogs" / "mitre_attack_catalog.json"
+# Test/embedding override; ``None`` resolves under the active state dir per call.
+_DEFAULT_SYNC_PATH: Path | None = None
+_SYNC_FILENAME = "mitre_attack_catalog.json"
 _ALLOWED_CATALOG_MODES = {"auto", "bundled", "synced", "refresh"}
 
 
 def _sync_catalog_path() -> Path:
     override = os.environ.get("AGENT_BOM_MITRE_CATALOG_PATH", "").strip()
-    return Path(override).expanduser() if override else _DEFAULT_SYNC_PATH
+    if override:
+        return Path(override).expanduser()
+    if _DEFAULT_SYNC_PATH is not None:
+        return _DEFAULT_SYNC_PATH
+    return state_home.state_path("catalogs", _SYNC_FILENAME)
 
 
 def _catalog_mode() -> str:

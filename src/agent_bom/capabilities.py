@@ -38,6 +38,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Literal
 
+from agent_bom.storage import state_home
+
 # Shared truthy vocabulary — matches every gate in the codebase (side-scan,
 # audit-trail, the inventory flags, registry airgap). Kept here so the registry
 # probes a gate the same way the gated module does.
@@ -185,7 +187,7 @@ def _scan_cache_db_path() -> Path:
     override = os.environ.get("AGENT_BOM_SCAN_CACHE")
     if override and override.strip():
         return Path(override)
-    return Path.home() / ".agent-bom" / "scan_cache.db"
+    return state_home.state_path("scan_cache.db")
 
 
 def _vuln_cache_probe() -> CapabilityStatus:

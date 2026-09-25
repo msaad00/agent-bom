@@ -13,10 +13,12 @@ from agent_bom.models import Package
 from agent_bom.package_utils import canonical_package_key, vulnerability_occurrence_key
 from agent_bom.sbom import parse_sbom_document
 from agent_bom.security import sanitize_path_label, sanitize_text
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 
-HISTORY_DIR = Path.home() / ".agent-bom" / "history"
+# Test/embedding override; ``None`` resolves under the active state dir per call.
+HISTORY_DIR: Path | None = None
 
 # On-disk scan history is unbounded by default, so a long-lived workstation or
 # CI cache can accumulate thousands of reports. Cap the retained count and prune
@@ -33,10 +35,12 @@ def _history_max_reports() -> int:
         return _DEFAULT_HISTORY_MAX_REPORTS
 
 
-def history_dir() -> Path:
-    """Return (and create) the history directory."""
-    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    return HISTORY_DIR
+def history_dir(*, create: bool = True) -> Path:
+    """Return (and by default create) the history directory."""
+    directory = HISTORY_DIR if HISTORY_DIR is not None else state_home.state_path("history")
+    if create:
+        directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def prune_history(max_reports: Optional[int] = None) -> int:

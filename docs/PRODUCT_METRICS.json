@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 912,
+      "value": 913,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

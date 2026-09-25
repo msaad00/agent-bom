@@ -68,7 +68,7 @@ class DemoEstateStatus(BaseModel):
     showcase_snapshot_id: str
     showcase_available: bool
     graph_owner_scan_id: str | None
-    graph_alignment: Literal["aligned", "operator_default", "unavailable"]
+    graph_alignment: Literal["aligned", "blocked", "unavailable"]
     reason: str | None = None
 
 
@@ -175,37 +175,34 @@ async def get_enterprise_demo_story(request: Request) -> EnterpriseDemoStory:
 
 
 def _build_demo_estate_status(tenant_id: str) -> DemoEstateStatus:
-    """Reconcile the last seed decision with persisted graph state."""
+    """Report whether the demo's default graph is the synthetic showcase.
+
+    Demo mode only ever presents synthetic evidence. When the store's newest
+    snapshot is anything other than the showcase, the demo is ``blocked``: the
+    status withholds that snapshot's id so the demo surfaces never link to, or
+    label as sample data, evidence the demo did not create.
+    """
     from agent_bom.api.stores import _get_graph_store
-    from agent_bom.demo_estate.bootstrap import get_demo_estate_bootstrap_status
     from agent_bom.demo_estate.showcase_graph import SHOWCASE_SCAN_ID
 
     graph_store = _get_graph_store()
-    bootstrap = get_demo_estate_bootstrap_status(tenant_id=tenant_id)
     owner = str(graph_store.latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan") or "")
-    bootstrap_owner = str(bootstrap.get("graph_owner_scan_id") or "")
     showcase_stats = graph_store.snapshot_stats(tenant_id=tenant_id, scan_id=SHOWCASE_SCAN_ID)
     showcase_available = int(showcase_stats.get("total_nodes") or 0) > 0
 
+    alignment: Literal["aligned", "blocked", "unavailable"]
+    reason: str | None = None
     if not owner:
-        alignment: Literal["aligned", "operator_default", "unavailable"] = "unavailable"
+        alignment, reason = "unavailable", "no_graph_snapshot"
     elif owner == SHOWCASE_SCAN_ID:
         alignment = "aligned"
     else:
-        alignment = "operator_default"
+        alignment, reason = "blocked", "non_demo_snapshot_present"
 
-    reason: str | None = None
-    if alignment == "unavailable":
-        reason = "no_graph_snapshot"
-    elif alignment == "operator_default":
-        reason = "operator_snapshot_preserved" if bootstrap_owner == owner else "operator_snapshot_became_default"
-
-    # The live store is authoritative for routing. The bootstrap copy provides
-    # the reason the seeder chose not to replace an operator-owned snapshot.
     return DemoEstateStatus(
         showcase_snapshot_id=SHOWCASE_SCAN_ID,
         showcase_available=showcase_available,
-        graph_owner_scan_id=owner or None,
+        graph_owner_scan_id=owner if alignment == "aligned" else None,
         graph_alignment=alignment,
         reason=reason,
     )

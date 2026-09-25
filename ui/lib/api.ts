@@ -35,7 +35,6 @@ import type {
   GraphFilterPresetCreate,
   GraphRollupResponse,
   GraphSearchResponse,
-  GraphSemanticClustersResponse,
   GraphAgentsResponse,
   GraphDiffResponse,
   GraphEdgeChangesResponse,
@@ -53,7 +52,6 @@ import type {
   ScoreConfigUpdate,
   RemediationItem,
   FindingsResponse,
-  FindingListEnvelope,
   FindingTriageRequest,
   FindingTriageDecisionRequest,
   FindingTriageResponse,
@@ -77,28 +75,23 @@ import type {
   SourceRecord,
   SourcesResponse,
   SourceCreateRequest,
-  SourceUpdateRequest,
   SourceCheckResponse,
   SourceRunResponse,
-  SourceJobsResponse,
   JobsResponse,
   AgentsResponse,
   RegistryServer,
   RegistryResponse,
   ComplianceNarrativeResponse,
-  AISVSComplianceResponse,
   ComplianceResponse,
   NistCatalogDrill,
   CISBenchmarkChecksResponse,
   FrameworkCatalogsResponse,
   AgentDetailResponse,
   AgentLifecycleResponse,
-  FleetAgent,
   FleetResponse,
   FleetQuarantineResult,
   FleetStatsResponse,
   FleetSyncResult,
-  FleetEndpoint,
   FleetEndpointsResponse,
   ScanSchedule,
   ScheduleCreateRequest,
@@ -108,11 +101,8 @@ import type {
   GatewayStatsResponse,
   GatewayFeedResponse,
   GatewayFeedKpis,
-  FirewallRuntimeStats,
   EvaluateResult,
   PostureResponse,
-  EnrichmentPostureResponse,
-  GovernanceFinding,
   GovernanceReport,
   SelfPostureReport,
   SkillsScanReport,
@@ -123,13 +113,11 @@ import type {
   HitlApprovalQueueResponse,
   ProxyStatusResponse,
   ProxyAlertsResponse,
-  AuditEntry,
   AuditLogResponse,
   AuditIntegrityResponse,
   HubPostureResponse,
   CostReport,
   AnomaliesReport,
-  CostBudgetStatus,
   IdentitiesResponse,
   JITGrantsResponse,
   ConditionalAccessResponse,
@@ -148,7 +136,6 @@ import type {
   BlueprintDetailResponse,
   BlueprintVersionResponse,
   BlueprintSeedResponse,
-  BlueprintCreateRequest,
   WebhookSubscriptionsResponse,
   WebhookCreateRequest,
   WebhookCreateResponse,
@@ -505,7 +492,10 @@ export const PIPELINE_STEPS = [
 // children without each call site having to remember.
 
 import { ApiError, ApiNetworkError, classifyApiResponse } from "./api-errors";
-import { cachedGet, invalidate as _invalidate, type CacheOptions } from "./api-cache";
+import { cachedGet, clearCache as _clearCache, invalidate as _invalidate, type CacheOptions } from "./api-cache";
+
+// Cache keys and invalidation prefixes must share this format.
+const getCacheKey = (path: string) => `GET ${path}`;
 import type {
   DatasetCardsRequest,
   DatasetCardsResponse,
@@ -572,13 +562,18 @@ function _invalidationsFor(path: string): string[] {
 
 function _runInvalidations(path: string): void {
   for (const prefix of _invalidationsFor(path)) {
-    _invalidate(prefix);
+    _invalidate(getCacheKey(prefix));
   }
+}
+
+/** A session change, even a failed one, may change the principal; no prior response is reusable. */
+function _sessionChange(request: () => Promise<void>): Promise<void> {
+  return request().finally(_clearCache);
 }
 
 async function get<T>(path: string, options: GetOptions = {}): Promise<T> {
   const { timeoutMs, signal, ...cacheOptions } = options;
-  const key = `GET ${path}`;
+  const key = getCacheKey(path);
   const fetcher = async () => {
       const res = await _doFetch(path, {
         credentials: "include",
@@ -866,9 +861,9 @@ export const api = {
   updateTenantQuota: (body: TenantQuotaUpdateRequest) =>
     put<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota", body),
   resetTenantQuota: () => del("/v1/auth/quota"),
-  createDevAuthSession: () => postVoid("/v1/auth/dev-session", {}),
-  createAuthSession: (apiKey: string) => postVoid("/v1/auth/session", { api_key: apiKey }),
-  deleteAuthSession: () => del("/v1/auth/session"),
+  createDevAuthSession: () => _sessionChange(() => postVoid("/v1/auth/dev-session", {})),
+  createAuthSession: (apiKey: string) => _sessionChange(() => postVoid("/v1/auth/session", { api_key: apiKey })),
+  deleteAuthSession: () => _sessionChange(() => del("/v1/auth/session")),
   reportClientError: (body: { message: string; digest?: string | undefined; path?: string | undefined; component?: string | undefined }) =>
     post<{ ok: boolean }>("/v1/ui/errors", body),
   listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),
@@ -1041,14 +1036,6 @@ export const api = {
       { ...scenario, scenario_id: scenarioId },
     ),
 
-  deleteGraphScenario: (scenarioId: string, expectedRevision: number) => {
-    const params = new URLSearchParams({
-      expected_revision: String(expectedRevision),
-    });
-    return del(
-      `/v1/graph/scenarios/${encodeURIComponent(scenarioId)}?${params.toString()}`,
-    );
-  },
 
   /** Retained graph history with adjacent diff summaries — GET /v1/graph/history */
   getGraphHistory: (limit = 50, windowDays?: number) => {
@@ -1275,21 +1262,6 @@ export const api = {
     return get<GraphSearchResponse>(`/v1/graph/search?${params.toString()}`);
   },
 
-  /** Load API-backed semantic graph clusters without client-only inference */
-  getGraphClusters: (filters?: {
-    scanId?: string;
-    kinds?: string[];
-    minMembers?: number;
-    limit?: number;
-  }) => {
-    const params = new URLSearchParams();
-    if (filters?.scanId) params.set("scan_id", filters.scanId);
-    if (filters?.kinds && filters.kinds.length > 0) params.set("kinds", filters.kinds.join(","));
-    if (filters?.minMembers != null) params.set("min_members", String(filters.minMembers));
-    if (filters?.limit != null) params.set("limit", String(filters.limit));
-    const qs = params.toString();
-    return get<GraphSemanticClustersResponse>(`/v1/graph/clusters${qs ? `?${qs}` : ""}`);
-  },
 
   /** List agent nodes for large graph selectors without loading the full graph */
   listGraphAgents: (filters?: { query?: string; scanId?: string; offset?: number; limit?: number; cursor?: string }, signal?: AbortSignal) => {
@@ -1374,6 +1346,9 @@ export const api = {
       exposed?: boolean;
       toxic?: boolean;
       mode?: "rollup" | "attack_path";
+      /** Drill-down page; the server defaults to the first 200 children. */
+      offset?: number;
+      limit?: number;
     },
   ) => {
     const params = new URLSearchParams();
@@ -1383,6 +1358,8 @@ export const api = {
     if (options?.exposed) params.set("exposed", "true");
     if (options?.toxic) params.set("toxic", "true");
     if (options?.mode) params.set("mode", options.mode);
+    if (options?.offset) params.set("offset", String(options.offset));
+    if (options?.limit) params.set("limit", String(options.limit));
     const qs = params.toString();
     return get<GraphRollupResponse>(`/v1/graph/rollup${qs ? `?${qs}` : ""}`);
   },
@@ -1433,15 +1410,11 @@ export const api = {
   getCloudAccountSummary: (accountRef: string) =>
     get<AccountSummaryResponse>(`/v1/cloud/accounts/${encodeURIComponent(accountRef)}/summary`),
 
-  /** Configurable exec risk-score model + display config for this tenant (#3940) */
-  getScoreConfig: () => get<ScoreConfigRuntime>("/v1/overview/score-config"),
 
   /** Update the exec risk-score weights, thresholds, or display format (admin) */
   updateScoreConfig: (body: ScoreConfigUpdate) =>
     put<ScoreConfigRuntime>("/v1/overview/score-config", body),
 
-  /** Runtime health for external vulnerability enrichment sources */
-  getEnrichmentPosture: () => get<EnrichmentPostureResponse>("/v1/posture/enrichment"),
 
   /** Lightweight aggregate counts + scan context for nav badges */
   getPostureCounts: () => get<PostureCountsResponse>("/v1/posture/counts"),
@@ -1468,8 +1441,6 @@ export const api = {
     return get<NistCatalogDrill>(`/v1/compliance/nist-800-53${qs ? `?${qs}` : ""}`);
   },
 
-  /** Latest tenant-scoped OWASP AISVS benchmark posture */
-  getAISVSCompliance: () => get<AISVSComplianceResponse>("/v1/compliance/aisvs"),
 
   /**
    * Tenant-scoped cloud CIS benchmark checks with structured remediation.
@@ -1499,9 +1470,6 @@ export const api = {
   /** Auditor-ready compliance narrative for all tag-mapped frameworks */
   getComplianceNarrative: () => get<ComplianceNarrativeResponse>("/v1/compliance/narrative"),
 
-  /** Single-framework compliance narrative */
-  getComplianceNarrativeByFramework: (framework: string) =>
-    get<ComplianceNarrativeResponse>(`/v1/compliance/narrative/${encodeURIComponent(framework)}`),
 
   /** Compliance Hub: aggregate posture across native + ingested findings (#1044) */
   getHubPosture: () => get<HubPostureResponse>("/v1/compliance/hub/posture"),
@@ -1534,12 +1502,9 @@ export const api = {
     const qs = params.toString();
     return get<FleetResponse>(`/v1/fleet${qs ? `?${qs}` : ""}`);
   },
-  getFleetAgent: (agentId: string) => get<FleetAgent>(`/v1/fleet/${agentId}`),
   syncFleet: () => post<FleetSyncResult>("/v1/fleet/sync", {}),
   updateFleetState: (agentId: string, state: string, reason?: string) =>
     put<unknown>(`/v1/fleet/${agentId}/state`, { state, reason: reason ?? "" }),
-  updateFleetAgent: (agentId: string, update: Partial<FleetAgent>) =>
-    put<unknown>(`/v1/fleet/${agentId}`, update),
   /**
    * One-click containment: quarantine the agent AND mint an enforce-mode
    * gateway deny policy bound to its identity (fail closed, idempotent).
@@ -1561,22 +1526,16 @@ export const api = {
     const qs = params.toString();
     return get<FleetEndpointsResponse>(`/v1/fleet/endpoints${qs ? `?${qs}` : ""}`);
   },
-  getFleetEndpoint: (endpointId: string) =>
-    get<FleetEndpoint>(`/v1/fleet/endpoints/${encodeURIComponent(endpointId)}`),
 
   // ── Connectors / sources ──
   listConnectors: () => get<ConnectorsResponse>("/v1/connectors"),
   getConnectorHealth: (name: string) => get<ConnectorHealthResponse>(`/v1/connectors/${encodeURIComponent(name)}/health`),
   listDiscoveryProviders: () => get<DiscoveryProvidersResponse>("/v1/discovery/providers"),
   listSources: () => get<SourcesResponse>("/v1/sources"),
-  getSource: (sourceId: string) => get<SourceRecord>(`/v1/sources/${encodeURIComponent(sourceId)}`),
   createSource: (body: SourceCreateRequest) => post<SourceRecord>("/v1/sources", body),
-  updateSource: (sourceId: string, body: SourceUpdateRequest) =>
-    put<SourceRecord>(`/v1/sources/${encodeURIComponent(sourceId)}`, body),
   deleteSource: (sourceId: string) => del(`/v1/sources/${encodeURIComponent(sourceId)}`),
   testSource: (sourceId: string) => post<SourceCheckResponse>(`/v1/sources/${encodeURIComponent(sourceId)}/test`, {}),
   runSource: (sourceId: string) => post<SourceRunResponse>(`/v1/sources/${encodeURIComponent(sourceId)}/run`, {}),
-  listSourceJobs: (sourceId: string) => get<SourceJobsResponse>(`/v1/sources/${encodeURIComponent(sourceId)}/jobs`),
   listSchedules: () => get<ScanSchedule[]>("/v1/schedules"),
   createSchedule: (body: ScheduleCreateRequest) => post<ScanSchedule>("/v1/schedules", body),
   toggleSchedule: (scheduleId: string) => put<ScanSchedule>(`/v1/schedules/${scheduleId}/toggle`, {}),
@@ -1593,7 +1552,6 @@ export const api = {
   listGatewayPolicies: () => get<GatewayPolicyResponse>("/v1/gateway/policies"),
   createGatewayPolicy: (body: Partial<GatewayPolicy>) =>
     post<GatewayPolicy>("/v1/gateway/policies", body),
-  getGatewayPolicy: (id: string) => get<GatewayPolicy>(`/v1/gateway/policies/${id}`),
   updateGatewayPolicy: (id: string, body: Partial<GatewayPolicy>) =>
     put<GatewayPolicy>(`/v1/gateway/policies/${id}`, body),
   deleteGatewayPolicy: (id: string) => del(`/v1/gateway/policies/${id}`),
@@ -1607,7 +1565,6 @@ export const api = {
     return get<GatewayFeedResponse>(`/v1/gateway/feed?${params}`, { ttlMs: 0 });
   },
   getGatewayFeedKpis: () => get<GatewayFeedKpis>("/v1/gateway/feed/kpis"),
-  getFirewallStats: () => get<FirewallRuntimeStats>("/v1/firewall/stats"),
 
   // Operator self-posture — this instance's own control-plane hardening
   getSelfPosture: () => get<SelfPostureReport>("/v1/self-posture"),
@@ -1620,22 +1577,12 @@ export const api = {
 
   // Governance
   getGovernance: (days = 30) => get<GovernanceReport>(`/v1/governance?days=${days}`),
-  getGovernanceFindings: (days = 30, severity?: string, category?: string) => {
-    const params = new URLSearchParams({ days: String(days) });
-    if (severity) params.set("severity", severity);
-    if (category) params.set("category", category);
-    return get<FindingListEnvelope<GovernanceFinding>>(
-      `/v1/governance/findings?${params}`
-    );
-  },
 
   // Governance blueprints (persisted AI-system blueprints + versioning + approval)
   listBlueprints: (limit = 50, offset = 0) =>
     get<BlueprintListResponse>(`/v1/governance/blueprints?limit=${limit}&offset=${offset}`),
   getBlueprint: (blueprintId: string) =>
     get<BlueprintDetailResponse>(`/v1/governance/blueprints/${encodeURIComponent(blueprintId)}`),
-  createBlueprint: (body: BlueprintCreateRequest) =>
-    post<BlueprintVersionResponse>("/v1/governance/blueprints", body),
   seedBlueprints: () => post<BlueprintSeedResponse>("/v1/governance/blueprints/seed", {}),
   submitBlueprintVersion: (blueprintId: string, version: number) =>
     post<BlueprintVersionResponse>(
@@ -1743,10 +1690,6 @@ export const api = {
     return get<FindingsResponse>(`/v1/findings${qs ? `?${qs}` : ""}`);
   },
 
-  // ── Shield / Break-Glass ──
-  breakGlass: async (sessionId: string, reason: string) => {
-    return post<{ status: string; session_id: string }>('/v1/shield/break-glass', { session_id: sessionId, reason });
-  },
 
   // ── Exceptions (FP suppression) ──
   createException: (body: { vulnerability_id: string; package_name: string; reason: string }) =>
@@ -1831,20 +1774,6 @@ export const api = {
     "/v1/findings/false-positive",
     body,
   ),
-  listFalsePositives: () =>
-    get<{
-      false_positives: Array<{
-        id: string;
-        vulnerability_id: string;
-        package: string;
-        reason: string;
-        marked_by: string;
-        status: string;
-        created_at: string;
-      }>;
-      total: number;
-    }>("/v1/findings/false-positives"),
-  removeFalsePositive: (id: string) => del(`/v1/findings/false-positive/${id}`),
 
   // ── Finding triage and signed VEX ──
   createFindingTriage: (body: FindingTriageRequest) =>
@@ -1937,7 +1866,6 @@ export const api = {
     return get<AuditLogResponse>(`/v1/audit${qs ? `?${qs}` : ""}`);
   },
   getAuditIntegrity: (limit = 1000, includeRuntime = true) => get<AuditIntegrityResponse>(`/v1/audit/integrity?limit=${limit}&include_runtime=${includeRuntime}`),
-  getAuditLog: (limit?: number) => get<{ entries: AuditEntry[] }>(`/v1/audit?limit=${limit ?? 10}`),
 
   /**
    * Download a signed audit evidence packet (GET /v1/audit/export). Returns the
@@ -1981,8 +1909,6 @@ export const api = {
     const qs = params.toString();
     return get<CostReport>(`/v1/observability/costs${qs ? `?${qs}` : ""}`, { ttlMs: 0 });
   },
-  getCostBudget: (agent?: string) =>
-    get<CostBudgetStatus>(`/v1/observability/costs/budget${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`),
   /** Forward-looking burn-rate + budget-runway projection (reference only) */
   getCostForecast: (agent?: string) =>
     get<CostForecast>(`/v1/observability/costs/forecast${agent ? `?agent=${encodeURIComponent(agent)}` : ""}`, { ttlMs: 0 }),

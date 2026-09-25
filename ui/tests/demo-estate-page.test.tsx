@@ -216,26 +216,41 @@ describe("DemoEstatePage", () => {
     }
   });
 
-  it("names an operator-owned graph instead of linking to a missing showcase", async () => {
+  it("never links a non-demo graph from the demo page when the demo is blocked", async () => {
     apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
     apiMock.getDemoEstateStatus.mockResolvedValue({
       ...alignedStatus,
       showcase_available: false,
-      graph_owner_scan_id: "operator-import",
-      graph_alignment: "operator_default",
-      reason: "operator_snapshot_preserved",
+      graph_owner_scan_id: null,
+      graph_alignment: "blocked",
+      reason: "non_demo_snapshot_present",
     });
 
     render(<DemoEstatePage />);
 
     expect(await screen.findByTestId("demo-estate-graph-scope")).toHaveTextContent(
-      /operator scan owns the default graph/i,
+      /holds non-demo graph data/i,
     );
-    expect(screen.getByRole("link", { name: /Open operator graph/i })).toHaveAttribute(
+    expect(screen.queryByRole("link", { name: /graph/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the explicit showcase link when a blocked store still holds the showcase", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    apiMock.getDemoEstateStatus.mockResolvedValue({
+      ...alignedStatus,
+      showcase_available: true,
+      graph_owner_scan_id: null,
+      graph_alignment: "blocked",
+      reason: "non_demo_snapshot_present",
+    });
+
+    render(<DemoEstatePage />);
+
+    expect(await screen.findByTestId("demo-estate-graph-scope")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open security graph/i })).toHaveAttribute(
       "href",
-      "/security-graph?scan=operator-import",
+      `/security-graph?scan=${alignedStatus.showcase_snapshot_id}`,
     );
-    expect(screen.queryByRole("link", { name: /Open security graph/i })).not.toBeInTheDocument();
   });
 
   it("renders each finding as a chain, with counts that reconcile", async () => {

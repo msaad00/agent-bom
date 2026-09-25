@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from collections import Counter, deque
 from dataclasses import dataclass, field
@@ -46,6 +45,7 @@ from agent_bom.runtime.incident_feedback import (
     RuntimeIncidentSink,
 )
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +324,7 @@ class ProtectionEngine:
     @staticmethod
     def _state_path() -> Path:
         """Path to the persistent kill-switch state file."""
-        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        state_dir = state_home.state_dir()
         state_dir.mkdir(parents=True, exist_ok=True)
         return state_dir / "killswitch.json"
 

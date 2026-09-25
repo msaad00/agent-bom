@@ -25,6 +25,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, Mapping, Protocol, cast
 
+from agent_bom.storage import state_home
+
 SideScanProvider = Literal["aws", "azure", "gcp"]
 
 LIFECYCLE_SCHEMA_VERSION = "agent-bom.cwpp.side_scan.lifecycle.v1"
@@ -1207,7 +1209,7 @@ def get_side_scan_state_store(*, state_db_path: str | Path | None = None) -> Sid
         elif backend == "memory":
             _default_side_scan_store = InMemorySideScanStateStore()
         else:
-            state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", str(Path.home() / ".agent-bom")))
+            state_dir = state_home.state_dir()
             state_dir.mkdir(parents=True, exist_ok=True)
             _default_side_scan_store = SQLiteSideScanStateStore(state_dir / "side_scan_state.db")
         return _default_side_scan_store

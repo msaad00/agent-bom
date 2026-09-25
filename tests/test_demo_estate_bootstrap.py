@@ -232,9 +232,10 @@ def test_demo_estate_status_exposes_the_default_graph_owner(
     }
 
 
-def test_demo_estate_status_names_an_operator_owned_default_graph(
+def test_demo_estate_status_never_presents_a_non_demo_snapshot(
     demo_estate_client: TestClient,
 ) -> None:
+    """A non-showcase snapshot in the demo store blocks the demo instead of being shown as sample data."""
     from agent_bom.api import stores as api_stores
     from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
     from agent_bom.demo_estate.showcase_graph import (
@@ -259,16 +260,18 @@ def test_demo_estate_status_names_an_operator_owned_default_graph(
     )
     api_stores._get_graph_store().save_graph(operator_graph)
     summary = maybe_bootstrap_demo_estate()
-    assert summary["graph_owner_scan_id"] == "operator-scan"
+    assert summary["seeded"] is False
+    assert summary["blocked"] == "non_demo_snapshot_present"
 
     response = demo_estate_client.get("/v1/demo-estate/status", headers=VIEWER)
 
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["showcase_available"] is True
-    assert payload["graph_owner_scan_id"] == "operator-scan"
-    assert payload["graph_alignment"] == "operator_default"
-    assert payload["reason"] == "operator_snapshot_preserved"
+    assert payload["graph_owner_scan_id"] is None
+    assert payload["graph_alignment"] == "blocked"
+    assert payload["reason"] == "non_demo_snapshot_present"
+    assert "operator-scan" not in response.text
 
 
 def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: TestClient) -> None:

@@ -12,6 +12,8 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
+from agent_bom.storage import state_home
+
 
 @click.command("doctor")
 def doctor_cmd() -> None:
@@ -49,7 +51,7 @@ def doctor_cmd() -> None:
         from pathlib import Path
 
         _db_env = _os.environ.get("AGENT_BOM_SCAN_CACHE")
-        db_path = Path(_db_env) if _db_env else Path.home() / ".agent-bom" / "scan_cache.db"
+        db_path = Path(_db_env) if _db_env else state_home.state_path("scan_cache.db")
         if db_path.exists():
             size_kb = db_path.stat().st_size // 1024
             # Count cached entries to distinguish "empty" from "populated"

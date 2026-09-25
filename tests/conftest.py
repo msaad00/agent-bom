@@ -29,10 +29,85 @@ os.environ.setdefault("COLUMNS", "200")
 # CRITICAL state to the real home dir, and a later ProtectionEngine.start() on
 # the same xdist worker restores it — leaking "critical" into unrelated shield
 # tests. Each worker process gets its own dir, so workers never collide.
-os.environ.setdefault(
-    "AGENT_BOM_STATE_DIR",
-    str(Path(tempfile.mkdtemp(prefix="agent-bom-test-state-")).resolve()),
+#
+# The suite must never read or write the real home either: several stores
+# default to ``Path.home()`` paths, and module-level path constants are computed
+# at import time. Point HOME at a throwaway per-process dir BEFORE any agent_bom
+# import, and force (not setdefault) the state dir so a developer's exported
+# AGENT_BOM_STATE_DIR / store paths can never be the suite's write target.
+_TEST_HOME = str(Path(tempfile.mkdtemp(prefix="agent-bom-test-home-")).resolve())
+_TEST_STATE_DIR = str(Path(tempfile.mkdtemp(prefix="agent-bom-test-state-")).resolve())
+os.environ["HOME"] = _TEST_HOME
+os.environ["AGENT_BOM_STATE_DIR"] = _TEST_STATE_DIR
+# The suite's state dir doubles as the pinned demo data dir, so demo-estate
+# tests run "isolated" without ever resolving a product directory.
+os.environ["AGENT_BOM_DEMO_STATE_DIR"] = _TEST_STATE_DIR
+_REAL_STORE_PATH_ENVS = (
+    "AGENT_BOM_DB",
+    "AGENT_BOM_GRAPH_DB",
+    "AGENT_BOM_LOCAL_ANALYTICS_DB",
+    "AGENT_BOM_SCAN_CACHE",
+    "AGENT_BOM_DELIVERY_DB",
+    "AGENT_BOM_POSTURE_WEBHOOK_OUTBOX_DB",
+    "AGENT_BOM_ADOPTION_EVENTS_DB",
+    "AGENT_BOM_SIDE_SCAN_STATE_DB",
+    "AGENT_BOM_REPORT_ARTIFACT_DIR",
+    "AGENT_BOM_MITRE_CATALOG_PATH",
+    "AGENT_BOM_ATLAS_CATALOG_PATH",
+    "AGENT_BOM_DEMO_ESTATE",
 )
+for _var in _REAL_STORE_PATH_ENVS:
+    os.environ.pop(_var, None)
+# Commits made by tests need an identity; the throwaway HOME has no config.
+for _var, _value in (
+    ("GIT_AUTHOR_NAME", "agent-bom tests"),
+    ("GIT_AUTHOR_EMAIL", "tests@example.invalid"),
+    ("GIT_COMMITTER_NAME", "agent-bom tests"),
+    ("GIT_COMMITTER_EMAIL", "tests@example.invalid"),
+):
+    os.environ.setdefault(_var, _value)
+
+
+_ISOLATED_ENV = {
+    "HOME": _TEST_HOME,
+    "AGENT_BOM_STATE_DIR": _TEST_STATE_DIR,
+    "AGENT_BOM_DEMO_STATE_DIR": _TEST_STATE_DIR,
+}
+
+
+_TEMP_ROOTS = tuple({Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve()})
+
+
+def _is_temporary_path(value: str | None) -> bool:
+    if not value:
+        return False
+    resolved = Path(value).expanduser().resolve()
+    return any(resolved.is_relative_to(root) for root in _TEMP_ROOTS)
+
+
+def _pin_isolated_env() -> None:
+    # A broader-scoped fixture may already point these at its own temp dir;
+    # keep that. Anything missing or non-temporary is re-pinned.
+    for name, value in _ISOLATED_ENV.items():
+        if not _is_temporary_path(os.environ.get(name)):
+            os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
+def _isolate_home_and_state_dir():
+    """Guarantee HOME and the data dirs are temporary around every test.
+
+    A test that deletes them or points them at a non-temporary path is reset
+    before the next test, so no test can resolve the real home through a
+    leaked environment. Restores by hand rather than via ``monkeypatch`` for
+    the teardown-ordering reason given in ``_no_vuln_db_download``.
+    """
+    _pin_isolated_env()
+    try:
+        yield
+    finally:
+        _pin_isolated_env()
+
 
 # The control-plane lifecycle stores (agent identity, JIT grants, runtime
 # session/event) are durable-by-default in production: without config they now

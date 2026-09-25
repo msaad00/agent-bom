@@ -27,7 +27,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_DB_PATH = Path.home() / ".agent-bom" / "assets.db"
+from agent_bom.storage import state_home
+
+# Test/embedding override; ``None`` resolves under the active state dir per call.
+DEFAULT_DB_PATH: Optional[Path] = None
+
+
+def default_assets_db_path() -> Path:
+    return DEFAULT_DB_PATH if DEFAULT_DB_PATH is not None else state_home.state_path("assets.db")
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS assets (
@@ -61,7 +69,7 @@ class AssetTracker:
     """SQLite-backed vulnerability asset tracker."""
 
     def __init__(self, db_path: Optional[Path] = None, *, tenant_id: str = "default") -> None:
-        self._db_path = db_path or DEFAULT_DB_PATH
+        self._db_path = db_path or default_assets_db_path()
         self._tenant_id = tenant_id or "default"
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self._db_path))

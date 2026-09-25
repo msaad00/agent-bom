@@ -77,8 +77,15 @@ from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import resolved_cors_origins_raw
 from agent_bom.output.brand_tokens import POSITIONING_META, PRODUCT_NAME, TAGLINE_CHAIN
+from agent_bom.storage import state_home as _state_home
 
 _logger = logging.getLogger(__name__)
+
+# Demo estate mode must resolve every default local store under its own data
+# directory. Pin it before anything below lazily opens a store; this covers
+# ``uvicorn agent_bom.api.server:app`` and multi-worker re-imports as well as
+# the CLI, which activates it earlier.
+_state_home.activate_demo_state_dir()
 _DASHBOARD_CSP_META_RE = re.compile(
     r"<meta\s+[^>]*(?:http-equiv|httpEquiv)=[\"']Content-Security-Policy[\"'][^>]*>",
     re.IGNORECASE,
@@ -443,6 +450,7 @@ def _enqueue_scheduled_scan(
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
+    _state_home.activate_demo_state_dir()
     _log_control_plane_auth_posture()
     warn_if_ephemeral_hmac_key()
     _apply_worker_thread_limit()

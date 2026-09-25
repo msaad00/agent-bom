@@ -15,6 +15,7 @@ from typing import Any, Optional
 import click
 
 from agent_bom.cli._common import LISTEN_PORT_RANGE
+from agent_bom.storage import state_home
 
 
 def _require_optional_dependencies(command: str, extra: str, modules: dict[str, str]) -> None:
@@ -465,7 +466,7 @@ def _maybe_seed_local_connection_key(*, host: str, allow_insecure_no_auth: bool)
     if connections_key_configured():
         return None
     try:
-        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        state_dir = state_home.state_dir()
         path = seed_local_connection_key(state_dir)
     except Exception:  # noqa: BLE001 - never block boot; stay fail-closed on connect
         return None
@@ -511,6 +512,16 @@ def _api_auth_summary(
         "auth required but no key configured; requests fail closed (401). "
         "Pass --allow-insecure-no-auth for a local demo, or set --api-key / AGENT_BOM_API_KEY."
     )
+
+
+def _activate_demo_state_dir_or_fail() -> Path | None:
+    """Pin demo-estate mode to its own data directory before any store opens."""
+    from agent_bom.storage.state_home import activate_demo_state_dir
+
+    try:
+        return activate_demo_state_dir()
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 def _storage_summary(*, persist: str | None) -> str:
@@ -578,7 +589,11 @@ def _analytics_summary_rows(
     "--persist",
     default=None,
     metavar="DB_PATH",
-    help="Enable persistent job storage via SQLite (for example ~/.agent-bom/control-plane.db).",
+    help=(
+        "SQLite database for API jobs, the graph, and control-plane stores (sets AGENT_BOM_DB; "
+        "for example ~/.agent-bom/control-plane.db). Other local state (assets, analytics, caches) "
+        "stays under AGENT_BOM_STATE_DIR (default ~/.agent-bom)."
+    ),
 )
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option(
@@ -720,6 +735,7 @@ def serve_cmd(
     persist_path = str(Path(persist).expanduser().resolve()) if persist else None
     if persist_path:
         _os.environ["AGENT_BOM_DB"] = persist_path
+    demo_state_dir = _activate_demo_state_dir_or_fail()
     if cors_allow_all:
         _os.environ["AGENT_BOM_CORS_ALL"] = "1"
     # REST-only mode: signal the API app (imported below) to skip mounting the
@@ -793,6 +809,7 @@ def serve_cmd(
         ),
         ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
         ("Storage", _storage_summary(persist=persist_path)),
+        *([("Demo data", str(demo_state_dir))] if demo_state_dir else []),
         *_analytics_summary_rows(
             resolved_backend=resolved_backend,
             resolved_url=resolved_url,
@@ -884,7 +901,11 @@ def serve_cmd(
     "--persist",
     default=None,
     metavar="DB_PATH",
-    help="Enable persistent job storage via SQLite (e.g. --persist jobs.db). Jobs survive restarts.",
+    help=(
+        "SQLite database for API jobs, the graph, and control-plane stores (sets AGENT_BOM_DB; "
+        "e.g. --persist jobs.db). Other local state (assets, analytics, caches) stays under "
+        "AGENT_BOM_STATE_DIR (default ~/.agent-bom)."
+    ),
 )
 @click.option(
     "--log-level",
@@ -1007,6 +1028,10 @@ def api_cmd(
 
     if demo_estate:
         _os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
+    if persist:
+        persist = str(Path(persist).expanduser().resolve())
+        _os.environ["AGENT_BOM_DB"] = persist
+    demo_state_dir = _activate_demo_state_dir_or_fail()
 
     try:
         import uvicorn
@@ -1070,6 +1095,7 @@ def api_cmd(
         ),
         ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
         ("Storage", _storage_summary(persist=persist)),
+        *([("Demo data", str(demo_state_dir))] if demo_state_dir else []),
         *_analytics_summary_rows(
             resolved_backend=resolved_backend,
             resolved_url=resolved_url,

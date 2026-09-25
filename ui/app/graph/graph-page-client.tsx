@@ -4,6 +4,7 @@ import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
 import { nodeRiskAssessment, nodeRiskLabel } from "@/lib/node-risk-assessment";
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
 import { relationshipEdgeTypes } from "@/components/relationship-edge";
+import { GraphRollupChildPager } from "@/components/graph-rollup-child-pager";
 import { GraphRollupCountNotice } from "@/components/graph-rollup-count-notice";
 import { completeDirectedHopCount, visibleGraphFocus } from "@/lib/security-graph-focus";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -824,6 +825,8 @@ function GraphPageInner() {
       ) === "off",
   );
   const [loadingRollup, setLoadingRollup] = useState(false);
+  // Keyed to the drill scope so a new node or filter always starts at page one.
+  const [rollupChildPage, setRollupChildPage] = useState<{ key: string; offset: number } | null>(null);
   const [rollupError, setRollupError] = useState<string | null>(null);
   const [rollupUnavailable, setRollupUnavailable] = useState(false);
   const [rollupMapExpanded, setRollupMapExpanded] = useState(false);
@@ -1383,6 +1386,8 @@ function GraphPageInner() {
     setRollupMapExpanded(false);
   }, [rollupView?.mode, rollupView?.node?.id]);
 
+  const rollupChildPageKey = `${selectedScanId ?? ""}\u0000${rollupStack.at(-1)?.id ?? ""}\u0000${filters.severity ?? ""}`;
+
   useEffect(() => {
     if (!selectedScanId || !rollupEligible || rollupDismissed) {
       return;
@@ -1393,11 +1398,13 @@ function GraphPageInner() {
     setRollupError(null);
     setRollupUnavailable(false);
     const drillNode = rollupStack.at(-1)?.id;
+    const childOffset = drillNode && rollupChildPage?.key === rollupChildPageKey ? rollupChildPage.offset : 0;
 
     api
       .getGraphRollup(selectedScanId, {
         ...(drillNode ? { node: drillNode } : {}),
         ...(filters.severity ? { minSeverity: filters.severity } : {}),
+        ...(childOffset ? { offset: childOffset } : {}),
       })
       .then((result) => {
         if (cancelled) return;
@@ -1437,6 +1444,8 @@ function GraphPageInner() {
     rollupStack,
     filters.severity,
     graphRetry,
+    rollupChildPage,
+    rollupChildPageKey,
   ]);
 
   const flow = useMemo(() => {
@@ -3813,6 +3822,12 @@ function GraphPageInner() {
             </section>
           )}
           {rollupNavigationActive && !loadingRollup && <GraphRollupCountNotice metadata={rollupView?.aggregate_count_metadata} />}
+          {rollupNavigationActive && !loadingRollup && rollupView?.mode === "drilldown" && (
+            <GraphRollupChildPager
+              pagination={rollupView.pagination}
+              onPage={(offset) => setRollupChildPage({ key: rollupChildPageKey, offset })}
+            />
+          )}
           {!rollupDecisionActive && (selectedScenarioId || investigationMode || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (
             <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground" data-testid="graph-viewport-scope">
               <span>{scenarioContextIds ? `Changes and neighbors · ${displayNodes.length} of ${aggregated.nodes.length} nodes` : graphViewport.zoom >= 1 ? "Focused view" : "Topology view"} · {displayNodes.length.toLocaleString()} displayed nodes · {displayEdges.length.toLocaleString()} displayed relationships</span>

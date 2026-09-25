@@ -12,7 +12,6 @@ Pluggable detectors that analyze MCP JSON-RPC traffic in real-time:
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from collections import deque
@@ -40,6 +39,7 @@ from agent_bom.runtime.patterns import (
     PII_PATTERNS as _PII_PATTERNS,
 )
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
+from agent_bom.storage import state_home
 
 
 class AlertSeverity(str, Enum):
@@ -180,7 +180,7 @@ class ToolDriftDetector:
 
     @staticmethod
     def _baseline_path() -> Path:
-        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        state_dir = state_home.state_dir()
         state_dir.mkdir(parents=True, exist_ok=True)
         return state_dir / "drift_baseline.json"
 

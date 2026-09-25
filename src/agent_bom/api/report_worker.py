@@ -15,6 +15,7 @@ from agent_bom.api.models import JobStatus, ReportJob
 from agent_bom.api.report_artifact_store import publish_report_artifact
 from agent_bom.api.report_job_store import ReportClaim, ReportJobStore, get_report_job_store
 from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.storage import state_home
 
 _logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def report_artifact_root() -> Path:
     raw = (os.environ.get("AGENT_BOM_REPORT_ARTIFACT_DIR") or "").strip()
     if raw:
         return Path(raw)
-    return Path.home() / ".agent-bom" / "report-artifacts"
+    return state_home.state_path("report-artifacts")
 
 
 def _artifact_path(tenant_id: str, job_id: str) -> Path:

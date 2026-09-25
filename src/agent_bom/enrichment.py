@@ -25,6 +25,7 @@ from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
 from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability, compute_confidence
+from agent_bom.storage import state_home
 
 
 def _finalize_confidence(vulnerabilities: list[Vulnerability]) -> None:
@@ -59,7 +60,7 @@ def _state_dir() -> Path:
     Redirects every enrichment cache write off ``$HOME`` when the operator
     points the state dir elsewhere (e.g. ``/tmp`` on a tiny CloudShell home).
     """
-    return Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+    return state_home.state_dir()
 
 
 # Cache for CISA KEV catalog (refresh daily, persisted to disk)

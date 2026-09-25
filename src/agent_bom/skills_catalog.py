@@ -6,12 +6,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_SKILLS_CATALOG = Path.home() / ".agent-bom" / "skills" / "catalog.json"
+from agent_bom.storage import state_home
 
 
 def skills_catalog_path(path: str | Path | None = None) -> Path:
     """Return the catalog path, creating its parent directory."""
-    resolved = Path(path) if path is not None else DEFAULT_SKILLS_CATALOG
+    resolved = Path(path) if path is not None else state_home.state_path("skills", "catalog.json")
     resolved.parent.mkdir(parents=True, exist_ok=True)
     return resolved
 

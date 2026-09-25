@@ -1766,7 +1766,7 @@ function GraphPageInner() {
       // while keeping the same non-overlap guarantee.
       dagreLr: readableLineageDagreLr(
         selectedAttackPath
-          ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
+          ? { rankSep: 144, nodeSep: 56, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
           : compactInvestigationTopology
             ? investigationLayout
           : selectedScenarioId

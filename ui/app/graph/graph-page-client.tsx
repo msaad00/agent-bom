@@ -1870,7 +1870,7 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen render band
   // keeps dense graphs readable without changing node positions or data.
   const lodBand = useLodBand();
-  const effectiveLodBand = compactInvestigationTopology || compactGroupedTopology || (scenarioContextIds && graphViewport.zoom >= 0.85) ? "detail" : effectiveLodBandForGraph(lodBand, {
+  const effectiveLodBand = compactInvestigationTopology || compactGroupedTopology || (scenarioContextIds && scenarioContextIds.size <= 8) ? "detail" : effectiveLodBandForGraph(lodBand, {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,

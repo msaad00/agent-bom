@@ -18,6 +18,7 @@ tests cover the consume direction:
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import threading
@@ -502,21 +503,28 @@ def test_explicit_deny_blocks_when_signed_analysis_is_incomplete():
 
 def test_explicit_deny_revokes_cached_bundle_after_output_is_purged():
     calls = 0
+    first_request_served = threading.Event()
 
     async def _fetch():
         nonlocal calls
         calls += 1
         if calls == 1:
             return _signed_bundle()
+        # Purge only after the first request saw the cached bundle, so a slow
+        # worker cannot revoke it before that request is evaluated.
+        while not first_request_served.is_set():
+            await asyncio.sleep(0.005)
         raise RuntimeFactsBundleError("correlation_output_unavailable")
 
     audit: list[dict[str, Any]] = []
     with TestClient(create_gateway_app(_bundle_settings(_fetch, failure_mode="deny", poll_seconds=0.01, audit=audit))) as client:
         assert _is_allowed(client.post("/mcp/filesystem", json=_call(tool="list_files")))
+        first_request_served.set()
         deadline = time.monotonic() + 1
-        while calls < 2 and time.monotonic() < deadline:
+        # A third poll only starts once the purge failure has been handled.
+        while calls < 3 and time.monotonic() < deadline:
             time.sleep(0.01)
-        assert calls >= 2
+        assert calls >= 3
         resp = client.post("/mcp/filesystem", json=_call(tool="list_files"))
 
     assert _is_blocked(resp), resp.text

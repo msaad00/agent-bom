@@ -1274,11 +1274,14 @@ def test_mcp_registry_lookup_never_matches_generic_tokens_or_local_scripts(name,
     assert get_registry_entry(server) is None
 
 
+_FS_SERVER = "@modelcontextprotocol/server-filesystem"
+
+
 @pytest.mark.parametrize(
     ("command", "args", "expected", "version"),
     [
-        ("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/Users/dev/projects"], "@modelcontextprotocol/server-filesystem", None),
-        ("npx", ["-y", "@modelcontextprotocol/server-filesystem@2025.1.14", "/tmp"], "@modelcontextprotocol/server-filesystem", "2025.1.14"),
+        ("npx", ["-y", _FS_SERVER, "/Users/dev/projects"], _FS_SERVER, None),
+        ("npx", ["-y", f"{_FS_SERVER}@2025.1.14", "/tmp"], _FS_SERVER, "2025.1.14"),
         ("uvx", ["mcp-server-fetch==2025.4.7"], "mcp-server-fetch", "2025.4.7"),
         ("uvx", ["MCP_Server_Fetch"], "mcp-server-fetch", None),
     ],

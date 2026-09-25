@@ -1422,8 +1422,13 @@ def _bypass_contexts(text: str) -> set[str]:
 
 def test_hard_wrapped_negation_is_demoted_like_single_line():
     single = "Don't bypass safety checks (`--no-verify`, `--no-gpg-sign`) to make an obstacle go away.\n"
-    wrapped = "- If an obstacle appears, find the root cause. Don't bypass safety\nchecks (`--no-verify`, `--no-gpg-sign`) to make it go away.\n"
-    prose = "When a hook fails, find the root cause. Never skip the hooks or\nbypass safety checks with `--no-verify`; fix the failure instead.\n"
+    wrapped = (
+        "- If an obstacle appears, find the root cause. Don't bypass safety\nchecks (`--no-verify`, `--no-gpg-sign`) to make it go away.\n"
+    )
+    prose = (
+        "When a hook fails, find the root cause. Never skip the hooks or\n"
+        "bypass safety checks with `--no-verify`; fix the failure instead.\n"
+    )
     assert _bypass_contexts(single) == {"possibly_documentation"}
     assert _bypass_contexts(wrapped) == {"possibly_documentation"}
     assert _bypass_contexts(prose) == {"possibly_documentation"}

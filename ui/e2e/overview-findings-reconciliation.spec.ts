@@ -400,13 +400,10 @@ for (const theme of ["light", "dark"] as const) {
       expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(112);
       const cloudBox = (await unavailableLane.boundingBox())!;
       const appBox = (await page.getByTestId("coverage-lane-aspm").boundingBox())!;
-      if (width === 1440) {
-        expect(appBox.x).toBeGreaterThan(cloudBox.x + cloudBox.width);
-        expect(Math.abs(cloudBox.y - appBox.y)).toBeLessThan(2);
-      } else {
-        expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
-        expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
-      }
+      // Security areas use aligned full-width rows in both card widths.
+      expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
+      expect(Math.abs(cloudBox.width - appBox.width)).toBeLessThan(2);
+      expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
       await page.getByRole("tab", { name: "Posture", exact: true }).click();
       const scoreToggle = page.getByRole("button", { name: /What influences this score/ });

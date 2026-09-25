@@ -62,19 +62,19 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
   return (
     <section
       data-testid="nhi-governance-panel"
-      className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4"
+      className="rounded-2xl border border-outline bg-surface p-4"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-[color:var(--foreground)]">
+          <h2 className="text-sm font-semibold text-foreground">
             NHI governance posture
           </h2>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
+          <p className="mt-1 text-xs text-ink-tertiary">
             Discovered identities in {scanId ? "the selected" : "the latest available"} graph snapshot.
             Separate from identities issued and managed here.
           </p>
         </div>
-        {loading ? <Loader2 className="h-4 w-4 animate-spin text-[color:var(--text-tertiary)]" /> : null}
+        {loading ? <Loader2 className="h-4 w-4 animate-spin text-ink-tertiary" /> : null}
       </div>
 
       {error ? (
@@ -85,16 +85,16 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
             {counts.slice(0, 8).map((entry) => (
               <div
                 key={entry.key}
-                className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5"
+                className="rounded-lg border border-outline bg-surface-elevated px-2.5 py-1.5"
               >
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-ink-tertiary">
                   {entry.label}
                 </p>
-                <p className="font-mono text-sm text-[color:var(--foreground)]">{entry.value}</p>
+                <p className="font-mono text-sm text-foreground">{entry.value}</p>
               </div>
             ))}
             {!loading && counts.length === 0 ? (
-              <p className="text-xs text-[color:var(--text-tertiary)]">
+              <p className="text-xs text-ink-tertiary">
                 No NHI count rollups for this snapshot.
               </p>
             ) : null}
@@ -124,13 +124,13 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
                   <li key={id}>
                     <Link
                       href={href}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs transition hover:border-[color:var(--border-strong)]"
+                      className="flex items-center justify-between gap-2 rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-xs transition hover:border-outline-strong"
                     >
                       <span className="inline-flex min-w-0 items-center gap-2">
                         <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                        <span className="min-w-0 text-[color:var(--foreground)]"><span className="block break-words">{label}</span><code className="mt-1 block break-all text-[10px] text-ink-secondary">{id}</code></span>
+                        <span className="min-w-0 text-foreground"><span className="block break-words">{label}</span><code className="mt-1 block break-all text-[10px] text-ink-secondary">{id}</code></span>
                       </span>
-                      <span className="font-mono text-[color:var(--text-secondary)]">{score}</span>
+                      <span className="font-mono text-ink-secondary">{score}</span>
                     </Link>
                   </li>
                 );

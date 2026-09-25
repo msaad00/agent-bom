@@ -450,7 +450,7 @@ test("webgl overview exposes its nodes and edges as text", async ({ page }) => {
   const rows = equivalent.locator("tbody tr");
   expect(await rows.count()).toBeGreaterThan(10);
   await expect(equivalent).toContainText(/Listing \d+ of [\d,]+ drawn nodes/);
-  await expect(equivalent).toContainText(/Listing \d+ of [\d,]+ drawn relationships/);
+  await expect(equivalent).toContainText(/Listing \d+ of [\d,]+ available relationships/);
 });
 
 test("retired renderer=webgl opt-in still lands on the WebGL overview", async ({ page }, testInfo: TestInfo) => {
@@ -467,7 +467,7 @@ test("retired renderer=webgl opt-in still lands on the WebGL overview", async ({
   await expect(sigma).toBeVisible({ timeout: 30_000 });
   // Exact: the surface's screen-reader text equivalent names the renderer too.
   await expect(sigma.getByText("Estate map", { exact: true })).toBeVisible();
-  await expect(sigma.getByText(/Select an asset to investigate its related evidence/)).toBeVisible();
+  await expect(sigma.getByText(/Select an asset to reveal its connections/)).toBeVisible();
   await expectSigmaCanvases(page);
   await captureRenderedRegion(page, sigma, testInfo.outputPath("sigma-webgl-overview.png"));
 });
@@ -538,7 +538,7 @@ for (const width of [1100, 1440]) {
     };
     await expect.poll(visibleBesideDetails).toBe(true);
     await drawer.getByRole("separator", { name: "Resize drawer" }).press("ArrowLeft");
-    await page.getByRole("button", { name: "Focus selection", exact: true }).click();
+    await page.getByRole("button", { name: "Readable view", exact: true }).click();
     await expect.poll(visibleBesideDetails).toBe(true);
     await page.getByRole("button", { name: "Switch to light theme" }).click();
     await expect.poll(visibleBesideDetails).toBe(true);
@@ -747,7 +747,7 @@ test("estate map renders a recorded scan without fabricating environment metadat
   console.info(JSON.stringify({ evidence: artifact ? "local offline repository scan" : "synthetic CI fixture", nodes: graph.nodes.length, edges: graph.edges.length, readyMs, groupingMs }));
   await sigma.getByText(/Environment groups/).click();
   await expect(sigma.getByText(/Unknown fields stay unknown/)).toBeVisible();
-  await expect(sigma.getByText(`Displayed: ${graph.nodes.length.toLocaleString()}/${graph.nodes.length.toLocaleString()} nodes, ${graph.edges.length.toLocaleString()}/${graph.edges.length.toLocaleString()} edges.`, { exact: true })).toBeVisible();
+  await expect(sigma.getByText(`Displayed: ${graph.nodes.length.toLocaleString()}/${graph.nodes.length.toLocaleString()} nodes · ${graph.edges.length.toLocaleString()}/${graph.edges.length.toLocaleString()} available connections.`, { exact: true })).toBeVisible();
   await expectSigmaCanvases(page);
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.screenshot({ path: testInfo.outputPath("recorded-scan-map.png"), fullPage: true });

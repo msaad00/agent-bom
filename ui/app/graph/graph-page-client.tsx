@@ -124,6 +124,7 @@ import {
 import {
   graphFitViewOptions,
   graphInitialFitViewOptions,
+  graphReadableFitViewOptions,
   shouldShowGraphMiniMap,
 } from "@/lib/graph-viewport";
 import {
@@ -1542,6 +1543,9 @@ function GraphPageInner() {
   // copied address bar reproduces the view but back/forward isn't spammed.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // A destination can render before navigation commits. Writing native
+    // history then would replace the origin route and interrupt the drill-in.
+    if (window.location.pathname !== pathname) return;
     // Read the live address bar rather than useSearchParams(): on this page the
     // filter/layout state churns rapidly on load and useSearchParams() can lag
     // or read empty across those re-renders. The current query drives the
@@ -2350,10 +2354,9 @@ function GraphPageInner() {
     void reactFlow.fitView({ ...viewportOptions, duration: 240 });
   }, [reactFlow, viewportOptions]);
   const fitSelection = useCallback(async () => {
-    if (!selectedNodeId) return;
-    const node = reactFlow.getNode(selectedNodeId);
-    if (!node) return;
-    await reactFlow.fitView({ nodes: [node], padding: 0.7, maxZoom: 1.4 });
+    const framing = graphReadableFitViewOptions(displayNodes, viewportOptions, selectedNodeId ?? investigationMode?.rootId);
+    if (!framing.nodes?.length) return;
+    await reactFlow.fitView(framing);
     const canvas = document.querySelector(".react-flow");
     const drawer = document.querySelector('[data-testid="graph-entity-drawer"]');
     const drawerWidth = drawer?.getBoundingClientRect().width ?? 0;
@@ -2361,7 +2364,7 @@ function GraphPageInner() {
       const viewport = reactFlow.getViewport();
       void reactFlow.setViewport({ ...viewport, x: viewport.x - drawerWidth / 2 });
     }
-  }, [reactFlow, selectedNodeId]);
+  }, [displayNodes, investigationMode?.rootId, reactFlow, selectedNodeId, viewportOptions]);
 
   const autoLayout = useCallback(() => {
     presentation.autoLayout();
@@ -3845,7 +3848,7 @@ function GraphPageInner() {
               {selectedScenarioId && !attackPathLens && !selectedAttackPath && !investigationMode && <button type="button" onClick={() => setExpandedScenarioId(scenarioExpanded ? null : selectedScenarioId)} className="text-foreground underline underline-offset-4">{scenarioExpanded ? "Focus changes" : "Show full graph"}</button>}
               {showMiniMap && <button type="button" aria-pressed={minimapExpanded} onClick={() => setMinimapExpanded((value) => !value)} className="text-foreground underline underline-offset-4">{minimapExpanded ? "Hide minimap" : "Show minimap"}</button>}
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
-              {selectedNodeId && <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4">Focus selection</button>}
+              <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4" title="Focus an asset at readable zoom; pan to follow its connections">Readable view</button>
             </div>
           )}
           <div className="relative flex min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
@@ -4071,7 +4074,7 @@ async function quarantineAgentByLabel(label: string): Promise<string> {
   return match.agent_id;
 }
 
-function ReachabilityDrillInPanel({
+export function ReachabilityDrillInPanel({
   summary,
   loading,
   error,
@@ -4092,31 +4095,31 @@ function ReachabilityDrillInPanel({
 }) {
   const affectedCount = summary ? Math.max(0, summary.nodeIds.size - 1) : 0;
   return (
-    <div className="mt-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-foreground">
+    <div className="mt-3 rounded-2xl border border-outline bg-surface p-3 text-xs text-foreground">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2">
-          <Route className="mt-0.5 h-4 w-4 text-rose-700 dark:text-rose-300" />
+          <Route className="mt-0.5 h-4 w-4 text-ink-secondary" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-rose-700 dark:text-rose-300">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-ink-secondary">
               Related graph context
             </p>
             <p className="mt-1 text-sm font-medium text-foreground">
               {summary
                 ? `${summary.rootLabel} · ${affectedCount} related node${affectedCount === 1 ? "" : "s"} returned`
-                : "Loading reachable graph"}
+                : "Loading related context"}
             </p>
             {summary?.truncated && (
-              <p className="mt-1 text-[11px] text-amber-200">
+              <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">
                 Partial context. Narrow the scope or return to Summary to drill into a smaller group.
               </p>
             )}
             {error && (
-              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+              <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">{error}</p>
             )}
             {loading && (
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-rose-200">
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-ink-secondary">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Refreshing reachability
+                Refreshing related context
               </p>
             )}
           </div>
@@ -4133,7 +4136,7 @@ function ReachabilityDrillInPanel({
         <button
           type="button"
           onClick={onClear}
-          className="graph-chip-rose"
+          className="graph-chip-neutral"
         >
           Clear context
         </button>
@@ -4141,11 +4144,11 @@ function ReachabilityDrillInPanel({
       </div>
 
       {summary && (
-        <details className="mt-2 border-t border-rose-400/20 pt-2" data-testid="reachability-evidence-details">
+        <details className="mt-2 border-t border-outline pt-2" data-testid="reachability-evidence-details">
           <summary className="cursor-pointer font-medium">Types and paths · {summary.pathPreviews.length} path previews</summary>
           <div className="mt-2 space-y-3">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-ink-secondary">
                 Related by type
               </p>
               {Object.keys(summary.countsByType).length === 0 ? (
@@ -4169,7 +4172,7 @@ function ReachabilityDrillInPanel({
             </div>
 
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-ink-secondary">
                 Bounded paths
               </p>
               {summary.pathPreviews.length === 0 ? (

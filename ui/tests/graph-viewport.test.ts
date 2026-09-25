@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { graphFitViewOptions, graphInitialFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
+import { graphFitViewOptions, graphInitialFitViewOptions, graphReadableFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 
 describe("graph viewport framing", () => {
   it("zooms small operator-scoped graphs instead of leaving empty canvas", () => {
@@ -78,5 +78,23 @@ describe("readable initial graph focus", () => {
   it("retains full-fit framing for compact unselected graphs", () => {
     expect(graphInitialFitViewOptions(nodes.slice(0, 3), options)).toBe(options);
     expect(graphInitialFitViewOptions([], options)).toBe(options);
+  });
+});
+
+
+describe("explicit readable view", () => {
+  const nodes = [{ id: "b", data: {} }, { id: "a", data: {} }];
+  const options = graphFitViewOptions({ nodeCount: 2 });
+  it("uses a stable anchor without requiring a selected node", () => {
+    const fit = graphReadableFitViewOptions(nodes, options);
+    expect(fit.nodes).toEqual([{ id: "a" }]);
+    expect(fit.minZoom).toBeGreaterThanOrEqual(1);
+    expect(graphReadableFitViewOptions([...nodes].reverse(), options)).toEqual(fit);
+    expect(options).not.toHaveProperty("nodes");
+  });
+  it("keeps the selected asset and recovers from a stale selection", () => {
+    expect(graphReadableFitViewOptions(nodes, options, "b").nodes).toEqual([{ id: "b" }]);
+    expect(graphReadableFitViewOptions(nodes, options, "missing").nodes).toEqual([{ id: "a" }]);
+    expect(graphReadableFitViewOptions([], options)).toBe(options);
   });
 });

@@ -595,7 +595,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(anchor).toBeVisible();
       await expect.poll(async () => anchor.evaluate((element) => {
         const viewport = element.closest(".react-flow__viewport");
-        const title = [...element.querySelectorAll("*")].find((item) => item.childElementCount === 0 && item.textContent === "Desktop Agent");
+        const title = element.querySelector("p");
         if (!viewport || !title) return 0;
         return parseFloat(getComputedStyle(title).fontSize) * new DOMMatrixReadOnly(getComputedStyle(viewport).transform).a;
       })).toBeGreaterThanOrEqual(12);
@@ -629,6 +629,19 @@ for (const theme of ["light", "dark"] as const) {
       // The mobile minimum zoom still virtualizes offscreen nodes. Widening
       // the same graph proves all original membership remains available.
       await page.setViewportSize({ width: 1440, height: 811 });
+      await page.getByRole("button", { name: "Fit all", exact: true }).click();
+      await expect(page.locator(".react-flow__node")).toHaveCount(graph.nodes.length);
+      await expect(page.locator(".react-flow__edge")).toHaveCount(graph.edges.length);
+      // Recover readable framing without requiring a selected node. This must
+      // preserve graph membership rather than discard offscreen relationships.
+      await page.getByRole("button", { name: "Readable view", exact: true }).click();
+      await expect(anchor).toBeVisible();
+      await expect.poll(async () => anchor.evaluate((element) => {
+        const viewport = element.closest(".react-flow__viewport");
+        const title = element.querySelector("p");
+        if (!viewport || !title) return 0;
+        return parseFloat(getComputedStyle(title).fontSize) * new DOMMatrixReadOnly(getComputedStyle(viewport).transform).a;
+      })).toBeGreaterThanOrEqual(12);
       await page.getByRole("button", { name: "Fit all", exact: true }).click();
       await expect(page.locator(".react-flow__node")).toHaveCount(graph.nodes.length);
       await expect(page.locator(".react-flow__edge")).toHaveCount(graph.edges.length);

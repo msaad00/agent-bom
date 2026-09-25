@@ -25,6 +25,7 @@ export type RuntimeEvidenceTier = "static_scan" | "runtime_observed" | "runtime_
 
 export type LineageNodeData = {
   label: string;
+  reverseFlow?: boolean;
   nodeType: LineageNodeType;
   entityType?: string | undefined;
   status?: string | undefined;
@@ -169,12 +170,12 @@ function NodeCard({
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={data.reverseFlow ? Position.Right : Position.Left}
         className={`!w-2 !h-2 !bg-current ${target ? "" : "!opacity-0"}`}
       />
       <Handle
         type="source"
-        position={Position.Right}
+        position={data.reverseFlow ? Position.Left : Position.Right}
         className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
       />
       <div className="mb-1 flex min-w-0 items-start gap-2">
@@ -712,12 +713,12 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={data.reverseFlow ? Position.Right : Position.Left}
         className="!w-2 !h-2 !bg-sky-300"
       />
       <Handle
         type="source"
-        position={Position.Right}
+        position={data.reverseFlow ? Position.Left : Position.Right}
         className="!w-2 !h-2 !bg-sky-300"
       />
       <button type="button" aria-label={`Expand ${count} ${childType === "vulnerability" ? "findings" : "members"}`} className="nodrag nopan flex items-center gap-1.5 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-500">
@@ -788,12 +789,12 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={data.reverseFlow ? Position.Right : Position.Left}
         className="!w-1.5 !h-1.5"
       />
       <Handle
         type="source"
-        position={Position.Right}
+        position={data.reverseFlow ? Position.Left : Position.Right}
         className="!w-1.5 !h-1.5"
       />
       <div className="flex items-center gap-1">
@@ -833,12 +834,12 @@ function ClusterBubbleNode({ data }: { data: LineageNodeData }) {
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={data.reverseFlow ? Position.Right : Position.Left}
         className="!w-1 !h-1 !bg-transparent !border-0"
       />
       <Handle
         type="source"
-        position={Position.Right}
+        position={data.reverseFlow ? Position.Left : Position.Right}
         className="!w-1 !h-1 !bg-transparent !border-0"
       />
     </div>

@@ -46,7 +46,9 @@ export interface SigmaGraphOverviewModel {
   graph: Graph<SigmaNodeAttributes, SigmaEdgeAttributes>;
   overview: LargeGraphOverviewModel;
   summary: LargeGraphOverviewSummary;
-  groups: Array<{ key: string; label: string; x: number; y: number; count: number }>;
+  groups: Array<{ key: string; label: string; x: number; y: number; count: number; loadedCount: number; centerY: number }>;
+  connections: Array<{ source: string; target: string; count: number }>;
+  scopes: Array<{ key: string; label: string; count: number }>;
 }
 
 const SIGMA_DEFAULT_LAYERS: Record<LineageNodeType, boolean> = {
@@ -111,27 +113,54 @@ function edgeIsHighlighted(
   );
 }
 
+function scopeParts(node: Node<LineageNodeData>, grouping: "type" | "environment"): string[] {
+  if (grouping === "type") return [node.data.nodeType];
+  const { dimensions, attributes: attrs = {} } = node.data;
+  const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+  return [
+    text(dimensions?.cloud_provider) || text(attrs.provider) || text(attrs.cloud_provider) || "Provider unknown",
+    text(attrs.account_scope) || text(attrs.account_id) || text(attrs.project_id) || text(attrs.subscription_id) || "Account unknown",
+    text(dimensions?.environment) || text(attrs.environment) || "Environment unknown",
+  ];
+}
+
 export function buildSigmaGraphOverviewModel(
   nodes: Node<LineageNodeData>[],
   edges: Edge[],
   grouping: "type" | "environment" = "type",
+  scopeKey: string | null = null,
 ): SigmaGraphOverviewModel {
+  const scopeMap = new Map<string, { key: string; label: string; count: number }>();
+  const nodeScopes = new Map<string, string>();
+  for (const node of nodes) {
+    const parts = scopeParts(node, grouping);
+    const key = JSON.stringify(parts);
+    nodeScopes.set(node.id, key);
+    const scope = scopeMap.get(key) ?? { key, label: parts.join(" / "), count: 0 };
+    scope.count++;
+    scopeMap.set(key, scope);
+  }
+  const connections = new Map<string, { source: string; target: string; count: number }>();
+  if (!scopeKey) for (const edge of edges) {
+    const source = nodeScopes.get(edge.source), target = nodeScopes.get(edge.target);
+    if (!source || !target || source === target) continue;
+    const key = JSON.stringify([source, target]);
+    const connection = connections.get(key) ?? { source, target, count: 0 };
+    connection.count++;
+    connections.set(key, connection);
+  }
+  if (scopeKey) {
+    nodes = nodes.filter(node => nodeScopes.get(node.id) === scopeKey);
+    const ids = new Set(nodes.map(node => node.id));
+    edges = edges.filter(edge => ids.has(edge.source) && ids.has(edge.target));
+  }
   const overview = buildLargeGraphOverviewModel(nodes, edges);
   const groups: SigmaGraphOverviewModel["groups"] = [];
   {
-    const source = new Map(nodes.map((node) => [node.id, node.data]));
     const scopes = new Map<string, { label: string; nodes: typeof overview.nodes }>();
     for (const node of overview.nodes) {
-      const data = source.get(node.id);
-      const attrs = data?.attributes ?? {};
-      const text = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : "";
-      const provider = text(data?.dimensions?.cloud_provider) || text(attrs.provider) || text(attrs.cloud_provider);
-      const account = text(attrs.account_scope) || text(attrs.account_id) || text(attrs.project_id) || text(attrs.subscription_id);
-      const environment = text(data?.dimensions?.environment) || text(attrs.environment);
-      const parts = grouping === "environment"
-        ? [provider || "Provider unknown", account || "Account unknown", environment || "Environment unknown"]
-        : [node.nodeType];
-      const key = JSON.stringify(parts);
+      const key = nodeScopes.get(node.id)!;
+      const parts = JSON.parse(key) as string[];
       const scope = scopes.get(key) ?? { label: parts.join(" / "), nodes: [] };
       scope.nodes.push(node);
       scopes.set(key, scope);
@@ -151,7 +180,7 @@ export function buildSigmaGraphOverviewModel(
         node.x = x + radius * Math.cos(angle);
         node.y = y + radius * Math.sin(angle);
       });
-      groups.push({ key: cluster.key, label: cluster.label, x, y: y + cluster.radius + 36, count: cluster.nodes.length });
+      groups.push({ key: cluster.key, label: cluster.label, x, y: y + cluster.radius + 36, count: cluster.nodes.length, loadedCount: scopeMap.get(cluster.key)!.count, centerY: y });
     };
     // Pack circles in size-aware rings. Each ring's chord spacing and radial
     // gap protect every cluster's bounding disk, including very uneven estates.
@@ -222,6 +251,8 @@ export function buildSigmaGraphOverviewModel(
   return {
     graph,
     groups,
+    connections: [...connections.values()].sort((a, b) => b.count - a.count || a.source.localeCompare(b.source) || a.target.localeCompare(b.target)),
+    scopes: [...scopeMap.values()].sort((a, b) => a.label.localeCompare(b.label)),
     overview,
     summary: summarizeLargeGraphOverview(nodes, edges),
   };
@@ -231,7 +262,8 @@ export function buildSigmaGraphOverviewModelFromUnifiedGraph(
   graph: UnifiedGraphData,
   filters: UnifiedGraphFlowFilters = SIGMA_DEFAULT_FILTERS,
   grouping: "type" | "environment" = "type",
+  scopeKey: string | null = null,
 ): SigmaGraphOverviewModel {
   const flow = buildUnifiedFlowGraph(graph, filters);
-  return buildSigmaGraphOverviewModel(flow.nodes, flow.edges, grouping);
+  return buildSigmaGraphOverviewModel(flow.nodes, flow.edges, grouping, scopeKey);
 }

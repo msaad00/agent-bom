@@ -32,7 +32,7 @@ import { TopologyDetailDrawer } from "@/components/topology-detail-drawer";
 import { graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
 
 const TOPOLOGY_CONTROLS_CLASS =
-  "!rounded-lg !border !border-[color:var(--border-subtle)] !bg-[color:var(--surface-elevated)] !backdrop-blur-sm [&>button]:!border-[color:var(--border-subtle)] [&>button]:!bg-[color:var(--surface)] [&>button]:!text-[color:var(--text-secondary)] [&>button:hover]:!bg-[color:var(--surface-muted)] [&>button:hover]:!text-[color:var(--foreground)]";
+  "!rounded-lg !border !border-outline !bg-surface-elevated !backdrop-blur-sm [&>button]:!border-outline [&>button]:!bg-surface [&>button]:!text-ink-secondary [&>button:hover]:!bg-[color:var(--surface-muted)] [&>button:hover]:!text-foreground";
 
 function AgentNode({
   data,
@@ -49,9 +49,9 @@ function AgentNode({
 }) {
   return (
     <div
-      className={`min-w-[132px] max-w-[168px] rounded-lg border bg-[color:var(--surface-elevated)] px-3 py-2 shadow-sm transition-colors ${
+      className={`min-w-[132px] max-w-[168px] rounded-lg border bg-surface-elevated px-3 py-2 shadow-sm transition-colors ${
         data.unlinked
-          ? "border-[color:var(--border-subtle)] hover:border-[color:var(--border-strong)]"
+          ? "border-outline hover:border-outline-strong"
           : "cursor-pointer border-emerald-600/35 hover:border-emerald-500/60"
       }`}
     >
@@ -60,9 +60,9 @@ function AgentNode({
         position={Position.Right}
         className="!h-1.5 !w-1.5 !border-emerald-500 !bg-emerald-400"
       />
-      <p className="truncate text-xs font-semibold text-[color:var(--foreground)]">{data.label}</p>
-      <p className="truncate text-[10px] text-[color:var(--text-tertiary)]">{data.typeLabel}</p>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-[color:var(--text-tertiary)]">
+      <p className="truncate text-xs font-semibold text-foreground">{data.label}</p>
+      <p className="truncate text-[10px] text-ink-tertiary">{data.typeLabel}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-ink-tertiary">
         {!data.unlinked ? <span>{data.serverCount} svc</span> : <span>unlinked</span>}
         {data.credCount > 0 ? <span className="text-amber-600 dark:text-amber-300">{data.credCount} cred</span> : null}
         {data.vulnCount > 0 ? <span className="text-red-600 dark:text-red-300">{data.vulnCount} CVE</span> : null}
@@ -88,7 +88,7 @@ function ServerNode({
   const hot = data.vulnCount > 0 || data.hasCredentials;
   return (
     <div
-      className={`min-w-[132px] max-w-[168px] cursor-pointer rounded-lg border bg-[color:var(--surface-elevated)] px-3 py-2 shadow-sm transition-colors ${
+      className={`min-w-[132px] max-w-[168px] cursor-pointer rounded-lg border bg-surface-elevated px-3 py-2 shadow-sm transition-colors ${
         data.vulnCount > 0
           ? "border-red-600/40 hover:border-red-500/60"
           : data.hasCredentials
@@ -98,10 +98,10 @@ function ServerNode({
     >
       <Handle type="target" position={Position.Left} className="!h-1.5 !w-1.5 !border-sky-500 !bg-sky-400" />
       <div className="flex items-start justify-between gap-2">
-        <p className="truncate text-xs font-semibold text-[color:var(--foreground)]">{data.label}</p>
+        <p className="truncate text-xs font-semibold text-foreground">{data.label}</p>
         {data.shared ? <Users className="h-3 w-3 shrink-0 text-cyan-600 dark:text-cyan-300" aria-hidden /> : null}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-[color:var(--text-tertiary)]">
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-ink-tertiary">
         <span>
           {data.agentCount} agent{data.agentCount === 1 ? "" : "s"}
         </span>
@@ -109,7 +109,7 @@ function ServerNode({
         {data.hasCredentials ? <Lock className="h-3 w-3 text-amber-600 dark:text-amber-300" /> : null}
         {data.vulnCount > 0 ? <span className="text-red-600 dark:text-red-300">{data.vulnCount} CVE</span> : null}
       </div>
-      {!hot ? <p className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">inventory edge</p> : null}
+      {!hot ? <p className="mt-1 text-[10px] text-ink-tertiary">inventory edge</p> : null}
     </div>
   );
 }
@@ -243,23 +243,23 @@ export function AgentTopology({
 
   if (!agents || agents.length === 0) {
     return (
-      <div className="flex h-[320px] items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+      <div className="flex h-[320px] items-center justify-center rounded-xl border border-outline bg-surface">
         <div className="text-center">
-          <Network className="mx-auto mb-2 h-8 w-8 text-[color:var(--text-tertiary)]" />
-          <p className="text-sm text-[color:var(--text-secondary)]">No agent configurations available</p>
-          <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">Configure supported clients on this API host, then refresh the inventory</p>
+          <Network className="mx-auto mb-2 h-8 w-8 text-ink-tertiary" />
+          <p className="text-sm text-ink-secondary">No agent configurations available</p>
+          <p className="mt-1 text-xs text-ink-tertiary">Configure supported clients on this API host, then refresh the inventory</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--border-subtle)] px-4 py-3">
+    <div className="overflow-hidden rounded-2xl border border-outline bg-surface">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-outline px-4 py-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[color:var(--text-tertiary)]">Agent topology</p>
-          <h3 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Agent mesh</h3>
-          <p className="mt-1 max-w-2xl text-xs text-[color:var(--text-secondary)]">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">Agent topology</p>
+          <h3 className="mt-1 text-sm font-semibold text-foreground">Agent mesh</h3>
+          <p className="mt-1 max-w-2xl text-xs text-ink-secondary">
             Configured relationships, grouped for display. Service groups do not establish shared runtime identity or an attack path.
           </p>
         </div>
@@ -272,7 +272,7 @@ export function AgentTopology({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--border-subtle)] px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           {filterOptions.map((option) => (
             <button
@@ -282,15 +282,15 @@ export function AgentTopology({
               aria-pressed={filter === option.key}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
                 filter === option.key
-                  ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]"
-                  : "border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
+                  ? "border-outline-strong bg-surface-elevated text-foreground"
+                  : "border-outline bg-[color:var(--surface-muted)] text-ink-secondary hover:border-outline-strong"
               }`}
             >
               {option.label}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-[10px] text-[color:var(--text-tertiary)]">
+        <div className="flex flex-wrap items-center gap-3 text-[10px] text-ink-tertiary">
           <span className="flex items-center gap-1">
             <span className="h-2 w-4 rounded bg-slate-400/80" /> inventory
           </span>
@@ -303,14 +303,14 @@ export function AgentTopology({
           <button
             type="button"
             onClick={() => setShowReadout((value) => !value)}
-            className="text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)]"
+            className="text-ink-secondary hover:text-foreground"
           >
             {showReadout ? "Hide context" : "Context"}
           </button>
         </div>
       </div>
 
-      <div className="border-b border-[color:var(--border-subtle)] px-4 py-2 text-xs text-[color:var(--text-secondary)]" aria-live="polite">
+      <div className="border-b border-outline px-4 py-2 text-xs text-ink-secondary" aria-live="polite">
         Showing {displayAgents.length} of {matched.agents} matching agents · {visible.uniqueServices} of {matched.uniqueServices} matching service groups.
         {" "}Full inventory: {summary.agents} agents · {summary.uniqueServices} service groups · {summary.servers} configured relationships.
         {capped ? " View limit reached. Narrow the filter or inspect the Agents inventory for the remaining records." : null}
@@ -323,7 +323,7 @@ export function AgentTopology({
       </div>
 
       {showReadout ? (
-        <div className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3 text-xs text-[color:var(--text-secondary)]">
+        <div className="border-b border-outline bg-[color:var(--surface-muted)] px-4 py-3 text-xs text-ink-secondary">
           Tenant {session?.tenant_id ?? "local"} · role {session?.role_summary?.display_name ?? session?.role ?? "viewer"} ·{" "}
           {summary.environments} env{summary.environments === 1 ? "" : "s"} ·{" "}
           {summary.unlinkedAgents > 0
@@ -340,10 +340,10 @@ export function AgentTopology({
         </div>
       ) : displayAgents.length === 0 ? (
         <div className="px-4 py-10 text-center">
-          <p className="text-sm font-medium text-[color:var(--foreground)]">
+          <p className="text-sm font-medium text-foreground">
             {filter === "attention" ? "No attention signals in this mesh" : "No agents match this filter"}
           </p>
-          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+          <p className="mt-1 text-xs text-ink-secondary">
             Choose Full mesh to inspect all configured relationships. No signal does not mean an assessment passed.
           </p>
         </div>
@@ -355,17 +355,17 @@ export function AgentTopology({
               <li key={agent.name}>
                 <button type="button" aria-label={`Inspect agent ${topologyAgentDisplayName(agent)}`}
                   onClick={() => handleSelect({ kind: "agent", name: agent.name })}
-                  className="text-left text-sm font-semibold text-[color:var(--foreground)]">
+                  className="text-left text-sm font-semibold text-foreground">
                   {topologyAgentDisplayName(agent)}
                 </button>
-                <ul className="mt-2 space-y-2 border-l border-[color:var(--border-subtle)] pl-3">
+                <ul className="mt-2 space-y-2 border-l border-outline pl-3">
                   {(agent.mcp_servers ?? []).map((server) => (
                     <li key={serviceKey(server)}>
                       <button type="button" aria-label={`Inspect service ${server.name} for ${topologyAgentDisplayName(agent)}`}
                         onClick={() => handleSelect({ kind: "server", serviceKey: serviceKey(server), label: server.name })}
-                        className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 text-left text-sm text-[color:var(--foreground)]">
+                        className="w-full rounded-lg border border-outline bg-surface-elevated p-3 text-left text-sm text-foreground">
                         <span className="block break-words font-medium">{server.name}</span>
-                        <span className="mt-1 block text-xs text-[color:var(--text-secondary)]">
+                        <span className="mt-1 block text-xs text-ink-secondary">
                           Configured connection{serverHasCredentials(server) ? " · Credential reference" : ""}
                           {serverVulnerabilityCount(server) > 0 ? ` · ${serverVulnerabilityCount(server)} linked CVE records` : ""}
                         </span>
@@ -379,14 +379,14 @@ export function AgentTopology({
         </section>
       ) : null}
       {unlinkedAgents.length > 0 ? (
-        <section aria-label="Agents without service relationships" className="border-t border-[color:var(--border-subtle)] p-4">
-          <h4 className="text-xs font-semibold text-[color:var(--foreground)]">No service relationship observed</h4>
+        <section aria-label="Agents without service relationships" className="border-t border-outline p-4">
+          <h4 className="text-xs font-semibold text-foreground">No service relationship observed</h4>
           <ul className="mt-2 flex flex-wrap gap-2">
             {unlinkedAgents.map((agent) => (
               <li key={agent.name}>
                 <button type="button" aria-label={`Inspect ${topologyAgentDisplayName(agent)}`}
                   onClick={() => handleSelect({ kind: "agent", name: agent.name })}
-                  className="rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-xs text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]">
+                  className="rounded-lg border border-outline px-3 py-2 text-xs text-foreground hover:bg-[color:var(--surface-muted)]">
                   {topologyAgentDisplayName(agent)}
                 </button>
               </li>
@@ -416,10 +416,10 @@ function StatPill({
         ? "border-amber-500/25 text-amber-800 dark:text-amber-200"
         : tone === "cyan"
           ? "border-cyan-500/25 text-cyan-800 dark:text-cyan-200"
-          : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)]";
+          : "border-outline text-ink-secondary";
   return (
-    <div className={`rounded-lg border bg-[color:var(--surface-elevated)] px-2.5 py-1.5 ${toneClass}`}>
-      <span className="font-mono text-[color:var(--foreground)]">{value}</span> {label.toLowerCase()}
+    <div className={`rounded-lg border bg-surface-elevated px-2.5 py-1.5 ${toneClass}`}>
+      <span className="font-mono text-foreground">{value}</span> {label.toLowerCase()}
     </div>
   );
 }

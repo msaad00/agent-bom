@@ -31,8 +31,8 @@ const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string
   identity: { icon: Fingerprint, tint: "text-indigo-700 dark:text-indigo-300 bg-indigo-500/12", ring: "border-indigo-500/25" },
   entity: {
     icon: ShieldAlert,
-    tint: "text-[color:var(--text-secondary)] bg-[color:var(--surface-elevated)]",
-    ring: "border-[color:var(--border-subtle)]",
+    tint: "text-ink-secondary bg-surface-elevated",
+    ring: "border-outline",
   },
 };
 
@@ -50,15 +50,15 @@ export function AttackPathCard({
       ? "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-200"
       : riskScore >= 5
         ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-        : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]";
+        : "border-outline bg-surface-elevated text-ink-secondary";
 
   const cardBody = (
     <>
       {!compact && (
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Attack path</p>
-            <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Credential-aware blast radius</p>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-ink-tertiary">Attack path</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">Credential-aware blast radius</p>
           </div>
           <div className={`rounded-xl border px-2.5 py-1 font-mono text-xs font-semibold ${riskTone}`}>
             <span className="text-[11px] uppercase tracking-[0.14em]">Risk</span>{" "}
@@ -85,7 +85,7 @@ export function AttackPathCard({
           return (
             <div key={`${node.type}-${node.label}-${i}`} className="flex items-center gap-1.5">
               {i > 0 && (
-                <div className="flex h-5 w-5 items-center justify-center text-[color:var(--text-tertiary)]">
+                <div className="flex h-5 w-5 items-center justify-center text-ink-tertiary">
                   <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="sr-only">→</span>
                 </div>
@@ -95,7 +95,7 @@ export function AttackPathCard({
                 <div className="min-w-0">
                   <p
                     title={node.label}
-                    className={`text-[11px] font-medium text-[color:var(--foreground)] ${
+                    className={`text-[11px] font-medium text-foreground ${
                       captureMode
                         ? "max-w-[13rem] whitespace-normal break-words leading-4"
                         : "max-w-[16rem] whitespace-normal break-words leading-4 [overflow-wrap:anywhere]"
@@ -103,7 +103,7 @@ export function AttackPathCard({
                   >
                     {node.label}
                   </p>
-                  <p className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{node.type}</p>
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-ink-tertiary">{node.type}</p>
                 </div>
               </div>
             </div>
@@ -111,14 +111,14 @@ export function AttackPathCard({
         })}
       </div>
       {href && (
-        <div className="mt-4 flex items-center justify-between border-t border-[color:var(--border-subtle)] pt-3">
+        <div className="mt-4 flex items-center justify-between border-t border-outline pt-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Drilldown</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-ink-tertiary">Drilldown</p>
             <p className="mt-1 text-xs font-medium text-emerald-500 transition-colors group-hover:text-emerald-400">
               Open focused security graph
             </p>
           </div>
-          <div className="flex items-center gap-1 text-xs font-medium text-[color:var(--text-secondary)] transition-colors group-hover:text-[color:var(--foreground)]">
+          <div className="flex items-center gap-1 text-xs font-medium text-ink-secondary transition-colors group-hover:text-foreground">
             Inspect path
             <ArrowRight className="h-3.5 w-3.5" />
           </div>
@@ -128,7 +128,7 @@ export function AttackPathCard({
   );
 
   const className =
-    `group block w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] text-left shadow-lg transition-all hover:border-[color:var(--border-strong)] hover:shadow-xl hover:shadow-emerald-500/5 ${
+    `group block w-full rounded-2xl border border-outline bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] text-left shadow-lg transition-all hover:border-outline-strong hover:shadow-xl hover:shadow-emerald-500/5 ${
       compact ? "px-3 py-2" : "px-4 py-3"
     } ${
       captureMode ? "" : "hover:-translate-y-0.5"

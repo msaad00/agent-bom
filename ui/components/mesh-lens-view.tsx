@@ -37,14 +37,14 @@ function OwnedMesh({ owner }: { owner: string }) {
     <GraphLensSwitcher variant="compact" scanId={scanId || undefined} />
     <header className="flex flex-wrap items-center justify-between gap-2">
       <div><h1 className="text-lg font-semibold">Agent Mesh</h1>
-        <p className="text-xs text-[var(--text-secondary)]">Recorded agent connections across the selected snapshot’s sources. Expand relationships as needed.</p></div>
+        <p className="text-xs text-ink-secondary">Recorded agent connections across the selected snapshot’s sources. Expand relationships as needed.</p></div>
       <label className="min-w-0 max-w-full text-sm">Snapshot <select aria-label="Mesh snapshot" className="context-action max-w-full" value={scanId} onChange={event => setScanId(event.target.value)}>
         {!scanId && <option value="">{loading ? "Loading snapshots…" : "No persisted snapshots"}</option>}
         {scanId && !snapshots.some(snapshot => snapshot.scan_id === scanId) && <option value={scanId}>{scanId}</option>}
         {snapshots.map(snapshot => <option key={snapshot.scan_id} value={snapshot.scan_id}>{snapshot.scan_id}{snapshot.snapshot_kind === "correlation" ? " · correlated" : ""}</option>)}
       </select></label>
     </header>
-    {snapshots.length === 50 && <p className="text-xs text-[var(--text-secondary)]">Showing the latest 50 retained snapshots. Older snapshots can be opened by their exact link.</p>}
+    {snapshots.length === 50 && <p className="text-xs text-ink-secondary">Showing the latest 50 retained snapshots. Older snapshots can be opened by their exact link.</p>}
     {error && <p role="alert">{error}</p>}
     {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId, requestedAgent])} scanId={scanId} owner={owner} initialRootId={requestedAgent} />
       : <p role="status">{loading ? "Loading persisted snapshots…" : "No persisted agent relationships available. Connect a source or ingest scan evidence to populate a snapshot."}</p>}

@@ -1547,7 +1547,7 @@ for (const theme of ["light", "dark"] as const) {
       await surface.getByRole("button", { name: "All 30", exact: true }).click();
       await surface.getByLabel("Search this scope").fill("production");
       await expect(surface.locator("article")).toHaveCount(1);
-      await surface.getByText("Recorded relationships (1 row)", { exact: true }).click();
+      await surface.getByText("Details · 1 relationship row", { exact: true }).click();
       await expect(surface.getByText(/do not establish runtime execution/)).toBeVisible();
       expect(await surface.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`environment-focus-${theme}-${width}.png`), fullPage: true });

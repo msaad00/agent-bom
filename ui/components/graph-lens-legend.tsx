@@ -23,13 +23,13 @@ export function GraphLensLegend<T extends string>({
   switchToggle?: boolean;
   groupLabel?: string;
 }) {
-  const inactive = "border-[var(--border-subtle)] bg-[var(--surface)]/60 text-[var(--text-secondary)] hover:text-[var(--foreground)]";
+  const inactive = "border-outline bg-surface/60 text-ink-secondary hover:text-foreground";
   const selected = tone === "sky"
-    ? "border-sky-500/60 bg-sky-500/15 text-sky-100"
-    : "border-violet-500/60 bg-violet-500/15 text-violet-100";
-  const iconColor = tone === "sky" ? "text-sky-400" : "text-violet-400";
+    ? "border-sky-500/60 bg-sky-500/15 text-sky-800 dark:text-sky-100"
+    : "border-violet-500/60 bg-violet-500/15 text-violet-800 dark:text-violet-100";
+  const iconColor = tone === "sky" ? "text-sky-700 dark:text-sky-400" : "text-violet-700 dark:text-violet-400";
   return (
-    <div data-testid={`${id}-legend`} className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3">
+    <div data-testid={`${id}-legend`} className="mt-3 rounded-2xl border border-outline bg-background/70 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Icon className={`h-4 w-4 ${iconColor}`} />
@@ -51,11 +51,11 @@ export function GraphLensLegend<T extends string>({
             data-testid={`${id}-chip-${chip.id}`} onClick={() => onFilterChange(chip.id)}
             className={`rounded-full border px-3 py-1 text-xs transition-colors ${filter === chip.id ? selected : inactive}`}>
             {chip.label}
-            <span className="ml-1.5 font-mono text-[11px] text-[var(--text-tertiary)]">{chip.count}</span>
+            <span className="ml-1.5 font-mono text-[11px] text-ink-tertiary">{chip.count}</span>
           </button>)}
         </div>
         {children}
-      </> : <p className="mt-2 text-xs text-[var(--text-tertiary)]">{inactiveContent}</p>}
+      </> : <p className="mt-2 text-xs text-ink-tertiary">{inactiveContent}</p>}
     </div>
   );
 }

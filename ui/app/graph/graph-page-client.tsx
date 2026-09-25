@@ -31,6 +31,7 @@ import {
   GraphEvidenceExportButton,
   FullscreenButton,
   GraphInteractionToolbar,
+  GraphLegendDock,
 } from "@/components/graph-chrome";
 import {
   GraphDriftTimeline,
@@ -154,9 +155,7 @@ import type {
 import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
-  LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
-  LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 import {
   decideGraphRenderer,
@@ -764,6 +763,8 @@ function GraphPageInner() {
     useState<ReachabilitySummary | null>(null);
   const loadingReachability = false;
   const investigationRequestId = useRef(0);
+  const investigationAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => investigationAbort.current?.abort(), []);
   const [investigationDirection, setInvestigationDirection] = useState<"forward" | "reverse" | "both">("both");
   const [reachabilityError, setReachabilityError] = useState<string | null>(
     null,
@@ -1040,6 +1041,7 @@ function GraphPageInner() {
 
   useEffect(() => {
     investigationRequestId.current++;
+    investigationAbort.current?.abort();
     setLoadingBlast(false);
     setBlastRadius(null);
     setSearchResults([]);
@@ -1737,7 +1739,7 @@ function GraphPageInner() {
   const compactInvestigationTopology = investigationLayout !== undefined;
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
-  const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
+  const graphLayoutKind = compactMobileTopology || investigationMode ? "dagre" : "dagre-lr";
   const scenarioContextIds = useMemo(() => {
     if (!selectedScenarioId || !scenarioComparison?.available || scenarioExpanded || attackPathLens || selectedAttackPath || investigationMode) return undefined;
     return graphScenarioContextIds(aggregated.nodes, aggregated.edges, scenarioComparison.difference, mergedGraphData?.edges);
@@ -1868,7 +1870,7 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen render band
   // keeps dense graphs readable without changing node positions or data.
   const lodBand = useLodBand();
-  const effectiveLodBand = compactInvestigationTopology || compactGroupedTopology || (scenarioContextIds && graphViewport.zoom >= 0.85) ? "detail" : effectiveLodBandForGraph(lodBand, {
+  const effectiveLodBand = compactInvestigationTopology || compactGroupedTopology || (scenarioContextIds && scenarioContextIds.size <= 8) ? "detail" : effectiveLodBandForGraph(lodBand, {
     sourceNodeCount: flow.nodes.length,
     renderedNodeCount: aggregated.nodes.length,
     clusterCount: aggregated.clusters.size,
@@ -1911,6 +1913,7 @@ function GraphPageInner() {
             data: {
               ...node.data,
               renderBand: "detail",
+              reverseFlow: row % 2 === 1,
               dimmed: !inPath,
               highlighted: inPath,
             },
@@ -2283,7 +2286,7 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
-    if (scenarioExpanded || scenarioContextIds) return viewportOptions;
+    if (scenarioExpanded || scenarioContextIds || (investigationMode && displayNodes.length <= 8)) return { ...viewportOptions, maxZoom: 1 };
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
     if ((canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
@@ -2307,8 +2310,8 @@ function GraphPageInner() {
         ? graphInitialFitViewOptions([{ id: initialAnchorId, data: {} }], viewportOptions, initialAnchorId)
         : viewportOptions;
       // Scenario views share width with the decision panel and app navigation.
-      // A small fit adjustment keeps 18px card labels at least 16px wide-screen.
-      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.9, maxZoom: 1 } : options;
+      // Allow the complete proposed context to fit shorter desktop canvases.
+      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.75, maxZoom: 1 } : options;
     },
     [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
   );
@@ -2536,10 +2539,14 @@ function GraphPageInner() {
 
   const loadRootInvestigation = useCallback(
     async (
-      request: GraphInvestigationRequest & { node?: UnifiedNode | undefined },
+      request: GraphInvestigationRequest & { node?: UnifiedNode | undefined; nodeLimit?: number },
     ) => {
       if (!selectedScanId) return;
       const requestId = ++investigationRequestId.current;
+      investigationAbort.current?.abort();
+      const controller = new AbortController();
+      investigationAbort.current = controller;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
       const direction = request.direction ?? initialInvestigationDirection(request.rootId);
       const queryFilters = investigationMode?.rootId === request.rootId
         ? filters : createInvestigationGraphFilters(filters);
@@ -2578,7 +2585,7 @@ function GraphPageInner() {
         request.rootLabel ?? request.node?.label ?? request.rootId,
       );
       setLoadingGraph(true);
-      setGraphData(null);
+      setGraphData(current => current?.scan_id === selectedScanId ? current : null);
       setLoadingBlast(false);
       setBlastRadius(null);
       setInvestigationMode({ rootId: request.rootId, rootLabel: request.rootLabel ?? request.rootId,
@@ -2589,8 +2596,8 @@ function GraphPageInner() {
           scan_id: selectedScanId,
           direction,
           max_depth: queryFilters.maxDepth,
-          max_nodes: 80,
-          max_edges: 320,
+          max_nodes: request.nodeLimit ?? 4,
+          max_edges: 96,
           timeout_ms: 2500,
           traversable_only: false,
           static_only: queryFilters.runtimeMode === "static",
@@ -2599,7 +2606,7 @@ function GraphPageInner() {
           include_attack_paths: true,
           entity_types: entityTypesForLayers(queryFilters.layers),
           relationship_types: RELATIONSHIP_SCOPE_MAP[queryFilters.relationshipScope],
-        });
+        }, { signal });
         if (requestId !== investigationRequestId.current) return;
         const rootNode =
           response.nodes.find((node) => node.id === request.rootId) ??
@@ -2631,7 +2638,7 @@ function GraphPageInner() {
       } catch (e) {
         if (requestId !== investigationRequestId.current) return;
         setError(
-          e instanceof Error ? e.message : "Failed to load root-centered graph",
+          signal.aborted ? "Graph request timed out. The previous view is retained; retry or narrow the scope." : e instanceof Error ? e.message : "Failed to load root-centered graph",
         );
       } finally {
         if (requestId === investigationRequestId.current) setLoadingGraph(false);
@@ -2674,6 +2681,7 @@ function GraphPageInner() {
 
   const clearInvestigationMode = useCallback(() => {
     investigationRequestId.current++;
+    investigationAbort.current?.abort();
     setSelectedNode(null);
     setSelectedNodeId(null);
     setLoadingGraph(false);
@@ -2684,13 +2692,6 @@ function GraphPageInner() {
     setSelectedAttackPathKey(null);
     setReachabilitySummary(null);
     setReachabilityError(null);
-    setBlastRadius(null);
-    setBlastError(null);
-  }, []);
-
-  const clearBlastRadius = useCallback(() => {
-    investigationRequestId.current++;
-    setLoadingBlast(false);
     setBlastRadius(null);
     setBlastError(null);
   }, []);
@@ -2744,6 +2745,10 @@ function GraphPageInner() {
     async (nodeId: string, nodeLabel: string) => {
       if (!nodeId) return;
       const requestId = ++investigationRequestId.current;
+      investigationAbort.current?.abort();
+      const controller = new AbortController();
+      investigationAbort.current = controller;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
       // Blast radius takes over the canvas; drop any competing overlays so the
       // impacted set is the only thing highlighted.
       setSelectedAttackPathKey(null);
@@ -2751,7 +2756,7 @@ function GraphPageInner() {
       setReachabilityError(null);
       setLoadingBlast(true);
       setLoadingGraph(false);
-      setGraphData(null);
+      setGraphData(current => current?.scan_id === selectedScanId ? current : null);
       setInvestigationMode({ rootId: nodeId, rootLabel: nodeLabel || nodeId,
         truncated: false, nodeCount: 0, edgeCount: 0 });
       setBlastError(null);
@@ -2759,11 +2764,11 @@ function GraphPageInner() {
         // Impact IDs alone cannot populate a canvas that was loaded for a
         // different scope. Fetch a bounded reverse neighborhood as well.
         const [impact, context] = await Promise.all([
-          api.getGraphImpact(nodeId, selectedScanId || undefined, 4),
+          api.getGraphImpact(nodeId, selectedScanId || undefined, 4, { signal }),
           api.queryGraph({ roots: [nodeId], scan_id: selectedScanId || undefined,
-            direction: "reverse", max_depth: 4, max_nodes: 80, max_edges: 320,
+            direction: "reverse", max_depth: 4, max_nodes: 4, max_edges: 32,
             timeout_ms: 2500, traversable_only: true, include_roots: true,
-            include_attack_paths: false }),
+            include_attack_paths: false }, { signal }),
         ]);
         if (requestId !== investigationRequestId.current) return;
         setGraphData(queryResponseToGraphResponse(context));
@@ -2781,7 +2786,7 @@ function GraphPageInner() {
         if (requestId !== investigationRequestId.current) return;
         setBlastRadius(null);
         setBlastError(
-          e instanceof Error ? e.message : "Failed to compute blast radius",
+          signal.aborted ? "Blast radius timed out. The previous graph is retained; retry with a narrower scope." : e instanceof Error ? e.message : "Failed to compute blast radius",
         );
       } finally {
         if (requestId === investigationRequestId.current) setLoadingBlast(false);
@@ -3009,17 +3014,15 @@ function GraphPageInner() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="hidden text-[10px] uppercase tracking-[0.24em] text-sky-400 sm:block">
-                Unified graph
-              </p>
+              {!investigationMode && <p className="hidden text-[10px] uppercase tracking-[0.24em] text-sky-400 sm:block">Unified graph</p>}
               <h1 className="text-lg font-semibold text-foreground sm:mt-1">
                 {canvasLens === "estate" ? "Investigation Canvas" : "Lineage Graph"}
               </h1>
-              <p className="hidden text-xs text-ink-tertiary sm:block">
+              {!investigationMode && <p className="hidden text-xs text-ink-tertiary sm:block">
                 {canvasLens === "estate"
                   ? "Review priority findings, then follow their connections and evidence."
                   : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
-              </p>
+              </p>}
             </div>
             {narrowViewport && <details className="relative shrink-0" data-testid="mobile-graph-view">
               <summary className="graph-page-action cursor-pointer">Snapshot &amp; view</summary>
@@ -3122,10 +3125,7 @@ function GraphPageInner() {
               onDirectionChange={(direction) => {
                 if (investigationMode) void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction });
               }}
-              onClear={() => {
-                setReachabilitySummary(null);
-                setReachabilityError(null);
-              }}
+              onClear={returnToSummary}
             />
           )}
 
@@ -3134,7 +3134,7 @@ function GraphPageInner() {
               summary={blastRadius}
               loading={loadingBlast}
               error={blastError}
-              onClear={clearBlastRadius}
+              onClear={returnToSummary}
             />
           )}
 
@@ -3142,12 +3142,12 @@ function GraphPageInner() {
             data-testid="graph-evidence-controls"
             className="mt-2 border-t border-outline group"
           >
-            <summary className="graph-drawer-summary !flex-nowrap !px-0">
+            <summary className="graph-drawer-summary !flex-nowrap !px-0 !py-1">
               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   Graph settings
                 </span>
-                <p className="text-xs text-ink-secondary">
+                <p className={investigationMode ? "hidden" : "text-xs text-ink-secondary"}>
                   {rollupCanvasOwnsPresentation ? <>
                     {rollupItems.length.toLocaleString()} nodes and scopes · {estateNodeCount.toLocaleString()} nodes in snapshot
                     {rollupView?.completeness?.truncated ? " · incomplete scope" : ""}
@@ -3591,38 +3591,9 @@ function GraphPageInner() {
             </span>
           </summary>
           <ul className="mt-2 space-y-1.5">
-            <li>
-              Each snapshot is a persisted control-plane view of entities,
-              edges, attack paths, and relationship counts at one capture time.
-            </li>
-            <li>
-              Node IDs are stable identifiers inside the graph model; the detail
-              panel shows the node ID, first seen, last seen, sources, and edge
-              counts.
-            </li>
-            <li>
-              Pagination changes the visible canvas, not the persisted snapshot
-              itself. Narrow the scope when the graph gets large; page when you
-              need broader coverage.
-            </li>
-            <li>
-              Relevant paths is for operator triage. Expanded is for topology
-              review. Attack-path cards are the fix-first shortlist, not the
-              whole graph.
-            </li>
-            <li>
-              Pages at or above{" "}
-              {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} visible
-              nodes or {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()}{" "}
-              visible edges use the bounded WebGL overview. Narrowing, search
-              results, attack-path focus, and reachability drill-ins return to
-              React Flow.
-            </li>
-            <li>
-              Hop depth controls how far traversal can move from the selected
-              agent or root. Entity layers control what kinds of nodes can
-              render, without changing the persisted graph.
-            </li>
+            <li>Snapshot counts cover persisted assets; displayed counts cover this view.</li>
+            <li>Select an asset for evidence. Faded assets are outside its context.</li>
+            <li>Arrows show recorded direction, not proven access or exploitation.</li>
           </ul>
         </details>
           </div>
@@ -3849,8 +3820,10 @@ function GraphPageInner() {
               {showMiniMap && <button type="button" aria-pressed={minimapExpanded} onClick={() => setMinimapExpanded((value) => !value)} className="text-foreground underline underline-offset-4">{minimapExpanded ? "Hide minimap" : "Show minimap"}</button>}
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
               <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4" title="Focus an asset at readable zoom; pan to follow its connections">Readable view</button>
+          {investigationMode?.truncated && investigationMode.nodeCount < 24 && !loadingGraph && <button type="button" className="graph-page-action min-h-11 sm:min-h-7" onClick={() => void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction: investigationDirection, nodeLimit: Math.min(24, Math.max(8, investigationMode.nodeCount * 2)) })}>Show more connections</button>}
             </div>
           )}
+          {graphRenderer.kind === "react-flow" && displayNodes.length > 0 && <GraphLegendDock items={legendItems} />}
           <div className="relative flex min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
           <div className="relative min-h-0 min-w-0 flex-1">
           {graphPanelError && graphData && !loadingGraph && (
@@ -3859,7 +3832,7 @@ function GraphPageInner() {
               <button type="button" className="graph-chip-neutral" onClick={retryGraph}>Retry graph</button>
             </div>
           )}
-          {(loadingGraph && !graphData) || loadingBlast ? (
+          {(loadingGraph || loadingBlast) && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"
               detail={`Fetching the selected snapshot with the ${graphScopeLabelForFilters(filters).toLowerCase()} scope and active layer filters.`}
@@ -3896,7 +3869,7 @@ function GraphPageInner() {
               ]}
               actions={[{ label: "Show all returned context", onClick: () => setFilters(createExpandedGraphFilters()) }, { label: "Return to summary", onClick: returnToSummary }]}
             />
-          ) : layoutPending && graphRenderer.kind === "react-flow" ? (
+          ) : layoutPending && !investigationMode && graphRenderer.kind === "react-flow" ? (
             <p role="status" className="p-6 text-sm text-ink-secondary">Arranging the selected graph…</p>
           ) : graphOnlyFindings ? (
             <GraphFindingsFallback
@@ -3989,7 +3962,7 @@ function GraphPageInner() {
             </ReactFlow>
           )}
 
-          {loadingGraph && graphData && <GraphRefreshOverlay />}
+          {(loadingGraph || loadingBlast) && graphData && <GraphRefreshOverlay label={loadingBlast ? "Computing blast radius · current view retained" : "Loading related assets · current view retained"} />}
 
           {graphTruncated && !rollupCanvasOwnsPresentation && (
             <details className="mt-2 border-t border-outline pt-2 text-xs text-ink-secondary" data-testid="graph-partial-view">
@@ -4100,13 +4073,10 @@ export function ReachabilityDrillInPanel({
         <div className="flex items-start gap-2">
           <Route className="mt-0.5 h-4 w-4 text-ink-secondary" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-ink-secondary">
-              Related graph context
-            </p>
-            <p className="mt-1 text-sm font-medium text-foreground">
+            <p className="text-sm font-medium text-foreground" aria-label="Related graph context">
               {summary
                 ? `${summary.rootLabel} · ${affectedCount} related node${affectedCount === 1 ? "" : "s"} returned`
-                : "Loading related context"}
+                : loading ? "Loading related context" : "Related context unavailable"}
             </p>
             {summary?.truncated && (
               <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">
@@ -4125,6 +4095,9 @@ export function ReachabilityDrillInPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
+        <details className="relative">
+          <summary className="graph-chip-neutral cursor-pointer">Traversal options</summary>
+          <div className="absolute right-0 top-full z-30 mt-1 flex w-64 flex-wrap gap-2 rounded-xl border border-outline bg-surface p-3 shadow-lg">
         <select aria-label="Traversal depth" value={depth} onChange={(event) => onDepthChange(Number(event.target.value))} className="graph-chip-neutral">
           {[1, 2, 3, 4].map((hops) => <option key={hops} value={hops}>{hops} hop{hops === 1 ? "" : "s"}</option>)}
         </select>
@@ -4133,20 +4106,22 @@ export function ReachabilityDrillInPanel({
           <option value="reverse">Incoming connections</option>
           <option value="both">Both directions</option>
         </select>
+          </div>
+        </details>
         <button
           type="button"
           onClick={onClear}
           className="graph-chip-neutral"
         >
-          Clear context
+          Return to summary
         </button>
         </div>
       </div>
 
       {summary && (
-        <details className="mt-2 border-t border-outline pt-2" data-testid="reachability-evidence-details">
-          <summary className="cursor-pointer font-medium">Types and paths · {summary.pathPreviews.length} path previews</summary>
-          <div className="mt-2 space-y-3">
+        <details className="relative mt-1" data-testid="reachability-evidence-details">
+          <summary className="cursor-pointer text-[11px]">Types and paths · {summary.pathPreviews.length} path previews</summary>
+          <div className="absolute left-0 top-full z-30 mt-2 max-h-72 w-80 max-w-full overflow-y-auto rounded-xl border border-outline bg-surface p-3 space-y-3 shadow-lg">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.2em] text-ink-secondary">
                 Related by type
@@ -4233,7 +4208,7 @@ function BlastRadiusPanel({
             <p className="mt-1 text-sm font-medium text-foreground">
               {summary
                 ? `${summary.affectedCount} upstream related node${summary.affectedCount === 1 ? "" : "s"} connected to ${summary.rootLabel}`
-                : "Computing blast radius"}
+                : loading ? "Computing blast radius" : "Blast radius unavailable"}
             </p>
             {summary && (
               <p className="mt-1 text-[11px] text-ink-secondary">
@@ -4242,10 +4217,10 @@ function BlastRadiusPanel({
               </p>
             )}
             {error && (
-              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+              <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">{error}</p>
             )}
             {loading && (
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-200">
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-700 dark:text-violet-200">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Tracing upstream graph connections
               </p>
@@ -4257,7 +4232,7 @@ function BlastRadiusPanel({
           onClick={onClear}
           className="graph-chip-violet"
         >
-          Clear blast radius
+          Return to summary
         </button>
       </div>
 

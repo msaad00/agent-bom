@@ -104,11 +104,11 @@ const nodeTypes = { attackFlowNode: AttackFlowNode };
 
 function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () => void }) {
   const typeLabels: Record<string, string> = { cve: "Vulnerability", package: "Package", server: "MCP Server", agent: "Agent", credential: "Credential", tool: "Tool" };
-  const borderColors: Record<string, string> = { cve: "border-red-700", package: "border-[var(--border-subtle)]", server: "border-blue-700", agent: "border-emerald-700", credential: "border-yellow-700", tool: "border-purple-700" };
+  const borderColors: Record<string, string> = { cve: "border-red-700", package: "border-outline", server: "border-blue-700", agent: "border-emerald-700", credential: "border-yellow-700", tool: "border-purple-700" };
   const osvUrl = data.nodeType === "cve" ? getOsvVulnerabilityUrl(data.label) : null;
 
   return (
-    <div className={`absolute right-0 top-0 bottom-0 w-80 bg-[var(--background)]/95 backdrop-blur-sm border-l ${borderColors[data.nodeType] ?? "border-[var(--border-subtle)]"} z-50 overflow-y-auto`}>
+    <div className={`absolute right-0 top-0 bottom-0 w-80 bg-background/95 backdrop-blur-sm border-l ${borderColors[data.nodeType] ?? "border-outline"} z-50 overflow-y-auto`}>
       <div className="p-4 space-y-4">
         <div className="flex items-start justify-between">
           <div>
@@ -121,15 +121,15 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
           <div className="space-y-3">
             {data.severity && <SeverityBadge severity={data.severity} />}
             <div className="grid grid-cols-2 gap-2">
-              {data.cvss_score != null && <div className="bg-[var(--surface)] rounded-lg p-2 text-center"><div className="attack-flow-stat-value">{data.cvss_score.toFixed(1)}</div><div className="text-[10px] text-[var(--text-tertiary)]">CVSS</div></div>}
-              {data.epss_score != null && <div className="bg-[var(--surface)] rounded-lg p-2 text-center"><div className="attack-flow-stat-value">{(data.epss_score * 100).toFixed(1)}%</div><div className="text-[10px] text-[var(--text-tertiary)]">EPSS</div></div>}
+              {data.cvss_score != null && <div className="bg-surface rounded-lg p-2 text-center"><div className="attack-flow-stat-value">{data.cvss_score.toFixed(1)}</div><div className="text-[10px] text-ink-tertiary">CVSS</div></div>}
+              {data.epss_score != null && <div className="bg-surface rounded-lg p-2 text-center"><div className="attack-flow-stat-value">{(data.epss_score * 100).toFixed(1)}%</div><div className="text-[10px] text-ink-tertiary">EPSS</div></div>}
             </div>
             {data.is_kev && <div className="attack-flow-kev-banner"><AlertTriangle className="w-3 h-3" />CISA Known Exploited Vulnerability</div>}
-            {data.fixed_version && <div className="text-xs text-[var(--text-secondary)]">Fix available: <span className="text-emerald-400 font-mono font-semibold">{data.fixed_version}</span></div>}
+            {data.fixed_version && <div className="text-xs text-ink-secondary">Fix available: <span className="text-emerald-400 font-mono font-semibold">{data.fixed_version}</span></div>}
             {data.owasp_tags && data.owasp_tags.length > 0 && <FrameworkTags title="OWASP LLM Top 10" tags={data.owasp_tags} catalog={OWASP_LLM_TOP10} tone="owasp" />}
             {data.owasp_mcp_tags && data.owasp_mcp_tags.length > 0 && <FrameworkTags title="OWASP MCP Top 10" tags={data.owasp_mcp_tags} catalog={OWASP_MCP_TOP10} tone="mcp" />}
             {data.atlas_tags && data.atlas_tags.length > 0 && <FrameworkTags title="MITRE ATLAS" tags={data.atlas_tags} catalog={MITRE_ATLAS} tone="atlas" />}
-            {data.risk_score != null && <div className="text-xs text-[var(--text-secondary)]">Risk score: <span className="text-red-400 font-mono font-bold">{data.risk_score}</span></div>}
+            {data.risk_score != null && <div className="text-xs text-ink-secondary">Risk score: <span className="text-red-400 font-mono font-bold">{data.risk_score}</span></div>}
             {osvUrl && (
               <a href={osvUrl} target="_blank" rel="noopener noreferrer" className="attack-flow-external-link">
                 <ExternalLink className="w-3 h-3" />View on OSV
@@ -137,11 +137,11 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
             )}
           </div>
         )}
-        {data.nodeType === "package" && <div className="space-y-2">{data.version && <div className="text-xs text-[var(--text-secondary)] font-mono">Version: {data.version}</div>}{data.ecosystem && <div className="text-xs text-[var(--text-secondary)] font-mono">Ecosystem: {data.ecosystem}</div>}</div>}
-        {data.nodeType === "server" && <div className="text-xs text-[var(--text-secondary)]">MCP server in the supply chain</div>}
-        {data.nodeType === "agent" && <div className="space-y-2">{data.agent_type && <div className="text-xs text-[var(--text-secondary)] font-mono">Type: {data.agent_type}</div>}{data.status && <div className={`text-xs px-2 py-1 rounded border font-mono ${data.status === "installed-not-configured" ? "border-yellow-800 bg-yellow-950 text-yellow-400" : "border-emerald-800 bg-emerald-950 text-emerald-400"}`}>{data.status === "installed-not-configured" ? "Not Configured" : "Configured"}</div>}</div>}
-        {data.nodeType === "credential" && <div className="space-y-2"><div className="flex items-center gap-1.5 text-xs text-amber-400"><KeyRound className="w-3 h-3" />Exposed credential env var</div><div className="text-xs text-[var(--text-secondary)]">This credential is accessible through a vulnerable MCP server in the supply chain.</div></div>}
-        {data.nodeType === "tool" && <div className="space-y-2"><div className="flex items-center gap-1.5 text-xs text-purple-400"><Wrench className="w-3 h-3" />Reachable MCP tool</div><div className="text-xs text-[var(--text-secondary)]">This tool is exposed through a vulnerable MCP server and could be invoked by an attacker.</div></div>}
+        {data.nodeType === "package" && <div className="space-y-2">{data.version && <div className="text-xs text-ink-secondary font-mono">Version: {data.version}</div>}{data.ecosystem && <div className="text-xs text-ink-secondary font-mono">Ecosystem: {data.ecosystem}</div>}</div>}
+        {data.nodeType === "server" && <div className="text-xs text-ink-secondary">MCP server in the supply chain</div>}
+        {data.nodeType === "agent" && <div className="space-y-2">{data.agent_type && <div className="text-xs text-ink-secondary font-mono">Type: {data.agent_type}</div>}{data.status && <div className={`text-xs px-2 py-1 rounded border font-mono ${data.status === "installed-not-configured" ? "border-yellow-800 bg-yellow-950 text-yellow-400" : "border-emerald-800 bg-emerald-950 text-emerald-400"}`}>{data.status === "installed-not-configured" ? "Not Configured" : "Configured"}</div>}</div>}
+        {data.nodeType === "credential" && <div className="space-y-2"><div className="flex items-center gap-1.5 text-xs text-amber-400"><KeyRound className="w-3 h-3" />Exposed credential env var</div><div className="text-xs text-ink-secondary">This credential is accessible through a vulnerable MCP server in the supply chain.</div></div>}
+        {data.nodeType === "tool" && <div className="space-y-2"><div className="flex items-center gap-1.5 text-xs text-purple-400"><Wrench className="w-3 h-3" />Reachable MCP tool</div><div className="text-xs text-ink-secondary">This tool is exposed through a vulnerable MCP server and could be invoked by an attacker.</div></div>}
       </div>
     </div>
   );
@@ -202,14 +202,14 @@ function FilterBar({ filters, onChange, blastRadius }: { filters: AttackFlowFilt
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <Filter className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+      <Filter className="w-3.5 h-3.5 text-ink-tertiary" />
       <select value={filters.cve} onChange={(e) => onChange({ ...filters, cve: e.target.value })} className="attack-flow-select">
         <option value="">All CVEs</option>
         {cveIds?.map((id) => <option key={id} value={id}>{id}</option>)}
       </select>
       <div className="flex gap-0.5">
         {severities?.map((sev) => (
-          <button key={sev} onClick={() => onChange({ ...filters, severity: activeSev === sev ? "" : sev })} className={`text-[10px] font-mono uppercase px-2 py-1 rounded border transition-colors ${activeSev === sev ? severityColor(sev) : "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)]"}`}>{sev}</button>
+          <button key={sev} onClick={() => onChange({ ...filters, severity: activeSev === sev ? "" : sev })} className={`text-[10px] font-mono uppercase px-2 py-1 rounded border transition-colors ${activeSev === sev ? severityColor(sev) : "border-outline bg-surface text-ink-tertiary hover:border-outline-strong"}`}>{sev}</button>
         ))}
       </div>
       {frameworkTags.length > 0 && (
@@ -236,7 +236,7 @@ function FilterBar({ filters, onChange, blastRadius }: { filters: AttackFlowFilt
 function StatsBar({ stats }: { stats: AttackFlowResponse["stats"] }) {
   const items = [
     { label: "CVEs", value: stats.total_cves, color: "text-red-400" },
-    { label: "Packages", value: stats.total_packages, color: "text-[var(--text-secondary)]" },
+    { label: "Packages", value: stats.total_packages, color: "text-ink-secondary" },
     { label: "Servers", value: stats.total_servers, color: "text-blue-400" },
     { label: "Agents", value: stats.total_agents, color: "text-emerald-400" },
     { label: "Credentials", value: stats.total_credentials, color: "text-yellow-400" },
@@ -247,10 +247,10 @@ function StatsBar({ stats }: { stats: AttackFlowResponse["stats"] }) {
       {items.filter((i) => i.value > 0).map((item) => (
         <span key={item.label} className="flex items-center gap-1 text-xs">
           <span className={`font-mono font-bold ${item.color}`}>{item.value}</span>
-          <span className="text-[var(--text-tertiary)]">{item.label}</span>
+          <span className="text-ink-tertiary">{item.label}</span>
         </span>
       ))}
-      <span className="text-[var(--text-tertiary)]">|</span>
+      <span className="text-ink-tertiary">|</span>
       {Object.entries(stats.severity_counts).filter(([, v]) => v > 0).map(([sev, count]) => (
         <span key={sev} className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border ${severityColor(sev)}`}>{count} {sev}</span>
       ))}
@@ -306,8 +306,8 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
           <div className="flex items-center gap-3">
             <Link href={`/scan?id=${id}`} className="attack-flow-back"><ArrowLeft className="w-4 h-4" /></Link>
             <div>
-              <h1 className="text-lg font-semibold text-[var(--foreground)]">Attack Flow</h1>
-              <p className="text-xs text-[var(--text-tertiary)]">CVE &rarr; Package &rarr; Server &rarr; Agent blast radius chain</p>
+              <h1 className="text-lg font-semibold text-foreground">Attack Flow</h1>
+              <p className="text-xs text-ink-tertiary">CVE &rarr; Package &rarr; Server &rarr; Agent blast radius chain</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -330,7 +330,7 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
       <div className="flex-1 relative">
         {flowData.nodes.length === 0 ? (
           <div className="attack-flow-empty">
-            <Filter className="w-8 h-8 text-[var(--text-tertiary)]" />
+            <Filter className="w-8 h-8 text-ink-tertiary" />
             <p className="text-sm">No results match the current filters</p>
             <button onClick={() => onFiltersChange({ cve: "", severity: "", framework: "", agent: "" })} className="attack-flow-clear">Clear all filters</button>
           </div>
@@ -364,7 +364,7 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
       </div>
       <div className="attack-flow-legend">
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-red-600 bg-red-950" /> CVE</span>
-        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-[var(--border-strong)] bg-[var(--surface)]" /> Package</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-outline-strong bg-surface" /> Package</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-blue-600 bg-blue-950" /> Server</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-emerald-600 bg-emerald-950" /> Agent</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-yellow-600 bg-yellow-950" /> Credential</span>
@@ -399,7 +399,7 @@ export function AttackFlowView({ id }: { id: string }) {
   }, [id, filters]);
 
   if (loading && !flowData) return <div className="attack-flow-loading"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading attack flow...</div>;
-  if (error) return <div className="attack-flow-error"><AlertTriangle className="w-8 h-8 text-amber-500" /><p className="text-sm">Could not load attack flow</p><p className="text-xs text-[var(--text-tertiary)]">{error}</p><Link href={`/scan?id=${id}`} className="attack-flow-clear">Back to scan results</Link></div>;
+  if (error) return <div className="attack-flow-error"><AlertTriangle className="w-8 h-8 text-amber-500" /><p className="text-sm">Could not load attack flow</p><p className="text-xs text-ink-tertiary">{error}</p><Link href={`/scan?id=${id}`} className="attack-flow-clear">Back to scan results</Link></div>;
   if (!job || !flowData) return null;
 
   return <ReactFlowProvider><AttackFlowContent id={id} job={job} flowData={flowData} filters={filters} onFiltersChange={setFilters} /></ReactFlowProvider>;

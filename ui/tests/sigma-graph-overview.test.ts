@@ -272,3 +272,47 @@ it("bounds a large inventory without inventing connections or losing total count
     expect(sourceEdges.get(id)).toMatchObject({ source, target });
   });
 });
+
+
+describe("scope exploration before draw budgeting", () => {
+  it("keeps omitted scopes searchable and drills into their full loaded membership", () => {
+    const nodes = Array.from({ length: 5000 }, (_, i) => node(`asset:${i}`, {
+      attributes: { provider: "aws", account_id: i < 4000 ? "large" : "small", environment: "prod" },
+    }));
+    const all = buildSigmaGraphOverviewModel(nodes, [], "environment");
+    const small = all.scopes.find(scope => scope.label.includes("small"))!;
+    expect(small.count).toBe(1000);
+    expect(all.overview.nodes).toHaveLength(3000);
+    const focused = buildSigmaGraphOverviewModel(nodes, [], "environment", small.key);
+    expect(focused.overview.nodes).toHaveLength(1000);
+    expect(focused.groups[0]!.loadedCount).toBe(1000);
+    expect(focused.overview.omittedNodeCount).toBe(0);
+  });
+  it("does not turn evidence source into location or invent cluster relationships", () => {
+    const model = buildSigmaGraphOverviewModel([node("a", { attributes: { source: "aws" } }), node("b")], [], "environment");
+    expect(model.scopes[0]!.label).toBe("Provider unknown / Account unknown / Environment unknown");
+    expect(model.graph.size).toBe(0);
+  });
+});
+
+it.each([5000, 25000, 100000])("bounds a %i-asset loaded estate before renderer allocation", (count) => {
+  const nodes = Array.from({ length: count }, (_, i) => node(`asset:${i}`, {
+    attributes: { provider: "aws", account_id: `account:${i % 100}`, environment: "prod" },
+  }));
+  const edges = nodes.slice(1).map((n, i) => edge(`edge:${i}`, nodes[i]!.id, n.id));
+  const start = performance.now();
+  const model = buildSigmaGraphOverviewModel(nodes, edges, "environment");
+  console.info(JSON.stringify({ assets: count, modelMs: Math.round(performance.now() - start), renderedNodes: model.graph.order, renderedEdges: model.graph.size }));
+  expect(model.graph.order).toBeLessThanOrEqual(3000);
+  expect(model.graph.size).toBeLessThanOrEqual(6000);
+  expect(model.scopes.reduce((sum, scope) => sum + scope.count, 0)).toBe(count);
+});
+
+
+it("aggregates only recorded directed relationships between loaded groups", () => {
+  const nodes = [node("a", { nodeType: "agent" }), node("b"), node("c")];
+  const model = buildSigmaGraphOverviewModel(nodes, [edge("ab", "a", "b"), edge("ac", "a", "c"), edge("bc", "b", "c")]);
+  expect(model.connections).toEqual([{ source: '["agent"]', target: '["package"]', count: 2 }]);
+  expect(buildSigmaGraphOverviewModel(nodes, [], "type").connections).toEqual([]);
+  expect(buildSigmaGraphOverviewModel(nodes, [edge("ab", "a", "b")], "type", '["agent"]').connections).toEqual([]);
+});

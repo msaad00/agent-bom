@@ -211,19 +211,19 @@ export function GraphLensSwitcher({
     <div
       className={
         variant === "floating"
-          ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--border-subtle)]/80 bg-[var(--background)]/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
+          ? "pointer-events-auto flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-outline/80 bg-background/85 px-3 py-2 shadow-2xl shadow-black/40 backdrop-blur"
           : variant === "compact"
-            ? "flex flex-col gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/80 px-3 py-2"
-            : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
+            ? "flex flex-col gap-2 rounded-xl border border-outline bg-background/80 px-3 py-2"
+            : "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-outline bg-surface-muted px-4 py-3"
       }
     >
       {variant !== "compact" && (
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-tertiary)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-ink-tertiary">
             {variant === "floating" ? "Security Graph Lens" : "Security Graph"}
           </p>
           <p
-            className={`mt-0.5 text-xs text-[color:var(--text-secondary)] ${
+            className={`mt-0.5 text-xs text-ink-secondary ${
               variant === "floating" ? "hidden sm:block" : ""
             }`}
           >
@@ -237,16 +237,16 @@ export function GraphLensSwitcher({
           className="group relative"
           data-active-view={specializedViewActive || undefined}
         >
-          <summary className="graph-chip-neutral cursor-pointer select-none whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] hover:border-[color:var(--border-strong)]">
+          <summary className="graph-chip-neutral cursor-pointer select-none whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] hover:border-outline-strong">
             More views
           </summary>
-          <div className="absolute left-0 top-[calc(100%+0.5rem)] sm:left-auto sm:right-0 z-40 flex min-w-72 flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--background)] p-3 shadow-xl">
+          <div className="absolute left-0 top-[calc(100%+0.5rem)] sm:left-auto sm:right-0 z-40 flex min-w-72 flex-wrap items-center gap-2 rounded-xl border border-outline bg-background p-3 shadow-xl">
             <InsightLayerToggle
               layers={specializedViews}
               label="Views"
               onToggle={onToggle}
             />
-            <span className="text-[10px] text-[color:var(--text-tertiary)]">
+            <span className="text-[10px] text-ink-tertiary">
               Inspect recorded relationships within a selected snapshot.
             </span>
           </div>

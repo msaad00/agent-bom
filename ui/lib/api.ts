@@ -1338,12 +1338,12 @@ export const api = {
   },
 
   /** Compute the blast radius (reverse-BFS impact) of a node */
-  getGraphImpact: (nodeId: string, scanId?: string, maxDepth?: number) => {
+  getGraphImpact: (nodeId: string, scanId?: string, maxDepth?: number, options?: { signal?: AbortSignal }) => {
     const params = new URLSearchParams();
     params.set("node", nodeId);
     if (scanId) params.set("scan_id", scanId);
     if (maxDepth != null) params.set("max_depth", String(maxDepth));
-    return get<GraphImpactResponse>(`/v1/graph/impact?${params.toString()}`);
+    return get<GraphImpactResponse>(`/v1/graph/impact?${params.toString()}`, options);
   },
 
   /** NHI governance posture — GET /v1/graph/nhi/governance */

@@ -63,7 +63,7 @@ export function GraphDriftTimeline({
     return (
       <div
         data-testid="graph-drift-timeline"
-        className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs text-[color:var(--text-tertiary)]"
+        className="rounded-xl border border-outline bg-surface-elevated px-3 py-2 text-xs text-ink-tertiary"
       >
         Loading drift history…
       </div>
@@ -74,7 +74,7 @@ export function GraphDriftTimeline({
     return (
       <div
         data-testid="graph-drift-timeline"
-        className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs text-[color:var(--text-tertiary)]"
+        className="rounded-xl border border-outline bg-surface-elevated px-3 py-2 text-xs text-ink-tertiary"
       >
         No adjacent scan pairs yet. Run another scan to compare what changed.
       </div>
@@ -90,7 +90,7 @@ export function GraphDriftTimeline({
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-800 dark:text-orange-200">
           Drift timeline
         </p>
-        <p className="text-[11px] text-[color:var(--text-tertiary)]">
+        <p className="text-[11px] text-ink-tertiary">
           Threshold = what changed between adjacent snapshots
         </p>
       </div>
@@ -110,10 +110,10 @@ export function GraphDriftTimeline({
               className={`min-w-[9.5rem] shrink-0 rounded-lg border px-3 py-2 text-left transition ${
                 active
                   ? "border-orange-400/70 bg-orange-500/15 ring-1 ring-orange-400/50"
-                  : "border-[color:var(--border-subtle)] bg-[color:var(--surface)] hover:border-orange-400/40"
+                  : "border-outline bg-surface hover:border-orange-400/40"
               }`}
             >
-              <div className="font-mono text-[11px] text-[color:var(--foreground)]">
+              <div className="font-mono text-[11px] text-foreground">
                 {pair.newScanId.slice(0, 8)}…
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -122,15 +122,15 @@ export function GraphDriftTimeline({
                     Critical
                   </span>
                 ) : (
-                  <span className="rounded border border-[color:var(--border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+                  <span className="rounded border border-outline px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">
                     Changed
                   </span>
                 )}
-                <span className="font-mono text-[10px] text-[color:var(--text-secondary)]">
+                <span className="font-mono text-[10px] text-ink-secondary">
                   {total} Δ
                 </span>
               </div>
-              <div className="mt-1 text-[10px] text-[color:var(--text-tertiary)]">
+              <div className="mt-1 text-[10px] text-ink-tertiary">
                 vs {pair.oldScanId.slice(0, 8)}…
               </div>
             </button>

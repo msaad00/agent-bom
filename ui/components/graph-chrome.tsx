@@ -129,7 +129,7 @@ export function GraphLegendDock({
 
   return (
     <details
-      className="group graph-legend-dock"
+      className="group graph-legend-dock relative !pt-2"
       {...(defaultOpen ? { open: true } : {})}
     >
       <summary className="graph-legend-dock-summary">
@@ -148,7 +148,7 @@ export function GraphLegendDock({
             </span>
           ))}
           {items.length > preview.length ? (
-            <span className="text-[10px] text-[var(--text-tertiary)]">+{items.length - preview.length}</span>
+            <span className="text-[10px] text-ink-tertiary">+{items.length - preview.length}</span>
           ) : null}
         </span>
         <span className="graph-legend-expand group-open:hidden">
@@ -158,7 +158,8 @@ export function GraphLegendDock({
           collapse
         </span>
       </summary>
-      <div className="graph-legend-dock-content">
+      <div className="graph-legend-dock-content absolute inset-x-0 top-full z-40 !bg-surface shadow-lg">
+        <p className="mb-2 text-xs text-ink-secondary">Arrows show recorded direction. Colors and solid/dashed lines distinguish relationship types, not confidence or proof of execution.</p>
         <GraphLegendContent items={items} />
       </div>
     </details>
@@ -223,8 +224,8 @@ function LayeredLegendSections({ items }: { items: LegendItem[] }) {
 function LegendSection({ title, items }: { title: string; items: LegendItem[] }) {
   return (
     <div className="first:mt-0 mt-3">
-      <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{title}</div>
-      <div className="grid grid-cols-1 gap-x-3 gap-y-2 text-[11px] text-[var(--text-secondary)] sm:grid-cols-2">
+      <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">{title}</div>
+      <div className="grid grid-cols-1 gap-x-3 gap-y-2 text-[11px] text-ink-secondary sm:grid-cols-2">
         {items.map((item) => (
           <span
             key={`${title}:${item.label}`}

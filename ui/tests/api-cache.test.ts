@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { _cacheSizeForTests, cachedGet, clearCache, invalidate } from "../lib/api-cache";
+import { _cacheBytesForTests, _cacheSizeForTests, cachedGet, clearCache, invalidate } from "../lib/api-cache";
 
 afterEach(() => {
   clearCache();
@@ -139,4 +139,27 @@ describe("bounded response retention", () => {
       expect(await cachedGet("graph:scan", async () => "wrong")).toBe("fresh");
     });
   }
+});
+
+
+describe("estimated byte retention", () => {
+  it("delivers oversized responses without retaining them", async () => {
+    const value = "x".repeat(2 * 1024 * 1024);
+    expect(await cachedGet("large", async () => value)).toBe(value);
+    expect(_cacheBytesForTests()).toBe(0);
+    expect(_cacheSizeForTests().entries).toBe(0);
+  });
+  it("evicts by bytes and releases accounting on invalidation", async () => {
+    for (let i = 0; i < 12; i++) await cachedGet(`graph:${i}`, async () => "x".repeat(512 * 1024));
+    expect(_cacheBytesForTests()).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(_cacheSizeForTests().entries).toBeLessThan(12);
+    invalidate("graph:");
+    expect(_cacheBytesForTests()).toBe(0);
+  });
+  it("handles cyclic values without recursive overflow", async () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+    expect(await cachedGet("cycle", async () => value)).toBe(value);
+    expect(_cacheBytesForTests()).toBeGreaterThan(0);
+  });
 });

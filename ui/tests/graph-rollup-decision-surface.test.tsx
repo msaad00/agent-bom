@@ -156,9 +156,9 @@ describe("GraphRollupDecisionSurface", () => {
     expect(screen.getByText("1 connected node")).toBeInTheDocument();
     expect(screen.queryByText("Scope quiet-23")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Drill in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open scope" }));
     expect(onDrill).toHaveBeenCalledWith(critical);
-    fireEvent.click(screen.getByRole("button", { name: /Traverse/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Connections/i }));
     expect(onInvestigate).toHaveBeenCalledWith(critical);
   });
 

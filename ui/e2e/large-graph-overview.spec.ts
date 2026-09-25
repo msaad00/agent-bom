@@ -237,7 +237,7 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
     });
   });
   await page.route("**/v1/graph/attack-paths?**", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
+    await route.fulfill({ json: { ...graph, nodes: [], edges: [], attack_paths: [], pagination: { total: 0, offset: 0, limit: 75, has_more: false } } });
   });
   await page.route("**/v1/graph/scenarios", async (route) => {
     await route.fulfill({
@@ -289,7 +289,7 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
         roots: ["pkg:42"],
         direction: "both",
         max_depth: 4,
-        max_nodes: 800,
+        max_nodes: 40,
         max_edges: 8000,
         timeout_ms: 2500,
         budget: {},
@@ -494,7 +494,7 @@ test("identity investigation links preserve the selected root during client navi
   await page.getByRole("tab", { name: "Discovered identity risk" }).click();
   const query = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.method() === "POST");
   await page.getByRole("link", { name: /Investigated identity.*86/ }).click();
-  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 80, max_edges: 320 });
+  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 4, max_edges: 96 });
   await expect(page.getByRole("textbox", { name: "Search nodes, tags, severities, or attributes" })).toHaveValue("Investigated identity");
   await expect(page).toHaveURL(/root=pkg%3A42/);
   await expect(page.getByTestId("sigma-graph-overview")).toBeHidden();
@@ -506,16 +506,26 @@ test("root investigations expose depth and direction controls with bounded reque
   await routeLargeGraphPage(page);
   const initial = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query"));
   await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
-  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 80 });
+  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 4 });
+  await page.getByText("Traversal options", { exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Traversal depth" })).toHaveValue("1");
   await expect(page.getByTestId("graph-headline-metrics")).toHaveCount(0);
   await expect(page.getByText("Analysis status unavailable", { exact: true })).toHaveCount(0);
   const deeper = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().max_depth === 2);
   await page.getByRole("combobox", { name: "Traversal depth" }).selectOption("2");
-  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 80, max_edges: 320 });
+  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 4, max_edges: 96 });
   const reverse = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().direction === "reverse");
+  await page.getByText("Traversal options", { exact: true }).click();
   await page.getByRole("combobox", { name: "Traversal direction" }).selectOption("reverse");
   expect((await reverse).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
+  const canvas = page.locator(".react-flow");
+  const top = (await canvas.boundingBox())!.y;
+  await page.locator(".graph-legend-dock-summary:visible").click();
+  await expect(page.locator(".graph-legend-dock-content:visible").getByText(/Arrows show recorded direction/)).toBeVisible();
+  expect((await canvas.boundingBox())!.y).toBe(top);
+  await page.locator(".graph-legend-dock-summary:visible").click();
+  await page.getByTestId("reachability-evidence-details").locator("summary").first().click();
+  expect((await canvas.boundingBox())!.y).toBe(top);
 });
 
 for (const width of [1100, 1440]) {
@@ -563,7 +573,7 @@ test("scope summary does not inherit the unrelated node-page warning", async ({ 
   await expect(page.getByRole("region", { name: "Risk-prioritized estate scopes" })).toContainText("Complete estate scope");
   await expect(page.getByText(/This node view includes only part/)).toHaveCount(0);
   await expect(page.getByText("node_page_limit", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Drill in", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open scope", exact: true })).toBeVisible();
 });
 
 
@@ -586,6 +596,44 @@ test("blast radius distinguishes related nodes from assets and keeps the type br
   await breakdown.locator("summary").click();
   await expect(breakdown.getByText("Vulnerability: 1", { exact: true })).toBeVisible();
   await expect(page.getByText(/Graph relationships do not establish compromise/)).toBeVisible();
+});
+
+test("partial investigations expand only after an explicit request", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  await page.route("**/v1/graph/query", route => {
+    const limit = route.request().postDataJSON().max_nodes;
+    const nodes = Array.from({ length: limit }, (_, i) => node(`pkg:${42 + i}`, "package", `package-${42 + i}`, "none", 0));
+    return route.fulfill({ json: { scan_id: scanId, nodes, edges: nodes.slice(1).map(n => edge("pkg:42", n.id, "depends_on")), attack_paths: [], roots: ["pkg:42"], truncated: true, direction: "both", stats: {} } });
+  });
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  const next = page.waitForRequest(req => req.url().endsWith("/v1/graph/query") && req.postDataJSON().max_nodes === 8);
+  await page.getByRole("button", { name: "Show more connections", exact: true }).click();
+  await next;
+  await expect(page.locator(".react-flow__node")).toHaveCount(8);
+});
+
+test("slow blast radius retains the canvas and ends with a retryable timeout", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  const root = node("pkg:42", "package", "large-package-42", "high", 7.2);
+  await page.route("**/v1/graph/node/**", (route) => route.fulfill({ json: {
+    node: root, edges_in: [], edges_out: [], neighbors: [], sources: [],
+    impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+  } }));
+  await page.route("**/v1/graph/impact?**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 9500));
+    await route.abort().catch(() => {});
+  });
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  const canvas = page.locator(".react-flow");
+  await expect(canvas).toBeVisible();
+  await page.getByRole("button", { name: "Show blast radius", exact: true }).click();
+  await expect(page.getByText("Computing blast radius · current view retained", { exact: true })).toBeVisible();
+  await expect(canvas).toBeVisible();
+  await expect(page.getByText("Blast radius unavailable", { exact: true })).toBeVisible({ timeout: 12000 });
+  await expect(page.getByText(/Blast radius timed out/)).toBeVisible();
+  await expect(canvas).toBeVisible();
+  await expect(page.getByText("Computing blast radius", { exact: true })).toHaveCount(0);
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -634,7 +682,7 @@ for (const theme of ["light", "dark"] as const) {
     const summary = page.getByTestId("graph-rollup-decision-surface");
     await expect(summary.getByText(/image: billing:1.0/)).toBeVisible();
     await expect(summary.getByText(/image: claims:1.0/)).toBeVisible();
-    await summary.locator("summary", { hasText: "Node ID" }).first().click();
+    await summary.locator("summary", { hasText: "Details" }).first().click();
     await expect(summary.getByText("pkg:42", { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`package-context-${theme}.png`) });
     const request = page.waitForRequest(req => req.url().endsWith("/v1/graph/query") && req.postDataJSON().roots?.includes("pkg:42"));
@@ -668,7 +716,7 @@ for (const theme of ["light", "dark"] as const) {
     await summary.getByRole("button", { name: "Next scope page", exact: true }).click();
     await expect(summary.getByRole("article")).toHaveCount(1);
     await expect(summary.getByRole("button", { name: "Inspect CVE-2026-1012 (pkg:12)", exact: true })).toBeVisible();
-    await summary.locator("summary", { hasText: "Node ID" }).click();
+    await summary.locator("summary", { hasText: "Details" }).click();
     await expect(summary.getByText("pkg:12", { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`compact-leaf-${theme}.png`), fullPage: true });
@@ -690,6 +738,12 @@ for (const theme of ["light", "dark"] as const) {
       await sigma.getByLabel("Map grouping").selectOption("environment");
       await expect(sigma.getByText(/Environment groups/)).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`environment-overview-${theme}-${width}.png`), fullPage: true });
+      await sigma.getByText(/Environment groups/).click();
+      await sigma.getByLabel("Find a group").fill("analytics");
+      await sigma.getByRole("button", { name: /aws \/ analytics \/ development · .* loaded/ }).click();
+      await expect(sigma.getByRole("button", { name: "Back to all groups" })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`environment-drill-${theme}-${width}.png`), fullPage: true });
+      await sigma.getByRole("button", { name: "Back to all groups" }).click();
       const canvas = sigma.getByTestId("sigma-graph-overview-canvas");
       const bounds = (await canvas.boundingBox())!;
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -778,5 +832,85 @@ for (const theme of ["light", "dark"] as const) {
       await expect(drawer.getByText(assessed ? "0.0" : "Not assessed", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`node-risk-${theme}-${assessed ? "assessed" : "unknown"}.png`), fullPage: true });
     }
+  });
+}
+
+for (const storedAssets of [5_000, 25_000, 100_000]) {
+  test(`bounded map navigation for ${storedAssets} stored assets`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await routeLargeGraphPage(page, true);
+    const graph = buildLargeGraph();
+    // Model the API's bounded page, with authoritative snapshot totals separate.
+    graph.nodes = graph.nodes.slice(0, 500);
+    const ids = new Set(graph.nodes.map(item => item.id));
+    graph.edges = graph.edges.filter(item => ids.has(item.source) && ids.has(item.target));
+    graph.nodes.forEach((item, index) => {
+      item.dimensions = { cloud_provider: "aws", environment: "production" };
+      item.attributes.account_scope = `account-${index % 5}`;
+    });
+    graph.stats.total_nodes = storedAssets;
+    graph.pagination = { total: storedAssets, offset: 0, limit: 500, has_more: true };
+    const body = JSON.stringify(graph);
+    const requests: string[] = [];
+    await page.route("**/v1/graph?**", route => {
+      requests.push(route.request().url());
+      return route.fulfill({ contentType: "application/json", body });
+    });
+    await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: { ...graph, nodes: [], edges: [], attack_paths: [], pagination: { total: 0, offset: 0, limit: 75, has_more: false } } }));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const started = performance.now();
+    await page.goto("/graph?rollup=0&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package,vulnerability");
+    const sigma = page.getByTestId("sigma-graph-overview");
+    await expect(sigma).toBeVisible();
+    await expectSigmaCanvases(page);
+    const readyMs = performance.now() - started;
+    await sigma.getByText("Map controls", { exact: true }).click();
+    await sigma.getByLabel("Map grouping").selectOption("environment");
+    await sigma.getByText(/Environment groups/).click();
+    const initialRequests = requests.length;
+    const samples: number[] = [];
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Performance.enable");
+    const heapBytes = async () => (await cdp.send("Performance.getMetrics")).metrics.find(metric => metric.name === "JSHeapUsedSize")?.value ?? 0;
+    const initialHeapBytes = await heapBytes();
+    const heapSamples = [initialHeapBytes];
+    for (let i = 0; i < 5; i++) {
+      await sigma.getByLabel("Find a group").evaluate(el => { el.closest("details")!.open = true; });
+      const timing = await page.evaluate(async () => {
+        const button = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="sigma-graph-overview"] button')].find(el => /account-0.*loaded$/.test(el.textContent ?? ""));
+        if (!button) throw new Error("Expected bounded group control");
+        const start = performance.now();
+        button.click();
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        return performance.now() - start;
+      });
+      samples.push(timing);
+      heapSamples.push(await heapBytes());
+      await sigma.getByRole("button", { name: "Back to all groups" }).click();
+    }
+    expect(requests.length).toBe(initialRequests);
+    const canvasBox = (await sigma.getByTestId("sigma-graph-overview-canvas").boundingBox())!;
+    await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+    await page.mouse.down();
+    const frameRecording = page.evaluate(async () => {
+      const gaps: number[] = [];
+      let previous = performance.now();
+      await new Promise<void>(resolve => {
+        const frame = (now: number) => { gaps.push(now - previous); previous = now; if (gaps.length < 60) requestAnimationFrame(frame); else resolve(); };
+        requestAnimationFrame(frame);
+      });
+      return gaps.slice(1);
+    });
+    await page.mouse.move(canvasBox.x + canvasBox.width * .7, canvasBox.y + canvasBox.height * .7, { steps: 45 });
+    await page.mouse.up();
+    const frameGaps = await frameRecording;
+    const metrics = { storedAssets, loadedAssets: graph.nodes.length, payloadBytes: Buffer.byteLength(body), readyMs,
+      interactionP95Ms: samples.sort((a, b) => a - b)[Math.ceil(samples.length * .95) - 1],
+      panFrameP95Ms: frameGaps.sort((a, b) => a - b)[Math.ceil(frameGaps.length * .95) - 1], requests: requests.length,
+      initialHeapBytes, sampledPeakHeapBytes: Math.max(...heapSamples), finalHeapBytes: await heapBytes() };
+    await testInfo.attach("bounded-map-metrics", { body: JSON.stringify(metrics, null, 2), contentType: "application/json" });
+    console.info(JSON.stringify(metrics));
+    await page.screenshot({ path: testInfo.outputPath(`bounded-map-${storedAssets}.png`), fullPage: true });
+    expect(Buffer.byteLength(body)).toBeLessThan(512 * 1024);
   });
 }

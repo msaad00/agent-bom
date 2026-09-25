@@ -80,9 +80,13 @@ export function SigmaGraphOverview({
   presentationEnabled = true,
 }: SigmaGraphOverviewProps) {
   const captureMode = useCaptureMode();
+  const [groupQuery, setGroupQuery] = useState("");
   const [assetQuery, setAssetQuery] = useState("");
   const [grouping, setGrouping] = useState<"type" | "environment">("type");
+  const [scopeSelection, setScopeSelection] = useState<{ snapshot: string; key: string } | null>(null);
+  const scopeControlsRef = useRef<HTMLDetailsElement | null>(null);
   const controlsRef = useRef<HTMLDetailsElement | null>(null);
+  const groupEdgesRef = useRef<SVGSVGElement | null>(null);
   const groupLabelsRef = useRef<HTMLDivElement | null>(null);
   const palette = useGraphCanvasPalette();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -99,6 +103,7 @@ export function SigmaGraphOverview({
   const presentationTenantId = presentationScope?.tenantId ?? "";
   const presentationSubject = presentationScope?.subject ?? "";
   const presentationSnapshotId = presentationScope?.snapshotId ?? "";
+  const scopeKey = scopeSelection?.snapshot === presentationSnapshotId ? scopeSelection.key : null;
   const presentationLens = presentationScope?.lens ?? "";
   const presentationFilterScope = presentationScope?.scope ?? "";
   const cameraStorageKey = useMemo(
@@ -108,7 +113,7 @@ export function SigmaGraphOverview({
           subject: presentationSubject,
           snapshotId: presentationSnapshotId,
           lens: presentationLens,
-          scope: grouping === "type" ? presentationFilterScope : `${presentationFilterScope}:grouping=environment`,
+          scope: `${grouping === "type" ? presentationFilterScope : `${presentationFilterScope}:grouping=environment`}${scopeKey ? `:cluster=${scopeKey}` : ""}`,
         })
       : null,
     [
@@ -119,6 +124,7 @@ export function SigmaGraphOverview({
       presentationSubject,
       presentationTenantId,
       grouping,
+      scopeKey,
     ],
   );
   const cameraOwner = useMemo(
@@ -133,10 +139,37 @@ export function SigmaGraphOverview({
   const model = useMemo(
     () =>
       graph
-        ? buildSigmaGraphOverviewModelFromUnifiedGraph(graph, filters, grouping)
-        : buildSigmaGraphOverviewModel(nodes, edges, grouping),
-    [edges, filters, graph, nodes, grouping],
+        ? buildSigmaGraphOverviewModelFromUnifiedGraph(graph, filters, grouping, scopeKey)
+        : buildSigmaGraphOverviewModel(nodes, edges, grouping, scopeKey),
+    [edges, filters, graph, nodes, grouping, scopeKey],
   );
+  const enterScope = (key: string | null) => {
+    if (scopeControlsRef.current) scopeControlsRef.current.open = false;
+    const camera = rendererRef.current?.getCamera().getState();
+    if (camera && cameraPersistenceEnabled && cameraStorageKey && cameraOwner) {
+      registerGraphPresentationKey(browserStorage(), cameraOwner, cameraStorageKey);
+      writeSigmaCameraPresentation(browserStorage(), cameraStorageKey, camera);
+    }
+    setScopeSelection(key ? { snapshot: presentationSnapshotId, key } : null);
+    setSelectedNodeId(null);
+    onClearSelection?.();
+  };
+  const currentModel = useRef(model);
+  const currentCameraKey = useRef(cameraStorageKey);
+  useEffect(() => {
+    currentModel.current = model;
+    const scopeChanged = currentCameraKey.current !== cameraStorageKey;
+    currentCameraKey.current = cameraStorageKey;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setGraph(model.graph);
+    if (!scopeChanged) return;
+    const saved = cameraPersistenceEnabled && cameraStorageKey
+      ? readSigmaCameraPresentation(browserStorage(), cameraStorageKey) : null;
+    renderer.getCamera().setState(saved ?? { x: 0.5, y: 0.5, angle: 0, ratio: 1.05 });
+  }, [model, cameraStorageKey, cameraPersistenceEnabled]);
+  const groupByKey = new Map(model.groups.map(group => [group.key, group]));
+  const overviewConnections = model.connections.filter(edge => groupByKey.has(edge.source) && groupByKey.has(edge.target)).slice(0, 12);
   const isBudgeted = model.overview.omittedNodeCount > 0 || model.overview.omittedEdgeCount > 0;
   const frameRequestedNode = useCallback(() => {
     const id = requestedFocusRef.current;
@@ -175,14 +208,14 @@ export function SigmaGraphOverview({
     if (!container) return;
     let renderer: Sigma<SigmaNodeAttributes, SigmaEdgeAttributes> | null = null;
     let alive = true;
-    let pendingCamera: SigmaCameraState | null = null;
+    let pendingCamera: { key: string; camera: SigmaCameraState } | null = null;
     let persistTimer: number | null = null;
 
     const storage = cameraPersistenceEnabled ? browserStorage() : null;
     const flushCamera = () => {
-      if (!cameraStorageKey || !cameraOwner || !pendingCamera) return;
-      registerGraphPresentationKey(storage, cameraOwner, cameraStorageKey);
-      writeSigmaCameraPresentation(storage, cameraStorageKey, pendingCamera);
+      if (!cameraOwner || !pendingCamera) return;
+      registerGraphPresentationKey(storage, cameraOwner, pendingCamera.key);
+      writeSigmaCameraPresentation(storage, pendingCamera.key, pendingCamera.camera);
       pendingCamera = null;
       persistTimer = null;
     };
@@ -191,7 +224,7 @@ export function SigmaGraphOverview({
       try {
         const { default: SigmaRenderer } = await import("sigma");
         if (!alive || !containerRef.current) return;
-        renderer = new SigmaRenderer(model.graph, container, {
+        renderer = new SigmaRenderer(currentModel.current.graph, container, {
           allowInvalidContainer: true,
           autoCenter: true,
           autoRescale: true,
@@ -238,7 +271,7 @@ export function SigmaGraphOverview({
           edgeReducer: (_edge, data) => {
             const selected = selectedNodeIdRef.current;
             const selectedEdge = selected
-              ? model.graph.source(_edge) === selected || model.graph.target(_edge) === selected
+              ? currentModel.current.graph.source(_edge) === selected || currentModel.current.graph.target(_edge) === selected
               : false;
             return {
               ...data,
@@ -259,13 +292,24 @@ export function SigmaGraphOverview({
           if (!renderer || !groupLabelsRef.current) return;
           const activeRenderer = renderer;
           const dimensions = activeRenderer.getDimensions();
+          const model = currentModel.current;
+          const drawnGroups = new Map(model.groups.map(group => [group.key, group]));
+          model.connections.filter(edge => drawnGroups.has(edge.source) && drawnGroups.has(edge.target)).slice(0, 12).forEach((edge, index) => {
+            const line = groupEdgesRef.current?.children[index] as SVGLineElement | undefined;
+            if (!line) return;
+            const source = drawnGroups.get(edge.source)!, target = drawnGroups.get(edge.target)!;
+            const from = activeRenderer.graphToViewport({ x: source.x, y: source.centerY });
+            const to = activeRenderer.graphToViewport({ x: target.x, y: target.centerY });
+            line.setAttribute("x1", String(from.x)); line.setAttribute("y1", String(from.y));
+            line.setAttribute("x2", String(to.x)); line.setAttribute("y2", String(to.y));
+          });
           const placed: Array<{ x: number; y: number }> = [];
           model.groups.forEach((group, index) => {
             const label = groupLabelsRef.current?.children[index] as HTMLElement | undefined;
             if (!label) return;
-            const position = activeRenderer.graphToViewport({ x: group.x, y: group.y });
+            const position = activeRenderer.graphToViewport({ x: group.x, y: group.centerY });
             const beside = activeRenderer.graphToViewport({ x: group.x + 120, y: group.y });
-            const anchor = { x: Math.max(80, Math.min(dimensions.width - 80, position.x)), y: Math.max(52, position.y - 48) };
+            const anchor = { x: Math.max(80, Math.min(dimensions.width - 80, position.x)), y: Math.max(52, position.y - 28) };
             const readable = (model.groups.length <= 8 || Math.abs(beside.x - position.x) >= 65) && !placed.some(p => Math.abs(p.x - anchor.x) < 160 && Math.abs(p.y - anchor.y) < 52);
             if (readable) placed.push(anchor);
             label.style.display = readable && position.x >= 0 && position.y >= 0 && position.x <= dimensions.width && position.y <= dimensions.height ? "block" : "none";
@@ -284,8 +328,8 @@ export function SigmaGraphOverview({
           onClearRef.current?.();
         });
         const camera = renderer.getCamera();
-        const savedCamera = cameraPersistenceEnabled && cameraStorageKey
-          ? readSigmaCameraPresentation(storage, cameraStorageKey)
+        const savedCamera = cameraPersistenceEnabled && currentCameraKey.current
+          ? readSigmaCameraPresentation(storage, currentCameraKey.current)
           : null;
         // Sigma's constructor performs its normal fit/centering. A valid saved
         // camera takes precedence over that one-shot default; absent or invalid
@@ -295,7 +339,11 @@ export function SigmaGraphOverview({
           camera.on("updated", (state) => {
             const sanitized = sanitizeSigmaCameraState(state);
             if (!sanitized) return;
-            pendingCamera = sanitized;
+            const key = currentCameraKey.current;
+            if (!key) return;
+            if (pendingCamera && pendingCamera.key !== key) flushCamera();
+            pendingCamera = { key, camera: sanitized };
+
             if (persistTimer === null) {
               // Camera updates fire continuously while panning. Throttle the
               // synchronous localStorage write while retaining the latest frame.
@@ -322,27 +370,27 @@ export function SigmaGraphOverview({
       rendererRef.current = null;
       container.replaceChildren();
     };
-  }, [cameraOwner, cameraPersistenceEnabled, cameraStorageKey, model, palette, grouping, frameRequestedNode]);
+  }, [cameraOwner, cameraPersistenceEnabled, palette, frameRequestedNode]);
 
   const focused = selectedNodeId && model.graph.hasNode(selectedNodeId) ? selectedNodeId : null;
   const neighbors = focused ? model.graph.neighbors(focused).filter((id) => id !== focused) : [];
 
   return (
     <div
-      className={`flex h-full flex-col overflow-hidden bg-[var(--background)] ${
+      className={`flex h-full flex-col overflow-hidden bg-background ${
         embedded
           ? "min-h-0"
-          : "min-h-[72vh] rounded-xl border border-[var(--border-subtle)] shadow-2xl shadow-black/30"
+          : "min-h-[72vh] rounded-xl border border-outline shadow-2xl shadow-black/30"
       }`}
       data-testid="sigma-graph-overview"
     >
-      <div className="border-b border-[var(--border-subtle)] bg-[var(--background)]/95 p-3">
+      <div className="border-b border-outline bg-background/95 p-3">
         <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
           <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-200">
             <Sparkles className="h-3.5 w-3.5" />
             Estate map
           </span>
-          <span className="min-w-0 text-xs leading-snug text-[var(--text-tertiary)] sm:min-w-[12rem] sm:flex-1">
+          <span className="min-w-0 text-xs leading-snug text-ink-tertiary sm:min-w-[12rem] sm:flex-1">
             Select an asset to reveal its connections.
           </span>
           <button type="button" className="shrink-0 rounded-full border border-outline px-3 py-1 text-xs text-ink-secondary" onClick={() => rendererRef.current?.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 })}>Fit map</button>
@@ -357,12 +405,13 @@ export function SigmaGraphOverview({
             <li className="mt-1 text-ink-tertiary">Up to 10 matches from displayed assets. Use graph search for broader coverage.</li>
           </ul>}
         <label className="mt-2 flex items-center gap-2 text-xs text-ink-secondary">Group displayed assets by
-          <select aria-label="Map grouping" value={grouping} onChange={(event) => setGrouping(event.target.value as "type" | "environment")} className="rounded border border-outline bg-background px-2 py-1 text-foreground">
+          <select aria-label="Map grouping" value={grouping} onChange={(event) => { enterScope(null); setGrouping(event.target.value as "type" | "environment"); }} className="rounded border border-outline bg-background px-2 py-1 text-foreground">
             <option value="type">Asset type</option><option value="environment">Environment</option>
           </select>
         </label>
         </details>
-        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
+        {scopeKey && <button type="button" className="mt-2 graph-chip-neutral" onClick={() => enterScope(null)}>Back to all groups</button>}
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-ink-tertiary">
           <span>
             Displayed: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes · {" "}
             {model.overview.edges.length.toLocaleString()}/{model.overview.sourceEdgeCount.toLocaleString()} available connections.
@@ -407,7 +456,7 @@ export function SigmaGraphOverview({
           {neighbors.length === 0 && <p>No connected assets are present in this displayed scope.</p>}
         </details>
       </div>}
-      <div className="relative min-h-0 flex-1 bg-[var(--background)]">
+      <div className="relative min-h-0 flex-1 bg-background">
         <div
           ref={containerRef}
           className="h-full min-h-[20rem] w-full"
@@ -416,14 +465,19 @@ export function SigmaGraphOverview({
           aria-describedby="sigma-graph-overview-text"
           data-testid="sigma-graph-overview-canvas"
         />
-        <div ref={groupLabelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          {model.groups.map((group) => <div key={group.key} className="absolute left-0 top-0 hidden max-w-36 rounded border border-outline bg-surface/95 px-2 py-1 text-center text-xs text-foreground">{group.label}<span className="block text-ink-secondary">{group.count} displayed assets</span></div>)}
+        {!focused && <svg ref={groupEdgesRef} className="pointer-events-none absolute inset-0 h-full w-full text-ink-tertiary" aria-hidden="true">
+          {overviewConnections.map(edge => <line key={`${edge.source}:${edge.target}`} stroke="currentColor" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="3 5"><title>{edge.count} recorded relationships between groups</title></line>)}
+        </svg>}
+        <div ref={groupLabelsRef} className="pointer-events-none absolute inset-0 overflow-hidden">
+          {model.groups.map((group) => <button type="button" key={group.key} onClick={() => enterScope(group.key)} className="pointer-events-auto absolute left-0 top-0 hidden max-w-36 rounded border border-outline bg-surface/95 px-2 py-1 text-center text-xs text-foreground">{group.label}<span className="block text-ink-secondary">{group.count} displayed / {group.loadedCount} loaded</span></button>)}
         </div>
-        {model.groups.length > 0 && <details className="absolute left-3 top-3 max-w-64 rounded border border-outline bg-surface/95 p-2 text-xs">
-          <summary className="cursor-pointer">{grouping === "environment" ? "Environment groups" : "Asset types"} ({model.groups.length})</summary>
+        {model.scopes.length > 0 && <details ref={scopeControlsRef} className="absolute left-3 top-3 max-w-64 rounded border border-outline bg-surface/95 p-2 text-xs">
+          <summary className="cursor-pointer">{grouping === "environment" ? "Environment groups" : "Asset types"} ({model.scopes.length})</summary>
           <p className="my-2 text-ink-secondary">{grouping === "environment" ? "Grouped by recorded provider, account and environment. Unknown fields stay unknown." : "Grouped by asset type. Proximity is a layout choice, not an access relationship."}</p>
-          <ul className="max-h-40 overflow-y-auto">{model.groups.slice(0, 20).map((group) => <li key={group.key} className="mb-2 break-words">{group.label} · {group.count} displayed</li>)}</ul>
-          {model.groups.length > 20 && <p>Showing 20 of {model.groups.length} groups. Use Summary to narrow the scope.</p>}
+          <input aria-label="Find a group" className="mb-2 w-full rounded border border-outline bg-background p-1" value={groupQuery} onChange={event => setGroupQuery(event.target.value)} placeholder="Filter groups" />
+          <ul className="max-h-40 overflow-y-auto">{model.scopes.filter(group => group.label.toLowerCase().includes(groupQuery.toLowerCase())).slice(0, 20).map((group) => <li key={group.key}><button type="button" className="min-h-9 break-words py-1 text-left underline" onClick={() => enterScope(group.key)}>{group.label} · {group.count} loaded</button></li>)}</ul>
+          <p className="mt-1 text-ink-secondary">Up to 20 matching groups from loaded evidence.</p>
+          {!scopeKey && <details className="mt-2"><summary>Between groups ({model.connections.length})</summary><p>Dashed lines summarize recorded relationships, not proven access. {overviewConnections.length} group pairs shown.</p><ul className="max-h-32 overflow-y-auto">{overviewConnections.map(edge => <li key={`${edge.source}:${edge.target}`} className="mt-2">{groupByKey.get(edge.source)!.label} → {groupByKey.get(edge.target)!.label}: {edge.count}</li>)}</ul></details>}
         </details>}
         <GraphTextAlternative
           id="sigma-graph-overview-text"
@@ -437,8 +491,8 @@ export function SigmaGraphOverview({
           </div>
         )}
         <div className="pointer-events-auto absolute right-3 top-3 max-w-[min(30rem,calc(100vw-2rem))]">
-          <details className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/85 p-2 backdrop-blur">
-            <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-[var(--text-secondary)] [&::-webkit-details-marker]:hidden">
+          <details className="rounded-xl border border-outline bg-background/85 p-2 backdrop-blur">
+            <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-ink-secondary [&::-webkit-details-marker]:hidden">
               Legend
             </summary>
             <div className="mt-2">
@@ -447,7 +501,7 @@ export function SigmaGraphOverview({
           </details>
         </div>
         {!captureMode && (
-        <div className="pointer-events-none absolute bottom-3 left-3 text-[10px] text-[color:var(--text-tertiary)]">
+        <div className="pointer-events-none absolute bottom-3 left-3 text-[10px] text-ink-tertiary">
           Scroll to zoom · drag to pan · select to investigate
           <span className="sr-only">
             Maximum overview draw budget is {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} nodes and{" "}

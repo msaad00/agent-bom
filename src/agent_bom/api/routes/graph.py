@@ -3979,6 +3979,33 @@ async def get_graph_rollup(
     if min_severity and min_severity.lower() not in SEVERITY_RANK:
         raise HTTPException(status_code=422, detail=f"Unsupported severity: {min_severity}")
 
+    # Cache the small summary, never the hydrated estate. Durable generation
+    # prevents same-ID replacement from replaying counts from an older snapshot.
+    from agent_bom.api import graph_rollup_cache
+
+    identity_reader = getattr(graph_store, "snapshot_identity", None)
+    identity = await _graph_store_call(identity_reader, tenant_id=tenant, scan_id=requested_scan_id) if callable(identity_reader) else None
+    cache_key = None
+    if identity and identity[1]:
+        cache_key = (
+            id(graph_store),
+            tenant,
+            identity,
+            getattr(request.state, "api_key_id", ""),
+            getattr(request.state, "api_key_name", ""),
+            getattr(request.state, "api_key_role", ""),
+            tuple(sorted(getattr(request.state, "api_key_scopes", []) or [])),
+            node,
+            min_severity,
+            exposed,
+            toxic,
+            mode,
+        )
+        cached = graph_rollup_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        requested_scan_id = identity[0]
+
     try:
         if node:
             # A drill-down reads one container's subtree, so that subtree is all
@@ -4012,7 +4039,7 @@ async def get_graph_rollup(
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 
     try:
-        return await _graph_compute_call(
+        payload = await _graph_compute_call(
             _graph_rollup_payload,
             graph,
             node=node,
@@ -4021,6 +4048,13 @@ async def get_graph_rollup(
             toxic=toxic,
             mode=mode,
         )
+        if (
+            cache_key
+            and callable(identity_reader)
+            and identity == await _graph_store_call(identity_reader, tenant_id=tenant, scan_id=requested_scan_id)
+        ):
+            graph_rollup_cache.put(cache_key, payload)
+        return payload
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

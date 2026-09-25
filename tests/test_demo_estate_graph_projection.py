@@ -205,7 +205,11 @@ def test_identity_reaches_the_asset_its_finding_names(projected, estate_findings
     checked = 0
     for finding in estate_findings:
         principal = str(finding.evidence.get("identity_asset_id") or "")
-        if not principal or principal == finding.asset.identifier:
+        if (
+            not principal
+            or principal == finding.asset.identifier
+            or graph.nodes[finding.asset.identifier].entity_type == EntityType.PACKAGE
+        ):
             # A control raised *on* a role names that role as its own principal.
             # A self-loop is not an access relationship and CONTAINS-shaped
             # traversals would cycle on it, so the projection drops it.
@@ -465,3 +469,48 @@ def test_estate_finding_fks_resolve_exact_occurrence_in_projected_graph(projecte
         assert finding.finding_node_id in graph.nodes
         node = graph.nodes[finding.finding_node_id]
         assert node.attributes["finding_id"] == finding.id
+
+
+def test_package_identity_context_does_not_grant_authority(projected, estate, estate_findings):
+    graph, _ = projected
+    pairs = _edge_pairs(graph)
+    assets = {asset.asset_id: asset for asset in estate.assets}
+    packages = [asset for asset in estate.assets if asset.resource_type == "package" and asset.tags.get("uses_identity")]
+    assert packages
+    findings_by_asset = {finding.asset.identifier: finding for finding in estate_findings}
+    contextual_findings = 0
+    for package in packages:
+        principal = package.tags["uses_identity"]
+        workload = assets[package.tags["workload"]]
+        image = package.tags["container_image"]
+        assert (package.asset_id, principal, "assumes") not in pairs
+        assert (principal, package.asset_id, "can_access") not in pairs
+        assert (workload.asset_id, principal, "assumes") in pairs
+        assert (workload.asset_id, image, "depends_on") in pairs
+        assert (image, package.asset_id, "depends_on") in pairs
+        finding = findings_by_asset.get(package.asset_id)
+        if finding:
+            assert finding.evidence["identity_asset_id"] == principal
+            contextual_findings += 1
+    assert contextual_findings > 0
+
+
+def test_declarative_assets_cannot_assume_identity(projected, estate):
+    graph, _ = projected
+    declarative = {
+        asset.asset_id
+        for asset in estate.assets
+        if asset.resource_type
+        in {
+            "package",
+            "prompt_template",
+            "training_dataset",
+            "foundation_model",
+            "sagemaker_model",
+            "vertex_model",
+            "bedrock_guardrail",
+            "ai_search_index",
+        }
+    }
+    assert declarative
+    assert not any(edge.source in declarative and edge.relationship == RelationshipType.ASSUMES for edge in graph.edges)

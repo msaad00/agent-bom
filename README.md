@@ -17,11 +17,101 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  <a href="#product-tour"><b>Product tour</b></a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#self-host-in-your-environment"><b>Self-host</b></a> ·
-  <a href="#quick-start">Quick start</a> ·
+  <a href="#product-tour">Product tour</a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
+
+agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account,
+matches them against vulnerability advisories, and shows which agent can reach which vulnerable package, tool or secret.
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard.
+
+## Quick start
+
+**Scan a repository in about a minute:**
+
+```bash
+pip install agent-bom
+agent-bom scan .
+```
+
+**No project handy?** Scan the bundled sample estate offline: `agent-bom scan --demo --offline`.
+Agents, MCP servers and what they can reach come first, then the CVEs behind them (excerpt):
+
+```text
+  Security posture:   CRIT  2   HIGH  16   MED   5 · all finding categories
+  5 agents · 10 servers · 23 packages
+DISCOVER | Agents
+  Agent                Type              Servers    Pkgs    Creds    Vulns
+  langchain-service    custom                  2       4        4        4
+  claude-desktop       claude-desktop          2       6        3        5
+ANALYZE | Graph & Policy Findings
+   HIGH  PROMPT_SECURITY Agent calls MCP server without verified identity
+   HIGH  COMBINATION AI agent can reach a credential or privileged tool: langchain-service
+   MED   PROMPT_SECURITY Long-lived static credential on MCP server
+ANALYZE | Critical Details
+  CVE-2023-36258 · langchain@0.0.150 · CRITICAL
+  Fix: upgrade to ≥ 0.0.247
+  Blast: langchain-service → llm-orchestrator-server → ANTHROPIC_API_KEY, OPENAI_API_KEY
+```
+
+The sample deliberately triggers a security gate (exit `1`). Save CI evidence with
+`agent-bom scan . -f sarif -o findings.sarif`; check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md)
+
+<p align="center">
+  <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />
+</p>
+
+**Give assistants the same evidence:** `agent-bom mcp server` (MCP support is included by default).
+Source version: **v0.106.0** · Latest release: **v0.105.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
+profile. The full catalog has 86 MCP tools, 7 resources, and 8 workflow prompts.
+[MCP workflows](docs/MCP_WORKFLOWS.md)
+
+<details>
+<summary>Developer gates and offline scans</summary>
+
+Use `uvx agent-bom scan .` without a global install, or
+`uvx agent-bom check requests@2.33.0 --ecosystem pypi` before adding a package.
+For automatic dependency and secret gates, see
+[pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
+
+`agent-bom db update --osv-ecosystem PyPI` covers only the selected ecosystem;
+add the ecosystems you need before running `agent-bom scan . --offline`.
+The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
+A non-zero exit can mean a security gate or incomplete assessment: inspect the
+report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
+
+</details>
+
+## Self-host in your environment
+
+**Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
+
+```bash
+docker compose up -d
+```
+
+Open **http://localhost:3000**, then **Connections** or **New Scan**.
+For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
+The pilot binds to loopback and retains state in a Docker volume. Use the authenticated deployment guide for a shared instance.
+
+Going further: [Docker pilot](docs/DEPLOY_QUICKSTART.md) · [Authenticated deployment](site-docs/deployment/authenticated-hosted-instance.md) ·
+[Compose with PostgreSQL](deploy/docker-compose.platform.yml) · [Helm](site-docs/deployment/control-plane-helm.md) · [EKS Terraform](deploy/terraform/platform-eks) ·
+[Snowflake Native App preview](docs/snowflake-native-app/INSTALL.md) · [Air-gapped bundle](site-docs/deployment/airgapped-image-bundle.md) ·
+[Choose a deployment](site-docs/deployment/overview.md) · [Enterprise configuration](docs/ENTERPRISE.md) ·
+[Connect cloud accounts](docs/CLOUD_CONNECT.md)
+
+<details>
+<summary>Work with your existing tools</summary>
+
+Use **CLI or GitHub Action**, **REST API**, or **MCP**; export **SARIF, CycloneDX, SPDX, JSON and HTML**.
+Cloud connectors and fleet sync collect inventory; proxy and gateway deployments add runtime evidence.
+
+[Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
+[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) · [Smithery setup and manifest](site-docs/integrations/smithery.md)
+
+</details>
 
 ## Built for the teams that build, secure and govern AI
 
@@ -106,105 +196,15 @@ A blocked call does not establish that the underlying package was fixed.
 [Run the reference evidence lab](examples/reference-evidence-lab/README.md) ·
 [Evidence workflow](docs/HOW_IT_WORKS.md) · [Control-plane architecture](docs/ARCHITECTURE.md)
 
-## Self-host in your environment
-
-**Your infrastructure, your identity, your database, your audit boundary.**
-Run on a workstation, VM or Kubernetes cluster; add sources, fleet collection and
-runtime enforcement as needed. The guides cover credentials, persistence and access.
-
-For a workstation pilot, run from a [published release checkout](https://github.com/msaad00/agent-bom/releases):
-
-```bash
-docker compose up -d
-```
-
-Open **http://localhost:3000**, then **Connections** or **New Scan**.
-For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
-The pilot binds to loopback and retains state in a Docker volume. Use the
-authenticated deployment guide below for a shared instance.
-
-| Where you run it | Start here |
-|---|---|
-| **Workstation evaluation** | [Docker pilot](docs/DEPLOY_QUICKSTART.md) — packaged API, dashboard and persistent state |
-| **Shared VM / private cloud** | [Authenticated deployment](site-docs/deployment/authenticated-hosted-instance.md) · [Compose profile](deploy/docker-compose.platform.yml) — PostgreSQL and configured identity |
-| **Kubernetes** | [Helm deployment](site-docs/deployment/control-plane-helm.md) · [EKS Terraform](deploy/terraform/platform-eks) |
-| **Snowflake** | [Native App preview](docs/snowflake-native-app/INSTALL.md) |
-| **Restricted networks** | [Air-gapped image bundle](site-docs/deployment/airgapped-image-bundle.md) |
-
-[Choose a deployment](site-docs/deployment/overview.md) · [Enterprise configuration](docs/ENTERPRISE.md) ·
-[Connect cloud accounts](docs/CLOUD_CONNECT.md)
-
-<details>
-<summary>Work with your existing tools</summary>
-
-Use **CLI or GitHub Action**, **REST API**, or **MCP**; export **SARIF, CycloneDX, SPDX, JSON and HTML**.
-Cloud connectors and fleet sync collect inventory; proxy and gateway deployments add runtime evidence.
-
-[Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
-[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) · [Smithery setup and manifest](site-docs/integrations/smithery.md)
-
-</details>
-
-## Quick start
-
-**Scan a repository:**
-
-```bash
-pip install agent-bom
-agent-bom scan .
-```
-
-Save CI evidence with `agent-bom scan . -f sarif -o findings.sarif`.
-Use `agent-bom doctor` to check setup. [First-run guide](docs/FIRST_RUN.md)
-
-**Try the CLI demo:** `agent-bom scan --demo --offline`.
-The synthetic sample deliberately triggers a security gate (exit `1`).
-
-<p align="center">
-  <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />
-</p>
-
-The recording runs the offline command and pages its output for readability.
-
-**Give assistants access to the same evidence:**
-
-```bash
-pip install agent-bom                     # MCP server support is included by default
-agent-bom mcp server
-```
-
-Source version: **v0.106.0** · Latest release: **v0.105.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
-profile. The full catalog has 86 MCP tools, 7 resources, and 8 workflow prompts.
-[MCP workflows](docs/MCP_WORKFLOWS.md)
-
-<details>
-<summary>Developer gates and offline scans</summary>
-
-Use `uvx agent-bom scan .` without a global install, or
-`uvx agent-bom check requests@2.33.0 --ecosystem pypi` before adding a package.
-For automatic dependency and secret gates, see
-[pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
-
-`agent-bom db update --osv-ecosystem PyPI` covers only the selected ecosystem;
-add the ecosystems you need before running `agent-bom scan . --offline`.
-The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
-A non-zero exit can mean a security gate or incomplete assessment: inspect the
-report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
-
-</details>
-
 ## Trust and evidence
 
-Discovery uses read-only access by default. Explicit disk side-scans create
-temporary cloud resources; runtime enforcement acts on selected tool calls.
-Missing evidence stays unavailable or partial. Control mappings are not audit certification.
+Discovery uses read-only access by default. Explicit disk side-scans create temporary cloud resources; runtime enforcement
+acts on selected tool calls. Missing evidence stays unavailable or partial. Control mappings are not audit certification.
 
-[Product boundaries](docs/PRODUCT_BOUNDARIES.md) · [Permissions](docs/PERMISSIONS.md) ·
-[Threat model](docs/THREAT_MODEL.md) · [Security policy](SECURITY.md) ·
-[Release verification](docs/RELEASE_VERIFICATION.md) ·
+[Product boundaries](docs/PRODUCT_BOUNDARIES.md) · [Permissions](docs/PERMISSIONS.md) · [Threat model](docs/THREAT_MODEL.md) ·
+[Security policy](SECURITY.md) · [Release verification](docs/RELEASE_VERIFICATION.md) ·
 [Measured matcher proof](site-docs/features/scanning.md#reproducible-matching-evidence)
 
 ## Contributing and support
 
-[Contributing](CONTRIBUTING.md) · [Support](SUPPORT.md) ·
-[Open issues](https://github.com/msaad00/agent-bom/issues) · [Apache-2.0 license](LICENSE)
+[Contributing](CONTRIBUTING.md) · [Support](SUPPORT.md) · [Open issues](https://github.com/msaad00/agent-bom/issues) · [Apache-2.0 license](LICENSE)

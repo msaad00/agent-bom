@@ -57,7 +57,7 @@ it("presents recorded context without implying danger or proven reachability", (
   const { container } = render(<ReachabilityDrillInPanel
     summary={null} loading error={null} onClear={() => {}} depth={1}
     onDepthChange={() => {}} direction="both" onDirectionChange={() => {}} />);
-  expect(screen.getByText("Related graph context")).toBeVisible();
+  expect(screen.getByLabelText("Related graph context")).toBeVisible();
   expect(screen.getByText("Refreshing related context")).toBeVisible();
   expect(container.firstElementChild).toHaveClass("bg-surface");
   expect(container.firstElementChild).not.toHaveClass("bg-rose-500/10");

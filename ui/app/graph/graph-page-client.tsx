@@ -31,6 +31,7 @@ import {
   GraphEvidenceExportButton,
   FullscreenButton,
   GraphInteractionToolbar,
+  GraphLegendDock,
 } from "@/components/graph-chrome";
 import {
   GraphDriftTimeline,
@@ -764,6 +765,8 @@ function GraphPageInner() {
     useState<ReachabilitySummary | null>(null);
   const loadingReachability = false;
   const investigationRequestId = useRef(0);
+  const investigationAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => investigationAbort.current?.abort(), []);
   const [investigationDirection, setInvestigationDirection] = useState<"forward" | "reverse" | "both">("both");
   const [reachabilityError, setReachabilityError] = useState<string | null>(
     null,
@@ -1040,6 +1043,7 @@ function GraphPageInner() {
 
   useEffect(() => {
     investigationRequestId.current++;
+    investigationAbort.current?.abort();
     setLoadingBlast(false);
     setBlastRadius(null);
     setSearchResults([]);
@@ -1746,7 +1750,7 @@ function GraphPageInner() {
     () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
     [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
   );
-  const { nodes: layoutNodes, edges: layoutEdges, pending: layoutPending } = useGraphLayout(
+  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
     graphLayoutKind,
     layoutInput.nodes,
     layoutInput.edges,
@@ -2540,6 +2544,10 @@ function GraphPageInner() {
     ) => {
       if (!selectedScanId) return;
       const requestId = ++investigationRequestId.current;
+      investigationAbort.current?.abort();
+      const controller = new AbortController();
+      investigationAbort.current = controller;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
       const direction = request.direction ?? initialInvestigationDirection(request.rootId);
       const queryFilters = investigationMode?.rootId === request.rootId
         ? filters : createInvestigationGraphFilters(filters);
@@ -2578,7 +2586,7 @@ function GraphPageInner() {
         request.rootLabel ?? request.node?.label ?? request.rootId,
       );
       setLoadingGraph(true);
-      setGraphData(null);
+      setGraphData(current => current?.scan_id === selectedScanId ? current : null);
       setLoadingBlast(false);
       setBlastRadius(null);
       setInvestigationMode({ rootId: request.rootId, rootLabel: request.rootLabel ?? request.rootId,
@@ -2589,8 +2597,8 @@ function GraphPageInner() {
           scan_id: selectedScanId,
           direction,
           max_depth: queryFilters.maxDepth,
-          max_nodes: 80,
-          max_edges: 320,
+          max_nodes: 24,
+          max_edges: 96,
           timeout_ms: 2500,
           traversable_only: false,
           static_only: queryFilters.runtimeMode === "static",
@@ -2599,7 +2607,7 @@ function GraphPageInner() {
           include_attack_paths: true,
           entity_types: entityTypesForLayers(queryFilters.layers),
           relationship_types: RELATIONSHIP_SCOPE_MAP[queryFilters.relationshipScope],
-        });
+        }, { signal });
         if (requestId !== investigationRequestId.current) return;
         const rootNode =
           response.nodes.find((node) => node.id === request.rootId) ??
@@ -2631,7 +2639,7 @@ function GraphPageInner() {
       } catch (e) {
         if (requestId !== investigationRequestId.current) return;
         setError(
-          e instanceof Error ? e.message : "Failed to load root-centered graph",
+          signal.aborted ? "Graph request timed out. The previous view is retained; retry or narrow the scope." : e instanceof Error ? e.message : "Failed to load root-centered graph",
         );
       } finally {
         if (requestId === investigationRequestId.current) setLoadingGraph(false);
@@ -2674,6 +2682,7 @@ function GraphPageInner() {
 
   const clearInvestigationMode = useCallback(() => {
     investigationRequestId.current++;
+    investigationAbort.current?.abort();
     setSelectedNode(null);
     setSelectedNodeId(null);
     setLoadingGraph(false);
@@ -2684,13 +2693,6 @@ function GraphPageInner() {
     setSelectedAttackPathKey(null);
     setReachabilitySummary(null);
     setReachabilityError(null);
-    setBlastRadius(null);
-    setBlastError(null);
-  }, []);
-
-  const clearBlastRadius = useCallback(() => {
-    investigationRequestId.current++;
-    setLoadingBlast(false);
     setBlastRadius(null);
     setBlastError(null);
   }, []);
@@ -2744,6 +2746,10 @@ function GraphPageInner() {
     async (nodeId: string, nodeLabel: string) => {
       if (!nodeId) return;
       const requestId = ++investigationRequestId.current;
+      investigationAbort.current?.abort();
+      const controller = new AbortController();
+      investigationAbort.current = controller;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
       // Blast radius takes over the canvas; drop any competing overlays so the
       // impacted set is the only thing highlighted.
       setSelectedAttackPathKey(null);
@@ -2751,7 +2757,7 @@ function GraphPageInner() {
       setReachabilityError(null);
       setLoadingBlast(true);
       setLoadingGraph(false);
-      setGraphData(null);
+      setGraphData(current => current?.scan_id === selectedScanId ? current : null);
       setInvestigationMode({ rootId: nodeId, rootLabel: nodeLabel || nodeId,
         truncated: false, nodeCount: 0, edgeCount: 0 });
       setBlastError(null);
@@ -2759,11 +2765,11 @@ function GraphPageInner() {
         // Impact IDs alone cannot populate a canvas that was loaded for a
         // different scope. Fetch a bounded reverse neighborhood as well.
         const [impact, context] = await Promise.all([
-          api.getGraphImpact(nodeId, selectedScanId || undefined, 4),
+          api.getGraphImpact(nodeId, selectedScanId || undefined, 4, { signal }),
           api.queryGraph({ roots: [nodeId], scan_id: selectedScanId || undefined,
-            direction: "reverse", max_depth: 4, max_nodes: 80, max_edges: 320,
+            direction: "reverse", max_depth: 4, max_nodes: 24, max_edges: 96,
             timeout_ms: 2500, traversable_only: true, include_roots: true,
-            include_attack_paths: false }),
+            include_attack_paths: false }, { signal }),
         ]);
         if (requestId !== investigationRequestId.current) return;
         setGraphData(queryResponseToGraphResponse(context));
@@ -2781,7 +2787,7 @@ function GraphPageInner() {
         if (requestId !== investigationRequestId.current) return;
         setBlastRadius(null);
         setBlastError(
-          e instanceof Error ? e.message : "Failed to compute blast radius",
+          signal.aborted ? "Blast radius timed out. The previous graph is retained; retry with a narrower scope." : e instanceof Error ? e.message : "Failed to compute blast radius",
         );
       } finally {
         if (requestId === investigationRequestId.current) setLoadingBlast(false);
@@ -3122,10 +3128,7 @@ function GraphPageInner() {
               onDirectionChange={(direction) => {
                 if (investigationMode) void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction });
               }}
-              onClear={() => {
-                setReachabilitySummary(null);
-                setReachabilityError(null);
-              }}
+              onClear={returnToSummary}
             />
           )}
 
@@ -3134,7 +3137,7 @@ function GraphPageInner() {
               summary={blastRadius}
               loading={loadingBlast}
               error={blastError}
-              onClear={clearBlastRadius}
+              onClear={returnToSummary}
             />
           )}
 
@@ -3851,6 +3854,7 @@ function GraphPageInner() {
               <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4" title="Focus an asset at readable zoom; pan to follow its connections">Readable view</button>
             </div>
           )}
+          {graphRenderer.kind === "react-flow" && displayNodes.length > 0 && <GraphLegendDock items={legendItems} />}
           <div className="relative flex min-h-0 flex-1 rounded-2xl border border-outline bg-surface">
           <div className="relative min-h-0 min-w-0 flex-1">
           {graphPanelError && graphData && !loadingGraph && (
@@ -3859,7 +3863,7 @@ function GraphPageInner() {
               <button type="button" className="graph-chip-neutral" onClick={retryGraph}>Retry graph</button>
             </div>
           )}
-          {(loadingGraph && !graphData) || loadingBlast ? (
+          {(loadingGraph || loadingBlast) && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"
               detail={`Fetching the selected snapshot with the ${graphScopeLabelForFilters(filters).toLowerCase()} scope and active layer filters.`}
@@ -3896,8 +3900,6 @@ function GraphPageInner() {
               ]}
               actions={[{ label: "Show all returned context", onClick: () => setFilters(createExpandedGraphFilters()) }, { label: "Return to summary", onClick: returnToSummary }]}
             />
-          ) : layoutPending && graphRenderer.kind === "react-flow" ? (
-            <p role="status" className="p-6 text-sm text-ink-secondary">Arranging the selected graph…</p>
           ) : graphOnlyFindings ? (
             <GraphFindingsFallback
               nodes={findingNodes}
@@ -3989,7 +3991,7 @@ function GraphPageInner() {
             </ReactFlow>
           )}
 
-          {loadingGraph && graphData && <GraphRefreshOverlay />}
+          {(loadingGraph || loadingBlast) && graphData && <GraphRefreshOverlay label={loadingBlast ? "Computing blast radius · current view retained" : "Loading related assets · current view retained"} />}
 
           {graphTruncated && !rollupCanvasOwnsPresentation && (
             <details className="mt-2 border-t border-outline pt-2 text-xs text-ink-secondary" data-testid="graph-partial-view">
@@ -4100,13 +4102,10 @@ export function ReachabilityDrillInPanel({
         <div className="flex items-start gap-2">
           <Route className="mt-0.5 h-4 w-4 text-ink-secondary" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-ink-secondary">
-              Related graph context
-            </p>
-            <p className="mt-1 text-sm font-medium text-foreground">
+            <p className="text-sm font-medium text-foreground" aria-label="Related graph context">
               {summary
                 ? `${summary.rootLabel} · ${affectedCount} related node${affectedCount === 1 ? "" : "s"} returned`
-                : "Loading related context"}
+                : loading ? "Loading related context" : "Related context unavailable"}
             </p>
             {summary?.truncated && (
               <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">
@@ -4125,6 +4124,9 @@ export function ReachabilityDrillInPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
+        <details className="relative">
+          <summary className="graph-chip-neutral cursor-pointer">Traversal options</summary>
+          <div className="absolute right-0 top-full z-30 mt-1 flex w-64 flex-wrap gap-2 rounded-xl border border-outline bg-surface p-3 shadow-lg">
         <select aria-label="Traversal depth" value={depth} onChange={(event) => onDepthChange(Number(event.target.value))} className="graph-chip-neutral">
           {[1, 2, 3, 4].map((hops) => <option key={hops} value={hops}>{hops} hop{hops === 1 ? "" : "s"}</option>)}
         </select>
@@ -4133,12 +4135,14 @@ export function ReachabilityDrillInPanel({
           <option value="reverse">Incoming connections</option>
           <option value="both">Both directions</option>
         </select>
+          </div>
+        </details>
         <button
           type="button"
           onClick={onClear}
           className="graph-chip-neutral"
         >
-          Clear context
+          Return to summary
         </button>
         </div>
       </div>
@@ -4233,7 +4237,7 @@ function BlastRadiusPanel({
             <p className="mt-1 text-sm font-medium text-foreground">
               {summary
                 ? `${summary.affectedCount} upstream related node${summary.affectedCount === 1 ? "" : "s"} connected to ${summary.rootLabel}`
-                : "Computing blast radius"}
+                : loading ? "Computing blast radius" : "Blast radius unavailable"}
             </p>
             {summary && (
               <p className="mt-1 text-[11px] text-ink-secondary">
@@ -4242,10 +4246,10 @@ function BlastRadiusPanel({
               </p>
             )}
             {error && (
-              <p className="mt-1 text-[11px] text-amber-200">{error}</p>
+              <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-200">{error}</p>
             )}
             {loading && (
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-200">
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-violet-700 dark:text-violet-200">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Tracing upstream graph connections
               </p>
@@ -4257,7 +4261,7 @@ function BlastRadiusPanel({
           onClick={onClear}
           className="graph-chip-violet"
         >
-          Clear blast radius
+          Return to summary
         </button>
       </div>
 

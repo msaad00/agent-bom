@@ -218,7 +218,7 @@ export function GraphRollupDecisionSurface({
       {filtered.length === 0 && <p role="status" className="p-4 text-sm text-ink-secondary">No nodes match these filters in the returned scope.</p>}
       <div
         data-testid="graph-rollup-card-grid"
-        className={`grid max-h-[min(60vh,34rem)] gap-2 overflow-y-auto p-3 ${cardGridClass}`}
+        className={`grid max-h-[min(60vh,34rem)] divide-y divide-outline overflow-y-auto px-3 ${cardGridClass}`}
       >
         {visible.map((item) => {
           const itemEdges = incident.get(item.id) ?? [];
@@ -229,10 +229,10 @@ export function GraphRollupDecisionSurface({
           return (
             <article
               key={item.id}
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-lg border border-outline bg-background px-3 py-2 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-2 py-3 md:grid-cols-[minmax(0,1fr)_auto_auto]"
             >
-              <div className="col-span-2 flex min-w-0 items-start justify-between gap-3 md:col-span-1">
-                <div className="min-w-0">
+              <div className="col-span-2 flex min-w-0 items-start gap-3 md:col-span-1">
+                <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-semibold text-foreground [overflow-wrap:anywhere]" title={item.label}>
                     {item.label}
                   </p>
@@ -244,17 +244,13 @@ export function GraphRollupDecisionSurface({
                       {Object.entries(item.context).map(([kind, value]) => `${kind}: ${value}`).join(" · ")}
                     </p>
                   )}
-                  <details className="text-[11px] text-ink-tertiary">
-                    <summary className="cursor-pointer">Node ID</summary>
-                    <code className="block break-all select-all">{item.id}</code>
-                  </details>
                 </div>
                 <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${severityTone(severity)}`}>
                   {severity === "none" ? "Not rated" : severity}
                 </span>
               </div>
 
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs md:w-44">
                 {item.has_children && <div>
                   <p className="text-ink-secondary">Contains <span className="font-semibold tabular-nums text-foreground">{item.aggregate.descendant_count} nodes</span></p>
                 </div>}
@@ -270,22 +266,23 @@ export function GraphRollupDecisionSurface({
 
 
 
-              <div className="flex items-center justify-end gap-3">
-                {item.has_children && <button type="button" onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-600 dark:text-sky-300">
-                  <GitBranch className="h-3.5 w-3.5" /> Traverse
+              <div className="flex items-center justify-end gap-3 md:min-w-36">
+                {item.has_children && <button type="button" onClick={() => onInvestigate(item)} className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-600 dark:text-sky-300">
+                  <GitBranch className="h-3.5 w-3.5" /> Connections
                 </button>}
                 {item.has_children ? (
-                  <button type="button" onClick={() => onDrill(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
-                    Drill in <ChevronRight className="h-3.5 w-3.5" />
+                  <button type="button" onClick={() => onDrill(item)} className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
+                    Open scope <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 ) : (
-                  <button type="button" aria-label={`Inspect ${item.label} (${item.id})`} onClick={() => onInvestigate(item)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
+                  <button type="button" aria-label={`Inspect ${item.label} (${item.id})`} onClick={() => onInvestigate(item)} className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-600 dark:text-emerald-300">
                     Inspect <ShieldAlert className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
               <details className="col-span-2 text-xs text-ink-secondary md:col-span-3">
-                <summary className="cursor-pointer">Recorded relationships ({itemEdges.length} {itemEdges.length === 1 ? "row" : "rows"})</summary>
+                <summary className="w-fit cursor-pointer py-1">Details · {itemEdges.length} relationship {itemEdges.length === 1 ? "row" : "rows"}</summary>
+                <p className="mt-2 text-ink-tertiary">Node ID <code className="break-all select-all">{item.id}</code></p>
                 <p className="my-2 text-ink-tertiary">Returned relationships only. These do not establish runtime execution or authorized access.</p>
                 <ul className="max-h-48 space-y-2 overflow-y-auto">
                   {itemEdges.slice(0, 12).map((edge, index) => <li key={`${edge.source}:${edge.target}:${index}`} className="break-words [overflow-wrap:anywhere]">

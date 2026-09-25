@@ -663,6 +663,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByRole("combobox", {name: "Traversal direction"})).toBeVisible();
     await expect(page.getByTestId("graph-viewport-scope")).toContainText("4 displayed nodes · 3 displayed relationships");
     await page.getByRole("combobox", {name: "Traversal direction"}).selectOption("reverse");
+  await page.getByText("Traversal options", { exact: true }).click();
     await page.getByRole("combobox", {name: "Traversal depth"}).selectOption("3");
     const close = page.getByRole("button", { name: "Close", exact: true });
     // Query completion opens the requested finding. Do not skip closing it

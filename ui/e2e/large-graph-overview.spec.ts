@@ -289,7 +289,7 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
         roots: ["pkg:42"],
         direction: "both",
         max_depth: 4,
-        max_nodes: 800,
+        max_nodes: 240,
         max_edges: 8000,
         timeout_ms: 2500,
         budget: {},
@@ -494,7 +494,7 @@ test("identity investigation links preserve the selected root during client navi
   await page.getByRole("tab", { name: "Discovered identity risk" }).click();
   const query = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.method() === "POST");
   await page.getByRole("link", { name: /Investigated identity.*86/ }).click();
-  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 80, max_edges: 320 });
+  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 24, max_edges: 96 });
   await expect(page.getByRole("textbox", { name: "Search nodes, tags, severities, or attributes" })).toHaveValue("Investigated identity");
   await expect(page).toHaveURL(/root=pkg%3A42/);
   await expect(page.getByTestId("sigma-graph-overview")).toBeHidden();
@@ -506,14 +506,16 @@ test("root investigations expose depth and direction controls with bounded reque
   await routeLargeGraphPage(page);
   const initial = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query"));
   await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
-  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 80 });
+  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 24 });
+  await page.getByText("Traversal options", { exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Traversal depth" })).toHaveValue("1");
   await expect(page.getByTestId("graph-headline-metrics")).toHaveCount(0);
   await expect(page.getByText("Analysis status unavailable", { exact: true })).toHaveCount(0);
   const deeper = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().max_depth === 2);
   await page.getByRole("combobox", { name: "Traversal depth" }).selectOption("2");
-  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 80, max_edges: 320 });
+  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 24, max_edges: 96 });
   const reverse = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().direction === "reverse");
+  await page.getByText("Traversal options", { exact: true }).click();
   await page.getByRole("combobox", { name: "Traversal direction" }).selectOption("reverse");
   expect((await reverse).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
 });
@@ -563,7 +565,7 @@ test("scope summary does not inherit the unrelated node-page warning", async ({ 
   await expect(page.getByRole("region", { name: "Risk-prioritized estate scopes" })).toContainText("Complete estate scope");
   await expect(page.getByText(/This node view includes only part/)).toHaveCount(0);
   await expect(page.getByText("node_page_limit", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Drill in", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open scope", exact: true })).toBeVisible();
 });
 
 
@@ -586,6 +588,29 @@ test("blast radius distinguishes related nodes from assets and keeps the type br
   await breakdown.locator("summary").click();
   await expect(breakdown.getByText("Vulnerability: 1", { exact: true })).toBeVisible();
   await expect(page.getByText(/Graph relationships do not establish compromise/)).toBeVisible();
+});
+
+test("slow blast radius retains the canvas and ends with a retryable timeout", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  const root = node("pkg:42", "package", "large-package-42", "high", 7.2);
+  await page.route("**/v1/graph/node/**", (route) => route.fulfill({ json: {
+    node: root, edges_in: [], edges_out: [], neighbors: [], sources: [],
+    impact: { affected_count: 0, affected_by_type: {}, max_depth_reached: 0 },
+  } }));
+  await page.route("**/v1/graph/impact?**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 9500));
+    await route.abort().catch(() => {});
+  });
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  const canvas = page.locator(".react-flow");
+  await expect(canvas).toBeVisible();
+  await page.getByRole("button", { name: "Show blast radius", exact: true }).click();
+  await expect(page.getByText("Computing blast radius · current view retained", { exact: true })).toBeVisible();
+  await expect(canvas).toBeVisible();
+  await expect(page.getByText("Blast radius unavailable", { exact: true })).toBeVisible({ timeout: 12000 });
+  await expect(page.getByText(/Blast radius timed out/)).toBeVisible();
+  await expect(canvas).toBeVisible();
+  await expect(page.getByText("Computing blast radius", { exact: true })).toHaveCount(0);
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -634,7 +659,7 @@ for (const theme of ["light", "dark"] as const) {
     const summary = page.getByTestId("graph-rollup-decision-surface");
     await expect(summary.getByText(/image: billing:1.0/)).toBeVisible();
     await expect(summary.getByText(/image: claims:1.0/)).toBeVisible();
-    await summary.locator("summary", { hasText: "Node ID" }).first().click();
+    await summary.locator("summary", { hasText: "Details" }).first().click();
     await expect(summary.getByText("pkg:42", { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`package-context-${theme}.png`) });
     const request = page.waitForRequest(req => req.url().endsWith("/v1/graph/query") && req.postDataJSON().roots?.includes("pkg:42"));
@@ -668,7 +693,7 @@ for (const theme of ["light", "dark"] as const) {
     await summary.getByRole("button", { name: "Next scope page", exact: true }).click();
     await expect(summary.getByRole("article")).toHaveCount(1);
     await expect(summary.getByRole("button", { name: "Inspect CVE-2026-1012 (pkg:12)", exact: true })).toBeVisible();
-    await summary.locator("summary", { hasText: "Node ID" }).click();
+    await summary.locator("summary", { hasText: "Details" }).click();
     await expect(summary.getByText("pkg:12", { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`compact-leaf-${theme}.png`), fullPage: true });

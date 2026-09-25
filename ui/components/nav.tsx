@@ -60,6 +60,7 @@ import {
   navLinkNeedsSetup,
 } from "@/lib/deployment-context";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { openIssueSeverity } from "@/lib/open-issue-counts";
 
 // ─── Navigation Structure ──────────────────────────────────────────────────
 
@@ -298,6 +299,7 @@ export function Nav() {
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const previousPathRef = useRef(path);
   const { counts } = useDeploymentContext();
+  const openIssues = useMemo(() => openIssueSeverity(counts), [counts]);
   const { session, loading: authLoading, hasCapability } = useAuthState();
 
   // Close mobile on route change
@@ -691,7 +693,7 @@ export function Nav() {
                     const hrefPath = href.split("?")[0] ?? href;
                     const active = isNavLinkActive(href, path);
                     const isFindings = hrefPath === "/findings";
-                    const showVulnBadge = isFindings && href === "/findings" && counts && counts.critical > 0;
+                    const showVulnBadge = isFindings && href === "/findings" && openIssues !== null && openIssues.critical > 0;
                     const needsSetup = !active && !showVulnBadge && navLinkNeedsSetup(hrefPath, counts);
 
                     return (
@@ -723,22 +725,22 @@ export function Nav() {
                         {showVulnBadge && (
                           <span
                             role="group"
-                            aria-label={`${counts.critical} critical${counts.high > 0 ? `, ${counts.high} high` : ""} open findings`}
-                            title={`${counts.critical} critical${counts.high > 0 ? `, ${counts.high} high` : ""} open findings`}
+                            aria-label={`${openIssues.critical} critical${openIssues.high > 0 ? `, ${openIssues.high} high` : ""} open findings`}
+                            title={`${openIssues.critical} critical${openIssues.high > 0 ? `, ${openIssues.high} high` : ""} open findings`}
                             className="ml-auto flex items-center gap-1"
                           >
                             <span
                               aria-hidden="true"
                               className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/40 rounded-full px-1.5 py-0 leading-4"
                             >
-                              {counts.critical}
+                              {openIssues.critical}
                             </span>
-                            {counts.high > 0 && (
+                            {openIssues.high > 0 && (
                               <span
                                 aria-hidden="true"
                                 className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 border border-orange-800/40 rounded-full px-1.5 py-0 leading-4"
                               >
-                                {counts.high}
+                                {openIssues.high}
                               </span>
                             )}
                           </span>

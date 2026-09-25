@@ -513,6 +513,7 @@ import type {
 
 const FETCH_TIMEOUT_MS = 30_000;
 const BOOTSTRAP_TIMEOUT_MS = 5_000;
+const DEMO_STORY_TIMEOUT_MS = 90_000;
 
 function withTimeout(timeoutMs: number = FETCH_TIMEOUT_MS): AbortSignal {
   return AbortSignal.timeout(timeoutMs);
@@ -1401,7 +1402,7 @@ export const api = {
   getOverview: () => get<OverviewResponse>("/v1/overview"),
 
   /** Correlated fictional estate, available only when demo-estate mode is enabled. */
-  getEnterpriseDemoStory: () => get<EnterpriseDemoStory>("/v1/demo-estate/story"),
+  getEnterpriseDemoStory: () => get<EnterpriseDemoStory>("/v1/demo-estate/story", { timeoutMs: DEMO_STORY_TIMEOUT_MS }),
 
   /** Persisted graph ownership for honest demo-to-graph routing. */
   getDemoEstateStatus: () => get<DemoEstateStatus>("/v1/demo-estate/status"),

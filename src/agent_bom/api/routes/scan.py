@@ -4293,6 +4293,35 @@ def _list_finding_groups_impl(
     return envelope
 
 
+def issue_severity_counts(request: Request) -> dict[str, Any]:
+    """Open issue-group severity counts for the findings page default query.
+
+    Nav badges and the overview read this so their numbers equal what the
+    grouped ``/v1/findings`` view shows with no filters applied: the same
+    tenant, default read window, open status and canonical issue grouping.
+    """
+    page = _list_finding_groups_impl(
+        request,
+        None,
+        None,
+        None,
+        _normalize_finding_sort("severity"),
+        1,
+        0,
+        None,
+        True,
+        include_facets=True,
+    )
+    severity = (page.get("facets") or {}).get("severity") or {}
+    counts: dict[str, Any] = {key: int(severity.get(key) or 0) for key in ("critical", "high", "medium", "low")}
+    counts["unrated"] = int(severity.get("info") or 0) + int(severity.get("unknown") or 0)
+    counts["total"] = int(page.get("total") or 0)
+    counts["approximate"] = bool(page.get("total_approximate"))
+    counts["window"] = page.get("window")
+    counts["basis"] = "issue_groups"
+    return counts
+
+
 def current_findings_snapshot(
     request: Request,
     *,

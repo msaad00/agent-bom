@@ -118,6 +118,7 @@ def _isolate_home_and_state_dir():
 # default and the SQLite/Postgres tiers are exercised directly by the stores'
 # own tests, which construct the backends explicitly. Production never sets this.
 os.environ.setdefault("AGENT_BOM_EPHEMERAL_STORE", "1")
+os.environ.setdefault("AGENT_BOM_DEMO_STORY_PREWARM", "0")
 
 
 @pytest.fixture(autouse=True)

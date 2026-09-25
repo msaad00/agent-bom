@@ -447,6 +447,18 @@ def _enqueue_scheduled_scan(
     return job.job_id
 
 
+_DEMO_STORY_PREWARM_TASKS: set[asyncio.Task[None]] = set()
+
+
+async def _prewarm_demo_story() -> None:
+    try:
+        from agent_bom.api.routes.demo_estate import prewarm_demo_story
+
+        await asyncio.to_thread(prewarm_demo_story)
+    except Exception:  # noqa: BLE001
+        _logger.warning("demo story prewarm skipped", exc_info=False)
+
+
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
@@ -779,6 +791,10 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             await asyncio.to_thread(maybe_bootstrap_demo_estate)
         except Exception:  # noqa: BLE001
             _logger.warning("demo estate bootstrap skipped", exc_info=False)
+        if os.environ.get("AGENT_BOM_DEMO_STORY_PREWARM", "1").strip().lower() in {"1", "true", "yes", "on"}:
+            prewarm_task = asyncio.create_task(_prewarm_demo_story())
+            _DEMO_STORY_PREWARM_TASKS.add(prewarm_task)
+            prewarm_task.add_done_callback(_DEMO_STORY_PREWARM_TASKS.discard)
 
     from agent_bom.api.report_queue import start_report_worker
 

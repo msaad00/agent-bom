@@ -279,6 +279,31 @@ describe('Nav', () => {
     expect(within(badges).getByText('1337')).toBeInTheDocument()
   })
 
+  it('shows the same issue-group counts as the findings page, not raw occurrences', async () => {
+    const { api } = await import('@/lib/api')
+    vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
+      critical: 428,
+      high: 1265,
+      medium: 0,
+      low: 0,
+      total: 1693,
+      kev: 0,
+      compound_issues: 0,
+      issues: { critical: 325, high: 814, medium: 0, low: 0, unrated: 0, total: 1139, approximate: false, basis: 'issue_groups' },
+      deployment_mode: 'local',
+      scan_sources: ['sbom'],
+      scan_count: 1,
+    })
+
+    renderExpandedNav()
+
+    const badges = await screen.findByRole('group', {
+      name: /325 critical, 814 high open findings/i,
+    })
+    expect(within(badges).getByText('325')).toBeInTheDocument()
+    expect(within(badges).queryByText('428')).not.toBeInTheDocument()
+  })
+
   it('drops the high badge from the accessible label when there are no high findings', async () => {
     const { api } = await import('@/lib/api')
     vi.mocked(api.getPostureCounts).mockResolvedValueOnce({

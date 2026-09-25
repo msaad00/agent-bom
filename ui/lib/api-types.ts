@@ -1108,7 +1108,21 @@ export interface ServiceEntry {
   detail?: string | undefined;
 }
 
+export interface IssueSeverityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  unrated: number;
+  total: number;
+  approximate: boolean;
+  basis: "issue_groups";
+  window?: unknown;
+}
+
 export interface PostureCountsResponse {
+  /** Open issue groups, identical to the findings page default query. */
+  issues?: IssueSeverityCounts | undefined;
   critical: number;
   high: number;
   medium: number;
@@ -3619,6 +3633,8 @@ export interface DemoEstateStatus {
   graph_owner_scan_id: string | null;
   graph_alignment: "aligned" | "blocked" | "unavailable";
   reason: string | null;
+  /** Whether the tenant's story is already built and will be served immediately. */
+  story_ready?: boolean | undefined;
 }
 
 /** One security-domain lane on the per-account drill summary (#3931). Its

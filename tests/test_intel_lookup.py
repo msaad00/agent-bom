@@ -180,6 +180,25 @@ def test_lookup_advisory_keeps_fixes_scoped_to_package(intel_db, missing_fix) ->
     assert advisory["fixed_version"] is None
 
 
+def test_lookup_advisory_rescores_stale_cvss4_score_from_vector(intel_db) -> None:  # noqa: ANN001
+    conn = init_db(intel_db)
+    conn.execute(
+        "INSERT INTO vulns(id, summary, severity, cvss_score, cvss_vector, source) VALUES (?, ?, ?, ?, ?, 'osv')",
+        (
+            "CVE-2018-1000656",
+            "flask DoS",
+            "critical",
+            9.4,
+            "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    advisory = lookup_advisory("CVE-2018-1000656", db_path=intel_db)["advisory"]
+    assert (advisory["cvss_score"], advisory["severity"]) == (8.7, "high")
+
+
 def test_lookup_advisory_by_alias_returns_evidence_links(intel_db) -> None:  # noqa: ANN001
     body = lookup_advisory("CVE-2026-12345", db_path=intel_db)
 

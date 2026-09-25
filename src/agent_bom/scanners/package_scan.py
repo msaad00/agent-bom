@@ -75,6 +75,7 @@ from agent_bom.scanners.risk import (
     _parse_cvss4_vector,
     advisory_id_severity_fallback,
     cvss_to_severity,
+    osv_cvss_vector,
     parse_cvss_vector,
     parse_osv_severity,
     severity_from_label,
@@ -913,6 +914,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             seen_ids.add(alias)
 
         severity, cvss_score, sev_source = parse_osv_severity(vuln_data)
+        cvss_vector = osv_cvss_vector(vuln_data) if cvss_score is not None else None
         fixed = parse_fixed_version(
             vuln_data,
             package.name,
@@ -948,6 +950,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 severity=severity,
                 severity_source=sev_source,
                 cvss_score=cvss_score,
+                cvss_vector=cvss_vector,
                 fixed_version=fixed,
                 references=references,
                 published_at=vuln_data.get("published"),

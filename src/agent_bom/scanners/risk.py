@@ -173,17 +173,35 @@ def _first_vendor_severity(*blocks: Any) -> tuple[Severity, Optional[str]]:
     return Severity.UNKNOWN, None
 
 
+def _osv_severity_array_cvss(vuln_data: dict) -> tuple[Optional[float], Optional[str]]:
+    """Return the score and matching vector from an OSV ``severity`` array.
+
+    The last parseable CVSS v3/v4 entry wins (OSV lists v4 after v3), and the
+    vector is only ever the one that produced the returned score.
+    """
+    cvss_score: Optional[float] = None
+    cvss_vector: Optional[str] = None
+    for sev in vuln_data.get("severity", []):
+        if sev.get("type") in ("CVSS_V3", "CVSS_V3_1", "CVSS_V4"):
+            raw = sev.get("score")
+            score = _normalize_cvss_score(raw)
+            if score is not None:
+                cvss_score = score
+                cvss_vector = raw.strip() if isinstance(raw, str) and raw.strip().upper().startswith("CVSS:") else None
+    return cvss_score, cvss_vector
+
+
+def osv_cvss_vector(vuln_data: dict) -> Optional[str]:
+    """CVSS vector behind the score :func:`parse_osv_severity` reports, if any."""
+    return _osv_severity_array_cvss(vuln_data)[1]
+
+
 def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Optional[str]]:
     """Extract severity, CVSS score, and severity source from OSV data."""
-    cvss_score = None
     severity = Severity.UNKNOWN
     severity_source: Optional[str] = None
 
-    for sev in vuln_data.get("severity", []):
-        if sev.get("type") in ("CVSS_V3", "CVSS_V3_1", "CVSS_V4"):
-            score = _normalize_cvss_score(sev.get("score"))
-            if score is not None:
-                cvss_score = score
+    cvss_score, _vector = _osv_severity_array_cvss(vuln_data)
 
     db_specific = vuln_data.get("database_specific", {})
     severity, severity_source = _first_vendor_severity(("osv_database", db_specific))

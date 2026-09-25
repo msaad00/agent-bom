@@ -237,7 +237,7 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
     });
   });
   await page.route("**/v1/graph/attack-paths?**", async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(graph) });
+    await route.fulfill({ json: { ...graph, nodes: [], edges: [], attack_paths: [], pagination: { total: 0, offset: 0, limit: 75, has_more: false } } });
   });
   await page.route("**/v1/graph/scenarios", async (route) => {
     await route.fulfill({
@@ -690,6 +690,12 @@ for (const theme of ["light", "dark"] as const) {
       await sigma.getByLabel("Map grouping").selectOption("environment");
       await expect(sigma.getByText(/Environment groups/)).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`environment-overview-${theme}-${width}.png`), fullPage: true });
+      await sigma.getByText(/Environment groups/).click();
+      await sigma.getByLabel("Find a group").fill("analytics");
+      await sigma.getByRole("button", { name: /aws \/ analytics \/ development · .* loaded/ }).click();
+      await expect(sigma.getByRole("button", { name: "Back to all groups" })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`environment-drill-${theme}-${width}.png`), fullPage: true });
+      await sigma.getByRole("button", { name: "Back to all groups" }).click();
       const canvas = sigma.getByTestId("sigma-graph-overview-canvas");
       const bounds = (await canvas.boundingBox())!;
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -778,5 +784,85 @@ for (const theme of ["light", "dark"] as const) {
       await expect(drawer.getByText(assessed ? "0.0" : "Not assessed", { exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`node-risk-${theme}-${assessed ? "assessed" : "unknown"}.png`), fullPage: true });
     }
+  });
+}
+
+for (const storedAssets of [5_000, 25_000, 100_000]) {
+  test(`bounded map navigation for ${storedAssets} stored assets`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    await routeLargeGraphPage(page, true);
+    const graph = buildLargeGraph();
+    // Model the API's bounded page, with authoritative snapshot totals separate.
+    graph.nodes = graph.nodes.slice(0, 500);
+    const ids = new Set(graph.nodes.map(item => item.id));
+    graph.edges = graph.edges.filter(item => ids.has(item.source) && ids.has(item.target));
+    graph.nodes.forEach((item, index) => {
+      item.dimensions = { cloud_provider: "aws", environment: "production" };
+      item.attributes.account_scope = `account-${index % 5}`;
+    });
+    graph.stats.total_nodes = storedAssets;
+    graph.pagination = { total: storedAssets, offset: 0, limit: 500, has_more: true };
+    const body = JSON.stringify(graph);
+    const requests: string[] = [];
+    await page.route("**/v1/graph?**", route => {
+      requests.push(route.request().url());
+      return route.fulfill({ contentType: "application/json", body });
+    });
+    await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: { ...graph, nodes: [], edges: [], attack_paths: [], pagination: { total: 0, offset: 0, limit: 75, has_more: false } } }));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    const started = performance.now();
+    await page.goto("/graph?rollup=0&vulnOnly=0&severity=&depth=3&pageSize=500&layers=agent,package,vulnerability");
+    const sigma = page.getByTestId("sigma-graph-overview");
+    await expect(sigma).toBeVisible();
+    await expectSigmaCanvases(page);
+    const readyMs = performance.now() - started;
+    await sigma.getByText("Map controls", { exact: true }).click();
+    await sigma.getByLabel("Map grouping").selectOption("environment");
+    await sigma.getByText(/Environment groups/).click();
+    const initialRequests = requests.length;
+    const samples: number[] = [];
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Performance.enable");
+    const heapBytes = async () => (await cdp.send("Performance.getMetrics")).metrics.find(metric => metric.name === "JSHeapUsedSize")?.value ?? 0;
+    const initialHeapBytes = await heapBytes();
+    const heapSamples = [initialHeapBytes];
+    for (let i = 0; i < 5; i++) {
+      await sigma.getByLabel("Find a group").evaluate(el => { el.closest("details")!.open = true; });
+      const timing = await page.evaluate(async () => {
+        const button = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="sigma-graph-overview"] button')].find(el => /account-0.*loaded$/.test(el.textContent ?? ""));
+        if (!button) throw new Error("Expected bounded group control");
+        const start = performance.now();
+        button.click();
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        return performance.now() - start;
+      });
+      samples.push(timing);
+      heapSamples.push(await heapBytes());
+      await sigma.getByRole("button", { name: "Back to all groups" }).click();
+    }
+    expect(requests.length).toBe(initialRequests);
+    const canvasBox = (await sigma.getByTestId("sigma-graph-overview-canvas").boundingBox())!;
+    await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+    await page.mouse.down();
+    const frameRecording = page.evaluate(async () => {
+      const gaps: number[] = [];
+      let previous = performance.now();
+      await new Promise<void>(resolve => {
+        const frame = (now: number) => { gaps.push(now - previous); previous = now; if (gaps.length < 60) requestAnimationFrame(frame); else resolve(); };
+        requestAnimationFrame(frame);
+      });
+      return gaps.slice(1);
+    });
+    await page.mouse.move(canvasBox.x + canvasBox.width * .7, canvasBox.y + canvasBox.height * .7, { steps: 45 });
+    await page.mouse.up();
+    const frameGaps = await frameRecording;
+    const metrics = { storedAssets, loadedAssets: graph.nodes.length, payloadBytes: Buffer.byteLength(body), readyMs,
+      interactionP95Ms: samples.sort((a, b) => a - b)[Math.ceil(samples.length * .95) - 1],
+      panFrameP95Ms: frameGaps.sort((a, b) => a - b)[Math.ceil(frameGaps.length * .95) - 1], requests: requests.length,
+      initialHeapBytes, sampledPeakHeapBytes: Math.max(...heapSamples), finalHeapBytes: await heapBytes() };
+    await testInfo.attach("bounded-map-metrics", { body: JSON.stringify(metrics, null, 2), contentType: "application/json" });
+    console.info(JSON.stringify(metrics));
+    await page.screenshot({ path: testInfo.outputPath(`bounded-map-${storedAssets}.png`), fullPage: true });
+    expect(Buffer.byteLength(body)).toBeLessThan(512 * 1024);
   });
 }

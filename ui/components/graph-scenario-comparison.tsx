@@ -298,32 +298,32 @@ export function GraphScenarioAuthoring({
   };
 
   return (
-    <details className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/60 group">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-medium text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+    <details className="mt-3 rounded-xl border border-outline bg-background/60 group">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-medium text-foreground [&::-webkit-details-marker]:hidden">
         <span>{scenario ? "Add a proposed change" : "Design a proposed scenario"}</span>
-        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)] group-open:hidden">expand</span>
-        <span className="hidden text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)] group-open:inline">collapse</span>
+        <span className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary group-open:hidden">expand</span>
+        <span className="hidden text-[10px] uppercase tracking-[0.16em] text-ink-tertiary group-open:inline">collapse</span>
       </summary>
-      <div className="space-y-3 border-t border-[var(--border-subtle)] p-3">
+      <div className="space-y-3 border-t border-outline p-3">
         <div className="grid gap-2 md:grid-cols-2">
-          <label className="text-xs text-[var(--text-secondary)]">
+          <label className="text-xs text-ink-secondary">
             Name
             <input aria-label="Scenario name" value={name} onChange={(event) => setName(event.target.value)} className="graph-page-search mt-1 w-full" />
           </label>
-          <label className="text-xs text-[var(--text-secondary)]">
+          <label className="text-xs text-ink-secondary">
             Description
             <input aria-label="Scenario description" value={description} onChange={(event) => setDescription(event.target.value)} className="graph-page-search mt-1 w-full" />
           </label>
         </div>
-        <label className="block text-xs text-[var(--text-secondary)]">
+        <label className="block text-xs text-ink-secondary">
           Assumptions · one per line
           <textarea aria-label="Scenario assumptions" value={assumptions} onChange={(event) => setAssumptions(event.target.value)} rows={2} className="graph-page-search mt-1 w-full resize-y" />
         </label>
         <div className="space-y-2">
           {changes.map((change, index) => (
-            <div key={change.localId} className="rounded-xl border border-[var(--border-subtle)] p-2.5">
+            <div key={change.localId} className="rounded-xl border border-outline p-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Change {index + 1}</span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary">Change {index + 1}</span>
                 <select aria-label={`Change ${index + 1} type`} value={change.kind} onChange={(event) => updateChange(change.localId, { kind: event.target.value as DraftChangeKind })} className="graph-page-select">
                   <option value="add_node">Add asset</option>
                   <option value="remove_node">Remove asset</option>
@@ -371,7 +371,7 @@ export function GraphScenarioAuthoring({
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="graph-page-action" onClick={() => setChanges((current) => [...current, blankDraftChange(Math.max(0, ...current.map((item) => item.localId)) + 1)])}>Add typed change</button>
           <button type="button" disabled={!complete || saving} className="graph-page-action disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void save()}>{saving ? "Saving…" : scenario ? "Save new revision" : "Create scenario"}</button>
-          <span className="text-[10px] text-[var(--text-tertiary)]">Pinned to {scenario?.base_scan_id.slice(0, 12) ?? scanId.slice(0, 12)} · proposed, never live evidence</span>
+          <span className="text-[10px] text-ink-tertiary">Pinned to {scenario?.base_scan_id.slice(0, 12) ?? scanId.slice(0, 12)} · proposed, never live evidence</span>
         </div>
         {saveError && <div role="alert" className="graph-callout-amber">{saveError}</div>}
       </div>
@@ -384,7 +384,7 @@ function tabClass(active: boolean, disabled: boolean): string {
     "rounded-lg border px-3 py-1.5 text-xs font-medium transition",
     active
       ? "border-sky-400/50 bg-sky-500/15 text-sky-800 dark:text-sky-100"
-      : "border-[var(--border-subtle)] bg-[var(--background)]/70 text-[var(--text-secondary)]",
+      : "border-outline bg-background/70 text-ink-secondary",
     disabled ? "cursor-not-allowed opacity-45" : "hover:border-sky-400/40",
   ].join(" ");
 }
@@ -431,18 +431,18 @@ export function GraphScenarioComparisonPanel({
     <section
       aria-label="Scenario comparison"
       data-testid="graph-scenario-comparison"
-      className="overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]"
+      className="overflow-hidden rounded-xl border border-outline bg-background"
     >
-      <div className="flex flex-col gap-3 border-b border-[var(--border-subtle)] p-4">
+      <div className="flex flex-col gap-3 border-b border-outline p-4">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-700 dark:text-violet-300">
             Architecture scenario · revision {scenario.revision}
           </p>
-          <h2 className="mt-1 text-lg font-semibold leading-snug text-[var(--foreground)]">
+          <h2 className="mt-1 text-lg font-semibold leading-snug text-foreground">
             {scenario.name}
           </h2>
-          {scenario.description && <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{scenario.description}</p>}
-          <p className="mt-0.5 text-xs text-[var(--text-tertiary)]">
+          {scenario.description && <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{scenario.description}</p>}
+          <p className="mt-0.5 text-xs text-ink-tertiary">
             Pinned to observed snapshot {scenario.base_scan_id.slice(0, 12)}
             {comparison?.stale || comparison?.base_status === "stale"
               ? " · retained historical base"
@@ -471,7 +471,7 @@ export function GraphScenarioComparisonPanel({
 
       <div className="p-3">
         {loading ? (
-          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+          <div className="flex items-center gap-2 text-xs text-ink-secondary">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Loading server-authored comparison…
           </div>
@@ -515,12 +515,12 @@ export function GraphScenarioComparisonPanel({
             {proposedVisible && (
               <div className="mb-4" data-testid="scenario-impact-summary">
                 {state === "proposed" && <button type="button" onClick={() => onStateChange("difference")} className="mb-3 w-full rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">Review modeled changes</button>}
-                <h3 className="text-sm font-semibold text-[var(--foreground)]">What changes</h3>
+                <h3 className="text-sm font-semibold text-foreground">What changes</h3>
                 <dl className="mt-2 grid grid-cols-2 gap-3">
                   {differenceGroups.filter((group) => group.items.length > 0).map((group) => (
-                    <div key={group.id}><dt className="text-xs text-[var(--text-secondary)]">{group.label}</dt><dd className="text-xl font-semibold text-[var(--foreground)]">{group.items.length}</dd></div>
+                    <div key={group.id}><dt className="text-xs text-ink-secondary">{group.label}</dt><dd className="text-xl font-semibold text-foreground">{group.items.length}</dd></div>
                   ))}
-                  <div><dt className="text-xs text-[var(--text-secondary)]">Observed paths touched</dt><dd className="text-xl font-semibold text-[var(--foreground)]">{comparison.difference.touched_observed_path_count}</dd></div>
+                  <div><dt className="text-xs text-ink-secondary">Observed paths touched</dt><dd className="text-xl font-semibold text-foreground">{comparison.difference.touched_observed_path_count}</dd></div>
                 </dl>
               </div>
             )}
@@ -529,7 +529,7 @@ export function GraphScenarioComparisonPanel({
                 <p className="text-[10px] uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
                   Current · observed
                 </p>
-                <p className="mt-1 text-sm text-[var(--foreground)]">
+                <p className="mt-1 text-sm text-foreground">
                   {comparison.current.node_count.toLocaleString()} nodes ·{" "}
                   {comparison.current.edge_count.toLocaleString()} relationships
                 </p>
@@ -538,7 +538,7 @@ export function GraphScenarioComparisonPanel({
                 <p className="text-[10px] uppercase tracking-[0.18em] text-violet-700 dark:text-violet-300">
                   Proposed · modeled
                 </p>
-                <p className="mt-1 text-sm text-[var(--foreground)]">
+                <p className="mt-1 text-sm text-foreground">
                   {comparison.proposed.node_count.toLocaleString()} nodes ·{" "}
                   {comparison.proposed.edge_count.toLocaleString()} relationships
                 </p>
@@ -548,27 +548,27 @@ export function GraphScenarioComparisonPanel({
               <div className="mt-3 space-y-3" data-testid="graph-scenario-difference">
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                   {differenceGroups.map((group) => (
-                    <div key={group.id} className="rounded-xl border border-[var(--border-subtle)] p-2.5">
-                      <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                    <div key={group.id} className="rounded-xl border border-outline p-2.5">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary">
                         {group.label}
                       </p>
-                      <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">
+                      <p className="mt-1 text-lg font-semibold text-foreground">
                         {group.items.length}
                       </p>
                       {group.items.length > 0 && (
-                        <p className="mt-1 truncate text-[10px] text-[var(--text-tertiary)]" title={group.items.join(", ")}>
+                        <p className="mt-1 truncate text-[10px] text-ink-tertiary" title={group.items.join(", ")}>
                           {group.items.slice(0, 3).join(", ")}
                         </p>
                       )}
                     </div>
                   ))}
                 </div>
-                <div className="rounded-xl border border-sky-400/20 bg-sky-500/5 p-3 text-xs text-[var(--text-secondary)]">
+                <div className="rounded-xl border border-sky-400/20 bg-sky-500/5 p-3 text-xs text-ink-secondary">
                   <span className="font-medium text-sky-700 dark:text-sky-200">
                     {comparison.difference.touched_observed_path_count} touched observed paths
                   </span>
                   {comparison.difference.touched_observed_path_ids.length > 0 && (
-                    <span className="ml-2 break-all text-[var(--text-tertiary)]">
+                    <span className="ml-2 break-all text-ink-tertiary">
                       {comparison.difference.touched_observed_path_ids.join(", ")}
                     </span>
                   )}

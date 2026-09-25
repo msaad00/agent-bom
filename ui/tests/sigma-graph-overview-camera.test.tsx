@@ -68,6 +68,7 @@ vi.mock("sigma", () => {
         harness.instances.push(this);
       }
 
+      setGraph() { return this; }
       getCamera() { return this.camera; }
       getDimensions() { return { width: 800, height: 600 }; }
       getNodeDisplayData(id: string): { x: number; y: number } | undefined { return id === "agent:a" ? { x: 0.2, y: 0.7 } : { x: 0.8, y: 0.1 }; }
@@ -287,4 +288,17 @@ it("discards framing when its target is absent from a live renderer", async () =
     position.mockRestore();
     raf.mockRestore();
   }
+});
+
+it("drills into groups with keyboard buttons and restores the overview camera on return", async () => {
+  render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} presentationScope={scope} />);
+  await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+  const overview = harness.instances.at(-1)!;
+  act(() => overview.camera.emit({ x: 0.3, y: 0.4, angle: 0, ratio: 0.7 }));
+  fireEvent.click(screen.getByRole("button", { name: "agent · 1 loaded" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Back to all groups" })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "Back to all groups" }));
+  await waitFor(() => expect(harness.instances.at(-1)!.camera.state.ratio).toBe(0.7));
+  expect(harness.instances.at(-1)).toBe(overview);
+  expect(overview.killed).toBe(false);
 });

@@ -184,3 +184,31 @@ def test_graph_identity_rejects_nul_before_store_access(boundary, monkeypatch, r
         monkeypatch.setattr(store, method, lambda **kwargs: pytest.fail("invalid identifier reached database"))
     response = client.get(f"/v1/graph/{route}", params={"node_id": ROOT, field: "bad\x00id"}, headers=tokens["tenant-a"])
     assert response.status_code == 422
+
+
+def test_rollup_cache_is_generation_and_tenant_scoped(boundary, monkeypatch):
+    client, store, _, tokens = boundary
+    real_load = store.load_rollup_graph
+    loads = []
+
+    def load(**kwargs):
+        loads.append(kwargs)
+        return real_load(**kwargs)
+
+    monkeypatch.setattr(store, "load_rollup_graph", load)
+    first = client.get("/v1/graph/rollup?scan_id=scan", headers=tokens["tenant-a"])
+    repeated = client.get("/v1/graph/rollup?scan_id=scan", headers=tokens["tenant-a"])
+    assert first.status_code == repeated.status_code == 200
+    assert first.json() == repeated.json()
+    assert len(loads) == 1
+    other = client.get("/v1/graph/rollup?scan_id=scan", headers=tokens["tenant-b"])
+    assert other.status_code == 200
+    assert len(loads) == 2
+    replacement = graph()
+    replacement.add_node(UnifiedNode(id="new", entity_type=EntityType.AGENT, label="New agent"))
+    store.save_graph(replacement)
+    changed = client.get("/v1/graph/rollup?scan_id=scan", headers=tokens["tenant-a"])
+    assert changed.status_code == 200
+    assert changed.json()["summary"]["total_nodes"] == 4
+    assert len(loads) == 3
+    assert client.get("/v1/graph/rollup?scan_id=scan").status_code == 401

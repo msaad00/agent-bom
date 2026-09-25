@@ -37,6 +37,7 @@ export interface CacheOptions {
 interface CacheEntry<T> {
   value: T;
   expiresAt: number;
+  estimatedBytes: number;
 }
 
 const CACHE = new Map<string, CacheEntry<unknown>>();
@@ -44,6 +45,41 @@ const INFLIGHT = new Map<string, Promise<unknown>>();
 
 const DEFAULT_TTL_MS = 5_000;
 const MAX_ENTRIES = 64;
+// Retention accounting, not a browser heap guarantee. Bound traversal too so
+// deeply nested or oversized responses cannot stall navigation during caching.
+const MAX_RETAINED_BYTES = 8 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+let retainedBytes = 0;
+
+function estimateBytes(value: unknown): number {
+  const pending = [value];
+  const seen = new Set<object>();
+  let bytes = 0;
+  let visited = 0;
+  while (pending.length) {
+    if (++visited > 100_000 || bytes > MAX_RESPONSE_BYTES) return Infinity;
+    const item = pending.pop();
+    if (typeof item === "string") bytes += item.length * 2;
+    else if (item && typeof item === "object") {
+      if (seen.has(item)) continue;
+      seen.add(item);
+      if (!Array.isArray(item) && Object.getPrototypeOf(item) !== Object.prototype) return Infinity;
+      bytes += 32;
+      for (const key of Object.keys(item)) {
+        bytes += key.length * 2 + 16;
+        if (bytes > MAX_RESPONSE_BYTES || pending.length >= 100_000) return Infinity;
+        pending.push((item as Record<string, unknown>)[key]);
+      }
+    } else bytes += 8;
+  }
+  return bytes;
+}
+
+function remove(key: string): void {
+  const entry = CACHE.get(key);
+  if (entry) retainedBytes -= entry.estimatedBytes;
+  CACHE.delete(key);
+}
 
 function _now(): number {
   return Date.now();
@@ -52,7 +88,7 @@ function _now(): number {
 export async function cachedGet<T>(key: string, fetcher: () => Promise<T>, options: CacheOptions = {}): Promise<T> {
   const ttl = options.ttlMs ?? DEFAULT_TTL_MS;
   for (const [entryKey, entry] of CACHE) {
-    if (entry.expiresAt <= _now()) CACHE.delete(entryKey);
+    if (entry.expiresAt <= _now()) remove(entryKey);
   }
 
   if (!options.noStore) {
@@ -71,9 +107,14 @@ export async function cachedGet<T>(key: string, fetcher: () => Promise<T>, optio
   // Only the currently registered request may populate or clear this key.
   const promise: Promise<T> = Promise.resolve().then(fetcher).then((value) => {
     if (ttl > 0 && INFLIGHT.get(key) === promise) {
-      CACHE.delete(key);
-      CACHE.set(key, { value, expiresAt: _now() + ttl });
-      while (CACHE.size > MAX_ENTRIES) CACHE.delete(CACHE.keys().next().value!);
+      remove(key);
+      let estimatedBytes = Infinity;
+      try { estimatedBytes = estimateBytes(value) + key.length * 2; } catch { /* Uninspectable values are delivered without retention. */ }
+      if (estimatedBytes <= MAX_RESPONSE_BYTES) {
+        CACHE.set(key, { value, expiresAt: _now() + ttl, estimatedBytes });
+        retainedBytes += estimatedBytes;
+        while (CACHE.size > MAX_ENTRIES || retainedBytes > MAX_RETAINED_BYTES) remove(CACHE.keys().next().value!);
+      }
     }
     return value;
   }).finally(() => {
@@ -89,7 +130,7 @@ export function invalidate(prefix: string): number {
   let dropped = 0;
   for (const key of CACHE.keys()) {
     if (key.startsWith(prefix)) {
-      CACHE.delete(key);
+      remove(key);
       dropped++;
     }
   }
@@ -102,6 +143,7 @@ export function invalidate(prefix: string): number {
 /** Drop every cached entry. Test/teardown helper. */
 export function clearCache(): void {
   CACHE.clear();
+  retainedBytes = 0;
   INFLIGHT.clear();
 }
 
@@ -109,3 +151,5 @@ export function clearCache(): void {
 export function _cacheSizeForTests(): { entries: number; inflight: number } {
   return { entries: CACHE.size, inflight: INFLIGHT.size };
 }
+
+export function _cacheBytesForTests(): number { return retainedBytes; }

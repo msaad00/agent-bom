@@ -203,29 +203,51 @@ def _build_extension(manifest: dict, ext_id: str, browser: str, path: str) -> Br
     )
 
 
+def _warn_unreadable(what: str) -> None:
+    """Record a coverage gap for a directory the scan could not list.
+
+    Never logs the raw OS error or path: profile paths can contain personal data.
+    """
+    from agent_bom.scanners.state import record_scan_warning
+
+    message = f"Browser extension discovery skipped an unreadable {what}; coverage is incomplete"
+    logger.warning(message)
+    record_scan_warning(message)
+
+
 # ─── Chrome / Chromium / Brave / Edge scanner ─────────────────────────────────
 
 
 def _scan_chrome_profile(profile_dir: Path) -> list[BrowserExtension]:
     """Scan a single Chromium-based profile Extensions directory."""
     extensions_dir = profile_dir / "Extensions"
-    if not extensions_dir.is_dir():
-        return []
-
     results: list[BrowserExtension] = []
-    for ext_id_dir in extensions_dir.iterdir():
-        if not ext_id_dir.is_dir():
-            continue
+    try:
+        if not extensions_dir.is_dir():
+            return results
+        ext_id_dirs = [d for d in extensions_dir.iterdir() if d.is_dir()]
+    except OSError:
+        _warn_unreadable("Chromium extensions directory")
+        return results
+    for ext_id_dir in ext_id_dirs:
         ext_id = ext_id_dir.name
         # Each extension may have multiple version sub-dirs; use the newest
-        version_dirs = sorted(
-            [d for d in ext_id_dir.iterdir() if d.is_dir()],
-            key=lambda d: d.name,
-            reverse=True,
-        )
+        try:
+            version_dirs = sorted(
+                [d for d in ext_id_dir.iterdir() if d.is_dir()],
+                key=lambda d: d.name,
+                reverse=True,
+            )
+        except OSError:
+            _warn_unreadable("Chromium extension directory")
+            continue
         for version_dir in version_dirs:
             manifest_path = version_dir / "manifest.json"
-            if not manifest_path.exists():
+            try:
+                if not manifest_path.exists():
+                    continue
+            except OSError:
+                _warn_unreadable("Chromium extension version directory")
                 continue
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="replace"))
@@ -282,12 +304,7 @@ def _chrome_profile_dirs() -> list[Path]:
                 if d.is_dir() and d.name.startswith("Profile "):
                     profile_dirs.append(d)
         except OSError:
-            from agent_bom.scanners.state import record_scan_warning
-
-            # Do not log raw OS errors: profile paths can contain personal data.
-            message = "Browser extension discovery skipped an unreadable Chromium profile directory; coverage is incomplete"
-            logger.warning(message)
-            record_scan_warning(message)
+            _warn_unreadable("Chromium profile directory")
     return profile_dirs
 
 
@@ -298,13 +315,24 @@ def _scan_firefox_profile(profile_dir: Path) -> list[BrowserExtension]:
     """Scan a single Firefox profile for extensions (unpacked dirs + XPI zips)."""
     results: list[BrowserExtension] = []
     ext_dir = profile_dir / "extensions"
-    if not ext_dir.is_dir():
+    try:
+        if not ext_dir.is_dir():
+            return results
+        entries = list(ext_dir.iterdir())
+    except OSError:
+        _warn_unreadable("Firefox extensions directory")
         return results
 
-    for entry in ext_dir.iterdir():
-        if entry.is_dir():
-            manifest_path = entry / "manifest.json"
-            if manifest_path.exists():
+    for entry in entries:
+        manifest_path = entry / "manifest.json"
+        try:
+            is_dir = entry.is_dir()
+            has_manifest = is_dir and manifest_path.exists()
+        except OSError:
+            _warn_unreadable("Firefox extension directory")
+            continue
+        if is_dir:
+            if has_manifest:
                 try:
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="replace"))
                     results.append(_build_extension(manifest, entry.name, "firefox", str(entry)))
@@ -337,9 +365,13 @@ def _firefox_profile_dirs() -> list[Path]:
     else:
         base = home / ".mozilla" / "firefox"
 
-    if not base.is_dir():
+    try:
+        if not base.is_dir():
+            return []
+        return [d for d in base.iterdir() if d.is_dir()]
+    except OSError:
+        _warn_unreadable("Firefox profile directory")
         return []
-    return [d for d in base.iterdir() if d.is_dir()]
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────

@@ -239,14 +239,69 @@ def _extract_version_from_args(args: list[str]) -> str | None:
     return None
 
 
-def _registry_pattern_matches(pattern: object, candidate: object) -> bool:
-    pat = str(pattern or "").strip().lower()
-    value = str(candidate or "").strip().lower()
-    if not pat or not value:
-        return False
-    if pat == value:
-        return True
-    return re.search(rf"(^|[\s/@:_-]){re.escape(pat)}($|[\s/@:_-])", value) is not None
+# Arguments that name a local file are never a registry package reference.
+_LOCAL_SCRIPT_SUFFIXES = (".py", ".js", ".mjs", ".cjs", ".ts", ".mts", ".sh", ".rb", ".php", ".jar", ".exe", ".bat", ".ps1")
+_PIP_SPEC_SPLIT_RE = re.compile(r"\[|==|>=|<=|~=|!=|===|<|>")
+
+
+def _registry_identifier(value: str, ecosystem: str = "") -> str:
+    ident = value.strip().lower()
+    if ecosystem.lower() == "pypi":
+        ident = re.sub(r"[-_.]+", "-", ident)
+    return ident
+
+
+def _package_reference(token: str) -> str | None:
+    """Reduce a command/arg token to the package or image it names, if any.
+
+    Strips npm ``@version``, pip ``==version`` / extras, and container
+    ``:tag`` / ``@digest`` suffixes. Flags, ``KEY=value`` pairs, and anything
+    that names a local path or script return ``None``.
+    """
+    ref = token.strip()
+    if not ref or ref.startswith(("-", ".", "/", "~", "\\", "$")) or re.match(r"^[A-Za-z]:[\\/]", ref):
+        return None
+    if ref.lower().endswith(_LOCAL_SCRIPT_SUFFIXES):
+        return None
+    ref = _PIP_SPEC_SPLIT_RE.split(ref, maxsplit=1)[0]
+    if "=" in ref:
+        return None
+    at = ref.find("@", 1)
+    if at > 0:
+        ref = ref[:at]
+    last_segment = ref.rsplit("/", 1)[-1]
+    if ":" in last_segment:
+        ref = ref.rsplit(":", 1)[0]
+    return ref or None
+
+
+def _match_registry_entry(server: MCPServer) -> dict | None:
+    """Return the one registry entry a server's command/args name exactly.
+
+    A match needs the exact package identifier (npx/uvx/pip package name or
+    container image reference, versions stripped) — never a generic
+    ``command_patterns`` token or the user-chosen server name, both of which
+    misattributed local servers to unrelated catalog entries. When more than
+    one entry matches, the attribution is ambiguous and nothing is returned.
+    """
+    registry = _load_registry()
+    if not registry:
+        return None
+    refs = {ref for ref in (_package_reference(tok) for tok in [Path(server.command or "").name, *server.args]) if ref}
+    if not refs:
+        return None
+    matches: dict[str, dict] = {}
+    for key, entry in registry.items():
+        ecosystem = str(entry.get("ecosystem", ""))
+        wanted = {_registry_identifier(ref, ecosystem) for ref in refs}
+        package = str(entry.get("package") or key)
+        if {_registry_identifier(key, ecosystem), _registry_identifier(package, ecosystem)} & wanted:
+            matches[package.lower()] = entry
+    if len(matches) != 1:
+        if len(matches) > 1:
+            logger.debug("Registry: %d catalog entries match one server; attribution is ambiguous", len(matches))
+        return None
+    return next(iter(matches.values()))
 
 
 def _registry_purl(ecosystem: str, package_name: str, version: str) -> str:
@@ -360,85 +415,64 @@ def detect_docker_image_package(server: MCPServer) -> list[Package]:
 def lookup_mcp_registry(server: MCPServer) -> list[Package]:
     """Look up an MCP server's packages using the bundled registry.
 
-    Matches on:
-    1. Exact npm package name in args (e.g. @modelcontextprotocol/server-filesystem)
-    2. command_patterns substring match against server name or args
+    Matches only on an exact package identifier in the command or args
+    (e.g. ``npx -y @modelcontextprotocol/server-filesystem``); see
+    :func:`_match_registry_entry`.
 
     Preserves the registry's latest_version in registry_version for drift
     comparison, and tries to detect the actual installed version from args.
     If no installed version is detectable, version is set to "latest" so the
     resolver can query npm/PyPI for the real current version.
     """
-    registry = _load_registry()
-    if not registry:
+    entry = _match_registry_entry(server)
+    if entry is None:
         return []
+    ecosystem = entry.get("ecosystem", "npm")
+    registry_version = entry.get("latest_version", "latest")
+    risk_level = entry.get("risk_level")
+    verified = entry.get("verified", False)
 
-    candidates: list[str] = [server.name] + server.args
+    # Try to detect actual installed version from args
+    detected_version = _extract_version_from_args(server.args)
+    if detected_version:
+        version = detected_version
+        version_source = "detected"
+    else:
+        # Use the bundled registry version when we have it so
+        # MCP package coverage does not depend on a live npm
+        # lookup succeeding under rate limits.
+        version = registry_version if registry_version not in ("", "latest", "unknown", "{{VERSION}}") else "latest"
+        version_source = "registry_fallback"
 
-    for pkg_name, entry in registry.items():
-        patterns = entry.get("command_patterns", [pkg_name])
-        for candidate in candidates:
-            for pattern in patterns:
-                if _registry_pattern_matches(pattern, candidate) or _registry_pattern_matches(pkg_name, candidate):
-                    ecosystem = entry.get("ecosystem", "npm")
-                    registry_version = entry.get("latest_version", "latest")
-                    risk_level = entry.get("risk_level")
-                    verified = entry.get("verified", False)
+    # Log warnings for unverified or high-risk servers
+    if not verified:
+        logger.info(
+            "Registry: %s is UNVERIFIED — review source before trusting",
+            entry["package"],
+        )
+    if risk_level == "high":
+        logger.info(
+            "Registry: %s has HIGH risk level — has privileged tool access",
+            entry["package"],
+        )
 
-                    # Try to detect actual installed version from args
-                    detected_version = _extract_version_from_args(server.args)
-                    if detected_version:
-                        version = detected_version
-                        version_source = "detected"
-                    else:
-                        # Use the bundled registry version when we have it so
-                        # MCP package coverage does not depend on a live npm
-                        # lookup succeeding under rate limits.
-                        version = registry_version if registry_version not in ("", "latest", "unknown", "{{VERSION}}") else "latest"
-                        version_source = "registry_fallback"
-
-                    # Log warnings for unverified or high-risk servers
-                    if not verified:
-                        logger.info(
-                            "Registry: %s is UNVERIFIED — review source before trusting",
-                            entry["package"],
-                        )
-                    if risk_level == "high":
-                        logger.info(
-                            "Registry: %s has HIGH risk level — has privileged tool access",
-                            entry["package"],
-                        )
-
-                    return [
-                        Package(
-                            name=entry["package"],
-                            version=version,
-                            ecosystem=ecosystem,
-                            purl=_registry_purl(ecosystem, entry["package"], version),
-                            is_direct=True,
-                            resolved_from_registry=True,
-                            registry_version=registry_version,
-                            version_source=version_source,
-                        )
-                    ]
-    return []
+    return [
+        Package(
+            name=entry["package"],
+            version=version,
+            ecosystem=ecosystem,
+            purl=_registry_purl(ecosystem, entry["package"], version),
+            is_direct=True,
+            resolved_from_registry=True,
+            registry_version=registry_version,
+            version_source=version_source,
+        )
+    ]
 
 
 def get_registry_entry(server: MCPServer) -> dict | None:
     """Return the full registry entry for an MCP server, or None."""
-    registry = _load_registry()
-    if not registry:
-        return None
-
-    candidates: list[str] = [server.name] + server.args
-
-    for pkg_name, entry in registry.items():
-        patterns = entry.get("command_patterns", [pkg_name])
-        for candidate in candidates:
-            for pattern in patterns:
-                if _registry_pattern_matches(pattern, candidate) or _registry_pattern_matches(pkg_name, candidate):
-                    return entry
-    return None
+    return _match_registry_entry(server)
 
 
 console = Console(stderr=True)

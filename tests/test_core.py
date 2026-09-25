@@ -1254,6 +1254,65 @@ def test_mcp_registry_lookup_does_not_reverse_substring_match(monkeypatch):
     assert lookup_mcp_registry(server) == []
 
 
+@pytest.mark.parametrize(
+    ("name", "command", "args"),
+    [
+        ("mcp-server", "python3", ["mcp-server/src/server.py"]),
+        ("slack-bot", "python", ["bot.py"]),
+        ("postgres", "node", ["./dist/index.js"]),
+        ("code-search", "node", ["/opt/tools/code/search/server.js"]),
+        ("plugin", "uv", ["run", "--directory", "/home/dev/plugin", "server.py"]),
+        ("slack", "npx", ["-y", "tsx", "src/slack.ts"]),
+    ],
+)
+def test_mcp_registry_lookup_never_matches_generic_tokens_or_local_scripts(name, command, args):
+    from agent_bom.models import MCPServer
+    from agent_bom.parsers import get_registry_entry, lookup_mcp_registry
+
+    server = MCPServer(name=name, command=command, args=args, env={})
+    assert lookup_mcp_registry(server) == []
+    assert get_registry_entry(server) is None
+
+
+@pytest.mark.parametrize(
+    ("command", "args", "expected", "version"),
+    [
+        ("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/Users/dev/projects"], "@modelcontextprotocol/server-filesystem", None),
+        ("npx", ["-y", "@modelcontextprotocol/server-filesystem@2025.1.14", "/tmp"], "@modelcontextprotocol/server-filesystem", "2025.1.14"),
+        ("uvx", ["mcp-server-fetch==2025.4.7"], "mcp-server-fetch", "2025.4.7"),
+        ("uvx", ["MCP_Server_Fetch"], "mcp-server-fetch", None),
+    ],
+)
+def test_mcp_registry_lookup_matches_exact_package_identifiers(command, args, expected, version):
+    from agent_bom.models import MCPServer
+    from agent_bom.parsers import get_registry_entry, lookup_mcp_registry
+
+    server = MCPServer(name="anything", command=command, args=args, env={})
+    packages = lookup_mcp_registry(server)
+    assert [p.name for p in packages] == [expected]
+    if version:
+        assert packages[0].version == version
+        assert packages[0].version_source == "detected"
+    assert get_registry_entry(server)["package"] == expected
+
+
+def test_mcp_registry_lookup_ambiguous_identifiers_return_no_match(monkeypatch):
+    from agent_bom.models import MCPServer
+    from agent_bom.parsers import get_registry_entry, lookup_mcp_registry
+
+    monkeypatch.setattr(
+        parsers,
+        "_registry_cache",
+        {
+            "pkg-a": {"package": "pkg-a", "ecosystem": "npm", "latest_version": "1.0.0", "command_patterns": ["pkg-a"]},
+            "pkg-b": {"package": "pkg-b", "ecosystem": "npm", "latest_version": "1.0.0", "command_patterns": ["pkg-b"]},
+        },
+    )
+    server = MCPServer(name="both", command="npx", args=["-y", "pkg-a", "pkg-b"], env={})
+    assert lookup_mcp_registry(server) == []
+    assert get_registry_entry(server) is None
+
+
 def test_mcp_registry_lookup_unknown_server():
     from agent_bom.models import MCPServer
     from agent_bom.parsers import lookup_mcp_registry

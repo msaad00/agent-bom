@@ -239,6 +239,23 @@ This triggers:
 4. **publish-mcp-registry.yml** → Official MCP Registry (via workflow_run)
 5. **deploy-mcp-sse.yml** → Railway deployment (called from the release workflow)
 
+### Source version vs published version
+
+`python scripts/bump-version.py X.Y.Z` prepares the next release: package,
+chart, Dockerfiles, manifests, and source-built Compose image tags. It does
+**not** move copy-paste surfaces users run against a registry — GitHub Action
+refs, pull-only Compose/Kubernetes image pins, Helm and air-gap bundle
+commands, consumer pre-commit `rev:` and the README "Latest release" line.
+Those track `PUBLISHED_VERSION`, so docs on `main` never point at a tag or image
+that does not exist yet.
+
+After every publish job succeeds, the release run opens a
+`chore/post-release-pins-vX.Y.Z` PR that runs
+`python scripts/bump-version.py --published X.Y.Z` (and syncs the Docker MCP
+submission pin). Merge it to advance the docs. `scripts/check_version_alignment.py`
+fails if `PUBLISHED_VERSION` is ahead of the source version or, when release tags
+are available locally, names a tag that does not exist.
+
 Each GitHub Release should include these verification assets alongside the
 wheel and source tarball:
 

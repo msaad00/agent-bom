@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { BrandLogo } from "@/components/brand-logo";
@@ -44,6 +44,16 @@ export function LoginPanel({
   const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [authUnconfigured, setAuthUnconfigured] = useState(false);
+  const signedIn = Boolean(session && (!session.auth_required || session.authenticated));
+
+  useEffect(() => {
+    if (loading || signedIn) return;
+    api.health().then(
+      (health) => setAuthUnconfigured(health.auth_configured === false && !health.unauthenticated_allowed),
+      () => {},
+    );
+  }, [loading, signedIn]);
 
   if (loading) {
     return (
@@ -57,7 +67,7 @@ export function LoginPanel({
     );
   }
 
-  if (session && (!session.auth_required || session.authenticated)) {
+  if (signedIn) {
     return null;
   }
 
@@ -99,7 +109,15 @@ export function LoginPanel({
     const showApiKeyDivider = ssoConfigured || proxyOrBearerHint;
     // An unauthenticated page load is not evidence that a submitted key was rejected.
     const shownError = formError;
+    const rule = <span className="h-px flex-1 bg-[var(--surface-elevated)]" />;
     const ssoPreset = ssoLoginPreset(session?.sso_provider);
+    const apiKeyDivider = (
+      <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">
+        {rule}
+        or use an API key
+        {rule}
+      </div>
+    );
 
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-6">
@@ -138,13 +156,7 @@ export function LoginPanel({
                   Sign in with Snowflake
                 </a>
               ) : null}
-              {showApiKeyDivider ? (
-                <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">
-                  <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
-                  or use an API key
-                  <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
-                </div>
-              ) : null}
+              {showApiKeyDivider ? apiKeyDivider : null}
             </div>
           ) : null}
 
@@ -155,11 +167,7 @@ export function LoginPanel({
                   ? "Single sign-on is handled by your reverse proxy. Continue there, or use an API key below."
                   : "Single sign-on is handled by your identity provider or reverse proxy."}
               </p>
-              <div className="mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-[var(--text-tertiary)]">
-                <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
-                or use an API key
-                <span className="h-px flex-1 bg-[var(--surface-elevated)]" />
-              </div>
+              {apiKeyDivider}
             </div>
           ) : null}
 
@@ -212,7 +220,16 @@ export function LoginPanel({
               />
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
-              Need access? Contact your administrator.
+              {authUnconfigured ? (
+                <>
+                  No API key is configured on this server yet. Restart it with one:
+                  <code className="block font-mono">agent-bom api --api-key &lt;your-key&gt;</code>
+                  or, for local use only, without sign-in:
+                  <code className="block font-mono">agent-bom api --allow-insecure-no-auth</code>
+                </>
+              ) : (
+                "Need access? Contact your administrator."
+              )}
             </p>
 
             <button
@@ -254,13 +271,13 @@ export function LoginPanel({
             </div>
           </form>
 
-          <details className="mt-4 border-t border-[var(--border-subtle)] pt-3 text-sm text-[var(--text-secondary)]">
+          {authUnconfigured ? null : <details className="mt-4 border-t border-[var(--border-subtle)] pt-3 text-sm text-[var(--text-secondary)]">
             <summary className="cursor-pointer font-medium">Sign-in help</summary>
             <p className="mt-2">Use the key provided by your administrator. Access permissions are managed by your organization.</p>
             {!ssoConfigured && !proxyOrBearerHint ? (
               <p className="mt-2">For single sign-on, ask your administrator to configure your organization's identity provider.</p>
             ) : null}
-          </details>
+          </details>}
         </div>
       </div>
     );

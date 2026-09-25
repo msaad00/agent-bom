@@ -59,7 +59,7 @@ def cloud():
       agent-cloud posture                Unified cross-cloud summary
 
     \b
-    Docs: https://github.com/msaad00/agent-bom
+    Docs: https://msaad00.github.io/agent-bom/
     """
     pass
 

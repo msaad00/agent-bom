@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom import __version__
 from agent_bom.api import stores as _stores
-from agent_bom.api.audit_log import get_audit_log
+from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
 from agent_bom.api.middleware import (
     DEFAULT_SCAN_RATE_LIMIT_RPM,
@@ -444,6 +444,7 @@ def _enqueue_scheduled_scan(
 async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
     _log_control_plane_auth_posture()
+    warn_if_ephemeral_hmac_key()
     _apply_worker_thread_limit()
     configure_otel_tracing()
     _preflight_postgres_tenant_isolation()

@@ -14,6 +14,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Bounded relationship paging across SQLite, Postgres, REST, and persisted Context exploration. Tenant-scoped cursors and generation checks prevent combining evidence across replaced snapshots.
 - Inspect recorded authority and source receipts at each graph path hop, with bounded pagination and preserved investigation scope.
 - Optional, bounded AWS credential validation through STS, disabled by default and suppressed by offline scans. Validation errors remain unknown without removing findings.
+- Add an explicitly configured Snowflake workload-identity adapter for scan connections, binding each delegation to the authenticated tenant and injected SPCS account and rejecting caller-selected roles or credential fallback.
+- Add collapsible asset-type and name/ID/context filters to the environment scope summary, with bounded, expandable relationship details and indexed incident pagination.
+- Group estate assets by recorded provider, account, and environment, and focus an asset and its connections through the shared evidence drawer.
+- Add tenant-isolated, retry-safe comparable finding history with on-demand history charts and a values table, extending `/v1/trends` additively with bounded metadata retention.
+- Add bounded environment-group navigation with aggregate recorded relationships, retained camera state, and searchable asset/relationship controls.
 - Python one-hop tainted-argument evidence for function-reachable CVEs. This additive signal does not establish exploitability or full interprocedural data flow.
 
 ### Fixed
@@ -49,6 +54,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Improve scoped inventory, findings, compliance drilldowns, graph framing, and light/dark metric readability. Empty API snapshots now return an empty summary.
 - Preserve dashboard metadata in refreshed images and enforce deployment and registry freshness checks while retaining Smithery as an explicitly non-blocking surface.
 - Keep screenshot proof sensitive to rendering toolchain and resolved dependency changes while allowing Node type-only maintenance updates.
+- Persist Native App graph and control-plane evidence, including the audit signing key, on an encrypted per-tenant volume so restarts preserve verification.
+- Support opt-in external OAuth verification for remote MCP with a pinned issuer/audience and bounded token lifetime, and obtain fresh read tokens for deployment probes instead of embedding credentials in command arguments or logs.
+- Render the agent mesh from paged persisted graph relationships, publish Native App audit keys atomically under a directory lock, and expose Snowflake workload onboarding only in Native App mode.
+- Retain supporting agent identifiers and minimum hop distance when converting blast-radius results into finding rows, so corroborated reachability evidence is no longer dropped during response sanitization.
+- Align demo agent-to-MCP-server relationships across the estate graph, fleet server counts, and MCP observation agent lists so they no longer diverge.
+- Reject malformed SCIM `active` values instead of coercing them into lifecycle changes, and retry idempotent credential revocation when deactivation is repeated after a store failure.
+- Preserve declared agent model and tool associations, including positional LangChain `initialize_agent(tools, llm)` calls, so tool and data-flow findings are retained.
+- Distinguish unassessed graph-node risk from scored evidence, showing "Not assessed" consistently across graph inspection, search, and inventory while preserving an explicitly assessed zero score.
+- Bound initial graph requests to 250 ranked assets with explicit partial counts, loading the broader selection only on request while keeping full-estate search available.
+- Preserve readable graph framing and the investigation root after closing details, and stop native filter navigation from interrupting incoming client navigation.
+- Add bounded, stable-identifier search to discovered identity rows, and bound API response caching to 64 entries with least-recently-used eviction and expiry cleanup.
+- Keep copy-paste install surfaces on the latest published release. GitHub Action refs, pull-only Compose and Kubernetes image pins, Helm/bundle commands, and consumer pre-commit revs now track `PUBLISHED_VERSION`, which the release run advances only after publishing, so docs on `main` no longer point at an unreleased tag or image.
+- Keep the daily `latest` image refresh labelled with the rebuilt release version when it applies the default branch's runtime security overlay, so the Docker Hub README sync no longer fails its release consistency check.
+- Stop printing the ephemeral audit-signing-key warning in CLI scan output. It is now logged at API startup and when an audit entry is first signed without `AGENT_BOM_AUDIT_HMAC_KEY`.
+- Replace the "Contact your administrator" dead end on the dashboard login when the API was started without any key. The page now shows the restart commands (`agent-bom api --api-key <key>`, or `--allow-insecure-no-auth` for local use); authentication behavior is unchanged.
+- Point CLI help `Docs:` links at the documentation site, and stop directing users to the `mcp-server` extra for `agent-bom mcp server`, which works from the base install.
 
 ### Changed
 

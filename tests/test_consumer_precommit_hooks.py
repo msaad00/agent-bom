@@ -27,8 +27,9 @@ def test_dependency_hook_scans_only_the_downstream_repository() -> None:
 
 def test_readme_exposes_zero_install_and_daily_developer_gates() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    version_match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+    # Consumers pin a tag that exists, so the example tracks the published release.
+    published = (ROOT / "PUBLISHED_VERSION").read_text(encoding="utf-8").strip()
+    version_match = re.fullmatch(r"(\d+\.\d+\.\d+)", published)
     assert version_match
 
     assert "uvx agent-bom scan ." in readme

@@ -73,6 +73,20 @@ jobs:
             .image-scan-ignore \
             security/image-exceptions.yaml
 
+      - name: Keep the rebuilt release version on the overlaid Dockerfile
+        # main's Dockerfile carries the NEXT release in ARG VERSION once main is
+        # prepped. The code being rebuilt is still the tag's, so the image label
+        # and the storefront consistency check must say the tag's version.
+        env:
+          DOCKERFILE: Dockerfile
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          grep -q '^ARG VERSION=' "$DOCKERFILE"
+          sed -i.bak -E "s/^ARG VERSION=.*/ARG VERSION=${VERSION}/" "$DOCKERFILE"
+          rm -f "$DOCKERFILE.bak"
+          grep -qx "ARG VERSION=${VERSION}" "$DOCKERFILE"
+
       - name: Verify pyproject version matches release tag
         run: |
           set -euo pipefail
@@ -507,6 +521,17 @@ jobs:
             deploy/docker/Dockerfile.collector \
             .image-scan-ignore \
             security/image-exceptions.yaml
+
+      - name: Keep the rebuilt release version on the overlaid Dockerfile
+        env:
+          DOCKERFILE: deploy/docker/Dockerfile.collector
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          grep -q '^ARG VERSION=' "$DOCKERFILE"
+          sed -i.bak -E "s/^ARG VERSION=.*/ARG VERSION=${VERSION}/" "$DOCKERFILE"
+          rm -f "$DOCKERFILE.bak"
+          grep -qx "ARG VERSION=${VERSION}" "$DOCKERFILE"
 
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0

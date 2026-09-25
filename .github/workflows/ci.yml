@@ -213,6 +213,9 @@ jobs:
           # git blame return nothing, which previously let stale markers pass
           # silently. Fetch full history so the gate enforces its SLA.
           fetch-depth: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' && 1 || 0 }}
+          # check_version_alignment.py verifies PUBLISHED_VERSION names a real
+          # release tag; the shallow docs-only checkout needs tags for that.
+          fetch-tags: true
 
       - name: Block Finder duplicate artifacts
         run: python scripts/check_duplicate_artifacts.py
@@ -1573,6 +1576,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # check_version_alignment.py verifies PUBLISHED_VERSION names a real
+          # release tag; a shallow checkout carries no tags without this.
+          fetch-tags: true
 
       - uses: ./.github/actions/setup-python
         with:

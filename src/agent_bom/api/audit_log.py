@@ -198,10 +198,28 @@ else:
     import secrets as _secrets
 
     _HMAC_KEY = _secrets.token_bytes(32)
+
+# The operator warning is raised where audit evidence is produced (API startup,
+# first signature), not at import: CLI reports import this module only to
+# describe signing posture, and a log line there lands mid-report.
+_EPHEMERAL_KEY_WARNED = False
+
+
+def warn_if_ephemeral_hmac_key() -> None:
+    """Log once per process when audit signatures use an ephemeral key."""
+    global _EPHEMERAL_KEY_WARNED
+    if _HMAC_ENV_KEY or _EPHEMERAL_KEY_WARNED:
+        return
+    _EPHEMERAL_KEY_WARNED = True
     logger.warning(
         "AGENT_BOM_AUDIT_HMAC_KEY not set — audit log HMAC uses ephemeral key "
         "(signatures will not survive process restart; set env var for production)"
     )
+
+
+def _default_signing_key() -> bytes:
+    warn_if_ephemeral_hmac_key()
+    return _HMAC_KEY
 
 
 def _hmac_sha256_hex(signing_key: bytes, payload: bytes) -> str:
@@ -234,7 +252,7 @@ class AuditEntry:
 
     def _legacy_hmac(self, hmac_key: bytes | None = None) -> str:
         payload = f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|{self.action}|{self.actor}|{self.resource}"
-        return _hmac_sha256_hex(hmac_key or _HMAC_KEY, payload.encode())
+        return _hmac_sha256_hex(hmac_key or _default_signing_key(), payload.encode())
 
     def compute_hmac(self, hmac_key: bytes | None = None) -> str:
         """Compute HMAC-SHA256 signature for tamper detection (chain-hashed)."""
@@ -242,7 +260,7 @@ class AuditEntry:
             f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|"
             f"{self.action}|{self.actor}|{self.resource}|{self._canonical_details_json()}"
         )
-        return _hmac_sha256_hex(hmac_key or _HMAC_KEY, payload.encode())
+        return _hmac_sha256_hex(hmac_key or _default_signing_key(), payload.encode())
 
     def sign(self, hmac_key: bytes | None = None) -> None:
         """Sign this entry."""
@@ -269,7 +287,7 @@ class AuditEntry:
 
 def sign_export_payload(payload: bytes) -> str:
     """Sign an exported audit payload so downstream consumers can verify it."""
-    return _hmac_sha256_hex(_HMAC_KEY, payload)
+    return _hmac_sha256_hex(_default_signing_key(), payload)
 
 
 def verify_export_payload(payload: bytes, signature: str) -> bool:

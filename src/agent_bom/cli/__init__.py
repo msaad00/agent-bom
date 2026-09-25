@@ -75,7 +75,7 @@ def _print_startup_banner() -> None:
         f"agent-bom {__version__}\n"
         "Open security scanner for AI infrastructure\n"
         f"Python {sys.version.split()[0]} · {sys.platform}\n"
-        "Docs:  https://github.com/msaad00/agent-bom"
+        "Docs:  https://msaad00.github.io/agent-bom/"
     ),
 )
 @click.pass_context
@@ -105,7 +105,7 @@ def main(ctx: click.Context, profile: str | None, agent_mode: bool):
     Tip: `agent-bom -h` groups commands by scanning, runtime, MCP, reporting, and governance.
 
     \b
-    Docs:  https://github.com/msaad00/agent-bom
+    Docs:  https://msaad00.github.io/agent-bom/
     """
     if profile:
         import os as _os

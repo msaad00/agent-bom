@@ -20,7 +20,7 @@ Submission files for listing agent-bom in the Docker Desktop MCP Toolkit catalog
 
 When releasing a new version:
 1. `source.commit` is updated for you. The release run opens a
-   `chore/docker-mcp-pin-vX.Y.Z` PR against `main` carrying the tagged SHA —
+   `chore/post-release-pins-vX.Y.Z` PR against `main` carrying the tagged SHA —
    the value cannot be written before the tag exists, which is why it is not
    part of the version bump. Merge that PR.
 2. Submit a PR to `docker/mcp-registry` updating `servers/agent-bom/server.yaml`

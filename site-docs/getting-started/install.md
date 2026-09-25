@@ -13,7 +13,7 @@ pipx install agent-bom
 ```bash
 pip install "agent-bom[api]"          # REST API server
 pip install "agent-bom[ui]"           # API plus bundled local UI support
-pip install "agent-bom[mcp-server]"   # MCP server dependencies
+pip install "agent-bom[mcp-server]"   # Smithery hosted-registry adapter only; `agent-bom mcp server` works from the base install
 pip install "agent-bom[postgres]"     # Postgres-backed control-plane state
 pip install "agent-bom[cloud]"        # AWS, Azure, GCP, Databricks, Snowflake, Nebius, HuggingFace, W&B, OpenAI
 pip install "agent-bom[visual]"       # OCR-backed visual-leak detection; also requires Tesseract on PATH

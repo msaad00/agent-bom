@@ -13,6 +13,9 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_version_alignment as cva  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 PYPI_README = ROOT / "PYPI_README.md"
@@ -106,6 +109,26 @@ MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
         "collector Dockerfile ARG",
     ),
     (
+        ROOT / "integrations" / "mcp-registry" / "server.json",
+        re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
+        "MCP Registry manifest version",
+    ),
+    (ROOT / "integrations" / "glama" / "server.json", re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "Glama manifest version"),
+    (
+        ROOT / "docs" / "PUBLISHING.md",
+        re.compile(r"(?:--version \"|git tag v|git push origin v)([0-9]+\.[0-9]+\.[0-9]+)"),
+        "publishing example version",
+    ),
+    (
+        ROOT / "site-docs" / "reference" / "remediate-output.md",
+        re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
+        "remediate output example version",
+    ),
+]
+# Copy-paste commands that pull a released artifact. They must name the latest
+# PUBLISHED release (PUBLISHED_VERSION), never the unreleased source version.
+PUBLISHED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
+    (
         ROOT / "deploy" / "k8s" / "sidecar-example.yaml",
         re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)"),
         "K8s sidecar image",
@@ -114,18 +137,6 @@ MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
         ROOT / "deploy" / "k8s" / "proxy-sidecar-pilot.yaml",
         re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)"),
         "K8s proxy sidecar image",
-    ),
-    (
-        ROOT / "integrations" / "mcp-registry" / "server.json",
-        re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
-        "MCP Registry manifest version",
-    ),
-    (ROOT / "integrations" / "glama" / "server.json", re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "Glama manifest version"),
-    (ROOT / "docs" / "RELEASE_VERIFICATION.md", re.compile(r"^TAG=v([0-9]+\.[0-9]+\.[0-9]+)$", re.M), "release verification tag"),
-    (
-        ROOT / "docs" / "PUBLISHING.md",
-        re.compile(r"(?:--version \"|git tag v|git push origin v)([0-9]+\.[0-9]+\.[0-9]+)"),
-        "publishing example version",
     ),
     (
         ROOT / "site-docs" / "deployment" / "airgapped-image-bundle.md",
@@ -140,12 +151,9 @@ MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
         re.compile(r"(?:--version |refs/tags/v)([0-9]+\.[0-9]+\.[0-9]+)"),
         "AWS company rollout release example",
     ),
-    (
-        ROOT / "site-docs" / "reference" / "remediate-output.md",
-        re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
-        "remediate output example version",
-    ),
+    (ROOT / "docs" / "RELEASE_VERIFICATION.md", re.compile(r"^TAG=v([0-9]+\.[0-9]+\.[0-9]+)$", re.M), "release verification tag"),
 ]
+# GitHub Action refs must name a tag that exists: PUBLISHED_VERSION.
 MANAGED_ACTION_REFS: list[Path] = [
     ROOT / "README.md",
     ROOT / "docs" / "AI_INFRASTRUCTURE_SCANNING.md",
@@ -427,13 +435,19 @@ def _assert_product_screenshots_current(expected_version: str) -> None:
             _fail(f"docs/images/{rel_path} manifest visible_version is newer than the release: {visible_version!r} > {expected_version}")
 
 
-def sweep_version_drift(expected: str) -> list[str]:
+# Sweep entries whose image pins follow the source/published split owned by
+# scripts/check_version_alignment.py (pull-only pins name the published release).
+_IMAGE_SWEEP_LABELS = frozenset({"compose image tag", "k8s image tag"})
+
+
+def sweep_version_drift(expected: str, published: str | None = None) -> list[str]:
     """Return every self-referential version that disagrees with the release.
 
     Discovery is structural, so an artifact nobody remembered to register still
     gets checked. Declared-independent files are skipped by exact relative path
     — a glob there would re-open the hole this closes.
     """
+    published = cva.published_version() if published is None else published
     problems: list[str] = []
     for glob, pattern, label in VERSION_SWEEP:
         for path in sorted(ROOT.glob(glob)):
@@ -442,10 +456,11 @@ def sweep_version_drift(expected: str) -> list[str]:
             relative = path.relative_to(ROOT).as_posix()
             if relative in INDEPENDENTLY_VERSIONED:
                 continue
+            want = cva.expected_version(relative, "image", expected, published) if label in _IMAGE_SWEEP_LABELS else expected
             found = {match.group(1) for match in pattern.finditer(path.read_text(encoding="utf-8"))}
-            stale = sorted(found - {expected})
+            stale = sorted(found - {want})
             if stale:
-                problems.append(f"{relative} has stale {label}: {stale} != {expected}")
+                problems.append(f"{relative} has stale {label}: {stale} != {want}")
     return problems
 
 
@@ -463,6 +478,9 @@ def _assert_no_unmanaged_version_drift(version: str) -> None:
 
 def main() -> int:
     version = _load_version()
+    published = cva.published_version()
+    if cva.parse_semver(published) > cva.parse_semver(version):
+        _fail(f"PUBLISHED_VERSION {published} is ahead of the source version {version}")
     description = _load_description()
     readme = README.read_text()
     pypi_readme = PYPI_README.read_text()
@@ -613,11 +631,18 @@ def main() -> int:
         _fail(f"Dockerfile ARG VERSION must be {version}")
     for path, image_pattern in MANAGED_IMAGE_REFS:
         text = path.read_text()
+        want = cva.expected_version(path.relative_to(ROOT).as_posix(), "image", version, published)
         versions = {match.group(1) for match in image_pattern.finditer(text)}
-        if versions and versions != {version}:
-            _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {version}")
+        if versions and versions != {want}:
+            _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {want}")
     for path, version_pattern, label in MANAGED_VERSION_REFS:
         _assert_versions(path, version_pattern, version, label)
+    for path, version_pattern, label in PUBLISHED_VERSION_REFS:
+        _assert_versions(path, version_pattern, published, label)
+    if f"Source version: **v{version}**" not in readme:
+        _fail(f"README.md must carry the source version marker the Glama listing gate reads: Source version: **v{version}**")
+    if f"Latest release: **v{published}**" not in readme:
+        _fail(f"README.md must state the latest published release: Latest release: **v{published}**")
     _assert_no_unmanaged_version_drift(version)
     ui_lock = json.loads((ROOT / "ui" / "package-lock.json").read_text())
     ui_lock_versions = {ui_lock.get("version"), ui_lock.get("packages", {}).get("", {}).get("version")}
@@ -635,8 +660,8 @@ def main() -> int:
     for path in MANAGED_ACTION_REFS:
         text = path.read_text()
         action_versions = set(re.findall(r"msaad00/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)", text))
-        if action_versions and action_versions != {version}:
-            _fail(f"{path.relative_to(ROOT)} has stale GitHub Action ref(s): {sorted(action_versions)} != {version}")
+        if action_versions and action_versions != {published}:
+            _fail(f"{path.relative_to(ROOT)} has stale GitHub Action ref(s): {sorted(action_versions)} != published {published}")
 
     tool_names, resource_uris, prompt_names = _server_card_catalog()
     tools = len(tool_names)

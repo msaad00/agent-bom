@@ -34,7 +34,7 @@ Environment:
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json"])
     assert result.exit_code == 0, result.output
 
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["$schema"] == "https://agent-bom.github.io/schemas/skills-scan/v1"
     assert data["schema_version"] == "1"
     assert data["report_type"] == "skills_scan"
@@ -58,7 +58,7 @@ def test_skills_scan_missing_guardrail_fixture_reports_contract_gap():
     result = runner.invoke(main, ["skills", "scan", str(fixture), "--format", "json"])
     assert result.exit_code == 0, result.output
 
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     findings = data["files"][0]["audit"]["findings"]
     categories = {finding["category"] for finding in findings}
 
@@ -125,7 +125,7 @@ def test_skills_scan_json_with_catalog_and_intel(tmp_path):
     )
     assert result.exit_code == 0, result.output
 
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["catalog_path"] == str(catalog_path)
     assert data["files"][0]["status"] == "suspicious"
     assert data["files"][0]["threat_intel"]["detail"] == "Flagged for review"
@@ -171,7 +171,7 @@ def test_skills_scan_explicit_directory_globs_markdown(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(docs_skills), "--format", "json"])
     assert result.exit_code == 0, result.output
 
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["summary"]["files_scanned"] == 1
     assert data["files"][0]["path"].endswith("mcp-server-review.md")
 
@@ -185,7 +185,7 @@ def test_skills_verify_json_unsigned(tmp_path):
     result = runner.invoke(main, ["skills", "verify", str(tmp_path), "--format", "json"])
     assert result.exit_code == 1, result.output
 
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert len(data["files"]) == 1
     assert data["files"][0]["status"] == "unsigned"
 
@@ -210,7 +210,7 @@ def test_skills_scan_handles_referenced_files_outside_primary_directory(tmp_path
     result = runner.invoke(main, ["skills", "scan", str(docs_skill.parent), "--format", "json"])
 
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["summary"]["bundled_files"] == 2
 
 
@@ -246,7 +246,7 @@ def test_skills_scan_warn_on_review_verdict_is_non_blocking(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--warn-on-review-verdict", "review"])
 
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["policy"]["status"] == "warn"
     assert data["policy"]["warnings"]
 
@@ -277,7 +277,7 @@ def test_skills_scan_explicit_safety_bypass_still_gates_as_malicious(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--fail-on-verdict", "malicious"])
 
     assert result.exit_code == 1, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["files"][0]["trust"]["content_verdict"] == "malicious"
     assert data["files"][0]["trust"]["review_verdict"] == "blocked"
 
@@ -303,7 +303,7 @@ rules:
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--policy", str(policy)])
 
     assert result.exit_code == 1, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["policy"]["status"] == "fail"
     assert data["policy"]["violations"][0]["rule_id"] == "block-prompt-coercion"
 
@@ -317,7 +317,7 @@ def test_skills_scan_ci_flag_fails_on_suspicious_without_policy(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--ci"])
 
     assert result.exit_code == 1, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["files"][0]["trust"]["content_verdict"] == "suspicious"
     assert data["policy"]["status"] == "fail"
     assert data["policy"]["violations"]
@@ -332,7 +332,7 @@ def test_skills_scan_ci_flag_passes_on_benign(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--ci"])
 
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["files"][0]["trust"]["content_verdict"] == "benign"
     assert data["policy"]["status"] == "pass"
 
@@ -346,7 +346,7 @@ def test_skills_scan_without_ci_is_backward_compatible(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json"])
 
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert "policy" not in data
 
 
@@ -363,7 +363,7 @@ def test_skills_scan_ci_env_var_enables_gate(tmp_path):
     )
 
     assert result.exit_code == 1, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["policy"]["status"] == "fail"
 
 
@@ -405,7 +405,7 @@ def test_skills_scan_ci_flag_fails_on_malicious(tmp_path):
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--ci"])
 
     assert result.exit_code == 1, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["files"][0]["trust"]["content_verdict"] == "malicious"
 
 
@@ -463,6 +463,6 @@ suppressions:
     result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--format", "json", "--policy", str(policy)])
 
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    data = json.loads(result.stdout)
     assert data["policy"]["status"] == "pass"
     assert data["policy"]["suppressions_applied"] >= 1

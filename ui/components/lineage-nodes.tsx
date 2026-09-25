@@ -188,7 +188,7 @@ function NodeCard({
         ) : null}
       </div>
       <p className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-[var(--foreground)]">
-        {data.label}
+        {data.label.split(/(?<=[_/-])/).map((part, index) => <span key={index}>{part}<wbr /></span>)}
       </p>
       {subtitle && (
         <div className="text-xs leading-4 text-[var(--text-secondary)] truncate">
@@ -707,9 +707,7 @@ function ClusterPillNode({ data }: { data: LineageNodeData }) {
     <div
       data-testid="cluster-pill"
       data-cluster-count={count}
-      className={`relative rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 shadow-lg backdrop-blur transition-opacity hover:border-sky-300 hover:bg-sky-500/15 ${
-        data.dimmed ? "opacity-25" : ""
-      } cluster-pill-pulse cursor-pointer`}
+      className="relative rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 shadow-lg backdrop-blur hover:border-sky-300 hover:bg-sky-500/15 cluster-pill-pulse cursor-pointer"
       title="Click to expand"
     >
       <Handle

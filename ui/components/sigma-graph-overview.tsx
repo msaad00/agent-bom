@@ -58,25 +58,6 @@ type SigmaGraphOverviewProps = {
     }
 );
 
-function RelationshipRail({ items }: { items: Array<{ relationship: string; count: number }> }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
-      {items.map((item) => (
-        <span
-          key={item.relationship}
-          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--background)]/75 px-2.5 py-1 text-[11px] text-[var(--text-secondary)]"
-        >
-          <span className="max-w-36 truncate" title={item.relationship}>
-            {item.relationship.replace(/_/g, " ")}
-          </span>
-          <span className="font-mono text-[var(--text-tertiary)]">{item.count}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function browserStorage(): Storage | null {
   try {
     return window.localStorage;
@@ -219,7 +200,7 @@ export function SigmaGraphOverview({
           enableEdgeEvents: false,
           hideEdgesOnMove: true,
           hideLabelsOnMove: true,
-          itemSizesReference: grouping === "environment" ? "screen" : "positions",
+          itemSizesReference: "screen",
           labelColor: { color: palette.label },
           // Label level-of-detail. The grid keeps at most a handful of labels
           // per cell so they never overlap into a smear; the size threshold
@@ -228,7 +209,7 @@ export function SigmaGraphOverview({
           labelDensity: 0.08,
           labelFont: "Inter, ui-sans-serif, system-ui, sans-serif",
           labelGridCellSize: 170,
-          labelRenderedSizeThreshold: 6,
+          labelRenderedSizeThreshold: 3,
           labelSize: 11,
           minCameraRatio: 0.04,
           maxCameraRatio: 4,
@@ -244,13 +225,14 @@ export function SigmaGraphOverview({
             return {
               ...data,
               color: selected ? palette.selected : data.color,
-              forceLabel: selected || data.forceLabel,
+              forceLabel: selected,
+              label: dimmedBySelection ? "" : data.label,
               // Parent focus marks unrelated nodes hidden; retain them as faded context here.
               hidden: selectedNodeIdRef.current ? false : data.hidden,
-              highlighted: selected || data.highlighted,
-              size: selected ? data.size * 1.65 : data.size,
+              highlighted: selected,
+              size: selected ? 6 : neighbor ? 4 : 2.2,
               zIndex: selected ? 4 : data.zIndex,
-              ...(dimmedBySelection ? { color: palette.dimmed } : {}),
+              ...(dimmedBySelection ? { color: palette.stage, size: 0.5 } : {}),
             };
           },
           edgeReducer: (_edge, data) => {
@@ -260,9 +242,9 @@ export function SigmaGraphOverview({
               : false;
             return {
               ...data,
-              color: selectedEdge ? data.color : selected ? palette.dimmed : data.color,
-              hidden: selectedEdge ? false : data.hidden,
-              size: selectedEdge ? data.size * 2.3 : data.size,
+              color: palette.defaultEdge,
+              hidden: !selectedEdge,
+              size: 1.4,
               zIndex: selectedEdge ? 3 : data.zIndex,
             };
           },
@@ -277,14 +259,17 @@ export function SigmaGraphOverview({
           if (!renderer || !groupLabelsRef.current) return;
           const activeRenderer = renderer;
           const dimensions = activeRenderer.getDimensions();
+          const placed: Array<{ x: number; y: number }> = [];
           model.groups.forEach((group, index) => {
             const label = groupLabelsRef.current?.children[index] as HTMLElement | undefined;
             if (!label) return;
             const position = activeRenderer.graphToViewport({ x: group.x, y: group.y });
             const beside = activeRenderer.graphToViewport({ x: group.x + 120, y: group.y });
-            const readable = dimensions.width >= 640 && (model.groups.length <= 4 || Math.abs(beside.x - position.x) >= 65);
+            const anchor = { x: Math.max(80, Math.min(dimensions.width - 80, position.x)), y: Math.max(52, position.y - 48) };
+            const readable = (model.groups.length <= 8 || Math.abs(beside.x - position.x) >= 65) && !placed.some(p => Math.abs(p.x - anchor.x) < 160 && Math.abs(p.y - anchor.y) < 52);
+            if (readable) placed.push(anchor);
             label.style.display = readable && position.x >= 0 && position.y >= 0 && position.x <= dimensions.width && position.y <= dimensions.height ? "block" : "none";
-            label.style.transform = `translate(${Math.max(112, Math.min(dimensions.width - 112, position.x))}px, ${Math.max(52, position.y - label.offsetHeight)}px) translateX(-50%)`;
+            label.style.transform = `translate(${anchor.x}px, ${anchor.y}px) translateX(-50%)`;
           });
         };
         renderer.on("afterRender", positionGroupLabels);
@@ -358,8 +343,9 @@ export function SigmaGraphOverview({
             Estate map
           </span>
           <span className="min-w-0 text-xs leading-snug text-[var(--text-tertiary)] sm:min-w-[12rem] sm:flex-1">
-            Select an asset to investigate its related evidence. Use Summary to drill into groups.
+            Select an asset to reveal its connections.
           </span>
+          <button type="button" className="shrink-0 rounded-full border border-outline px-3 py-1 text-xs text-ink-secondary" onClick={() => rendererRef.current?.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 })}>Fit map</button>
         </div>
         <details ref={controlsRef} className="mt-2 text-xs text-ink-secondary">
           <summary className="cursor-pointer">Map controls</summary>
@@ -378,19 +364,17 @@ export function SigmaGraphOverview({
         </details>
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
           <span>
-            Displayed: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes,{" "}
-            {model.overview.edges.length.toLocaleString()}/{model.overview.sourceEdgeCount.toLocaleString()} edges.
+            Displayed: {model.overview.nodes.length.toLocaleString()}/{model.overview.sourceNodeCount.toLocaleString()} nodes · {" "}
+            {model.overview.edges.length.toLocaleString()}/{model.overview.sourceEdgeCount.toLocaleString()} available connections.
           </span>
           {isBudgeted && (
-            <span className="text-amber-700 dark:text-amber-300">
-              Lower-signal items are omitted from this overview; use search, filters, or drill-in for exact detail.
-            </span>
+            <details><summary className="cursor-pointer">Partial overview</summary><p className="mt-1 max-w-lg">Lower-signal items are omitted from this overview; use search, filters, or drill-in for exact detail. Connections appear when an asset is selected.</p></details>
           )}
         </div>
         <details className="mt-2 text-xs text-ink-secondary">
           <summary className="cursor-pointer">Graph summary</summary>
         <div className="mt-2">
-          <RelationshipRail items={model.summary.topRelationships} />
+          {model.summary.topRelationships.map(item => `${item.relationship.replace(/_/g, " ")}: ${item.count}`).join(" · ")}
         </div>
         <p className="mt-2 text-xs text-ink-secondary">{model.summary.findings.toLocaleString()} findings · {model.summary.criticalFindings.toLocaleString()} critical · {model.summary.credentials.toLocaleString()} credentials · {model.summary.tools.toLocaleString()} tools</p>
         </details>
@@ -399,6 +383,18 @@ export function SigmaGraphOverview({
       {focused && <div className="border-b border-outline bg-surface px-3 py-2 text-xs" aria-label="Focused graph asset">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="min-w-0 break-words"><strong>{model.graph.getNodeAttribute(focused, "label")}</strong> · {neighbors.length} connected assets in this displayed graph</p>
+          <button type="button" className="graph-chip-neutral" onClick={() => {
+            const renderer = rendererRef.current;
+            if (!renderer) return;
+            const points = [focused, ...neighbors].map(id => renderer.getNodeDisplayData(id)).filter((point): point is NonNullable<typeof point> => Boolean(point));
+            if (!points.length) return;
+            const xs = points.map(p => p.x), ys = points.map(p => p.y);
+            const left = Math.min(...xs), right = Math.max(...xs), bottom = Math.min(...ys), top = Math.max(...ys);
+            const { width, height } = renderer.getDimensions();
+            const shortest = Math.min(width, height);
+            const ratio = Math.max((right - left) * shortest / width, (top - bottom) * shortest / height, 0.2) * 1.4;
+            renderer.getCamera().setState({ x: (left + right) / 2, y: (bottom + top) / 2, angle: 0, ratio });
+          }}>Fit connections</button>
           <button type="button" className="graph-chip-neutral" onClick={() => { requestedFocusRef.current = null; setSelectedNodeId(null); onClearSelection?.(); }}>Clear focus</button>
         </div>
         <details className="mt-2">
@@ -421,11 +417,11 @@ export function SigmaGraphOverview({
           data-testid="sigma-graph-overview-canvas"
         />
         <div ref={groupLabelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          {model.groups.map((group) => <div key={group.key} className="absolute left-0 top-0 hidden max-w-52 rounded border border-outline bg-surface/95 px-2 py-1 text-center text-xs text-foreground">{group.label}<span className="block text-ink-secondary">{group.count} displayed assets</span></div>)}
+          {model.groups.map((group) => <div key={group.key} className="absolute left-0 top-0 hidden max-w-36 rounded border border-outline bg-surface/95 px-2 py-1 text-center text-xs text-foreground">{group.label}<span className="block text-ink-secondary">{group.count} displayed assets</span></div>)}
         </div>
         {model.groups.length > 0 && <details className="absolute left-3 top-3 max-w-64 rounded border border-outline bg-surface/95 p-2 text-xs">
-          <summary className="cursor-pointer">Environment groups ({model.groups.length})</summary>
-          <p className="my-2 text-ink-secondary">Grouped by recorded provider, account and environment. Unknown fields stay unknown. Map labels appear on wider views; this list remains available at every size.</p>
+          <summary className="cursor-pointer">{grouping === "environment" ? "Environment groups" : "Asset types"} ({model.groups.length})</summary>
+          <p className="my-2 text-ink-secondary">{grouping === "environment" ? "Grouped by recorded provider, account and environment. Unknown fields stay unknown." : "Grouped by asset type. Proximity is a layout choice, not an access relationship."}</p>
           <ul className="max-h-40 overflow-y-auto">{model.groups.slice(0, 20).map((group) => <li key={group.key} className="mb-2 break-words">{group.label} · {group.count} displayed</li>)}</ul>
           {model.groups.length > 20 && <p>Showing 20 of {model.groups.length} groups. Use Summary to narrow the scope.</p>}
         </details>}
@@ -451,8 +447,8 @@ export function SigmaGraphOverview({
           </details>
         </div>
         {!captureMode && (
-        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(34rem,calc(100vw-2rem))] rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]/90 px-3 py-2 text-xs text-[color:var(--text-secondary)] backdrop-blur">
-          Pan or zoom to explore. Search for an exact asset, or use Summary to narrow the estate.
+        <div className="pointer-events-none absolute bottom-3 left-3 text-[10px] text-[color:var(--text-tertiary)]">
+          Scroll to zoom · drag to pan · select to investigate
           <span className="sr-only">
             Maximum overview draw budget is {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} nodes and{" "}
             {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES.toLocaleString()} edges.

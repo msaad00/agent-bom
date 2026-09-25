@@ -118,7 +118,7 @@ export function buildSigmaGraphOverviewModel(
 ): SigmaGraphOverviewModel {
   const overview = buildLargeGraphOverviewModel(nodes, edges);
   const groups: SigmaGraphOverviewModel["groups"] = [];
-  if (grouping === "environment") {
+  {
     const source = new Map(nodes.map((node) => [node.id, node.data]));
     const scopes = new Map<string, { label: string; nodes: typeof overview.nodes }>();
     for (const node of overview.nodes) {
@@ -128,28 +128,51 @@ export function buildSigmaGraphOverviewModel(
       const provider = text(data?.dimensions?.cloud_provider) || text(attrs.provider) || text(attrs.cloud_provider);
       const account = text(attrs.account_scope) || text(attrs.account_id) || text(attrs.project_id) || text(attrs.subscription_id);
       const environment = text(data?.dimensions?.environment) || text(attrs.environment);
-      const parts = [provider || "Provider unknown", account || "Account unknown", environment || "Environment unknown"];
+      const parts = grouping === "environment"
+        ? [provider || "Provider unknown", account || "Account unknown", environment || "Environment unknown"]
+        : [node.nodeType];
       const key = JSON.stringify(parts);
       const scope = scopes.get(key) ?? { label: parts.join(" / "), nodes: [] };
       scope.nodes.push(node);
       scopes.set(key, scope);
     }
-    // Presentational groups never introduce synthetic assets or relationships.
-    const cellSize = Math.max(240, ...[...scopes.values()].map((scope) => Math.ceil(Math.sqrt(scope.nodes.length)) * 40 + 140));
-    const groupColumns = Math.max(1, Math.ceil(Math.sqrt(scopes.size)));
-    let groupIndex = 0;
-    for (const [key, scope] of [...scopes].sort(([a], [b]) => a.localeCompare(b))) {
-      const left = (groupIndex % groupColumns) * cellSize;
-      const top = -Math.floor(groupIndex / groupColumns) * cellSize;
-      const columns = Math.max(1, Math.ceil(Math.sqrt(scope.nodes.length)));
-      scope.nodes.sort((a, b) => a.id.localeCompare(b.id)).forEach((node, index) => {
-        node.x = left + (index % columns) * 40;
-        node.y = top - Math.floor(index / columns) * 40;
+    // Layout groups are visual only: no synthetic assets, edges, or access claims.
+    // A golden-angle disk avoids aligned rows; diameter-aware spacing prevents
+    // large finding markers from colliding with their smaller neighbors.
+    const clusters = [...scopes].map(([key, scope]) => {
+      const size = Math.max(...scope.nodes.map(node => node.size));
+      const spacing = size * 2 + 18;
+      return { key, ...scope, spacing, radius: spacing * Math.sqrt(scope.nodes.length) + size };
+    }).sort((a, b) => b.radius - a.radius || a.key.localeCompare(b.key));
+    const place = (cluster: typeof clusters[number], x: number, y: number) => {
+      cluster.nodes.sort((a, b) => a.id.localeCompare(b.id)).forEach((node, index) => {
+        const radius = cluster.spacing * Math.sqrt(index);
+        const angle = index * Math.PI * (3 - Math.sqrt(5));
+        node.x = x + radius * Math.cos(angle);
+        node.y = y + radius * Math.sin(angle);
       });
-      groups.push({ key, label: scope.label, x: left + (columns - 1) * 20, y: top + 40, count: scope.nodes.length });
-      groupIndex += 1;
+      groups.push({ key: cluster.key, label: cluster.label, x, y: y + cluster.radius + 36, count: cluster.nodes.length });
+    };
+    // Pack circles in size-aware rings. Each ring's chord spacing and radial
+    // gap protect every cluster's bounding disk, including very uneven estates.
+    const gap = 100;
+    let index = 0;
+    let outerRadius = 0;
+    const center = clusters[index++];
+    if (center) { place(center, 0, 0); outerRadius = center.radius; }
+    while (index < clusters.length) {
+      const largest = clusters[index]!.radius;
+      const radius = outerRadius + gap + largest;
+      const capacity = Math.floor(Math.PI / Math.asin((largest + gap / 2) / radius));
+      const count = Math.min(capacity, clusters.length - index);
+      for (let slot = 0; slot < count; slot++) {
+        const angle = slot * 2 * Math.PI / count + Math.PI / 6;
+        place(clusters[index++]!, radius * Math.cos(angle), radius * Math.sin(angle));
+      }
+      outerRadius = radius + largest;
     }
   }
+
   const graph = new Graph<SigmaNodeAttributes, SigmaEdgeAttributes>({
     allowSelfLoops: true,
     multi: true,

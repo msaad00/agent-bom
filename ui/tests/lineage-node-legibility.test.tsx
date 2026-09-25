@@ -35,6 +35,21 @@ describe("lineage node labels", () => {
     }
   });
 
+  it("keeps credential identifiers intact with wrap opportunities at separators", () => {
+    const Renderer = lineageNodeTypes.credentialNode;
+    const { container } = render(<ReactFlowProvider><Renderer data={{ label: "AWS_SECRET_ACCESS_KEY", nodeType: "credential" }} /></ReactFlowProvider>);
+    const label = container.querySelector("p");
+    expect(label?.textContent).toBe("AWS_SECRET_ACCESS_KEY");
+    expect(label?.querySelectorAll("wbr").length).toBeGreaterThan(1);
+  });
+
+  it("keeps expansion controls readable when asset focus dims unrelated nodes", () => {
+    const Renderer = lineageNodeTypes.clusterPillNode;
+    render(<ReactFlowProvider><Renderer data={{ label: "+40 accounts", nodeType: "account", dimmed: true }} /></ReactFlowProvider>);
+    expect(screen.getByTestId("cluster-pill")).not.toHaveClass("opacity-25");
+    expect(screen.getByRole("button", { name: /Expand/ })).toBeVisible();
+  });
+
   it("wraps long asset names instead of clipping them to one line", () => {
     // Estate names are long by nature -- GCS_SERVICE_ACCOUNT_JSON,
     // data: customer-pii-prod. Clipped to a single 180px line they render as

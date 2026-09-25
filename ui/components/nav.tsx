@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { DemoEstateLabel } from "@/components/demo-estate-label";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
@@ -859,6 +860,7 @@ export function Nav() {
             {deploymentModeLabel(counts.deployment_mode)}
           </span>
         )}
+        <DemoEstateLabel scanSources={counts?.scan_sources} />
         <div className="ml-auto flex min-w-0 items-center gap-2">
           <button
             onClick={() => setSearchOpen(true)}

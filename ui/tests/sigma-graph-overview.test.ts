@@ -213,3 +213,62 @@ describe("environment map groups", () => {
     expect(buildSigmaGraphOverviewModel(nodes, edges, "environment").groups).toEqual(model.groups);
   });
 });
+
+it.each(["type", "environment"] as const)("packs %s clusters organically, with stable positions and separated bounds", grouping => {
+  const types = ["agent", "package", "vulnerability"] as const;
+  const nodes = types.flatMap((type, group) => Array.from({ length: [1, 120, 35][group]! }, (_, index) => node(`${type}-${index.toString().padStart(3, "0")}`, {
+    nodeType: type, severity: "critical", dimensions: { cloud_provider: "aws", environment: `scope-${group}` },
+  })));
+  const links = [edge("recorded", "agent-000", "package-000", "uses")];
+  const model = buildSigmaGraphOverviewModel(nodes, links, grouping);
+  const reordered = buildSigmaGraphOverviewModel([...nodes].reverse(), links, grouping);
+  for (const node of model.overview.nodes) {
+    expect(reordered.graph.getNodeAttribute(node.id, "x")).toBe(node.x);
+    expect(reordered.graph.getNodeAttribute(node.id, "y")).toBe(node.y);
+  }
+  const disks = types.map(type => {
+    const members = model.overview.nodes.filter(node => node.nodeType === type);
+    const center = model.graph.getNodeAttributes(`${type}-000`);
+    const radius = Math.max(...members.map(node => Math.hypot(node.x - center.x, node.y - center.y) + node.size));
+    return { x: center.x, y: center.y, radius };
+  });
+  for (let a = 0; a < disks.length; a++) for (let b = a + 1; b < disks.length; b++) {
+    expect(Math.hypot(disks[a]!.x - disks[b]!.x, disks[a]!.y - disks[b]!.y)).toBeGreaterThan(disks[a]!.radius + disks[b]!.radius + 90);
+  }
+  const packages = model.overview.nodes.filter(node => node.nodeType === "package");
+  expect(new Set(packages.map(node => node.x)).size).toBe(packages.length);
+  expect(new Set(packages.map(node => node.y)).size).toBe(packages.length);
+  for (let a = 0; a < packages.length; a++) for (let b = a + 1; b < packages.length; b++) {
+    expect(Math.hypot(packages[a]!.x - packages[b]!.x, packages[a]!.y - packages[b]!.y)).toBeGreaterThan(packages[a]!.size + packages[b]!.size);
+  }
+  expect(model.graph.order).toBe(nodes.length);
+  expect(model.graph.edges()).toEqual(["recorded"]);
+  expect(model.graph.source("recorded")).toBe("agent-000");
+  expect(model.graph.target("recorded")).toBe("package-000");
+});
+
+it("keeps a bounded estate of many environment clusters finite and distinct", () => {
+  const nodes = Array.from({ length: 3000 }, (_, index) => node(`node-${index}`, { dimensions: { environment: `scope-${index}` } }));
+  const model = buildSigmaGraphOverviewModel(nodes, [], "environment");
+  expect(model.graph.order).toBe(3000);
+  expect(model.graph.size).toBe(0);
+  expect(model.groups).toHaveLength(3000);
+  expect(model.overview.nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y))).toBe(true);
+  expect(new Set(model.overview.nodes.map(node => `${node.x}:${node.y}`)).size).toBe(3000);
+});
+
+it("bounds a large inventory without inventing connections or losing total counts", () => {
+  const nodes = Array.from({ length: 100_000 }, (_, i) => node(`asset-${i}`));
+  const edges = nodes.slice(1).map((item, i) => edge(`edge-${i}`, nodes[i]!.id, item.id));
+  const started = performance.now();
+  const model = buildSigmaGraphOverviewModel(nodes, edges);
+  console.info(`100k inventory overview projection: ${Math.round(performance.now() - started)} ms`);
+  expect(model.graph.order).toBeLessThanOrEqual(3000);
+  expect(model.graph.size).toBeLessThanOrEqual(6000);
+  expect(model.summary.nodes).toBe(100_000);
+  expect(model.overview.omittedNodeCount + model.graph.order).toBe(100_000);
+  const sourceEdges = new Map(edges.map(item => [item.id, item]));
+  model.graph.forEachEdge((id, _attributes, source, target) => {
+    expect(sourceEdges.get(id)).toMatchObject({ source, target });
+  });
+});

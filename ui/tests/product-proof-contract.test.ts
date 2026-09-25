@@ -79,7 +79,8 @@ describe("product proof capture contract", () => {
     expect(source).not.toContain('["run", "dev"');
     expect(graphPage).toContain("if (captureMode)");
     expect(graphPage).toContain('nextParams.set("capture", "1")');
-    expect(graphPage).toContain('history.replaceState(history.state, "", url)');
+    expect(graphPage).toContain('history.replaceState(null, "", url)');
+    expect(graphPage).not.toContain("router.replace(url");
   });
 
   it("captures persisted pipeline telemetry and the agent lifecycle surface", () => {

@@ -640,7 +640,7 @@ body {
 .graph-page-secondary-action { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]; }
 .graph-callout-orange { @apply flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100; }
 .graph-callout-orange-compact { @apply mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-100; }
-.graph-callout-sky { @apply mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100; }
+.graph-callout-sky { @apply mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-900 dark:text-sky-100; }
 .graph-callout-amber { @apply mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200; }
 .graph-chip-neutral { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)]; }
 .graph-chip-sky-soft { @apply flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200; }

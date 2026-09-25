@@ -556,30 +556,35 @@ export function LineageDetailPanel({
     data.maxImpactDepth != null;
 
   const relationshipsSection = hasRelationships ? (
-    <div className="space-y-2">
-      {data.neighborCount != null && (
-        <Row label={data.relationshipCountsPartial ? "Known neighbors" : "Neighbors"} value={data.neighborCount} />
-      )}
-      {data.sourceCount != null && (
-        <Row label={data.relationshipCountsPartial ? "Known incoming neighbors" : "Incoming neighbors"} value={data.sourceCount} />
-      )}
-      {data.incomingEdgeCount != null && (
-        <Row label={data.relationshipCountsPartial ? "Returned incoming edges" : "Incoming edges"} value={data.incomingEdgeCount} />
-      )}
-      {data.outgoingEdgeCount != null && (
-        <Row label={data.relationshipCountsPartial ? "Returned outgoing edges" : "Outgoing edges"} value={data.outgoingEdgeCount} />
-      )}
-      {data.impactCount != null && (
-        <Row
-          label="Upstream connections"
-          value={data.impactCount}
-          className="text-orange-300"
-        />
-      )}
-      {data.maxImpactDepth != null && (
-        <Row label="Upstream hops explored" value={data.maxImpactDepth} />
-      )}
+    <div className="space-y-3">
       {relationshipSlot}
+      <details open={!relationshipSlot} className="text-sm text-[var(--text-secondary)]">
+        <summary className="cursor-pointer">Relationship counts</summary>
+        <div className="mt-2 space-y-2">
+          {data.neighborCount != null && (
+            <Row label={data.relationshipCountsPartial ? "Known neighbors" : "Neighbors"} value={data.neighborCount} />
+          )}
+          {data.sourceCount != null && (
+            <Row label={data.relationshipCountsPartial ? "Known incoming neighbors" : "Incoming neighbors"} value={data.sourceCount} />
+          )}
+          {data.incomingEdgeCount != null && (
+            <Row label={data.relationshipCountsPartial ? "Returned incoming edges" : "Incoming edges"} value={data.incomingEdgeCount} />
+          )}
+          {data.outgoingEdgeCount != null && (
+            <Row label={data.relationshipCountsPartial ? "Returned outgoing edges" : "Outgoing edges"} value={data.outgoingEdgeCount} />
+          )}
+          {data.impactCount != null && (
+            <Row
+              label="Upstream connections"
+              value={data.impactCount}
+              className="text-orange-300"
+            />
+          )}
+          {data.maxImpactDepth != null && (
+            <Row label="Upstream hops explored" value={data.maxImpactDepth} />
+          )}
+        </div>
+      </details>
     </div>
   ) : null;
 

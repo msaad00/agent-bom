@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   knownGraphTotal,
+  graphFetchLimitForSnapshot,
   queryResponseToGraphResponse,
 } from "@/app/graph/graph-page-client";
 import type { GraphQueryResponse } from "@/lib/api-types";
@@ -54,5 +55,15 @@ describe("graph query response adapter", () => {
     expect(adapted.completeness?.total).toBeUndefined();
     expect(adapted.pagination.has_more).toBe(true);
     expect(knownGraphTotal(adapted)).toBeNull();
+  });
+});
+
+
+describe("graph loading budget", () => {
+  it("starts with a small selection and expands only the requested snapshot", () => {
+    expect(graphFetchLimitForSnapshot("scan-a", null)).toBe(250);
+    expect(graphFetchLimitForSnapshot("scan-a", "scan-a")).toBe(3000);
+    expect(graphFetchLimitForSnapshot("scan-b", "scan-a")).toBe(250);
+    expect(graphFetchLimitForSnapshot("", null)).toBe(250);
   });
 });

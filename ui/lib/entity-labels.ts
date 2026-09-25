@@ -1,44 +1,12 @@
 import type { LineageNodeType } from "@/lib/entity-icons";
+import { GRAPH_LAYER_ENTITY_TYPES } from "@/lib/graph-entity-mapping";
 
-export const NODE_LABELS: Record<LineageNodeType, string> = {
-  provider: "Provider",
-  agent: "Agent",
-  org: "Organization",
-  account: "Account",
-  user: "User",
-  group: "Group",
-  role: "Role",
-  policy: "Policy",
-  serviceAccount: "Service Account",
-  servicePrincipal: "Service Principal",
-  federatedIdentity: "Federated Identity",
-  environment: "Environment",
-  fleet: "Fleet",
-  cluster: "Cluster",
-  server: "Server",
-  sharedServer: "Shared Server",
-  package: "Package",
-  vulnerability: "Vulnerability",
-  credential: "Credential",
-  tool: "Tool",
-  model: "Model",
-  framework: "Framework",
-  dataset: "Dataset",
-  container: "Container",
-  cloudResource: "Cloud Resource",
-  misconfiguration: "Misconfiguration",
-  managedIdentity: "Managed Identity",
-  accessGrant: "Access Grant",
-  accessPolicy: "Access Policy",
-  driftIncident: "Drift Incident",
-  dataStore: "Data Store",
-  directory: "Directory",
-  sourceFile: "Source File",
-  configFile: "Config File",
-  codeModule: "Code Module",
-  ciJob: "CI/CD Job",
-  apiGateway: "API Gateway",
-  toolCall: "Tool Call",
-  blueprint: "Blueprint",
+const LABEL_OVERRIDES: Partial<Record<LineageNodeType, string>> = {
+  org: "Organization", ciJob: "CI/CD Job", apiGateway: "API Gateway",
 };
 
+export const NODE_LABELS = Object.fromEntries(
+  (Object.keys(GRAPH_LAYER_ENTITY_TYPES) as LineageNodeType[]).map(type => [
+    type, LABEL_OVERRIDES[type] ?? (type[0]!.toUpperCase() + type.slice(1)).replace(/([a-z])([A-Z])/g, "$1 $2"),
+  ]),
+) as Record<LineageNodeType, string>;

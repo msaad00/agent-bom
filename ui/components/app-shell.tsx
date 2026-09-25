@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 
 import { AuthGate } from "@/components/auth-gate";
-import { DemoEstateLabel } from "@/components/demo-estate-label";
 import { Nav } from "@/components/nav";
 import {
   SidebarLayoutProvider,
@@ -39,7 +38,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      <DemoEstateLabel />
       <Nav />
       <AuthGate>
         <ShellMain>{children}</ShellMain>

@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
     getAuthMe: vi.fn(),
+    health: vi.fn(),
     createAuthSession: vi.fn(),
     deleteAuthSession: vi.fn(),
   },
@@ -52,6 +53,15 @@ describe("LoginPage", () => {
       span_id: null,
     });
     apiMock.createAuthSession.mockResolvedValue(undefined);
+    apiMock.health.mockReset();
+    apiMock.health.mockResolvedValue({
+      status: "ok",
+      version: "0",
+      auth_required: true,
+      auth_configured: true,
+      configured_auth_modes: ["api_key"],
+      unauthenticated_allowed: false,
+    });
   });
 
   it("renders a single-purpose API-key sign-in surface", async () => {
@@ -71,6 +81,44 @@ describe("LoginPage", () => {
     expect(screen.queryByText("AGENT_BOM_API_KEYS")).not.toBeInTheDocument();
     expect(screen.queryByText("Configured auth modes")).not.toBeInTheDocument();
     expect(screen.queryByText("session_api_key")).not.toBeInTheDocument();
+    expect(screen.queryByText("or use an API key")).not.toBeInTheDocument();
+    expect(screen.queryByText(/no API key is configured/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/--allow-insecure-no-auth/)).not.toBeInTheDocument();
+  });
+
+  it("replaces the administrator dead-end with a first-run hint when the server has no auth configured", async () => {
+    apiMock.getAuthMe.mockReset();
+    apiMock.getAuthMe.mockRejectedValue(new Error("401 Unauthorized"));
+    apiMock.health.mockResolvedValue({
+      status: "ok",
+      version: "0",
+      auth_required: true,
+      auth_configured: false,
+      configured_auth_modes: [],
+      unauthenticated_allowed: false,
+    });
+
+    render(<AuthProvider><LoginPage /></AuthProvider>);
+
+    const hint = await screen.findByText(/no API key is configured/i);
+    const container = hint.closest("div") as HTMLElement;
+    expect(container).toHaveTextContent("agent-bom api --api-key <your-key>");
+    expect(container).toHaveTextContent("agent-bom api --allow-insecure-no-auth");
+    expect(screen.queryByText(/contact your administrator/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/provided by your administrator/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ask your administrator/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the administrator guidance when the health probe fails", async () => {
+    apiMock.getAuthMe.mockReset();
+    apiMock.getAuthMe.mockRejectedValue(new Error("401 Unauthorized"));
+    apiMock.health.mockRejectedValue(new Error("network request failed"));
+
+    render(<AuthProvider><LoginPage /></AuthProvider>);
+
+    expect(await screen.findByText("Need access? Contact your administrator.")).toBeInTheDocument();
+    await waitFor(() => expect(apiMock.health).toHaveBeenCalled());
+    expect(screen.queryByText(/no API key is configured/i)).not.toBeInTheDocument();
   });
 
   it("shows Sign in with SSO when browser OIDC is configured", async () => {
@@ -100,6 +148,7 @@ describe("LoginPage", () => {
     const ssoLink = await screen.findByRole("link", { name: /sign in with sso/i });
     expect(ssoLink).toHaveAttribute("href", "/v1/auth/oidc/login");
     expect(screen.getByText("Sign in with SSO, or use an API key as a fallback.")).toBeInTheDocument();
+    expect(screen.getAllByText("or use an API key")).toHaveLength(1);
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
     const invitationInput = screen.getByLabelText("Invitation token");
@@ -237,6 +286,7 @@ describe("LoginPage", () => {
     );
     expect(screen.queryByRole("link", { name: /sign in with sso/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText("API key")).toBeInTheDocument();
+    expect(screen.getAllByText("or use an API key")).toHaveLength(1);
   });
 
   it("shows a friendly message when the API key is rejected", async () => {

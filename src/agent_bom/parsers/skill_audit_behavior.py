@@ -596,18 +596,25 @@ def _inside_fenced_code_block(content: str, offset: int) -> bool:
     return len(_CODE_FENCE_RE.findall(content, 0, offset)) % 2 == 1
 
 
+def _is_paragraph_line(line: str) -> bool:
+    """A line that can continue a markdown paragraph or list item."""
+    stripped = line.strip()
+    return bool(stripped) and not stripped.startswith("#") and not _CODE_FENCE_RE.match(line)
+
+
 def _block_bounds(lines: list[str], line_idx: int) -> tuple[int, int]:
-    """Return the (start, end) line indices of the list item / paragraph block."""
+    """Return the (start, end) line indices of the list item / paragraph block.
+
+    Follows markdown paragraph semantics: hard-wrapped prose continues on the
+    next non-blank line whether or not it is indented, so a negation that
+    ends one line still governs the flag that opens the next. A blank line,
+    heading, fence, or new list item ends the block.
+    """
     start = line_idx
-    while start > 0 and lines[start].startswith((" ", "\t")) and lines[start].strip() and not _LIST_ITEM_RE.match(lines[start]):
+    while start > 0 and not _LIST_ITEM_RE.match(lines[start]) and _is_paragraph_line(lines[start - 1]):
         start -= 1
     end = line_idx
-    while (
-        end + 1 < len(lines)
-        and lines[end + 1].startswith((" ", "\t"))
-        and lines[end + 1].strip()
-        and not _LIST_ITEM_RE.match(lines[end + 1])
-    ):
+    while end + 1 < len(lines) and _is_paragraph_line(lines[end + 1]) and not _LIST_ITEM_RE.match(lines[end + 1]):
         end += 1
     return start, end
 

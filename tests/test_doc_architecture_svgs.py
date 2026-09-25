@@ -195,11 +195,12 @@ def test_readme_persona_table_covers_each_operating_lane() -> None:
 
 def test_readme_links_end_to_end_workflow_from_product_tour() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    hosting = readme.index("## Self-host")
     personas = readme.index("## Built for the teams")
     tour = readme.index("## Product tour")
-    hosting = readme.index("## Self-host")
-    assert personas < tour < hosting
-    workflow = readme[tour:hosting]
+    trust = readme.index("## Trust and evidence")
+    assert hosting < personas < tour < trust
+    workflow = readme[tour:trust]
     assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in workflow
     assert "[Control-plane architecture](docs/ARCHITECTURE.md)" in workflow
     assert "correlation-graph-live.png" in workflow

@@ -52,6 +52,21 @@ def test_readme_promotes_repository_scan_before_the_failing_demo() -> None:
     assert demo_warning < quick_start.index("docs/images/demo-latest.gif")
 
 
+def test_readme_first_scan_output_leads_with_agent_and_mcp_findings() -> None:
+    import re
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick start", 1)[1].split("## Self-host", 1)[0]
+    output = re.search(r"```text\n(.*?)\n```", quick_start, re.S)
+    assert output, "quick start must show real first-scan output"
+    text = output.group(1)
+    agents = text.index("DISCOVER | Agents")
+    mcp = text.index("Agent calls MCP server without verified identity")
+    cve = text.index("CVE-")
+    assert agents < mcp < cve
+    assert "Blast:" in text
+
+
 def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     tour = readme.split("## Product tour", 1)[1].split("## Self-host", 1)[0]
@@ -165,10 +180,11 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     import re
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    markers = ["## Built for the teams", "## Product tour", "## Self-host in your environment", "## Quick start", "## Trust and evidence"]
+    markers = ["## Quick start", "## Self-host in your environment", "## Built for the teams", "## Product tour", "## Trust and evidence"]
     positions = [readme.index(marker) for marker in markers]
     assert positions == sorted(positions)
     hero = readme[: positions[0]]
+    assert "MCP server" in hero and "agents" in hero
     assert hero.count("img.shields.io/") == 8
     assert hero.count("Open security scanner and self-hosted control plane") == 1
     for anchor in ("#product-tour", "#self-host-in-your-environment", "#quick-start"):

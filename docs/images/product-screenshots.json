@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.0",
-  "captured_at": "2026-09-25T22:28:29.888Z",
-  "source_commit": "108a78be62681b60d716d00897dc312ba964421b",
+  "captured_at": "2026-09-25T22:40:03.350Z",
+  "source_commit": "df7e290654797410c42e2fd80e548e70a54b600e",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:c943786221acbe69521daba06dd0db73a54ad60ef389fae4a9a8d9d45420825c",
+  "capture_inputs_sha256": "sha256:90655bd114db47915031269b714469d3b554ea186709e581c6572e6c5ed2e3c7",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -116,7 +116,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.0",
-      "sha256": "sha256:2f64c1f5487cd5b5cd8c37222cd34064eeba6cc2d9ba2c5befa109d92e48c2d9"
+      "sha256": "sha256:2dc2b8b33c084c39e64ab6f25bf39b190e9f8e58489e23e6d9228ba7417be7d0"
     },
     {
       "presentation": "dark desktop",
@@ -138,7 +138,7 @@
       "evidence_sha256": "sha256:4c533a03b3799244fcd1994e9ada8db3bf9d113d5f7d29845c939ba751264ca9",
       "correlation_manifest_sha256": "sha256:65e387a5ac8b06d95f1d0a11de9dce28ab5c9b83fbe4bf7ba66bf5ff01cb69fc",
       "visible_version": "0.106.0",
-      "sha256": "sha256:aabfa0c26ba175ea08e056d28d9f12cfc8037b9e16017aaba691ac9653fbdf5a"
+      "sha256": "sha256:4493fcf2db3cdca17e4923231d772d3f1c0f9bfb99da79489e61c6682fdcbf52"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.0",
-      "sha256": "sha256:dd46b745643aa3de6d04a709810728f54deb0053b8d9de830eefedc20214235f"
+      "sha256": "sha256:0defb0d77b2a6e360deab7ffbdba0d7520d1d9295de3ff571578cea1715e620e"
     },
     {
       "presentation": "dark desktop 1512x811",

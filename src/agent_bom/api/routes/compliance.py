@@ -26,7 +26,7 @@ import secrets
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
@@ -41,6 +41,7 @@ from agent_bom.api.stores import (
     _get_analytics_store,
     _get_credential_ref_store,
     _get_fleet_store,
+    _get_graph_store,
     _get_policy_store,
     _get_store,
 )
@@ -2398,10 +2399,10 @@ async def get_posture_counts(request: Request) -> dict:
         ) from exc
 
 
-_ISSUE_COUNTS_TTL_SECONDS = 15.0
-_ISSUE_COUNTS_CACHE_MAX = 256
-_ISSUE_COUNTS_CACHE: OrderedDict[tuple[str, str], tuple[float, dict[str, Any]]] = OrderedDict()
-_ISSUE_COUNTS_LOCK = threading.Lock()
+_POSTURE_COUNTS_TTL_SECONDS = 15.0
+_POSTURE_COUNTS_CACHE_MAX = 256
+_POSTURE_COUNTS_CACHE: OrderedDict[tuple[str, str, str], tuple[float, dict[str, Any]]] = OrderedDict()
+_POSTURE_COUNTS_LOCK = threading.Lock()
 
 
 def _issue_counts_fingerprint(tenant_id: str, tenant_jobs: list[Any]) -> str:
@@ -2417,29 +2418,83 @@ def _issue_counts_fingerprint(tenant_id: str, tenant_jobs: list[Any]) -> str:
     return digest.hexdigest()
 
 
-def _cached_issue_severity_counts(request: Request, tenant_jobs: list[Any]) -> dict[str, Any]:
-    """Issue counts reused only while jobs and hub evidence are unchanged.
+def _cached_posture_block(
+    request: Request,
+    tenant_jobs: list[Any],
+    kind: str,
+    compute: Callable[[], dict[str, Any]],
+) -> dict[str, Any]:
+    """Posture-count block reused only while jobs and hub evidence are unchanged.
 
-    The TTL bounds staleness from lifecycle edits that do not move either
-    fingerprint input; a new scan or ingest invalidates immediately.
+    The TTL bounds staleness from lifecycle edits and out-of-band graph writes
+    that do not move either fingerprint input; a new scan or ingest invalidates
+    immediately.
     """
+    tenant_id = require_request_tenant_id(request)
+    key = (tenant_id, kind, _issue_counts_fingerprint(tenant_id, tenant_jobs))
+    now = time.monotonic()
+    with _POSTURE_COUNTS_LOCK:
+        hit = _POSTURE_COUNTS_CACHE.get(key)
+        if hit is not None and hit[0] > now:
+            _POSTURE_COUNTS_CACHE.move_to_end(key)
+            return dict(hit[1])
+    block = compute()
+    with _POSTURE_COUNTS_LOCK:
+        _POSTURE_COUNTS_CACHE[key] = (now + _POSTURE_COUNTS_TTL_SECONDS, dict(block))
+        _POSTURE_COUNTS_CACHE.move_to_end(key)
+        while len(_POSTURE_COUNTS_CACHE) > _POSTURE_COUNTS_CACHE_MAX:
+            _POSTURE_COUNTS_CACHE.popitem(last=False)
+    return block
+
+
+def _cached_issue_severity_counts(request: Request, tenant_jobs: list[Any]) -> dict[str, Any]:
     from agent_bom.api.routes.scan import issue_severity_counts
 
+    return _cached_posture_block(request, tenant_jobs, "issues", lambda: issue_severity_counts(request))
+
+
+def estate_agent_count(tenant_id: str) -> dict[str, Any]:
+    """Distinct agents in the tenant's current graph snapshot.
+
+    Runs the exact query behind ``/v1/inventory/assets?type=agent`` so every
+    surface that shows an agent total agrees with the list it links to. Graph
+    node ids are canonical agent identities, so duplicates collapse.
+    """
+    import asyncio
+
+    from agent_bom.api import inventory_service
+
+    async def _direct(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
+        return fn(*args, **kwargs)
+
+    try:
+        page = asyncio.run(
+            inventory_service.build_asset_list(
+                store=_get_graph_store(),
+                tenant_id=tenant_id,
+                type="agent",
+                limit=1,
+                store_call=_direct,
+            )
+        )
+    except inventory_service.InventoryError as exc:
+        if exc.status_code == 404:
+            return {"total": 0, "scan_id": None, "basis": "graph_agents"}
+        _logger.warning("Estate agent count unavailable: %s", sanitize_error(exc))
+        return {"total": None, "scan_id": None, "basis": "graph_agents"}
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Estate agent count unavailable: %s", sanitize_error(exc, generic=True))
+        return {"total": None, "scan_id": None, "basis": "graph_agents"}
+    return {
+        "total": int(page["pagination"]["total"]),
+        "scan_id": page.get("scan_id") or None,
+        "basis": "graph_agents",
+    }
+
+
+def _cached_estate_agent_count(request: Request, tenant_jobs: list[Any]) -> dict[str, Any]:
     tenant_id = require_request_tenant_id(request)
-    key = (tenant_id, _issue_counts_fingerprint(tenant_id, tenant_jobs))
-    now = time.monotonic()
-    with _ISSUE_COUNTS_LOCK:
-        hit = _ISSUE_COUNTS_CACHE.get(key)
-        if hit is not None and hit[0] > now:
-            _ISSUE_COUNTS_CACHE.move_to_end(key)
-            return dict(hit[1])
-    counts = issue_severity_counts(request)
-    with _ISSUE_COUNTS_LOCK:
-        _ISSUE_COUNTS_CACHE[key] = (now + _ISSUE_COUNTS_TTL_SECONDS, dict(counts))
-        _ISSUE_COUNTS_CACHE.move_to_end(key)
-        while len(_ISSUE_COUNTS_CACHE) > _ISSUE_COUNTS_CACHE_MAX:
-            _ISSUE_COUNTS_CACHE.popitem(last=False)
-    return counts
+    return _cached_posture_block(request, tenant_jobs, "agents", lambda: estate_agent_count(tenant_id))
 
 
 def _get_posture_counts_impl(request: Request) -> dict:
@@ -2459,6 +2514,7 @@ def _get_posture_counts_impl(request: Request) -> dict:
         "compound_issues": _compound_issue_count(tenant_jobs),
     }
     counts["issues"] = _cached_issue_severity_counts(request, tenant_jobs)
+    counts["agents"] = _cached_estate_agent_count(request, tenant_jobs)
 
     counts.update(_derive_deployment_context(request, tenant_jobs))
     tenant_id = require_request_tenant_id(request)

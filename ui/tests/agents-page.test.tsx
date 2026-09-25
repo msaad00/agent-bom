@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AgentsPage from "@/app/agents/page";
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, deploymentMock } = vi.hoisted(() => ({
   apiMock: {
     listAgents: vi.fn(),
   },
+  deploymentMock: { counts: undefined as unknown },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -36,7 +37,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/hooks/use-deployment-context", () => ({
-  useDeploymentContext: () => ({ counts: undefined }),
+  useDeploymentContext: () => ({ counts: deploymentMock.counts }),
 }));
 
 vi.mock("@/lib/api", async () => {
@@ -99,6 +100,7 @@ const AGENTS = [
 ];
 
 beforeEach(() => {
+  deploymentMock.counts = undefined;
   apiMock.listAgents.mockReset();
   apiMock.listAgents.mockResolvedValue({ agents: AGENTS });
 });
@@ -176,5 +178,38 @@ describe("AgentsPage list view", () => {
     expect(detail.getByText("Reported permissions (1)")).toBeInTheDocument();
     expect(detail.queryByText(/Scan ran from/)).not.toBeInTheDocument();
     expect(detail.queryByText(/Invalid Date/)).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentsPage agent population", () => {
+  const subtitle = () => screen.getByText(/Discovered AI clients\/hosts/);
+
+  it("shows the canonical estate agent count and labels the host-discovered list as such", async () => {
+    deploymentMock.counts = { agents: { total: 43, scan_id: "scan-9", basis: "graph_agents" } };
+    render(<AgentsPage />);
+
+    const kpis = within(await screen.findByTestId("agents-kpis"));
+    expect(subtitle()).toHaveTextContent("with their MCP servers on this API host. Estate agents: 43 Open agent inventory");
+    expect(within(subtitle()).getByRole("link", { name: "Open agent inventory" })).toHaveAttribute("href", "/inventory?type=agent");
+    expect(kpis.getByText("On this host")).toBeInTheDocument();
+    expect(kpis.queryByText("Agents")).not.toBeInTheDocument();
+  });
+
+  it("keeps the estate count visible when nothing is configured on the API host", async () => {
+    deploymentMock.counts = { agents: { total: 0, scan_id: null, basis: "graph_agents" } };
+    apiMock.listAgents.mockResolvedValue({ agents: [] });
+    render(<AgentsPage />);
+
+    await waitFor(() => expect(subtitle()).toHaveTextContent("Estate agents: 0"));
+    expect(within(subtitle()).getByRole("link", { name: "Open agent inventory" })).toBeInTheDocument();
+  });
+
+  it("omits the estate count when the server does not report one", async () => {
+    render(<AgentsPage />);
+
+    const kpis = within(await screen.findByTestId("agents-kpis"));
+    expect(kpis.getByText("On this host")).toBeInTheDocument();
+    expect(subtitle()).not.toHaveTextContent("Estate agents");
+    expect(screen.queryByRole("link", { name: "Open agent inventory" })).not.toBeInTheDocument();
   });
 });

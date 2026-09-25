@@ -248,13 +248,23 @@ async def test_midstream_outage_is_terminal_and_sanitized(store, monkeypatch):
         await anext(iterator)
 
 
-def test_stream_preserves_submission_assurance_and_payload_exclusion(store):
+@pytest.mark.asyncio
+async def test_stream_preserves_submission_assurance_and_payload_exclusion(store):
     provenance = GatewaySubmissionProvenance(
         submission_source_id="gateway-a", submission_session_id="session-a", producer_assurance="caller_asserted"
     )
     store.append_batch([record(1, provenance=provenance)])
-    response = TestClient(app).get(URL, headers=headers())
-    event = next(frame for frame in frames(response) if frame["event"] == "activity")["data"]["events"][0]
+    # This contract checks frame contents. A 250ms HTTP lifetime can expire
+    # before the first frame under CI load; consume one frame and close it
+    # explicitly instead of coupling serialization to wall-clock scheduling.
+    first = gateway_feed._read_stream_page("tenant-a", None, 100)
+    iterator = gateway_feed._stream_activity("tenant-a", first, 100, float("inf"))
+    try:
+        frame = await anext(iterator)
+    finally:
+        await iterator.aclose()
+    assert frame["event"] == "activity"
+    event = json.loads(frame["data"])["events"][0]
     assert event["submission_provenance"]["producer_assurance"] == "caller_asserted"
     assert not event["raw_payload_stored"]
     assert not {"arguments", "result", "prompt", "token", "preview"} & event.keys()

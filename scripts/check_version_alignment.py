@@ -85,7 +85,7 @@ class ManagedPattern(NamedTuple):
 
 MANAGED_PATTERNS: tuple[ManagedPattern, ...] = (
     ManagedPattern(
-        "published image pin",
+        "image pin",
         re.compile(r"(agentbom/agent-bom(?:-[a-z]+)?:)(\d+\.\d+\.\d+)"),
         "image",
     ),

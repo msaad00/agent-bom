@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.0",
-  "captured_at": "2026-09-25T04:25:45.598Z",
-  "source_commit": "d7cdb0984ab79afc020518f7c4e1befcbaaccbab",
+  "captured_at": "2026-09-25T16:24:56.974Z",
+  "source_commit": "21d654d6ce22c032b76f4bfe7273728793181330",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:4d8826178e4217b80bc21851d409a3b660ef310eefc72e00a37c9723ac3be2ae",
+  "capture_inputs_sha256": "sha256:660c40b6a8126cb657be7dc47d10df47c036e63f04b0d2a93bf27b64acc4112c",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.0",
-      "sha256": "sha256:4306cbdbb3b9efc9aa0c744cabf3f7d0070a19fea1399a100abea3d27882c2c8"
+      "sha256": "sha256:8cfc8a1d6505f90ea773d221a7f0cbc7903699555bfe8eb98d44282f5b084882"
     },
     {
       "presentation": "dark desktop",
@@ -116,7 +116,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.0",
-      "sha256": "sha256:2f64c1f5487cd5b5cd8c37222cd34064eeba6cc2d9ba2c5befa109d92e48c2d9"
+      "sha256": "sha256:2dc2b8b33c084c39e64ab6f25bf39b190e9f8e58489e23e6d9228ba7417be7d0"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.0",
-      "sha256": "sha256:dd46b745643aa3de6d04a709810728f54deb0053b8d9de830eefedc20214235f"
+      "sha256": "sha256:0defb0d77b2a6e360deab7ffbdba0d7520d1d9295de3ff571578cea1715e620e"
     },
     {
       "presentation": "dark desktop 1512x811",

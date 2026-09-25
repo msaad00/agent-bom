@@ -120,12 +120,12 @@ describe('AttackPathCard', () => {
     expect(riskEl?.className).toContain('text-amber-200')
   })
 
-  it('applies zinc color class for risk below 5', () => {
+  it('uses the secondary text theme token for risk below 5', () => {
     render(
       <AttackPathCard nodes={baseNodes} riskScore={3.0} />
     )
     const riskEl = screen.getByText('3.0').closest('div')
-    expect(riskEl?.className).toContain('text-[color:var(--text-secondary)]')
+    expect(riskEl?.className).toContain('text-ink-secondary')
   })
 
   it('renders credential node type with key icon', () => {

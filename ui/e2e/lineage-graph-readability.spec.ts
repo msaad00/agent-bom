@@ -660,10 +660,11 @@ for (const theme of ["light", "dark"] as const) {
     await page.route("**/v1/graph/query", route => route.fulfill({ json: { ...scoped, roots: [ids[3]], direction: "reverse", max_depth: 3, truncated: false, budget: {}, depth_by_node: Object.fromEntries(ids.map((id, i) => [id, 3 - i])) } }));
     await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
     await page.goto(`/graph?scan=${scanId}&investigate=1&root=${encodeURIComponent(ids[3]!)}&depth=3&scope=expanded`);
+    await page.getByText("Traversal options", { exact: true }).click();
     await expect(page.getByRole("combobox", {name: "Traversal direction"})).toBeVisible();
     await expect(page.getByTestId("graph-viewport-scope")).toContainText("4 displayed nodes · 3 displayed relationships");
     await page.getByRole("combobox", {name: "Traversal direction"}).selectOption("reverse");
-  await page.getByText("Traversal options", { exact: true }).click();
+    await page.getByText("Traversal options", { exact: true }).click();
     await page.getByRole("combobox", {name: "Traversal depth"}).selectOption("3");
     const close = page.getByRole("button", { name: "Close", exact: true });
     // Query completion opens the requested finding. Do not skip closing it

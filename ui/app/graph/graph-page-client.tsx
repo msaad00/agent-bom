@@ -3147,7 +3147,7 @@ function GraphPageInner() {
                 <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   Graph settings
                 </span>
-                <p className={investigationMode ? "hidden" : "text-xs text-ink-secondary"}>
+                <p className={investigationMode ? "hidden" : "hidden text-xs text-ink-secondary group-open:block sm:block"}>
                   {rollupCanvasOwnsPresentation ? <>
                     {rollupItems.length.toLocaleString()} nodes and scopes · {estateNodeCount.toLocaleString()} nodes in snapshot
                     {rollupView?.completeness?.truncated ? " · incomplete scope" : ""}
@@ -3749,7 +3749,7 @@ function GraphPageInner() {
           ? "relative grid gap-4 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:h-[max(28rem,calc(100dvh-18rem))]"
           : selectedAttackPath
             ? "flex relative min-h-[540px]"
-            : "flex relative h-[clamp(18rem,calc(100dvh-33rem),36rem)] md:h-[clamp(22rem,calc(100dvh-20rem),48rem)]"}
+            : "flex relative h-[clamp(18rem,calc(100dvh-28rem),36rem)] md:h-[clamp(22rem,calc(100dvh-20rem),48rem)]"}
       >
         <div className={`flex-1 relative min-w-0 flex flex-col ${selectedScenario ? "min-h-[26rem] lg:min-h-0" : "min-h-0"}`} data-testid="investigation-graph-workspace">
           {selectedAttackPath && selectedPathDecision && (

@@ -5,6 +5,7 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
 from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +61,55 @@ def test_floating_latest_uses_reviewed_runtime_security_overlay() -> None:
     assert "deploy/docker/runtime-security-requirements.txt \\" in workflow
     assert "cryptography==50.0.0" in requirements
     assert requirements.count("--hash=sha256:") == 2
+
+
+def _refresh_step(job: str, name: str) -> tuple[int, dict]:
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/refresh-latest-container.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"][job]["steps"]
+    for index, step in enumerate(steps):
+        if step.get("name") == name:
+            return index, step
+    raise AssertionError(f"refresh job {job!r} has no step named {name!r}")
+
+
+@pytest.mark.parametrize(
+    ("job", "dockerfile_rel", "next_step"),
+    [
+        ("refresh-latest", "Dockerfile", "Sync Docker Hub README"),
+        ("refresh-collector-latest", "deploy/docker/Dockerfile.collector", "Build refresh candidate collector image"),
+    ],
+)
+def test_runtime_overlay_keeps_the_rebuilt_tag_version(tmp_path: Path, job: str, dockerfile_rel: str, next_step: str) -> None:
+    """main's Dockerfile carries the NEXT version; the refreshed image is still the tag's release.
+
+    Without re-pinning ARG VERSION the image was labelled with an unreleased
+    version and the README-sync consistency check failed every day.
+    """
+    import os
+    import subprocess
+
+    overlay_index, overlay = _refresh_step(job, "Apply current runtime security overlay")
+    pin_index, pin = _refresh_step(job, "Keep the rebuilt release version on the overlaid Dockerfile")
+    next_index, _ = _refresh_step(job, next_step)
+    assert overlay_index < pin_index < next_index
+    assert pin["env"]["DOCKERFILE"] == dockerfile_rel
+    assert dockerfile_rel in overlay["run"]
+
+    dockerfile = tmp_path / dockerfile_rel
+    dockerfile.parent.mkdir(parents=True, exist_ok=True)
+    dockerfile.write_text('FROM scratch\nARG VERSION=0.106.0\nLABEL org.opencontainers.image.version="${VERSION}"\n')
+    env = {**os.environ, "VERSION": "0.105.0", "DOCKERFILE": dockerfile_rel}
+    result = subprocess.run(["bash", "-c", pin["run"]], cwd=tmp_path, env=env, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    text = dockerfile.read_text()
+    assert "ARG VERSION=0.105.0\n" in text
+    assert "0.106.0" not in text
+
+    dockerfile.write_text("FROM scratch\n")
+    missing = subprocess.run(["bash", "-c", pin["run"]], cwd=tmp_path, env=env, capture_output=True, text=True, check=False)
+    assert missing.returncode != 0, "a Dockerfile without ARG VERSION must fail loudly, not publish an unlabelled image"
 
 
 def test_container_sarif_normalization_preserves_image_reference(tmp_path: Path) -> None:

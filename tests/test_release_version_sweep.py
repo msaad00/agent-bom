@@ -68,6 +68,14 @@ class TestTheSweepIsStructural:
         globs = [glob for glob, _p, _l in crc.VERSION_SWEEP]
         assert any("docker-compose" in glob for glob in globs)
 
+    def test_pull_only_image_pins_are_swept_against_the_published_release(self):
+        """The pilot compose and k8s manifests pull from Docker Hub, so they must name a published tag."""
+        problems = crc.sweep_version_drift(_release_version(), published="0.0.1")
+        flagged = " ".join(problems)
+        assert "deploy/docker-compose.pilot.yml" in flagged
+        assert "deploy/k8s/daemonset.yaml" in flagged
+        assert "deploy/docker-compose.fullstack.yml" not in flagged, "source-built compose must track the source version"
+
     def test_sdk_packages_are_covered_by_a_glob(self):
         globs = [glob for glob, _p, _l in crc.VERSION_SWEEP]
         assert any(glob.startswith("sdks/") for glob in globs)

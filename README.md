@@ -169,11 +169,11 @@ The recording runs the offline command and pages its output for readability.
 **Give assistants access to the same evidence:**
 
 ```bash
-pip install 'agent-bom[mcp-server]'
+pip install agent-bom                     # MCP server support is included by default
 agent-bom mcp server
 ```
 
-Source version: **v0.106.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
+Latest release: **v0.105.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
 profile. The full catalog has 86 MCP tools, 7 resources, and 8 workflow prompts.
 [MCP workflows](docs/MCP_WORKFLOWS.md)
 

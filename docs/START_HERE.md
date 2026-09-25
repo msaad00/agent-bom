@@ -25,7 +25,7 @@ New here? [`FIRST_RUN.md`](FIRST_RUN.md) is the canonical quickstart —
 CI gate (GitHub Action):
 
 ```yaml
-- uses: msaad00/agent-bom@v0.106.0
+- uses: msaad00/agent-bom@v0.105.0
 ```
 
 - Output formats, exit codes, and the full command set:
@@ -102,7 +102,7 @@ You want strict-argument security tools your agent can call, and the ability to
 scan a repo by URL.
 
 ```bash
-pip install 'agent-bom[mcp-server]'
+pip install agent-bom                     # MCP server support is included by default
 agent-bom mcp server                      # stdio MCP server: 8 tools, 4 resources, 3 prompts
 ```
 

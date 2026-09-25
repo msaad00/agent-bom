@@ -1367,12 +1367,17 @@ jobs:
           fi
 
   docker-mcp-pin:
-    name: Sync Docker MCP submission pin
-    # The pin must name the commit the tag points at, which does not exist
-    # until the tag does — so it cannot be written by bump-version.py with the
-    # other version-bearing artifacts. The release run owns it here instead of
-    # SUBMISSION.md asking a human to remember. Never blocks the release: the
-    # artifacts are already published by the time this runs.
+    name: Sync post-release pins
+    # Two things can only be written once the release exists, so neither can be
+    # written by the pre-tag bump-version.py run:
+    #   - the Docker MCP submission pin names the commit the tag points at;
+    #   - PUBLISHED_VERSION (and every copy-paste Action ref, pull-only image
+    #     pin, chart/bundle command and consumer pre-commit rev that tracks it)
+    #     must not name this release until its tag, images, chart and package
+    #     are live — docs on main would otherwise hand users a 404.
+    # github-release needs every publish job, so this runs strictly after
+    # publish. The release run owns both instead of asking a human to remember.
+    # Never blocks the release: the artifacts are already published.
     needs: github-release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -1389,11 +1394,15 @@ jobs:
 
       - uses: ./.github/actions/setup-python
 
-      - name: Write the tagged commit into the submission pin
+      - name: Write the tagged commit and published version into the pins
         id: pin
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           python scripts/sync_docker_mcp_pin.py --set "${{ github.sha }}"
-          if git diff --quiet -- integrations/docker-mcp-registry/server.yaml; then
+          python scripts/bump-version.py --published "${TAG#v}"
+          python scripts/check_version_alignment.py
+          if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -1430,23 +1439,27 @@ jobs:
           TAG: ${{ github.ref_name }}
           TAGGED_SHA: ${{ github.sha }}
         run: |
-          BRANCH="chore/docker-mcp-pin-${TAG}"
+          BRANCH="chore/post-release-pins-${TAG}"
           git switch -C "$BRANCH" origin/main
           python scripts/sync_docker_mcp_pin.py --set "$TAGGED_SHA"
-          git add integrations/docker-mcp-registry/server.yaml
-          git commit -S -m "chore(docker-mcp): pin the submission to ${TAG}"
+          python scripts/bump-version.py --published "${TAG#v}"
+          python scripts/check_version_alignment.py
+          git add -u
+          git commit -S -m "chore(release): point published pins at ${TAG}"
           git push --force-with-lease origin "$BRANCH"
-          TITLE="chore(docker-mcp): pin the submission to ${TAG}"
-          BODY="\`integrations/docker-mcp-registry/server.yaml\` builds the published
-          server from \`source.commit\`. That commit is the one \`${TAG}\` points at,
-          so it cannot be written before the tag exists — this PR is opened by the
-          release run instead of the step SUBMISSION.md used to ask a human to
-          remember.
+          TITLE="chore(release): point published pins at ${TAG}"
+          BODY="${TAG} is published, so the pins that could not name it before now can:
 
-          **Pin:** \`${TAGGED_SHA}\` (\`${TAG}\`)
+          - \`integrations/docker-mcp-registry/server.yaml\` builds the published
+            server from \`source.commit\`, the commit \`${TAG}\` points at
+            (\`${TAGGED_SHA}\`). Merging makes the next \`docker/mcp-registry\`
+            submission build the released code.
+          - \`PUBLISHED_VERSION\` and every copy-paste surface that tracks it
+            (GitHub Action refs, pull-only image pins, chart/bundle commands,
+            consumer pre-commit revs) move to \`${TAG#v}\`. Until then, docs on
+            main keep naming the previous release, which exists.
 
-          Merging this is what makes the next \`docker/mcp-registry\` submission
-          build the released code. Nothing else in the release depends on it."
+          Opened by the release run after every publish job succeeded."
           PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
             gh pr edit "$PR_NUMBER" --title "$TITLE" --body "$BODY"
@@ -1454,9 +1467,9 @@ jobs:
             gh pr create --title "$TITLE" --body "$BODY" --base main
           fi
 
-      - name: Pin already current
+      - name: Pins already current
         if: steps.pin.outputs.changed == 'false'
-        run: echo "Docker MCP submission pin already names ${{ github.sha }}."
+        run: echo "Docker MCP pin and PUBLISHED_VERSION already name ${{ github.ref_name }}."
 
   deploy-mcp-sse:
     name: Deploy MCP SSE

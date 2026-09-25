@@ -2124,6 +2124,10 @@ components:
         showcase_snapshot_id:
           title: Showcase Snapshot Id
           type: string
+        story_ready:
+          default: false
+          title: Story Ready
+          type: boolean
       required:
       - showcase_snapshot_id
       - showcase_available

@@ -26,6 +26,7 @@ import {
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { openIssueSeverity } from "@/lib/open-issue-counts";
 import { deploymentModeLabel, hasDeploymentSignals } from "@/lib/deployment-context";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 import { complianceFrameworkSummaries } from "@/lib/compliance-frameworks";
@@ -292,16 +293,10 @@ export default function Dashboard() {
         total: summary.total,
       } : importedSeverity;
     }
+    if (counts?.issues) return openIssueSeverity(counts) ?? counts.issues;
     if (overview?.finding_counts) return overview.finding_counts;
-    if (counts) {
-      return {
-        critical: counts.critical,
-        high: counts.high,
-        medium: counts.medium,
-        low: counts.low,
-        total: counts.total,
-      };
-    }
+    const liveCounts = openIssueSeverity(counts);
+    if (liveCounts) return liveCounts;
     return {
       critical: overview?.headline.critical ?? 0,
       high: overview?.headline.high ?? 0,

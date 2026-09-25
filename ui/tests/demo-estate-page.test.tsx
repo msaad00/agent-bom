@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DemoEstatePage from "@/app/demo-estate/page";
 import type { EnterpriseDemoStory } from "@/lib/api";
+import { ApiError, ApiNetworkError } from "@/lib/api-errors";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
@@ -370,11 +371,49 @@ describe("DemoEstatePage", () => {
   });
 
   it("does not substitute live data when demo mode is unavailable", async () => {
-    apiMock.getEnterpriseDemoStory.mockRejectedValue(new Error("Demo estate is not enabled"));
+    const notEnabled = new ApiError("Demo estate is not enabled", {
+      status: 404,
+      statusText: "Not Found",
+      url: "/v1/demo-estate/status",
+      method: "GET",
+    });
+    apiMock.getDemoEstateStatus.mockRejectedValue(notEnabled);
+    apiMock.getEnterpriseDemoStory.mockRejectedValue(notEnabled);
     render(<DemoEstatePage />);
 
     await waitFor(() => expect(screen.getByTestId("demo-estate-error")).toBeInTheDocument());
     expect(screen.getByText("Enterprise demo is not enabled")).toBeInTheDocument();
     expect(screen.getByText("agent-bom serve --demo-estate --allow-insecure-no-auth")).toBeInTheDocument();
+    expect(apiMock.getEnterpriseDemoStory).not.toHaveBeenCalled();
+  });
+
+  it("treats a slow cold story build as still preparing, not disabled, and recovers on retry", async () => {
+    const timeout = new ApiNetworkError("Network request failed: The operation timed out.", {
+      url: "/v1/demo-estate/story",
+      method: "GET",
+      cause: new DOMException("The operation timed out.", "TimeoutError"),
+    });
+    apiMock.getEnterpriseDemoStory.mockRejectedValueOnce(timeout).mockResolvedValueOnce(story);
+    render(<DemoEstatePage />);
+
+    await waitFor(() => expect(screen.getByTestId("demo-estate-preparing")).toBeInTheDocument());
+    expect(screen.queryByText("Enterprise demo is not enabled")).not.toBeInTheDocument();
+    expect(screen.getByText("Enterprise demo is still preparing")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByTestId("demo-estate-preparing")).not.toBeInTheDocument());
+    expect(apiMock.getEnterpriseDemoStory).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("demo-estate-error")).not.toBeInTheDocument();
+  });
+
+  it("reports a server failure as unavailable rather than disabled", async () => {
+    apiMock.getEnterpriseDemoStory.mockRejectedValue(
+      new ApiError("boom", { status: 500, statusText: "Internal Server Error", url: "/v1/demo-estate/story", method: "GET" }),
+    );
+    render(<DemoEstatePage />);
+
+    await waitFor(() => expect(screen.getByTestId("demo-estate-error")).toBeInTheDocument());
+    expect(screen.queryByText("Enterprise demo is not enabled")).not.toBeInTheDocument();
+    expect(screen.getByText("Enterprise demo is unavailable")).toBeInTheDocument();
   });
 });

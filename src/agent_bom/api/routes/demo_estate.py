@@ -70,6 +70,7 @@ class DemoEstateStatus(BaseModel):
     graph_owner_scan_id: str | None
     graph_alignment: Literal["aligned", "blocked", "unavailable"]
     reason: str | None = None
+    story_ready: bool = False
 
 
 def _demo_estate_enabled() -> bool:
@@ -132,6 +133,21 @@ def _cached_demo_story(tenant_id: str) -> EnterpriseDemoStory:
         _remember_demo_story(tenant_id, built)
 
     return built
+
+
+def prewarm_demo_story() -> bool:
+    """Build the showcase tenant's story ahead of the first page view.
+
+    A cold build can exceed a browser request timeout on a throttled host, which
+    a visitor would otherwise see as a failed page. Returns whether a story is
+    cached for the showcase tenant afterwards.
+    """
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_TENANT
+
+    if not _demo_estate_enabled():
+        return False
+    _cached_demo_story(SHOWCASE_TENANT)
+    return _peek_demo_story(SHOWCASE_TENANT) is not None
 
 
 def demo_story_cache_size() -> int:
@@ -218,13 +234,15 @@ async def get_demo_estate_status(request: Request) -> DemoEstateStatus:
     if not _demo_estate_enabled():
         raise HTTPException(status_code=404, detail="Demo estate is not enabled")
     tenant_id = require_request_tenant_id(request)
-    return await anyio.to_thread.run_sync(_build_demo_estate_status, tenant_id)
+    status = await anyio.to_thread.run_sync(_build_demo_estate_status, tenant_id)
+    return status.model_copy(update={"story_ready": _peek_demo_story(tenant_id) is not None})
 
 
 __all__ = [
     "DEMO_STORY_CACHE_MAXSIZE",
     "DemoEstateStatus",
     "demo_story_cache_size",
+    "prewarm_demo_story",
     "get_demo_estate_status",
     "get_enterprise_demo_story",
     "reset_demo_story_cache",

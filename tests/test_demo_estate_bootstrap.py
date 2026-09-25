@@ -222,6 +222,7 @@ def test_demo_estate_status_exposes_the_default_graph_owner(
 
     assert response.status_code == 200, response.text
     payload = response.json()
+    assert isinstance(payload.pop("story_ready"), bool)
     assert payload == {
         "schema_version": "demo_estate_status.v1",
         "showcase_snapshot_id": "showcase",

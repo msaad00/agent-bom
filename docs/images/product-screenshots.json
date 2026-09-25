@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.0",
-  "captured_at": "2026-09-25T19:06:25.564Z",
-  "source_commit": "a7db58e8987413db0d58c542a8e44a3fcf5d6b20",
+  "captured_at": "2026-09-25T20:30:29.868Z",
+  "source_commit": "ed1410e0a0aae2a7e957b5a87ea8d995482ce583",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:916d48e000d6195f59c2bd0bbc653e76b233c9706330a40172ea799f514de846",
+  "capture_inputs_sha256": "sha256:4a9919b603e024d114da95bdde43710d1d491119668aa90fcde75b2ff65b25f5",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.0",
-      "sha256": "sha256:8cfc8a1d6505f90ea773d221a7f0cbc7903699555bfe8eb98d44282f5b084882"
+      "sha256": "sha256:31b45ae65518f1df0c7105e29dd2fbf7ed1803ae6311dcf71f707f6d870033a6"
     },
     {
       "presentation": "dark desktop",
@@ -201,7 +201,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.106.0",
-      "sha256": "sha256:0a91e7b028af22c19068e4d84bafe35b08374dfe689906ebf45403d2fe6a9299"
+      "sha256": "sha256:335e23cbf1281d3e4f03a9426264baf83ffa6f9d4e98081d7cc2d07776129b5d"
     },
     {
       "presentation": "dark mobile",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.0",
-      "sha256": "sha256:dd46b745643aa3de6d04a709810728f54deb0053b8d9de830eefedc20214235f"
+      "sha256": "sha256:0defb0d77b2a6e360deab7ffbdba0d7520d1d9295de3ff571578cea1715e620e"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -273,7 +273,7 @@
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
       "visible_version": "0.106.0",
-      "sha256": "sha256:cc7da48ae410784ba42b3b758e03644d8ae73716122fd9535be03564a4755eec"
+      "sha256": "sha256:8d3c9ecc6a98a8d206ad729188f7ce582dd9bf1f02ebc38e1c993cb321f6c2ce"
     },
     {
       "presentation": "dark desktop",

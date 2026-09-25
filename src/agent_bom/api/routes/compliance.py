@@ -23,6 +23,9 @@ import json
 import logging
 import os
 import secrets
+import threading
+import time
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, cast
@@ -2395,6 +2398,50 @@ async def get_posture_counts(request: Request) -> dict:
         ) from exc
 
 
+_ISSUE_COUNTS_TTL_SECONDS = 15.0
+_ISSUE_COUNTS_CACHE_MAX = 256
+_ISSUE_COUNTS_CACHE: OrderedDict[tuple[str, str], tuple[float, dict[str, Any]]] = OrderedDict()
+_ISSUE_COUNTS_LOCK = threading.Lock()
+
+
+def _issue_counts_fingerprint(tenant_id: str, tenant_jobs: list[Any]) -> str:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    try:
+        hub_revision = str(get_compliance_hub_store().overview_evidence_revision(tenant_id))
+    except Exception:  # noqa: BLE001
+        hub_revision = "unknown"
+    digest = hashlib.sha256(hub_revision.encode())
+    for job in tenant_jobs:
+        digest.update(f"|{job.job_id}:{job.status}:{getattr(job, 'completed_at', '')}".encode())
+    return digest.hexdigest()
+
+
+def _cached_issue_severity_counts(request: Request, tenant_jobs: list[Any]) -> dict[str, Any]:
+    """Issue counts reused only while jobs and hub evidence are unchanged.
+
+    The TTL bounds staleness from lifecycle edits that do not move either
+    fingerprint input; a new scan or ingest invalidates immediately.
+    """
+    from agent_bom.api.routes.scan import issue_severity_counts
+
+    tenant_id = require_request_tenant_id(request)
+    key = (tenant_id, _issue_counts_fingerprint(tenant_id, tenant_jobs))
+    now = time.monotonic()
+    with _ISSUE_COUNTS_LOCK:
+        hit = _ISSUE_COUNTS_CACHE.get(key)
+        if hit is not None and hit[0] > now:
+            _ISSUE_COUNTS_CACHE.move_to_end(key)
+            return dict(hit[1])
+    counts = issue_severity_counts(request)
+    with _ISSUE_COUNTS_LOCK:
+        _ISSUE_COUNTS_CACHE[key] = (now + _ISSUE_COUNTS_TTL_SECONDS, dict(counts))
+        _ISSUE_COUNTS_CACHE.move_to_end(key)
+        while len(_ISSUE_COUNTS_CACHE) > _ISSUE_COUNTS_CACHE_MAX:
+            _ISSUE_COUNTS_CACHE.popitem(last=False)
+    return counts
+
+
 def _get_posture_counts_impl(request: Request) -> dict:
     """Synchronous posture-count composition, executed in a worker thread."""
     from agent_bom.api.routes.overview import exec_severity_counts
@@ -2411,6 +2458,7 @@ def _get_posture_counts_impl(request: Request) -> dict:
         "kev": reconciled["kev"],
         "compound_issues": _compound_issue_count(tenant_jobs),
     }
+    counts["issues"] = _cached_issue_severity_counts(request, tenant_jobs)
 
     counts.update(_derive_deployment_context(request, tenant_jobs))
     tenant_id = require_request_tenant_id(request)

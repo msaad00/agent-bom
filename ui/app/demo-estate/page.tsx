@@ -19,8 +19,9 @@ import {
 import { StatStrip } from "@/components/stat-strip";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PersonaStartRoutes } from "@/components/persona-start-routes";
-import { PageErrorState, PageLoadingState } from "@/components/states/page-state";
+import { PageErrorState, PageLoadingState, PageState } from "@/components/states/page-state";
 import { api, type DemoEstateStatus, type EnterpriseDemoStory } from "@/lib/api";
+import { ApiError } from "@/lib/api-errors";
 import { securityGraphHref } from "@/lib/page-links";
 
 const FIRST_COMMAND = "agent-bom serve --demo-estate --allow-insecure-no-auth";
@@ -70,6 +71,14 @@ function displayTime(value: string): string {
   }).format(new Date(value));
 }
 
+type DemoLoadFailure = "disabled" | "preparing" | "failed";
+
+function classifyDemoLoadFailure(reason: unknown): DemoLoadFailure {
+  if (!(reason instanceof ApiError)) return "failed";
+  if (reason.status === 404) return "disabled";
+  return [0, 429, 502, 503, 504].includes(reason.status) ? "preparing" : "failed";
+}
+
 export default function DemoEstatePage() {
   const [story, setStory] = useState<EnterpriseDemoStory | null>(null);
   const [demoStatus, setDemoStatus] = useState<DemoEstateStatus | null>(null);
@@ -77,36 +86,62 @@ export default function DemoEstatePage() {
   const [storyView, setStoryView] = useState<StoryView>("posture");
   const [correlationPage, setCorrelationPage] = useState(1);
 
+  const [loadState, setLoadState] = useState<DemoLoadFailure | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     let active = true;
-    Promise.all([api.getEnterpriseDemoStory(), api.getDemoEstateStatus()])
-      .then(([storyResult, statusResult]) => {
-        if (active) {
-          setStory(storyResult);
-          setDemoStatus(statusResult);
-        }
+    api
+      .getDemoEstateStatus()
+      .then((statusResult) => {
+        if (!active) return null;
+        setDemoStatus(statusResult);
+        return api.getEnterpriseDemoStory().then((storyResult) => {
+          if (active) setStory(storyResult);
+        });
       })
       .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : "Demo estate is unavailable");
+        if (!active) return;
+        setLoadState(classifyDemoLoadFailure(reason));
+        setError(reason instanceof Error ? reason.message : "Demo estate is unavailable");
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [attempt]);
+
+  const retry = () => {
+    setError(null);
+    setLoadState(null);
+    setAttempt((value) => value + 1);
+  };
 
   const orderedEvents = useMemo(
     () => [...(story?.events ?? [])].sort((a, b) => a.observed_at.localeCompare(b.observed_at)),
     [story],
   );
 
+  if (error && loadState === "preparing") {
+    return (
+      <PageState
+        tone="warning"
+        title="Enterprise demo is still preparing"
+        detail="The synthetic estate is still being built on the server; the first load after a restart can take ~30s."
+        action={{ label: "Retry", onClick: retry }}
+        data-testid="demo-estate-preparing"
+      />
+    );
+  }
+
   if (error) {
+    const disabled = loadState === "disabled";
     return (
       <PageErrorState
-        title="Enterprise demo is not enabled"
+        title={disabled ? "Enterprise demo is not enabled" : "Enterprise demo is unavailable"}
         detail="This read-only story is served only when the explicitly labeled synthetic estate is enabled. No production data is substituted when it is absent."
-        command={FIRST_COMMAND}
-        suggestions={[error, "Use authenticated mode for any shared or persistent deployment."]}
-        action={{ label: "Review live findings", href: "/findings", variant: "secondary" }}
+        command={disabled ? FIRST_COMMAND : undefined}
+        suggestions={[error]}
+        action={disabled ? { label: "Review live findings", href: "/findings", variant: "secondary" } : { label: "Retry", onClick: retry }}
         data-testid="demo-estate-error"
       />
     );
@@ -116,7 +151,7 @@ export default function DemoEstatePage() {
     return (
       <PageLoadingState
         title="Verifying enterprise evidence"
-        detail="Checking fixture hashes, normalizing provider observations, and rebuilding correlations."
+        detail={`${demoStatus?.story_ready === false ? "First build can take ~30s. " : ""}Checking fixture hashes, normalizing provider observations, and rebuilding correlations.`}
         data-testid="demo-estate-loading"
       />
     );

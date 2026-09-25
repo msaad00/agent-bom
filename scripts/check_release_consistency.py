@@ -639,6 +639,8 @@ def main() -> int:
         _assert_versions(path, version_pattern, version, label)
     for path, version_pattern, label in PUBLISHED_VERSION_REFS:
         _assert_versions(path, version_pattern, published, label)
+    if f"Source version: **v{version}**" not in readme:
+        _fail(f"README.md must carry the source version marker the Glama listing gate reads: Source version: **v{version}**")
     if f"Latest release: **v{published}**" not in readme:
         _fail(f"README.md must state the latest published release: Latest release: **v{published}**")
     _assert_no_unmanaged_version_drift(version)

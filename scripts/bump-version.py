@@ -78,7 +78,9 @@ OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
 
 # Patterns that reference the version in docs/tests (updated separately)
 DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
-    # README.md + docs — GitHub Action version references
+    # The Glama listing gate needs the source version in the README; the
+    # "Latest release" half of the same line tracks PUBLISHED_VERSION.
+    ("README.md", re.compile(r"(Source version: \*\*v)\d+\.\d+\.\d+(\*\*)"), r"\g<1>{v}\g<2>"),
     (
         "README.md",
         re.compile(r"(CLI walkthrough</b> — )\d+\.\d+\.\d+( console demo</summary>)"),

@@ -1593,8 +1593,9 @@ def test_scan_aggregate_cache_enforces_budget_expiry_and_tenant_keys(monkeypatch
 def test_scan_aggregate_expires_at_next_window_boundary(monkeypatch):
     from datetime import timedelta
     from types import SimpleNamespace
-    from agent_bom.api.routes import overview
+
     from agent_bom.api import time_window
+    from agent_bom.api.routes import overview
 
     overview._reset_overview_cache()
     monkeypatch.setattr(time_window, "default_window_days", lambda: 90)

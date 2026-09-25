@@ -76,6 +76,9 @@ interface PipelineNodeData {
   onActivate?: (() => void) | undefined;
 }
 
+// Frames at least this wide open fitted to every stage.
+const FIT_ALL_MIN_WIDTH_PX = 960;
+
 // Icons keyed by DAG node id, falling back to the backend stage id.
 const NODE_ICONS: Record<string, React.ElementType> = {
   discovery: Search,
@@ -324,9 +327,10 @@ function ScanPipelineInner({
     if (!viewportInitialized || focusedStageRef.current === stage) return;
     const frame = requestAnimationFrame(() => {
       focusedStageRef.current = stage;
-      // With no stage selected, open on the whole DAG so every stage is visible.
-      if (selectedStepId) void focusReadable();
-      else fitOverview(0);
+      // Wide frames open on every stage; narrow frames keep labels legible.
+      const wide = (frameRef.current?.clientWidth ?? 0) >= FIT_ALL_MIN_WIDTH_PX;
+      if (!selectedStepId && wide) fitOverview(0);
+      else void focusReadable();
     });
     return () => cancelAnimationFrame(frame);
   }, [viewportInitialized, selectedStepId, focusReadable, fitOverview]);
@@ -344,12 +348,10 @@ function ScanPipelineInner({
         nodes={nodes}
         edges={displayEdges}
         nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={
-          selectedStepId
-            ? { nodes: [{ id: selectedStepId }], minZoom: 1, maxZoom: 1, padding: 0.2 }
-            : { padding: 0.16, minZoom: 0.1, maxZoom: 1 }
-        }
+        // The default viewport is framed after node measurement above.
+        // An explicitly selected initial stage can use React Flow's queued fit.
+        fitView={Boolean(selectedStepId)}
+        fitViewOptions={{ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2 }}
         minZoom={0.1}
         maxZoom={1.5}
         panOnDrag={interactive}

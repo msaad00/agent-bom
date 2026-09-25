@@ -441,7 +441,7 @@ export function JobPipelinePanel({
           <ScanPipeline
             steps={steps}
             lanes={lanes}
-            className="h-[320px] min-w-0 shrink-0 rounded-lg border border-[var(--border-subtle)] lg:flex-1"
+            className="h-[320px] min-w-0 shrink-0 rounded-lg border border-[var(--border-subtle)] lg:h-[460px] lg:flex-1"
             selectedStepId={selectedStepId}
             onStepClick={(nodeId) =>
               setSelectedStepId((current) => (current === nodeId ? null : nodeId))

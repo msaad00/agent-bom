@@ -164,6 +164,7 @@ import {
 } from "@/lib/graph-renderer-switch";
 import {
   graphRollupCanvasMode,
+  rollupAutoDescendTarget,
   graphRollupEligible,
   graphRollupPreferenceForCanvas,
   parseGraphRollupUrlPreference,
@@ -817,6 +818,7 @@ function GraphPageInner() {
     const nodeId = parseRollupNodeParam(new URLSearchParams(window.location.search));
     return nodeId ? [{ id: nodeId, label: nodeId }] : [];
   });
+  const rollupAutoDescendRef = useRef(true);
   const [rollupDismissed, setRollupDismissed] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -1055,6 +1057,7 @@ function GraphPageInner() {
     setReachabilityError(null);
     setRollupView(null);
     setRollupStack([]);
+    rollupAutoDescendRef.current = true;
     setRollupDismissed(
       rollupDismissedForPreference(rollupPreferenceRef.current),
     );
@@ -1369,8 +1372,9 @@ function GraphPageInner() {
   });
   const rollupNavigationActive = rollupCanvasMode === "active";
   const rollupCanvasPending = rollupCanvasMode === "loading";
+  const rollupCanvasFailed = rollupCanvasMode === "failed";
   const rollupCanvasOwnsPresentation =
-    rollupNavigationActive || rollupCanvasPending;
+    rollupNavigationActive || rollupCanvasPending || rollupCanvasFailed;
   const rollupItems = useMemo(
     () =>
       rollupView?.mode === "drilldown"
@@ -1420,6 +1424,18 @@ function GraphPageInner() {
           setRollupError(null);
           return;
         }
+        const autoDescend = childOffset
+          ? null
+          : rollupAutoDescendTarget(result, {
+              stack: rollupStack,
+              allowed: rollupAutoDescendRef.current,
+            });
+        if (autoDescend) {
+          setRollupStack((current) =>
+            current.at(-1)?.id === autoDescend.id ? current : [...current, autoDescend],
+          );
+          return;
+        }
         setRollupView(result);
         setRollupUnavailable(false);
         setRollupError(null);
@@ -1464,7 +1480,7 @@ function GraphPageInner() {
           null | ReturnType<typeof buildUnifiedFlowGraph>["summary"],
       };
     }
-    if (rollupCanvasPending) {
+    if (rollupCanvasPending || rollupCanvasFailed) {
       return {
         nodes: [],
         edges: [],
@@ -1524,6 +1540,7 @@ function GraphPageInner() {
     selectedAttackPath,
     rollupNavigationActive,
     rollupCanvasPending,
+    rollupCanvasFailed,
     rollupView,
   ]);
   const snapshotAttackPathCount = resolveSnapshotAttackPathCount({
@@ -2467,6 +2484,7 @@ function GraphPageInner() {
 
       const data = node.data as LineageNodeData;
       if (rollupNavigationActive && data.attributes?.rollup_has_children === true) {
+        rollupAutoDescendRef.current = false;
         setRollupStack((current) => {
           if (current.at(-1)?.id === node.id) return current;
           return [...current, { id: node.id, label: data.label }];
@@ -2706,6 +2724,7 @@ function GraphPageInner() {
   }, []);
 
   const dismissRollup = useCallback(() => {
+    rollupAutoDescendRef.current = false;
     setRollupDismissed(true);
     setRollupError(null);
   }, []);
@@ -2726,15 +2745,18 @@ function GraphPageInner() {
   }, [clearInvestigationMode]);
 
   const navigateRollupBreadcrumb = useCallback((index: number) => {
+    rollupAutoDescendRef.current = false;
     setRollupStack((current) => current.slice(0, index + 1));
   }, []);
 
   const resetRollupToRoot = useCallback(() => {
+    rollupAutoDescendRef.current = false;
     setRollupStack([]);
   }, []);
 
   const drillIntoRollup = useCallback((item: GraphRollupContainer) => {
     if (!item.has_children) return;
+    rollupAutoDescendRef.current = false;
     setRollupSummaryRequested(true);
     setRollupMapExpanded(false);
     setRollupStack((current) => {
@@ -3858,6 +3880,13 @@ function GraphPageInner() {
               detail={graphPanelError.detail}
               suggestions={graphPanelError.suggestions}
               actions={[{ label: "Retry graph", onClick: retryGraph }, { label: "Return to summary", onClick: returnToSummary }]}
+            />
+          ) : rollupCanvasFailed ? (
+            <GraphEmptyState
+              title="Scope navigation did not load"
+              detail={`The ${estateNodeCount.toLocaleString()}-node snapshot is not drawn as a raw map by default. Retry the scope summary, or open the bounded map of ranked assets.`}
+              suggestions={["Search for an asset to investigate it directly", "Filter by severity to narrow the scope"]}
+              actions={[{ label: "Retry scope", onClick: retryGraph }, { label: "Open bounded map", onClick: dismissRollup }]}
             />
           ) : rollupCanvasPending ? (
             <GraphPanelSkeleton

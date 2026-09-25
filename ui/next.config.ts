@@ -33,6 +33,16 @@ const nextConfig: NextConfig = {
         priority: 1,
         reuseExistingChunk: true,
       };
+      // Each icon module is far below the default split size, so routes that
+      // share icons would otherwise each carry their own copy.
+      config.optimization.splitChunks.cacheGroups.lucideShared = {
+        test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
+        name: "lucide-icons",
+        minChunks: 2,
+        minSize: 0,
+        priority: 2,
+        reuseExistingChunk: true,
+      };
     }
     return config;
   },

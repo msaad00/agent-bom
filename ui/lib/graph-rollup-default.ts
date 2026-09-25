@@ -4,7 +4,7 @@
  */
 
 export type GraphRollupUrlPreference = "default" | "force" | "off";
-export type GraphRollupCanvasMode = "raw" | "loading" | "active";
+export type GraphRollupCanvasMode = "raw" | "loading" | "active" | "failed";
 
 export function parseGraphRollupUrlPreference(
   params: URLSearchParams | { get(name: string): string | null },
@@ -31,7 +31,10 @@ export function rollupDismissedForPreference(
   return preference === "off";
 }
 
-/** Keep raw topology off-canvas while an eligible roll-up request is pending. */
+/**
+ * Keep raw topology off-canvas while an eligible roll-up request is pending or
+ * has failed: a large estate only renders its raw map on explicit request.
+ */
 export function graphRollupCanvasMode(input: {
   eligible: boolean;
   dismissed: boolean;
@@ -41,7 +44,8 @@ export function graphRollupCanvasMode(input: {
 }): GraphRollupCanvasMode {
   if (!input.eligible || input.dismissed) return "raw";
   if (input.hasView) return "active";
-  if (input.unavailable || input.failed) return "raw";
+  if (input.unavailable) return "raw";
+  if (input.failed) return "failed";
   return "loading";
 }
 
@@ -91,4 +95,36 @@ export function rollupViewHasContainers(
 ): boolean {
   const items = mode === "drilldown" ? children : topLevel;
   return Array.isArray(items) && items.length > 0;
+}
+
+/** Levels a default entry may descend through single-container scopes. */
+export const MAX_ROLLUP_AUTO_DESCEND_DEPTH = 3;
+
+interface RollupAutoDescendItem {
+  id: string;
+  label: string;
+  is_container?: boolean;
+  has_children?: boolean;
+}
+
+/**
+ * A level holding one container (typically a lone organization) offers no
+ * choice, so the default entry opens it until a level ranks several scopes.
+ */
+export function rollupAutoDescendTarget(
+  view: {
+    mode: "rollup" | "drilldown" | "attack_path";
+    top_level?: RollupAutoDescendItem[];
+    children?: RollupAutoDescendItem[];
+  },
+  input: { stack: readonly { id: string }[]; allowed: boolean },
+): { id: string; label: string } | null {
+  if (!input.allowed || input.stack.length >= MAX_ROLLUP_AUTO_DESCEND_DEPTH) return null;
+  if (view.mode === "attack_path") return null;
+  const items = view.mode === "drilldown" ? view.children : view.top_level;
+  if (!Array.isArray(items) || items.length !== 1) return null;
+  const only = items[0];
+  if (!only?.is_container || !only.has_children) return null;
+  if (input.stack.some((crumb) => crumb.id === only.id)) return null;
+  return { id: only.id, label: only.label };
 }

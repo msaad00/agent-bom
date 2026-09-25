@@ -314,20 +314,22 @@ function ScanPipelineInner({
       zoom: 1,
     }, { duration: 200 });
   }, [fitView, getNode, selectedStepId, setViewport]);
-  const fitOverview = useCallback(() => {
+  const fitOverview = useCallback((duration = 200) => {
     framingRequestRef.current++;
     setOverview(true);
-    void fitView({ padding: 0.16, minZoom: 0.1, maxZoom: 1, duration: 200 });
+    void fitView({ padding: 0.16, minZoom: 0.1, maxZoom: 1, duration });
   }, [fitView]);
   useEffect(() => {
     const stage = selectedStepId ?? "start";
     if (!viewportInitialized || focusedStageRef.current === stage) return;
     const frame = requestAnimationFrame(() => {
       focusedStageRef.current = stage;
-      void focusReadable();
+      // With no stage selected, open on the whole DAG so every stage is visible.
+      if (selectedStepId) void focusReadable();
+      else fitOverview(0);
     });
     return () => cancelAnimationFrame(frame);
-  }, [viewportInitialized, selectedStepId, focusReadable]);
+  }, [viewportInitialized, selectedStepId, focusReadable, fitOverview]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -342,10 +344,12 @@ function ScanPipelineInner({
         nodes={nodes}
         edges={displayEdges}
         nodeTypes={nodeTypes}
-        // The default viewport is start-aligned after node measurement above.
-        // An explicitly selected initial stage can use React Flow's queued fit.
-        fitView={Boolean(selectedStepId)}
-        fitViewOptions={{ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2 }}
+        fitView
+        fitViewOptions={
+          selectedStepId
+            ? { nodes: [{ id: selectedStepId }], minZoom: 1, maxZoom: 1, padding: 0.2 }
+            : { padding: 0.16, minZoom: 0.1, maxZoom: 1 }
+        }
         minZoom={0.1}
         maxZoom={1.5}
         panOnDrag={interactive}
@@ -371,7 +375,7 @@ function ScanPipelineInner({
             <Move className="h-3 w-3" aria-hidden="true" />
             Pan to explore · select a stage to inspect
           </span>
-          <button type="button" onClick={overview ? focusReadable : fitOverview}
+          <button type="button" onClick={overview ? focusReadable : () => fitOverview()}
             className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]">
             {overview ? "Readable view" : "Fit overview"}
           </button>

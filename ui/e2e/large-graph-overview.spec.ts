@@ -577,6 +577,57 @@ test("scope summary does not inherit the unrelated node-page warning", async ({ 
 });
 
 
+const rollupAggregate = (count: number) => ({
+  descendant_count: count, by_type: { environment: count }, severity_counts: { high: count },
+  worst_severity: "high", worst_severity_rank: 3, internet_exposed: false, toxic_combo: false, exposed_count: 0, toxic_count: 0,
+});
+
+test("a lone organization opens to its ranked accounts as the first view", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  const requested: string[] = [];
+  await page.route("**/v1/graph/rollup?**", (route) => {
+    const node = new URL(route.request().url()).searchParams.get("node");
+    requested.push(node ?? "");
+    if (!node) {
+      return route.fulfill({ json: {
+        scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "rollup", filters: {},
+        top_level: [{ id: "org:northstar", label: "Northstar org", entity_type: "org", severity: "high",
+          is_container: true, has_children: true, direct_child_count: 30, aggregate: rollupAggregate(90) }],
+        edges: [], summary: { total_nodes: 6000, total_edges: 20000, top_level_count: 1, container_count: 1 },
+        completeness: { status: "complete", returned: 1, total: 1, truncated: false, reasons: [] },
+      } });
+    }
+    const children = Array.from({ length: 30 }, (_, index) => ({
+      id: `account:${index}`, label: `account-${index}`, entity_type: "account", severity: "high",
+      is_container: true, has_children: true, direct_child_count: 3, aggregate: rollupAggregate(3),
+    }));
+    return route.fulfill({ json: {
+      scan_id: scanId, tenant_id: "default", created_at: createdAt, mode: "drilldown", filters: {},
+      node: { id: node, label: "Northstar org", entity_type: "org" }, children, edges: [],
+      pagination: { offset: 0, limit: 200, returned: 30, total: 30, has_more: false, next_offset: null },
+      summary: { total_nodes: 6000, total_edges: 20000 },
+      completeness: { status: "complete", returned: 30, total: 30, truncated: false, reasons: [] },
+    } });
+  });
+  await page.goto(`/graph?scan=${scanId}`);
+  const summary = page.getByTestId("graph-rollup-decision-surface");
+  await expect(summary).toBeVisible({ timeout: 30_000 });
+  await expect(summary).toContainText("account-0");
+  await expect(page.getByTestId("sigma-graph-overview")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Northstar org", exact: true }).first()).toBeVisible();
+  expect(requested.slice(0, 2)).toEqual(["", "org:northstar"]);
+});
+
+test("a failed scope summary never falls back to the raw estate map on its own", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  await page.route("**/v1/graph/rollup?**", (route) => route.fulfill({ status: 503, json: { detail: "Graph backend busy" } }));
+  await page.goto(`/graph?scan=${scanId}&rollup=1`);
+  await expect(page.getByText("Scope navigation did not load")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("sigma-graph-overview")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open bounded map", exact: true }).click();
+  await expect(page.getByTestId("sigma-graph-overview")).toBeVisible({ timeout: 30_000 });
+});
+
 test("blast radius distinguishes related nodes from assets and keeps the type breakdown optional", async ({ page }) => {
   await routeLargeGraphPage(page);
   const root = node("pkg:42", "package", "large-package-42", "high", 7.2);

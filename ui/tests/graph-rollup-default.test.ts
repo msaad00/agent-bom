@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   graphRollupCanvasMode,
   graphRollupEligible,
+  MAX_ROLLUP_AUTO_DESCEND_DEPTH,
   parseGraphRollupUrlPreference,
+  rollupAutoDescendTarget,
   parseRollupNodeParam,
   rollupDismissedForPreference,
   rollupViewHasContainers,
@@ -157,6 +159,74 @@ describe("roll-up presentation state", () => {
         failed: false,
       }),
     ).toBe("loading");
+  });
+});
+
+describe("failed roll-up on an eligible estate", () => {
+  it("does not fall back to the raw topology without an explicit request", () => {
+    expect(
+      graphRollupCanvasMode({
+        eligible: true,
+        dismissed: false,
+        hasView: false,
+        unavailable: false,
+        failed: true,
+      }),
+    ).toBe("failed");
+    expect(
+      graphRollupCanvasMode({
+        eligible: true,
+        dismissed: true,
+        hasView: false,
+        unavailable: false,
+        failed: true,
+      }),
+    ).toBe("raw");
+  });
+});
+
+describe("rollupAutoDescendTarget", () => {
+  const org = { id: "org:northstar", label: "Northstar", is_container: true, has_children: true };
+  const account = { id: "account:prod", label: "prod", is_container: true, has_children: true };
+
+  it("descends through a lone top-level container so the first view is a ranked summary", () => {
+    expect(
+      rollupAutoDescendTarget({ mode: "rollup", top_level: [org] }, { stack: [], allowed: true }),
+    ).toEqual({ id: "org:northstar", label: "Northstar" });
+    expect(
+      rollupAutoDescendTarget({ mode: "drilldown", children: [account] }, { stack: [{ id: "org:northstar" }], allowed: true }),
+    ).toEqual({ id: "account:prod", label: "prod" });
+  });
+
+  it("stops at a level that already offers a choice", () => {
+    expect(
+      rollupAutoDescendTarget({ mode: "rollup", top_level: [org, account] }, { stack: [], allowed: true }),
+    ).toBeNull();
+    expect(rollupAutoDescendTarget({ mode: "rollup", top_level: [] }, { stack: [], allowed: true })).toBeNull();
+  });
+
+  it("never descends into a leaf, past the depth bound, or after an operator navigates", () => {
+    const leaf = { id: "asset:db", label: "db", is_container: false, has_children: false };
+    expect(rollupAutoDescendTarget({ mode: "rollup", top_level: [leaf] }, { stack: [], allowed: true })).toBeNull();
+    expect(
+      rollupAutoDescendTarget(
+        { mode: "drilldown", children: [account] },
+        { stack: Array.from({ length: MAX_ROLLUP_AUTO_DESCEND_DEPTH }, (_, i) => ({ id: `scope:${i}` })), allowed: true },
+      ),
+    ).toBeNull();
+    expect(rollupAutoDescendTarget({ mode: "rollup", top_level: [org] }, { stack: [], allowed: false })).toBeNull();
+  });
+
+  it("does not reopen a scope that is already on the stack", () => {
+    expect(
+      rollupAutoDescendTarget({ mode: "drilldown", children: [org] }, { stack: [{ id: "org:northstar" }], allowed: true }),
+    ).toBeNull();
+  });
+
+  it("ignores the attack-path view", () => {
+    expect(
+      rollupAutoDescendTarget({ mode: "attack_path", top_level: [org] }, { stack: [], allowed: true }),
+    ).toBeNull();
   });
 });
 

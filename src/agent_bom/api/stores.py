@@ -593,9 +593,10 @@ def _get_graph_scenario_store() -> GraphScenarioStore:
 
                     _graph_scenario_store = SQLiteGraphScenarioStore(os.environ["AGENT_BOM_DB"])
                 else:
+                    from agent_bom.api.durable_store import default_state_db_path
                     from agent_bom.api.graph_scenario_store import SQLiteGraphScenarioStore
 
-                    _graph_scenario_store = SQLiteGraphScenarioStore()
+                    _graph_scenario_store = SQLiteGraphScenarioStore(default_state_db_path())
     return _graph_scenario_store
 
 

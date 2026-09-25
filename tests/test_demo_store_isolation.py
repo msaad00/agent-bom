@@ -147,6 +147,23 @@ def test_every_default_local_store_follows_the_demo_state_dir(monkeypatch: pytes
         assert Path(path).is_relative_to(demo_dir), f"{name} resolved outside the demo dir: {path}"
 
 
+def test_default_graph_scenario_store_follows_the_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from agent_bom.api import stores
+
+    for var in ("AGENT_BOM_DB", "AGENT_BOM_POSTGRES_URL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path / "state"))
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    monkeypatch.setattr(stores, "_graph_scenario_store", None)
+
+    store = stores._get_graph_scenario_store()
+
+    assert Path(store._db_path).is_relative_to(tmp_path / "state")  # type: ignore[attr-defined]
+    assert list(cwd.iterdir()) == []
+
+
 # ── Bootstrap fails closed ───────────────────────────────────────────────────
 
 

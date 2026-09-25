@@ -19,15 +19,53 @@ from scripts.render_docker_storefront import render_published_readme
 ROOT = Path(__file__).resolve().parents[1]
 
 
+_MIRRORED_PATHS = (
+    *check_release_consistency.PRODUCT_SCREENSHOT_INPUTS,
+    "ui",
+    "docs/images",
+)
+
+
+@pytest.fixture(scope="module")
+def _repo_mirror(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A git-indexed copy of the tracked capture inputs, private to this worker.
+
+    The capture-inputs digest reads `git ls-files` plus on-disk bytes, so the
+    mirror carries its own index. Mutating tests edit the mirror, never the
+    checkout: parallel workers (and `npm ci` in the same tree) keep reading
+    the committed files.
+    """
+    mirror = tmp_path_factory.mktemp("capture-inputs-mirror")
+    tracked = subprocess.run(
+        ["git", "-c", f"safe.directory={ROOT}", "ls-files", "-z", "--", *_MIRRORED_PATHS],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    for relative in filter(None, tracked.decode("utf-8").split("\0")):
+        source = ROOT / relative
+        if not source.is_file():
+            continue
+        target = mirror / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    git = ["git", "-c", f"safe.directory={mirror}", "-c", "core.hooksPath=/dev/null"]
+    subprocess.run([*git, "init", "-q"], cwd=mirror, check=True)
+    subprocess.run([*git, "add", "-A"], cwd=mirror, check=True)
+    return mirror
+
+
+@pytest.fixture
+def mirror(_repo_mirror: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(check_release_consistency, "ROOT", _repo_mirror)
+    monkeypatch.setattr(check_release_consistency, "PRODUCT_SCREENSHOTS", _repo_mirror / "docs" / "images" / "product-screenshots.json")
+    return _repo_mirror
+
+
 @contextlib.contextmanager
 def _mutate_repo_file(path: Path, transform: Callable[[bytes], bytes]) -> Iterator[None]:
-    """Temporarily mutate a REAL, git-tracked repo file and restore it after.
-
-    The capture-inputs digest is computed from actual `git ls-files` output
-    and on-disk bytes, so exercising it precisely requires mutating real
-    tracked files rather than a synthetic tmp_path tree. Restoration is
-    guaranteed even if the test body raises.
-    """
+    """Temporarily mutate a mirrored capture input and restore it after."""
+    assert ROOT not in path.resolve().parents, f"refusing to mutate a tracked checkout file: {path}"
     original = path.read_bytes()
     try:
         path.write_bytes(transform(original))
@@ -200,8 +238,8 @@ def test_floating_refresh_preserves_published_storefront_status() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_capture_input_digest_ignores_a_dev_dependency_only_package_json_bump() -> None:
-    package_json = ROOT / "ui" / "package.json"
+def test_capture_input_digest_ignores_a_dev_dependency_only_package_json_bump(mirror: Path) -> None:
+    package_json = mirror / "ui" / "package.json"
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
     with _mutate_repo_file(package_json, _bump_json_string_field("devDependencies", "@types/node")):
         during = check_release_consistency._compute_product_screenshot_inputs_digest()
@@ -210,17 +248,17 @@ def test_capture_input_digest_ignores_a_dev_dependency_only_package_json_bump() 
     assert after == before
 
 
-def test_assert_product_screenshots_current_tolerates_a_dev_dependency_only_bump() -> None:
+def test_assert_product_screenshots_current_tolerates_a_dev_dependency_only_bump(mirror: Path) -> None:
     """End-to-end repro of PR #5319: a devDependency bump must not fail the gate."""
-    package_json = ROOT / "ui" / "package.json"
+    package_json = mirror / "ui" / "package.json"
     version = check_release_consistency._load_version()
     with _mutate_repo_file(package_json, _bump_json_string_field("devDependencies", "@types/node")):
         check_release_consistency._assert_product_screenshots_current(version)  # must not raise
 
 
-def test_capture_input_digest_still_moves_for_a_direct_dependency_bump() -> None:
+def test_capture_input_digest_still_moves_for_a_direct_dependency_bump(mirror: Path) -> None:
     """The critical regression guard: `dependencies` (not `devDependencies`) must still trip the gate."""
-    package_json = ROOT / "ui" / "package.json"
+    package_json = mirror / "ui" / "package.json"
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
     with _mutate_repo_file(package_json, _bump_json_string_field("dependencies", "next")):
         during = check_release_consistency._compute_product_screenshot_inputs_digest()
@@ -228,9 +266,10 @@ def test_capture_input_digest_still_moves_for_a_direct_dependency_bump() -> None
 
 
 def test_assert_product_screenshots_current_still_rejects_a_direct_dependency_bump(
+    mirror: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    package_json = ROOT / "ui" / "package.json"
+    package_json = mirror / "ui" / "package.json"
     version = check_release_consistency._load_version()
     with _mutate_repo_file(package_json, _bump_json_string_field("dependencies", "next")):
         with pytest.raises(SystemExit):
@@ -238,8 +277,8 @@ def test_assert_product_screenshots_current_still_rejects_a_direct_dependency_bu
     assert "capture inputs changed" in capsys.readouterr().err
 
 
-def test_capture_input_digest_ignores_package_lock_json_changes() -> None:
-    lockfile = ROOT / "ui" / "package-lock.json"
+def test_capture_input_digest_ignores_package_lock_json_changes(mirror: Path) -> None:
+    lockfile = mirror / "ui" / "package-lock.json"
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
     with _mutate_repo_file(lockfile, lambda original: original + b"\n"):
         during = check_release_consistency._compute_product_screenshot_inputs_digest()
@@ -254,8 +293,8 @@ def test_capture_input_digest_ignores_package_lock_json_changes() -> None:
         "ui/playwright.config.ts",
     ],
 )
-def test_capture_input_digest_ignores_tooling_config(relative_path: str) -> None:
-    target = ROOT / relative_path
+def test_capture_input_digest_ignores_tooling_config(mirror: Path, relative_path: str) -> None:
+    target = mirror / relative_path
     assert target.is_file(), f"fixture assumption stale: {relative_path} no longer exists"
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
     with _mutate_repo_file(target, lambda original: original + b"\n"):
@@ -263,8 +302,8 @@ def test_capture_input_digest_ignores_tooling_config(relative_path: str) -> None
     assert during == before
 
 
-def test_capture_input_digest_ignores_test_files() -> None:
-    test_files = sorted((ROOT / "ui" / "tests").glob("*.test.tsx"))
+def test_capture_input_digest_ignores_test_files(mirror: Path) -> None:
+    test_files = sorted((mirror / "ui" / "tests").glob("*.test.tsx"))
     assert test_files, "fixture assumption stale: ui/tests/*.test.tsx no longer exists"
     target = test_files[0]
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
@@ -272,7 +311,7 @@ def test_capture_input_digest_ignores_test_files() -> None:
         during = check_release_consistency._compute_product_screenshot_inputs_digest()
     assert during == before
 
-    e2e_files = sorted((ROOT / "ui" / "e2e").glob("*.spec.ts"))
+    e2e_files = sorted((mirror / "ui" / "e2e").glob("*.spec.ts"))
     assert e2e_files, "fixture assumption stale: ui/e2e/*.spec.ts no longer exists"
     target = e2e_files[0]
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
@@ -281,8 +320,8 @@ def test_capture_input_digest_ignores_test_files() -> None:
     assert during == before
 
 
-def test_capture_input_digest_still_moves_for_a_real_component_source_change() -> None:
-    target = ROOT / "ui" / "components" / "activity-feed.tsx"
+def test_capture_input_digest_still_moves_for_a_real_component_source_change(mirror: Path) -> None:
+    target = mirror / "ui" / "components" / "activity-feed.tsx"
     assert target.is_file(), "fixture assumption stale: ui/components/activity-feed.tsx no longer exists"
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
     with _mutate_repo_file(target, lambda original: original + b"\n// regression-probe\n"):
@@ -290,8 +329,8 @@ def test_capture_input_digest_still_moves_for_a_real_component_source_change() -
     assert during != before
 
 
-def test_capture_input_digest_still_moves_for_a_public_asset_change() -> None:
-    public_files = sorted((ROOT / "ui" / "public").rglob("*"))
+def test_capture_input_digest_still_moves_for_a_public_asset_change(mirror: Path) -> None:
+    public_files = sorted((mirror / "ui" / "public").rglob("*"))
     candidates = [p for p in public_files if p.is_file()]
     assert candidates, "fixture assumption stale: ui/public has no files"
     target = candidates[0]
@@ -335,30 +374,30 @@ def test_release_manifest_capture_inputs_digest_is_current() -> None:
 @pytest.mark.parametrize(
     "section,name", [("devDependencies", "tailwindcss"), ("devDependencies", "lightningcss"), ("overrides", "postcss")]
 )
-def test_capture_digest_tracks_rendering_toolchain(section, name):
+def test_capture_digest_tracks_rendering_toolchain(mirror: Path, section, name):
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
-    with _mutate_repo_file(ROOT / "ui/package.json", _bump_json_string_field(section, name)):
+    with _mutate_repo_file(mirror / "ui/package.json", _bump_json_string_field(section, name)):
         assert check_release_consistency._compute_product_screenshot_inputs_digest() != before
 
 
-def test_capture_digest_tracks_resolved_runtime_dependency():
+def test_capture_digest_tracks_resolved_runtime_dependency(mirror: Path):
     def change(original):
         data = json.loads(original)
         data["packages"]["node_modules/next"]["version"] = "99.0.0"
         return json.dumps(data).encode()
 
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
-    with _mutate_repo_file(ROOT / "ui/package-lock.json", change):
+    with _mutate_repo_file(mirror / "ui/package-lock.json", change):
         assert check_release_consistency._compute_product_screenshot_inputs_digest() != before
 
 
-def test_capture_digest_tracks_typescript_build_config():
+def test_capture_digest_tracks_typescript_build_config(mirror: Path):
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
-    with _mutate_repo_file(ROOT / "ui/tsconfig.json", lambda content: content + b"\n"):
+    with _mutate_repo_file(mirror / "ui/tsconfig.json", lambda content: content + b"\n"):
         assert check_release_consistency._compute_product_screenshot_inputs_digest() != before
 
 
-def test_capture_digest_ignores_only_node_types_lock_entry():
+def test_capture_digest_ignores_only_node_types_lock_entry(mirror: Path):
     def change(original):
         data = json.loads(original)
         data["packages"]["node_modules/@types/node"]["version"] = "99.0.0"
@@ -366,5 +405,20 @@ def test_capture_digest_ignores_only_node_types_lock_entry():
         return json.dumps(data).encode()
 
     before = check_release_consistency._compute_product_screenshot_inputs_digest()
-    with _mutate_repo_file(ROOT / "ui/package-lock.json", change):
+    with _mutate_repo_file(mirror / "ui/package-lock.json", change):
         assert check_release_consistency._compute_product_screenshot_inputs_digest() == before
+
+
+def test_capture_input_mirror_digest_matches_the_checkout(_repo_mirror: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    real = check_release_consistency._compute_product_screenshot_inputs_digest()
+    monkeypatch.setattr(check_release_consistency, "ROOT", _repo_mirror)
+    assert check_release_consistency._compute_product_screenshot_inputs_digest() == real
+
+
+def test_mutation_helper_refuses_tracked_checkout_files() -> None:
+    package_json = ROOT / "ui" / "package.json"
+    before = package_json.read_bytes()
+    with pytest.raises(AssertionError, match="refusing to mutate"):
+        with _mutate_repo_file(package_json, lambda original: original + b"\n"):
+            pass
+    assert package_json.read_bytes() == before

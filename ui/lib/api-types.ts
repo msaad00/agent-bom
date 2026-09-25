@@ -1120,9 +1120,18 @@ export interface IssueSeverityCounts {
   window?: unknown;
 }
 
+export interface EstateAgentCounts {
+  /** Distinct agents in the tenant's current graph snapshot; null when the graph backend cannot count them. */
+  total: number | null;
+  scan_id: string | null;
+  basis: "graph_agents";
+}
+
 export interface PostureCountsResponse {
   /** Open issue groups, identical to the findings page default query. */
   issues?: IssueSeverityCounts | undefined;
+  /** Agent population shared by every surface; equals the /v1/inventory/assets?type=agent total. */
+  agents?: EstateAgentCounts | undefined;
   critical: number;
   high: number;
   medium: number;

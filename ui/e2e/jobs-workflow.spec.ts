@@ -264,15 +264,29 @@ for (const theme of ["light", "dark"] as const) {
       const renderedSize = () => firstLabel.evaluate((element) =>
         Number.parseFloat(getComputedStyle(element).fontSize) *
         new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a);
-      await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
       const discoveryInset = () => firstLabel.evaluate(element => {
         const node = element.closest(".react-flow__node")!.getBoundingClientRect();
         const frame = element.closest(".react-flow")!.getBoundingClientRect();
         return node.left - frame.left;
       });
+      const flow = panel.locator(".react-flow");
+      if (width >= 1024) {
+        // Wide frames open on the whole DAG: every stage node sits inside the canvas.
+        await expect(panel.getByRole("button", { name: "Readable view", exact: true })).toBeVisible();
+        const outside = () => flow.evaluate(frame => {
+          const box = frame.getBoundingClientRect();
+          return [...frame.querySelectorAll(".react-flow__node")].filter(node => {
+            const r = node.getBoundingClientRect();
+            return r.left < box.left || r.right > box.right || r.top < box.top || r.bottom > box.bottom;
+          }).length;
+        });
+        await expect.poll(outside).toBe(0);
+        await panel.getByRole("button", { name: "Readable view", exact: true }).click();
+      }
+      await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
       await expect.poll(discoveryInset).toBeGreaterThanOrEqual(16);
       await expect.poll(discoveryInset).toBeLessThanOrEqual(32);
-      await panel.locator(".react-flow").scrollIntoViewIfNeeded();
+      await flow.scrollIntoViewIfNeeded();
       await expect(firstLabel).toBeInViewport();
       const zoom = panel.getByRole("button", { name: "Zoom In", exact: true });
       const colors = await zoom.evaluate((element) => {
@@ -297,6 +311,10 @@ for (const theme of ["light", "dark"] as const) {
       await panel.locator(".react-flow").scrollIntoViewIfNeeded();
       await expect(panel.getByRole("button", { name: "Inspect Cloud posture" })).toBeInViewport();
       await panel.getByRole("button", { name: "Close stage detail" }).click();
+      if (width >= 1024) {
+        await expect(panel.getByRole("button", { name: "Readable view", exact: true })).toBeVisible();
+        await panel.getByRole("button", { name: "Readable view", exact: true }).click();
+      }
       await expect.poll(renderedSize).toBeGreaterThanOrEqual(12);
       await panel.getByRole("button", { name: "Fit overview", exact: true }).click();
       await expect(panel.getByRole("button", { name: "Readable view", exact: true })).toBeVisible();

@@ -239,6 +239,7 @@ function AgentsList() {
   const [search, setSearch] = useState("");
   const [hintDismissed, setHintDismissed] = useState(false);
   const { counts } = useDeploymentContext();
+  const estateAgents = counts?.agents?.total ?? null;
 
   useEffect(() => {
     api.listAgents()
@@ -367,6 +368,9 @@ function AgentsList() {
           <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Agents</h1>
           <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
             Discovered AI clients/hosts and background agents, with their MCP servers
+            {estateAgents !== null && (
+              <> on this API host. Estate agents: {estateAgents} <Link href="/inventory?type=agent" className="text-[color:var(--accent)]">Open agent inventory</Link></>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -411,7 +415,7 @@ function AgentsList() {
           data-testid="agents-kpis"
           items={[
             {
-              label: "Agents",
+              label: "On this host",
               value: agents.length,
               icon: Shield,
               hint: `${configured.length} configured${installedOnly.length > 0 ? ` · ${installedOnly.length} not` : ""}`,

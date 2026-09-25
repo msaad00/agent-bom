@@ -2480,10 +2480,10 @@ def estate_agent_count(tenant_id: str) -> dict[str, Any]:
     except inventory_service.InventoryError as exc:
         if exc.status_code == 404:
             return {"total": 0, "scan_id": None, "basis": "graph_agents"}
-        _logger.warning("Estate agent count unavailable: %s", sanitize_error(exc))
+        _logger.warning("Estate agent count unavailable: %s", sanitize_text(exc))
         return {"total": None, "scan_id": None, "basis": "graph_agents"}
     except Exception as exc:  # noqa: BLE001
-        _logger.warning("Estate agent count unavailable: %s", sanitize_error(exc, generic=True))
+        _logger.warning("Estate agent count unavailable: %s", sanitize_text(exc))
         return {"total": None, "scan_id": None, "basis": "graph_agents"}
     return {
         "total": int(page["pagination"]["total"]),

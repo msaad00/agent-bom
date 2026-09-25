@@ -863,3 +863,56 @@ def test_gzip_middleware_uses_a_balanced_compression_level() -> None:
     level = gzip_layers[0].kwargs.get("compresslevel")
     assert level is not None, "compresslevel must be pinned, not left at Starlette's default of 9"
     assert 1 <= level <= 6, f"compresslevel {level} spends event-loop time for negligible ratio"
+
+
+def test_demo_status_reports_whether_the_story_is_ready(story_client: TestClient) -> None:
+    from agent_bom.api.routes import demo_estate as demo_routes
+
+    demo_routes.reset_demo_story_cache()
+    cold = story_client.get("/v1/demo-estate/status")
+    assert cold.status_code == 200, cold.text
+    assert cold.json()["story_ready"] is False
+
+    assert story_client.get("/v1/demo-estate/story").status_code == 200
+    warm = story_client.get("/v1/demo-estate/status")
+    assert warm.json()["story_ready"] is True
+
+
+def test_demo_story_prewarm_builds_the_showcase_tenant_once(story_client: TestClient) -> None:
+    from agent_bom.api.routes import demo_estate as demo_routes
+
+    demo_routes.reset_demo_story_cache()
+    builds: list[str] = []
+
+    def counting_builder(*, tenant_id: str):
+        builds.append(tenant_id)
+        return _fast_demo_story(tenant_id=tenant_id)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(demo_routes, "build_enterprise_demo_story", counting_builder)
+        assert demo_routes.prewarm_demo_story() is True
+        assert demo_routes.prewarm_demo_story() is True
+        response = story_client.get("/v1/demo-estate/story")
+
+    assert response.status_code == 200
+    assert builds == ["default"]
+    assert story_client.get("/v1/demo-estate/status").json()["story_ready"] is True
+
+
+def test_demo_story_prewarm_is_a_no_op_when_demo_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.routes import demo_estate as demo_routes
+
+    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
+    demo_routes.reset_demo_story_cache()
+    monkeypatch.setattr(demo_routes, "build_enterprise_demo_story", _fast_demo_story)
+    assert demo_routes.prewarm_demo_story() is False
+    assert demo_routes.demo_story_cache_size() == 0
+
+
+def test_disabled_demo_status_is_an_explicit_not_enabled_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.server import app
+
+    monkeypatch.delenv("AGENT_BOM_DEMO_ESTATE", raising=False)
+    response = TestClient(app).get("/v1/demo-estate/status")
+    assert response.status_code == 404
+    assert "not enabled" in response.text

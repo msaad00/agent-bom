@@ -791,7 +791,9 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             await asyncio.to_thread(maybe_bootstrap_demo_estate)
         except Exception:  # noqa: BLE001
             _logger.warning("demo estate bootstrap skipped", exc_info=False)
-        if os.environ.get("AGENT_BOM_DEMO_STORY_PREWARM", "1").strip().lower() in {"1", "true", "yes", "on"}:
+        from agent_bom.config import demo_story_prewarm_enabled
+
+        if demo_story_prewarm_enabled():
             prewarm_task = asyncio.create_task(_prewarm_demo_story())
             _DEMO_STORY_PREWARM_TASKS.add(prewarm_task)
             prewarm_task.add_done_callback(_DEMO_STORY_PREWARM_TASKS.discard)

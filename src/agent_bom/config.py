@@ -502,6 +502,11 @@ OIDC_DISCOVERY_SHIM_JSON = _str("AGENT_BOM_OIDC_DISCOVERY_SHIM_JSON", "")
 DEMO_ESTATE = _bool("AGENT_BOM_DEMO_ESTATE", False)
 
 
+def demo_story_prewarm_enabled() -> bool:
+    """Build the demo story in the background at API startup (read at call time)."""
+    return _bool("AGENT_BOM_DEMO_STORY_PREWARM", True)
+
+
 # ── Enrichment Cache ──────────────────────────────────────────────────────
 # Used by enrichment.py for persistent NVD + EPSS disk cache.
 #

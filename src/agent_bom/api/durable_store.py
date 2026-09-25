@@ -31,6 +31,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from agent_bom import state_home
+
 # Default on-disk database filename used when neither AGENT_BOM_DB nor Postgres
 # is configured. Lives under AGENT_BOM_STATE_DIR (or ~/.agent-bom/) so it shares
 # the per-user/per-process state dir that conftest isolates in tests.
@@ -45,7 +47,7 @@ def state_dir() -> Path:
     falls back to the per-user ``~/.agent-bom`` directory. Mirrors the
     resolution used by the runtime protection-engine kill-switch.
     """
-    return Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+    return state_home.state_dir()
 
 
 def default_state_db_path(*, create_parent: bool = True) -> str:

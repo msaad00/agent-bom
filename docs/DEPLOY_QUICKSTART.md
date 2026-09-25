@@ -153,9 +153,18 @@ AGENT_BOM_DEMO_ESTATE=1 scripts/deploy/install.sh pilot
 curl -fsS http://127.0.0.1:8422/v1/demo-estate/status | jq
 ```
 
-The status response is the routing artifact for the demo graph: it distinguishes
-an aligned `showcase` snapshot from a newer operator-owned default and reports
-whether the showcase remains explicitly addressable.
+Demo data never mixes with product data. With demo estate on, every local store
+(graph, control plane, assets, analytics, history, caches) resolves under a
+dedicated demo directory: `AGENT_BOM_DEMO_STATE_DIR`, default
+`<state dir>/demo-estate` (`~/.agent-bom/demo-estate` locally). The API refuses
+to start if an explicit store path (`AGENT_BOM_DB`, `AGENT_BOM_GRAPH_DB`,
+`--persist`, ...) points into the product state directory. The startup summary
+prints the directory as `Demo data`.
+
+The status response reports whether the demo graph is the synthetic `showcase`
+(`aligned`), missing (`unavailable`), or `blocked` because the demo's store
+already holds non-demo graph data. A blocked demo seeds nothing and never
+names or links that data.
 
 ### Docker on a VM (team pilot)
 

@@ -16,10 +16,23 @@ import threading
 import time
 from pathlib import Path
 
+from agent_bom import state_home
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_SECONDS = 86_400  # 24 hours
-DEFAULT_CACHE_DIR = Path.home() / ".agent-bom"
+# Test/embedding override; ``None`` resolves to the active state dir per call.
+DEFAULT_CACHE_DIR: Path | None = None
+
+
+def default_cache_path() -> Path:
+    """Resolve the default cache DB: ``AGENT_BOM_SCAN_CACHE`` or ``<state dir>/scan_cache.db``."""
+    override = (os.environ.get("AGENT_BOM_SCAN_CACHE") or "").strip()
+    if override:
+        return Path(override)
+    if DEFAULT_CACHE_DIR is not None and not os.environ.get("AGENT_BOM_STATE_DIR"):
+        return DEFAULT_CACHE_DIR / "scan_cache.db"
+    return state_home.state_path("scan_cache.db")
 
 
 class ScanCache:
@@ -32,10 +45,7 @@ class ScanCache:
         max_entries: int | None = None,
     ) -> None:
         if db_path is None:
-            db_path = os.environ.get(
-                "AGENT_BOM_SCAN_CACHE",
-                str(Path(os.environ.get("AGENT_BOM_STATE_DIR", str(DEFAULT_CACHE_DIR))) / "scan_cache.db"),
-            )
+            db_path = default_cache_path()
         self._db_path = str(db_path)
         self._ttl = ttl_seconds
         if max_entries is None:

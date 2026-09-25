@@ -2099,7 +2099,7 @@ components:
         graph_alignment:
           enum:
           - aligned
-          - operator_default
+          - blocked
           - unavailable
           title: Graph Alignment
           type: string

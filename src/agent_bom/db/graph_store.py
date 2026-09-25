@@ -20,6 +20,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, Sequence
 
+from agent_bom import state_home
+
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 
@@ -361,21 +363,14 @@ def default_graph_db_path() -> Path:
     Preference order:
     1. ``AGENT_BOM_GRAPH_DB`` explicit graph database path
     2. ``AGENT_BOM_DB`` shared SQLite database used by the API
-    3. ``AGENT_BOM_STATE_DIR`` per-process state dir (``<state>/db/graph.db``)
-    4. ``~/.agent-bom/db/graph.db`` local default
-
-    Honoring ``AGENT_BOM_STATE_DIR`` mirrors ``api.durable_store`` so the graph
-    snapshot lands in the same isolated state dir an operator (or the test
-    suite's conftest) redirects state to — instead of always writing the real
-    ``~/.agent-bom/db/graph.db`` and accumulating cross-run/test pollution.
+    3. ``<state dir>/db/graph.db`` via :mod:`agent_bom.state_home`
+       (``AGENT_BOM_STATE_DIR``, else ``~/.agent-bom``; the demo estate pins it
+       to its own directory)
     """
     configured = os.environ.get("AGENT_BOM_GRAPH_DB") or os.environ.get("AGENT_BOM_DB")
     if configured:
         return Path(configured).expanduser()
-    state_dir = os.environ.get("AGENT_BOM_STATE_DIR")
-    if state_dir:
-        return Path(state_dir).expanduser() / "db" / "graph.db"
-    return Path.home() / ".agent-bom" / "db" / "graph.db"
+    return state_home.state_path("db", "graph.db")
 
 
 def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) -> None:

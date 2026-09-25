@@ -235,9 +235,11 @@ compose_up() {
     warn ".env missing — copy .env.example and set POSTGRES_PASSWORD for non-pilot stacks"
   fi
   log "Starting compose stack: ${file}"
-  if [ "$DEMO_ESTATE" -eq 1 ]; then
+  if [ "$DEMO_ESTATE" -eq 1 ] || [ "${AGENT_BOM_DEMO_ESTATE:-0}" = "1" ]; then
     export AGENT_BOM_DEMO_ESTATE=1
-    log "Demo estate enabled (showcase graph + curated offline scan on API start)"
+    # Demo data must never land in the pilot's product stores.
+    export AGENT_BOM_PILOT_JOBS_DB=/home/abom/.agent-bom/demo-estate/jobs.db
+    log "Demo estate enabled (showcase graph + curated offline scan on API start; data in ~/.agent-bom/demo-estate)"
   fi
   # Intentionally unquoted: expand to `docker compose` or `docker-compose`.
   # shellcheck disable=SC2046

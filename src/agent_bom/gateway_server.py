@@ -45,6 +45,7 @@ from typing import Any, Awaitable, Callable, Mapping
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from agent_bom import state_home
 from agent_bom.a2a_auth_posture import evaluate_inline_mutual_auth
 from agent_bom.agent_identity import (
     ANONYMOUS,
@@ -1898,7 +1899,7 @@ class UnavailableGatewayAuditSink:
 def build_local_gateway_audit_sink(*, state_dir: Path | None = None) -> LocalGatewayAuditSink:
     """Build the default durable audit path for a standalone local gateway."""
 
-    root = state_dir or Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    root = state_dir or state_home.state_dir()
     return LocalGatewayAuditSink(root / "runtime-audit" / "gateway-local-audit.db")
 
 
@@ -1927,7 +1928,7 @@ def build_control_plane_audit_sink(
         raise ValueError("gateway audit max_tenant_sinks must not be negative")
     delivery_identity = f"{source_id}\0{audit_url}\0{normalized_tenant_id}"
     active_session_id = session_id or "gateway-" + hashlib.sha256(delivery_identity.encode("utf-8")).hexdigest()[:20]
-    state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    state_dir = state_home.state_dir()
     stable_paths = audit_delivery_paths(
         state_dir,
         surface="gateway",

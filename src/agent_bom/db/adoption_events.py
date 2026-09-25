@@ -16,10 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
+from agent_bom import state_home
 from agent_bom.config import ADOPTION_EVENTS_DB, ADOPTION_EVENTS_ENABLED
 
 SCHEMA_VERSION: Final = "adoption-funnel.v1"
-DEFAULT_PATH: Final = Path.home() / ".agent-bom" / "adoption-events.sqlite"
+DEFAULT_FILENAME: Final = "adoption-events.sqlite"
 
 _EVENTS: Final = frozenset(
     {
@@ -49,7 +50,7 @@ class AdoptionEventStore:
     """SQLite funnel store that is a complete no-op until explicitly enabled."""
 
     def __init__(self, db_path: str | Path | None = None, *, enabled: bool = ADOPTION_EVENTS_ENABLED) -> None:
-        configured_path = Path(ADOPTION_EVENTS_DB).expanduser() if ADOPTION_EVENTS_DB else DEFAULT_PATH
+        configured_path = Path(ADOPTION_EVENTS_DB).expanduser() if ADOPTION_EVENTS_DB else state_home.state_path(DEFAULT_FILENAME)
         self.db_path = Path(db_path).expanduser() if db_path is not None else configured_path
         self.enabled = enabled
         self._lock = threading.Lock()

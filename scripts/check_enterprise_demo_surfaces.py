@@ -195,7 +195,8 @@ def main_check() -> None:
         "Correlated posture",
         "configuration_expected",
         "on a correlated attack path",
-        "Operator scan owns the default graph",
+        # A blocked demo must say it holds non-demo data rather than present it.
+        "holds non-demo graph data",
         # The bounded lists must keep saying what they are bounded against.
         # All three: the timeline renders `events`, which the API bounds to 200
         # while the strip above it reports every observation in the estate.

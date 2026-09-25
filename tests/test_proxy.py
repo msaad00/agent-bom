@@ -547,8 +547,15 @@ def test_stitch_jsonrpc_trace_meta_prefers_upstream_response_values():
 def test_gateway_policy_cache_path_defaults_to_user_cache_home(monkeypatch):
     fake_home = Path("/tmp/agent-bom-home")
     monkeypatch.delenv("AGENT_BOM_PROXY_POLICY_CACHE_PATH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_STATE_DIR", raising=False)
     monkeypatch.setattr(proxy_mod.Path, "home", staticmethod(lambda: fake_home))
     assert _gateway_policy_cache_path() == fake_home / ".agent-bom" / "cache" / "gateway-policies.json"
+
+
+def test_gateway_policy_cache_path_follows_the_state_dir(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("AGENT_BOM_PROXY_POLICY_CACHE_PATH", raising=False)
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    assert _gateway_policy_cache_path() == tmp_path / "cache" / "gateway-policies.json"
 
 
 def test_gateway_policy_cache_path_honors_env_override(monkeypatch):

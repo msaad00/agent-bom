@@ -347,6 +347,44 @@ def _is_commit_bound(bound: str | None) -> bool:
     return _looks_like_commit_sha(bound)
 
 
+def _window_coverage(windows: list[dict]) -> Callable[[str], bool]:
+    """Return a predicate: does a stored window definitively match a version?
+
+    Mirrors ``lookup._version_match_state(...) == "affected"`` for windows that
+    already passed the commit-bound filter, so ingest never drops a pin the
+    matcher could not reproduce; an ambiguous comparison keeps the pin. Bounds
+    are resolved once per block because a feed can enumerate thousands of
+    releases against the same window.
+    """
+    if not windows:
+        return lambda _version: False
+
+    from agent_bom.db.lookup import _comparator_ecosystem
+    from agent_bom.version_utils import compare_version_order, normalize_introduced
+
+    comparator = _comparator_ecosystem(windows[0]["ecosystem"])
+    bounds = [(normalize_introduced(w["introduced"]), w["fixed"] or None, w["last_affected"] or None) for w in windows]
+
+    def covered(version: str) -> bool:
+        for intro, fix, last in bounds:
+            if intro:
+                cmp = compare_version_order(version, intro, comparator)
+                if cmp is None or cmp < 0:
+                    continue
+            if fix:
+                cmp = compare_version_order(version, fix, comparator)
+                if cmp is None or cmp >= 0:
+                    continue
+            if last:
+                cmp = compare_version_order(version, last, comparator)
+                if cmp is None or cmp > 0:
+                    continue
+            return True
+        return False
+
+    return covered
+
+
 def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     """Parse one OSV JSON entry into (vuln_row, affected_rows).
 
@@ -449,26 +487,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         ecosystem = normalize_redhat_ecosystem(ecosystem)
 
         norm_name = normalize_package_name(pkg_name, ecosystem)
-
-        if aff.get("versions"):
-            # OSV defines the affected set as the union of versions and ranges.
-            # GIT bounds cannot place a package release; even a usable ECOSYSTEM
-            # range may describe only a later reintroduction window. Preserve
-            # explicit releases as exact pins in both cases without widening
-            # either the pins or the independently evaluated ranges.
-            for version in aff["versions"]:
-                if not isinstance(version, str) or not version.strip():
-                    continue
-                affected_rows.append(
-                    {
-                        "vuln_id": vuln_id,
-                        "ecosystem": ecosystem.lower(),
-                        "package_name": norm_name,
-                        "introduced": version.strip(),
-                        "fixed": "",
-                        "last_affected": version.strip(),
-                    }
-                )
+        range_rows: list[dict] = []
 
         for rng in aff.get("ranges", []):
             # OSV encodes per-branch fixes as alternating introduced/fixed
@@ -511,7 +530,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
                 # latest" and matches every version.
                 if any(_is_commit_bound(bound) for bound in (win_introduced, win_fixed, win_last_affected)):
                     continue
-                affected_rows.append(
+                range_rows.append(
                     {
                         "vuln_id": vuln_id,
                         "ecosystem": ecosystem.lower(),
@@ -521,6 +540,33 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
                         "last_affected": win_last_affected,
                     }
                 )
+
+        # OSV defines the affected set as the union of versions and ranges. GIT
+        # bounds cannot place a package release, and an ECOSYSTEM range may
+        # describe only a later reintroduction window, so an enumerated release
+        # the stored windows do not definitively cover is kept as an exact pin.
+        # Releases a window already covers add nothing but rows: feeds list
+        # every affected release, which multiplied the table ~30x.
+        pinned: set[str] = set()
+        covered = _window_coverage(range_rows)
+        for version in aff.get("versions") or []:
+            if not isinstance(version, str) or not version.strip():
+                continue
+            version = version.strip()
+            if version in pinned or covered(version):
+                continue
+            pinned.add(version)
+            affected_rows.append(
+                {
+                    "vuln_id": vuln_id,
+                    "ecosystem": ecosystem.lower(),
+                    "package_name": norm_name,
+                    "introduced": version,
+                    "fixed": "",
+                    "last_affected": version,
+                }
+            )
+        affected_rows.extend(range_rows)
 
     # Extract CWE IDs from database_specific (GHSA advisories store them here)
     cwe_ids_list: list[str] = []

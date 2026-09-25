@@ -1181,3 +1181,114 @@ def test_osv_explicit_versions_union_commit_and_reintroduction_ranges(tmp_db, wi
     assert not lookup_package(tmp_db, "pypi", "pillow", "9.1.0")
     assert not lookup_package(tmp_db, "pypi", "pillow", "9.3.0")
     assert not lookup_package(tmp_db, "pypi", "unrelated-package", "9.0.0")
+
+
+def _affected_rows_for(conn, vuln_id):
+    return conn.execute(
+        "SELECT introduced, fixed, last_affected FROM affected WHERE vuln_id = ? ORDER BY introduced", (vuln_id,)
+    ).fetchall()
+
+
+def test_osv_versions_covered_by_ecosystem_range_add_no_exact_pin_rows(tmp_db):
+    # OSV feeds enumerate every affected release alongside the ECOSYSTEM range
+    # that already covers them; one row per release exploded the DB ~30x.
+    data = _make_osv_entry(pkg="flask")
+    affected = data["affected"][0]
+    affected["ranges"] = [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "1.0"}]}]
+    affected["versions"] = ["0.1", "0.10", "0.10.1", "0.11", "0.12", "0.12.1", "0.12.4"]
+    _ingest_osv_file(tmp_db, json.dumps(data).encode(), "test.json")
+    tmp_db.commit()
+
+    rows = _affected_rows_for(tmp_db, data["id"])
+    assert [tuple(r) for r in rows] == [("0", "1.0", "")]
+    for version in affected["versions"]:
+        assert len(lookup_package(tmp_db, "pypi", "flask", version)) == 1
+    assert not lookup_package(tmp_db, "pypi", "flask", "1.0")
+    assert not lookup_package(tmp_db, "pypi", "flask", "2.3.2")
+
+
+def test_osv_versions_only_advisory_keeps_exact_pins(tmp_db):
+    data = _make_osv_entry(pkg="leftpad-py")
+    affected = data["affected"][0]
+    del affected["ranges"]
+    affected["versions"] = ["1.0.0", "1.0.2"]
+    _ingest_osv_file(tmp_db, json.dumps(data).encode(), "test.json")
+    tmp_db.commit()
+
+    assert len(_affected_rows_for(tmp_db, data["id"])) == 2
+    assert len(lookup_package(tmp_db, "pypi", "leftpad-py", "1.0.2")) == 1
+    assert not lookup_package(tmp_db, "pypi", "leftpad-py", "1.0.1")
+
+
+def test_osv_versions_outside_ecosystem_range_keep_only_uncovered_pins(tmp_db):
+    # PYSEC-2022-42980 shape: releases before the reintroduction window are
+    # only reachable through the enumerated list, so they must stay as pins.
+    data = _make_osv_entry(pkg="pillow")
+    affected = data["affected"][0]
+    affected["ranges"] = [
+        {"type": "GIT", "events": [{"introduced": "0"}, {"fixed": "a" * 40}]},
+        {"type": "ECOSYSTEM", "events": [{"introduced": "9.2.0"}, {"fixed": "9.3.0"}]},
+    ]
+    affected["versions"] = ["8.4.0", "9.0.0", "9.2.0", "9.2.1"]
+    _ingest_osv_file(tmp_db, json.dumps(data).encode(), "test.json")
+    tmp_db.commit()
+
+    pins = {r["introduced"] for r in _affected_rows_for(tmp_db, data["id"]) if r["last_affected"]}
+    assert pins == {"8.4.0", "9.0.0"}
+    for version in ("8.4.0", "9.0.0", "9.2.0", "9.2.1"):
+        assert len(lookup_package(tmp_db, "pypi", "pillow", version)) == 1
+    assert not lookup_package(tmp_db, "pypi", "pillow", "9.1.0")
+    assert not lookup_package(tmp_db, "pypi", "pillow", "9.3.0")
+
+
+_FLASK_V4_VECTOR = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+
+
+def test_stored_cvss4_score_is_rescored_from_vector_at_read_time(tmp_db):
+    # 0.105.0 ingested this vector as 9.4/critical with a homemade CVSS 4.0
+    # parser. The vector is authoritative; the stale stored score is not.
+    tmp_db.execute(
+        "INSERT INTO vulns(id,summary,severity,cvss_score,cvss_vector,source) VALUES (?,?,?,?,?,'osv')",
+        ("CVE-2018-1000656", "flask DoS", "critical", 9.4, _FLASK_V4_VECTOR),
+    )
+    _insert_affected(tmp_db, "CVE-2018-1000656", "pypi", "flask", "0", "0.12.3")
+
+    (single,) = lookup_package(tmp_db, "pypi", "flask", "0.12")
+    assert single.cvss_score == pytest.approx(8.7)
+    assert single.severity == "high"
+
+    from agent_bom.db.lookup import lookup_packages_batch
+
+    (batched,) = lookup_packages_batch(tmp_db, [("pypi", "flask", "0.12")])[("pypi", "flask", "0.12")]
+    assert batched.cvss_score == pytest.approx(8.7)
+    assert batched.severity == "high"
+
+
+def test_rescore_keeps_vendor_severity_label_that_disagrees_with_stored_score(tmp_db):
+    # A vendor label that was never derived from the stored score stays as-is.
+    tmp_db.execute(
+        "INSERT INTO vulns(id,summary,severity,cvss_score,cvss_vector,source) VALUES (?,?,?,?,?,'osv')",
+        ("GHSA-test-label", "labelled", "medium", 9.4, _FLASK_V4_VECTOR),
+    )
+    _insert_affected(tmp_db, "GHSA-test-label", "pypi", "flask", "0", "0.12.3")
+
+    (vuln,) = lookup_package(tmp_db, "pypi", "flask", "0.12")
+    assert vuln.cvss_score == pytest.approx(8.7)
+    assert vuln.severity == "medium"
+
+
+def test_rescore_leaves_v3_rows_and_unparseable_vectors_untouched(tmp_db):
+    tmp_db.execute(
+        "INSERT INTO vulns(id,summary,severity,cvss_score,cvss_vector,source) VALUES (?,?,?,?,?,'osv')",
+        ("CVE-2024-V3", "v3", "high", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"),
+    )
+    tmp_db.execute(
+        "INSERT INTO vulns(id,summary,severity,cvss_score,cvss_vector,source) VALUES (?,?,?,?,?,'osv')",
+        ("CVE-2024-BADV4", "bad", "critical", 9.1, "CVSS:4.0/garbage"),
+    )
+    _insert_affected(tmp_db, "CVE-2024-V3", "pypi", "flask", "0", "9.0")
+    _insert_affected(tmp_db, "CVE-2024-BADV4", "pypi", "flask", "0", "9.0")
+
+    by_id = {v.id: v for v in lookup_package(tmp_db, "pypi", "flask", "1.0")}
+    assert (by_id["CVE-2024-V3"].cvss_score, by_id["CVE-2024-V3"].severity) == (7.5, "high")
+    assert (by_id["CVE-2024-BADV4"].cvss_score, by_id["CVE-2024-BADV4"].severity) == (9.1, "critical")

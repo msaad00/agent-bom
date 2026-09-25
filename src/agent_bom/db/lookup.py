@@ -54,6 +54,35 @@ class LocalVuln:
     match_confidence_tier: Optional[str] = None
 
 
+@lru_cache(maxsize=16384)
+def _cvss4_base_score(vector: str) -> Optional[float]:
+    from agent_bom.scanners.risk import parse_cvss_vector
+
+    return parse_cvss_vector(vector)
+
+
+def _current_severity(severity: str, score: Optional[float], vector: Optional[str]) -> tuple[str, Optional[float]]:
+    """Re-derive a stored CVSS 4.0 score from its vector at read time.
+
+    Databases synced before the CVSS 4.0 scorer was fixed keep inflated
+    scores, and syncs never rewrite unchanged advisories. The vector is the
+    source of truth, so the score is recomputed from it (cached per vector).
+    Severity follows only when it was itself derived from the stale score; a
+    vendor label that disagrees with that score is left alone.
+    """
+    if not vector or not vector.upper().startswith("CVSS:4"):
+        return severity, score
+    fresh = _cvss4_base_score(vector)
+    if fresh is None or fresh == score:
+        return severity, score
+    from agent_bom.db.sync import _cvss_to_severity
+
+    stored_label = (severity or "").lower()
+    if score is None or stored_label in ("", "unknown") or stored_label == _cvss_to_severity(score):
+        severity = _cvss_to_severity(fresh)
+    return severity, fresh
+
+
 def _cve_candidates(vuln_id: str, raw_aliases: str) -> list[str]:
     """Return unique CVE identifiers associated with one vulnerability row."""
     candidates: list[str] = []
@@ -176,13 +205,14 @@ def lookup_package(
             raw_aliases = row["aliases"] or ""
             alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
             epss_prob, epss_pct, kev_date, kev_due = _resolve_row_enrichment(row, epss_map, kev_map)
+            severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
 
             results.append(
                 LocalVuln(
                     id=row["id"],
                     summary=row["summary"],
-                    severity=row["severity"],
-                    cvss_score=row["cvss_score"],
+                    severity=severity,
+                    cvss_score=cvss_score,
                     cvss_vector=row["cvss_vector"],
                     fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
                     epss_probability=epss_prob,
@@ -240,12 +270,13 @@ def cpe_lookup_package(
         row = rows.get(cve_id)
         if row is None:
             continue
+        severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
         out.append(
             LocalVuln(
                 id=row["id"],
                 summary=row["summary"],
-                severity=row["severity"],
-                cvss_score=row["cvss_score"],
+                severity=severity,
+                cvss_score=cvss_score,
                 fixed_version=row["fixed_version"],
                 cvss_vector=row["cvss_vector"],
                 source="nvd",
@@ -625,13 +656,14 @@ def lookup_packages_batch(
                 raw_aliases = row["aliases"] or ""
                 alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
                 epss_prob, epss_pct, kev_date, kev_due = _resolve_row_enrichment(row, epss_map, kev_map)
+                severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
 
                 vulns.append(
                     LocalVuln(
                         id=row["id"],
                         summary=row["summary"],
-                        severity=row["severity"],
-                        cvss_score=row["cvss_score"],
+                        severity=severity,
+                        cvss_score=cvss_score,
                         cvss_vector=row["cvss_vector"],
                         fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
                         epss_probability=epss_prob,

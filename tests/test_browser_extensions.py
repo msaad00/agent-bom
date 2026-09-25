@@ -444,3 +444,75 @@ def test_denied_browser_directory_does_not_abort_other_profiles(monkeypatch, tmp
     assert accessible in browser._chrome_profile_dirs()
     warning.assert_called_once()
     assert "private path" not in warning.call_args.args[0]
+
+
+def _skip_without_posix_permissions():
+    import os
+    import sys
+
+    import pytest
+
+    if sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("directory permission bits are not enforced here")
+
+
+def test_unreadable_firefox_profiles_dir_warns_instead_of_aborting(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from agent_bom.parsers import browser_extensions as browser
+
+    _skip_without_posix_permissions()
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(browser.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    profiles = tmp_path / ".mozilla" / "firefox"
+    (profiles / "abc.default").mkdir(parents=True)
+    warning = Mock()
+    monkeypatch.setattr("agent_bom.scanners.state.record_scan_warning", warning)
+    profiles.chmod(0)
+    try:
+        assert browser._firefox_profile_dirs() == []
+        assert browser.discover_browser_extensions(include_low_risk=True) == []
+    finally:
+        profiles.chmod(0o755)
+    assert warning.called
+    assert all(str(tmp_path) not in call.args[0] for call in warning.call_args_list)
+
+
+def test_unreadable_extension_dirs_warn_and_keep_readable_extensions(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+
+    _skip_without_posix_permissions()
+    warning = Mock()
+    monkeypatch.setattr("agent_bom.scanners.state.record_scan_warning", warning)
+
+    firefox_profile = tmp_path / "ff"
+    (firefox_profile / "extensions").mkdir(parents=True)
+    chrome_profile = tmp_path / "chrome"
+    denied_ext = chrome_profile / "Extensions" / "deniedid"
+    denied_ext.mkdir(parents=True)
+    readable = chrome_profile / "Extensions" / "okid" / "1.0"
+    readable.mkdir(parents=True)
+    (readable / "manifest.json").write_text(json.dumps({"name": "OK", "version": "1.0", "manifest_version": 3}))
+
+    denied_version = chrome_profile / "Extensions" / "versionid" / "2.0"
+    denied_version.mkdir(parents=True)
+    other_profile = tmp_path / "ff2"
+    denied_entry = other_profile / "extensions" / "denied@addon"
+    denied_entry.mkdir(parents=True)
+    ok_entry = other_profile / "extensions" / "ok@addon"
+    ok_entry.mkdir()
+    (ok_entry / "manifest.json").write_text(json.dumps({"name": "FF", "version": "1.0", "manifest_version": 2}))
+
+    locked = [firefox_profile / "extensions", denied_ext, denied_version, denied_entry]
+    for path in locked:
+        path.chmod(0)
+    try:
+        assert _scan_firefox_profile(firefox_profile) == []
+        assert [e.id for e in _scan_firefox_profile(other_profile)] == ["ok@addon"]
+        assert [e.id for e in _scan_chrome_profile(chrome_profile)] == ["okid"]
+    finally:
+        for path in locked:
+            path.chmod(0o755)
+    assert warning.call_count == 4

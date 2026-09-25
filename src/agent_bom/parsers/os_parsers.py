@@ -121,12 +121,15 @@ def parse_dpkg_packages(root: Path = Path("/")) -> list[Package]:
         root / "var/lib/dpkg/status.d",
     ]
     for status_path in status_paths:
-        if status_path.is_file():
-            _parse_dpkg_status_file(status_path, packages)
-            break
-        elif status_path.is_dir():
-            for f in sorted(status_path.iterdir()):
-                _parse_dpkg_status_file(f, packages)
+        try:
+            if status_path.is_file():
+                _parse_dpkg_status_file(status_path, packages)
+                break
+            elif status_path.is_dir():
+                for f in sorted(status_path.iterdir()):
+                    _parse_dpkg_status_file(f, packages)
+        except OSError:
+            _logger.warning("dpkg status database could not be read; OS package inventory is incomplete")
 
     return packages
 

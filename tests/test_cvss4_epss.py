@@ -10,6 +10,53 @@ from agent_bom.scanners import _parse_cvss4_vector, parse_cvss_vector, parse_osv
 # ── CVSS v4.0 vector parsing ──────────────────────────────────────────────────
 
 
+_FLASK_GHSA = {
+    # Live api.osv.dev shape of GHSA-562c-5r94-xh97 (flask 0.12): v3.1 then v4.0.
+    "id": "GHSA-562c-5r94-xh97",
+    "aliases": ["CVE-2018-1000656", "PYSEC-2018-66"],
+    "summary": "Flask is vulnerable to Denial of Service via incorrect encoding of JSON data",
+    "severity": [
+        {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"},
+        {"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"},
+    ],
+    "database_specific": {"severity": "HIGH"},
+    "affected": [
+        {
+            "package": {"ecosystem": "PyPI", "name": "flask"},
+            "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "0.12.3"}]}],
+        }
+    ],
+}
+
+
+def test_live_osv_finding_keeps_the_vector_paired_with_its_score():
+    from agent_bom.models import Package
+    from agent_bom.output.cyclonedx_fmt import _cyclonedx_vulnerability
+    from agent_bom.scanners import build_vulnerabilities
+
+    (vuln,) = build_vulnerabilities([_FLASK_GHSA], Package(name="flask", version="0.12", ecosystem="pypi"))
+    assert vuln.cvss_score == 8.7
+    assert vuln.severity == Severity.HIGH
+    assert vuln.cvss_vector == _FLASK_GHSA["severity"][1]["score"]
+
+    rating = _cyclonedx_vulnerability(vuln, "pkg:pypi/flask@0.12")["ratings"][0]
+    assert rating["method"] == "CVSSv4"
+    assert rating["score"] == 8.7
+    assert rating["vector"].startswith("CVSS:4.0/")
+
+
+def test_live_osv_v3_only_finding_is_labelled_cvssv31():
+    from agent_bom.models import Package
+    from agent_bom.output.cyclonedx_fmt import _cyclonedx_vulnerability
+    from agent_bom.scanners import build_vulnerabilities
+
+    data = dict(_FLASK_GHSA, severity=[_FLASK_GHSA["severity"][0]])
+    (vuln,) = build_vulnerabilities([data], Package(name="flask", version="0.12", ecosystem="pypi"))
+    assert vuln.cvss_score == 7.5
+    rating = _cyclonedx_vulnerability(vuln, "pkg:pypi/flask@0.12")["ratings"][0]
+    assert (rating["method"], rating["vector"]) == ("CVSSv31", data["severity"][0]["score"])
+
+
 class TestCVSS4Parsing:
     def test_single_high_confidentiality_impact_is_high_not_critical(self):
         """The former approximation scored this vector 9.4 instead of 8.7."""

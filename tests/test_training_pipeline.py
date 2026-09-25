@@ -70,6 +70,33 @@ experiment_id: 0
     assert run.security_flags[0]["type"] == "MISSING_PROVENANCE"
 
 
+def test_parse_mlflow_meta_yaml_unreadable_sibling_dirs_do_not_abort(tmp_path):
+    import os
+    import sys
+
+    import pytest
+
+    if sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("directory permission bits are not enforced here")
+    run_dir = tmp_path / "mlruns" / "0" / "locked"
+    run_dir.mkdir(parents=True)
+    (run_dir / "meta.yaml").write_text("run_id: locked\nexperiment_id: 0\n")
+    locked = [run_dir / "params", run_dir / "metrics", run_dir / "tags"]
+    for directory in locked:
+        directory.mkdir()
+        (directory / "x").write_text("1")
+        directory.chmod(0)
+    try:
+        run = parse_mlflow_meta_yaml(run_dir / "meta.yaml")
+    finally:
+        for directory in locked:
+            directory.chmod(0o755)
+    assert run is not None
+    assert run.run_id == "locked"
+    assert run.parameters == {} and run.metrics == {}
+    assert [flag["type"] for flag in run.security_flags] == ["MISSING_PROVENANCE"]
+
+
 def test_parse_mlflow_meta_yaml_missing_file(tmp_path):
     run = parse_mlflow_meta_yaml(tmp_path / "nonexistent.yaml")
     assert run is None

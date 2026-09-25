@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-from agent_bom.db.lookup import LocalVuln, lookup_package
+from agent_bom.db.lookup import LocalVuln, _current_severity, lookup_package
 from agent_bom.db.schema import DB_PATH, _validated_db_path, init_db
 from agent_bom.package_utils import normalize_package_name
 
@@ -636,12 +636,13 @@ def _brief_advisory(row: sqlite3.Row | dict[str, Any], *, section: str, match_re
     aliases = _row_aliases(row)
     cwes = _row_cwes(row)
     source = row["source"]
+    severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
     return {
         "id": row["id"],
         "canonical_ids": _canonical_ids(row["id"], aliases, cwes),
         "summary": row["summary"],
-        "severity": row["severity"],
-        "cvss_score": row["cvss_score"],
+        "severity": severity,
+        "cvss_score": cvss_score,
         "source": source,
         "source_policy": _source_policy(source),
         "published_at": row["published"],
@@ -723,12 +724,13 @@ def lookup_advisory(advisory_id: str, *, db_path: Path | None = None) -> dict[st
         coordinates = {(row["ecosystem"], row["package_name"]) for row in affected}
         fixes = {row["fixed"] for row in affected}
         fixed_version = next(iter(fixes)) if len(coordinates) == len(fixes) == 1 and all(fixes) else None
+        severity, cvss_score = _current_severity(first["severity"], first["cvss_score"], first["cvss_vector"])
         advisory = {
             "id": first["id"],
             "canonical_ids": canonical_ids,
             "summary": first["summary"],
-            "severity": first["severity"],
-            "cvss_score": first["cvss_score"],
+            "severity": severity,
+            "cvss_score": cvss_score,
             "cvss_vector": first["cvss_vector"],
             "fixed_version": fixed_version,
             "source": first["source"],

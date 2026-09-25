@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, Sequence
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -363,7 +363,7 @@ def default_graph_db_path() -> Path:
     Preference order:
     1. ``AGENT_BOM_GRAPH_DB`` explicit graph database path
     2. ``AGENT_BOM_DB`` shared SQLite database used by the API
-    3. ``<state dir>/db/graph.db`` via :mod:`agent_bom.state_home`
+    3. ``<state dir>/db/graph.db`` via :mod:`agent_bom.storage.state_home`
        (``AGENT_BOM_STATE_DIR``, else ``~/.agent-bom``; the demo estate pins it
        to its own directory)
     """

@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from agent_bom import state_home
 from agent_bom.analytics_retention import (
     analytics_max_events,
     analytics_max_findings,
@@ -28,6 +27,7 @@ from agent_bom.analytics_retention import (
 )
 from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.config import LOCAL_ANALYTICS_DB
+from agent_bom.storage import state_home
 
 SCHEMA_VERSION = 4
 DEFAULT_LOCAL_ANALYTICS_FILENAME = "local-analytics.sqlite"

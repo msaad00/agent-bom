@@ -31,7 +31,6 @@ from typing import TYPE_CHECKING, Mapping, Optional
 
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
-from agent_bom import state_home
 from agent_bom.agent_identity import check_identity
 from agent_bom.api.tracing import (
     build_traceparent,
@@ -53,6 +52,7 @@ from agent_bom.security import (
     sanitize_text,
     validate_arguments,
 )
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 

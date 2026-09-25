@@ -14,8 +14,8 @@ from typing import Any, Optional
 
 import click
 
-from agent_bom import state_home
 from agent_bom.cli._common import LISTEN_PORT_RANGE
+from agent_bom.storage import state_home
 
 
 def _require_optional_dependencies(command: str, extra: str, modules: dict[str, str]) -> None:
@@ -516,7 +516,7 @@ def _api_auth_summary(
 
 def _activate_demo_state_dir_or_fail() -> Path | None:
     """Pin demo-estate mode to its own data directory before any store opens."""
-    from agent_bom.state_home import activate_demo_state_dir
+    from agent_bom.storage.state_home import activate_demo_state_dir
 
     try:
         return activate_demo_state_dir()

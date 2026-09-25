@@ -38,7 +38,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Literal
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 # Shared truthy vocabulary — matches every gate in the codebase (side-scan,
 # audit-trail, the inventory flags, registry airgap). Kept here so the registry

@@ -25,7 +25,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, Mapping, Protocol, cast
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 SideScanProvider = Literal["aws", "azure", "gcp"]
 

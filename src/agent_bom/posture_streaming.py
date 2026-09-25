@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
-from agent_bom import state_home
 from agent_bom.security import redact_secret_url, sanitize_error, sanitize_sensitive_payload
+from agent_bom.storage import state_home
 
 POSTURE_EVENT_SCHEMA_VERSION = "1"
 WEBHOOK_SIGNATURE_FRESHNESS_SECONDS = 300

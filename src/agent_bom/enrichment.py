@@ -19,13 +19,13 @@ from typing import Optional
 import httpx
 from rich.console import Console
 
-from agent_bom import state_home
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
 from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability, compute_confidence
+from agent_bom.storage import state_home
 
 
 def _finalize_confidence(vulnerabilities: list[Vulnerability]) -> None:

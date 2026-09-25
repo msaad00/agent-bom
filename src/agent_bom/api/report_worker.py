@@ -11,11 +11,11 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agent_bom import state_home
 from agent_bom.api.models import JobStatus, ReportJob
 from agent_bom.api.report_artifact_store import publish_report_artifact
 from agent_bom.api.report_job_store import ReportClaim, ReportJobStore, get_report_job_store
 from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.storage import state_home
 
 _logger = logging.getLogger(__name__)
 

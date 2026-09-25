@@ -43,8 +43,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-from agent_bom import state_home
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,7 @@ from typing import Optional
 
 import httpx
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 

@@ -45,7 +45,6 @@ from typing import Any, Awaitable, Callable, Mapping
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom import state_home
 from agent_bom.a2a_auth_posture import evaluate_inline_mutual_auth
 from agent_bom.agent_identity import (
     ANONYMOUS,
@@ -114,6 +113,7 @@ from agent_bom.runtime.gateway_relay_contract import (
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.runtime.profile_resolution import ProfileResolutionCode
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")

@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from agent_bom import state_home
 from agent_bom.models import Package
 from agent_bom.package_utils import canonical_package_key, vulnerability_occurrence_key
 from agent_bom.sbom import parse_sbom_document
 from agent_bom.security import sanitize_path_label, sanitize_text
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 

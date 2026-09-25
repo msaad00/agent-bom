@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 

@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final
 
-from agent_bom import state_home
 from agent_bom.config import ADOPTION_EVENTS_DB, ADOPTION_EVENTS_ENABLED
+from agent_bom.storage import state_home
 
 SCHEMA_VERSION: Final = "adoption-funnel.v1"
 DEFAULT_FILENAME: Final = "adoption-events.sqlite"

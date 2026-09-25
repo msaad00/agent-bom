@@ -31,7 +31,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 # Default on-disk database filename used when neither AGENT_BOM_DB nor Postgres
 # is configured. Lives under AGENT_BOM_STATE_DIR (or ~/.agent-bom/) so it shares

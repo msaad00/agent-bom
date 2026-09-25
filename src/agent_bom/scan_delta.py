@@ -18,8 +18,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
-from agent_bom import state_home
 from agent_bom.package_utils import vulnerability_occurrence_key
+from agent_bom.storage import state_home
 
 _logger = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 # ── Test-suite isolation (the suite must never touch the real home) ──────────
 
@@ -263,7 +263,7 @@ with AssetTracker() as tracker:
 _DEMO_BOOT = """
 import json
 import agent_bom.api.server  # noqa: F401  -- import-time activation, as uvicorn does
-from agent_bom import state_home
+from agent_bom.storage import state_home
 from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
 
 summary = maybe_bootstrap_demo_estate()

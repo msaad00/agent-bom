@@ -17,11 +17,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol, cast
 
-from agent_bom import state_home
 from agent_bom.filesystem import scan_disk_path_native
 from agent_bom.models import Package
 from agent_bom.secret_scanner import scan_secrets
 from agent_bom.security import sanitize_text
+from agent_bom.storage import state_home
 
 from .side_scan import (
     CollectorMountController,

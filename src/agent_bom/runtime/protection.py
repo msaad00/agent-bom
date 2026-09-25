@@ -24,7 +24,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from agent_bom import state_home
 from agent_bom.alerts.dispatcher import AlertDispatcher
 from agent_bom.otel_ingest import parse_otel_traces
 from agent_bom.runtime.detectors import (
@@ -46,6 +45,7 @@ from agent_bom.runtime.incident_feedback import (
     RuntimeIncidentSink,
 )
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
+from agent_bom.storage import state_home
 
 logger = logging.getLogger(__name__)
 

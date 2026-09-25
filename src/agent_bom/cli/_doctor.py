@@ -12,7 +12,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 
 @click.command("doctor")

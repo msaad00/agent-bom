@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 # Test/embedding override; ``None`` resolves under the active state dir per call.
 DEFAULT_DB_PATH: Optional[Path] = None

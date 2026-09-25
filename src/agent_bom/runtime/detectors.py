@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from agent_bom import state_home
 from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
     DANGEROUS_ARG_PATTERNS,
@@ -40,6 +39,7 @@ from agent_bom.runtime.patterns import (
     PII_PATTERNS as _PII_PATTERNS,
 )
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text
+from agent_bom.storage import state_home
 
 
 class AlertSeverity(str, Enum):

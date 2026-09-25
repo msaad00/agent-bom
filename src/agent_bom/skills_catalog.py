@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agent_bom import state_home
+from agent_bom.storage import state_home
 
 
 def skills_catalog_path(path: str | Path | None = None) -> Path:

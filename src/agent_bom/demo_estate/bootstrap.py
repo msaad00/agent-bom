@@ -55,7 +55,7 @@ def _demo_seed_block_reason(graph_store: Any | None, tenant_id: str) -> str | No
     data), or the graph store already holds a non-showcase snapshot for the
     tenant (an explicit store override points the demo at operator evidence).
     """
-    from agent_bom.state_home import demo_state_isolated
+    from agent_bom.storage.state_home import demo_state_isolated
 
     if not demo_state_isolated():
         return "demo_state_not_isolated"

@@ -87,6 +87,13 @@ def _fusion_signals_for_path(graph: UnifiedGraph, hops: list[str]) -> list[tuple
                 add("internet_exposed", "Internet exposed", f"{node.label} is reachable from the public internet{port_detail}.", 15.0)
         if coerce_truthy(attrs.get("escalates_to_admin")):
             add("privilege_escalation_admin", "Admin escalation", f"{node.label} can assume an admin-privileged role.", 20.0)
+        elif coerce_truthy(attrs.get("escalates_to_conditional_admin")):
+            add(
+                "privilege_escalation_conditional_admin",
+                "Conditional admin escalation",
+                f"{node.label} can assume a role with conditional admin permissions (conditions not verified).",
+                18.0,
+            )
         elif coerce_truthy(attrs.get("can_escalate_privilege")):
             add("privilege_escalation", "Privilege escalation", f"{node.label} can assume a role with broader effective access.", 16.0)
         # Standing admin-equivalent permissions (holds admin directly) — an

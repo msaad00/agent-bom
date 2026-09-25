@@ -54,16 +54,20 @@ Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](do
 Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between the service, container, tool, workload identity and modeled data asset.
 Inspect the source receipts and carry the selected finding into remediation. A recorded path does not by itself prove exploitation or successful data access.
 
-<table>
-  <tr><th>Explore the agent neighborhood</th><th>Follow a finding to its evidence</th></tr>
-  <tr>
-    <td width="50%"><a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent neighborhood linking a role, agents, MCP servers, tool, credential reference, package and finding" width="450"></a></td>
-    <td width="50%"><a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab path linking a Pillow advisory, workload identity and modeled data asset" width="450"></a></td>
-  </tr>
-  <tr><td>Expand connections, focus an entity, then return to the loaded overview.</td><td>Inspect each hop’s source evidence, permissions and remediation.</td></tr>
-</table>
+**Follow a finding to its evidence**
 
-Select either preview for the full-size view. Left: labeled sample data. Right: reference lab with modeled infrastructure.
+[![Reference lab path linking a Pillow advisory, workload identity and modeled data asset](docs/images/correlation-graph-live.png)](docs/images/correlation-graph-live.png)
+
+Inspect each hop’s source evidence, permissions and remediation. This reference lab uses modeled infrastructure; select the image for full-size detail.
+
+<details>
+<summary>Explore an agent’s connected assets</summary>
+
+[![Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding](docs/images/context-map-live.png)](docs/images/context-map-live.png)
+
+Expand connections, focus an entity, then return to the loaded overview. This example uses labeled sample data.
+
+</details>
 
 <details>
 <summary>Explore graph navigation, permissions and evidence</summary>

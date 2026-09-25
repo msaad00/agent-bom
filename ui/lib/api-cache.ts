@@ -16,6 +16,9 @@
 // - Mutating helpers (POST/PUT/DELETE) invalidate cache entries by prefix
 //   so a write to /v1/scan/{id} flushes /v1/scan, /v1/scan/{id}, and any
 //   nested children without the call site needing to remember every key.
+// - Retain at most 64 responses, evict least-recently-used entries, and
+//   reclaim expired entries on reads. Invalidation detaches pending requests
+//   so an old response cannot repopulate the cache.
 // - The cache is a plain Map. It does NOT survive a page reload. That's
 //   intentional: server-side state is the source of truth, and the cache
 //   exists only to absorb intra-page render storms.
@@ -40,6 +43,7 @@ const CACHE = new Map<string, CacheEntry<unknown>>();
 const INFLIGHT = new Map<string, Promise<unknown>>();
 
 const DEFAULT_TTL_MS = 5_000;
+const MAX_ENTRIES = 64;
 
 function _now(): number {
   return Date.now();
@@ -47,10 +51,15 @@ function _now(): number {
 
 export async function cachedGet<T>(key: string, fetcher: () => Promise<T>, options: CacheOptions = {}): Promise<T> {
   const ttl = options.ttlMs ?? DEFAULT_TTL_MS;
+  for (const [entryKey, entry] of CACHE) {
+    if (entry.expiresAt <= _now()) CACHE.delete(entryKey);
+  }
 
   if (!options.noStore) {
     const cached = CACHE.get(key) as CacheEntry<T> | undefined;
     if (cached && cached.expiresAt > _now()) {
+      CACHE.delete(key);
+      CACHE.set(key, cached);
       return cached.value;
     }
   }
@@ -58,17 +67,18 @@ export async function cachedGet<T>(key: string, fetcher: () => Promise<T>, optio
   const inflight = INFLIGHT.get(key) as Promise<T> | undefined;
   if (inflight) return inflight;
 
-  const promise: Promise<T> = (async () => {
-    try {
-      const value = await fetcher();
-      if (ttl > 0) {
-        CACHE.set(key, { value, expiresAt: _now() + ttl });
-      }
-      return value;
-    } finally {
-      INFLIGHT.delete(key);
+  // Register before invoking the fetcher; invalidation detaches old requests.
+  // Only the currently registered request may populate or clear this key.
+  const promise: Promise<T> = Promise.resolve().then(fetcher).then((value) => {
+    if (ttl > 0 && INFLIGHT.get(key) === promise) {
+      CACHE.delete(key);
+      CACHE.set(key, { value, expiresAt: _now() + ttl });
+      while (CACHE.size > MAX_ENTRIES) CACHE.delete(CACHE.keys().next().value!);
     }
-  })();
+    return value;
+  }).finally(() => {
+    if (INFLIGHT.get(key) === promise) INFLIGHT.delete(key);
+  });
 
   INFLIGHT.set(key, promise);
   return promise;
@@ -82,6 +92,9 @@ export function invalidate(prefix: string): number {
       CACHE.delete(key);
       dropped++;
     }
+  }
+  for (const key of INFLIGHT.keys()) {
+    if (key.startsWith(prefix)) INFLIGHT.delete(key);
   }
   return dropped;
 }

@@ -11,6 +11,7 @@ import { buildGraphInvestigationHref } from "@/lib/attack-paths";
  * Non-human identity governance posture from GET /v1/graph/nhi/governance.
  */
 export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string | undefined; refreshKey?: number }) {
+  const [query, setQuery] = useState("");
   const [posture, setPosture] = useState<NhiGovernancePosture | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,29 +42,22 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
   const rawCounts = posture?.counts ?? {};
   const identities = Array.isArray(posture?.identities) ? posture.identities : [];
 
+  const matches = identities.filter(identity => [identity.name, identity.label, identity.node_id].some(value => typeof value === "string" && value.toLowerCase().includes(query.trim().toLowerCase())));
+
   // `/v1/graph/nhi/governance` returns scalar rollups alongside at least one
   // NESTED breakdown (`by_risk_band` → {critical, medium, low}). Rendering a
   // value with String() turned that object into the literal text
   // "[object Object]" on the Identity page. Flatten one level so a breakdown
   // becomes its own pills — which is the useful reading anyway: "critical 1"
   // says something, "[object Object]" says the page is broken.
-  const counts: Array<{ key: string; label: string; value: string }> = [];
-  for (const [key, value] of Object.entries(rawCounts)) {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      const prefix = key.replace(/^by_/, "").replaceAll("_", " ");
-      for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
-        if (childValue === null || typeof childValue === "object") continue;
-        counts.push({
-          key: `${key}.${childKey}`,
-          label: `${prefix} · ${childKey.replaceAll("_", " ")}`,
-          value: String(childValue),
-        });
-      }
-      continue;
-    }
-    if (value === null || value === undefined) continue;
-    counts.push({ key, label: key.replaceAll("_", " "), value: String(value) });
-  }
+  const words = (value: string) => value.replaceAll("_", " ");
+  const counts = Object.entries(rawCounts).flatMap(([key, value]) => {
+    const entries = value !== null && typeof value === "object" && !Array.isArray(value)
+      ? Object.entries(value).map(([child, count]) => [`${words(key.replace(/^by_/, ""))} · ${words(child)}`, count] as const)
+      : [[words(key), value] as const];
+    return entries.filter(([, count]) => count != null && typeof count !== "object")
+      .map(([label, count]) => ({ key: `${key}.${label}`, label, value: String(count) }));
+  });
 
   return (
     <section
@@ -106,9 +100,14 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
             ) : null}
           </div>
 
-          {identities.length > 0 ? (
+          {identities.length > 0 && <label className="mt-3 block text-xs text-ink-secondary">
+            Find a discovered identity
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Name or exact identifier" className="mt-1 w-full rounded-lg border border-outline bg-background px-3 py-2 text-foreground" />
+            <span className="mt-1 block">Showing {Math.min(8, matches.length)} of {matches.length} matches · {identities.length} loaded. Refine search for more.</span>
+          </label>}
+          {matches.length > 0 ? (
             <ul className="mt-3 space-y-1.5">
-              {identities.slice(0, 8).map((identity, index) => {
+              {matches.slice(0, 8).map((identity, index) => {
                 const id = String(identity.node_id || identity.identity_id || index);
                 const score =
                   typeof identity.risk_score === "number" ? String(identity.risk_score) : "—";
@@ -129,7 +128,7 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
                     >
                       <span className="inline-flex min-w-0 items-center gap-2">
                         <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                        <span className="truncate text-[color:var(--foreground)]">{label}</span>
+                        <span className="min-w-0 text-[color:var(--foreground)]"><span className="block break-words">{label}</span><code className="mt-1 block break-all text-[10px] text-ink-secondary">{id}</code></span>
                       </span>
                       <span className="font-mono text-[color:var(--text-secondary)]">{score}</span>
                     </Link>

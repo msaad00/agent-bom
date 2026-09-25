@@ -864,7 +864,11 @@ def build_estate_findings(
     findings.extend(kept_risk_findings)
     current_snapshot = next(snapshot for snapshot in estate.snapshots if snapshot.stage.value == "current")
     first_seen = current_snapshot.observed_at.isoformat()
+    from agent_bom.demo_estate.estate_graph import _finding_node_id
+
     for finding in findings:
+        finding.node_id = finding.asset.identifier
+        finding.finding_node_id = _finding_node_id(finding)
         finding.owner = _TRIAGE_OWNER_BY_DOMAIN[finding.security_domain]
         finding.first_seen = first_seen
         finding.evidence["triage_owner_source"] = "synthetic-demo-domain-routing"

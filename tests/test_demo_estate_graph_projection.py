@@ -455,3 +455,13 @@ def test_demo_agent_without_model_inventory_has_no_model_reference(estate) -> No
     assert all("uses_model" not in agent.tags for agent in agents)
     known = {asset.asset_id for asset in assets}
     assert all(agent.tags["uses_framework"] in known for agent in agents)
+
+
+def test_estate_finding_fks_resolve_exact_occurrence_in_projected_graph(projected, estate_findings):
+    graph, _summary = projected
+    for finding in estate_findings:
+        assert finding.node_id == finding.asset.identifier
+        assert finding.node_id in graph.nodes
+        assert finding.finding_node_id in graph.nodes
+        node = graph.nodes[finding.finding_node_id]
+        assert node.attributes["finding_id"] == finding.id

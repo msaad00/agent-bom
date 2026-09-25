@@ -581,3 +581,31 @@ test("failed asset summary keeps its requested snapshot and filters", async ({ p
   const link = page.getByRole("link", {name: "Open asset inventory"});
   await expect(link).toHaveAttribute("href", "/inventory?scan=locked-snapshot&environment=production&provider=aws&type=agent&min_severity=high");
 });
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`scoped history remains readable in ${theme} at ${width}px`, async ({page}, testInfo) => {
+      await page.setViewportSize({width, height: 1000});
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeProductFixture(page);
+      let historyRequests = 0;
+      await page.route("**/v1/trends?**", route => {
+        historyRequests++;
+        return route.fulfill({json: { count: 3, data_points: [0, 1, 2].map(index => ({
+          scan_id: `history-${index}`, timestamp: `2026-09-${20 + index}T12:00:00Z`, scope_id: "repository-payments-production",
+          comparison: {status: index ? "comparable" : "unavailable", reason: index ? null : "no_previous_snapshot",
+            new_findings: index ? index + 2 : null, still_open: index ? 4 : null, no_longer_detected: index ? index : null},
+          open_finding_age_days: 5 + index, evidence_age_days: index ? 1 : null, age_sample_count: 8, evidence_sample_count: index ? 8 : 0,
+        }))}});
+      });
+      await page.goto("/");
+      await expect(page.getByText("Changes over time", {exact: true})).toBeVisible();
+      expect(historyRequests).toBe(0);
+      await page.getByText("Changes over time", {exact: true}).click();
+      await expect(page.getByRole("region", {name: "History values"})).toBeVisible();
+      await expect(page.getByRole("img", {name: /^Newly detected findings/})).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.getByText("Changes over time", {exact: true}).locator("..").screenshot({path: testInfo.outputPath(`history-${theme}-${width}.png`)});
+    });
+  }
+}

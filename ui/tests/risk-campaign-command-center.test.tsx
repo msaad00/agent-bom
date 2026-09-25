@@ -672,6 +672,19 @@ describe("RiskCampaignCommandCenter", () => {
     expect(screen.queryByRole("button", { name: /Load more awaiting verification/i })).not.toBeInTheDocument();
   });
 
+  it("starts assignment editing from refreshed server values", async () => {
+    vi.mocked(api.updateRiskCampaign).mockResolvedValue({
+      ...response.campaigns[0]!, owner: "refreshed-owner", sla_due_at: "2026-08-01T00:00:00.000Z", version: 5,
+    });
+    render(<RiskCampaignCommandCenter />);
+    await screen.findByText(response.campaigns[0]!.title);
+    fireEvent.change(screen.getByLabelText(/Campaign state/i), { target: { value: "blocked" } });
+    await screen.findByText(/refreshed-owner/);
+    fireEvent.click(screen.getByRole("button", { name: /Edit owner and SLA/i }));
+    expect(screen.getByLabelText(/Campaign owner/i)).toHaveValue("refreshed-owner");
+    expect(screen.getByLabelText(/Campaign SLA/i)).toHaveValue("2026-08-01");
+  });
+
   it("assigns an owner and SLA through the campaign workflow API", async () => {
     vi.mocked(api.updateRiskCampaign).mockResolvedValue({
       ...response.campaigns[0]!,

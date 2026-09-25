@@ -91,6 +91,19 @@ def finding_id_from_node_attributes(attrs: dict | None) -> str | None:
     return None
 
 
+def finding_ids_for_asset_path(attrs: dict | None, path_hops: list[str]) -> list[str]:
+    """Resolve occurrence IDs only for explicitly linked assets on this path."""
+    if not isinstance(attrs, dict):
+        return []
+    mapping = attrs.get("finding_ids_by_asset")
+    if isinstance(mapping, dict):
+        return sorted(
+            {fid for hop in path_hops if isinstance(mapping.get(hop), list) for fid in mapping[hop] if isinstance(fid, str) and fid}
+        )
+    legacy = finding_id_from_node_attributes(attrs)
+    return [legacy] if legacy else []
+
+
 def link_findings_to_graph_nodes(findings: list[Any], graph: Any) -> int:
     """Stamp Finding ↔ UnifiedNode FKs both ways. Returns number of findings linked.
 
@@ -118,6 +131,7 @@ def link_findings_to_graph_nodes(findings: list[Any], graph: Any) -> int:
                 getattr(node, "id", None),
                 getattr(node, "label", None),
                 (getattr(node, "attributes", None) or {}).get("vulnerability_id"),
+                finding_id_from_node_attributes(getattr(node, "attributes", None)),
             ),
         ):
             finding_nodes[str(key).lower()] = node
@@ -129,7 +143,7 @@ def link_findings_to_graph_nodes(findings: list[Any], graph: Any) -> int:
             continue
         cve = str(getattr(finding, "cve_id", None) or getattr(finding, "vulnerability_id", None) or "").strip()
         title = str(getattr(finding, "title", "") or "")
-        candidates = [cve, fid]
+        candidates = [fid, cve]
         if cve:
             candidates.append(f"vuln:{cve}")
         if ":" in title:
@@ -159,27 +173,51 @@ def link_findings_to_graph_nodes(findings: list[Any], graph: Any) -> int:
         if node_id and not getattr(finding, "finding_node_id", None):
             setattr(finding, "finding_node_id", node_id)
 
+        # An explicit occurrence resource outranks a generic package FK produced
+        # by a scanner adapter. Never pick an arbitrary shared-advisory neighbor.
+        asset = getattr(finding, "asset", None)
+        evidence = getattr(finding, "evidence", None) or {}
+        explicit = [
+            evidence.get("resource_id") if isinstance(evidence, dict) else None,
+            getattr(asset, "identifier", None),
+            getattr(finding, "node_id", None),
+        ]
+        asset_node_id = next((value for value in explicit if isinstance(value, str) and value in nodes), None)
+        if asset_node_id is None:
+            predecessors = {
+                edge.source
+                for edge in getattr(graph, "edges", []) or []
+                if edge.target == node_id
+                and getattr(edge.relationship, "value", edge.relationship) == RelationshipType.VULNERABLE_TO.value
+                and edge.source in nodes
+            }
+            if len(predecessors) == 1:
+                asset_node_id = next(iter(predecessors))
+        if asset_node_id:
+            setattr(finding, "node_id", asset_node_id)
+        # Exact Finding.id matches also repair stale generic advisory FKs.
+        if finding_id_from_node_attributes(getattr(match, "attributes", None)) == fid:
+            setattr(finding, "finding_node_id", node_id)
         attrs = getattr(match, "attributes", None)
-        if isinstance(attrs, dict) and not finding_id_from_node_attributes(attrs):
-            attrs["finding_id"] = fid
-            attrs["canonical_finding_id"] = str(getattr(finding, "canonical_id", None) or fid)
-
-        if not getattr(finding, "node_id", None):
-            # Prefer a VULNERABLE_TO predecessor (package/server) as the estate node.
-            asset_node_id = None
-            for edge in getattr(graph, "edges", []) or []:
-                if getattr(edge, "target", None) != node_id:
-                    continue
-                rel = getattr(edge, "relationship", None)
-                rel_val = getattr(rel, "value", rel)
-                if rel_val != RelationshipType.VULNERABLE_TO.value:
-                    continue
-                src = getattr(edge, "source", None)
-                if src and src in nodes:
-                    asset_node_id = src
-                    break
-            if asset_node_id:
-                setattr(finding, "node_id", asset_node_id)
+        if isinstance(attrs, dict) and asset_node_id:
+            mapping = attrs.get("finding_ids_by_asset")
+            if not isinstance(mapping, dict):
+                mapping = {}
+                attrs["finding_ids_by_asset"] = mapping
+            members = mapping.get(asset_node_id)
+            if not isinstance(members, list):
+                members = []
+                mapping[asset_node_id] = members
+            if fid not in members:
+                members.append(fid)
+                members.sort()
+            all_ids = {value for values in mapping.values() if isinstance(values, list) for value in values if isinstance(value, str)}
+            if len(all_ids) == 1:
+                attrs["finding_id"] = fid
+                attrs["canonical_finding_id"] = str(getattr(finding, "canonical_id", None) or fid)
+            else:
+                for key in ("finding_id", "canonical_finding_id", "unified_finding_id"):
+                    attrs.pop(key, None)
         linked += 1
     return linked
 
@@ -209,6 +247,7 @@ __all__ = [
     "canonical_asset_type",
     "entity_type_for_asset_type",
     "finding_id_from_node_attributes",
+    "finding_ids_for_asset_path",
     "link_findings_to_graph_nodes",
     "link_report_findings_to_graph",
     "normalize_asset_type",

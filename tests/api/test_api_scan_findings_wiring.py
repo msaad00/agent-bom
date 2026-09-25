@@ -368,3 +368,33 @@ def test_findings_read_not_shed_under_normal_load(wired_client):
         assert findings["rejected"] == 0
     finally:
         reset_backpressure_for_tests()
+
+
+def test_reachability_does_not_cross_occurrences_or_snapshots():
+    class ExactStore:
+        def attack_paths(self, **kwargs):
+            return (
+                "scan-a",
+                "2026-09-24",
+                [
+                    AttackPath(
+                        source="agent:a",
+                        target="vuln:CVE-2026-1",
+                        hops=["agent:a", "package:a", "vuln:CVE-2026-1"],
+                        edges=["invoked", "vulnerable_to"],
+                        finding_ids=["occurrence-a"],
+                        vuln_ids=["CVE-2026-1"],
+                    )
+                ],
+                1,
+            )
+
+    rows = [
+        {"finding_id": "occurrence-a", "scan_id": "scan-a", "node_id": "package:a", "cve_id": "CVE-2026-1"},
+        {"finding_id": "occurrence-b", "scan_id": "scan-a", "node_id": "package:b", "cve_id": "CVE-2026-1"},
+        {"finding_id": "occurrence-a", "scan_id": "scan-b", "node_id": "package:a", "cve_id": "CVE-2026-1"},
+    ]
+    projected = project_persisted_graph_reachability(rows, graph_store=ExactStore(), tenant_id="t", scan_id="scan-a")
+    assert projected.rows[0]["graph_reachable_from_agents"] == ["agent:a"]
+    assert projected.rows[1]["graph_reachable"] is None
+    assert projected.rows[2]["graph_reachable"] is None

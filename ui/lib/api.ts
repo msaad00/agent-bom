@@ -1413,7 +1413,12 @@ export const api = {
   getPosture: () => get<PostureResponse>("/v1/posture"),
 
   /** Idempotent scan-backed posture history, newest point first. */
-  getTrends: (limit = 30) => get<TrendsResponse>(`/v1/trends?limit=${encodeURIComponent(String(limit))}`),
+  getTrends: (limit = 30, options: { days?: number; scope_id?: string } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (options.days !== undefined) params.set("days", String(options.days));
+    if (options.scope_id) params.set("scope_id", options.scope_id);
+    return get<TrendsResponse>(`/v1/trends?${params}`);
+  },
 
   /** Cross-domain posture snapshot for the unified overview landing page */
   getOverview: () => get<OverviewResponse>("/v1/overview"),

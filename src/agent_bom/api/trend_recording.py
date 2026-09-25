@@ -42,8 +42,11 @@ def trend_point_from_scan_result(
     tenant_id: str,
     scan_id: str | None = None,
     completed_at: str | None = None,
+    scope_id: str | None = None,
 ) -> TrendPoint | None:
     """Build one honest, retry-safe trend point from canonical scan JSON."""
+    from agent_bom.api.trend_comparison import comparison_metadata
+
     scorecard = result.get("posture_scorecard")
     if not isinstance(scorecard, Mapping) or bool(scorecard.get("no_data")):
         return None
@@ -73,6 +76,7 @@ def trend_point_from_scan_result(
         posture_grade=grade,
         tenant_id=str(tenant_id or "default"),
         scan_id=resolved_scan_id,
+        comparison_metadata=comparison_metadata(result, scope_id, timestamp),
     )
 
 
@@ -82,6 +86,7 @@ def record_scan_trend_best_effort(
     tenant_id: str,
     scan_id: str | None = None,
     completed_at: str | None = None,
+    scope_id: str | None = None,
 ) -> bool:
     """Persist one trend point; return whether a gradable point was recorded."""
     point = trend_point_from_scan_result(
@@ -89,13 +94,17 @@ def record_scan_trend_best_effort(
         tenant_id=tenant_id,
         scan_id=scan_id,
         completed_at=completed_at,
+        scope_id=scope_id,
     )
     if point is None:
         return False
     try:
         from agent_bom.api.stores import _get_trend_store
+        from agent_bom.api.trend_comparison import retain_open_interval
 
-        _get_trend_store().record(point)
+        store = _get_trend_store()
+        retain_open_interval(point, store.get_history(limit=365, tenant_id=point.tenant_id))
+        store.record(point)
     except Exception as exc:  # noqa: BLE001 - trend history must not fail a completed scan
         _logger.warning("Posture trend persistence skipped: %s", sanitize_text(sanitize_error(exc, generic=True)))
         return False

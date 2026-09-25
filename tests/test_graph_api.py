@@ -3628,3 +3628,52 @@ def test_fix_first_agent_focus_accepts_canonical_identity(selector, expected):
     graph.add_node(UnifiedNode(id="pkg:cursor", entity_type=EntityType.PACKAGE, label="cursor"))
     path = AttackPath(source="agent:cursor", target="pkg:cursor", hops=["agent:cursor", "pkg:cursor"], edges=["uses"], composite_risk=1)
     assert graph_routes._path_matches_focus(graph, path, cve="", package="", agent=selector) is expected
+
+
+def test_paged_graph_serialization_runs_off_request_event_loop(recording_graph_store, monkeypatch):
+    """Even paginated dictionaries must avoid FastAPI's large inline JSON walk."""
+    import threading
+
+    request_threads: list[int] = []
+    serialization_threads: list[int] = []
+    original_tenant = graph_routes._tenant
+    original_serialize = graph_routes._serialize_attack_path_batch
+
+    def tenant(request):
+        request_threads.append(threading.get_ident())
+        return original_tenant(request)
+
+    def serialize(*args, **kwargs):
+        serialization_threads.append(threading.get_ident())
+        return original_serialize(*args, **kwargs)
+
+    monkeypatch.setattr(graph_routes, "_tenant", tenant)
+    monkeypatch.setattr(graph_routes, "_serialize_attack_path_batch", serialize)
+    response = TestClient(app).get("/v1/graph", params={"scan_id": "store-scan"})
+    assert response.status_code == 200
+    assert response.json()["nodes"]
+    assert serialization_threads
+    assert not set(serialization_threads).intersection(request_threads)
+
+
+def test_graph_runtime_evidence_enrichment_runs_off_request_event_loop(recording_graph_store, monkeypatch):
+    import threading
+
+    request_threads: list[int] = []
+    enrichment_threads: list[int] = []
+    original_tenant = graph_routes._tenant
+
+    def tenant(request):
+        request_threads.append(threading.get_ident())
+        return original_tenant(request)
+
+    def enrich(graph, tenant_id):
+        enrichment_threads.append(threading.get_ident())
+        return graph
+
+    monkeypatch.setattr(graph_routes, "_tenant", tenant)
+    monkeypatch.setattr(graph_routes, "_enrich_loaded_graph_runtime_evidence", enrich)
+    response = TestClient(app).get("/v1/graph", params={"scan_id": "store-scan", "static_only": True})
+    assert response.status_code == 200
+    assert enrichment_threads
+    assert not set(enrichment_threads).intersection(request_threads)

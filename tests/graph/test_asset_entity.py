@@ -144,3 +144,33 @@ def test_toxic_finding_rehydrate_preserves_graph_fks():
     assert findings[0].node_id == "cloud_resource:web"
     assert findings[0].finding_node_id == "vuln:CVE-1"
     assert findings[0].entity_type == "cloud_resource"
+
+
+def test_shared_advisory_occurrences_stay_bound_to_their_asset_paths():
+    from agent_bom.api.routes.graph import _finding_ids_for_nodes
+
+    graph = UnifiedGraph(scan_id="snapshot-a", tenant_id="tenant-a")
+    vuln = UnifiedNode(id="vuln:CVE-2026-0001", entity_type=EntityType.VULNERABILITY, label="CVE-2026-0001")
+    graph.add_node(vuln)
+    findings = []
+    for suffix in ("a", "b"):
+        package_id = f"package:{suffix}"
+        graph.add_node(UnifiedNode(id=package_id, entity_type=EntityType.PACKAGE, label="same-package"))
+        graph.add_edge(UnifiedEdge(source=package_id, target=vuln.id, relationship=RelationshipType.VULNERABLE_TO))
+        findings.append(
+            Finding(
+                id=f"occurrence-{suffix}",
+                finding_type=FindingType.CVE,
+                source=FindingSource.MCP_SCAN,
+                asset=Asset(name="same-package", asset_type="package", identifier=package_id),
+                severity="high",
+                title="CVE-2026-0001",
+                cve_id="CVE-2026-0001",
+            )
+        )
+    assert link_findings_to_graph_nodes(findings, graph) == 2
+    assert [finding.node_id for finding in findings] == ["package:a", "package:b"]
+    assert finding_id_from_node_attributes(vuln.attributes) is None
+    assert _finding_ids_for_nodes(graph.nodes, ["package:a", vuln.id], []) == ["occurrence-a"]
+    assert _finding_ids_for_nodes(graph.nodes, ["package:b", vuln.id], []) == ["occurrence-b"]
+    assert "occurrence-a" not in _finding_ids_for_nodes(graph.nodes, ["package:unknown", vuln.id], [])

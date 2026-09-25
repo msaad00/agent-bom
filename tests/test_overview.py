@@ -1534,3 +1534,74 @@ def test_dual_source_occurrences_reconcile_overview_pagination_and_exports():
     assert next(row for row in overview["coverage"] if row["domain"] == "aispm")["count"] == 3
     exported = list(iter_current_findings("default", status="all", page_size=1))
     assert len(exported) == len({row["id"] for row in exported}) == 3
+
+
+def test_revision_aggregate_survives_response_expiry_without_retaining_reports(tmp_path, monkeypatch):
+    from agent_bom.api.routes import overview
+    from agent_bom.api.store import SQLiteJobStore
+    from agent_bom.api.stores import set_job_store
+
+    _clear_jobs()
+    _add_done_job(
+        [], result_extra={"findings": [{"id": "exact-occurrence", "severity": "high", "source": "sca"}], "unused_report": "x" * 1_000_000}
+    )
+    persisted = SQLiteJobStore(str(tmp_path / "jobs.db"))
+    persisted.put(_get_store().list_all(tenant_id="default")[0])
+    set_job_store(persisted)
+    monkeypatch.setattr(overview, "_overview_cache_ttl", lambda: 0)
+    live = {"active_surfaces": 0}
+    monkeypatch.setattr(overview, "_runtime_snapshot", lambda *args: dict(live))
+    client = TestClient(app)
+    first = client.get("/v1/overview", headers=_AUTH_HEADERS)
+    assert first.status_code == 200
+    assert overview._scan_aggregate_cache
+    assert all(entry[2] < 20_000 for entry in overview._scan_aggregate_cache.values())
+    read_jobs = persisted.list_all
+    monkeypatch.setattr(persisted, "list_all", lambda **kwargs: pytest.fail("unchanged reports hydrated after response expiry"))
+    live["active_surfaces"] = 2
+    second = client.get("/v1/overview", headers=_AUTH_HEADERS)
+    assert second.status_code == 200
+    assert second.json()["finding_counts"] == first.json()["finding_counts"]
+    assert second.json()["coverage"] == first.json()["coverage"]
+    assert second.json()["domains"]["runtime"]["metric"] == 2
+    monkeypatch.setattr(persisted, "list_all", read_jobs)
+    changed = read_jobs(tenant_id="default")[0]
+    changed.result["findings"][0]["severity"] = "low"
+    persisted.put(changed)
+    third = client.get("/v1/overview", headers=_AUTH_HEADERS)
+    assert third.status_code == 200
+    assert third.json()["finding_counts"]["high"] == 0
+    assert third.json()["finding_counts"]["low"] == 1
+    _clear_jobs()
+
+
+def test_scan_aggregate_cache_enforces_budget_expiry_and_tenant_keys(monkeypatch):
+    from agent_bom.api.routes import overview
+
+    overview._reset_overview_cache()
+    monkeypatch.setattr(overview, "_SCAN_AGGREGATE_MAX_BYTES", 100)
+    overview._scan_aggregate_put("tenant-a|revision-1|hub-1|90", {"count": 1}, [])
+    assert overview._scan_aggregate_get("tenant-b|revision-1|hub-1|90") is None
+    overview._scan_aggregate_put("large", {"payload": "x" * 101}, [])
+    assert overview._scan_aggregate_get("large") is None
+    assert sum(entry[2] for entry in overview._scan_aggregate_cache.values()) <= 100
+    monkeypatch.setattr(overview.time, "monotonic", lambda: float("inf"))
+    assert overview._scan_aggregate_get("tenant-a|revision-1|hub-1|90") is None
+    overview._reset_overview_cache()
+
+
+def test_scan_aggregate_expires_at_next_window_boundary(monkeypatch):
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from agent_bom.api.routes import overview
+    from agent_bom.api import time_window
+
+    overview._reset_overview_cache()
+    monkeypatch.setattr(time_window, "default_window_days", lambda: 90)
+    now = datetime.now(timezone.utc)
+    job = SimpleNamespace(completed_at=(now - timedelta(days=90) + timedelta(seconds=2)).isoformat())
+    before = overview.time.monotonic()
+    overview._scan_aggregate_put("boundary", {"count": 1}, [job])
+    expires = overview._scan_aggregate_cache["boundary"][0]
+    assert 0 < expires - before <= 2
+    overview._reset_overview_cache()

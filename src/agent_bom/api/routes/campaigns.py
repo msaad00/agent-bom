@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime
 from functools import partial
 from typing import Any, Literal, cast
@@ -17,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.campaign_store import MembershipEvidence, get_campaign_store
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
-from agent_bom.api.risk_campaigns import derive_campaigns
+from agent_bom.api.risk_campaigns import CAMPAIGN_FINDING_LIMIT, derive_campaigns
 from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
@@ -279,23 +280,87 @@ def _actor(request: Request) -> str:
     return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "system"
 
 
+def _campaign_source_revision(request: Request) -> tuple[str, int]:
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.routes.scan import _completed_jobs_for_tenant
+    from agent_bom.api.stores import _get_store
+
+    tenant_id = _tenant(request)
+    store = _get_store()
+    revision = getattr(store, "overview_evidence_revision", None)
+    if callable(revision):
+        jobs_revision = str(revision(tenant_id))
+    else:
+        # Compatibility stores have no durable counter. Include complete result
+        # contents so same-count replacements cannot pass as an unchanged source.
+        digest = hashlib.sha256()
+        for job in sorted(_completed_jobs_for_tenant(tenant_id), key=lambda item: item.job_id):
+            digest.update(job.model_dump_json().encode())
+        jobs_revision = digest.hexdigest()
+    return jobs_revision, get_compliance_hub_store().overview_evidence_revision(tenant_id)
+
+
 def _load_findings(request: Request) -> dict[str, Any]:
+    """Walk the canonical cursor without treating a bounded or unstable walk as complete."""
     from agent_bom.api.routes.scan import _list_findings_impl
 
-    payload = _list_findings_impl(
-        request,
-        q=None,
-        severity=None,
-        scan_id=None,
-        sort="effective_reach",
-        limit=1000,
-        offset=0,
-        cursor=None,
-        approximate_total=False,
-        window_days=90,
-    )
-    payload["findings"] = [row for row in payload.get("findings") or [] if isinstance(row, dict)]
-    return payload
+    source_revision = _campaign_source_revision(request)
+    rows: list[dict[str, Any]] = []
+    identities: set[str] = set()
+    seen_cursors: set[str] = set()
+    cursor: str | None = None
+    source: dict[str, Any] = {}
+    deadline = time.monotonic() + 10.0
+    for _ in range(50):
+        page = _list_findings_impl(
+            request,
+            q=None,
+            severity=None,
+            scan_id=None,
+            sort="effective_reach",
+            limit=min(1000, CAMPAIGN_FINDING_LIMIT - len(rows)),
+            offset=0,
+            cursor=cursor,
+            approximate_total=False,
+            window_days=90,
+        )
+        if not source:
+            source = dict(page)
+        page_rows = page.get("findings") or []
+        invalid = not isinstance(page_rows, list)
+        for row in page_rows if isinstance(page_rows, list) else []:
+            identity = _canonical_finding_id(row) if isinstance(row, dict) else ""
+            if not identity or identity in identities:
+                invalid = True
+                continue
+            identities.add(identity)
+            rows.append(row)
+        total = page.get("total")
+        next_cursor = str(page.get("next_cursor") or "")
+        unstable = invalid or page.get("total_approximate") or total != source.get("total")
+        complete = (
+            not unstable
+            and not page.get("has_more")
+            and not next_cursor
+            and isinstance(total, int)
+            and not isinstance(total, bool)
+            and total == len(rows)
+        )
+        if complete and _campaign_source_revision(request) == source_revision:
+            return {**source, "findings": rows, "has_more": False, "next_cursor": "", "total_approximate": False}
+        if (
+            unstable
+            or complete
+            or not next_cursor
+            or next_cursor in seen_cursors
+            or len(rows) >= CAMPAIGN_FINDING_LIMIT
+            or time.monotonic() >= deadline
+        ):
+            break
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+    # Never retire membership or verify remediation from an incomplete collection.
+    return {**source, "findings": rows, "has_more": True, "next_cursor": ""}
 
 
 def _source_payload(value: Any) -> dict[str, Any]:
@@ -313,14 +378,17 @@ def _source_incomplete(source: dict[str, Any]) -> bool:
 
 
 def _canonical_finding_id(row: dict[str, Any]) -> str:
-    return str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "").strip()
+    identity = str(row.get("canonical_id") or row.get("finding_id") or row.get("id") or "").strip()
+    return "" if identity == str(row.get("vulnerability_id") or "").strip() else identity
 
 
 def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]:
     tenant_id = _tenant(request)
     findings = source["findings"]
     incomplete = _source_incomplete(source)
-    initial = derive_campaigns(findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=1000, truncated=incomplete)
+    initial = derive_campaigns(
+        findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=CAMPAIGN_FINDING_LIMIT, truncated=incomplete
+    )
     memberships: dict[str, MembershipEvidence] = {
         str(item["id"]): (
             str(item["membership_fingerprint"]),
@@ -341,10 +409,16 @@ def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]
             tenant_id=tenant_id,
             workflow_by_id=workflows,
             window_days=90,
-            finding_limit=1000,
+            finding_limit=CAMPAIGN_FINDING_LIMIT,
             truncated=True,
         )
         for campaign in campaigns:
+            # Assignment survives a partial collection; verification does not.
+            assigned = before.get(str(campaign["id"]))
+            if assigned and assigned.active:
+                if assigned.owner is not None:
+                    campaign["owner"] = assigned.owner
+                campaign["sla_due_at"] = assigned.sla_due_at
             campaign["membership_complete"] = False
             campaign["membership_provisional"] = True
         return campaigns
@@ -364,7 +438,7 @@ def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]
         tenant_id=tenant_id,
         workflow_by_id=workflows,
         window_days=90,
-        finding_limit=1000,
+        finding_limit=CAMPAIGN_FINDING_LIMIT,
         truncated=False,
     )
     for campaign in campaigns:
@@ -511,7 +585,7 @@ def verify_campaign_workflow(
         tenant_id=tenant_id,
         workflow_by_id={},
         window_days=90,
-        finding_limit=1000,
+        finding_limit=CAMPAIGN_FINDING_LIMIT,
         truncated=False,
     )
     current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
@@ -594,7 +668,7 @@ def verify_campaign_workflow(
         "evidence_scope": {
             "source": "canonical_findings_spine",
             "finding_window_days": 90,
-            "finding_limit": 1000,
+            "finding_limit": CAMPAIGN_FINDING_LIMIT,
             "membership_complete": True,
         },
         "version": verified.version,
@@ -662,7 +736,7 @@ async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]
         "campaigns": campaigns,
         "count": len(campaigns),
         "finding_window_days": 90,
-        "finding_limit": 1000,
+        "finding_limit": CAMPAIGN_FINDING_LIMIT,
         "truncated": truncated,
         "total_findings": total,
         "total_approximate": bool(source.get("total_approximate")),

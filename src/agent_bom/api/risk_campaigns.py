@@ -9,11 +9,14 @@ from typing import Any, Mapping
 
 from agent_bom.api.campaign_store import CampaignWorkflow
 
+CAMPAIGN_FINDING_LIMIT = 50_000
+
 _SEVERITY_SCORE = {"critical": 9.0, "high": 7.0, "medium": 4.0, "low": 1.5, "info": 0.5}
 
 
 def _finding_id(row: Mapping[str, Any]) -> str:
-    return str(row.get("id") or row.get("canonical_id") or row.get("finding_id") or row.get("vulnerability_id") or "").strip()
+    identity = str(row.get("canonical_id") or row.get("finding_id") or row.get("id") or "").strip()
+    return "" if identity == str(row.get("vulnerability_id") or "").strip() else identity
 
 
 def _risk(row: Mapping[str, Any]) -> float:
@@ -122,7 +125,7 @@ def derive_campaigns(
     tenant_id: str,
     workflow_by_id: Mapping[str, CampaignWorkflow],
     window_days: int = 90,
-    finding_limit: int = 1000,
+    finding_limit: int = CAMPAIGN_FINDING_LIMIT,
     truncated: bool = False,
 ) -> list[dict[str, Any]]:
     """Group findings only when they share an explicit remediation target."""
@@ -214,7 +217,7 @@ def derive_campaigns(
                     "modeled_risk_points": round(campaign_risk, 1),
                     "assumption": "all campaign findings are remediated and verified",
                     "method": "campaign modeled risk divided by modeled risk in the bounded findings window",
-                    "scope": f"last {window_days} days, first {finding_limit} findings",
+                    "scope": f"last {window_days} days, up to {finding_limit} findings",
                     "portfolio_complete": not truncated,
                 },
                 "owner": workflow.owner if workflow and workflow.owner is not None else derived_owner,

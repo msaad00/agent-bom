@@ -322,7 +322,7 @@ def _walk_from_entry(
         finding_ids: list[str],
         cred_exposure: list[str],
     ) -> None:
-        from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+        from agent_bom.graph.asset_entity import finding_ids_for_asset_path
 
         if visited_budget["n"] >= _MAX_VISITED_PER_ENTRY:
             limit_reasons.add("visit_cap_reached")
@@ -377,9 +377,9 @@ def _walk_from_entry(
             next_findings = list(finding_ids)
             if target.entity_type == EntityType.VULNERABILITY:
                 next_vulns = vuln_ids + [target.label or target.id]
-                stamped = finding_id_from_node_attributes(getattr(target, "attributes", None))
+                stamped = finding_ids_for_asset_path(getattr(target, "attributes", None), hops)
                 if stamped:
-                    next_findings = finding_ids + [stamped]
+                    next_findings = finding_ids + stamped
             next_creds = (
                 cred_exposure + [target.label or target.id]
                 if target.entity_type in (EntityType.CREDENTIAL, EntityType.CREDENTIAL_REF)

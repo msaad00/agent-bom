@@ -94,7 +94,7 @@ describe("ScanResultView cloud evidence", () => {
 
     expect(screen.getByText("Cloud evidence")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Cloud evidence" })).toHaveClass(
-      "bg-[color:var(--surface)]",
+      "bg-surface",
       "dark:bg-cyan-950/20",
     );
     expect(screen.getByText("AWS")).toBeInTheDocument();

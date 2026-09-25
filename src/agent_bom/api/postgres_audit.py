@@ -603,7 +603,7 @@ class PostgresTrendStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "trend_history"):
+            if not ensure_postgres_schema_version(conn, "trend_history", version=2):
                 return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS trend_history (
@@ -621,6 +621,7 @@ class PostgresTrendStore:
                 )
             """)
             conn.execute("ALTER TABLE trend_history ADD COLUMN IF NOT EXISTS scan_id TEXT")
+            conn.execute("ALTER TABLE trend_history ADD COLUMN IF NOT EXISTS comparison_metadata TEXT NOT NULL DEFAULT '{}'")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_trend_history_team_ts ON trend_history(team_id, timestamp DESC)")
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_history_team_scan ON trend_history(team_id, scan_id) WHERE scan_id IS NOT NULL"
@@ -629,34 +630,41 @@ class PostgresTrendStore:
             conn.commit()
 
     def record(self, point: TrendPoint) -> None:
-        with _tenant_connection(self._pool) as conn:
-            conn.execute(
-                """INSERT INTO trend_history
-                   (timestamp, team_id, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (team_id, scan_id) WHERE scan_id IS NOT NULL DO UPDATE SET
-                     timestamp = EXCLUDED.timestamp,
-                     total_vulns = EXCLUDED.total_vulns,
-                     critical = EXCLUDED.critical,
-                     high = EXCLUDED.high,
-                     medium = EXCLUDED.medium,
-                     low = EXCLUDED.low,
-                     posture_score = EXCLUDED.posture_score,
-                     posture_grade = EXCLUDED.posture_grade""",
-                (
-                    point.timestamp,
-                    _current_tenant.get(),
-                    point.total_vulns,
-                    point.critical,
-                    point.high,
-                    point.medium,
-                    point.low,
-                    point.posture_score,
-                    point.posture_grade,
-                    point.scan_id,
-                ),
-            )
-            conn.commit()
+        token = _current_tenant.set(point.tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                conn.execute(
+                    """INSERT INTO trend_history
+                       (timestamp, team_id, total_vulns, critical, high, medium, low,
+                        posture_score, posture_grade, scan_id, comparison_metadata)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (team_id, scan_id) WHERE scan_id IS NOT NULL DO UPDATE SET
+                         timestamp = EXCLUDED.timestamp,
+                         total_vulns = EXCLUDED.total_vulns,
+                         critical = EXCLUDED.critical,
+                         high = EXCLUDED.high,
+                         medium = EXCLUDED.medium,
+                         low = EXCLUDED.low,
+                         posture_score = EXCLUDED.posture_score,
+                         posture_grade = EXCLUDED.posture_grade,
+                         comparison_metadata = EXCLUDED.comparison_metadata""",
+                    (
+                        point.timestamp,
+                        _current_tenant.get(),
+                        point.total_vulns,
+                        point.critical,
+                        point.high,
+                        point.medium,
+                        point.low,
+                        point.posture_score,
+                        point.posture_grade,
+                        point.scan_id,
+                        json.dumps(point.comparison_metadata),
+                    ),
+                )
+                conn.commit()
+        finally:
+            _current_tenant.reset(token)
 
     def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
         token = None
@@ -665,7 +673,11 @@ class PostgresTrendStore:
         try:
             with _tenant_connection(self._pool) as conn:
                 rows = conn.execute(
-                    "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id "
+                    "SELECT timestamp, total_vulns, critical, high, medium, low, "
+                    "posture_score, posture_grade, scan_id, "
+                    "CASE WHEN SUM(octet_length(comparison_metadata)) OVER "
+                    "(ORDER BY timestamp DESC, id DESC ROWS UNBOUNDED PRECEDING) <= 16777216 "
+                    "THEN comparison_metadata ELSE '{\"history_processing_limit\":true}' END "
                     "FROM trend_history ORDER BY timestamp DESC LIMIT %s",
                     (limit,),
                 ).fetchall()
@@ -684,6 +696,7 @@ class PostgresTrendStore:
                 posture_grade=row[7],
                 tenant_id=tenant_id or _current_tenant.get(),
                 scan_id=row[8] if len(row) > 8 else None,
+                comparison_metadata=json.loads(row[9]) if len(row) > 9 else {},
             )
             for row in rows
         ]

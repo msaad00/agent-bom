@@ -619,9 +619,9 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     # Fuse governance / CNAPP / runtime evidence into the score so
                     # exposed, drifting, or unscoped-identity paths rank higher.
                     risk += sum(boost for _k, _l, _d, boost in _fusion_signals_for_path(graph, hop_ids))
-                    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+                    from agent_bom.graph.asset_entity import finding_ids_for_asset_path
 
-                    stamped_finding_id = finding_id_from_node_attributes(getattr(finding, "attributes", None))
+                    stamped_finding_ids = finding_ids_for_asset_path(getattr(finding, "attributes", None), hop_ids)
                     if reach.verdict == "unknown":
                         # Preserve relative investigation priority while keeping
                         # unverified topology below evidence-backed paths.
@@ -645,7 +645,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             credential_exposure=sorted(set(credentials)),
                             tool_exposure=sorted(set(tools)),
                             vuln_ids=[finding.label or finding.id],
-                            finding_ids=[stamped_finding_id] if stamped_finding_id else [],
+                            finding_ids=stamped_finding_ids,
                             reachability=reach.verdict,
                             reachability_basis=list(reach.basis),
                         )

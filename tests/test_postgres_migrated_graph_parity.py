@@ -212,3 +212,78 @@ def test_audit_fork_guard_unique_index_present_after_migrate_to_head(migrated_fr
     indexdef = row[0]
     assert "UNIQUE INDEX" in indexdef
     assert "team_id" in indexdef and "prev_signature" in indexdef
+
+
+def test_comparable_trends_round_trip_and_tenant_isolation(migrated_fresh_database, tmp_path):
+    """Migration-created metadata survives retries with the same SQLite result."""
+    import psycopg
+    from alembic import command
+    from alembic.config import Config
+
+    from agent_bom.api.postgres_audit import PostgresTrendStore
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.baseline import SQLiteTrendStore, TrendPoint
+
+    cfg = Config(str(ALEMBIC_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ALEMBIC_DIR / "alembic"))
+    command.downgrade(cfg, "20260923_02")
+    admin_url = _with_database(os.environ["AGENT_BOM_POSTGRES_ADMIN_URL"], migrated_fresh_database)
+    with psycopg.connect(admin_url) as conn:
+        conn.execute(
+            "INSERT INTO trend_history (timestamp, team_id, total_vulns, scan_id) VALUES (%s, %s, %s, %s)",
+            ("2026-09-01T00:00:00Z", "legacy", 1, "legacy-scan"),
+        )
+    command.upgrade(cfg, "head")
+    postgres = PostgresTrendStore()
+    assert postgres.get_history(tenant_id="legacy")[0].comparison_metadata == {}
+    sqlite = SQLiteTrendStore(str(tmp_path / "trends.db"))
+    for tenant in ("trend-a", "trend-b"):
+        token = set_current_tenant("worker-default")
+        try:
+            point = TrendPoint(
+                timestamp="2026-09-24T12:00:00Z",
+                total_vulns=1,
+                critical=0,
+                high=1,
+                medium=0,
+                low=0,
+                posture_score=90,
+                posture_grade="A",
+                tenant_id=tenant,
+                scan_id="same-scan",
+                comparison_metadata={
+                    "scope_id": "repo:a",
+                    "measurement_version": 1,
+                    "collection_coverage": "complete",
+                    "observations": [{"keys": [tenant]}],
+                },
+            )
+            for store in (postgres, sqlite):
+                store.record(point)
+                store.record(point)
+        finally:
+            reset_current_tenant(token)
+    for tenant in ("trend-a", "trend-b"):
+        pg_rows = postgres.get_history(tenant_id=tenant)
+        sql_rows = sqlite.get_history(tenant_id=tenant)
+        assert len(pg_rows) == len(sql_rows) == 1
+        assert pg_rows[0] == sql_rows[0]
+    assert postgres.get_history(tenant_id="other") == []
+    for index in range(9):
+        oversized = TrendPoint(
+            timestamp=f"2026-09-{index + 1:02d}T00:00:00Z",
+            total_vulns=1,
+            critical=0,
+            high=1,
+            medium=0,
+            low=0,
+            posture_score=90,
+            posture_grade="A",
+            tenant_id="budget",
+            scan_id=str(index),
+            comparison_metadata={"padding": "x" * (2 * 1024 * 1024)},
+        )
+        postgres.record(oversized)
+    bounded = postgres.get_history(tenant_id="budget")
+    assert bounded[-1].comparison_metadata == {"history_processing_limit": True}
+    assert sum(len(str(row.comparison_metadata)) for row in bounded) < 16 * 1024 * 1024

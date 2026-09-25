@@ -67,3 +67,19 @@ scan and receipts for the audit trail.
 
 Synthetic layout fixtures remain in the [capture protocol](CAPTURE.md) for UI
 regression coverage. They are separate from these reproducible scenario claims.
+
+## Compare recorded scan history
+
+In a self-hosted control plane, run repeated scans of the same explicit target,
+then open **Overview → Changes over time**. Select the history window and scan
+scope to see newly detected findings, findings no longer detected, and median
+open-finding and evidence ages. The table links each observation to its scan's
+findings. History loads when this section opens.
+
+Comparisons require compatible scope, measurement version and complete collection.
+Partial scans and legacy records without comparison metadata show unavailable
+changes. A missing finding does not prove remediation: verification remains a
+separate audited workflow. Ages use recorded timestamps; evidence age is measured
+at scan completion, and missing timestamps remain unavailable. Imported standalone
+reports do not establish historical trends. Scan history has a separate scope from
+the aggregate posture summary.

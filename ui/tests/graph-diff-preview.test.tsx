@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { DiffPreview } from "@/app/graph/graph-page-client";
+import { DiffPreview, ReachabilityDrillInPanel } from "@/app/graph/graph-page-client";
 import type { GraphDiffNode } from "@/lib/api-types";
 
 // graph-page-client pulls next/navigation at module scope; stub the hooks so the
@@ -50,4 +50,15 @@ describe("DiffPreview", () => {
     render(<DiffPreview label="Removed" items={[node({ id: "only-id", label: "" })]} />);
     expect(screen.getByText("only-id")).toBeInTheDocument();
   });
+});
+
+
+it("presents recorded context without implying danger or proven reachability", () => {
+  const { container } = render(<ReachabilityDrillInPanel
+    summary={null} loading error={null} onClear={() => {}} depth={1}
+    onDepthChange={() => {}} direction="both" onDirectionChange={() => {}} />);
+  expect(screen.getByText("Related graph context")).toBeVisible();
+  expect(screen.getByText("Refreshing related context")).toBeVisible();
+  expect(container.firstElementChild).toHaveClass("bg-surface");
+  expect(container.firstElementChild).not.toHaveClass("bg-rose-500/10");
 });

@@ -122,3 +122,14 @@ export function graphInitialFitViewOptions(
   // available through pan, minimap, and explicit Fit all, without tiny labels.
   return { ...options, nodes: [{ id: anchor.id }], minZoom: 1.1, maxZoom: 1.1 };
 }
+
+/** Explicit readable framing, including compact graphs and no selection. */
+export function graphReadableFitViewOptions(
+  nodes: readonly ViewportAnchorNode[],
+  options: GraphFitViewOptions,
+  selectedNodeId?: string | null,
+) {
+  const selected = nodes.some(node => node.id === selectedNodeId) ? selectedNodeId : null;
+  const fallback = [...nodes].sort((a, b) => a.id.localeCompare(b.id))[0]?.id;
+  return graphInitialFitViewOptions(nodes, options, selected ?? fallback);
+}

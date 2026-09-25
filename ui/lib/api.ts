@@ -505,7 +505,10 @@ export const PIPELINE_STEPS = [
 // children without each call site having to remember.
 
 import { ApiError, ApiNetworkError, classifyApiResponse } from "./api-errors";
-import { cachedGet, invalidate as _invalidate, type CacheOptions } from "./api-cache";
+import { cachedGet, clearCache as _clearCache, invalidate as _invalidate, type CacheOptions } from "./api-cache";
+
+// Cache keys and invalidation prefixes must share this format.
+const getCacheKey = (path: string) => `GET ${path}`;
 import type {
   DatasetCardsRequest,
   DatasetCardsResponse,
@@ -572,13 +575,18 @@ function _invalidationsFor(path: string): string[] {
 
 function _runInvalidations(path: string): void {
   for (const prefix of _invalidationsFor(path)) {
-    _invalidate(prefix);
+    _invalidate(getCacheKey(prefix));
   }
+}
+
+/** A session change, even a failed one, may change the principal; no prior response is reusable. */
+function _sessionChange(request: () => Promise<void>): Promise<void> {
+  return request().finally(_clearCache);
 }
 
 async function get<T>(path: string, options: GetOptions = {}): Promise<T> {
   const { timeoutMs, signal, ...cacheOptions } = options;
-  const key = `GET ${path}`;
+  const key = getCacheKey(path);
   const fetcher = async () => {
       const res = await _doFetch(path, {
         credentials: "include",
@@ -866,9 +874,9 @@ export const api = {
   updateTenantQuota: (body: TenantQuotaUpdateRequest) =>
     put<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota", body),
   resetTenantQuota: () => del("/v1/auth/quota"),
-  createDevAuthSession: () => postVoid("/v1/auth/dev-session", {}),
-  createAuthSession: (apiKey: string) => postVoid("/v1/auth/session", { api_key: apiKey }),
-  deleteAuthSession: () => del("/v1/auth/session"),
+  createDevAuthSession: () => _sessionChange(() => postVoid("/v1/auth/dev-session", {})),
+  createAuthSession: (apiKey: string) => _sessionChange(() => postVoid("/v1/auth/session", { api_key: apiKey })),
+  deleteAuthSession: () => _sessionChange(() => del("/v1/auth/session")),
   reportClientError: (body: { message: string; digest?: string | undefined; path?: string | undefined; component?: string | undefined }) =>
     post<{ ok: boolean }>("/v1/ui/errors", body),
   listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),

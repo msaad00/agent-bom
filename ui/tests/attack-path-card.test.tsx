@@ -126,6 +126,7 @@ describe('AttackPathCard', () => {
     )
     const riskEl = screen.getByText('3.0').closest('div')
     expect(riskEl?.className).toContain('text-ink-secondary')
+    expect(riskEl?.className).toContain('bg-surface-elevated')
   })
 
   it('renders credential node type with key icon', () => {

@@ -1543,6 +1543,9 @@ function GraphPageInner() {
   // copied address bar reproduces the view but back/forward isn't spammed.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // A destination can render before navigation commits. Writing native
+    // history then would replace the origin route and interrupt the drill-in.
+    if (window.location.pathname !== pathname) return;
     // Read the live address bar rather than useSearchParams(): on this page the
     // filter/layout state churns rapidly on load and useSearchParams() can lag
     // or read empty across those re-renders. The current query drives the
@@ -2351,7 +2354,7 @@ function GraphPageInner() {
     void reactFlow.fitView({ ...viewportOptions, duration: 240 });
   }, [reactFlow, viewportOptions]);
   const fitSelection = useCallback(async () => {
-    const framing = graphReadableFitViewOptions(displayNodes, viewportOptions, selectedNodeId);
+    const framing = graphReadableFitViewOptions(displayNodes, viewportOptions, selectedNodeId ?? investigationMode?.rootId);
     if (!framing.nodes?.length) return;
     await reactFlow.fitView(framing);
     const canvas = document.querySelector(".react-flow");
@@ -2361,7 +2364,7 @@ function GraphPageInner() {
       const viewport = reactFlow.getViewport();
       void reactFlow.setViewport({ ...viewport, x: viewport.x - drawerWidth / 2 });
     }
-  }, [displayNodes, reactFlow, selectedNodeId, viewportOptions]);
+  }, [displayNodes, investigationMode?.rootId, reactFlow, selectedNodeId, viewportOptions]);
 
   const autoLayout = useCallback(() => {
     presentation.autoLayout();

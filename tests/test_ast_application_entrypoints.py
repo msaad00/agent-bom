@@ -168,3 +168,90 @@ def test_commented_or_quoted_registrations_are_not_entrypoints(tmp_path: Path) -
     entries = detect_application_entrypoints(tmp_path, [go_source, js_source])
 
     assert entries == []
+
+
+def _route_flows(tmp_path: Path, source: str) -> set[tuple[str, str]]:
+    (tmp_path / "app.py").write_text(source)
+    result = analyze_project(tmp_path)
+    return {(finding.category, finding.entrypoint) for finding in result.flow_findings}
+
+
+def test_flask_route_request_data_reaching_sinks_is_a_taint_finding(tmp_path: Path) -> None:
+    flows = _route_flows(
+        tmp_path,
+        "import subprocess\n"
+        "import requests\n"
+        "from flask import Flask, request\n\n"
+        "app = Flask(__name__)\n\n"
+        "@app.route('/run')\n"
+        "def run():\n"
+        "    cmd = request.args.get('cmd')\n"
+        "    return subprocess.run(cmd, shell=True).stdout\n\n"
+        "@app.post('/fetch')\n"
+        "def fetch():\n"
+        "    return requests.get(request.json['url']).text\n\n"
+        "@app.route('/read')\n"
+        "def read():\n"
+        "    target = request.form['path']\n"
+        "    return open(target).read()\n",
+    )
+
+    assert ("tainted_command_execution", "run") in flows
+    assert ("tainted_ssrf_sink", "fetch") in flows
+    assert ("tainted_path_access", "read") in flows
+
+
+def test_fastapi_route_parameters_reaching_sinks_is_a_taint_finding(tmp_path: Path) -> None:
+    flows = _route_flows(
+        tmp_path,
+        "import subprocess\n"
+        "from fastapi import FastAPI\n\n"
+        "api = FastAPI()\n\n"
+        "@api.get('/run')\n"
+        "def run(cmd: str):\n"
+        "    return subprocess.run(cmd, shell=True).returncode\n",
+    )
+
+    assert ("tainted_command_execution", "run") in flows
+
+
+def test_fastapi_injected_dependencies_are_not_request_taint(tmp_path: Path) -> None:
+    flows = _route_flows(
+        tmp_path,
+        "from fastapi import Depends, FastAPI\n\n"
+        "api = FastAPI()\n\n"
+        "def get_db():\n"
+        "    return None\n\n"
+        "@api.get('/count')\n"
+        "def count(db=Depends(get_db)):\n"
+        "    return db.execute('SELECT count(*) FROM items')\n",
+    )
+
+    assert flows == set()
+
+
+def test_route_taint_does_not_flag_constant_sanitized_or_unrouted_flows(tmp_path: Path) -> None:
+    flows = _route_flows(
+        tmp_path,
+        "import shlex\n"
+        "import subprocess\n"
+        "from flask import Flask, request\n\n"
+        "app = Flask(__name__)\n\n"
+        "@app.route('/constant')\n"
+        "def constant():\n"
+        "    request.args.get('ignored')\n"
+        "    return subprocess.run('ls', shell=True).stdout\n\n"
+        "@app.route('/quoted')\n"
+        "def quoted():\n"
+        "    return subprocess.run(shlex.quote(request.args.get('cmd')), shell=True).stdout\n\n"
+        "def helper(cmd):\n"
+        "    return subprocess.run(cmd, shell=True).stdout\n\n"
+        "class Local:\n"
+        "    args = {'cmd': 'ls'}\n\n"
+        "@app.route('/shadowed')\n"
+        "def shadowed():\n"
+        "    request = Local()\n"
+        "    return subprocess.run(request.args['cmd'], shell=True).stdout\n",
+    )
+
+    assert flows == set()

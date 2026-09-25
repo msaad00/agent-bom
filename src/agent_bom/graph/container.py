@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import time
 from collections import defaultdict, deque
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -506,6 +507,10 @@ class UnifiedGraph:
 
     def nodes_by_type(self, entity_type: EntityType) -> list[UnifiedNode]:
         return [n for n in self.nodes.values() if n.entity_type == entity_type]
+
+    def iter_nodes_by_type(self, entity_type: EntityType) -> Iterator[UnifiedNode]:
+        """Stream nodes of one type for read-only scans (mutations need ``get_node``)."""
+        return (n for n in self.nodes.values() if n.entity_type == entity_type)
 
     def edges_from(self, node_id: str) -> list[UnifiedEdge]:
         return self.adjacency.get(node_id, [])

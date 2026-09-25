@@ -8,6 +8,7 @@ from agent_bom.fleet_scan import (
     FleetScanResult,
     ServerResult,
     _compute_verdict,
+    _load_registry,
     _match_server,
     fleet_scan,
 )
@@ -85,15 +86,34 @@ class TestMatchServer:
         assert result is not None
         assert result[0] == "brave-search"
 
-    def test_command_pattern_match(self):
-        result = _match_server("server-postgres", SAMPLE_REGISTRY)
-        assert result is not None
-        assert result[0] == "postgres"
+    def test_command_pattern_token_is_not_an_identifier(self):
+        assert _match_server("server-postgres", SAMPLE_REGISTRY) is None
 
-    def test_substring_match(self):
-        result = _match_server("brave", SAMPLE_REGISTRY)
+    def test_substring_is_not_a_match(self):
+        assert _match_server("brave", SAMPLE_REGISTRY) is None
+
+    def test_versioned_package_reference_matches(self):
+        result = _match_server("@modelcontextprotocol/server-filesystem@1.2.0", SAMPLE_REGISTRY)
         assert result is not None
-        assert result[0] == "brave-search"
+        assert result[0] == "filesystem"
+
+    def test_pypi_identifier_is_pep503_normalized(self):
+        registry = {"mcp-server-fetch": {"package": "mcp-server-fetch", "name": "Fetch", "ecosystem": "pypi"}}
+        result = _match_server("mcp_server.fetch==2025.1", registry)
+        assert result is not None
+        assert result[0] == "mcp-server-fetch"
+
+    def test_ambiguous_display_name_is_not_attributed(self):
+        registry = {
+            "vendor-a/notes": {"package": "vendor-a/notes", "name": "Notes", "ecosystem": "npm"},
+            "vendor-b/notes": {"package": "vendor-b/notes", "name": "Notes", "ecosystem": "npm"},
+        }
+        assert _match_server("notes", registry) is None
+
+    def test_generic_tokens_do_not_match_the_bundled_registry(self):
+        registry = _load_registry()
+        for name in ("a", "server", "mcp", "mcp-server", "plugin", "brave", "./server.py"):
+            assert _match_server(name, registry) is None, name
 
     def test_no_match(self):
         result = _match_server("nonexistent-server", SAMPLE_REGISTRY)
@@ -230,9 +250,13 @@ class TestFleetScan:
 
     def test_loads_real_registry(self):
         """Verify fleet_scan works with the actual bundled registry."""
-        result = fleet_scan(["filesystem", "brave-search"])
-        # These should be in the real registry
-        assert result.matched >= 2
+        result = fleet_scan(["Filesystem", "@modelcontextprotocol/server-brave-search@0.6.2", "brave-search"])
+        by_name = {server.server_name: server.registry_id for server in result.servers}
+        assert by_name == {
+            "Filesystem": "@modelcontextprotocol/server-filesystem",
+            "@modelcontextprotocol/server-brave-search@0.6.2": "@modelcontextprotocol/server-brave-search",
+            "brave-search": "",
+        }
 
     def test_npm_scoped_package(self):
         result = fleet_scan(

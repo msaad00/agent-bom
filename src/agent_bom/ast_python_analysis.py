@@ -243,6 +243,9 @@ _UNTRUSTED_SOURCE_CALLS = {
     "request.headers.get",
     "sys.argv",
 }
+_REQUEST_GLOBAL_MODULES = frozenset({"flask", "quart"})
+_REQUEST_DATA_ATTRIBUTES = frozenset({"args", "form", "json", "values", "headers", "cookies", "data", "files", "view_args"})
+_INJECTED_DEPENDENCY_CALLS = frozenset({"Depends", "Security"})
 _SANITIZER_CALLS = {
     "html.escape",
     "markupsafe.escape",
@@ -991,6 +994,63 @@ def _is_untrusted_source_call(call_name: str) -> bool:
     return lower_name in _UNTRUSTED_SOURCE_CALLS or lower_name.endswith(".get_json")
 
 
+def _request_global_is_framework_source(func: _FunctionAnalysis) -> bool:
+    module, name = func.imported_functions.get("request", ("", ""))
+    if name != "request" or module.split(".", 1)[0] not in _REQUEST_GLOBAL_MODULES or func.node is None:
+        return False
+    for node in ast.walk(func.node):
+        if isinstance(node, ast.Assign):
+            if any("request" in _target_names(target) for target in node.targets):
+                return False
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor, ast.NamedExpr)):
+            if "request" in _target_names(node.target):
+                return False
+    return "request" not in func.param_names
+
+
+def _is_request_data_attribute(expr: ast.Attribute) -> bool:
+    return isinstance(expr.value, ast.Name) and expr.value.id == "request" and expr.attr in _REQUEST_DATA_ATTRIBUTES
+
+
+def _route_tainted_params(func: _FunctionAnalysis) -> set[str]:
+    """Route handler parameters bound from the request, excluding injected dependencies."""
+    if func.node is None:
+        return set()
+    args = func.node.args
+    positional = [*args.posonlyargs, *args.args]
+    defaulted = positional[len(positional) - len(args.defaults) :]
+    defaults: dict[str, ast.expr] = dict(zip([arg.arg for arg in defaulted], args.defaults, strict=True))
+    for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
+        if default is not None:
+            defaults[arg.arg] = default
+    tainted: set[str] = set()
+    for arg in [*positional, *args.kwonlyargs]:
+        if arg.arg in {"self", "cls"}:
+            continue
+        default = defaults.get(arg.arg)
+        if isinstance(default, ast.Call) and _call_name(default.func).rsplit(".", 1)[-1] in _INJECTED_DEPENDENCY_CALLS:
+            continue
+        tainted.add(arg.arg)
+    return tainted
+
+
+def _application_entrypoint_matches(
+    functions: list[_FunctionAnalysis],
+    application_entrypoints: list[ApplicationEntrypoint] | None,
+    *,
+    kinds: frozenset[str] | None = None,
+) -> list[tuple[int, ApplicationEntrypoint, _FunctionAnalysis]]:
+    matches: list[tuple[int, ApplicationEntrypoint, _FunctionAnalysis]] = []
+    for index, entry in enumerate(application_entrypoints or []):
+        if kinds is not None and entry.kind not in kinds:
+            continue
+        handler = entry.handler.rsplit(".", 1)[-1]
+        candidates = [func for func in functions if func.simple_name == handler and func.file_path == entry.file_path]
+        if len(candidates) == 1:
+            matches.append((index, entry, candidates[0]))
+    return matches
+
+
 def _is_sanitizer_call_name(call_name: str) -> bool:
     lower_name = call_name.lower()
     # Security-sensitive APIs whose names happen to contain a validation hint
@@ -1610,8 +1670,11 @@ def _resolve_external_dependency_symbol(caller: _FunctionAnalysis, raw_name: str
     return None
 
 
-def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFinding]:
-    """Build taint/data-flow findings from tool entrypoints into sinks and LLM calls."""
+def _build_taint_findings(
+    functions: list[_FunctionAnalysis],
+    application_entrypoints: list[ApplicationEntrypoint] | None = None,
+) -> list[FlowFinding]:
+    """Build taint/data-flow findings from tool and HTTP route entrypoints into sinks and LLM calls."""
     by_name: dict[str, list[_FunctionAnalysis]] = {}
     by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
     for func in functions:
@@ -1747,6 +1810,7 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
         visited.add(visit_key)
 
         tainted_vars = set(tainted_params)
+        request_global_is_source = _request_global_is_framework_source(func)
         sanitized_vars: set[str] = set()
         findings: list[FlowFinding] = []
         returns_tainted = False
@@ -1759,6 +1823,8 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
             if isinstance(expr, ast.Constant):
                 return False, []
             if isinstance(expr, ast.Attribute):
+                if request_global_is_source and _is_request_data_attribute(expr):
+                    return True, []
                 return expr_taint(expr.value, current_sanitized)
             if isinstance(expr, ast.Subscript):
                 return expr_taint(expr.value, current_sanitized)
@@ -2125,16 +2191,17 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
         _, findings, returns_tainted = walk_statements(func.node.body, sanitized_vars)
         return findings, returns_tainted
 
+    roots: list[tuple[_FunctionAnalysis, set[str], str]] = [
+        (func, set(func.param_names), func.entrypoint_name or func.simple_name) for func in functions if func.is_tool and func.param_names
+    ]
+    tool_ids = {func.qualified_name for func, _, _ in roots}
+    for _, entry, func in _application_entrypoint_matches(functions, application_entrypoints, kinds=frozenset({"http_route"})):
+        if func.qualified_name not in tool_ids:
+            roots.append((func, _route_tainted_params(func), entry.name))
+
     aggregated_findings: list[FlowFinding] = []
-    for func in functions:
-        if not func.is_tool or not func.param_names:
-            continue
-        tool_findings, _ = analyze_function(
-            func,
-            set(func.param_names),
-            [func.entrypoint_name or func.simple_name],
-            set(),
-        )
+    for func, tainted_params, entrypoint in roots:
+        tool_findings, _ = analyze_function(func, tainted_params, [entrypoint], set())
         for finding in tool_findings:
             dedup_key = (finding.category, finding.file_path, finding.sink, finding.line_number, finding.entrypoint)
             if dedup_key in seen_findings:
@@ -2247,10 +2314,8 @@ def _build_dependency_symbol_reach(
     roots: list[tuple[str, _FunctionAnalysis, ApplicationEntrypoint | None]] = [
         (func.entrypoint_name or func.simple_name, func, None) for func in functions if func.is_tool
     ]
-    for index, entry in enumerate(application_entrypoints or []):
-        matches = [func for func in functions if func.simple_name == entry.handler.rsplit(".", 1)[-1] and func.file_path == entry.file_path]
-        if len(matches) == 1:
-            roots.append((f"__application_entrypoint_{index}", matches[0], entry))
+    for index, entry, matched in _application_entrypoint_matches(functions, application_entrypoints):
+        roots.append((f"__application_entrypoint_{index}", matched, entry))
 
     for root_name, root, application_entrypoint in roots:
         exposed_root_name = root.entrypoint_name or root.simple_name

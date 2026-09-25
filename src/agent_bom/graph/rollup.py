@@ -700,12 +700,18 @@ def drill_down(
     node_id: str,
     *,
     filters: Optional[RollupFilters] = None,
+    offset: int = 0,
+    limit: Optional[int] = None,
 ) -> dict[str, Any]:
     """Return one level of direct CONTAINS children of *node_id*.
 
     Each child carries its own roll-up so the UI can keep expanding on demand.
-    O(direct children); never loads the whole graph.
+    O(direct children); never loads the whole graph. ``offset``/``limit`` page
+    the ranked children so a container with tens of thousands of direct
+    children returns a bounded response; ranking is computed over every
+    matching child first so pages are stable and disjoint.
     """
+    offset = max(0, offset)
     if node_id not in graph.nodes:
         return {
             "scan_id": graph.scan_id,
@@ -719,6 +725,7 @@ def drill_down(
             "edge_count_metadata": _edge_count_metadata(graph, returned=0, source_total=0),
             "aggregate_count_metadata": _aggregate_count_metadata(graph, Counter()),
             "summary": {"direct_child_count": 0, "returned_child_count": 0},
+            "pagination": _page_meta(offset=offset, limit=limit, returned=0, total=0),
             # "Not in this graph" over a bounded snapshot may only mean "never
             # loaded" — say which, rather than implying the node does not exist.
             "completeness": graph_completeness(
@@ -758,8 +765,11 @@ def drill_down(
         )
 
     child_entries.sort(key=lambda c: (-c.aggregate.worst_severity_rank, -c.aggregate.descendant_count, c.id))
+    matching_total = len(child_entries)
+    page = child_entries[offset : None if limit is None else offset + limit]
+    page_cut = len(page) < matching_total
 
-    relationship_edges, edge_count_metadata = _edge_projection(graph, [c.id for c in child_entries], children)
+    relationship_edges, edge_count_metadata = _edge_projection(graph, [c.id for c in page], children)
 
     return {
         "scan_id": graph.scan_id,
@@ -773,7 +783,7 @@ def drill_down(
             "severity": parent.severity or "",
         },
         "filters": _filters_dict(filters),
-        "children": [c.to_dict() for c in child_entries],
+        "children": [c.to_dict() for c in page],
         # Same edges one level down. This is where they matter most: an org has
         # one root, so nothing crosses at the top, while its accounts reach each
         # other constantly.
@@ -782,16 +792,33 @@ def drill_down(
         "aggregate_count_metadata": _aggregate_count_metadata(graph, memberships),
         "summary": {
             "direct_child_count": len(direct),
-            "returned_child_count": len(child_entries),
+            "matching_child_count": matching_total,
+            "returned_child_count": len(page),
         },
+        "pagination": _page_meta(offset=offset, limit=limit, returned=len(page), total=matching_total),
         # A bounded load can have dropped children of this very node, so the
         # direct-child denominator is only a floor when the source was cut.
         "completeness": graph_completeness(
-            returned=len(child_entries),
-            total=len(direct),
-            truncated=graph.completeness.truncated,
-            reason=graph.completeness.reason if graph.completeness.truncated else "",
+            returned=len(page),
+            total=matching_total if page_cut else len(direct),
+            truncated=graph.completeness.truncated or page_cut,
+            reason=_combine_reasons(
+                graph.completeness.reason if graph.completeness.truncated else "",
+                "child_page_limit" if page_cut else "",
+            ),
         ),
+    }
+
+
+def _page_meta(*, offset: int, limit: Optional[int], returned: int, total: int) -> dict[str, Any]:
+    has_more = offset + returned < total
+    return {
+        "offset": offset,
+        "limit": limit,
+        "returned": returned,
+        "total": total,
+        "has_more": has_more,
+        "next_offset": offset + returned if has_more else None,
     }
 
 

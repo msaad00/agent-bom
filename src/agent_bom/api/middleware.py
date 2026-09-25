@@ -881,6 +881,14 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                 detail="Request path contains a NUL (0x00) byte",
                 correlation_id=request_id,
             )
+        # Same failure through query parameters (scan_id, node, q, source, ...):
+        # 422 matches the per-route identifier validators that predate this.
+        if any("\x00" in key or "\x00" in value for key, value in request.query_params.multi_items()):
+            return _build_error_envelope(
+                status_code=422,
+                detail="Query parameter contains a NUL (0x00) byte",
+                correlation_id=request_id,
+            )
         request.state.trace_id = trace_meta["trace_id"]
         request.state.span_id = trace_meta["span_id"]
         request.state.parent_span_id = trace_meta["parent_span_id"]

@@ -350,14 +350,14 @@ class TestRollupEndpointScopesItsFetch:
         assert calls == ["traverse_subgraph"], calls
 
     def test_the_drill_down_response_is_the_full_materialisation_answer(self, api_store, client):
-        expected = drill_down(_full_materialisation(api_store, API_TENANT), "acct-0")
+        expected = drill_down(_full_materialisation(api_store, API_TENANT), "acct-0", limit=200)
         response = client.get("/v1/graph/rollup", params={"scan_id": SCAN, "node": "acct-0"})
         assert response.status_code == 200, response.text
         assert response.json() == expected
 
     def test_attack_path_mode_drill_down_is_scoped_too(self, api_store, client, monkeypatch):
         """``node`` wins over ``mode`` in the payload, so it must win in the fetch."""
-        expected = drill_down(_full_materialisation(api_store, API_TENANT), "acct-0")
+        expected = drill_down(_full_materialisation(api_store, API_TENANT), "acct-0", limit=200)
         calls = self._calls(api_store, monkeypatch)
         response = client.get("/v1/graph/rollup", params={"scan_id": SCAN, "node": "acct-0", "mode": "attack_path"})
         assert response.status_code == 200, response.text

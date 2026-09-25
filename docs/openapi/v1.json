@@ -27970,7 +27970,7 @@
     },
     "/v1/graph/rollup": {
       "get": {
-        "description": "Collapse the estate along ``CONTAINS`` into a small, readable view.\n\nPast a few hundred nodes the raw topology is an unreadable hairball. This\nendpoint rolls the graph up along the containment hierarchy\n(org -> account/project -> app -> resource) so a 1000+ node estate renders\nas a handful of top-level containers, each carrying aggregate descendant\ncounts, worst-severity, a per-severity histogram, and exposure / toxic\nflags. ``?node=<id>`` returns one level of direct children for on-demand\ndrill-down; ``?mode=attack_path`` returns the nodes/edges on materialised\nattack paths first with the rest collapsed.\n\nBackend for the UI graph-navigation surface. Read-only: never mutates the\nsource graph.",
+        "description": "Collapse the estate along ``CONTAINS`` into a small, readable view.\n\nPast a few hundred nodes the raw topology is an unreadable hairball. This\nendpoint rolls the graph up along the containment hierarchy\n(org -> account/project -> app -> resource) so a 1000+ node estate renders\nas a handful of top-level containers, each carrying aggregate descendant\ncounts, worst-severity, a per-severity histogram, and exposure / toxic\nflags. ``?node=<id>`` returns one level of direct children for on-demand\ndrill-down, paged by ``offset``/``limit`` with ``pagination`` and truthful\n``completeness``; ``?mode=attack_path`` returns the nodes/edges on materialised\nattack paths first with the rest collapsed.\n\nBackend for the UI graph-navigation surface. Read-only: never mutates the\nsource graph.",
         "operationId": "get_graph_rollup_v1_graph_rollup_get",
         "parameters": [
           {
@@ -28065,6 +28065,34 @@
               ],
               "title": "Mode",
               "type": "string"
+            }
+          },
+          {
+            "description": "Drill-down only: ranked-children page offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Drill-down only: ranked-children page offset",
+              "maximum": 1000000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Drill-down only: maximum direct children returned per page",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "description": "Drill-down only: maximum direct children returned per page",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],

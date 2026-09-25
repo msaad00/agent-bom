@@ -113,7 +113,7 @@ const RUNTIME_EVIDENCE_CHIP: Record<
   static_scan: {
     label: "Static",
     className:
-      "border-[var(--border-strong)] bg-[var(--surface-muted)] text-[var(--text-secondary)]",
+      "border-outline-strong bg-surface-muted text-ink-secondary",
   },
   runtime_observed: {
     label: "Observed",
@@ -161,8 +161,8 @@ function NodeCard({
       data-rollup-container={isRollupContainer ? "true" : undefined}
       className={`${shapeClass} border-2 px-4 py-3 min-w-[208px] max-w-[260px] shadow-sm transition-opacity ${
         isRollupContainer
-          ? "border-[color:var(--border-strong)] bg-[color:var(--surface-elevated)]"
-          : `${borderClass} bg-[var(--surface-elevated)]`
+          ? "border-outline-strong bg-surface-elevated"
+          : `${borderClass} bg-surface-elevated`
       } ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
@@ -179,7 +179,7 @@ function NodeCard({
       />
       <div className="mb-1 flex min-w-0 items-start gap-2">
         <Icon className={`w-[18px] h-[18px] shrink-0 rounded ${iconClass} ${bgClass}`} />
-        <span className="ml-auto shrink-0 rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+        <span className="ml-auto shrink-0 rounded border border-outline bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-ink-secondary">
           {/* Applications share the container layout, not its runtime identity. */}
           {data.entityType === "application" ? "Application" : NODE_TYPE_BADGES[data.nodeType]}
         </span>
@@ -187,17 +187,17 @@ function NodeCard({
           <RuntimeEvidenceChip tier={data.runtimeEvidenceTier} />
         ) : null}
       </div>
-      <p className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-[var(--foreground)]">
+      <p className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-foreground">
         {data.label.split(/(?<=[_/-])/).map((part, index) => <span key={index}>{part}<wbr /></span>)}
       </p>
       {subtitle && (
-        <div className="text-xs leading-4 text-[var(--text-secondary)] truncate">
+        <div className="text-xs leading-4 text-ink-secondary truncate">
           {subtitle}
         </div>
       )}
       {footer && data.countScope === "loaded_graph" ? (
         <div className="flex flex-wrap items-baseline gap-x-2" title={graphCountDescription(data)}>
-          <span className="text-[10px] text-[var(--text-secondary)]">Loaded graph</span>
+          <span className="text-[10px] text-ink-secondary">Loaded graph</span>
           {footer}
         </div>
       ) : footer}
@@ -273,7 +273,7 @@ function AgentNode({ data }: { data: LineageNodeData }) {
       target={false}
       subtitle={data.agentType}
       footer={
-        <div className="flex gap-2 mt-1 text-[10px] text-[var(--text-tertiary)]">
+        <div className="flex gap-2 mt-1 text-[10px] text-ink-tertiary">
           {data.serverCount !== undefined && (
             <span>{data.serverCount} srv</span>
           )}
@@ -293,14 +293,14 @@ function ProviderNode({ data }: { data: LineageNodeData }) {
   return (
     <NodeCard
       data={data}
-      borderClass="border-[var(--border-subtle)]"
-      bgClass="bg-[var(--surface)]"
+      borderClass="border-outline"
+      bgClass="bg-surface"
       ringClass="ring-[var(--border-strong)]"
-      iconClass="text-[var(--text-tertiary)]"
+      iconClass="text-ink-tertiary"
       target={false}
       footer={
         data.agentCount !== undefined ? (
-          <div className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+          <div className="mt-1 text-[10px] text-ink-tertiary">
             {data.agentCount} agents
           </div>
         ) : undefined
@@ -397,7 +397,7 @@ function StructureNode({
       iconClass={iconClass}
       subtitle={data.description}
       footer={
-        <div className="flex gap-2 mt-1 text-[10px] text-[var(--text-tertiary)]">
+        <div className="flex gap-2 mt-1 text-[10px] text-ink-tertiary">
           {data.agentCount !== undefined && (
             <span>{data.agentCount} agents</span>
           )}
@@ -468,7 +468,7 @@ function ServerNode({ data }: { data: LineageNodeData }) {
             </span>
           )}
           {data.packageCount !== undefined && data.packageCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-secondary)]">
+            <span className="flex items-center gap-0.5 text-[10px] text-ink-secondary">
               <Package className="w-2.5 h-2.5" /> {data.packageCount}
             </span>
           )}
@@ -489,15 +489,15 @@ function PackageNode({ data }: { data: LineageNodeData }) {
       borderClass={
         hasVulns
           ? "border-red-400 dark:border-red-600/60"
-          : "border-[var(--border-subtle)]"
+          : "border-outline"
       }
       bgClass={
         hasVulns
           ? "bg-red-50 dark:bg-red-950/40"
-          : "bg-[var(--surface)]"
+          : "bg-surface"
       }
       ringClass="ring-[var(--border-strong)]"
-      iconClass="text-[var(--text-tertiary)]"
+      iconClass="text-ink-tertiary"
       subtitle={
         data.version
           ? `${data.version}${data.ecosystem ? ` · ${data.ecosystem}` : ""}${provenance ? ` · ${provenance}` : ""}`
@@ -549,7 +549,7 @@ function FindingNode({
           )}
           {typeof data.cvssScore === "number" &&
           Number.isFinite(data.cvssScore) ? (
-            <span className="text-[10px] text-[var(--text-secondary)]">
+            <span className="text-[10px] text-ink-secondary">
               CVSS {data.cvssScore.toFixed(1)}
             </span>
           ) : null}
@@ -751,7 +751,7 @@ function SharedServerNode({ data }: { data: LineageNodeData }) {
             </span>
           )}
           {data.packageCount !== undefined && data.packageCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-[var(--text-secondary)]">
+            <span className="flex items-center gap-0.5 text-[10px] text-ink-secondary">
               <Package className="w-2.5 h-2.5" /> {data.packageCount}
             </span>
           )}
@@ -777,7 +777,7 @@ function SummaryNode({ data }: { data: LineageNodeData }) {
         ? "border-orange-500 bg-orange-100 text-orange-950 dark:bg-orange-950/60 dark:text-orange-200"
         : sev === "medium"
           ? "border-yellow-500 bg-yellow-100 text-yellow-950 dark:bg-yellow-950/55 dark:text-yellow-200"
-          : "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--foreground)]";
+          : "border-outline bg-surface text-foreground";
   const vulnCount = data.vulnCount ?? 0;
   return (
     <div

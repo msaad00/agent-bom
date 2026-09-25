@@ -150,16 +150,16 @@ export function GraphEntityDrawer({
   ];
   const missingLocationFields = locationFields.filter(([, value]) => !value).map(([label]) => label.toLowerCase());
   const headerSlot = (
-    <div className="space-y-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+    <div className="space-y-2 rounded-lg border border-outline bg-surface-muted px-3 py-2">
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
-        <span className="rounded border border-[color:var(--border-subtle)] px-1.5 py-0.5 font-mono text-[color:var(--text-secondary)]">
+        <span className="rounded border border-outline px-1.5 py-0.5 font-mono text-ink-secondary">
           {layer.label}
         </span>
-        <span className="rounded border border-[color:var(--border-subtle)] px-1.5 py-0.5 text-[color:var(--text-tertiary)]">
+        <span className="rounded border border-outline px-1.5 py-0.5 text-ink-tertiary">
           evidence · {evidenceLabel}
         </span>
         {loading ? (
-          <span className="inline-flex items-center gap-1 text-[color:var(--text-tertiary)]">
+          <span className="inline-flex items-center gap-1 text-ink-tertiary">
             <Loader2 className="h-3 w-3 animate-spin" />
             syncing
           </span>
@@ -182,7 +182,7 @@ export function GraphEntityDrawer({
         {(enriched.nodeType === "dataStore" || enriched.nodeType === "dataset") && <p className="mt-2">Storage metadata does not establish data contents or successful reads. Inspect permission and runtime receipts separately.</p>}
       </details>
       {nodeId ? (
-        <p className="truncate font-mono text-[10px] text-[color:var(--text-tertiary)]" title={nodeId}>
+        <p className="truncate font-mono text-[10px] text-ink-tertiary" title={nodeId}>
           id · {nodeId}
         </p>
       ) : null}
@@ -190,8 +190,8 @@ export function GraphEntityDrawer({
   );
 
   const footerSlot = (
-    <div className="space-y-2 border-t border-[color:var(--border-subtle)] pt-3">
-      {showNextAction && <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">Next action</p>}
+    <div className="space-y-2 border-t border-outline pt-3">
+      {showNextAction && <p className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary">Next action</p>}
       {showNextAction && <Link
         href={nextAction.href}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-800 transition hover:border-emerald-500/60 dark:text-emerald-200"
@@ -205,7 +205,7 @@ export function GraphEntityDrawer({
             <button
               type="button"
               onClick={onExpandNeighbors}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-2 text-[11px] font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline bg-surface-muted px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-outline-strong"
             >
               <Network className="h-3.5 w-3.5" />
               Expand
@@ -217,7 +217,7 @@ export function GraphEntityDrawer({
             <button
               type="button"
               onClick={onShowImpact}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2 py-2 text-[11px] font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline bg-surface-muted px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-outline-strong"
             >
               <Radar className="h-3.5 w-3.5" />
               Impact
@@ -226,7 +226,7 @@ export function GraphEntityDrawer({
         </div>
       )}
       {onQuarantine && enriched.nodeType === "agent" && (
-        <div className="space-y-1.5 border-t border-[color:var(--border-subtle)] pt-2">
+        <div className="space-y-1.5 border-t border-outline pt-2">
           <button
             type="button"
             onClick={onQuarantine}
@@ -245,7 +245,7 @@ export function GraphEntityDrawer({
           </button>
           {quarantineMessage && (
             <p
-              className={`text-[10px] ${quarantineState === "error" ? "text-red-600 dark:text-red-300" : "text-[color:var(--text-tertiary)]"}`}
+              className={`text-[10px] ${quarantineState === "error" ? "text-red-600 dark:text-red-300" : "text-ink-tertiary"}`}
             >
               {quarantineMessage}
             </p>

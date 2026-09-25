@@ -54,24 +54,24 @@ Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](do
 Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between the service, container, tool, workload identity and modeled data asset.
 Inspect the source receipts and carry the selected finding into remediation. A recorded path does not by itself prove exploitation or successful data access.
 
-<table>
-  <tr><th>Explore the agent neighborhood</th><th>Follow a finding to its evidence</th></tr>
-  <tr>
-    <td width="50%"><a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent neighborhood linking a role, agents, MCP servers, tool, credential reference, package and finding" width="450"></a></td>
-    <td width="50%"><a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab path linking a Pillow advisory, workload identity and modeled data asset" width="450"></a></td>
-  </tr>
-  <tr><td>Expand connections, focus an entity, then return to the loaded overview.</td><td>Inspect each hop’s source evidence, permissions and remediation.</td></tr>
-</table>
+<a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab path linking a Pillow advisory, workload identity and modeled data asset" width="1440"></a>
 
-Select either preview for the full-size view. Left: labeled sample data. Right: reference lab with modeled infrastructure.
+Inspect each hop’s source evidence, permissions and remediation. This reference lab uses modeled infrastructure; select the image for full-size detail.
+
+<details>
+<summary>Explore an agent’s connected assets</summary>
+
+<a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="1440"></a>
+
+Expand connections, focus an entity, then return to the loaded overview. This example uses labeled sample data.
+
+</details>
 
 <details>
 <summary>Explore graph navigation, permissions and evidence</summary>
 
-Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity,
-set direction and hop limits, and expand bounded pages; incomplete views are labeled.
-In **Context**, use **Focus here**, **Back**, or an exact identifier. Select a node or
-arrow to inspect its evidence, freshness and unknowns. **Investigate reach & permissions**
+Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity, set direction and hop limits, and expand bounded pages; incomplete views are labeled.
+In **Context**, use **Focus here**, **Back**, or an exact identifier. Select a node or arrow to inspect its evidence, freshness and unknowns. **Investigate reach & permissions**
 opens permission receipts, CVE prerequisites and related activity; missing exploitability
 stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
 

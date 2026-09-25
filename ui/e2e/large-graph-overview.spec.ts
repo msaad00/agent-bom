@@ -493,7 +493,7 @@ test("identity investigation links preserve the selected root during client navi
   await page.goto("/identity");
   await page.getByRole("tab", { name: "Discovered identity risk" }).click();
   const query = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.method() === "POST");
-  await page.getByRole("link", { name: "Investigated identity 86" }).click();
+  await page.getByRole("link", { name: /Investigated identity.*86/ }).click();
   expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 80, max_edges: 320 });
   await expect(page.getByRole("textbox", { name: "Search nodes, tags, severities, or attributes" })).toHaveValue("Investigated identity");
   await expect(page).toHaveURL(/root=pkg%3A42/);

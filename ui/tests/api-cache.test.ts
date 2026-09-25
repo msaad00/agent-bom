@@ -98,3 +98,45 @@ describe("invalidate", () => {
     expect(invalidate("GET /v1/nothing-here")).toBe(0);
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe("bounded response retention", () => {
+  it("evicts old responses while keeping recently visited snapshots", async () => {
+    for (let i = 0; i < 64; i++) await cachedGet(`graph:${i}`, async () => i);
+    await cachedGet("graph:0", async () => -1);
+    await cachedGet("graph:64", async () => 64);
+    expect(_cacheSizeForTests().entries).toBe(64);
+    expect(await cachedGet("graph:0", async () => -1)).toBe(0);
+    expect(await cachedGet("graph:1", async () => 101)).toBe(101);
+  });
+
+  it("removes expired responses when a different snapshot is requested", async () => {
+    await cachedGet("old", async () => "old", { ttlMs: 1 });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    await cachedGet("new", async () => "new");
+    expect(_cacheSizeForTests().entries).toBe(1);
+  });
+
+  for (const [name, reset] of [["invalidate", () => invalidate("graph:")], ["clear", clearCache]] as const) {
+    it(`does not resurrect stale responses after ${name}`, async () => {
+      const oldResult = deferred<string>();
+      const newResult = deferred<string>();
+      const old = cachedGet("graph:scan", () => oldResult.promise);
+      reset();
+      const fresh = cachedGet("graph:scan", () => newResult.promise);
+      oldResult.resolve("stale");
+      expect(await old).toBe("stale");
+      expect(_cacheSizeForTests()).toEqual({ entries: 0, inflight: 1 });
+      const duplicate = cachedGet("graph:scan", async () => "wrong");
+      newResult.resolve("fresh");
+      expect(await fresh).toBe("fresh");
+      expect(await duplicate).toBe("fresh");
+      expect(await cachedGet("graph:scan", async () => "wrong")).toBe("fresh");
+    });
+  }
+});

@@ -128,18 +128,18 @@ export function TopologyDetailDrawer({
                   Credential references are configured on this service connection.
                 </div>
               ) : (
-                <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                <div className="rounded-lg border border-outline bg-surface-muted px-3 py-2 text-xs text-ink-secondary">
                   No credential references were observed on this service connection.
                 </div>
               )}
               {selection.kind === "server" && connectedAgents.length > 1 ? (
                 <div className="topology-detail-shared">
-                  <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-[var(--foreground)]">
+                  <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-foreground">
                     <Users className="h-3.5 w-3.5" /> Agents in this service group
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {connectedAgents.map((entry) => (
-                      <span key={entry.name} className="rounded bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-secondary)]">
+                      <span key={entry.name} className="rounded bg-surface px-2 py-1 text-xs text-ink-secondary">
                         {topologyAgentDisplayName(entry)}
                       </span>
                     ))}
@@ -189,10 +189,10 @@ function SummaryCard({
 }) {
   return (
     <div className="topology-detail-summary">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-tertiary">{label}</p>
       <p
         className={`mt-2 text-sm font-medium ${
-          tone === "danger" ? "text-red-700 dark:text-red-200" : "text-[var(--foreground)]"
+          tone === "danger" ? "text-red-700 dark:text-red-200" : "text-foreground"
         }`}
       >
         {value}
@@ -207,10 +207,10 @@ function ActionLink({ href, title, description }: { href: string; title: string;
       href={href}
       className="topology-detail-action group"
     >
-      <p className="text-sm font-semibold text-[var(--foreground)] group-hover:text-emerald-700 dark:group-hover:text-emerald-200">
+      <p className="text-sm font-semibold text-foreground group-hover:text-emerald-700 dark:group-hover:text-emerald-200">
         {title}
       </p>
-      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{description}</p>
+      <p className="mt-1 text-xs leading-5 text-ink-secondary">{description}</p>
     </Link>
   );
 }
@@ -252,11 +252,11 @@ function ServerCard({ agentName, server }: { agentName: string; server: MCPServe
   return (
     <div className={`topology-detail-service ${serverHasCredentials(server) ? "topology-detail-service-credential" : "topology-detail-service-normal"}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-[var(--foreground)]">{server.name}</span>
+        <span className="text-sm font-medium text-foreground">{server.name}</span>
         {serverHasCredentials(server) ? <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" /> : null}
       </div>
-      <p className="mt-1 truncate font-mono text-[10px] text-[var(--text-tertiary)]">{agentName}</p>
-      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[var(--text-tertiary)]">
+      <p className="mt-1 truncate font-mono text-[10px] text-ink-tertiary">{agentName}</p>
+      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-ink-tertiary">
         <span>{server.packages?.length ?? 0} packages</span>
         <span>{server.tools?.length ?? 0} tools</span>
         {vulns > 0 ? <span className="text-red-700 dark:text-red-300">{vulns} CVE{vulns === 1 ? "" : "s"}</span> : null}

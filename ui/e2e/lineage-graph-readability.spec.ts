@@ -560,12 +560,13 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole("heading", { name: "pillow@9.0.0", exact: true })).toBeVisible();
       expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
       const detailPanel = page.getByTestId("graph-entity-drawer");
-      const detailHeader = width === 1440 ? detailPanel.locator("aside") : detailPanel;
       if (width === 1440 && theme === "light") {
         await expect(page.locator("#demo-estate-watermark")).toBeVisible();
         await detailPanel.getByRole("button", { name: "Back", exact: true }).click();
       } else {
-        await detailHeader.getByRole("button", { name: "Close", exact: true }).click();
+        // The backdrop and header both expose Close during responsive transitions.
+        // The header action is last in either drawer composition.
+        await detailPanel.getByRole("button", { name: "Close", exact: true }).last().click();
       }
       await expect(detailPanel).not.toBeVisible();
       await page.goto("/findings");

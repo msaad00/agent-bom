@@ -75,8 +75,8 @@ pip install 'agent-bom[ui]'                      # once, if you want the dashboa
 agent-bom serve --persist ~/.agent-bom/control-plane.db  # restart-safe local control plane
 ```
 
-The base wheel is the scanner/CLI path. Install optional surfaces explicitly:
-`pip install 'agent-bom[mcp-server]'` for MCP server mode and
+The base wheel is the scanner/CLI path and includes MCP server mode
+(`agent-bom mcp server`). Install optional surfaces explicitly:
 `pip install 'agent-bom[ui]'` for the local API/dashboard process. Use
 `pip install 'agent-bom[all]'` for supported first-run extras; MLflow remains
 separate until its upstream CVE backlog is fixed. If an extra is missing, the

@@ -56,7 +56,7 @@ def shield():
       agent-shield audit proxy-log.jsonl               replay audit logs
 
     \b
-    Docs: https://github.com/msaad00/agent-bom
+    Docs: https://msaad00.github.io/agent-bom/
     """
     pass
 

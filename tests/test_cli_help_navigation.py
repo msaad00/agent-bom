@@ -49,3 +49,20 @@ def test_advanced_scan_help_is_discoverable_before_core_option_list():
     assert full.exit_code == 0
     assert "--jira-token" in full.output
     assert "All options:" not in full.output
+
+
+def test_docs_links_point_at_the_documentation_site():
+    from agent_bom.cli import main
+    from agent_bom.cli.claw import claw
+    from agent_bom.cli.cloud import cloud
+    from agent_bom.cli.iac import iac
+    from agent_bom.cli.shield import shield
+
+    docs_site = "https://msaad00.github.io/agent-bom/"
+    cases = [(main, ["--help"]), (main, ["--version"]), (cloud, ["--help"]), (iac, ["--help"]), (claw, ["--help"]), (shield, ["--help"])]
+    for command, args in cases:
+        result = CliRunner().invoke(command, args)
+        assert result.exit_code == 0, (args, result.output)
+        docs_lines = [line for line in result.output.splitlines() if line.strip().startswith("Docs:")]
+        assert docs_lines, (args, result.output)
+        assert all(docs_site in line for line in docs_lines), (args, docs_lines)

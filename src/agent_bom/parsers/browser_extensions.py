@@ -203,6 +203,19 @@ def _build_extension(manifest: dict, ext_id: str, browser: str, path: str) -> Br
     )
 
 
+def _manifest_present(manifest_path: Path) -> bool:
+    """Whether *manifest_path* exists, raising OSError when it cannot be checked.
+
+    ``Path.exists()`` returns False on permission errors from Python 3.14, which
+    would hide an unreadable extension instead of reporting the coverage gap.
+    """
+    try:
+        manifest_path.stat()
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return True
+
+
 def _warn_unreadable(what: str) -> None:
     """Record a coverage gap for a directory the scan could not list.
 
@@ -244,7 +257,7 @@ def _scan_chrome_profile(profile_dir: Path) -> list[BrowserExtension]:
         for version_dir in version_dirs:
             manifest_path = version_dir / "manifest.json"
             try:
-                if not manifest_path.exists():
+                if not _manifest_present(manifest_path):
                     continue
             except OSError:
                 _warn_unreadable("Chromium extension version directory")
@@ -327,7 +340,7 @@ def _scan_firefox_profile(profile_dir: Path) -> list[BrowserExtension]:
         manifest_path = entry / "manifest.json"
         try:
             is_dir = entry.is_dir()
-            has_manifest = is_dir and manifest_path.exists()
+            has_manifest = is_dir and _manifest_present(manifest_path)
         except OSError:
             _warn_unreadable("Firefox extension directory")
             continue

@@ -1374,6 +1374,9 @@ export const api = {
       exposed?: boolean;
       toxic?: boolean;
       mode?: "rollup" | "attack_path";
+      /** Drill-down page; the server defaults to the first 200 children. */
+      offset?: number;
+      limit?: number;
     },
   ) => {
     const params = new URLSearchParams();
@@ -1383,6 +1386,8 @@ export const api = {
     if (options?.exposed) params.set("exposed", "true");
     if (options?.toxic) params.set("toxic", "true");
     if (options?.mode) params.set("mode", options.mode);
+    if (options?.offset) params.set("offset", String(options.offset));
+    if (options?.limit) params.set("limit", String(options.limit));
     const qs = params.toString();
     return get<GraphRollupResponse>(`/v1/graph/rollup${qs ? `?${qs}` : ""}`);
   },

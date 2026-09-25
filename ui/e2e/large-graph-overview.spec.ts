@@ -518,6 +518,14 @@ test("root investigations expose depth and direction controls with bounded reque
   await page.getByText("Traversal options", { exact: true }).click();
   await page.getByRole("combobox", { name: "Traversal direction" }).selectOption("reverse");
   expect((await reverse).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
+  const canvas = page.locator(".react-flow");
+  const top = (await canvas.boundingBox())!.y;
+  await page.locator(".graph-legend-dock-summary:visible").click();
+  await expect(page.locator(".graph-legend-dock-content:visible").getByText(/Arrows show recorded direction/)).toBeVisible();
+  expect((await canvas.boundingBox())!.y).toBe(top);
+  await page.locator(".graph-legend-dock-summary:visible").click();
+  await page.getByTestId("reachability-evidence-details").locator("summary").first().click();
+  expect((await canvas.boundingBox())!.y).toBe(top);
 });
 
 for (const width of [1100, 1440]) {

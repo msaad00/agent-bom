@@ -129,7 +129,7 @@ export function GraphLegendDock({
 
   return (
     <details
-      className="group graph-legend-dock"
+      className="group graph-legend-dock relative !pt-2"
       {...(defaultOpen ? { open: true } : {})}
     >
       <summary className="graph-legend-dock-summary">
@@ -158,7 +158,8 @@ export function GraphLegendDock({
           collapse
         </span>
       </summary>
-      <div className="graph-legend-dock-content">
+      <div className="graph-legend-dock-content absolute inset-x-0 top-full z-40 !bg-surface shadow-lg">
+        <p className="mb-2 text-xs text-ink-secondary">Arrows show recorded direction. Colors and solid/dashed lines distinguish relationship types, not confidence or proof of execution.</p>
         <GraphLegendContent items={items} />
       </div>
     </details>

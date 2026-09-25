@@ -19,9 +19,13 @@ from __future__ import annotations
 import logging
 import re
 from functools import lru_cache
+from typing import TYPE_CHECKING
 from urllib.parse import quote as _url_quote
 
 from agent_bom.http_client import request_with_retry
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from packaging.version import Version
 
 _logger = logging.getLogger(__name__)
 
@@ -90,6 +94,7 @@ def validate_version(version: str, ecosystem: str) -> bool:
     return True
 
 
+@lru_cache(maxsize=131072)
 def normalize_version(version: str, ecosystem: str) -> str:
     """Normalize a version string for consistent comparison and scanning.
 
@@ -208,6 +213,7 @@ def is_prerelease_version(version: str, ecosystem: str) -> bool:
     return bool(re.search(r"(?:-|\.)(alpha|beta|rc|pre|preview|canary|dev)\d*(?:$|\+)", candidate, re.IGNORECASE))
 
 
+@lru_cache(maxsize=65536)
 def _looks_like_commit_sha(version: str) -> bool:
     stripped = version.strip().lower().lstrip("v")
     if not _HEXISH_RE.fullmatch(stripped):
@@ -923,6 +929,14 @@ _NUGET_ECOSYSTEMS = frozenset({"nuget"})
 _RUBYGEMS_ECOSYSTEMS = frozenset({"rubygems", "gem", "gems"})
 
 
+@lru_cache(maxsize=131072)
+def _pep440_version(normalized: str) -> "Version":
+    """Parse once per distinct string; ingest compares each release many times."""
+    from packaging.version import Version
+
+    return Version(normalized)
+
+
 @lru_cache(maxsize=65536)
 def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
     """Compare two versions using ecosystem-specific semantics.
@@ -975,11 +989,9 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
             return semver_cmp
 
     try:
-        from packaging.version import Version
-
-        left_norm = normalize_version(left, eco)
-        right_norm = normalize_version(right, eco)
-        return (Version(left_norm) > Version(right_norm)) - (Version(left_norm) < Version(right_norm))
+        left_version = _pep440_version(normalize_version(left, eco))
+        right_version = _pep440_version(normalize_version(right, eco))
+        return (left_version > right_version) - (left_version < right_version)
     except Exception:  # noqa: BLE001
         # PEP 440 (``packaging.Version``) rejects npm-style pre-release tags
         # like ``13.4.20-canary.13`` / ``5.0.0-rc.1`` / ``1.0.0-beta.4`` which

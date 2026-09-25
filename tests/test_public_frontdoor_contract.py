@@ -101,14 +101,17 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     images = re.findall(r'<img src="docs/images/([^"]+)"', journey)
     assert images == [
         "dashboard-live.png",
-        "context-map-live.png",
         "correlation-graph-live.png",
+        "context-map-live.png",
         "dependency-map-live.png",
         "remediation-live.png",
     ]
     assert journey.count('width="920"') == 2
-    assert journey.count('width="1440"') == 1
-    assert journey.count('width="450"') == 2
+    assert journey.count('width="1440"') == 3
+    assert 'width="450"' not in journey
+    secondary = re.search(r"<details>\s*<summary>Explore an agent’s connected assets</summary>(.*?)</details>", journey, re.S)
+    assert secondary and "context-map-live.png" in secondary.group(1)
+    assert "correlation-graph-live.png" not in secondary.group(1)
     assert "<summary>Explore graph navigation, permissions and evidence</summary>" in journey
     grc = journey.split("### Security, engineering and GRC:", 1)[1].split("### AppSec", 1)[0]
     assert "dashboard-live.png" in grc

@@ -39,9 +39,9 @@ function sourceFailure(err: unknown): string {
 }
 
 function UnavailableSection({ title, detail }: { title: string; detail: string }) {
-  return <section role="status" className="rounded-lg border border-[var(--border-subtle)] p-4">
-    <h2 className="text-sm font-semibold text-[var(--foreground)]">{title}</h2>
-    <p className="mt-1 text-sm text-[var(--text-secondary)]">{detail}</p>
+  return <section role="status" className="rounded-lg border border-outline p-4">
+    <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+    <p className="mt-1 text-sm text-ink-secondary">{detail}</p>
   </section>;
 }
 
@@ -60,7 +60,7 @@ function Badge({
     blue: "bg-blue-500/10 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300",
     red: "bg-red-500/10 dark:bg-red-900/60 text-red-700 dark:text-red-300",
     amber: "bg-amber-500/10 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300",
-    zinc: "bg-[var(--surface-elevated)] text-[var(--text-secondary)]",
+    zinc: "bg-surface-elevated text-ink-secondary",
   } as const;
   return (
     <span
@@ -110,15 +110,15 @@ function StatCard({
   scope?: string;
 }) {
   return (
-    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-4">
+    <div className="rounded-lg border border-outline bg-surface/50 p-4">
       <div className="mb-1 flex items-center gap-2">
         <Icon className={`h-4 w-4 ${color}`} />
-        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
+        <span className="text-xs text-ink-tertiary">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-[var(--foreground)]">
+      <p className="text-2xl font-bold text-foreground">
         {value === null ? "Unavailable" : value.toLocaleString()}
       </p>
-      {scope ? <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">{scope}</p> : null}
+      {scope ? <p className="mt-0.5 text-[11px] text-ink-tertiary">{scope}</p> : null}
     </div>
   );
 }
@@ -192,55 +192,55 @@ function CredentialExpiryPanel({ report }: { report: CredentialExpiryReport }) {
         : "green";
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+    <div className="rounded-2xl border border-outline bg-surface/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-amber-400" />
-        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+        <h3 className="text-sm font-semibold text-ink-secondary">
           Credential expiry &amp; rotation
         </h3>
         <Badge tone={statusTone}>{report.status.replace(/_/g, " ")}</Badge>
-        <span className="ml-auto text-xs text-[var(--text-tertiary)]">
+        <span className="ml-auto text-xs text-ink-tertiary">
           {report.evaluated} evaluated · reference-only, no secret values
         </span>
       </div>
       <div className="mb-3 grid grid-cols-3 gap-3">
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-          <span className="text-xs text-[var(--text-tertiary)]">Expired / overdue</span>
+        <div className="rounded-lg border border-outline bg-surface/50 p-3">
+          <span className="text-xs text-ink-tertiary">Expired / overdue</span>
           <p
-            className={`text-xl font-bold ${overdue > 0 ? "text-red-400" : "text-[var(--foreground)]"}`}
+            className={`text-xl font-bold ${overdue > 0 ? "text-red-400" : "text-foreground"}`}
           >
             {overdue.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-          <span className="text-xs text-[var(--text-tertiary)]">Expiring / rotation due</span>
+        <div className="rounded-lg border border-outline bg-surface/50 p-3">
+          <span className="text-xs text-ink-tertiary">Expiring / rotation due</span>
           <p
-            className={`text-xl font-bold ${expiring > 0 ? "text-amber-400" : "text-[var(--foreground)]"}`}
+            className={`text-xl font-bold ${expiring > 0 ? "text-amber-400" : "text-foreground"}`}
           >
             {expiring.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-          <span className="text-xs text-[var(--text-tertiary)]">Healthy</span>
-          <p className="text-xl font-bold text-[var(--foreground)]">
+        <div className="rounded-lg border border-outline bg-surface/50 p-3">
+          <span className="text-xs text-ink-tertiary">Healthy</span>
+          <p className="text-xl font-bold text-foreground">
             {(report.counts.ok ?? 0).toLocaleString()}
           </p>
         </div>
       </div>
       {report.evaluated === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">
+        <p className="text-sm text-ink-tertiary">
           No control-plane secrets or discovered NHI credentials carry an age or
           expiry signal yet.
         </p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">
+        <p className="text-sm text-ink-tertiary">
           All evaluated credentials are within rotation and expiry bounds.
         </p>
       ) : (
         <div className="max-h-96 overflow-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
+              <tr className="border-b border-outline text-left text-xs text-ink-tertiary">
                 <th className="pb-2 font-medium">Credential</th>
                 <th className="pb-2 font-medium">Provider</th>
                 <th className="pb-2 font-medium">State</th>
@@ -252,21 +252,21 @@ function CredentialExpiryPanel({ report }: { report: CredentialExpiryReport }) {
               {rows.map((c, i) => (
                 <tr
                   key={`${c.id ?? c.name ?? "cred"}-${i}`}
-                  className="border-b border-[var(--border-subtle)] last:border-0"
+                  className="border-b border-outline last:border-0"
                 >
-                  <td className="py-2 font-medium text-[var(--foreground)]">
+                  <td className="py-2 font-medium text-foreground">
                     {c.name ?? c.id ?? "—"}
                   </td>
-                  <td className="py-2 text-[var(--text-secondary)]">{c.provider ?? "—"}</td>
+                  <td className="py-2 text-ink-secondary">{c.provider ?? "—"}</td>
                   <td className="py-2">
                     <Badge tone={credStateTone(c.state)}>
                       {c.state.replace(/_/g, " ")}
                     </Badge>
                   </td>
-                  <td className="py-2 text-right text-[var(--text-secondary)]">
+                  <td className="py-2 text-right text-ink-secondary">
                     {c.age_days != null ? `${c.age_days}d` : "—"}
                   </td>
-                  <td className="py-2 text-right text-[var(--text-secondary)]">
+                  <td className="py-2 text-right text-ink-secondary">
                     {c.days_until_expiry != null
                       ? `${c.days_until_expiry}d`
                       : "—"}
@@ -287,17 +287,17 @@ function AccessReviewPanel({
   campaigns: AccessReviewCampaign[];
 }) {
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+    <div className="rounded-2xl border border-outline bg-surface/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <CalendarCheck className="h-4 w-4 text-emerald-400" />
-        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+        <h3 className="text-sm font-semibold text-ink-secondary">
           Access-review campaigns
         </h3>
       </div>
       {campaigns.length === 0 ? (
-        <p className="text-sm text-[var(--text-tertiary)]">
+        <p className="text-sm text-ink-tertiary">
           No recertification campaigns. Create one via{" "}
-          <code className="rounded bg-[var(--surface-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
+          <code className="rounded bg-surface-elevated px-1.5 py-0.5 text-xs text-ink-secondary">
             POST /v1/identities/access-reviews
           </code>{" "}
           to schedule a review of non-human identities and their effective
@@ -307,7 +307,7 @@ function AccessReviewPanel({
         <div className="max-h-96 overflow-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
+              <tr className="border-b border-outline text-left text-xs text-ink-tertiary">
                 <th className="pb-2 font-medium">Campaign</th>
                 <th className="pb-2 font-medium">Status</th>
                 <th className="pb-2 text-right font-medium">Reviewed</th>
@@ -318,18 +318,18 @@ function AccessReviewPanel({
               {campaigns.map((c) => (
                 <tr
                   key={c.campaign_id}
-                  className="border-b border-[var(--border-subtle)] last:border-0"
+                  className="border-b border-outline last:border-0"
                 >
-                  <td className="py-2 font-medium text-[var(--foreground)]">{c.name}</td>
+                  <td className="py-2 font-medium text-foreground">{c.name}</td>
                   <td className="py-2">
                     <Badge tone={campaignTone(c.status)}>
                       {c.status.replace(/_/g, " ")}
                     </Badge>
                   </td>
-                  <td className="py-2 text-right text-[var(--text-secondary)]">
+                  <td className="py-2 text-right text-ink-secondary">
                     {c.decided_count} / {c.item_count}
                   </td>
-                  <td className="py-2 text-[var(--text-tertiary)]">
+                  <td className="py-2 text-ink-tertiary">
                     {c.due_at ? formatDate(c.due_at) : "—"}
                   </td>
                 </tr>
@@ -354,19 +354,19 @@ function NhiDiscoveryPanel({
     discovery.providers.some((provider) => !["ok", "disabled"].includes(provider.status ?? ""));
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+    <div className="rounded-2xl border border-outline bg-surface/40 p-5">
       <div className="mb-3 flex items-center gap-2">
         <Radar className="h-4 w-4 text-sky-400" />
-        <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+        <h3 className="text-sm font-semibold text-ink-secondary">
           Discovered non-human identities
         </h3>
       </div>
       {disabled ? (
-        <div className="flex items-start gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3 text-sm text-[var(--text-secondary)]">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-tertiary)]" />
+        <div className="flex items-start gap-2 rounded-lg border border-outline bg-surface/50 p-3 text-sm text-ink-secondary">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-ink-tertiary" />
           <span>
             NHI discovery is disabled. Enable an IdP connector (Okta / Entra) via
-            its <code className="text-[var(--text-secondary)]">*_DISCOVERY</code> environment
+            its <code className="text-ink-secondary">*_DISCOVERY</code> environment
             flag and token to enumerate service accounts and service principals.
             Discovery is read-only and reference-only — it never reads secret
             material.
@@ -375,22 +375,22 @@ function NhiDiscoveryPanel({
       ) : (
         <>
           <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3">
-              <span className="text-xs text-[var(--text-tertiary)]">Identities</span>
-              <p className="text-xl font-bold text-[var(--foreground)]">
+            <div className="rounded-lg border border-outline bg-surface/50 p-3">
+              <span className="text-xs text-ink-tertiary">Identities</span>
+              <p className="text-xl font-bold text-foreground">
                 {incomplete ? "Unavailable" : discovery?.count.toLocaleString()}
               </p>
             </div>
             {discovery?.providers.map((p) => (
               <div
                 key={p.provider ?? "provider"}
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3"
+                className="rounded-lg border border-outline bg-surface/50 p-3"
               >
-                <span className="text-xs capitalize text-[var(--text-tertiary)]">
+                <span className="text-xs capitalize text-ink-tertiary">
                   {p.provider ?? "provider"}
                 </span>
                 <div className="flex items-baseline gap-2">
-                  <p className="text-xl font-bold text-[var(--foreground)]">
+                  <p className="text-xl font-bold text-foreground">
                     {p.status === "ok" ? p.count.toLocaleString() : "—"}
                   </p>
                   <Badge tone={p.status === "ok" ? "green" : "zinc"}>
@@ -401,7 +401,7 @@ function NhiDiscoveryPanel({
             ))}
           </div>
           {(discovery?.warnings.length ?? 0) > 0 && (
-            <ul className="space-y-1 text-xs text-[var(--text-tertiary)]">
+            <ul className="space-y-1 text-xs text-ink-tertiary">
               {discovery?.warnings.map((w, i) => (
                 <li key={i}>· {w}</li>
               ))}
@@ -517,14 +517,14 @@ export default function IdentityPage() {
       <div className="flex flex-wrap items-center gap-2">
         <Fingerprint className="h-6 w-6 text-indigo-400" />
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Identity</h1>
-          <p className="text-sm text-[var(--text-tertiary)]">
+          <h1 className="text-2xl font-semibold text-foreground">Identity</h1>
+          <p className="text-sm text-ink-tertiary">
             Managed agent identities, just-in-time access, and context-aware
             conditional access.
           </p>
         </div>
         <button type="button" disabled={loading} onClick={refreshEvidence}
-          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-secondary)] disabled:opacity-50">
+          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-outline px-3 py-2 text-sm text-ink-secondary disabled:opacity-50">
           <RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           {loading ? "Refreshing evidence" : "Refresh evidence"}
         </button>
@@ -554,12 +554,12 @@ export default function IdentityPage() {
           icon={Ban}
           label="Revoked / expired"
           value={failures.identities ? null : inactiveIdentities}
-          color="text-[var(--text-secondary)]"
+          color="text-ink-secondary"
           scope="issued and managed here"
         />
       </div>
 
-      <p className="text-xs text-[var(--text-tertiary)]">Counts cover up to {RECORD_LIMIT} loaded records per list; they are not estate-wide totals.</p>
+      <p className="text-xs text-ink-tertiary">Counts cover up to {RECORD_LIMIT} loaded records per list; they are not estate-wide totals.</p>
       {failures.identities && <UnavailableSection title="Managed identities unavailable" detail={failures.identities} />}
       {failures.grants && <UnavailableSection title="JIT grants unavailable" detail={failures.grants} />}
       {failures.policies && <UnavailableSection title="Conditional policies unavailable" detail={failures.policies} />}
@@ -579,17 +579,17 @@ export default function IdentityPage() {
       ]} />
       <div hidden={view !== "managed"} className="space-y-4">
       {!failures.identities && identities.length > 0 && (
-        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+        <div className="rounded-2xl border border-outline bg-surface/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <Fingerprint className="h-4 w-4 text-indigo-400" />
-            <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+            <h3 className="text-sm font-semibold text-ink-secondary">
               Managed identities
             </h3>
           </div>
           <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
+                <tr className="border-b border-outline text-left text-xs text-ink-tertiary">
                   <th className="pb-2 font-medium">Agent</th>
                   <th className="pb-2 font-medium">Role</th>
                   <th className="pb-2 font-medium">Status</th>
@@ -601,25 +601,25 @@ export default function IdentityPage() {
                 {identities.map((i) => (
                   <tr
                     key={i.identity_id}
-                    className="border-b border-[var(--border-subtle)] last:border-0"
+                    className="border-b border-outline last:border-0"
                   >
-                    <td className="py-2 font-medium text-[var(--foreground)]">
+                    <td className="py-2 font-medium text-foreground">
                       {i.agent_id}
                     </td>
-                    <td className="py-2 text-[var(--text-secondary)]">{i.role}</td>
+                    <td className="py-2 text-ink-secondary">{i.role}</td>
                     <td className="py-2">
                       <Badge tone={identityTone(i.status)}>{i.status}</Badge>
                     </td>
-                    <td className="py-2 text-[var(--text-secondary)]">
+                    <td className="py-2 text-ink-secondary">
                       {i.allowed_tools.length === 0 ? (
-                        <span className="text-[var(--text-tertiary)]">any tool</span>
+                        <span className="text-ink-tertiary">any tool</span>
                       ) : (
                         <span className="font-mono text-xs">
                           {i.allowed_tools.join(", ")}
                         </span>
                       )}
                     </td>
-                    <td className="py-2 text-[var(--text-tertiary)]">
+                    <td className="py-2 text-ink-tertiary">
                       {i.expires_at ? formatDate(i.expires_at) : "—"}
                     </td>
                   </tr>
@@ -648,17 +648,17 @@ export default function IdentityPage() {
         {!failures.grants && grants.length === 0 && <p className="text-sm text-ink-secondary">No access grants recorded.</p>}
         {!failures.policies && policies.length === 0 && <p className="text-sm text-ink-secondary">No conditional policies recorded.</p>}
       {!failures.grants && grants.length > 0 && (
-        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+        <div className="rounded-2xl border border-outline bg-surface/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-emerald-400" />
-            <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+            <h3 className="text-sm font-semibold text-ink-secondary">
               JIT access grants
             </h3>
           </div>
           <div className="max-h-96 overflow-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
+                <tr className="border-b border-outline text-left text-xs text-ink-tertiary">
                   <th className="pb-2 font-medium">Tool</th>
                   <th className="pb-2 font-medium">Agent</th>
                   <th className="pb-2 font-medium">Status</th>
@@ -671,22 +671,22 @@ export default function IdentityPage() {
                 {grants.map((g) => (
                   <tr
                     key={g.grant_id}
-                    className="border-b border-[var(--border-subtle)] last:border-0"
+                    className="border-b border-outline last:border-0"
                   >
-                    <td className="py-2 font-mono text-xs text-[var(--foreground)]">
+                    <td className="py-2 font-mono text-xs text-foreground">
                       {g.tool_name}
                     </td>
-                    <td className="py-2 text-[var(--text-secondary)]">{g.agent_id}</td>
+                    <td className="py-2 text-ink-secondary">{g.agent_id}</td>
                     <td className="py-2">
                       <Badge tone={jitTone(g.status)}>{g.status}</Badge>
                     </td>
-                    <td className="py-2 font-mono text-xs text-[var(--text-tertiary)]">
+                    <td className="py-2 font-mono text-xs text-ink-tertiary">
                       {g.ticket_id || "—"}
                     </td>
-                    <td className="py-2 text-[var(--text-secondary)]">
+                    <td className="py-2 text-ink-secondary">
                       {g.approved_by || "—"}
                     </td>
-                    <td className="py-2 text-[var(--text-tertiary)]">
+                    <td className="py-2 text-ink-tertiary">
                       {g.expires_at ? formatDate(g.expires_at) : "—"}
                     </td>
                   </tr>
@@ -698,10 +698,10 @@ export default function IdentityPage() {
       )}
 
       {!failures.policies && policies.length > 0 && (
-        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/40 p-5">
+        <div className="rounded-2xl border border-outline bg-surface/40 p-5">
           <div className="mb-3 flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-blue-400" />
-            <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+            <h3 className="text-sm font-semibold text-ink-secondary">
               Conditional-access policies
             </h3>
           </div>
@@ -711,10 +711,10 @@ export default function IdentityPage() {
               .map((p) => (
                 <div
                   key={p.policy_id}
-                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/50 p-3"
+                  className="rounded-lg border border-outline bg-surface/50 p-3"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-[var(--foreground)]">
+                    <span className="text-sm font-medium text-foreground">
                       {p.name}
                     </span>
                     <Badge tone={p.effect === "deny" ? "red" : "blue"}>
@@ -723,16 +723,16 @@ export default function IdentityPage() {
                     <Badge tone={p.status === "active" ? "green" : "zinc"}>
                       {p.status}
                     </Badge>
-                    <span className="text-xs text-[var(--text-tertiary)]">
+                    <span className="text-xs text-ink-tertiary">
                       priority {p.priority}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-xs text-[var(--text-secondary)]">
-                    <span className="text-[var(--text-tertiary)]">scope:</span>{" "}
+                  <p className="mt-1.5 text-xs text-ink-secondary">
+                    <span className="text-ink-tertiary">scope:</span>{" "}
                     {scopeSummary(p)}
                   </p>
-                  <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                    <span className="text-[var(--text-tertiary)]">when:</span>{" "}
+                  <p className="mt-0.5 text-xs text-ink-secondary">
+                    <span className="text-ink-tertiary">when:</span>{" "}
                     {conditionSummary(p)}
                   </p>
                 </div>

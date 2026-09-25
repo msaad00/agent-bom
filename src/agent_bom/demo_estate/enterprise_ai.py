@@ -725,11 +725,9 @@ def build_delivery_assets(
                             "ecosystem": ecosystem,
                             "package_name": name,
                             "package_version": version,
-                            # The identity the workload running this package
-                            # holds. A vulnerability's blast radius is whatever
-                            # the process can reach, so the principal belongs on
-                            # the package row, not only on the workload — that is
-                            # what lets a CVE finding carry an identity edge.
+                            # Context for the consuming workload's principal.
+                            # A package cannot assume this identity; graph
+                            # authority remains on the declared workload.
                             **({"uses_identity": workload_tags["uses_identity"]} if "uses_identity" in workload_tags else {}),
                             "workload": workload_id,
                         },

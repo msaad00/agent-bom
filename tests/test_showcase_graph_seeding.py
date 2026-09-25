@@ -312,3 +312,19 @@ def test_showcase_axios_advisory_explains_effect_without_inventing_exploitation(
     assert attrs["cwe_ids"] == ["CWE-352"]
     assert attrs["fixed_version"] == "1.6.0"
     assert attrs["cvss_score"] == 6.5
+
+
+def test_pre_identity_correction_seed_is_rebuilt(store: SQLiteGraphStore) -> None:
+    store.save_graph(_minimal_graph(scan_id=SHOWCASE_SCAN_ID, created_at="2026-09-24T01:00:00+00:00"))
+    store.save_graph(_minimal_graph(scan_id=SHOWCASE_BASELINE_SCAN_ID, created_at="2026-09-17T01:00:00+00:00"))
+    assert seed_showcase_graph_if_empty(store) is True
+    graph = store.load_graph(scan_id=SHOWCASE_SCAN_ID, tenant_id=SHOWCASE_TENANT)
+    assert any(node.entity_type == EntityType.PACKAGE for node in graph.nodes.values())
+    assert not any(
+        edge.relationship.value == "assumes"
+        and graph.nodes[edge.source].entity_type == EntityType.PACKAGE
+        or edge.relationship.value == "can_access"
+        and graph.nodes[edge.target].entity_type == EntityType.PACKAGE
+        for edge in graph.edges
+    )
+    assert seed_showcase_graph_if_empty(store) is False

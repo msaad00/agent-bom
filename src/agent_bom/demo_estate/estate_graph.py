@@ -50,7 +50,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.demo_estate.enterprise_correlation import EnterpriseCorrelation
     from agent_bom.finding import Finding
 
-ESTATE_GRAPH_VERSION = "estate_graph.v2"
+ESTATE_GRAPH_VERSION = "estate_graph.v3"
 
 # Data source stamped on every projected node/edge so a demo estate can always
 # be told apart from a real scan in the same graph.
@@ -169,6 +169,33 @@ _TOPOLOGY_TAGS: tuple[tuple[str, RelationshipType], ...] = (
     ("cluster", RelationshipType.PART_OF),
     ("repository", RelationshipType.PART_OF),
 )
+
+# Only executable workloads can use their declared runtime identity. Inventory
+# also carries identity context on packages, models and configuration artifacts;
+# that context is not an assumption or authorization relationship.
+_IDENTITY_WORKLOAD_TYPES = frozenset(
+    {
+        "instance",
+        "virtual_machine",
+        "function",
+        "function_app",
+        "deployment",
+        "workflow",
+        "agent",
+        "server",
+        "bedrock_agent",
+        "vertex_agent",
+        "sagemaker_endpoint",
+        "vertex_endpoint",
+        "azure_openai_deployment",
+        "gemini_api",
+        "cognitive_services_account",
+        "cortex_function",
+        "cortex_search_service",
+        "spcs_service",
+    }
+)
+_IDENTITY_TARGET_TYPES = frozenset({EntityType.ROLE, EntityType.SERVICE_ACCOUNT, EntityType.SERVICE_PRINCIPAL})
 
 # Correlation kinds whose asset path is a real multi-hop chain worth drawing.
 # A single-asset correlation has no path to draw.
@@ -395,6 +422,10 @@ def project_estate_into_graph(
             target = asset.tags.get(tag, "")
             if not target or target not in known_asset_ids or target == asset.asset_id:
                 continue
+            if tag == "uses_identity" and (
+                asset.resource_type not in _IDENTITY_WORKLOAD_TYPES or graph.nodes[target].entity_type not in _IDENTITY_TARGET_TYPES
+            ):
+                continue
             expected_target = {"uses_model": EntityType.MODEL, "uses_framework": EntityType.FRAMEWORK}.get(tag)
             if expected_target is not None and (
                 graph.nodes[asset.asset_id].entity_type != EntityType.AGENT
@@ -515,7 +546,9 @@ def project_estate_into_graph(
         finding_count += 1
 
         principal = str(finding.evidence.get("identity_asset_id") or "")
-        if principal and principal in known_assets and principal != asset_id:
+        # A package finding can name its consuming workload's principal as
+        # context. That does not establish the principal can access the package.
+        if principal and principal in known_assets and principal != asset_id and graph.nodes[asset_id].entity_type != EntityType.PACKAGE:
             _edge(
                 principal,
                 asset_id,

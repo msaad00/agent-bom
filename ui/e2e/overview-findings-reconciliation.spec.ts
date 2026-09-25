@@ -380,6 +380,7 @@ for (const theme of ["light", "dark"] as const) {
         expect(risks!.height).toBeLessThan(500);
         expect(risks!.width).toBeGreaterThan(compliance!.width + coverage!.width);
         expect(Math.abs(compliance!.y - coverage!.y)).toBeLessThan(2);
+        expect(Math.abs(compliance!.height - coverage!.height)).toBeLessThan(2);
         expect(compliance!.y).toBeGreaterThan(risks!.y + risks!.height);
         expect(coverage!.x).toBeGreaterThan(compliance!.x + compliance!.width);
       } else {

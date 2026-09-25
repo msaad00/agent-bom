@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Mapping, Optional
 
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
+from agent_bom import state_home
 from agent_bom.agent_identity import check_identity
 from agent_bom.api.tracing import (
     build_traceparent,
@@ -418,7 +419,7 @@ def _proxy_audit_delivery_paths(
 ) -> AuditDeliveryPaths:
     """Resolve restart-stable, secret-free proxy audit backlog paths."""
 
-    state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom")).expanduser()
+    state_dir = state_home.state_dir()
     identity = "\x00".join((control_plane_url.rstrip("/"), tenant_id, source_id))
     return audit_delivery_paths(state_dir, surface="proxy", identity=identity)
 
@@ -521,7 +522,7 @@ def _gateway_policy_cache_path() -> Path:
     configured = os.environ.get("AGENT_BOM_PROXY_POLICY_CACHE_PATH")
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / ".agent-bom" / "cache" / "gateway-policies.json"
+    return state_home.state_path("cache", "gateway-policies.json")
 
 
 def _gateway_policy_cache_signature_path(cache_path: Path) -> Path:

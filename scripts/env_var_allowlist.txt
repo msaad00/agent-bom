@@ -187,6 +187,8 @@ AGENT_BOM_DB_SOURCES
 AGENT_BOM_DEFAULT_ROLE
 # Operator override: force demo-estate scan reseed even when a usable curated job exists.
 AGENT_BOM_DEMO_ESTATE_FORCE
+# Demo estate data dir; resolved per call by state_home so demo data never lands in the product state dir.
+AGENT_BOM_DEMO_STATE_DIR
 AGENT_BOM_DELEGATION_SIGNING_KEY  # secret: signs scoped agent-to-agent delegation tokens (HMAC); resolved via secret_source in delegation_token.py
 AGENT_BOM_TENANT_BINDING_KEY  # secret: signs tenant-binding claims (HMAC); resolved via secret_source in tenant_binding.py and never stored in config
 AGENT_BOM_DISABLE_DOCS

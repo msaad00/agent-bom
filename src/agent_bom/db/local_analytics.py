@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from agent_bom import state_home
 from agent_bom.analytics_retention import (
     analytics_max_events,
     analytics_max_findings,
@@ -29,14 +30,14 @@ from agent_bom.canonical_ids import canonical_package_id
 from agent_bom.config import LOCAL_ANALYTICS_DB
 
 SCHEMA_VERSION = 4
-DEFAULT_LOCAL_ANALYTICS_PATH = Path.home() / ".agent-bom" / "local-analytics.sqlite"
+DEFAULT_LOCAL_ANALYTICS_FILENAME = "local-analytics.sqlite"
 
 
 def local_analytics_path() -> Path:
     """Return the configured local analytics database path."""
     if LOCAL_ANALYTICS_DB:
         return Path(LOCAL_ANALYTICS_DB).expanduser()
-    return DEFAULT_LOCAL_ANALYTICS_PATH
+    return state_home.state_path(DEFAULT_LOCAL_ANALYTICS_FILENAME)
 
 
 class LocalAnalyticsStore:

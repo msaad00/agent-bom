@@ -19,6 +19,7 @@ from typing import Optional
 import httpx
 from rich.console import Console
 
+from agent_bom import state_home
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
@@ -59,7 +60,7 @@ def _state_dir() -> Path:
     Redirects every enrichment cache write off ``$HOME`` when the operator
     points the state dir elsewhere (e.g. ``/tmp`` on a tiny CloudShell home).
     """
-    return Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+    return state_home.state_dir()
 
 
 # Cache for CISA KEV catalog (refresh daily, persisted to disk)

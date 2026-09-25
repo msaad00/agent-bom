@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
+from agent_bom import state_home
 from agent_bom.security import redact_secret_url, sanitize_error, sanitize_sensitive_payload
 
 POSTURE_EVENT_SCHEMA_VERSION = "1"
@@ -421,7 +422,7 @@ def default_webhook_outbox_path() -> Path:
     shared_db = os.environ.get("AGENT_BOM_DB", "").strip()
     if shared_db:
         return Path(shared_db).expanduser()
-    return Path.home() / ".agent-bom" / "db" / "posture-webhooks.db"
+    return state_home.state_path("db", "posture-webhooks.db")
 
 
 def default_webhook_outbox() -> WebhookOutbox:

@@ -171,8 +171,8 @@ def _write_cli_output(payload: dict, output_path: str | None) -> None:
 @click.option("--output", "-o", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress headings and footer metadata in console output.")
 def history_cmd(limit: int, output_format: str, output: str | None, quiet: bool):
-    """List saved scan reports from ~/.agent-bom/history/."""
-    from agent_bom.history import list_reports, load_report
+    """List saved scan reports from the history directory (~/.agent-bom/history by default)."""
+    from agent_bom.history import history_dir, list_reports, load_report
 
     if output and output_format != "json":
         raise click.ClickException("`report history --output` requires `--format json`.")
@@ -184,7 +184,7 @@ def history_cmd(limit: int, output_format: str, output: str | None, quiet: bool)
         if output_format == "json":
             _write_cli_output(
                 {
-                    "history_dir": str(Path.home() / ".agent-bom" / "history"),
+                    "history_dir": str(history_dir(create=False)),
                     "total_reports": 0,
                     "reports": [],
                 },

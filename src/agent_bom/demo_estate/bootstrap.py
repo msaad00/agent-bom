@@ -47,6 +47,40 @@ def demo_estate_enabled() -> bool:
     return os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in _TRUTHY
 
 
+def _demo_seed_block_reason(graph_store: Any | None, tenant_id: str) -> str | None:
+    """Why seeding would mix demo data with operator data, or ``None`` if safe.
+
+    Fails closed on two conditions: the process state dir is not the pinned
+    demo directory (so default stores would resolve to the operator's product
+    data), or the graph store already holds a non-showcase snapshot for the
+    tenant (an explicit store override points the demo at operator evidence).
+    """
+    from agent_bom.state_home import demo_state_isolated
+
+    if not demo_state_isolated():
+        return "demo_state_not_isolated"
+    if graph_store is not None:
+        from agent_bom.demo_estate.showcase_graph import _existing_snapshots
+
+        showcase_ids = {SHOWCASE_SCAN_ID, SHOWCASE_BASELINE_SCAN_ID}
+        if any(str(row.get("scan_id")) not in showcase_ids for row in _existing_snapshots(graph_store, tenant_id)):
+            return "non_demo_snapshot_present"
+    return None
+
+
+def _blocked_summary(tenant_id: str, reason: str) -> dict[str, Any]:
+    _logger.error(
+        "demo estate bootstrap refused tenant=%s reason=%s: demo data must not mix with product data; "
+        "run demo mode against its own data directory (AGENT_BOM_DEMO_STATE_DIR)",
+        tenant_id,
+        reason,
+    )
+    return _remember_bootstrap_status(
+        tenant_id,
+        {"enabled": True, "tenant_id": tenant_id, "seeded": False, "graph_seeded": False, "blocked": reason},
+    )
+
+
 def reset_daily_evidence_day() -> None:
     """Forget which day the evidence was refreshed for. For tests and resets."""
     global _daily_evidence_day
@@ -95,6 +129,11 @@ def refresh_demo_daily_evidence(*, tenant_id: str = SHOWCASE_TENANT, now: dateti
         return {"refreshed": False, "reason": "disabled"}
 
     today = (now or datetime.now(timezone.utc)).date().isoformat()
+    with _daily_evidence_lock:
+        if _daily_evidence_day == today:
+            return {"refreshed": False, "reason": "current", "day": today}
+    if get_demo_estate_bootstrap_status(tenant_id=tenant_id).get("blocked") or _demo_seed_block_reason(None, tenant_id):
+        return {"refreshed": False, "reason": "blocked"}
     with _daily_evidence_lock:
         if _daily_evidence_day == today:
             return {"refreshed": False, "reason": "current", "day": today}
@@ -363,8 +402,13 @@ def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str
 
     from agent_bom.api.stores import _get_graph_store, _get_store
 
-    store = _get_store()
+    if _demo_seed_block_reason(None, tenant_id):
+        return _blocked_summary(tenant_id, "demo_state_not_isolated")
     graph_store = _get_graph_store()
+    block_reason = _demo_seed_block_reason(graph_store, tenant_id)
+    if block_reason:
+        return _blocked_summary(tenant_id, block_reason)
+    store = _get_store()
     summary: dict[str, Any] = {"enabled": True, "tenant_id": tenant_id, "seeded": False}
     force = demo_estate_force_reseed()
     if force:

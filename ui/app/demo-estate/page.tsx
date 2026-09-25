@@ -132,12 +132,10 @@ export default function DemoEstatePage() {
     (correlationPage - 1) * CORRELATIONS_PER_PAGE,
     correlationPage * CORRELATIONS_PER_PAGE,
   );
+  // The demo page only ever links the synthetic showcase by its explicit id.
   const graphScanId = demoStatus.showcase_available
     ? demoStatus.showcase_snapshot_id
-    : demoStatus.graph_owner_scan_id;
-  const graphLinkLabel = demoStatus.showcase_available
-    ? "Open security graph"
-    : "Open operator graph";
+    : null;
 
   return (
     <div className="space-y-6" data-testid="demo-estate-page">
@@ -161,7 +159,7 @@ export default function DemoEstatePage() {
             <div className="mt-5 flex flex-wrap gap-2">
               {graphScanId ? (
                 <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" href={securityGraphHref({ scan: graphScanId })}>
-                  {graphLinkLabel} <ExternalLink className="h-3.5 w-3.5" />
+                  Open security graph <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
               ) : null}
               <Link className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm font-medium text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]" href="/traces">
@@ -171,14 +169,13 @@ export default function DemoEstatePage() {
                 Review findings
               </Link>
             </div>
-            {demoStatus.graph_alignment === "operator_default" ? (
+            {demoStatus.graph_alignment === "blocked" ? (
               <p
-                className="mt-3 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs leading-5 text-sky-800 dark:text-sky-200"
+                className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-200"
                 data-testid="demo-estate-graph-scope"
               >
-                Operator scan owns the default graph. {demoStatus.showcase_available
-                  ? "The synthetic showcase remains available through the explicit graph link."
-                  : "The graph link opens the operator-owned snapshot; synthetic evidence was not substituted."}
+                This demo&apos;s data directory holds non-demo graph data, so the demo is not seeded and that data is not shown here.
+                Run demo mode against its own data directory.
               </p>
             ) : null}
           </div>

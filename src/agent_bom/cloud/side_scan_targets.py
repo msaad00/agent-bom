@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol, cast
 
+from agent_bom import state_home
 from agent_bom.filesystem import scan_disk_path_native
 from agent_bom.models import Package
 from agent_bom.secret_scanner import scan_secrets
@@ -42,7 +43,7 @@ ProviderClientFactory = Callable[..., dict[str, Any]]
 
 # Default on-disk lifecycle state store for CLI-driven cross-cloud side-scans,
 # matching the repo-wide ``~/.agent-bom`` convention.
-DEFAULT_SIDE_SCAN_STATE_DB = Path.home() / ".agent-bom" / "side_scan_state.db"
+DEFAULT_SIDE_SCAN_STATE_DB_FILENAME = "side_scan_state.db"
 
 # Env override so every surface (CLI, API, MCP, scheduler) reads and writes the
 # SAME durable lifecycle store when SQLite is selected.
@@ -59,7 +60,7 @@ def side_scan_state_db_path() -> Path:
     raw = os.environ.get(SIDE_SCAN_STATE_DB_ENV)
     if raw and raw.strip():
         return Path(raw.strip()).expanduser()
-    return DEFAULT_SIDE_SCAN_STATE_DB
+    return state_home.state_path(DEFAULT_SIDE_SCAN_STATE_DB_FILENAME)
 
 
 CloudSideScanProvider = SideScanProvider

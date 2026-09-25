@@ -42,13 +42,15 @@ curl -fsS http://127.0.0.1:8422/v1/demo-estate/status | jq
 ```
 
 `graph_alignment=aligned` means the default graph and the explicit
-`showcase_snapshot_id` both serve the fictional estate. `operator_default`
-means a real or imported operator scan remains the default; the response names
-that snapshot and separately says whether the synthetic showcase is still
-addressable. `reason=operator_snapshot_preserved` confirms the bootstrap saw
-and retained that owner; `operator_snapshot_became_default` means ownership
-changed after the last bootstrap. The demo never replaces newer operator
-evidence to make its own link work.
+`showcase_snapshot_id` both serve the fictional estate. `unavailable` means no
+graph has been seeded yet. `blocked` (`reason=non_demo_snapshot_present`) means
+the demo's store already holds a non-demo snapshot: the bootstrap seeds nothing
+next to it, and the response withholds that snapshot's id so no demo surface
+links to it or labels it as sample data.
+
+Demo data never mixes with product data: with `AGENT_BOM_DEMO_ESTATE=1`, every
+local store resolves under `AGENT_BOM_DEMO_STATE_DIR` (default
+`<state dir>/demo-estate`). See [DEPLOY_QUICKSTART.md](DEPLOY_QUICKSTART.md#local-pilot-fastest-proof).
 
 The primary story follows one trace through:
 

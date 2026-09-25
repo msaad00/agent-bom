@@ -3603,7 +3603,7 @@ export interface DemoEstateStatus {
   showcase_snapshot_id: string;
   showcase_available: boolean;
   graph_owner_scan_id: string | null;
-  graph_alignment: "aligned" | "operator_default" | "unavailable";
+  graph_alignment: "aligned" | "blocked" | "unavailable";
   reason: string | null;
 }
 

@@ -3010,14 +3010,15 @@ def scan(
 
         _baseline_path = baseline
         if not _baseline_path:
-            from agent_bom.scan_delta import _DEFAULT_BASELINE_PATH
+            from agent_bom.scan_delta import default_baseline_path
 
-            if _DEFAULT_BASELINE_PATH.exists():
-                _baseline_path = str(_DEFAULT_BASELINE_PATH)
+            _default_baseline = default_baseline_path()
+            if _default_baseline.exists():
+                _baseline_path = str(_default_baseline)
             else:
                 logger.warning(
                     "Delta mode requested but no --baseline file specified and no auto-baseline found at %s. Skipping delta filter.",
-                    _DEFAULT_BASELINE_PATH,
+                    _default_baseline,
                 )
 
         if _baseline_path:

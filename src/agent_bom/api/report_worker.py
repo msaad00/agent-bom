@@ -11,6 +11,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agent_bom import state_home
 from agent_bom.api.models import JobStatus, ReportJob
 from agent_bom.api.report_artifact_store import publish_report_artifact
 from agent_bom.api.report_job_store import ReportClaim, ReportJobStore, get_report_job_store
@@ -27,7 +28,7 @@ def report_artifact_root() -> Path:
     raw = (os.environ.get("AGENT_BOM_REPORT_ARTIFACT_DIR") or "").strip()
     if raw:
         return Path(raw)
-    return Path.home() / ".agent-bom" / "report-artifacts"
+    return state_home.state_path("report-artifacts")
 
 
 def _artifact_path(tenant_id: str, job_id: str) -> Path:

@@ -12,7 +12,6 @@ Pluggable detectors that analyze MCP JSON-RPC traffic in real-time:
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from collections import deque
@@ -21,6 +20,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
+from agent_bom import state_home
 from agent_bom.runtime.patterns import (
     CREDENTIAL_PATTERNS,
     DANGEROUS_ARG_PATTERNS,
@@ -180,7 +180,7 @@ class ToolDriftDetector:
 
     @staticmethod
     def _baseline_path() -> Path:
-        state_dir = Path(os.environ.get("AGENT_BOM_STATE_DIR", Path.home() / ".agent-bom"))
+        state_dir = state_home.state_dir()
         state_dir.mkdir(parents=True, exist_ok=True)
         return state_dir / "drift_baseline.json"
 

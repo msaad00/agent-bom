@@ -412,6 +412,26 @@ describe('api.getGraphRollup', () => {
     expect(result.mode).toBe('drilldown')
   })
 
+  it('passes drill-down page offset and limit', async () => {
+    const fetchMock = mockFetch({
+      scan_id: 'scan-1',
+      tenant_id: 'default',
+      created_at: '2026-01-01T00:00:00Z',
+      mode: 'drilldown',
+      filters: {},
+      children: [],
+      summary: { direct_child_count: 250, returned_child_count: 50 },
+    })
+    global.fetch = fetchMock
+
+    await api.getGraphRollup('scan-1', { node: 'account:prod', offset: 200, limit: 200 })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/graph/rollup?scan_id=scan-1&node=account%3Aprod&offset=200&limit=200',
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
   it('omits optional params when not provided', async () => {
     const fetchMock = mockFetch({
       scan_id: 'scan-1',

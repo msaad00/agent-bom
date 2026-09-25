@@ -829,7 +829,19 @@ export interface GraphRollupSummary {
   orphan_shown_count?: number;
   orphan_truncated_count?: number;
   direct_child_count?: number;
+  /** Direct children left after filters; the pageable drill-down total. */
+  matching_child_count?: number;
   returned_child_count?: number;
+}
+
+/** Offset page over a drill-down's ranked direct children. */
+export interface GraphRollupPagination {
+  offset: number;
+  limit: number | null;
+  returned: number;
+  total: number;
+  has_more: boolean;
+  next_offset: number | null;
 }
 
 export interface GraphRollupOrphanSummarySample {
@@ -879,6 +891,8 @@ export interface GraphRollupResponse {
     severity: string;
   } | null;
   summary: GraphRollupSummary;
+  /** Present on drill-down responses. */
+  pagination?: GraphRollupPagination;
   /** Completeness of the returned roll-up nodes/containers. */
   completeness: GraphCompleteness;
 }

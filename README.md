@@ -47,7 +47,7 @@ The offline synthetic enterprise estate includes evaluated checks; results do no
   <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="1440"></a>
 </p>
 
-Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), and [framework controls and evidence](site-docs/features/compliance.md).
+Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), and [framework controls and evidence](site-docs/features/compliance.md).
 
 ### AppSec and cloud teams: explain why a finding matters
 

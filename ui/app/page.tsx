@@ -15,6 +15,7 @@ import {
   type InventorySummaryResponse,
   type InventorySummaryFilters,
 } from "@/lib/api";
+import { OverviewHistory } from "@/components/overview-history";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
   OverviewCockpit,
@@ -146,8 +147,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Per-scan trend points do not establish comparable scope or scoring for
-  // the aggregate overview. Promote no delta until that contract exists.
+  // Historical comparisons are separately scoped and loaded on demand.
 
   useEffect(() => {
     let cancelled = false;
@@ -481,6 +481,7 @@ export default function Dashboard() {
         compliance={importedReport ? null : complianceSnapshot}
         services={importedReport ? null : counts?.services ?? null}
       />
+      {!importedReport && <OverviewHistory />}
 
       {!importedReport && <details className="rounded-lg border border-outline px-4 py-3"><summary className="cursor-pointer text-sm font-medium">Recent scans & activity</summary>
       <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-3">

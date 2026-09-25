@@ -11,13 +11,17 @@ Also computes trend metrics for historical analysis.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 logger = logging.getLogger(__name__)
+
+# Bound identities transferred/retained while projecting a history request.
+HISTORY_METADATA_BUDGET_BYTES = 16 * 1024 * 1024
 
 
 @dataclass
@@ -136,6 +140,7 @@ class TrendPoint:
     posture_grade: str
     tenant_id: str = "default"
     scan_id: str | None = None
+    comparison_metadata: dict = field(default_factory=dict)
 
     @property
     def idempotency_key(self) -> str:
@@ -181,15 +186,30 @@ class InMemoryTrendStore:
                     self._points.append(point)
             else:
                 self._points.append(point)
-            if len(self._points) > self._MAX_POINTS:
-                self._points = self._points[-self._MAX_POINTS :]
+            tenant_points = sorted(
+                (row for row in self._points if row.tenant_id == point.tenant_id),
+                key=lambda row: row.timestamp,
+                reverse=True,
+            )
+            retained = {id(row) for row in tenant_points[: self._MAX_POINTS]}
+            self._points = [row for row in self._points if row.tenant_id != point.tenant_id or id(row) in retained]
 
     def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
         with self._lock:
             points = self._points
             if tenant_id is not None:
                 points = [point for point in points if point.tenant_id == tenant_id]
-            return list(reversed(points[-limit:]))
+            selected = sorted(points, key=lambda point: point.timestamp, reverse=True)[:limit]
+            used = 0
+            result = []
+            for point in selected:
+                used += len(json.dumps(point.comparison_metadata).encode())
+                result.append(
+                    point
+                    if used <= HISTORY_METADATA_BUDGET_BYTES
+                    else replace(point, comparison_metadata={"history_processing_limit": True})
+                )
+            return result
 
 
 class SQLiteTrendStore:
@@ -223,6 +243,8 @@ class SQLiteTrendStore:
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(trend_history)").fetchall()}
         if "tenant_id" not in cols:
             self._conn.execute("ALTER TABLE trend_history ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        if "comparison_metadata" not in cols:
+            self._conn.execute("ALTER TABLE trend_history ADD COLUMN comparison_metadata TEXT NOT NULL DEFAULT '{}'")
         if "scan_id" not in cols:
             self._conn.execute("ALTER TABLE trend_history ADD COLUMN scan_id TEXT")
         self._conn.execute(
@@ -233,17 +255,21 @@ class SQLiteTrendStore:
         self._conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_trend_tenant_scan ON trend_history(tenant_id, scan_id) WHERE scan_id IS NOT NULL"
         )
+        from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
+        ensure_sqlite_schema_version(self._conn, "trend_history", version=2)
         self._conn.commit()
 
     def record(self, point: TrendPoint) -> None:
         self._conn.execute(
             "INSERT INTO trend_history "
-            "(timestamp, tenant_id, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "(timestamp, tenant_id, total_vulns, critical, high, medium, low, posture_score, posture_grade, scan_id, comparison_metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (tenant_id, scan_id) WHERE scan_id IS NOT NULL DO UPDATE SET "
             "timestamp = excluded.timestamp, total_vulns = excluded.total_vulns, critical = excluded.critical, "
             "high = excluded.high, medium = excluded.medium, low = excluded.low, "
-            "posture_score = excluded.posture_score, posture_grade = excluded.posture_grade",
+            "posture_score = excluded.posture_score, posture_grade = excluded.posture_grade, "
+            "comparison_metadata = excluded.comparison_metadata",
             (
                 point.timestamp,
                 point.tenant_id,
@@ -255,6 +281,7 @@ class SQLiteTrendStore:
                 point.posture_score,
                 point.posture_grade,
                 point.scan_id,
+                json.dumps(point.comparison_metadata),
             ),
         )
         self._conn.commit()
@@ -262,13 +289,21 @@ class SQLiteTrendStore:
     def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
         if tenant_id is None:
             rows = self._conn.execute(
-                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id, scan_id "
+                "SELECT timestamp, total_vulns, critical, high, medium, low, "
+                "posture_score, posture_grade, tenant_id, scan_id, "
+                "CASE WHEN SUM(LENGTH(CAST(comparison_metadata AS BLOB))) OVER "
+                "(ORDER BY timestamp DESC, id DESC ROWS UNBOUNDED PRECEDING) <= 16777216 "
+                "THEN comparison_metadata ELSE '{\"history_processing_limit\":true}' END "
                 "FROM trend_history ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id, scan_id "
+                "SELECT timestamp, total_vulns, critical, high, medium, low, "
+                "posture_score, posture_grade, tenant_id, scan_id, "
+                "CASE WHEN SUM(LENGTH(CAST(comparison_metadata AS BLOB))) OVER "
+                "(ORDER BY timestamp DESC, id DESC ROWS UNBOUNDED PRECEDING) <= 16777216 "
+                "THEN comparison_metadata ELSE '{\"history_processing_limit\":true}' END "
                 "FROM trend_history WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT ?",
                 (tenant_id, limit),
             ).fetchall()
@@ -284,6 +319,7 @@ class SQLiteTrendStore:
                 posture_grade=r[7],
                 tenant_id=r[8] if len(r) > 8 else "default",
                 scan_id=r[9] if len(r) > 9 else None,
+                comparison_metadata=json.loads(r[10]) if len(r) > 10 else {},
             )
             for r in rows
         ]

@@ -88,7 +88,7 @@ function SortButton({
     <button
       onClick={() => onClick(field)}
       className={`flex items-center gap-0.5 text-xs font-medium uppercase tracking-wide transition-colors ${
-        active ? "text-[var(--foreground)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+        active ? "text-foreground" : "text-ink-tertiary hover:text-ink-secondary"
       }`}
     >
       {label}
@@ -120,7 +120,7 @@ function NarrativeRow({
 
   return (
     <>
-      <tr className="hover:bg-[var(--surface)] transition-colors">
+      <tr className="hover:bg-surface transition-colors">
         {/* Package */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
@@ -130,11 +130,11 @@ function NarrativeRow({
               )}`}
             />
           <div>
-              <span className="font-mono text-xs text-[var(--foreground)]">
+              <span className="font-mono text-xs text-foreground">
                 {item.package}
               </span>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[var(--text-secondary)]">
+                <span className="rounded border border-outline bg-surface px-1.5 py-0.5 font-mono text-ink-secondary">
                   current {item.current_version}
                 </span>
               </div>
@@ -148,13 +148,13 @@ function NarrativeRow({
             {item.vulnerabilities.slice(0, 2).map((cve) => (
               <span
                 key={cve}
-                className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
+                className="rounded border border-outline bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-secondary"
               >
                 {cve}
               </span>
             ))}
             {item.vulnerabilities.length > 2 && (
-              <span className="text-[10px] text-[var(--text-tertiary)]">+{item.vulnerabilities.length - 2}</span>
+              <span className="text-[10px] text-ink-tertiary">+{item.vulnerabilities.length - 2}</span>
             )}
           </div>
         </td>
@@ -180,14 +180,14 @@ function NarrativeRow({
           {item.fixed_version ? (
             <span className="font-mono text-emerald-400">{item.fixed_version}</span>
           ) : (
-            <span className="text-[var(--text-tertiary)]">N/A</span>
+            <span className="text-ink-tertiary">N/A</span>
           )}
         </td>
 
         {/* Risk score */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="w-16 h-1.5 bg-[var(--surface-elevated)] rounded-full overflow-hidden">
+            <div className="w-16 h-1.5 bg-surface-elevated rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${
                   item.impact_score >= 8
@@ -201,16 +201,16 @@ function NarrativeRow({
                 style={{ width: `${(item.impact_score / 10) * 100}%` }}
               />
             </div>
-            <span className="text-xs font-mono text-[var(--text-secondary)]">
+            <span className="text-xs font-mono text-ink-secondary">
               {item.impact_score.toFixed(1)}
             </span>
           </div>
         </td>
 
         {/* Reach */}
-        <td className="px-4 py-3 text-xs text-[var(--text-secondary)]">
+        <td className="px-4 py-3 text-xs text-ink-secondary">
           <div>{item.affected_agents?.length ?? 0} agent{(item.affected_agents?.length ?? 0) !== 1 ? "s" : ""}</div>
-          <div className="text-[var(--text-tertiary)]">{item.exposed_credentials?.length ?? 0} credential{(item.exposed_credentials?.length ?? 0) !== 1 ? "s" : ""}</div>
+          <div className="text-ink-tertiary">{item.exposed_credentials?.length ?? 0} credential{(item.exposed_credentials?.length ?? 0) !== 1 ? "s" : ""}</div>
         </td>
 
         {/* Compliance tags */}
@@ -219,13 +219,13 @@ function NarrativeRow({
             {allTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-[10px] font-mono bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 text-[var(--text-secondary)]"
+                className="text-[10px] font-mono bg-surface-elevated border border-outline rounded px-1.5 py-0.5 text-ink-secondary"
               >
                 {tag}
               </span>
             ))}
             {allTags.length > 3 && (
-              <span className="text-[10px] text-[var(--text-tertiary)]">
+              <span className="text-[10px] text-ink-tertiary">
                 +{allTags.length - 3}
               </span>
             )}
@@ -237,7 +237,7 @@ function NarrativeRow({
           {item.risk_narrative || item.command || item.verify_command ? (
             <button
               onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-surface-elevated hover:bg-surface-muted text-ink-secondary hover:text-foreground transition-colors"
             >
               {expanded ? (
                 <ChevronUp className="w-3 h-3" />
@@ -247,7 +247,7 @@ function NarrativeRow({
               Details
             </button>
           ) : (
-            <span className="text-xs text-[var(--text-tertiary)]">—</span>
+            <span className="text-xs text-ink-tertiary">—</span>
           )}
         </td>
 
@@ -255,12 +255,12 @@ function NarrativeRow({
         <td className="sticky right-0 bg-[var(--background)] px-2 py-3 sm:static sm:px-4">
           <button
             onClick={() => onCreateTicket(item)}
-            className="flex min-h-11 items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
+            className="flex min-h-11 items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-surface-elevated hover:bg-surface-muted text-ink-secondary hover:text-foreground transition-colors"
             title={ticket ? "View or sync ticket" : "Create a ticket"}
           >
             {ticket ? (
               <>
-                <span className="font-mono text-[var(--foreground)]">
+                <span className="font-mono text-foreground">
                   {ticket.key || ticket.external_id || "Ticket"}
                 </span>
                 <TicketStatusChip status={ticket.status} />
@@ -277,12 +277,12 @@ function NarrativeRow({
 
       {/* Expanded narrative */}
       {expanded && (item.risk_narrative || item.command || item.verify_command) && (
-        <tr className="bg-[var(--surface)]/50">
+        <tr className="bg-surface/50">
           <td colSpan={9} className="px-6 py-4">
             <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
               <div className="space-y-3">
                 {item.risk_narrative ? (
-                  <div className="border-l-2 border-emerald-800 pl-3 text-xs leading-relaxed text-[var(--text-secondary)]">
+                  <div className="border-l-2 border-emerald-800 pl-3 text-xs leading-relaxed text-ink-secondary">
                     {item.risk_narrative}
                   </div>
                 ) : null}
@@ -290,7 +290,7 @@ function NarrativeRow({
                   {item.vulnerabilities.map((cve) => (
                     <span
                       key={cve}
-                      className="rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
+                      className="rounded border border-outline bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-secondary"
                     >
                       {cve}
                     </span>
@@ -298,13 +298,13 @@ function NarrativeRow({
                 </div>
                 {(item.reachable_tools?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
+                    <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-ink-tertiary">
                       Reachable tools
                     </span>
                     {item.reachable_tools.map((t) => (
                       <span
                         key={t}
-                        className="rounded border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-tertiary)]"
+                        className="rounded border border-outline bg-surface-elevated px-1.5 py-0.5 font-mono text-[10px] text-ink-tertiary"
                       >
                         {t}
                       </span>
@@ -314,17 +314,17 @@ function NarrativeRow({
               </div>
               <div className="space-y-3">
                 {item.command ? (
-                  <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-3 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Recommended command</div>
+                  <div className="rounded-xl border border-outline bg-[var(--background)] px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-ink-tertiary">Recommended command</div>
                     <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-emerald-300">
                       {item.command}
                     </code>
                   </div>
                 ) : null}
                 {item.verify_command ? (
-                  <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-3 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Verify</div>
-                    <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-[var(--text-secondary)]">
+                  <div className="rounded-xl border border-outline bg-[var(--background)] px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-ink-tertiary">Verify</div>
+                    <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-ink-secondary">
                       {item.verify_command}
                     </code>
                   </div>
@@ -344,7 +344,7 @@ export default function RemediationPageWrapper() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
+        <div className="flex items-center justify-center py-20 text-ink-secondary">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading remediation plan...
         </div>
@@ -517,7 +517,7 @@ function RemediationPage() {
     {
       key: "all",
       label: `All (${items.length})`,
-      color: "text-[var(--text-secondary)]",
+      color: "text-ink-secondary",
     },
     {
       key: "critical",
@@ -554,11 +554,11 @@ function RemediationPage() {
           <h1 className="text-xl font-semibold tracking-tight">
             Package remediation plan
           </h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">
+          <p className="text-ink-secondary text-sm mt-1">
             {items.length} packages prioritized by reach, severity, and available fixes
           </p>
           {mappings.packages > 0 && (
-            <p className="text-[var(--text-tertiary)] text-xs mt-1">
+            <p className="text-ink-tertiary text-xs mt-1">
               Top {mappings.packages} package{mappings.packages === 1 ? " maps" : "s map"} to {mappings.entries} risk taxonomy {mappings.entries === 1 ? "entry" : "entries"} across {mappings.taxonomies} {mappings.taxonomies === 1 ? "taxonomy" : "taxonomies"}
             </p>
           )}
@@ -571,7 +571,7 @@ function RemediationPage() {
                 `remediation-plan-${new Date().toISOString().slice(0, 10)}.json`
               )
             }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm font-medium rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-elevated hover:bg-surface-muted border border-outline text-ink-secondary text-sm font-medium rounded-lg transition-colors"
             title="Export remediation plan as JSON"
           >
             <Download className="w-3.5 h-3.5" />
@@ -582,7 +582,7 @@ function RemediationPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-[var(--text-secondary)]">
+        <div className="flex items-center justify-center py-20 text-ink-secondary">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
           Loading remediation plan...
         </div>
@@ -590,11 +590,11 @@ function RemediationPage() {
 
       {/* Error */}
       {!loading && error && (
-        <div className="text-center py-12 border border-dashed border-[var(--border-subtle)] rounded-xl">
+        <div className="text-center py-12 border border-dashed border-outline rounded-xl">
           <p className="text-red-400 text-sm mb-3">{error}</p>
           <button
             onClick={load}
-            className="px-3 py-1.5 bg-[var(--surface-elevated)] hover:bg-[var(--surface-muted)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-sm rounded-lg transition-colors"
+            className="px-3 py-1.5 bg-surface-elevated hover:bg-surface-muted border border-outline text-ink-secondary text-sm rounded-lg transition-colors"
           >
             Retry
           </button>
@@ -603,12 +603,12 @@ function RemediationPage() {
 
       {/* Empty */}
       {!loading && !error && items.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-[var(--border-subtle)] rounded-xl">
-          <Wrench className="w-8 h-8 text-[var(--text-tertiary)] mx-auto mb-3" />
-          <p className="text-[var(--text-tertiary)] text-sm">
+        <div className="text-center py-16 border border-dashed border-outline rounded-xl">
+          <Wrench className="w-8 h-8 text-ink-tertiary mx-auto mb-3" />
+          <p className="text-ink-tertiary text-sm">
             Run a scan to see remediation recommendations
           </p>
-          <p className="text-[var(--text-tertiary)] text-xs mt-1">
+          <p className="text-ink-tertiary text-xs mt-1">
             Remediation plans are generated automatically after each completed
             scan.
           </p>
@@ -629,8 +629,8 @@ function RemediationPage() {
                     onClick={() => setSeverityFilter(key)}
                     className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                       severityFilter === key
-                        ? `${color} border-[var(--border-strong)] bg-[var(--surface-elevated)]`
-                        : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
+                        ? `${color} border-outline-strong bg-surface-elevated`
+                        : "text-ink-tertiary border-outline hover:border-outline hover:text-ink-secondary"
                     }`}
                   >
                     {label}
@@ -646,8 +646,8 @@ function RemediationPage() {
                     onClick={() => setFrameworkFilter(key)}
                     className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                       frameworkFilter === key
-                        ? "text-[var(--foreground)] border-[var(--border-strong)] bg-[var(--surface-elevated)]"
-                        : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
+                        ? "text-foreground border-outline-strong bg-surface-elevated"
+                        : "text-ink-tertiary border-outline hover:border-outline hover:text-ink-secondary"
                     }`}
                   >
                     {label}
@@ -658,7 +658,7 @@ function RemediationPage() {
                   className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors ${
                     fixableOnly
                       ? "text-emerald-400 border-emerald-800 bg-emerald-950/40"
-                      : "text-[var(--text-tertiary)] border-[var(--border-subtle)] hover:border-[var(--border-subtle)] hover:text-[var(--text-secondary)]"
+                      : "text-ink-tertiary border-outline hover:border-outline hover:text-ink-secondary"
                   }`}
                 >
                   Fixable only
@@ -668,8 +668,8 @@ function RemediationPage() {
 
             {/* Page-position caption near the top so the reader knows the pager
                 below is a slice, not the whole list (mirrors Findings). */}
-            <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-[var(--text-tertiary)]">
-              <span className="font-semibold text-[var(--text-secondary)]">
+            <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-ink-tertiary">
+              <span className="font-semibold text-ink-secondary">
                 {displayed.length} matching package{displayed.length === 1 ? "" : "s"}
               </span>
               <span aria-hidden="true">·</span>
@@ -680,14 +680,14 @@ function RemediationPage() {
           </div>
 
           {/* Table */}
-          <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden overflow-x-auto">
+          <div className="border border-outline rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
+              <thead className="bg-surface border-b border-outline">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
                     Package
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
                     CVEs
                   </th>
                   <th className="text-left px-4 py-3">
@@ -699,7 +699,7 @@ function RemediationPage() {
                       onClick={handleSort}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
                     Fix
                   </th>
                   <th className="text-left px-4 py-3">
@@ -711,16 +711,16 @@ function RemediationPage() {
                       onClick={handleSort}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
                     Reach
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
                     Compliance
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide">
                     Details
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide sticky right-0 bg-[var(--surface)] sm:static">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-ink-tertiary uppercase tracking-wide sticky right-0 bg-surface sm:static">
                     Actions
                   </th>
                 </tr>
@@ -738,7 +738,7 @@ function RemediationPage() {
             </table>
 
             {paged.length === 0 && (
-              <div className="px-4 py-8 text-center text-[var(--text-tertiary)] text-sm">
+              <div className="px-4 py-8 text-center text-ink-tertiary text-sm">
                 No items match your filters.
               </div>
             )}
@@ -754,17 +754,17 @@ function RemediationPage() {
         </>
       )}
 
-      <details className="group overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
+      <details className="group overflow-hidden rounded-xl border border-outline bg-surface">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 marker:content-none">
           <div>
-            <div className="text-sm font-semibold text-[var(--foreground)]">Campaign workflow and verification</div>
-            <div className="mt-0.5 text-xs text-[var(--text-tertiary)]">
+            <div className="text-sm font-semibold text-foreground">Campaign workflow and verification</div>
+            <div className="mt-0.5 text-xs text-ink-tertiary">
               Assign owners and SLAs, sync tickets, and re-verify completed fixes.
             </div>
           </div>
-          <ChevronDown className="h-4 w-4 shrink-0 text-[var(--text-tertiary)] transition-transform group-open:rotate-180" />
+          <ChevronDown className="h-4 w-4 shrink-0 text-ink-tertiary transition-transform group-open:rotate-180" />
         </summary>
-        <div className="border-t border-[var(--border-subtle)] px-4 py-4">
+        <div className="border-t border-outline px-4 py-4">
           <RiskCampaignCommandCenter />
         </div>
       </details>

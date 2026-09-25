@@ -2513,17 +2513,48 @@ async def compare_baseline(
 
 
 @router.get("/trends", tags=["enterprise"])
-async def get_trends(request: Request, limit: int = 30) -> dict:
-    """Get historical trend data — posture score and vuln counts over time."""
+async def get_trends(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=365)] = 30,
+    days: Annotated[int | None, Query(ge=1, le=365)] = None,
+    scope_id: Annotated[str | None, Query(max_length=256)] = None,
+) -> dict:
+    """Historical posture plus evidence-backed comparisons within a bounded window."""
+    from datetime import datetime, timedelta, timezone
+
     from agent_bom.api.audit_log import log_action
+    from agent_bom.api.trend_comparison import parse_time, public_trend_point
 
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
-    history = _get_trend_store().get_history(limit=limit, tenant_id=tenant_id)
+    history = _get_trend_store().get_history(limit=365, tenant_id=tenant_id)
+    history.sort(key=lambda point: parse_time(point.timestamp) or datetime.min.replace(tzinfo=timezone.utc))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days is not None else None
+    previous_by_scope: dict[str, Any] = {}
+    points = []
+    for point in history:
+        key = point.comparison_metadata.get("scope_id")
+        previous = previous_by_scope.get(key) if key else None
+        rendered = public_trend_point(point, previous)
+        if key:
+            previous_by_scope[key] = point
+        observed = parse_time(point.timestamp)
+        if scope_id is not None and key != scope_id:
+            continue
+        # Preserve legacy/invalid timestamp points without manufacturing dates.
+        if cutoff is None or observed is None or observed >= cutoff:
+            points.append(rendered)
+    points = list(reversed(points))[:limit]
     log_action("trends.view", actor=actor, resource="trends", tenant_id=tenant_id, limit=limit)
     return {
-        "data_points": [p.to_dict() for p in history],
-        "count": len(history),
+        "data_points": points,
+        "count": len(points),
+        "days": days,
+        "scope_id": scope_id,
+        "available_scopes": sorted(previous_by_scope),
+        "history_limited": len(history) == 365 or any(p.comparison_metadata.get("history_processing_limit") for p in history),
+        "age_statistic": "median",
+        "freshness_reference": "scan_completion",
     }
 
 

@@ -30,7 +30,7 @@ import { SEVERITY_HEX, getChartTheme } from "@/lib/theme-colors";
 
 const SEVERITY_COLORS = SEVERITY_HEX;
 const CHART_PANEL =
-  "rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg";
+  "rounded-xl border border-outline bg-surface p-5 shadow-lg";
 
 export function ChartTooltip({
   active,
@@ -51,7 +51,7 @@ export function ChartTooltip({
       }}
     >
       {label && (
-        <div className="mb-1 font-mono text-[10px] text-[color:var(--text-tertiary)]">{label}</div>
+        <div className="mb-1 font-mono text-[10px] text-ink-tertiary">{label}</div>
       )}
       {payload?.map((entry) => (
         <div
@@ -86,7 +86,7 @@ export function VulnTrendChart({ data }: { data: TrendDataPoint[] }) {
 
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-4">
+      <h3 className="text-sm font-semibold text-foreground mb-4">
         Vulnerability Trend
       </h3>
       <div className="h-48">
@@ -162,10 +162,10 @@ export function EpssDistributionChart({ data }: { data: EpssDataPoint[] }) {
 
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">
+      <h3 className="text-sm font-semibold text-foreground mb-1">
         EPSS Distribution
       </h3>
-      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-4">
+      <p className="text-[10px] text-ink-tertiary mb-4">
         Exploit probability scores across findings
       </p>
       <div className="h-48">
@@ -221,7 +221,7 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
 
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-4">
+      <h3 className="text-sm font-semibold text-foreground mb-4">
         Severity Breakdown
       </h3>
       <div className="h-48 flex items-center justify-center">
@@ -245,10 +245,10 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute text-center pointer-events-none">
-          <div className="text-2xl font-bold font-mono text-[color:var(--foreground)]">
+          <div className="text-2xl font-bold font-mono text-foreground">
             {total}
           </div>
-          <div className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wide">
+          <div className="text-[10px] text-ink-tertiary uppercase tracking-wide">
             total
           </div>
         </div>
@@ -368,8 +368,8 @@ export function SupplyChainTreemap({
 
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">Supply Chain Map</h3>
-      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-4">
+      <h3 className="text-sm font-semibold text-foreground mb-1">Supply Chain Map</h3>
+      <p className="text-[10px] text-ink-tertiary mb-4">
         Vulnerable packages stay expanded. Clean inventory is rolled up per server for readability.
       </p>
       <div className="h-64">
@@ -404,7 +404,7 @@ export function SupplyChainTreemap({
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm" style={{ background: color }} />
-            <span className="text-[10px] text-[color:var(--text-tertiary)]">{label}</span>
+            <span className="text-[10px] text-ink-tertiary">{label}</span>
           </div>
         ))}
       </div>
@@ -452,8 +452,8 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
 
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">Blast Radius</h3>
-      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-2">
+      <h3 className="text-sm font-semibold text-foreground mb-1">Blast Radius</h3>
+      <p className="text-[10px] text-ink-tertiary mb-2">
         Top reachable packages by highest priority, grouped by package
       </p>
       <div className="h-64">
@@ -483,21 +483,21 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
                     className="rounded-lg border px-3 py-2 text-xs shadow-xl"
                     style={{ background: getChartTheme().tooltip.bg, borderColor: getChartTheme().tooltip.border }}
                   >
-                    <div className="font-mono text-[color:var(--foreground)] mb-1 truncate max-w-[160px]">{d.name}</div>
+                    <div className="font-mono text-foreground mb-1 truncate max-w-[160px]">{d.name}</div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-[color:var(--text-tertiary)]">Findings</span>
-                      <span className="font-mono text-[color:var(--foreground)]">{d.vulnerabilityCount}</span>
+                      <span className="text-ink-tertiary">Findings</span>
+                      <span className="font-mono text-foreground">{d.vulnerabilityCount}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-[color:var(--text-tertiary)]">Agents</span>
-                      <span className="font-mono text-[color:var(--foreground)]">{d.agentCount || "n/a"}</span>
+                      <span className="text-ink-tertiary">Agents</span>
+                      <span className="font-mono text-foreground">{d.agentCount || "n/a"}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-[color:var(--text-tertiary)]">Priority</span>
+                      <span className="text-ink-tertiary">Priority</span>
                       <span className="font-mono" style={{ color: d.fill }}>{d.score.toFixed(1)}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-[color:var(--text-tertiary)]">Relative</span>
+                      <span className="text-ink-tertiary">Relative</span>
                       <span className="font-mono" style={{ color: d.fill }}>{d.value}%</span>
                     </div>
                   </div>
@@ -511,9 +511,9 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
         {radialData.slice(0, 5).map((d) => (
           <div key={d.name} className="flex items-center gap-2 text-[10px]">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.fill }} />
-            <span className="font-mono text-[color:var(--text-secondary)] truncate flex-1">{d.name}</span>
-            <span className="font-mono text-[color:var(--text-tertiary)]">{d.vulnerabilityCount} findings</span>
-            <span className="font-mono text-[color:var(--text-tertiary)]">{d.score.toFixed(0)}</span>
+            <span className="font-mono text-ink-secondary truncate flex-1">{d.name}</span>
+            <span className="font-mono text-ink-tertiary">{d.vulnerabilityCount} findings</span>
+            <span className="font-mono text-ink-tertiary">{d.score.toFixed(0)}</span>
           </div>
         ))}
       </div>
@@ -545,8 +545,8 @@ const PIPELINE_STAGES = [
 export function PipelineFlow({ stats }: { stats: PipelineStats }) {
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">Scan Pipeline</h3>
-      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-5">
+      <h3 className="text-sm font-semibold text-foreground mb-1">Scan Pipeline</h3>
+      <p className="text-[10px] text-ink-tertiary mb-5">
         End-to-end flow with live stats from the latest scan
       </p>
       <div className="flex items-stretch gap-0 overflow-x-auto pb-2">
@@ -559,7 +559,7 @@ export function PipelineFlow({ stats }: { stats: PipelineStats }) {
                 className={`flex-1 min-w-[72px] flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border transition-colors ${
                   isAlert
                     ? "bg-red-950/30 border-red-800/50"
-                    : "bg-[color:var(--surface-muted)] border-[color:var(--border-subtle)]"
+                    : "bg-surface-muted border-outline"
                 }`}
               >
                 <div
@@ -567,7 +567,7 @@ export function PipelineFlow({ stats }: { stats: PipelineStats }) {
                     isAlert ? "bg-red-500" : "bg-emerald-500"
                   }`}
                 />
-                <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-[color:var(--foreground)]">
+                <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-foreground">
                   {stage.label}
                 </span>
                 <span
@@ -633,22 +633,22 @@ function ScatterTooltipContent({
         )}
       </div>
       {d.package && (
-        <div className="text-[color:var(--text-tertiary)] truncate mb-1">{d.package}</div>
+        <div className="text-ink-tertiary truncate mb-1">{d.package}</div>
       )}
       <div className="flex justify-between gap-4">
-        <span className="text-[color:var(--text-tertiary)]">CVSS</span>
+        <span className="text-ink-tertiary">CVSS</span>
         <span className="font-mono" style={{ color: getChartTheme().tooltip.text }}>
           {d.cvss.toFixed(1)}
         </span>
       </div>
       <div className="flex justify-between gap-4">
-        <span className="text-[color:var(--text-tertiary)]">EPSS</span>
+        <span className="text-ink-tertiary">EPSS</span>
         <span className="font-mono" style={{ color: getChartTheme().tooltip.text }}>
           {(d.epss * 100).toFixed(1)}%
         </span>
       </div>
       <div className="flex justify-between gap-4">
-        <span className="text-[color:var(--text-tertiary)]">Blast</span>
+        <span className="text-ink-tertiary">Blast</span>
         <span className="font-mono" style={{ color: getChartTheme().tooltip.text }}>
           {d.blast.toFixed(1)}
         </span>
@@ -677,10 +677,10 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
 
   return (
     <div className={CHART_PANEL}>
-      <h3 className="text-sm font-semibold text-[color:var(--foreground)] mb-1">
+      <h3 className="text-sm font-semibold text-foreground mb-1">
         EPSS × CVSS Risk Map
       </h3>
-      <p className="text-[10px] text-[color:var(--text-tertiary)] mb-4">
+      <p className="text-[10px] text-ink-tertiary mb-4">
         Bubble size = blast score · top-right = highest priority
       </p>
       <div className="h-56">
@@ -758,8 +758,8 @@ export function EpssVsCvssChart({ data }: { data: EpssVsCvssPoint[] }) {
                 className="w-2 h-2 rounded-full"
                 style={{ background: SEVERITY_COLORS[sev] }}
               />
-              <span className="text-[10px] text-[color:var(--text-tertiary)] capitalize">{sev}</span>
-              <span className="text-[10px] font-mono text-[color:var(--text-tertiary)]">
+              <span className="text-[10px] text-ink-tertiary capitalize">{sev}</span>
+              <span className="text-[10px] font-mono text-ink-tertiary">
                 ({bySev[sev].length})
               </span>
             </div>

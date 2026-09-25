@@ -3260,6 +3260,14 @@ export interface PostureResponse {
 }
 
 export interface TrendPointResponse {
+  scope_id?: string | null;
+  collection_coverage?: "complete" | "partial" | "unknown";
+  measurement_version?: number | null;
+  comparison?: { status: "comparable" | "unavailable"; reason: string | null; previous_scan_id: string | null; new_findings: number | null; still_open: number | null; no_longer_detected: number | null };
+  open_finding_age_days?: number | null;
+  evidence_age_days?: number | null;
+  age_sample_count?: number;
+  evidence_sample_count?: number;
   scan_id?: string | null;
   timestamp: string;
   total_vulns: number;
@@ -3272,6 +3280,12 @@ export interface TrendPointResponse {
 }
 
 export interface TrendsResponse {
+  days?: number | null;
+  scope_id?: string | null;
+  available_scopes?: string[];
+  history_limited?: boolean;
+  age_statistic?: "median";
+  freshness_reference?: "scan_completion";
   data_points: TrendPointResponse[];
   count: number;
 }

@@ -32,11 +32,14 @@ Endpoints:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any, NoReturn, cast
 from urllib.parse import urlencode
 
@@ -76,6 +79,54 @@ _logger = logging.getLogger(__name__)
 _OVERVIEW_CACHE_TTL_SECONDS_DEFAULT = 15.0
 _overview_cache: dict[str, tuple[float, str, dict[str, Any]]] = {}
 _overview_cache_lock = threading.Lock()
+# Only reduced scan aggregates are retained: never ScanJob or report payloads.
+_SCAN_AGGREGATE_MAX_BYTES = 256 * 1024
+_SCAN_AGGREGATE_MAX_ENTRIES = 32
+_SCAN_AGGREGATE_TTL = 300.0
+_scan_aggregate_cache: dict[str, tuple[float, dict[str, Any], int]] = {}
+
+
+def _scan_aggregate_get(key: str) -> dict[str, Any] | None:
+    with _overview_cache_lock:
+        entry = _scan_aggregate_cache.get(key)
+        if entry is None or time.monotonic() >= entry[0]:
+            _scan_aggregate_cache.pop(key, None)
+            return None
+        return entry[1]
+
+
+def _scan_aggregate_put(key: str, value: dict[str, Any], jobs: list[Any]) -> None:
+    from agent_bom.api.time_window import default_window_days
+
+    size = len(json.dumps(value, separators=(",", ":")).encode())
+    if size > _SCAN_AGGREGATE_MAX_BYTES:
+        return
+    ttl = _SCAN_AGGREGATE_TTL
+    days = default_window_days()
+    if days:
+        now = datetime.now(timezone.utc)
+        for job in jobs:
+            try:
+                stamp = datetime.fromisoformat(str(job.completed_at or job.created_at).replace("Z", "+00:00"))
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                remaining = (stamp + timedelta(days=days) - now).total_seconds()
+                if remaining > 0:
+                    ttl = min(ttl, remaining)
+            except (ValueError, TypeError, AttributeError):
+                continue
+    with _overview_cache_lock:
+        now_mono = time.monotonic()
+        for old_key, entry in list(_scan_aggregate_cache.items()):
+            if entry[0] <= now_mono:
+                del _scan_aggregate_cache[old_key]
+        while _scan_aggregate_cache and (
+            len(_scan_aggregate_cache) >= _SCAN_AGGREGATE_MAX_ENTRIES
+            or sum(entry[2] for entry in _scan_aggregate_cache.values()) + size > _SCAN_AGGREGATE_MAX_BYTES
+        ):
+            del _scan_aggregate_cache[next(iter(_scan_aggregate_cache))]
+        _scan_aggregate_cache[key] = (now_mono + ttl, value, size)
+
 
 # Single-flight. The cache alone is a plain read-compute-write, so every reader
 # that arrives while the fold is running misses and folds the estate itself: a
@@ -197,6 +248,7 @@ def _reset_overview_cache() -> None:
     """Test hook: drop all cached overview payloads."""
     with _overview_cache_lock:
         _overview_cache.clear()
+        _scan_aggregate_cache.clear()
         for flight in _overview_inflight.values():
             flight.event.set()
         _overview_inflight.clear()
@@ -1539,7 +1591,11 @@ def _build_revisioned_overview(request: Request, tenant_id: str, store: Any, hub
             # the bounded revision check rather than stampeding payload reads.
             continue
         try:
-            jobs = store.list_all(tenant_id=tenant_id)
+            from agent_bom.api.time_window import default_window_days
+
+            aggregate_key = f"{tenant_id}|{before}|{hub.revision}|{default_window_days()}"
+            scan_inputs = _scan_aggregate_get(aggregate_key) if hub.revision is not None else None
+            jobs = [] if scan_inputs is not None else store.list_all(tenant_id=tenant_id)
             if revision() != before:
                 continue
             payload = _compose_overview(
@@ -1552,6 +1608,8 @@ def _build_revisioned_overview(request: Request, tenant_id: str, store: Any, hub
                 hub_kev=hub.kev,
                 hub_top_risks=hub.top_risks,
                 hub_coverage=hub.coverage,
+                scan_inputs=scan_inputs,
+                scan_cache_key=aggregate_key if hub.revision is not None else None,
             )
             if revision() != before:
                 continue
@@ -1581,26 +1639,68 @@ def _compose_overview(
     hub_kev: int | None = None,
     hub_top_risks: list[dict[str, Any]] | None = None,
     hub_coverage: tuple[dict[str, dict[str, int]], str] | None = None,
+    scan_inputs: dict[str, Any] | None = None,
+    scan_cache_key: str | None = None,
 ) -> dict[str, Any]:
-    """Fold the estate into the overview payload (the O(estate) hot path)."""
-    estate = _estate_rollup(jobs)
-    exec_estate = _exec_estate(estate, jobs)
+    """Fold scan evidence once per durable revision; refresh live overlays."""
+    if scan_inputs is None:
+        estate = _estate_rollup(jobs)
+        from agent_bom.api.routes.compliance import _result_evidence_context, _result_has_runtime_signals
+
+        runtime_results = []
+        for job in jobs:
+            if job.status != JobStatus.DONE or not job.result:
+                continue
+            mcp, agent, sources = _result_evidence_context(job.result)
+            runtime_results.append(
+                {
+                    "has_mcp_context": mcp,
+                    "has_agent_context": agent,
+                    "scan_sources": sorted(sources),
+                    "runtime_correlation": _result_has_runtime_signals(job.result),
+                }
+            )
+        empty_hub = ({domain: _empty_severity() for domain in _COVERAGE_DOMAINS}, "complete")
+        scan_inputs = {
+            "estate": estate,
+            "exec_estate": _exec_estate(estate, jobs),
+            "coverage": _current_coverage(jobs, empty_hub),
+            "posture": _posture_snapshot(jobs),
+            "repo_scans": _repo_scan_count(jobs),
+            "runtime_results": runtime_results,
+        }
+        if scan_cache_key:
+            _scan_aggregate_put(scan_cache_key, scan_inputs, jobs)
+    estate = scan_inputs["estate"]
+    exec_estate = scan_inputs["exec_estate"]
     if hub_coverage is None:
         from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
         hub_coverage = _hub_coverage_snapshot(request, get_compliance_hub_store(), hub_evidence_revision)
-    coverage = _current_coverage(jobs, hub_coverage)
+    coverage = []
+    for lane in scan_inputs["coverage"]:
+        severity = _combined_severity(lane["severity"], hub_coverage[0][lane["domain"]])
+        coverage.append(
+            {
+                **lane,
+                "severity": severity,
+                "count": sum(severity.values()),
+                "evidence_status": hub_coverage[1],
+                "count_exact": hub_coverage[1] == "complete",
+            }
+        )
     if hub_kev is None:
         hub_kev = _hub_kev_snapshot(request, revision=hub_evidence_revision)
     posture = _exec_posture(
         request,
-        _posture_snapshot(jobs),
+        scan_inputs["posture"],
         exec_estate,
         hub_severity,
         hub_kev,
         hub_failing_frameworks,
     )
-    runtime = _runtime_snapshot(request, jobs)
+    runtime_jobs = [SimpleNamespace(status=JobStatus.DONE, result=result) for result in scan_inputs["runtime_results"]]
+    runtime = _runtime_snapshot(request, runtime_jobs)
     cost = _cost_snapshot(request)
     identity = _identity_snapshot(request)
 
@@ -1618,7 +1718,7 @@ def _compose_overview(
     critical_high = headline_critical + headline_high
 
     cloud_accounts = _cloud_account_count(request)
-    repo_scans = _repo_scan_count(jobs)
+    repo_scans = scan_inputs["repo_scans"]
     # Fold hub-ingested (pushed) findings into the Vuln/SCA tile so a push-only
     # estate (findings pushed, no scan job) can't show "0 open CVEs · ok" while
     # /findings?domain=vuln returns real highs (#3962). Derived from the same hub

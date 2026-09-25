@@ -79,6 +79,7 @@ import {
   toExposurePathFromAttackPath,
   withCanonicalExposurePresentation,
 } from "@/lib/attack-paths";
+import { buildFindingAssetHref } from "@/lib/finding-investigation-href";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import { GraphSurface } from "@/app/graph/graph-surface";
 import type { UnifiedGraphData, UnifiedNode } from "@/lib/graph-schema";
@@ -948,6 +949,12 @@ function AttackPathInvestigationContent() {
             command="agent-bom scan -p . -f graph"
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
+            {focus.nodeId ? (
+              <Link href={buildFindingAssetHref({ nodeId: focus.nodeId, findingId: focus.findingId, scanId: selectedScanId })} className="sg-action">
+                Inspect linked asset
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            ) : null}
             {relatedPackagePathsHref ? (
               <Link href={relatedPackagePathsHref} className="sg-action">
                 Show related package and advisory paths

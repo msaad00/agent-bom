@@ -42248,7 +42248,7 @@
     },
     "/v1/trends": {
       "get": {
-        "description": "Get historical trend data \u2014 posture score and vuln counts over time.",
+        "description": "Historical posture plus evidence-backed comparisons within a bounded window.",
         "operationId": "get_trends_v1_trends_get",
         "parameters": [
           {
@@ -42257,8 +42257,45 @@
             "required": false,
             "schema": {
               "default": 30,
+              "maximum": 365,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Id"
             }
           }
         ],

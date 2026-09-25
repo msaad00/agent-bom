@@ -614,12 +614,12 @@ def test_campaign_api_labels_bounded_source_as_truncated(monkeypatch) -> None:
     response = TestClient(app).get("/v1/campaigns", headers=_headers())
 
     assert response.status_code == 200
-    assert response.json()["finding_limit"] == 1000
+    assert response.json()["finding_limit"] == 50_000
     assert response.json()["finding_window_days"] == 90
     assert response.json()["truncated"] is True
     expected = response.json()["campaigns"][0]["expected_risk_reduction"]
     assert expected["portfolio_complete"] is False
-    assert expected["scope"] == "last 90 days, first 1000 findings"
+    assert expected["scope"] == "last 90 days, up to 50000 findings"
 
 
 def test_campaign_api_persists_workflow_without_cross_tenant_leak(monkeypatch) -> None:
@@ -1433,3 +1433,132 @@ def test_observed_replacement_remains_verifiable_with_unrelated_unreconfirmed_gr
     assert response.status_code == 200
     assert response.json()["outcome"] == "still_affected"
     assert response.json()["remaining_finding_ids"] == ["finding-replacement"]
+
+
+def test_campaign_source_walks_cursor_pages_and_keeps_occurrence_provenance(monkeypatch) -> None:
+    from starlette.requests import Request
+
+    from agent_bom.api.routes.campaigns import _load_findings, _source_incomplete
+
+    rows = [
+        {"id": f"occurrence-{i}", "vulnerability_id": "CVE-2026-1234", "scan_id": f"scan-{i}", "node_id": f"package:{i}"}
+        for i in range(1001)
+    ]
+    cursors = []
+
+    def page(request, **kwargs):
+        cursors.append(kwargs["cursor"])
+        return {
+            "findings": rows[:1000] if kwargs["cursor"] is None else rows[1000:],
+            "total": 1001,
+            "total_approximate": False,
+            "has_more": kwargs["cursor"] is None,
+            "next_cursor": "second" if kwargs["cursor"] is None else "",
+        }
+
+    monkeypatch.setattr("agent_bom.api.routes.scan._list_findings_impl", page)
+    request = Request({"type": "http"})
+    request.state.tenant_id = "tenant-alpha"
+    result = _load_findings(request)
+    assert cursors == [None, "second"]
+    assert result["findings"] == rows
+    assert not _source_incomplete(result)
+
+
+@pytest.mark.parametrize("failure", ["missing_cursor", "repeated_cursor", "duplicate", "changed_total", "approximate"])
+def test_campaign_source_pagination_fails_closed(monkeypatch, failure) -> None:
+    from starlette.requests import Request
+
+    from agent_bom.api.routes.campaigns import _load_findings, _source_incomplete
+
+    calls = 0
+
+    def page(request, **kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            "findings": [{"id": "first" if calls == 1 or failure == "duplicate" else "second"}],
+            "total": 3 if calls == 2 and failure == "changed_total" else 2,
+            "total_approximate": failure == "approximate",
+            "has_more": calls == 1 or failure == "repeated_cursor",
+            "next_cursor": "" if failure == "missing_cursor" or calls == 2 and failure != "repeated_cursor" else "same",
+        }
+
+    monkeypatch.setattr("agent_bom.api.routes.scan._list_findings_impl", page)
+    request = Request({"type": "http"})
+    request.state.tenant_id = "tenant-alpha"
+    result = _load_findings(request)
+    assert _source_incomplete(result)
+    assert calls <= 2
+
+
+def test_campaign_does_not_use_shared_advisory_as_occurrence_identity() -> None:
+    rows = [{"vulnerability_id": "CVE-2026-1234", "scan_id": f"scan-{i}", "node_id": f"package:{i}"} for i in range(2)]
+    assert derive_campaigns(rows, tenant_id="tenant", workflow_by_id={}) == []
+
+
+def test_campaign_source_stops_at_budget_without_retiring_owner(monkeypatch) -> None:
+    from starlette.requests import Request
+
+    from agent_bom.api.routes.campaigns import _campaigns, _load_findings, _source_incomplete
+
+    request = Request({"type": "http"})
+    request.state.tenant_id = "tenant-alpha"
+    request.state.api_key_name = "operator"
+    rows = _findings()
+    before = _campaigns(request, {"findings": rows, "total": len(rows), "has_more": False})
+    target = next(item for item in before if item["finding_count"] == 2)
+    store = get_campaign_store()
+    store.patch("tenant-alpha", target["id"], expected_version=target["version"], fields={"owner": "alice"})
+    preserved = store.get("tenant-alpha", target["id"])
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.CAMPAIGN_FINDING_LIMIT", 1)
+    monkeypatch.setattr(
+        "agent_bom.api.routes.scan._list_findings_impl",
+        lambda request, **kwargs: {"findings": rows[:1], "total": 3, "next_cursor": "more", "has_more": True},
+    )
+    source = _load_findings(request)
+    assert _source_incomplete(source)
+    provisional = _campaigns(request, source)
+    assert next(item for item in provisional if item["id"] == target["id"])["owner"] == "alice"
+    assert store.get("tenant-alpha", target["id"]) == preserved
+
+
+def test_campaign_complete_membership_expansion_preserves_owner() -> None:
+    store = InMemoryCampaignStore()
+    row = store.reconcile_memberships("tenant", {"campaign": ("one", ("finding-a",), "Upgrade")})[0]
+    store.patch("tenant", "campaign", expected_version=row.version, fields={"owner": "alice"})
+    expanded = store.reconcile_memberships("tenant", {"campaign": ("two", ("finding-a", "finding-b"), "Upgrade")})[0]
+    assert expanded.owner == "alice"
+    assert expanded.member_ids == ("finding-a", "finding-b")
+    assert expanded.generation == 2
+
+
+def test_campaign_prefers_occurrence_identity_to_advisory_display_id() -> None:
+    rows = [
+        {
+            "id": "CVE-2026-1234",
+            "vulnerability_id": "CVE-2026-1234",
+            "finding_id": f"occurrence-{i}",
+            "package": "example",
+            "fixed_version": "2",
+            "scan_id": f"scan-{i}",
+        }
+        for i in range(2)
+    ]
+    campaigns = derive_campaigns(rows, tenant_id="tenant", workflow_by_id={})
+    assert campaigns[0]["finding_ids"] == ["occurrence-0", "occurrence-1"]
+    assert campaigns[0]["finding_count"] == 2
+
+
+def test_campaign_source_rejects_same_count_generation_change(monkeypatch) -> None:
+    from starlette.requests import Request
+
+    from agent_bom.api.routes.campaigns import _load_findings, _source_incomplete
+
+    revisions = iter([("jobs", 1), ("jobs", 2)])
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._campaign_source_revision", lambda request: next(revisions))
+    monkeypatch.setattr(
+        "agent_bom.api.routes.scan._list_findings_impl",
+        lambda request, **kwargs: {"findings": [{"id": "occurrence"}], "total": 1, "has_more": False, "next_cursor": ""},
+    )
+    assert _source_incomplete(_load_findings(Request({"type": "http"})))

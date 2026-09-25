@@ -1509,12 +1509,14 @@ def _run_scan_sync(job: ScanJob) -> None:
                         _record_graph_persistence(job, status="failed", lock=lock)
                         with lock:
                             job.progress.append("Graph persistence failed; scan evidence remains available")
+                    from agent_bom.api.trend_comparison import scan_scope_id
                     from agent_bom.api.trend_recording import record_scan_trend_best_effort
 
                     if record_scan_trend_best_effort(
                         report_json,
                         tenant_id=job.tenant_id or "default",
                         scan_id=job.job_id,
+                        scope_id=scan_scope_id(job.request),
                         completed_at=job.completed_at,
                     ):
                         with lock:
@@ -1839,12 +1841,14 @@ def _run_scan_sync(job: ScanJob) -> None:
             job.status = JobStatus.DONE
 
         if side_effects_enabled:
+            from agent_bom.api.trend_comparison import scan_scope_id
             from agent_bom.api.trend_recording import record_scan_trend_best_effort
 
             if record_scan_trend_best_effort(
                 report_json,
                 tenant_id=job.tenant_id or "default",
                 scan_id=job.job_id,
+                scope_id=scan_scope_id(job.request),
                 completed_at=job.completed_at or report_json.get("generated_at"),
             ):
                 with lock:

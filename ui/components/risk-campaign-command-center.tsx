@@ -269,7 +269,7 @@ function CampaignCard({
           </p>
         </div>
         <span className="risk-campaign-priority">
-          Priority <strong className="ml-1 tabular-nums text-[color:var(--foreground)]">{campaign.priority_score}</strong>
+          Priority <strong className="ml-1 tabular-nums text-foreground">{campaign.priority_score}</strong>
         </span>
         <span
           className="risk-campaign-reduction"
@@ -285,11 +285,11 @@ function CampaignCard({
           ) : (
             <>
               <span className="block">Expected reduction </span>
-              <span className="block text-[9px] font-normal text-[color:var(--text-tertiary)]">Unavailable</span>
+              <span className="block text-[9px] font-normal text-ink-tertiary">Unavailable</span>
             </>
           )}
         </span>
-        <ChevronDown className="h-4 w-4 text-[color:var(--text-tertiary)] transition group-open:rotate-180" aria-hidden="true" />
+        <ChevronDown className="h-4 w-4 text-ink-tertiary transition group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="risk-campaign-body">
         <button
@@ -332,22 +332,22 @@ function CampaignCard({
             {reductionAvailable ? (
               <>
                 <p>{campaign.expected_risk_reduction.assumption}</p>
-                <p className="mt-1 text-[color:var(--text-tertiary)]">{campaign.expected_risk_reduction.method}</p>
-                <p className="mt-1 text-[color:var(--text-tertiary)]">Scope: {campaign.expected_risk_reduction.scope}</p>
+                <p className="mt-1 text-ink-tertiary">{campaign.expected_risk_reduction.method}</p>
+                <p className="mt-1 text-ink-tertiary">Scope: {campaign.expected_risk_reduction.scope}</p>
               </>
             ) : (
-              <p className="text-[color:var(--text-tertiary)]">
+              <p className="text-ink-tertiary">
                 Expected reduction unavailable because the server did not supply its assumption, method, and scope.
               </p>
             )}
-            <p className="mt-1 text-[color:var(--text-tertiary)]">Priority method: {campaign.priority_score_method}</p>
+            <p className="mt-1 text-ink-tertiary">Priority method: {campaign.priority_score_method}</p>
           </div>
         </div>
       ) : null}
 
       <div className="risk-campaign-actions">
         <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs text-[color:var(--text-tertiary)]" htmlFor={`campaign-state-${campaign.id}`}>Campaign state</label>
+          <label className="text-xs text-ink-tertiary" htmlFor={`campaign-state-${campaign.id}`}>Campaign state</label>
           <select
             id={`campaign-state-${campaign.id}`}
             aria-label="Campaign state"
@@ -369,7 +369,13 @@ function CampaignCard({
           >
             <ShieldCheck className="h-3.5 w-3.5" /> Re-verify remediation
           </button>
-          <button type="button" disabled={!workflowActionable} onClick={() => setEditingAssignment((current) => !current)} className="risk-link-button">
+          <button type="button" disabled={!workflowActionable} onClick={() => {
+            if (!editingAssignment) {
+              setOwner(campaign.owner ?? "");
+              setSlaDate(campaign.sla_due_at?.slice(0, 10) ?? "");
+            }
+            setEditingAssignment((current) => !current);
+          }} className="risk-link-button">
             Edit owner and SLA
           </button>
         </div>
@@ -394,11 +400,11 @@ function CampaignCard({
       ) : null}
       {editingAssignment ? (
         <div className="risk-campaign-assignment">
-          <label className="text-xs text-[color:var(--text-secondary)]">
+          <label className="text-xs text-ink-secondary">
             Campaign owner
             <input aria-label="Campaign owner" value={owner} onChange={(event) => setOwner(event.target.value)} className="risk-campaign-input" />
           </label>
-          <label className="text-xs text-[color:var(--text-secondary)]">
+          <label className="text-xs text-ink-secondary">
             Campaign SLA
             <input aria-label="Campaign SLA" type="date" value={slaDate} onChange={(event) => setSlaDate(event.target.value)} className="risk-campaign-input" />
           </label>
@@ -408,7 +414,7 @@ function CampaignCard({
       {actionMessage ? <p role="status" className="risk-status-copy">{actionMessage}</p> : null}
       {verificationResult ? (
         <div role="status" className="risk-campaign-verification-result">
-          <strong className="text-[color:var(--foreground)]">
+          <strong className="text-foreground">
             {verificationSummary(verificationResult)}
           </strong>{" "}
           Evidence: {verificationResult.evidence_scope.source.replaceAll("_", " ")}, complete {verificationResult.evidence_scope.finding_window_days}-day window.
@@ -639,13 +645,13 @@ export function RiskCampaignCommandCenter() {
             Start with {campaigns[0]!.title}. {campaigns.length} prioritized action{campaigns.length === 1 ? "" : "s"} cover{campaigns.length === 1 ? "s" : ""} {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} in the current evidence window.
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Remediation workflow summary">
-            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+            <span className="rounded-lg border border-outline bg-surface-muted px-2.5 py-1.5">
               {workflowSummary.assigned} assigned
             </span>
-            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+            <span className="rounded-lg border border-outline bg-surface-muted px-2.5 py-1.5">
               {workflowSummary.withSla} with SLA
             </span>
-            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5">
+            <span className="rounded-lg border border-outline bg-surface-muted px-2.5 py-1.5">
               {workflowSummary.awaitingProof} awaiting proof
             </span>
           </div>
@@ -659,7 +665,7 @@ export function RiskCampaignCommandCenter() {
         <div role="status" className="risk-campaign-truncated">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--status-warn)]" />
           <span>
-            <strong className="text-[color:var(--foreground)]">Results may be incomplete.</strong>{" "}
+            <strong className="text-foreground">Results may be incomplete.</strong>{" "}
             The bounded window covers {totalFindings === null ? "an unknown total" : `${totalApproximate ? "approximately " : ""}${totalFindings.toLocaleString()} total findings`}; narrow the scope before treating this as the full estate.
           </span>
         </div>
@@ -678,7 +684,7 @@ export function RiskCampaignCommandCenter() {
               itemLabel="campaigns"
               onPrevious={() => setCampaignPage((current) => Math.max(1, current - 1))}
               onNext={() => setCampaignPage((current) => Math.min(campaignTotalPages, current + 1))}
-              className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3"
+              className="rounded-xl border border-outline bg-surface-muted px-4 py-3"
             />
           ) : null}
           <div className="risk-proof-note">

@@ -172,7 +172,7 @@ export function ScanResultView({ id }: { id: string }) {
       {/* Back + header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)] transition-colors">
+          <Link href="/" className="text-ink-tertiary hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
@@ -180,7 +180,7 @@ export function ScanResultView({ id }: { id: string }) {
               <h1 className="text-xl font-semibold">Scan Results</h1>
               <JobStatusBadge status={job?.status ?? "pending"} streaming={streaming} />
             </div>
-            <p className="text-xs text-[color:var(--text-tertiary)] font-mono mt-0.5">{id}</p>
+            <p className="text-xs text-ink-tertiary font-mono mt-0.5">{id}</p>
           </div>
         </div>
         {job?.status === "done" ? (
@@ -215,13 +215,13 @@ export function ScanResultView({ id }: { id: string }) {
 
       {/* Collapsible raw log */}
       {messages.length > 0 && (
-        <details className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl">
-          <summary className="px-4 py-3 text-xs font-semibold text-[color:var(--text-tertiary)] cursor-pointer hover:text-[color:var(--text-secondary)]">
+        <details className="bg-surface border border-outline rounded-xl">
+          <summary className="px-4 py-3 text-xs font-semibold text-ink-tertiary cursor-pointer hover:text-ink-secondary">
             Raw log ({messages.length} messages)
           </summary>
           <div ref={logRef} className="max-h-48 overflow-y-auto px-4 pb-3 space-y-1">
             {messages?.map((m, i) => (
-              <p key={i} className="text-xs font-mono text-[color:var(--text-secondary)]">{m}</p>
+              <p key={i} className="text-xs font-mono text-ink-secondary">{m}</p>
             ))}
           </div>
         </details>
@@ -245,29 +245,29 @@ export function ScanResultView({ id }: { id: string }) {
       )}
 
       {job?.status === "done" && result ? (
-        <section aria-label="Continue from this scan" className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+        <section aria-label="Continue from this scan" className="rounded-2xl border border-outline bg-surface p-4">
           <div className="mb-3">
-            <h2 className="text-sm font-semibold text-[color:var(--foreground)]">Continue from this scan</h2>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+            <h2 className="text-sm font-semibold text-foreground">Continue from this scan</h2>
+            <p className="mt-1 text-xs text-ink-secondary">
               Review persisted evidence, investigate graph relationships, then hand verified fixes to remediation.
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
-            <Link href={`/findings?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
-              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><AlertTriangle className="h-4 w-4 text-amber-500" /> Findings</span>
-              <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
+            <Link href={`/findings?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-outline bg-surface-elevated p-3 transition hover:border-outline-strong">
+              <span className="flex items-center gap-2 text-xs font-semibold text-foreground"><AlertTriangle className="h-4 w-4 text-amber-500" /> Findings</span>
+              <span className="mt-1 block text-[11px] text-ink-secondary">
                 {summary ? `${summary.total_vulnerabilities} vulnerabilities recorded` : "Review findings persisted by this scan"}
               </span>
             </Link>
-            <Link href={`/security-graph?scan=${encodeURIComponent(id)}&investigate=1&lens=attack-path`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
-              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><GitBranch className="h-4 w-4 text-emerald-500" /> Investigation</span>
-              <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
+            <Link href={`/security-graph?scan=${encodeURIComponent(id)}&investigate=1&lens=attack-path`} className="rounded-xl border border-outline bg-surface-elevated p-3 transition hover:border-outline-strong">
+              <span className="flex items-center gap-2 text-xs font-semibold text-foreground"><GitBranch className="h-4 w-4 text-emerald-500" /> Investigation</span>
+              <span className="mt-1 block text-[11px] text-ink-secondary">
                 {blastRadius.length > 0 ? `${blastRadius.length} path candidates available` : "Open graph evidence; no attack path is asserted"}
               </span>
             </Link>
-            <Link href={`/remediation?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 transition hover:border-[color:var(--border-strong)]">
-              <span className="flex items-center gap-2 text-xs font-semibold text-[color:var(--foreground)]"><Wrench className="h-4 w-4 text-sky-500" /> Remediation</span>
-              <span className="mt-1 block text-[11px] text-[color:var(--text-secondary)]">
+            <Link href={`/remediation?scan=${encodeURIComponent(id)}`} className="rounded-xl border border-outline bg-surface-elevated p-3 transition hover:border-outline-strong">
+              <span className="flex items-center gap-2 text-xs font-semibold text-foreground"><Wrench className="h-4 w-4 text-sky-500" /> Remediation</span>
+              <span className="mt-1 block text-[11px] text-ink-secondary">
                 {result.remediation_plan?.length ? `${result.remediation_plan.length} recommendations available` : "No remediation recommendation was generated"}
               </span>
             </Link>
@@ -298,8 +298,8 @@ export function ScanResultView({ id }: { id: string }) {
               onClick={() => toggleSection("blast")}
               className="group flex items-center gap-2"
             >
-              {collapsedSections.has("blast") ? <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" />}
-              <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest group-hover:text-[color:var(--foreground)] transition-colors">
+              {collapsedSections.has("blast") ? <ChevronRight className="w-4 h-4 text-ink-tertiary" /> : <ChevronDown className="w-4 h-4 text-ink-tertiary" />}
+              <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-widest group-hover:text-foreground transition-colors">
                 Blast Radius ({blastRadius.length})
               </h2>
             </button>
@@ -322,14 +322,14 @@ export function ScanResultView({ id }: { id: string }) {
           </div>
           {!collapsedSections.has("blast") && (
             <div id="blast-radius-paths" className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
-                <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2">
+                <label className="flex items-center gap-2 text-xs text-ink-secondary">
                   Severity
                   <select
                     aria-label="Filter blast-radius paths by severity"
                     value={blastSeverity}
                     onChange={(event) => setBlastSeverity(event.target.value)}
-                    className="rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-xs text-[color:var(--foreground)]"
+                    className="rounded-md border border-outline bg-surface px-2 py-1 text-xs text-foreground"
                   >
                     <option value="all">All</option>
                     <option value="critical">Critical</option>
@@ -338,7 +338,7 @@ export function ScanResultView({ id }: { id: string }) {
                     <option value="low">Low</option>
                   </select>
                 </label>
-                <span className="text-xs text-[color:var(--text-tertiary)]">
+                <span className="text-xs text-ink-tertiary">
                   {filteredBlastRadius.length.toLocaleString()} matching paths
                 </span>
               </div>
@@ -367,8 +367,8 @@ export function ScanResultView({ id }: { id: string }) {
       {result?.remediation_plan && result.remediation_plan.length > 0 && (
         <section>
           <button type="button" onClick={() => toggleSection("remediation")} className="flex items-center gap-2 mb-3 group">
-            {collapsedSections.has("remediation") ? <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" />}
-            <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest group-hover:text-[color:var(--foreground)] transition-colors">
+            {collapsedSections.has("remediation") ? <ChevronRight className="w-4 h-4 text-ink-tertiary" /> : <ChevronDown className="w-4 h-4 text-ink-tertiary" />}
+            <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-widest group-hover:text-foreground transition-colors">
               Remediation Plan ({result.remediation_plan.filter((i) => i.fixed_version).length} fixable)
             </h2>
           </button>
@@ -380,31 +380,31 @@ export function ScanResultView({ id }: { id: string }) {
       {result && result.agents.length > 0 && (
         <section>
           <button type="button" onClick={() => toggleSection("agents")} className="flex items-center gap-2 mb-3 group">
-            {collapsedSections.has("agents") ? <ChevronRight className="w-4 h-4 text-[color:var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[color:var(--text-tertiary)]" />}
-            <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest group-hover:text-[color:var(--foreground)] transition-colors">
+            {collapsedSections.has("agents") ? <ChevronRight className="w-4 h-4 text-ink-tertiary" /> : <ChevronDown className="w-4 h-4 text-ink-tertiary" />}
+            <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-widest group-hover:text-foreground transition-colors">
               Agents ({result.agents.length})
             </h2>
           </button>
           {!collapsedSections.has("agents") && (
             <div className="space-y-3">
               {result.agents?.map((agent, i) => (
-                <div key={i} className={`bg-[color:var(--surface)] border rounded-xl p-4 ${agent.status === "installed-not-configured" ? "border-dashed border-[color:var(--border-subtle)]" : "border-[color:var(--border-subtle)]"}`}>
+                <div key={i} className={`bg-surface border rounded-xl p-4 ${agent.status === "installed-not-configured" ? "border-dashed border-outline" : "border-outline"}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-sm">{agent.name}</span>
-                      <span className="text-xs text-[color:var(--text-tertiary)] font-mono">{agent.agent_type}</span>
+                      <span className="text-xs text-ink-tertiary font-mono">{agent.agent_type}</span>
                       {agent.status === "installed-not-configured" ? (
                         <span className="text-[10px] font-mono bg-yellow-950 border border-yellow-800 text-yellow-400 rounded px-1.5 py-0.5">not configured</span>
                       ) : (
                         <span className="text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-400 rounded px-1.5 py-0.5">configured</span>
                       )}
                     </div>
-                    <span className="text-xs text-[color:var(--text-tertiary)]">{agent.source}</span>
+                    <span className="text-xs text-ink-tertiary">{agent.source}</span>
                   </div>
                   <div className="space-y-2">
                     {agent.mcp_servers?.map((srv, j) => (
-                      <div key={j} className="bg-[color:var(--surface-muted)] rounded-lg p-3">
-                        <div className="text-xs font-mono text-[color:var(--text-secondary)] mb-1.5">{srv.name}</div>
+                      <div key={j} className="bg-surface-muted rounded-lg p-3">
+                        <div className="text-xs font-mono text-ink-secondary mb-1.5">{srv.name}</div>
                         <div className="flex flex-wrap gap-2">
                           {srv.packages.slice(0, 8).map((pkg, k) => {
                             const hasCrit = pkg.vulnerabilities?.some((v) => v.severity === "critical");
@@ -415,7 +415,7 @@ export function ScanResultView({ id }: { id: string }) {
                                 className={`text-xs font-mono px-2 py-0.5 rounded ${
                                   hasCrit ? "bg-red-950 border border-red-900 text-red-300"
                                   : hasHigh ? "bg-orange-950 border border-orange-900 text-orange-300"
-                                  : "bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] text-[color:var(--text-secondary)]"
+                                  : "bg-surface-elevated border border-outline text-ink-secondary"
                                 }`}
                               >
                                 {pkg.name}@{pkg.version}
@@ -425,7 +425,7 @@ export function ScanResultView({ id }: { id: string }) {
                               </span>
                             );
                           })}
-                          {srv.packages.length > 8 && <span className="text-xs text-[color:var(--text-tertiary)]">+{srv.packages.length - 8} more</span>}
+                          {srv.packages.length > 8 && <span className="text-xs text-ink-tertiary">+{srv.packages.length - 8} more</span>}
                         </div>
                       </div>
                     ))}
@@ -440,7 +440,7 @@ export function ScanResultView({ id }: { id: string }) {
       {/* Warnings */}
       {result?.warnings && result.warnings.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest mb-3">Warnings</h2>
+          <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-widest mb-3">Warnings</h2>
           <div className="space-y-1">
             {result.warnings?.map((w, i) => (
               <p key={i} className="text-xs text-yellow-400 font-mono bg-yellow-950/30 rounded px-3 py-2">{w}</p>
@@ -458,7 +458,7 @@ export function ScanResultView({ id }: { id: string }) {
 
       {/* Scan metadata */}
       {job?.completed_at && (
-        <div className="text-xs text-[color:var(--text-tertiary)] flex items-center gap-2">
+        <div className="text-xs text-ink-tertiary flex items-center gap-2">
           <Clock className="w-3 h-3" />
           Completed {formatDate(job.completed_at)}
         </div>
@@ -615,7 +615,7 @@ function CloudEvidencePanel({ evidence }: { evidence: CloudEvidenceDisplay }) {
   return (
     <section
       aria-label="Cloud evidence"
-      className="rounded-xl border border-cyan-600/35 bg-[color:var(--surface)] p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20"
+      className="rounded-xl border border-cyan-600/35 bg-surface p-4 dark:border-cyan-900/50 dark:bg-cyan-950/20"
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
@@ -635,9 +635,9 @@ function CloudEvidencePanel({ evidence }: { evidence: CloudEvidenceDisplay }) {
           {evidence.benchmarks.map((benchmark) => (
             <div
               key={benchmark.key}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-600/25 bg-[color:var(--surface-muted)] px-3 py-2 dark:border-cyan-900/40"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-600/25 bg-surface-muted px-3 py-2 dark:border-cyan-900/40"
             >
-              <span className="text-xs font-medium text-[color:var(--foreground)]">{benchmark.label}</span>
+              <span className="text-xs font-medium text-foreground">{benchmark.label}</span>
               <span className="font-mono text-xs text-cyan-800 dark:text-cyan-200">
                 {benchmark.passed ?? "—"}/{benchmark.total ?? "—"} passed · {formatBenchmarkRate(benchmark)}
               </span>
@@ -659,12 +659,12 @@ function EvidenceMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-cyan-600/25 bg-[color:var(--surface-muted)] p-3 dark:border-cyan-900/40">
+    <div className="rounded-lg border border-cyan-600/25 bg-surface-muted p-3 dark:border-cyan-900/40">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-cyan-800 dark:text-cyan-200">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <p className="mt-1.5 text-lg font-semibold text-[color:var(--foreground)]">{value}</p>
+      <p className="mt-1.5 text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -677,7 +677,7 @@ function JobStatusBadge({ status, streaming }: { status: string; streaming: bool
       <Loader2 className="w-3 h-3 animate-spin" /> running
     </span>
   );
-  return <span className="text-xs bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] rounded-full px-2 py-0.5 font-mono">{status}</span>;
+  return <span className="text-xs bg-surface-muted border border-outline text-ink-secondary rounded-full px-2 py-0.5 font-mono">{status}</span>;
 }
 
 function MiniStat({ label, value, accent }: { label: string; value: number; accent?: string }) {
@@ -686,7 +686,7 @@ function MiniStat({ label, value, accent }: { label: string; value: number; acce
 
 function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
   return (
-    <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl p-5">
+    <div className="bg-surface border border-outline rounded-xl p-5">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -695,17 +695,17 @@ function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
               <span className="text-xs bg-red-950 border border-red-900 text-red-400 rounded px-2 py-0.5 font-mono font-semibold">CISA KEV</span>
             )}
           </div>
-          <h3 className="font-mono font-semibold text-[color:var(--foreground)]">{blast.vulnerability_id}</h3>
+          <h3 className="font-mono font-semibold text-foreground">{blast.vulnerability_id}</h3>
         </div>
         <div className="text-right flex-shrink-0">
           {blast.blast_score > 0 && (
             <>
               <div className="text-2xl font-bold font-mono text-red-400">{blast.blast_score.toFixed(0)}</div>
-              <div className="text-xs text-[color:var(--text-tertiary)]">blast score</div>
+              <div className="text-xs text-ink-tertiary">blast score</div>
             </>
           )}
-          {blast.cvss_score && <div className="text-xs text-[color:var(--text-tertiary)] mt-1">CVSS {blast.cvss_score.toFixed(1)}</div>}
-          {blast.epss_score && <div className="text-xs text-[color:var(--text-tertiary)]">EPSS {(blast.epss_score * 100).toFixed(1)}%</div>}
+          {blast.cvss_score && <div className="text-xs text-ink-tertiary mt-1">CVSS {blast.cvss_score.toFixed(1)}</div>}
+          {blast.epss_score && <div className="text-xs text-ink-tertiary">EPSS {(blast.epss_score * 100).toFixed(1)}%</div>}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -725,19 +725,19 @@ function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
 
 function ImpactPill({ icon: Icon, label, items, accent }: { icon: React.ElementType; label: string; items?: string[]; accent?: string }) {
   const safeItems = items ?? [];
-  const accentClass = accent === "orange" && safeItems.length > 0 ? "text-orange-400" : "text-[color:var(--text-secondary)]";
+  const accentClass = accent === "orange" && safeItems.length > 0 ? "text-orange-400" : "text-ink-secondary";
   return (
-    <div className="bg-[color:var(--surface-muted)] rounded-lg p-3">
+    <div className="bg-surface-muted rounded-lg p-3">
       <div className={`flex items-center gap-1.5 text-xs font-semibold mb-2 ${accentClass}`}>
         <Icon className="w-3.5 h-3.5" /><span>{label} ({safeItems.length})</span>
       </div>
       {safeItems.length > 0 ? (
         <div className="space-y-1">
-          {safeItems.slice(0, 4).map((item, i) => <p key={i} className="text-xs font-mono text-[color:var(--text-secondary)] truncate">{item}</p>)}
-          {safeItems.length > 4 && <p className="text-xs text-[color:var(--text-tertiary)]">+{safeItems.length - 4} more</p>}
+          {safeItems.slice(0, 4).map((item, i) => <p key={i} className="text-xs font-mono text-ink-secondary truncate">{item}</p>)}
+          {safeItems.length > 4 && <p className="text-xs text-ink-tertiary">+{safeItems.length - 4} more</p>}
         </div>
       ) : (
-        <p className="text-xs text-[color:var(--text-tertiary)]">None</p>
+        <p className="text-xs text-ink-tertiary">None</p>
       )}
     </div>
   );
@@ -750,25 +750,25 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
   return (
     <div className="space-y-3">
       {fixable?.map((item, i) => (
-        <div key={i} className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl p-5">
+        <div key={i} className="bg-surface border border-outline rounded-xl p-5">
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="flex items-center gap-3">
               <ArrowUpCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-sm font-semibold text-[color:var(--foreground)]">{item.package}</span>
-                  <span className="text-xs text-[color:var(--text-tertiary)] font-mono">{item.current_version}</span>
-                  <span className="text-[color:var(--text-tertiary)]">&rarr;</span>
+                  <span className="font-mono text-sm font-semibold text-foreground">{item.package}</span>
+                  <span className="text-xs text-ink-tertiary font-mono">{item.current_version}</span>
+                  <span className="text-ink-tertiary">&rarr;</span>
                   <span className="text-xs text-emerald-400 font-mono font-semibold">{item.fixed_version}</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(item.severity)}`}>{item.severity}</span>
                   {item.is_kev && <span className="text-xs font-mono bg-red-950 border border-red-800 text-red-400 rounded px-1.5 py-0.5">KEV</span>}
                 </div>
-                <p className="text-xs text-[color:var(--text-tertiary)] mt-0.5">Clears {item.vulnerabilities.length} vuln{item.vulnerabilities.length !== 1 ? "s" : ""} · {item.ecosystem}</p>
+                <p className="text-xs text-ink-tertiary mt-0.5">Clears {item.vulnerabilities.length} vuln{item.vulnerabilities.length !== 1 ? "s" : ""} · {item.ecosystem}</p>
               </div>
             </div>
             <div className="text-right flex-shrink-0">
               <div className="text-lg font-bold font-mono text-emerald-400">{item.impact_score.toFixed(1)}</div>
-              <div className="text-xs text-[color:var(--text-tertiary)]">risk</div>
+              <div className="text-xs text-ink-tertiary">risk</div>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
@@ -778,7 +778,7 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
           </div>
           {(item.owasp_tags.length > 0 || item.atlas_tags.length > 0) && (
             <div className="flex flex-wrap items-center gap-1.5 mb-3">
-              <span className="text-xs text-[color:var(--text-tertiary)] mr-1">mitigates:</span>
+              <span className="text-xs text-ink-tertiary mr-1">mitigates:</span>
               <FrameworkTagChips tags={item.owasp_tags} catalog={OWASP_LLM_TOP10} tone="owasp" />
               <FrameworkTagChips tags={item.atlas_tags} catalog={MITRE_ATLAS} tone="atlas" />
             </div>
@@ -790,11 +790,11 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
         </div>
       ))}
       {unfixable.length > 0 && (
-        <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl p-4">
+        <div className="bg-surface border border-outline rounded-xl p-4">
           <p className="text-xs text-yellow-400 font-semibold mb-2">{unfixable.length} package{unfixable.length !== 1 ? "s" : ""} with no fix available -- monitor upstream</p>
           <div className="space-y-1">
             {unfixable.slice(0, 5).map((item, i) => (
-              <p key={i} className="text-xs font-mono text-[color:var(--text-tertiary)]">{item.package}@{item.current_version} -- {item.vulnerabilities.slice(0, 3).join(", ")}</p>
+              <p key={i} className="text-xs font-mono text-ink-tertiary">{item.package}@{item.current_version} -- {item.vulnerabilities.slice(0, 3).join(", ")}</p>
             ))}
           </div>
         </div>
@@ -814,18 +814,18 @@ function ImpactBox({ label, items, pct, color }: { label: string; items: string[
     <div className={`${c.bg} border ${c.border} rounded-lg p-3`}>
       <div className="flex items-center justify-between mb-1.5">
         <span className={`text-xs font-semibold ${c.text}`}>{label}</span>
-        <span className="text-xs font-mono text-[color:var(--text-secondary)]">{pct}%</span>
+        <span className="text-xs font-mono text-ink-secondary">{pct}%</span>
       </div>
-      <div className="h-1.5 rounded-full bg-[color:var(--surface-muted)] mb-2">
+      <div className="h-1.5 rounded-full bg-surface-muted mb-2">
         <div className={`h-1.5 rounded-full ${c.bar} transition-all duration-500`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
       {items.length > 0 ? (
         <div className="space-y-0.5">
-          {items.slice(0, 3).map((item, i) => <p key={i} className="text-xs font-mono text-[color:var(--text-secondary)] truncate">{item}</p>)}
-          {items.length > 3 && <p className="text-xs text-[color:var(--text-tertiary)]">+{items.length - 3} more</p>}
+          {items.slice(0, 3).map((item, i) => <p key={i} className="text-xs font-mono text-ink-secondary truncate">{item}</p>)}
+          {items.length > 3 && <p className="text-xs text-ink-tertiary">+{items.length - 3} more</p>}
         </div>
       ) : (
-        <p className="text-xs text-[color:var(--text-tertiary)]">None</p>
+        <p className="text-xs text-ink-tertiary">None</p>
       )}
     </div>
   );
@@ -844,7 +844,7 @@ function ThreatMatrix({ blastRadius }: { blastRadius: BlastRadius[] }) {
 
   return (
     <section>
-      <h2 className="text-sm font-semibold text-[color:var(--text-secondary)] uppercase tracking-widest mb-3">Threat Framework Coverage</h2>
+      <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-widest mb-3">Threat Framework Coverage</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <FrameworkPanel title="OWASP LLM Top 10" color="purple" counts={owaspCounts} catalog={OWASP_LLM_TOP10} triggered={owaspTriggered} />
         <FrameworkPanel title="MITRE ATLAS" color="cyan" counts={atlasCounts} catalog={MITRE_ATLAS} triggered={atlasTriggered} />
@@ -868,10 +868,10 @@ function FrameworkPanel({
   const codeWidth = color === "purple" ? "w-12" : "w-20";
 
   return (
-    <div className="bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl p-4">
+    <div className="bg-surface border border-outline rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className={`text-xs font-semibold ${textActive} uppercase tracking-wider`}>{title}</h3>
-        <span className="text-xs text-[color:var(--text-tertiary)]">{triggered}/{Object.keys(catalog).length} triggered</span>
+        <span className="text-xs text-ink-tertiary">{triggered}/{Object.keys(catalog).length} triggered</span>
       </div>
       <div className="space-y-1.5">
         {Object.entries(catalog).map(([code, name]) => {
@@ -880,8 +880,8 @@ function FrameworkPanel({
           return (
             <div key={code} className={`flex items-center gap-3 px-2.5 py-1.5 rounded-md ${on ? bgActive : "opacity-40"}`}>
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${on ? dotActive : "bg-[color:var(--border-strong)]"}`} />
-              <span className={`text-xs font-mono ${codeWidth} flex-shrink-0 ${on ? textActive : "text-[color:var(--text-tertiary)]"}`}>{code}</span>
-              <span className={`text-xs flex-1 ${on ? "text-[color:var(--text-secondary)]" : "text-[color:var(--text-tertiary)]"}`}>{name}</span>
+              <span className={`text-xs font-mono ${codeWidth} flex-shrink-0 ${on ? textActive : "text-ink-tertiary"}`}>{code}</span>
+              <span className={`text-xs flex-1 ${on ? "text-ink-secondary" : "text-ink-tertiary"}`}>{name}</span>
               {on && <span className={`text-xs font-mono font-semibold ${textActive}`}>{count}</span>}
             </div>
           );

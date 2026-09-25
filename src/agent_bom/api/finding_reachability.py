@@ -92,17 +92,22 @@ def _path_has_reachability_evidence(path: AttackPath) -> bool:
 
 
 def _row_node_ids(row: Mapping[str, Any]) -> set[str]:
-    return {node_id for key in ("node_id", "finding_node_id") if (node_id := _text(row.get(key)))}
+    asset_id = _text(row.get("node_id"))
+    if asset_id:
+        return {asset_id}
+    return {node_id for key in ("finding_node_id",) if (node_id := _text(row.get(key)))}
 
 
 def _row_finding_ids(row: Mapping[str, Any]) -> set[str]:
-    return {finding_id for key in ("id", "canonical_id") if (finding_id := _text(row.get(key)))}
+    return {finding_id for key in ("id", "canonical_id", "finding_id") if (finding_id := _text(row.get(key)))}
 
 
 def _path_matches_row(path: AttackPath, row: Mapping[str, Any]) -> bool:
     finding_ids = _row_finding_ids(row)
     if finding_ids.intersection(path.finding_ids):
         return True
+    if path.finding_ids and finding_ids:
+        return False
 
     if not _row_vulnerability_ids(row).intersection(_path_vulnerability_ids(path)):
         return False
@@ -112,7 +117,7 @@ def _path_matches_row(path: AttackPath, row: Mapping[str, Any]) -> bool:
     # a different package/server occurrence has a path.
     row_nodes = _row_node_ids(row)
     if not row_nodes:
-        return True
+        return False
     return bool(row_nodes.intersection({path.source, path.target, *path.hops}))
 
 
@@ -186,6 +191,9 @@ def project_persisted_graph_reachability(
 
     evidence_by_row: dict[int, _ReachabilityEvidence] = {}
     for index, row in enumerate(projected):
+        row_scan = _text(row.get("scan_id"))
+        if row_scan and row_scan != _effective_scan_id:
+            continue
         candidates: dict[int, AttackPath] = {}
         for finding_id in _row_finding_ids(row):
             candidates.update((id(path), path) for path in paths_by_finding.get(finding_id, ()))

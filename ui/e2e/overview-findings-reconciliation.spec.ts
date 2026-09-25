@@ -380,6 +380,7 @@ for (const theme of ["light", "dark"] as const) {
         expect(risks!.height).toBeLessThan(500);
         expect(risks!.width).toBeGreaterThan(compliance!.width + coverage!.width);
         expect(Math.abs(compliance!.y - coverage!.y)).toBeLessThan(2);
+        expect(Math.abs(compliance!.height - coverage!.height)).toBeLessThan(2);
         expect(compliance!.y).toBeGreaterThan(risks!.y + risks!.height);
         expect(coverage!.x).toBeGreaterThan(compliance!.x + compliance!.width);
       } else {
@@ -399,13 +400,10 @@ for (const theme of ["light", "dark"] as const) {
       expect((await unavailableLane.boundingBox())!.height).toBeLessThanOrEqual(112);
       const cloudBox = (await unavailableLane.boundingBox())!;
       const appBox = (await page.getByTestId("coverage-lane-aspm").boundingBox())!;
-      if (width === 1440) {
-        expect(appBox.x).toBeGreaterThan(cloudBox.x + cloudBox.width);
-        expect(Math.abs(cloudBox.y - appBox.y)).toBeLessThan(2);
-      } else {
-        expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
-        expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
-      }
+      // Security areas use aligned full-width rows in both card widths.
+      expect(Math.abs(cloudBox.x - appBox.x)).toBeLessThan(2);
+      expect(Math.abs(cloudBox.width - appBox.width)).toBeLessThan(2);
+      expect(appBox.y).toBeGreaterThanOrEqual(cloudBox.y + cloudBox.height);
       await expect(unavailableLane.getByText("0", { exact: true })).toHaveCount(0);
       await page.getByRole("tab", { name: "Posture", exact: true }).click();
       const scoreToggle = page.getByRole("button", { name: /What influences this score/ });
@@ -580,3 +578,31 @@ test("failed asset summary keeps its requested snapshot and filters", async ({ p
   const link = page.getByRole("link", {name: "Open asset inventory"});
   await expect(link).toHaveAttribute("href", "/inventory?scan=locked-snapshot&environment=production&provider=aws&type=agent&min_severity=high");
 });
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`scoped history remains readable in ${theme} at ${width}px`, async ({page}, testInfo) => {
+      await page.setViewportSize({width, height: 1000});
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await routeProductFixture(page);
+      let historyRequests = 0;
+      await page.route("**/v1/trends?**", route => {
+        historyRequests++;
+        return route.fulfill({json: { count: 3, data_points: [0, 1, 2].map(index => ({
+          scan_id: `history-${index}`, timestamp: `2026-09-${20 + index}T12:00:00Z`, scope_id: "repository-payments-production",
+          comparison: {status: index ? "comparable" : "unavailable", reason: index ? null : "no_previous_snapshot",
+            new_findings: index ? index + 2 : null, still_open: index ? 4 : null, no_longer_detected: index ? index : null},
+          open_finding_age_days: 5 + index, evidence_age_days: index ? 1 : null, age_sample_count: 8, evidence_sample_count: index ? 8 : 0,
+        }))}});
+      });
+      await page.goto("/");
+      await expect(page.getByText("Changes over time", {exact: true})).toBeVisible();
+      expect(historyRequests).toBe(0);
+      await page.getByText("Changes over time", {exact: true}).click();
+      await expect(page.getByRole("region", {name: "History values"})).toBeVisible();
+      await expect(page.getByRole("img", {name: /^Newly detected findings/})).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.getByText("Changes over time", {exact: true}).locator("..").screenshot({path: testInfo.outputPath(`history-${theme}-${width}.png`)});
+    });
+  }
+}

@@ -613,7 +613,7 @@ const CATEGORY_CHIP_TONE: Record<SourceCategory, string> = {
   ai: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
   data: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200",
   runtime: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200",
-  ingest: "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]",
+  ingest: "border-outline bg-surface-elevated text-ink-secondary",
 };
 
 const SCHEDULE_OPTIONS = [
@@ -668,7 +668,7 @@ function eventMode(connection: CloudConnectionRecord): {
   return {
     label: "Manual",
     detail: "No scheduled or event run yet",
-    tone: "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[var(--text-secondary)]",
+    tone: "border-outline bg-surface-elevated text-ink-secondary",
   };
 }
 
@@ -753,7 +753,7 @@ const MODE_DOT: Record<IngestMode, string> = {
 
 function ModeChip({ mode }: { mode: IngestMode }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-0.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface-elevated px-2.5 py-0.5 text-[11px] font-medium text-ink-secondary">
       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: MODE_DOT[mode] }} aria-hidden="true" />
       {mode}
     </span>
@@ -818,7 +818,7 @@ export default function ConnectionsPage() {
     <Suspense
       fallback={
         <div className="flex min-h-[40vh] items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--text-tertiary)]" />
+          <Loader2 className="h-6 w-6 animate-spin text-ink-tertiary" />
         </div>
       }
     >
@@ -1461,7 +1461,7 @@ function ConnectionsHub() {
           <>
             <button
               onClick={refreshAll}
-              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-2 text-sm text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+              className="inline-flex items-center gap-2 rounded-xl border border-outline bg-surface-muted px-4 py-2 text-sm text-foreground transition hover:border-outline-strong"
             >
               <RefreshCcw className="h-4 w-4" />
               Refresh
@@ -1657,7 +1657,7 @@ function HubTabs({
   ];
   return (
     <div
-      className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+      className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-outline bg-surface-muted p-1"
       role="tablist"
       aria-label="Connections segment"
     >
@@ -1682,13 +1682,13 @@ function HubTabs({
             onClick={() => onChange(item.key)}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
               selected
-                ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
-                : "text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+                ? "bg-surface text-foreground shadow-sm"
+                : "text-ink-tertiary hover:text-foreground"
             }`}
           >
             <Icon className="h-4 w-4" />
             {item.label}
-            <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[10px] font-mono text-[color:var(--text-tertiary)]">
+            <span className="rounded-full border border-outline bg-surface-elevated px-1.5 py-0.5 text-[10px] font-mono text-ink-tertiary">
               {item.count}
             </span>
           </button>
@@ -1885,7 +1885,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="h-14 animate-pulse rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]"
+              className="h-14 animate-pulse rounded-xl border border-outline bg-surface-elevated"
             />
           ))}
         </div>
@@ -1901,14 +1901,14 @@ function SourcesSegment(props: SourcesSegmentProps) {
           actions={[{ label: "Connect a source", onClick: onGoConnect }]}
         />
       ) : rows.length === 0 ? (
-        <p className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-10 text-center text-sm text-[color:var(--text-secondary)]">
+        <p className="rounded-xl border border-outline bg-surface-muted px-4 py-10 text-center text-sm text-ink-secondary">
           No sources match the current filters.
         </p>
       ) : (
-        <div className="relative overflow-x-auto rounded-xl border border-[color:var(--border-subtle)]" data-testid="unified-sources-table">
+        <div className="relative overflow-x-auto rounded-xl border border-outline" data-testid="unified-sources-table">
           <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+              <tr className="border-b border-outline bg-surface-elevated text-[11px] uppercase tracking-[0.16em] text-ink-tertiary">
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Kind</th>
                 <th className="px-4 py-3 font-medium">Status</th>
@@ -1951,7 +1951,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
           <button
             onClick={onFleetSync}
             disabled={syncingFleet || !canManageFleet}
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-outline-strong disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Activity className="h-3.5 w-3.5" />
             {syncingFleet ? "Syncing…" : "Fleet sync"}
@@ -1994,26 +1994,26 @@ function SourcesSegment(props: SourcesSegmentProps) {
           <Collapsible key={createKey} title="Register a source" icon={Plus} defaultOpen={createDefaultOpen}>
             <form className="space-y-4" onSubmit={onCreateSource}>
               <label className="block">
-                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                   Display name
                 </span>
                 <input
                   value={formState.display_name}
                   onChange={(event) => onUpdateForm("display_name", event.target.value)}
-                  className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                  className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                   placeholder="Payments monorepo"
                 />
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                     Kind
                   </span>
                   <select
                     value={formState.kind}
                     onChange={(event) => onUpdateForm("kind", event.target.value as SourceKind)}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                    className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                   >
                     {SOURCE_KIND_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -2024,13 +2024,13 @@ function SourcesSegment(props: SourcesSegmentProps) {
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                     Owner
                   </span>
                   <input
                     value={formState.owner}
                     onChange={(event) => onUpdateForm("owner", event.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                    className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                     placeholder="platform-security"
                   />
                 </label>
@@ -2038,13 +2038,13 @@ function SourcesSegment(props: SourcesSegmentProps) {
 
               {selectedKind.mode === "Read-only connector" ? (
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                     Connector name
                   </span>
                   <select
                     value={formState.connector_name}
                     onChange={(event) => onUpdateForm("connector_name", event.target.value)}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                    className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                   >
                     <option value="">Choose connector…</option>
                     {connectorNames.map((connector) => (
@@ -2058,37 +2058,37 @@ function SourcesSegment(props: SourcesSegmentProps) {
 
               {targetSpec ? (
                 <label className="block">
-                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                     {targetSpec.label}
                   </span>
                   <input
                     value={formState.target}
                     onChange={(event) => onUpdateForm("target", event.target.value)}
                     aria-label={targetSpec.label}
-                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                    className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                     placeholder={targetSpec.placeholder}
                     autoComplete="off"
                   />
-                  <span className="mt-1.5 block text-xs leading-5 text-[color:var(--text-secondary)]">
+                  <span className="mt-1.5 block text-xs leading-5 text-ink-secondary">
                     {targetSpec.help}
                   </span>
                 </label>
               ) : null}
 
               <label className="block">
-                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                   Description
                 </span>
                 <textarea
                   value={formState.description}
                   onChange={(event) => onUpdateForm("description", event.target.value)}
                   rows={2}
-                  className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                  className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                   placeholder={selectedKind.detail}
                 />
               </label>
 
-              <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+              <div className="rounded-lg border border-outline bg-surface-elevated p-3 text-xs leading-5 text-ink-secondary">
                 <ModeChip mode={selectedKind.mode} />
                 <p className="mt-2">{selectedKind.detail}</p>
               </div>
@@ -2106,18 +2106,18 @@ function SourcesSegment(props: SourcesSegmentProps) {
 
           <Collapsible title="Connector health" count={connectorHealth.length} defaultOpen={false} scrollMaxHeight="20rem">
             {connectorHealth.length === 0 && !loading ? (
-              <p className="text-sm text-[color:var(--text-secondary)]">No connector health state loaded yet.</p>
+              <p className="text-sm text-ink-secondary">No connector health state loaded yet.</p>
             ) : (
               <div className="space-y-2">
                 {connectorHealth.map((connector) => (
                   <div
                     key={connector.connector}
-                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                    className="rounded-lg border border-outline bg-surface-elevated p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="text-sm font-semibold text-[color:var(--foreground)]">{connector.connector}</h3>
-                        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{connector.message}</p>
+                        <h3 className="text-sm font-semibold text-foreground">{connector.connector}</h3>
+                        <p className="mt-1 text-xs leading-5 text-ink-secondary">{connector.message}</p>
                       </div>
                       <SourceStatusPill status={connector.state} />
                     </div>
@@ -2137,7 +2137,7 @@ function SourcesSegment(props: SourcesSegmentProps) {
         defaultOpen={false}
       >
         <div className="space-y-4">
-          <p className="text-sm text-[color:var(--text-secondary)]">
+          <p className="text-sm text-ink-secondary">
             Backend provider registry: scan modes, declared permissions, and read-only guarantees.
           </p>
           <StatStrip
@@ -2149,13 +2149,13 @@ function SourcesSegment(props: SourcesSegmentProps) {
             ]}
           />
           {providerContracts?.warnings?.length ? (
-            <div className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+            <div className="rounded-lg border border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] p-3 text-xs leading-5 text-ink-secondary">
               {providerContracts.warnings.slice(0, 2).join(" · ")}
             </div>
           ) : null}
           <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {!providerContracts && !loading ? (
-              <div className="rounded-lg border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[color:var(--text-secondary)]">
+              <div className="rounded-lg border border-dashed border-outline bg-surface-elevated p-4 text-sm text-ink-secondary">
                 Provider contracts are unavailable from the API.
               </div>
             ) : (
@@ -2174,20 +2174,20 @@ function SourcesSegment(props: SourcesSegmentProps) {
               const Icon = surface.icon;
               return (
                 <Link key={surface.title} href={surface.href}>
-                  <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 transition-colors hover:border-[color:var(--border-strong)]">
+                  <div className="rounded-lg border border-outline bg-surface-elevated p-4 transition-colors hover:border-outline-strong">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2">
+                        <span className="rounded-lg border border-outline bg-surface p-2">
                           <Icon className="h-4 w-4 text-[color:var(--accent)]" />
                         </span>
                         <div>
-                          <p className="text-sm font-semibold text-[color:var(--foreground)]">{surface.title}</p>
-                          <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{surface.summary}</p>
+                          <p className="text-sm font-semibold text-foreground">{surface.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-ink-secondary">{surface.summary}</p>
                         </div>
                       </div>
-                      <ArrowRight className="mt-1 h-4 w-4 text-[color:var(--text-tertiary)]" />
+                      <ArrowRight className="mt-1 h-4 w-4 text-ink-tertiary" />
                     </div>
-                    <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                    <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-ink-tertiary">
                       {surface.status}
                     </div>
                   </div>
@@ -2234,12 +2234,12 @@ function SourceFilterToolbar({
               onClick={() => onFilterCategory(category.id)}
               className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                 active
-                  ? "border-emerald-600/60 bg-emerald-500/10 text-[color:var(--foreground)]"
-                  : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
+                  ? "border-emerald-600/60 bg-emerald-500/10 text-foreground"
+                  : "border-outline text-ink-secondary hover:border-outline-strong"
               }`}
             >
               {category.label}
-              <span className="text-[10px] text-[color:var(--text-tertiary)]">
+              <span className="text-[10px] text-ink-tertiary">
                 {categoryCountsMap[category.id] ?? 0}
               </span>
             </button>
@@ -2254,7 +2254,7 @@ function SourceFilterToolbar({
           id="source-status-filter"
           value={filterStatus}
           onChange={(event) => onFilterStatus(event.target.value)}
-          className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-sm text-[color:var(--foreground)] outline-none transition focus:border-emerald-500"
+          className="rounded-lg border border-outline bg-surface-muted px-3 py-1.5 text-sm text-foreground outline-none transition focus:border-emerald-500"
         >
           <option value="all">All statuses</option>
           {statusChoices.map((status) => (
@@ -2264,14 +2264,14 @@ function SourceFilterToolbar({
           ))}
         </select>
         <label className="relative w-full sm:w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-tertiary" />
           <input
             type="search"
             aria-label="Search sources"
             placeholder="Search sources…"
             value={filterQuery}
             onChange={(event) => onFilterQuery(event.target.value)}
-            className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-1.5 pl-8 pr-3 text-sm text-[color:var(--foreground)] outline-none transition focus:border-emerald-500"
+            className="w-full rounded-lg border border-outline bg-surface-muted py-1.5 pl-8 pr-3 text-sm text-foreground outline-none transition focus:border-emerald-500"
           />
         </label>
       </div>
@@ -2322,7 +2322,7 @@ function UnifiedRow({
   const continuous = isCloud && isContinuousMode(connection!);
 
   return (
-    <tr className="group border-b border-[color:var(--border-subtle)] last:border-b-0 align-top">
+    <tr className="group border-b border-outline last:border-b-0 align-top">
       <td className="px-4 py-3">
         <button
           type="button"
@@ -2331,20 +2331,20 @@ function UnifiedRow({
           className="flex max-w-[260px] items-center gap-1 text-left"
         >
           <span
-            className="truncate font-medium text-[var(--foreground)] transition-colors group-hover:text-emerald-400"
+            className="truncate font-medium text-foreground transition-colors group-hover:text-emerald-400"
             title={row.name}
           >
             {row.name}
           </span>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-100" />
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-tertiary opacity-0 transition group-hover:opacity-100" />
         </button>
-        <p className="mt-0.5 max-w-[240px] truncate font-mono text-[11px] text-[var(--text-tertiary)]" title={row.detail}>
+        <p className="mt-0.5 max-w-[240px] truncate font-mono text-[11px] text-ink-tertiary" title={row.detail}>
           {row.detail}
         </p>
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1.5">
-          <span className="inline-flex items-center gap-2 whitespace-nowrap text-[var(--text-secondary)]">
+          <span className="inline-flex items-center gap-2 whitespace-nowrap text-ink-secondary">
             {isCloud ? (
               <ProviderLogo provider={connection!.provider} className="h-4 w-4 shrink-0" />
             ) : null}
@@ -2388,7 +2388,7 @@ function UnifiedRow({
       <td className="px-4 py-3">
         {isCloud ? <StatusPill status={row.status} /> : <SourceStatusPill status={row.status} />}
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-[var(--text-secondary)]">{formatWhen(row.lastScanAt)}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-ink-secondary">{formatWhen(row.lastScanAt)}</td>
       <td className="px-4 py-3">
         {isCloud ? (
           <div className="flex flex-col gap-1.5">
@@ -2401,7 +2401,7 @@ function UnifiedRow({
                 value={connection!.scan_interval_minutes?.toString() ?? ""}
                 disabled={!canUpdate}
                 onChange={(event) => onCloudScheduleChange(connection!, event.target.value)}
-                className="w-36 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-36 rounded-lg border border-outline bg-surface-elevated px-2.5 py-1.5 text-xs text-foreground outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {SCHEDULE_OPTIONS.map(([label, value]) => (
                   <option key={label} value={value}>
@@ -2409,7 +2409,7 @@ function UnifiedRow({
                   </option>
                 ))}
               </select>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-secondary">
                 <input
                   type="checkbox"
                   checked={continuous}
@@ -2423,7 +2423,7 @@ function UnifiedRow({
             </div>
             {continuous ? (
               <p
-                className="max-w-[16rem] text-[10px] leading-snug text-[var(--text-tertiary)]"
+                className="max-w-[16rem] text-[10px] leading-snug text-ink-tertiary"
                 data-testid="schedule-continuous-queue-hint"
               >
                 Mid-interval refresh needs both AGENT_BOM_CONNECTIONS_SCHEDULER=1 and a provider
@@ -2432,7 +2432,7 @@ function UnifiedRow({
             ) : null}
           </div>
         ) : (
-          <span className="tabular-nums text-[var(--text-secondary)]">
+          <span className="tabular-nums text-ink-secondary">
             {row.scheduleCount} schedule{row.scheduleCount === 1 ? "" : "s"}
           </span>
         )}
@@ -2484,7 +2484,7 @@ function UnifiedRow({
               type="button"
               onClick={onOpen}
               aria-label={`Open ${row.name}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-outline bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-outline-strong"
             >
               Manage
               <ArrowRight className="h-3.5 w-3.5" />
@@ -2510,7 +2510,7 @@ function CopyTextButton({ text, label = "Copy" }: { text: string; label?: string
           window.setTimeout(() => setCopied(false), 2000);
         });
       }}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-outline bg-surface-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition hover:border-outline-strong"
     >
       <Copy className="h-3 w-3" />
       {copied ? "Copied" : label}
@@ -2530,7 +2530,7 @@ function GrantMethodPicker({
   return (
     <div className="space-y-2">
       <div
-        className="inline-flex rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-0.5"
+        className="inline-flex rounded-lg border border-outline bg-surface-muted p-0.5"
         role="group"
         aria-label="Grant method"
       >
@@ -2541,15 +2541,15 @@ function GrantMethodPicker({
             onClick={() => onChange(item)}
             className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
               method === item
-                ? "bg-[color:var(--surface)] text-[color:var(--foreground)] shadow-sm"
-                : "text-[color:var(--text-tertiary)] hover:text-[color:var(--foreground)]"
+                ? "bg-surface text-foreground shadow-sm"
+                : "text-ink-tertiary hover:text-foreground"
             }`}
           >
             {cloudGrantMethodLabel(item)}
           </button>
         ))}
       </div>
-      <p className="text-[10px] leading-4 text-[var(--text-tertiary)]">{cloudGrantMethodHint(method, provider)}</p>
+      <p className="text-[10px] leading-4 text-ink-tertiary">{cloudGrantMethodHint(method, provider)}</p>
     </div>
   );
 }
@@ -2561,7 +2561,7 @@ function SnowflakePackagingPicker({ spcs, onChange }: { spcs: boolean; onChange:
     <div
       role="group"
       aria-label="Snowflake packaging"
-      className="grid grid-cols-2 gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+      className="grid grid-cols-2 gap-1 rounded-xl border border-outline bg-surface-muted p-1"
     >
       {[
         { value: false, label: "Read-only role", hint: "Metadata scan" },
@@ -2575,11 +2575,11 @@ function SnowflakePackagingPicker({ spcs, onChange }: { spcs: boolean; onChange:
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={`rounded-lg px-2.5 py-1.5 text-left transition ${
-              active ? "bg-emerald-500 text-black" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+              active ? "bg-emerald-500 text-black" : "text-ink-secondary hover:text-foreground"
             }`}
           >
             <span className="block text-[11px] font-medium">{option.label}</span>
-            <span className={`block text-[10px] ${active ? "text-black/70" : "text-[var(--text-tertiary)]"}`}>
+            <span className={`block text-[10px] ${active ? "text-black/70" : "text-ink-tertiary"}`}>
               {option.hint}
             </span>
           </button>
@@ -2616,7 +2616,7 @@ function ConnectDepthControl({
       defaultOpen={false}
       bare
       className="mt-3"
-      titleClassName="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
+      titleClassName="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-tertiary"
     >
       <div className="mt-2 space-y-2.5">
         <label className="flex cursor-pointer items-start gap-2.5">
@@ -2628,13 +2628,13 @@ function ConnectDepthControl({
             data-testid="wizard-deep-scan"
           />
           <span className="min-w-0">
-            <span className="block text-xs font-medium text-[var(--foreground)]">Deep-scan content reads (read-only)</span>
-            <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">{grantsNote}</span>
+            <span className="block text-xs font-medium text-foreground">Deep-scan content reads (read-only)</span>
+            <span className="mt-0.5 block text-[11px] text-ink-secondary">{grantsNote}</span>
           </span>
         </label>
         {provider === "aws" ? (
           <label className="block">
-            <span className="mb-1 block text-[11px] font-medium text-[var(--foreground)]">
+            <span className="mb-1 block text-[11px] font-medium text-foreground">
               DSPM object sampling — S3 bucket ARNs (optional)
             </span>
             <input
@@ -2642,9 +2642,9 @@ function ConnectDepthControl({
               onChange={(event) => onDspmBucketsChange(event.target.value)}
               placeholder="arn:aws:s3:::my-data-lake, arn:aws:s3:::logs"
               data-testid="wizard-dspm-buckets"
-              className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-[11px] text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+              className="w-full rounded-lg border border-outline bg-surface-elevated px-3 py-2 font-mono text-[11px] text-foreground outline-none transition focus:border-emerald-500"
             />
-            <span className="mt-1 block text-[10px] text-[var(--text-tertiary)]">
+            <span className="mt-1 block text-[10px] text-ink-tertiary">
               Grants read-only s3:GetObject/ListBucket scoped to these buckets only. Implies deep-scan. Leave empty to
               disable object reads.
             </span>
@@ -2711,31 +2711,31 @@ function ConnectorGallery({
                 onClick={() => onCategoryChange(category.id)}
                 className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
                   active
-                    ? "border-emerald-600/60 bg-emerald-500/10 text-[color:var(--foreground)]"
-                    : "border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)]"
+                    ? "border-emerald-600/60 bg-emerald-500/10 text-foreground"
+                    : "border-outline text-ink-secondary hover:border-outline-strong"
                 }`}
               >
                 {category.label}
-                <span className="text-[10px] text-[color:var(--text-tertiary)]">{categoryCount(category.id)}</span>
+                <span className="text-[10px] text-ink-tertiary">{categoryCount(category.id)}</span>
               </button>
             );
           })}
         </div>
         <label className="relative w-full sm:w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--text-tertiary)]" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-tertiary" />
           <input
             type="search"
             aria-label="Search connectors"
             placeholder="Search connectors…"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] py-1.5 pl-8 pr-3 text-sm text-[color:var(--foreground)] outline-none transition focus:border-emerald-500"
+            className="w-full rounded-lg border border-outline bg-surface-muted py-1.5 pl-8 pr-3 text-sm text-foreground outline-none transition focus:border-emerald-500"
           />
         </label>
       </div>
 
       {visible.length === 0 ? (
-        <p className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">
+        <p className="rounded-xl border border-outline bg-surface-muted px-4 py-8 text-center text-sm text-ink-secondary">
           No connectors match “{search}”.
         </p>
       ) : (
@@ -2795,7 +2795,7 @@ function ConnectorTile({
     <Card className="flex h-full min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[linear-gradient(145deg,var(--surface-elevated),var(--surface-muted))] shadow-inner shadow-black/20">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-outline bg-[linear-gradient(145deg,var(--surface-elevated),var(--surface-muted))] shadow-inner shadow-black/20">
             {connector.logo ? (
               <ProviderLogo provider={connector.logo} className="h-6 w-6" />
             ) : (
@@ -2803,8 +2803,8 @@ function ConnectorTile({
             )}
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold leading-snug text-[var(--foreground)] [overflow-wrap:anywhere]">{connector.label}</p>
-            <p className="mt-1 text-xs leading-snug text-[var(--text-secondary)]">{connector.tagline}</p>
+            <p className="text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">{connector.label}</p>
+            <p className="mt-1 text-xs leading-snug text-ink-secondary">{connector.tagline}</p>
           </div>
         </div>
         <span
@@ -2816,7 +2816,7 @@ function ConnectorTile({
 
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
         {connector.action.type === "coding-agent" ? (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--text-tertiary)]">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-tertiary">
             <Lock className="h-3 w-3" /> Read-only
           </span>
         ) : connected ? (
@@ -2825,7 +2825,7 @@ function ConnectorTile({
             {connectedCount} connected
           </span>
         ) : (
-          <span className="text-[11px] text-[color:var(--text-tertiary)]">Not connected</span>
+          <span className="text-[11px] text-ink-tertiary">Not connected</span>
         )}
 
         {connector.action.type === "cloud" ? (
@@ -2856,7 +2856,7 @@ function ConnectorTile({
             onClick={() => onRegisterSource(connector.action.type === "source" ? connector.action.sourceKind : "scan.repo")}
             disabled={!canManageSources}
             aria-label={`Register ${connector.label}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-emerald-600 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-outline bg-surface-muted px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:border-emerald-600 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Register
             <ArrowRight className="h-3.5 w-3.5" />
@@ -2887,7 +2887,7 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
       eyebrow="AI · Read-only"
       title="Connect a coding agent"
       subtitle={
-        <span className="text-[11px] text-[color:var(--text-tertiary)]">
+        <span className="text-[11px] text-ink-tertiary">
           Local MCP server + skills for Claude Code & Cursor
         </span>
       }
@@ -2897,7 +2897,7 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </span>
       }
     >
-      <div className="space-y-4 text-sm text-[color:var(--text-secondary)]">
+      <div className="space-y-4 text-sm text-ink-secondary">
         <p>
           Expose Agent-BOM&apos;s read-only tools — scan, blast-radius, exposure-paths, SBOM, compliance, and
           remediation — to your coding agent over the Model Context Protocol. Everything runs locally against your
@@ -2905,11 +2905,11 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </p>
 
         <section className="space-y-2">
-          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
             <Terminal className="h-3.5 w-3.5" /> 1 · Start the MCP server
           </h3>
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
-            <code className="overflow-x-auto whitespace-nowrap font-mono text-[12px] text-[color:var(--foreground)]">
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-outline bg-surface-muted px-3 py-2">
+            <code className="overflow-x-auto whitespace-nowrap font-mono text-[12px] text-foreground">
               agent-bom mcp-server
             </code>
             <CopyTextButton text="agent-bom mcp-server" />
@@ -2917,7 +2917,7 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </section>
 
         <section className="space-y-2">
-          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
             <FileCode className="h-3.5 w-3.5" /> 2 · Register it in your agent
           </h3>
           <p className="text-[12px]">
@@ -2925,7 +2925,7 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
             <code className="font-mono">~/.cursor/mcp.json</code>):
           </p>
           <div className="relative">
-            <pre className="overflow-x-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3 font-mono text-[11px] leading-5 text-[color:var(--foreground)]">
+            <pre className="overflow-x-auto rounded-lg border border-outline bg-surface-muted p-3 font-mono text-[11px] leading-5 text-foreground">
               {CODING_AGENT_MCP_SNIPPET}
             </pre>
             <div className="mt-2">
@@ -2935,21 +2935,21 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
         </section>
 
         <section className="space-y-2">
-          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+          <h3 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-tertiary">
             <ShieldCheck className="h-3.5 w-3.5" /> Bundled skills
           </h3>
           <ul className="space-y-1.5 text-[12px]">
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
               <span>
-                <strong className="text-[color:var(--foreground)]">Cortex Code</strong> — scan-on-save, exposure-path
+                <strong className="text-foreground">Cortex Code</strong> — scan-on-save, exposure-path
                 lookups, and SBOM diffing inside your editor.
               </span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
               <span>
-                <strong className="text-[color:var(--foreground)]">OpenCLAW</strong> — agent-driven remediation and
+                <strong className="text-foreground">OpenCLAW</strong> — agent-driven remediation and
                 compliance workflows over the same read-only tools.
               </span>
             </li>
@@ -2992,19 +2992,19 @@ function ConnectionEvidenceSummary({ connection }: { connection: CloudConnection
     <section aria-label="Recorded connection configuration" className="space-y-3">
       <dl className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2 text-sm">
         {fields.map(([label, value]) => <div key={label} className="min-w-0">
-          <dt className="text-xs text-[color:var(--text-tertiary)]">{label}</dt>
-          <dd className="mt-0.5 break-words font-medium text-[color:var(--foreground)]">{value}</dd>
+          <dt className="text-xs text-ink-tertiary">{label}</dt>
+          <dd className="mt-0.5 break-words font-medium text-foreground">{value}</dd>
         </div>)}
       </dl>
-      <details className="border-y border-[color:var(--border-subtle)] py-2 text-sm">
+      <details className="border-y border-outline py-2 text-sm">
         <summary className="cursor-pointer font-medium">Capability evidence</summary>
         <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-2">
-          <div><dt className="text-xs text-[color:var(--text-tertiary)]">Last probe</dt><dd className="capitalize">{probeStatus}</dd></div>
-          <div><dt className="text-xs text-[color:var(--text-tertiary)]">Verification time</dt><dd>Unavailable</dd></div>
-          <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-[color:var(--text-tertiary)]">Verified reads</dt><dd className="break-words">{connection.verified_capabilities?.length ? connection.verified_capabilities.join(", ") : "None recorded"}</dd></div>
-          <div className="sm:col-span-2"><dt className="text-xs text-[color:var(--text-tertiary)]">Collection gaps</dt><dd>Not reported by this connection record</dd></div>
+          <div><dt className="text-xs text-ink-tertiary">Last probe</dt><dd className="capitalize">{probeStatus}</dd></div>
+          <div><dt className="text-xs text-ink-tertiary">Verification time</dt><dd>Unavailable</dd></div>
+          <div className="min-w-0 sm:col-span-2"><dt className="text-xs text-ink-tertiary">Verified reads</dt><dd className="break-words">{connection.verified_capabilities?.length ? connection.verified_capabilities.join(", ") : "None recorded"}</dd></div>
+          <div className="sm:col-span-2"><dt className="text-xs text-ink-tertiary">Collection gaps</dt><dd>Not reported by this connection record</dd></div>
         </dl>
-        <p className="mt-2 text-xs text-[color:var(--text-secondary)]">Configuration does not establish read access. Open the scan result for collection coverage and failures.</p>
+        <p className="mt-2 text-xs text-ink-secondary">Configuration does not establish read access. Open the scan result for collection coverage and failures.</p>
       </details>
     </section>
   );
@@ -3054,7 +3054,7 @@ function ConnectionDetailDrawer({
       title={connection.display_name}
       subtitle={
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span className="min-w-0 break-all font-mono text-[11px] text-[color:var(--text-tertiary)]">{connection.role_ref}</span>
+          <span className="min-w-0 break-all font-mono text-[11px] text-ink-tertiary">{connection.role_ref}</span>
           {isOrganizationScope(connection) ? (
             <span
               className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-200"
@@ -3126,7 +3126,7 @@ function ConnectionDetailDrawer({
           </div>
         ) : null}
         {!result && !testResult && !handoffScanId && !scanError && !scheduleError && !statusDetail ? (
-          <p className="text-sm text-[color:var(--text-secondary)]">
+          <p className="text-sm text-ink-secondary">
             No scan has run for this account yet. Use “Run scan” below to populate inventory, CIS results, and
             evidence links.
           </p>
@@ -3138,15 +3138,15 @@ function ConnectionDetailDrawer({
 
 function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
   return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+    <div className="rounded-xl border border-outline bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-sky-400" />
           Read-only scan queued
         </p>
-        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">job {result.job_id.slice(0, 8)}</span>
+        <span className="font-mono text-[10px] text-ink-tertiary">job {result.job_id.slice(0, 8)}</span>
       </div>
-      <p className="mt-3 text-[11px] leading-5 text-[var(--text-tertiary)]">
+      <p className="mt-3 text-[11px] leading-5 text-ink-tertiary">
         The durable worker will broker the stored read-only credential and persist inventory, CIS evidence, findings,
         and graph data. The job page reports progress and sanitized failures.
       </p>
@@ -3161,13 +3161,13 @@ function ScanResultPanel({ result }: { result: CloudConnectionScanResponse }) {
 
 function ScanHandoffLinks({ scanId }: { scanId: string }) {
   return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
+    <div className="rounded-xl border border-outline bg-surface p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--foreground)]">
+        <p className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
           <FileSearch className="h-4 w-4 text-emerald-400" />
           Last scan handoff
         </p>
-        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">scan {scanId.slice(0, 8)}</span>
+        <span className="font-mono text-[10px] text-ink-tertiary">scan {scanId.slice(0, 8)}</span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {evidenceLinks(scanId).map(({ label, href, icon }) => (
@@ -3190,7 +3190,7 @@ function HandoffLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-300"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-outline bg-surface-elevated px-2.5 py-1.5 text-[11px] font-medium text-foreground transition hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-300"
     >
       <Icon className="h-3.5 w-3.5" />
       {label}
@@ -3274,7 +3274,7 @@ function SourceDrawer({
           <button
             onClick={() => onSourceAction(source.source_id, "test")}
             disabled={isBusy || !canManageSources}
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-outline bg-surface-muted px-3 py-2 text-xs font-medium text-foreground transition hover:border-outline-strong disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isBusy ? "Working…" : "Test"}
           </button>
@@ -3305,18 +3305,18 @@ function SourceDrawer({
     >
       <div className="space-y-5" data-testid={`source-detail-${source.source_id}`}>
         {source.description ? (
-          <p className="text-sm leading-6 text-[color:var(--text-secondary)]">{source.description}</p>
+          <p className="text-sm leading-6 text-ink-secondary">{source.description}</p>
         ) : null}
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           {meta.map(([label, value]) => (
             <div key={label} className="min-w-0">
-              <dt className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">{label}</dt>
-              <dd className="mt-0.5 truncate text-[color:var(--text-secondary)]">{value}</dd>
+              <dt className="text-[11px] uppercase tracking-[0.14em] text-ink-tertiary">{label}</dt>
+              <dd className="mt-0.5 truncate text-ink-secondary">{value}</dd>
             </div>
           ))}
           <div className="col-span-2 min-w-0">
-            <dt className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">Last job</dt>
+            <dt className="text-[11px] uppercase tracking-[0.14em] text-ink-tertiary">Last job</dt>
             <dd className="mt-0.5">
               {source.last_job_id ? (
                 <Link
@@ -3327,24 +3327,24 @@ function SourceDrawer({
                   {formatShortId(source.last_job_id)}
                 </Link>
               ) : (
-                <span className="text-[color:var(--text-secondary)]">—</span>
+                <span className="text-ink-secondary">—</span>
               )}
             </dd>
           </div>
         </dl>
 
         {source.last_test_message ? (
-          <p className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3 text-xs leading-5 text-[color:var(--text-secondary)]">
+          <p className="rounded-lg border border-outline bg-surface-elevated p-3 text-xs leading-5 text-ink-secondary">
             {source.last_test_message}
           </p>
         ) : null}
 
-        <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+        <div className="rounded-xl border border-outline bg-surface-elevated p-4">
           <div className="flex items-start gap-2">
             <FileCheck2 className="mt-0.5 h-4 w-4 text-[color:var(--accent)]" />
             <div>
-              <p className="text-xs font-semibold text-[color:var(--foreground)]">Evidence workflow</p>
-              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              <p className="text-xs font-semibold text-foreground">Evidence workflow</p>
+              <p className="mt-1 text-xs leading-5 text-ink-secondary">
                 {source.last_job_id
                   ? "Open the completed job surfaces created from this source."
                   : "Run this source to create findings, graph, and compliance evidence."}
@@ -3366,8 +3366,8 @@ function SourceDrawer({
                   aria-disabled={disabled}
                   className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition ${
                     disabled
-                      ? "pointer-events-none border-[color:var(--border-subtle)] text-[color:var(--text-tertiary)] opacity-60"
-                      : "border-[color:var(--border-subtle)] text-[color:var(--foreground)] hover:border-[color:var(--border-strong)]"
+                      ? "pointer-events-none border-outline text-ink-tertiary opacity-60"
+                      : "border-outline text-foreground hover:border-outline-strong"
                   }`}
                 >
                   {link.label}
@@ -3378,28 +3378,28 @@ function SourceDrawer({
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold text-[color:var(--foreground)]">Schedules</h3>
+          <h3 className="text-sm font-semibold text-foreground">Schedules</h3>
           <div className="mt-3 space-y-2">
             {schedules.length === 0 ? (
-              <p className="text-xs text-[color:var(--text-secondary)]">No schedules bound to this source yet.</p>
+              <p className="text-xs text-ink-secondary">No schedules bound to this source yet.</p>
             ) : (
               schedules.map((schedule) => {
                 const isScheduleBusy = busyScheduleId === schedule.schedule_id;
                 return (
                   <div
                     key={schedule.schedule_id}
-                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                    className="rounded-lg border border-outline bg-surface-elevated p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[color:var(--foreground)]">{schedule.name}</p>
-                        <p className="mt-0.5 font-mono text-xs text-[color:var(--text-secondary)]">
+                        <p className="truncate text-sm font-medium text-foreground">{schedule.name}</p>
+                        <p className="mt-0.5 font-mono text-xs text-ink-secondary">
                           {schedule.cron_expression}
                         </p>
                       </div>
                       <SourceStatusPill status={schedule.enabled ? "active" : "paused"} />
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-[color:var(--text-secondary)]">
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-ink-secondary">
                       <span>Next: {formatWhen(schedule.next_run)}</span>
                       <span>Last: {formatWhen(schedule.last_run)}</span>
                     </div>
@@ -3407,7 +3407,7 @@ function SourceDrawer({
                       <button
                         onClick={() => onScheduleAction(schedule.schedule_id, "toggle")}
                         disabled={isScheduleBusy || !canManageSources}
-                        className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-1.5 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-lg border border-outline bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-outline-strong disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isScheduleBusy ? "Working…" : schedule.enabled ? "Pause" : "Enable"}
                       </button>
@@ -3426,31 +3426,31 @@ function SourceDrawer({
 
             {schedulable ? (
               <form
-                className="rounded-lg border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3"
+                className="rounded-lg border border-dashed border-outline bg-surface-elevated p-3"
                 onSubmit={(event) => onCreateSchedule(event, source)}
               >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">
                       Name
                     </span>
                     <input
                       aria-label="Schedule name"
                       value={scheduleName}
                       onChange={(event) => onScheduleNameChange(event.target.value)}
-                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                      className="w-full rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                       placeholder="Nightly posture"
                     />
                   </label>
                   <label className="block">
-                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--text-tertiary)]">
+                    <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">
                       Cron
                     </span>
                     <input
                       aria-label="Schedule cron"
                       value={scheduleCron}
                       onChange={(event) => onScheduleCronChange(event.target.value)}
-                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 font-mono text-sm text-[color:var(--foreground)] outline-none transition focus:border-[color:var(--accent-border)]"
+                      className="w-full rounded-lg border border-outline bg-surface px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-[color:var(--accent-border)]"
                       placeholder="0 * * * *"
                     />
                   </label>
@@ -3482,11 +3482,11 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
   const extraModeCount = scanModes.length - previewModes.length;
 
   return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+    <div className="rounded-xl border border-outline bg-surface-elevated p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-[color:var(--foreground)]">{provider.name}</h3>
-          <p className="mt-1 truncate font-mono text-[11px] text-[color:var(--text-tertiary)]">{provider.source}</p>
+          <h3 className="truncate text-sm font-semibold text-foreground">{provider.name}</h3>
+          <p className="mt-1 truncate font-mono text-[11px] text-ink-tertiary">{provider.source}</p>
         </div>
         <span
           className="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium"
@@ -3512,14 +3512,14 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
         {previewModes.map((mode) => (
           <span
             key={mode}
-            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] font-mono text-[color:var(--text-secondary)]"
+            className="rounded border border-outline bg-surface px-2 py-0.5 text-[10px] font-mono text-ink-secondary"
           >
             {formatMode(mode)}
           </span>
         ))}
         {extraModeCount > 0 ? (
           <span
-            className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--text-tertiary)]"
+            className="rounded border border-outline bg-surface px-2 py-0.5 text-[10px] font-medium text-ink-tertiary"
             title={scanModes.slice(3).map(formatMode).join(", ")}
           >
             +{extraModeCount} mode{extraModeCount === 1 ? "" : "s"}
@@ -3527,27 +3527,27 @@ function ProviderContractCard({ provider }: { provider: DiscoveryProviderContrac
         ) : null}
       </div>
 
-      <div className="mt-4 grid gap-2 text-xs text-[color:var(--text-secondary)] sm:grid-cols-2">
+      <div className="mt-4 grid gap-2 text-xs text-ink-secondary sm:grid-cols-2">
         <span>Read-only: {trust.read_only ? "yes" : "no"}</span>
         <span>Agentless: {trust.agentless ? "yes" : "no"}</span>
         <span>Redaction: {formatMode(trust.redaction_status)}</span>
         <span>Residency: {formatMode(trust.data_residency)}</span>
       </div>
 
-      <div className="mt-4 space-y-2 text-xs text-[color:var(--text-secondary)]">
+      <div className="mt-4 space-y-2 text-xs text-ink-secondary">
         <div>
-          <span className="text-[color:var(--text-tertiary)]">Permissions used: </span>
-          <span className="text-[color:var(--foreground)]">{permissions.length}</span>
+          <span className="text-ink-tertiary">Permissions used: </span>
+          <span className="text-foreground">{permissions.length}</span>
           {permissions.length > 0 ? (
-            <span className="ml-1 font-mono text-[11px] text-[color:var(--text-secondary)]">
+            <span className="ml-1 font-mono text-[11px] text-ink-secondary">
               {permissions.slice(0, 3).join(", ")}
               {permissions.length > 3 ? ` +${permissions.length - 3}` : ""}
             </span>
           ) : null}
         </div>
         <div>
-          <span className="text-[color:var(--text-tertiary)]">Network: </span>
-          <span className="font-mono text-[11px] text-[color:var(--text-secondary)]">
+          <span className="text-ink-tertiary">Network: </span>
+          <span className="font-mono text-[11px] text-ink-secondary">
             {destinations.length ? destinations.slice(0, 3).join(", ") : "none"}
             {destinations.length > 3 ? ` +${destinations.length - 3}` : ""}
           </span>
@@ -3905,23 +3905,23 @@ function AddConnectionWizard({
       onClick={onClose}
     >
       <div
-        className="my-8 w-full max-w-xl rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] shadow-2xl shadow-black/40"
+        className="my-8 w-full max-w-xl rounded-2xl border border-outline bg-surface shadow-2xl shadow-black/40"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[color:var(--border-subtle)] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-outline px-5 py-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-outline bg-surface-elevated">
               <ProviderLogo provider={provider.value} className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">Add cloud account</h2>
-              <p className="text-xs text-[var(--text-secondary)]">Read-only connection · step {step + 1} of 4</p>
+              <h2 className="text-base font-semibold text-foreground">Add cloud account</h2>
+              <p className="text-xs text-ink-secondary">Read-only connection · step {step + 1} of 4</p>
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg p-1.5 text-[var(--text-secondary)] transition hover:bg-[color:var(--surface-elevated)] hover:text-[var(--foreground)]"
+            className="rounded-lg p-1.5 text-ink-secondary transition hover:bg-surface-elevated hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -3933,13 +3933,13 @@ function AddConnectionWizard({
 
             {step === 0 ? (
               <fieldset className="space-y-3">
-                <legend className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                <legend className="text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                   Choose a provider
                 </legend>
                 {managedTrial ? (
                   managedTrialEnvelope ? (
-                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-[11px] leading-5 text-[var(--text-secondary)]">
-                      <p className="font-medium text-[var(--foreground)]">
+                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-[11px] leading-5 text-ink-secondary">
+                      <p className="font-medium text-foreground">
                         {providerConnectionCount} of {managedTrialEnvelope.cloud_connections_per_provider} AWS connections
                       </p>
                       <p>
@@ -3971,15 +3971,15 @@ function AddConnectionWizard({
                         className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${
                           selected
                             ? "border-emerald-500 bg-emerald-950/20"
-                            : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] hover:border-[color:var(--border-strong)]"
+                            : "border-outline bg-surface-elevated hover:border-outline-strong"
                         }`}
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-outline bg-surface">
                           <ProviderLogo provider={option.value} className="h-5 w-5" />
                         </span>
                         <span className="min-w-0">
-                          <span className="block text-sm font-medium text-[var(--foreground)]">{option.label}</span>
-                          <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">{option.tagline}</span>
+                          <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                          <span className="mt-0.5 block text-[11px] text-ink-secondary">{option.tagline}</span>
                           {cloudProviderMeta(option.value) ? (
                             <span className="mt-1 block text-[10px] uppercase tracking-[0.12em] text-purple-700 dark:text-purple-300/80">
                               Read-only broker
@@ -4000,7 +4000,7 @@ function AddConnectionWizard({
                     <span className="mt-1 block text-xs text-ink-secondary">Workload authentication requires an operator-configured binding. Access is verified separately.</span>
                   </label>
                 ) : null}
-                <section aria-label="Server SDK prerequisites" className="rounded-xl border border-[var(--border-subtle)] p-3 text-sm">
+                <section aria-label="Server SDK prerequisites" className="rounded-xl border border-outline p-3 text-sm">
                   <p className="font-medium">Server SDK prerequisites</p>
                   {(providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness ?? []).map((sdk) => (
                     <p key={sdk.distribution}>{sdk.distribution}: {sdk.status === "ok" ? "installed" : sdk.status.replaceAll("_", " ")}{sdk.installed_version ? ` (${sdk.installed_version})` : ""}</p>
@@ -4008,7 +4008,7 @@ function AddConnectionWizard({
                   {!providerContracts?.providers.find((item) => item.name === form.provider)?.sdk_readiness?.length && <p>SDK readiness unavailable.</p>}
                   <p className="mt-2">Install in the control-plane environment before configuring credentials:</p>
                   <code className="block break-all">{`pip install 'agent-bom[ui,${form.provider}]'`}</code>
-                  <p className="mt-2 text-[var(--text-secondary)]">SDK checks do not verify cloud credentials or collection permissions.</p>
+                  <p className="mt-2 text-ink-secondary">SDK checks do not verify cloud credentials or collection permissions.</p>
                 </section>
               </fieldset>
             ) : null}
@@ -4022,15 +4022,15 @@ function AddConnectionWizard({
               </section>
             ) : step === 1 ? (
               <div className="space-y-3">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                   Grant read-only access
                 </p>
-                <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-xs leading-6 text-[var(--text-secondary)]">
+                <div className="rounded-xl border border-outline bg-surface-elevated p-4 text-xs leading-6 text-ink-secondary">
                   {isAws ? (
                     <div
                       role="group"
                       aria-label="AWS onboarding scope"
-                      className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-1"
+                      className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-outline bg-surface-muted p-1"
                     >
                       {(managedTrial ? (["account"] as const) : (["account", "organization"] as const)).map((scope) => {
                         const active = awsScope === scope;
@@ -4043,7 +4043,7 @@ function AddConnectionWizard({
                             className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
                               active
                                 ? "bg-emerald-500 text-black"
-                                : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                                : "text-ink-secondary hover:text-foreground"
                             }`}
                           >
                             {scope === "account" ? "Single account" : "Whole organization"}
@@ -4052,7 +4052,7 @@ function AddConnectionWizard({
                       })}
                     </div>
                   ) : null}
-                  <p className="text-[var(--foreground)]">
+                  <p className="text-foreground">
                     {isOrgScope ? (
                       "Deploy one CloudFormation StackSet from your AWS Organization management (or delegated-admin) account. That grant mints the read-only role in every member account and auto-enrolls new ones — then paste this management account's role ARN in the next step. This connection is stored with inventory_scope=organization so Run scan fans out across member accounts (member roles must be deployed)."
                     ) : (
@@ -4065,18 +4065,18 @@ function AddConnectionWizard({
                   {isOrgScope ? (
                     <div className="mt-4 space-y-2" data-testid="wizard-org-explainer">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">
                           Organization StackSet
                         </p>
                         <CopyTextButton text={orgStackSetScript} label="Copy StackSet" />
                       </div>
                       <pre
                         data-testid="wizard-org-stackset"
-                        className="max-h-52 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]"
+                        className="max-h-52 overflow-auto rounded-lg border border-outline bg-surface-muted p-2.5 font-mono text-[10px] leading-5 text-foreground"
                       >
                         {orgStackSetScript}
                       </pre>
-                      <ul className="space-y-1 text-[11px] text-[var(--text-secondary)]">
+                      <ul className="space-y-1 text-[11px] text-ink-secondary">
                         <li className="flex items-start gap-1.5">
                           <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
                           Deploy once from the management account or a delegated admin — every member account gets the
@@ -4109,14 +4109,14 @@ function AddConnectionWizard({
                       {isSnowflake && snowflakeSpcs ? (
                         <>
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">
                               Snowpark native-app install (SQL)
                             </p>
                             <CopyTextButton text={snowflakeSpcsScript} label="Copy script" />
                           </div>
                           <pre
                             data-testid="wizard-snowflake-spcs"
-                            className="max-h-52 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]"
+                            className="max-h-52 overflow-auto rounded-lg border border-outline bg-surface-muted p-2.5 font-mono text-[10px] leading-5 text-foreground"
                           >
                             {snowflakeSpcsScript}
                           </pre>
@@ -4125,12 +4125,12 @@ function AddConnectionWizard({
                         <>
                           <GrantMethodPicker method={grantMethod} onChange={setGrantMethod} provider={provider.value} />
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ink-tertiary">
                               {cloudGrantMethodLabel(grantMethod)} grant script
                             </p>
                             {deployScript ? <CopyTextButton text={deployScript} label="Copy script" /> : null}
                           </div>
-                          <pre className="max-h-40 overflow-auto rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-2.5 font-mono text-[10px] leading-5 text-[var(--foreground)]">
+                          <pre className="max-h-40 overflow-auto rounded-lg border border-outline bg-surface-muted p-2.5 font-mono text-[10px] leading-5 text-foreground">
                             {deployScript || provider.cli}
                           </pre>
                         </>
@@ -4153,7 +4153,7 @@ function AddConnectionWizard({
                           ExternalId (embedded in the script above)
                         </p>
                         {generatedExternalId ? (
-                          <p data-testid="wizard-external-id" className="break-all font-mono text-[11px] text-[var(--foreground)]">
+                          <p data-testid="wizard-external-id" className="break-all font-mono text-[11px] text-foreground">
                             {generatedExternalId}
                           </p>
                         ) : null}
@@ -4176,9 +4176,9 @@ function AddConnectionWizard({
                     defaultOpen={false}
                     bare
                     className="mt-3"
-                    titleClassName="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
+                    titleClassName="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-tertiary"
                   >
-                    <ul className="mt-2 space-y-1 text-[11px] text-[var(--text-secondary)]">
+                    <ul className="mt-2 space-y-1 text-[11px] text-ink-secondary">
                       {providerMeta?.deployNotes.map((note) => (
                         <li key={note} className="flex items-start gap-1.5">
                           <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
@@ -4206,37 +4206,37 @@ function AddConnectionWizard({
             {step === 2 ? (
               <div className="space-y-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                     Display name
                   </span>
                   <input
                     value={form.display_name}
                     onChange={(event) => update("display_name", event.target.value)}
                     placeholder="Production account"
-                    className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    className="w-full rounded-xl border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-emerald-500"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                     {provider.roleField.label}
                   </span>
                   <input
                     value={form.role_ref}
                     onChange={(event) => update("role_ref", event.target.value)}
                     placeholder={provider.roleField.placeholder}
-                    className={`w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500 ${provider.roleField.mono ? "font-mono" : ""}`}
+                    className={`w-full rounded-xl border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-emerald-500 ${provider.roleField.mono ? "font-mono" : ""}`}
                   />
                 </label>
                 {activeAuthFields.map((field) => (
                   <label key={field.key} className="block">
-                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                       {field.label}
                     </span>
                     <input
                       value={form.auth[field.key] ?? ""}
                       onChange={(event) => updateAuth(field.key, event.target.value)}
                       placeholder={field.placeholder}
-                      className={`w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500 ${field.mono ? "font-mono" : ""}`}
+                      className={`w-full rounded-xl border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-emerald-500 ${field.mono ? "font-mono" : ""}`}
                     />
                   </label>
                 ))}
@@ -4249,7 +4249,7 @@ function AddConnectionWizard({
                 ) : (
                 <label className="block">
                   <span className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                       {provider.secretField.label}
                     </span>
                     {isAws ? (
@@ -4259,8 +4259,8 @@ function AddConnectionWizard({
                     ) : null}
                   </span>
                   {isAws ? (
-                    <div className="flex items-center justify-between gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2">
-                      <code data-testid="wizard-external-id-details" className="min-w-0 break-all font-mono text-sm text-[var(--foreground)]">
+                    <div className="flex items-center justify-between gap-2 rounded-xl border border-outline bg-surface-elevated px-3 py-2">
+                      <code data-testid="wizard-external-id-details" className="min-w-0 break-all font-mono text-sm text-foreground">
                         {form.external_id}
                       </code>
                       <CopyTextButton text={form.external_id} label="Copy" />
@@ -4272,7 +4272,7 @@ function AddConnectionWizard({
                       value={form.external_id}
                       onChange={(event) => update("external_id", event.target.value)}
                       placeholder={provider.secretField.placeholder}
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                      className="w-full rounded-xl border border-outline bg-surface-elevated px-3 py-2 font-mono text-xs text-foreground outline-none transition focus:border-emerald-500"
                     />
                   ) : (
                     <input
@@ -4281,10 +4281,10 @@ function AddConnectionWizard({
                       value={form.external_id}
                       onChange={(event) => update("external_id", event.target.value)}
                       placeholder={provider.secretField.placeholder}
-                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                      className="w-full rounded-xl border border-outline bg-surface-elevated px-3 py-2 text-sm text-foreground outline-none transition focus:border-emerald-500"
                     />
                   )}
-                  <span className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+                  <span className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-ink-tertiary">
                     <Lock className="h-3 w-3" />{" "}
                     {isAws
                       ? "Matches the ExternalId in your trust policy. Stored encrypted at rest; regenerate on the Setup step only if you have not applied the grant yet."
@@ -4292,7 +4292,7 @@ function AddConnectionWizard({
                   </span>
                 </label>
                 )}
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-outline bg-surface-elevated px-3 py-2.5">
                   <input
                     type="checkbox"
                     checked={form.auto_scan_on_create}
@@ -4304,17 +4304,17 @@ function AddConnectionWizard({
                     data-testid="wizard-auto-scan-on-create"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-[var(--foreground)]">
+                    <span className="block text-sm font-medium text-foreground">
                       Run first scan after connect
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                    <span className="mt-0.5 block text-[11px] text-ink-secondary">
                       {managedTrial
                         ? "Managed trials require verification before an explicit first scan."
                         : "Optional. Enable only when a scan should start before the explicit Verify step."}
                     </span>
                   </span>
                 </label>
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-outline bg-surface-elevated px-3 py-2.5">
                   <input
                     type="checkbox"
                     checked={form.scan_mode === "continuous"}
@@ -4329,15 +4329,15 @@ function AddConnectionWizard({
                     data-testid="wizard-scan-mode-continuous"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-[var(--foreground)]">Continuous</span>
-                    <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                    <span className="block text-sm font-medium text-foreground">Continuous</span>
+                    <span className="mt-0.5 block text-[11px] text-ink-secondary">
                       {managedTrial
                         ? "Continuous scans are unavailable in managed trials."
                         : "Event-driven mid-interval refresh between full cadence scans."}
                     </span>
                     {form.scan_mode === "continuous" ? (
                       <span
-                        className="mt-1.5 block text-[11px] text-[var(--text-tertiary)]"
+                        className="mt-1.5 block text-[11px] text-ink-tertiary"
                         data-testid="wizard-continuous-queue-hint"
                       >
                         Mid-interval refresh needs both AGENT_BOM_CONNECTIONS_SCHEDULER=1 and a
@@ -4349,10 +4349,10 @@ function AddConnectionWizard({
                 </label>
                 {provider.usesRegions ? (
                   <div className="space-y-2">
-                    <span className="block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                    <span className="block text-xs font-medium uppercase tracking-[0.18em] text-ink-tertiary">
                       Regions
                     </span>
-                    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2.5">
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-outline bg-surface-elevated px-3 py-2.5">
                       <input
                         type="checkbox"
                         checked={allRegions}
@@ -4362,8 +4362,8 @@ function AddConnectionWizard({
                         data-testid="wizard-all-regions"
                       />
                       <span className="min-w-0">
-                        <span className="block text-sm font-medium text-[var(--foreground)]">All enabled regions</span>
-                        <span className="mt-0.5 block text-[11px] text-[var(--text-secondary)]">
+                        <span className="block text-sm font-medium text-foreground">All enabled regions</span>
+                        <span className="mt-0.5 block text-[11px] text-ink-secondary">
                           {managedTrial
                             ? managedTrialEnvelope
                               ? `Managed trials require one to ${managedTrialEnvelope.max_regions} explicit regions.`
@@ -4374,14 +4374,14 @@ function AddConnectionWizard({
                     </label>
                     {!allRegions ? (
                       <label className="block">
-                        <span className="mb-1.5 block text-[11px] text-[var(--text-tertiary)]">
+                        <span className="mb-1.5 block text-[11px] text-ink-tertiary">
                           Specific regions (optional — defaults to the account default region)
                         </span>
                         <input
                           value={form.regions}
                           onChange={(event) => update("regions", event.target.value)}
                           placeholder="us-east-1, us-west-2"
-                          className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                          className="w-full rounded-xl border border-outline bg-surface-elevated px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-emerald-500"
                         />
                       </label>
                     ) : null}
@@ -4393,15 +4393,15 @@ function AddConnectionWizard({
             {step === 3 ? (
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-semibold text-[var(--foreground)]">Verify connectivity</h3>
-                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                  <h3 className="text-sm font-semibold text-foreground">Verify connectivity</h3>
+                  <p className="mt-1 text-xs text-ink-secondary">
                     We broker a short-lived read-only credential and check access — no inventory, findings, or writes.
                   </p>
                 </div>
 
                 {verifyState === "running" ? (
-                  <div className="flex items-center gap-2.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3 text-sm text-[var(--text-secondary)]">
-                    <Loader2 className="h-4 w-4 animate-spin text-[var(--text-tertiary)]" />
+                  <div className="flex items-center gap-2.5 rounded-xl border border-outline bg-surface-elevated px-4 py-3 text-sm text-ink-secondary">
+                    <Loader2 className="h-4 w-4 animate-spin text-ink-tertiary" />
                     Verifying read-only access…
                   </div>
                 ) : null}
@@ -4412,7 +4412,7 @@ function AddConnectionWizard({
                       <CheckCircle2 className="h-4 w-4" />
                       Read-only access verified
                     </p>
-                    <p className="text-xs text-[var(--text-secondary)]">
+                    <p className="text-xs text-ink-secondary">
                       The connection is active. Run a first read-only scan now, or close and scan later from the table.
                     </p>
                     {scanState === "ok" ? (
@@ -4468,15 +4468,15 @@ function AddConnectionWizard({
                       <AlertTriangle className="h-4 w-4" />
                       Verification failed
                     </p>
-                    <p className="text-xs leading-5 text-[var(--text-secondary)]">{verifyError}</p>
-                    <p className="text-[11px] text-[var(--text-tertiary)]">
+                    <p className="text-xs leading-5 text-ink-secondary">{verifyError}</p>
+                    <p className="text-[11px] text-ink-tertiary">
                       The connection was saved but is not active. Fix the grant (or its permissions) and retry — nothing
                       was scanned.
                     </p>
                     <button
                       type="button"
                       onClick={() => createdRecord && void runVerify(createdRecord)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-outline bg-surface-elevated px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-outline-strong"
                     >
                       <RefreshCcw className="h-3.5 w-3.5" /> Retry verification
                     </button>
@@ -4488,7 +4488,7 @@ function AddConnectionWizard({
             {formError ? <p className="text-sm text-red-400">{formError}</p> : null}
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-[color:var(--border-subtle)] px-5 py-4">
+          <div className="flex items-center justify-between gap-3 border-t border-outline px-5 py-4">
             {step === 3 ? (
               // The connection already exists; going back would re-create it. Verify
               // and first-scan actions live in the panel; the footer only closes.
@@ -4497,7 +4497,7 @@ function AddConnectionWizard({
               <button
                 type="button"
                 onClick={() => (step === 0 ? onClose() : setStep((s) => (s - 1) as WizardStep))}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-outline bg-surface-elevated px-4 py-2 text-sm text-foreground transition hover:border-outline-strong"
               >
                 {step === 0 ? (
                   "Cancel"
@@ -4554,12 +4554,12 @@ function StepIndicator({ step }: { step: number }) {
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
               index <= step
                 ? "border-emerald-500 bg-emerald-500 text-black"
-                : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[var(--text-tertiary)]"
+                : "border-outline bg-surface-elevated text-ink-tertiary"
             }`}
           >
             {index + 1}
           </span>
-          <span className={`text-xs ${index <= step ? "text-[var(--foreground)]" : "text-[var(--text-tertiary)]"}`}>
+          <span className={`text-xs ${index <= step ? "text-foreground" : "text-ink-tertiary"}`}>
             {label}
           </span>
           {index < labels.length - 1 ? <span className="h-px flex-1 bg-[color:var(--border-subtle)]" /> : null}

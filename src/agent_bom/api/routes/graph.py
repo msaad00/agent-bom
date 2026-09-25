@@ -38,9 +38,10 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Optional, T
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStore, NeptuneGraphStoreUnsupportedOperationError
@@ -588,14 +589,14 @@ def _finding_labels_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids
 
 
 def _identity_finding_ids_for_path(graph: UnifiedGraph, path: AttackPath) -> list[str]:
-    """Canonical finding identities, falling back to advisory ids on legacy rows."""
-    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+    """Canonical occurrence identities scoped to assets on the path."""
+    from agent_bom.graph.asset_entity import finding_ids_for_asset_path
 
     stamped = [
         finding_id
         for hop in path.hops
         if (node := graph.nodes.get(hop)) is not None
-        if (finding_id := finding_id_from_node_attributes(node.attributes if isinstance(node.attributes, dict) else None))
+        for finding_id in finding_ids_for_asset_path(node.attributes, path.hops)
     ]
     candidates = stamped or list(path.finding_ids) or _finding_ids_for_path(graph, path.hops, path.vuln_ids)
     return list(dict.fromkeys(value for value in candidates if value))
@@ -637,7 +638,7 @@ def _finding_ids_for_nodes(nodes: dict[str, Any], path_hops: list[str], vuln_ids
     vulnerability label / CVE string → raw ``vuln_ids`` entries. CVE labels remain
     for backward compatibility when a node was not stamped with a finding id.
     """
-    from agent_bom.graph.asset_entity import finding_id_from_node_attributes
+    from agent_bom.graph.asset_entity import finding_ids_for_asset_path
 
     ids: list[str] = []
     seen: set[str] = set()
@@ -653,9 +654,10 @@ def _finding_ids_for_nodes(nodes: dict[str, Any], path_hops: list[str], vuln_ids
         if not node or node.entity_type not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
             continue
         attrs = getattr(node, "attributes", None) or {}
-        stamped = finding_id_from_node_attributes(attrs if isinstance(attrs, dict) else None)
+        stamped = finding_ids_for_asset_path(attrs if isinstance(attrs, dict) else None, path_hops)
         if stamped:
-            _add(stamped)
+            for value in stamped:
+                _add(value)
         else:
             _add(node.label or node.id)
     for value in vuln_ids:
@@ -1291,7 +1293,7 @@ async def _load_graph_for_investigation(
         tenant_id=tenant_id,
         **load_kwargs,
     )
-    return _enrich_loaded_graph_runtime_evidence(graph, tenant_id)
+    return await _graph_compute_call(_enrich_loaded_graph_runtime_evidence, graph, tenant_id)
 
 
 async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
@@ -1305,6 +1307,11 @@ async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any
         raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
     except NeptuneGraphStoreUnsupportedOperationError as exc:
         raise HTTPException(status_code=501, detail=sanitize_error(exc)) from exc
+
+
+def _encoded_graph_response(payload: dict[str, Any]) -> Response:
+    """Encode graph JSON off-loop; FastAPI otherwise revisits every nested field."""
+    return JSONResponse(content=jsonable_encoder(payload))
 
 
 def _sync_attack_path_stats(
@@ -1939,7 +1946,7 @@ async def get_scoped_graph(
     )
 
 
-@router.get("/graph", tags=["graph"])
+@router.get("/graph", tags=["graph"], response_model=dict)
 async def get_graph(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Filter by scan ID"),
@@ -1953,7 +1960,7 @@ async def get_graph(
     cursor: Optional[str] = Query(None, description="Opaque cursor for keyset node pagination"),
     offset: int = Query(0, ge=0, description="Pagination offset for nodes"),
     limit: int = Query(500, ge=1, le=5000, description="Max nodes to return"),
-) -> dict:
+) -> Response:
     """Load the unified graph with filters and pagination.
 
     Nodes are paginated (offset/limit). ``edges`` carries every edge *incident*
@@ -2012,7 +2019,7 @@ async def get_graph(
         # Governance overlay, scoped-filter derivation, and response
         # serialization are all CPU-bound; fold them into ONE off-loop hop so no
         # heavy work runs between offloaded calls on the event loop.
-        return await _graph_compute_call(
+        payload = await _graph_compute_call(
             _overlay_filter_and_respond,
             graph,
             tenant=tenant,
@@ -2021,6 +2028,7 @@ async def get_graph(
             offset=offset,
             limit=limit,
         )
+        return await _graph_compute_call(_encoded_graph_response, payload)
 
     try:
         effective_scan_id, created_at, paged_nodes, total, next_cursor = await _graph_store_call(
@@ -2070,52 +2078,58 @@ async def get_graph(
         entity_types=et_set,
         min_severity_rank=min_rank,
     )
-    # This branch pages a fully-counted snapshot rather than loading it under a
-    # budget, so the estate total IS the stats total. Emitting the field anyway
-    # keeps one stats shape across both branches — clients never have to know
-    # which path answered them.
-    snapshot_stats = {
-        **snapshot_stats,
-        "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
-    }
-    response_nodes = [*paged_nodes, *ancestor_nodes]
-    response_node_ids = {node.id for node in response_nodes}
-    response_edges = _joined_edges(paged_edges, ancestor_edges)
-    page_truncated = bool(next_cursor) or offset + len(paged_nodes) < total
-    return {
-        "scan_id": effective_scan_id,
-        "tenant_id": tenant,
-        "created_at": created_at,
-        "nodes": [n.to_dict() for n in response_nodes],
-        "edges": [e.to_dict() for e in response_edges],
-        "attack_paths": _serialize_attack_path_batch(
-            source_attack_paths,
-            paged_edges,
-            nodes_by_id=nodes_by_id,
-            scan_id=effective_scan_id,
-        ),
-        "interaction_risks": [],
-        "stats": snapshot_stats,
-        "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
-        "completeness": {
-            **graph_completeness(
-                returned=len(response_nodes),
-                total=total,
-                truncated=page_truncated,
-                reason="node_page_limit" if page_truncated else "",
+
+    def encode_page() -> Response:
+        # This branch pages a fully-counted snapshot rather than loading it under a
+        # budget, so the estate total IS the stats total. Emitting the field anyway
+        # keeps one stats shape across both branches — clients never have to know
+        # which path answered them.
+        page_stats = {
+            **snapshot_stats,
+            "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
+        }
+        response_nodes = [*paged_nodes, *ancestor_nodes]
+        response_node_ids = {node.id for node in response_nodes}
+        response_edges = _joined_edges(paged_edges, ancestor_edges)
+        page_truncated = bool(next_cursor) or offset + len(paged_nodes) < total
+        payload = {
+            "scan_id": effective_scan_id,
+            "tenant_id": tenant,
+            "created_at": created_at,
+            "nodes": [n.to_dict() for n in response_nodes],
+            "edges": [e.to_dict() for e in response_edges],
+            "attack_paths": _serialize_attack_path_batch(
+                source_attack_paths,
+                paged_edges,
+                nodes_by_id=nodes_by_id,
+                scan_id=effective_scan_id,
             ),
-            # ``returned`` counts every node in the payload; ``pagination`` counts
-            # only the ranked page. Containment ancestors are added on top of the
-            # page, so without naming them the two numbers cannot be reconciled
-            # and the extra nodes read as a paging bug.
-            "ranked": len(paged_nodes),
-            "context_nodes": len(ancestor_nodes),
-            # See ``_boundary_edge_count``: the edge list deliberately reaches
-            # one hop past the node list, so say by how much rather than letting
-            # a client read the payload as an induced subgraph.
-            "boundary_edges": _boundary_edge_count(response_edges, response_node_ids),
-        },
-    }
+            "interaction_risks": [],
+            "stats": page_stats,
+            "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
+            "completeness": {
+                **graph_completeness(
+                    returned=len(response_nodes),
+                    total=total,
+                    truncated=page_truncated,
+                    reason="node_page_limit" if page_truncated else "",
+                ),
+                # ``returned`` counts every node in the payload; ``pagination`` counts
+                # only the ranked page. Containment ancestors are added on top of the
+                # page, so without naming them the two numbers cannot be reconciled
+                # and the extra nodes read as a paging bug.
+                "ranked": len(paged_nodes),
+                "context_nodes": len(ancestor_nodes),
+                # See ``_boundary_edge_count``: the edge list deliberately reaches
+                # one hop past the node list, so say by how much rather than letting
+                # a client read the payload as an induced subgraph.
+                "boundary_edges": _boundary_edge_count(response_edges, response_node_ids),
+            },
+        }
+
+        return _encoded_graph_response(payload)
+
+    return await _graph_compute_call(encode_page)
 
 
 @router.get("/graph/views/fix-first", tags=["graph"], responses={200: _FIX_FIRST_VIEW_OPENAPI_RESPONSE})

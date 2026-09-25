@@ -341,7 +341,7 @@ export function OverviewCockpit({
             <ScoreExplainer breakdown={scoreBreakdown} grade={grade} floored={scoreFloored} />
         </div>
       </section>
-      <div className="grid items-start gap-6 xl:grid-cols-2">
+      <div className="grid items-start gap-6 xl:grid-cols-2 xl:items-stretch">
         <section aria-label="Compliance & frameworks" className="min-w-0 rounded-2xl border border-outline bg-surface p-5 sm:p-6">
           <Collapsible bare title="Compliance & frameworks" titleClassName={SECTION_TITLE_CLASS} defaultOpen
             actions={localReport ? undefined : <Link href="/compliance" aria-label="View all frameworks" title="View all frameworks" className="inline-flex min-h-8 min-w-8 items-center justify-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"><span className="hidden sm:inline">View all frameworks</span><ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>}>
@@ -469,7 +469,7 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
       <button type="button" aria-expanded={showSeverity} aria-controls={lanesId} onClick={() => setShowSeverity(!showSeverity)} className="mb-2 rounded-md py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
         {showSeverity ? "Hide severity breakdown" : "Show severity breakdown"}
       </button>
-      <div id={lanesId} className="grid grid-cols-1 gap-x-3 @min-[30rem]:grid-cols-2">
+      <div id={lanesId} className="grid grid-cols-1">
         {[...coverage].sort((left, right) => (SECURITY_DISCIPLINES[left.domain]?.order ?? 5) - (SECURITY_DISCIPLINES[right.domain]?.order ?? 5)).map((lane) => {
           const discipline = SECURITY_DISCIPLINES[lane.domain];
           const Icon = discipline?.icon ?? ShieldCheck;
@@ -483,16 +483,16 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
               key={lane.domain}
               href={lane.href}
               data-testid={`coverage-lane-${lane.domain}`}
-              className="min-w-0 rounded-md border-b border-outline px-1 py-2.5 transition-colors hover:bg-surface-muted"
+              className="min-w-0 rounded-md border-b border-outline px-2 py-3 transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2"
             >
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                 <span className="flex items-start gap-2 text-sm font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
                 {/* The unit is not decoration. A bare "1610" under a heading
                     called CSPM reads as assets, accounts, VMs or data stores
                     depending on the reader — every one of which is wrong. These
                     are FINDINGS in that posture lane, which is also what the
                     severity chips below sum to. */}
-                {known && total > 0 ? <span className="ml-6 flex items-baseline gap-1">
+                {known && total > 0 ? <span className="flex flex-col items-end gap-0.5">
                   <span className="text-sm font-semibold tabular-nums text-foreground">
                     {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>

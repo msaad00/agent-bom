@@ -2310,8 +2310,8 @@ function GraphPageInner() {
         ? graphInitialFitViewOptions([{ id: initialAnchorId, data: {} }], viewportOptions, initialAnchorId)
         : viewportOptions;
       // Scenario views share width with the decision panel and app navigation.
-      // A small fit adjustment keeps 18px card labels at least 16px wide-screen.
-      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.9, maxZoom: 1 } : options;
+      // Allow the complete proposed context to fit shorter desktop canvases.
+      return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.75, maxZoom: 1 } : options;
     },
     [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
   );

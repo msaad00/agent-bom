@@ -221,3 +221,75 @@ def test_pruning_counts_ancestors_without_exposing_paths(tmp_path):
         assert str(tmp_path) not in str(warnings)
     finally:
         reset_scan_warnings()
+
+
+def _skip_without_posix_permissions():
+    import os
+    import sys
+
+    import pytest
+
+    if sys.platform.startswith("win") or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        pytest.skip("directory permission bits are not enforced here")
+
+
+def test_unreadable_directory_is_skipped_and_counted_not_fatal(tmp_path):
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    _skip_without_posix_permissions()
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "SKILL.md").write_text("# ok\n")
+    (tmp_path / "CLAUDE.md").write_text("# root\n")
+    locked = tmp_path / "locked"
+    (locked / "inner").mkdir(parents=True)
+    reset_scan_warnings()
+    locked.chmod(0)
+    try:
+        files = {p.relative_to(tmp_path).as_posix() for p in iter_discovery_files(tmp_path)}
+        assert files == {"skills/SKILL.md", "CLAUDE.md"}
+        skills = discover_skill_files(tmp_path)
+        assert {p.name for p in skills} == {"SKILL.md", "CLAUDE.md"}
+        warnings = consume_coverage_warnings()
+        read_errors = [w for w in warnings if w["reason"] == "directory_read_error"]
+        assert read_errors and all(w["excluded_count"] >= 1 for w in read_errors)
+        assert str(tmp_path) not in str(warnings)
+    finally:
+        locked.chmod(0o755)
+        reset_scan_warnings()
+
+
+def test_listable_but_unsearchable_directory_yields_nothing_and_is_counted(tmp_path):
+    # r-- without x: names can be listed but no entry can be stat'ed or opened,
+    # so yielding them only moves the PermissionError into every consumer.
+    from agent_bom.iac import scan_iac_directory
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    _skip_without_posix_permissions()
+    (tmp_path / "CLAUDE.md").write_text("# root\n")
+    listable = tmp_path / "listable"
+    (listable / "skills").mkdir(parents=True)
+    (listable / "skills" / "SKILL.md").write_text("# hidden\n")
+    (listable / "AGENTS.md").write_text("# hidden\n")
+    (listable / "main.tf").write_text('resource "aws_s3_bucket" "b" {}\n')
+    reset_scan_warnings()
+    listable.chmod(0o444)
+    try:
+        assert [p.name for p in iter_discovery_files(tmp_path)] == ["CLAUDE.md"]
+        assert [p.name for p in discover_skill_files(tmp_path)] == ["CLAUDE.md"]
+        scan_iac_directory(tmp_path)
+        warnings = consume_coverage_warnings()
+        assert any(w["reason"] == "directory_read_error" for w in warnings)
+    finally:
+        listable.chmod(0o755)
+        reset_scan_warnings()
+
+
+def test_is_nested_worktree_root_unreadable_directory_is_not_a_worktree(tmp_path):
+    _skip_without_posix_permissions()
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        assert is_nested_worktree_root(locked) is False
+    finally:
+        locked.chmod(0o755)

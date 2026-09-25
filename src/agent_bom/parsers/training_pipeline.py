@@ -232,6 +232,17 @@ def _detect_serialization_format(flavor: str) -> str:
 # ─── MLflow parsers ─────────────────────────────────────────────────────────
 
 
+def _sibling_files(directory: Path) -> list[Path]:
+    """List a run's sibling files; an unreadable directory contributes none."""
+    try:
+        if not directory.is_dir():
+            return []
+        return sorted(child for child in directory.iterdir() if child.is_file())
+    except OSError:
+        logger.warning("Training metadata directory could not be read; run details are incomplete")
+        return []
+
+
 def parse_mlflow_meta_yaml(path: Path) -> TrainingRun | None:
     """Parse an MLflow run ``meta.yaml`` file.
 
@@ -257,39 +268,30 @@ def parse_mlflow_meta_yaml(path: Path) -> TrainingRun | None:
     )
 
     # Read sibling params/ directory
-    params_dir = path.parent / "params"
-    if params_dir.is_dir():
-        for param_file in sorted(params_dir.iterdir()):
-            if param_file.is_file():
-                try:
-                    run.parameters[param_file.name] = param_file.read_text(encoding="utf-8").strip()
-                except OSError:
-                    pass
+    for param_file in _sibling_files(path.parent / "params"):
+        try:
+            run.parameters[param_file.name] = param_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
 
     # Read sibling metrics/ directory
-    metrics_dir = path.parent / "metrics"
-    if metrics_dir.is_dir():
-        for metric_file in sorted(metrics_dir.iterdir()):
-            if metric_file.is_file():
-                try:
-                    val = metric_file.read_text(encoding="utf-8").strip().split()
-                    if len(val) >= 2:
-                        # MLflow metric format: timestamp value [step]
-                        run.metrics[metric_file.name] = float(val[1])
-                    elif val:
-                        run.metrics[metric_file.name] = float(val[0])
-                except (OSError, ValueError, IndexError):
-                    pass
+    for metric_file in _sibling_files(path.parent / "metrics"):
+        try:
+            val = metric_file.read_text(encoding="utf-8").strip().split()
+            if len(val) >= 2:
+                # MLflow metric format: timestamp value [step]
+                run.metrics[metric_file.name] = float(val[1])
+            elif val:
+                run.metrics[metric_file.name] = float(val[0])
+        except (OSError, ValueError, IndexError):
+            pass
 
     # Read sibling tags/ for git info
-    tags_dir = path.parent / "tags"
-    if tags_dir.is_dir():
-        git_file = tags_dir / "mlflow.source.git.commit"
-        if git_file.exists():
-            try:
-                run.git_sha = git_file.read_text(encoding="utf-8").strip()
-            except OSError:
-                pass
+    git_file = path.parent / "tags" / "mlflow.source.git.commit"
+    try:
+        run.git_sha = git_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
 
     if not run.git_sha:
         run.security_flags.append(

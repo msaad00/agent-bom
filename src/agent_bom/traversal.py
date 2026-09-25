@@ -80,9 +80,12 @@ def is_nested_worktree_root(dirpath: Path) -> bool:
     security scanner a duplicate is a lesser failure than a miss.
     """
     pointer = dirpath / ".git"
-    if not pointer.is_file():
-        return False
     try:
+        # Python 3.12/3.13 raise EACCES from is_file() for a child of a
+        # directory without search permission; an unreadable directory is not
+        # provably a worktree, and the walk reports it as a read error.
+        if not pointer.is_file():
+            return False
         content = pointer.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
@@ -197,9 +200,23 @@ def iter_discovery_files(
     yielded = 0
     for dirpath_str, dirnames, filenames in os.walk(root, followlinks=False, onerror=note_error):
         dirpath = Path(dirpath_str)
+        if not os.access(dirpath_str, os.X_OK):
+            # Listable without search permission: no entry can be stat'ed or
+            # opened, so yielding names would only move the error to consumers.
+            report_gap("directory_read_error", "One or more directories could not be read.")
+            dirnames[:] = []
+            continue
         _prune_dirnames(dirpath, dirnames, skip, note_pruned)
         for name in list(dirnames):
-            if (dirpath / name).is_symlink():
+            try:
+                is_link = (dirpath / name).is_symlink()
+            except OSError as exc:
+                # The parent lists but cannot be searched: nothing under it is
+                # reachable, so count the gap instead of aborting the walk.
+                note_error(exc)
+                dirnames.remove(name)
+                continue
+            if is_link:
                 note_pruned(dirpath / name, "directory_symlink")
                 dirnames.remove(name)
         if ignore is not None:

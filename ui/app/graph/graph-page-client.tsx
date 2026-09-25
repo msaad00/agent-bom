@@ -1748,7 +1748,7 @@ function GraphPageInner() {
     () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
     [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
   );
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(
+  const { nodes: layoutNodes, edges: layoutEdges, pending: layoutPending } = useGraphLayout(
     graphLayoutKind,
     layoutInput.nodes,
     layoutInput.edges,
@@ -3869,6 +3869,8 @@ function GraphPageInner() {
               ]}
               actions={[{ label: "Show all returned context", onClick: () => setFilters(createExpandedGraphFilters()) }, { label: "Return to summary", onClick: returnToSummary }]}
             />
+          ) : layoutPending && !investigationMode && graphRenderer.kind === "react-flow" ? (
+            <p role="status" className="p-6 text-sm text-ink-secondary">Arranging the selected graph…</p>
           ) : graphOnlyFindings ? (
             <GraphFindingsFallback
               nodes={findingNodes}

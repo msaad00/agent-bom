@@ -45,6 +45,27 @@ def test_admin_equivalent_surfaces_as_fusion_signal_with_basis():
     assert "policy_evaluation" in detail
 
 
+def _escalating_user(**attributes):
+    g = UnifiedGraph(scan_id="s", tenant_id="t")
+    g.add_node(
+        UnifiedNode(id="user:dev", entity_type=EntityType.USER, label="dev", attributes={"can_escalate_privilege": True, **attributes})
+    )
+    return {kind: (detail, boost) for kind, _l, detail, boost in _fusion_signals_for_path(g, ["user:dev"])}
+
+
+def test_conditional_admin_escalation_is_a_distinct_lower_ranked_signal():
+    confirmed = _escalating_user(escalates_to_admin=True)
+    conditional = _escalating_user(escalates_to_conditional_admin=True)
+    plain = _escalating_user()
+
+    assert "privilege_escalation_conditional_admin" in conditional
+    assert "privilege_escalation_admin" not in conditional
+    assert "privilege_escalation" not in conditional
+    detail, boost = conditional["privilege_escalation_conditional_admin"]
+    assert "conditional" in detail
+    assert plain["privilege_escalation"][1] < boost < confirmed["privilege_escalation_admin"][1]
+
+
 def test_admin_equivalent_principal_appears_as_ciem_path():
     # A role that holds admin-equivalent permissions but does NOT reach anything
     # via an assume-chain must still surface as a first-class CIEM path — before

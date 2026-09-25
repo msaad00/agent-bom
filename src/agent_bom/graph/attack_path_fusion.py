@@ -179,6 +179,8 @@ def _node_boost(node: UnifiedNode) -> float:
         boost += 4.0
     if coerce_truthy(attrs.get("escalates_to_admin")):
         boost += 12.0
+    elif coerce_truthy(attrs.get("escalates_to_conditional_admin")):
+        boost += 10.0
     elif coerce_truthy(attrs.get("can_escalate_privilege")):
         boost += 8.0
     # Standing admin-equivalent permissions are an independent escalation prize

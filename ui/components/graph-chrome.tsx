@@ -136,7 +136,7 @@ export function GraphLegendDock({
         <span className="graph-legend-dock-label">
           Legend
         </span>
-        <span className="graph-legend-preview !hidden sm:!flex">
+        <span className="graph-legend-preview max-sm:!hidden">
           {preview.map((item) => (
             <span
               key={`preview:${item.label}:${item.kind}`}

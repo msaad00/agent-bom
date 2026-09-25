@@ -78,6 +78,7 @@ from agent_bom.graph.path_derivation import _fusion_signals_for_path as _fusion_
 from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS, ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
+from agent_bom.mcp_errors import CODE_UNSUPPORTED_BACKEND
 from agent_bom.security import sanitize_error
 
 if TYPE_CHECKING:
@@ -1694,6 +1695,8 @@ def _graph_rollup_payload(
     exposed: bool,
     toxic: bool,
     mode: Literal["rollup", "attack_path"],
+    offset: int = 0,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     from agent_bom.graph.rollup import RollupFilters, attack_path_view, drill_down, rollup_view
 
@@ -1703,7 +1706,7 @@ def _graph_rollup_payload(
         toxic_only=toxic,
     )
     if node:
-        return drill_down(graph, node, filters=filters)
+        return drill_down(graph, node, filters=filters, offset=offset, limit=limit)
     if mode == "attack_path":
         return attack_path_view(graph, _derived_attack_paths(graph), filters=filters)
     return rollup_view(graph, filters=filters)
@@ -1765,6 +1768,9 @@ def _raise_mcp_error_as_http(payload: dict[str, Any]) -> None:
     if not isinstance(error, dict):
         return
     category = str(error.get("category") or "internal")
+    if error.get("code") == CODE_UNSUPPORTED_BACKEND:
+        # Same status the direct store calls use for a backend capability gap.
+        raise HTTPException(status_code=501, detail=error)
     status_by_category = {
         "validation": 422,
         "auth": 403,
@@ -2423,10 +2429,10 @@ async def get_graph_exposure_paths(
 ) -> dict:
     """Return the MCP-compatible ExposurePath queue over REST for SDK consumers."""
     del tenant_id  # SDK compatibility only; request tenant scope is authoritative.
-    from agent_bom.mcp_tools.graph import exposure_paths_impl
+    from agent_bom.mcp_tools.graph import exposure_paths_for_tenant
 
     graph_store = _get_graph_store_or_503()
-    raw = await exposure_paths_impl(
+    raw = await exposure_paths_for_tenant(
         tenant_id=_tenant(request),
         scan_id=scan_id,
         limit=limit,
@@ -2444,7 +2450,7 @@ async def get_graph_exposure_paths(
 async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecisionRequest) -> dict:
     """Return the MCP-compatible allow/warn/block deploy decision over REST."""
     _ = (body.tenant_id, body.context)  # SDK compatibility/future policy context; request tenant scope is authoritative today.
-    from agent_bom.mcp_tools.graph import deploy_decision_impl
+    from agent_bom.mcp_tools.graph import deploy_decision_for_tenant
 
     candidate = _candidate_to_string(body.candidate)
     if not candidate:
@@ -2469,7 +2475,7 @@ async def post_graph_should_i_deploy(request: Request, body: GraphDeployDecision
         )
 
     graph_store = _get_graph_store_or_503()
-    raw = await deploy_decision_impl(
+    raw = await deploy_decision_for_tenant(
         candidate=candidate,
         tenant_id=_tenant(request),
         scan_id=body.scan_id,
@@ -3939,6 +3945,8 @@ async def delete_preset(request: Request, name: str) -> dict:
 # set rolled up — which is precisely what a containment-only fetch made it: the
 # roll-up draws the NON-containment edges, so it received nothing to draw.
 _ROLLUP_RELATIONSHIPS = ROLLUP_RELATIONSHIPS
+_ROLLUP_DRILLDOWN_DEFAULT_LIMIT = 200
+_ROLLUP_DRILLDOWN_MAX_LIMIT = 1000
 
 
 @router.get("/graph/rollup", tags=["graph"])
@@ -3950,6 +3958,13 @@ async def get_graph_rollup(
     exposed: bool = Query(False, description="Only roll up internet-exposed descendants"),
     toxic: bool = Query(False, description="Only roll up toxic-combination descendants"),
     mode: Literal["rollup", "attack_path"] = Query("rollup", description="rollup (default) or attack_path-first view"),
+    offset: int = Query(0, ge=0, le=1_000_000, description="Drill-down only: ranked-children page offset"),
+    limit: int = Query(
+        _ROLLUP_DRILLDOWN_DEFAULT_LIMIT,
+        ge=1,
+        le=_ROLLUP_DRILLDOWN_MAX_LIMIT,
+        description="Drill-down only: maximum direct children returned per page",
+    ),
 ) -> dict:
     """Collapse the estate along ``CONTAINS`` into a small, readable view.
 
@@ -3959,7 +3974,8 @@ async def get_graph_rollup(
     as a handful of top-level containers, each carrying aggregate descendant
     counts, worst-severity, a per-severity histogram, and exposure / toxic
     flags. ``?node=<id>`` returns one level of direct children for on-demand
-    drill-down; ``?mode=attack_path`` returns the nodes/edges on materialised
+    drill-down, paged by ``offset``/``limit`` with ``pagination`` and truthful
+    ``completeness``; ``?mode=attack_path`` returns the nodes/edges on materialised
     attack paths first with the rest collapsed.
 
     Backend for the UI graph-navigation surface. Read-only: never mutates the
@@ -3984,7 +4000,13 @@ async def get_graph_rollup(
     from agent_bom.api import graph_rollup_cache
 
     identity_reader = getattr(graph_store, "snapshot_identity", None)
-    identity = await _graph_store_call(identity_reader, tenant_id=tenant, scan_id=requested_scan_id) if callable(identity_reader) else None
+    identity = None
+    if callable(identity_reader):
+        try:
+            identity = await _graph_store_call(identity_reader, tenant_id=tenant, scan_id=requested_scan_id)
+        except NotImplementedError:
+            # Without a durable generation the summary cannot be safely reused.
+            identity_reader = None
     cache_key = None
     if identity and identity[1]:
         cache_key = (
@@ -4000,6 +4022,8 @@ async def get_graph_rollup(
             exposed,
             toxic,
             mode,
+            offset if node else 0,
+            limit if node else 0,
         )
         cached = graph_rollup_cache.get(cache_key)
         if cached is not None:
@@ -4047,6 +4071,8 @@ async def get_graph_rollup(
             exposed=exposed,
             toxic=toxic,
             mode=mode,
+            offset=offset,
+            limit=limit,
         )
         if (
             cache_key

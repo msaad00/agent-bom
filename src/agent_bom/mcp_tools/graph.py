@@ -22,6 +22,7 @@ from agent_bom.graph.path_evidence import (
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_RESOURCE,
+    CODE_UNSUPPORTED_BACKEND,
     CODE_VALIDATION_INVALID_ARGUMENT,
     CODE_VALIDATION_MISSING_REQUIRED,
     mcp_error_json,
@@ -298,7 +299,33 @@ async def exposure_paths_impl(
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
-    """Return ranked ExposurePath JSON for headless agent consumers."""
+    """MCP tool entry point: the server-bound tenant overrides any client-supplied value."""
+    return await exposure_paths_for_tenant(
+        tenant_id=resolve_mcp_tool_tenant_id(tenant_id),
+        scan_id=scan_id,
+        limit=limit,
+        min_risk=min_risk,
+        cursor=cursor,
+        _get_graph_store=_get_graph_store,
+        _truncate_response=_truncate_response,
+    )
+
+
+async def exposure_paths_for_tenant(
+    *,
+    tenant_id: str,
+    scan_id: str | None = None,
+    limit: int = 5,
+    min_risk: float = 0.0,
+    cursor: str | None = None,
+    _get_graph_store=None,
+    _truncate_response=None,
+) -> str:
+    """Return ranked ExposurePath JSON for an already-authenticated tenant.
+
+    Callers must pass a tenant established by their own authentication (the
+    REST request principal); MCP tools go through ``exposure_paths_impl``.
+    """
     if limit < 1 or limit > 100:
         return mcp_error_json(
             CODE_VALIDATION_INVALID_ARGUMENT,
@@ -311,7 +338,6 @@ async def exposure_paths_impl(
             "min_risk must be between 0 and 100",
             details={"argument": "min_risk", "value": min_risk},
         )
-    tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
 
     if scan_id and "\x00" in scan_id:
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Invalid graph snapshot identifier.")
@@ -350,7 +376,13 @@ async def exposure_paths_impl(
             _get_graph_store = _default_get_graph_store
 
         store = _get_graph_store()
-        pinned_scan_id, generation = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=scan_id or "")
+        try:
+            pinned_scan_id, generation = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=scan_id or "")
+        except NotImplementedError:
+            return mcp_error_json(
+                CODE_UNSUPPORTED_BACKEND,
+                "Exposure paths require generation-pinned graph reads, which this graph backend does not support.",
+            )
         effective_scan_id, created_at, paths, total = await asyncio.to_thread(
             store.attack_paths,
             tenant_id=tenant_id,
@@ -483,7 +515,31 @@ async def deploy_decision_impl(
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
-    """Return an allow/warn/block deployment decision from ExposurePath risk."""
+    """MCP tool entry point: the server-bound tenant overrides any client-supplied value."""
+    return await deploy_decision_for_tenant(
+        candidate=candidate,
+        tenant_id=resolve_mcp_tool_tenant_id(tenant_id),
+        scan_id=scan_id,
+        limit=limit,
+        warn_risk=warn_risk,
+        block_risk=block_risk,
+        _get_graph_store=_get_graph_store,
+        _truncate_response=_truncate_response,
+    )
+
+
+async def deploy_decision_for_tenant(
+    *,
+    candidate: str,
+    tenant_id: str,
+    scan_id: str | None = None,
+    limit: int = 5,
+    warn_risk: float = 40.0,
+    block_risk: float = 80.0,
+    _get_graph_store=None,
+    _truncate_response=None,
+) -> str:
+    """Return an allow/warn/block deployment decision for an already-authenticated tenant."""
     candidate_value = candidate.strip()
     if not candidate_value:
         return mcp_error_json(
@@ -503,9 +559,8 @@ async def deploy_decision_impl(
             "warn_risk and block_risk must be ordered thresholds between 0 and 100",
             details={"warn_risk": warn_risk, "block_risk": block_risk},
         )
-    tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
 
-    response = await exposure_paths_impl(
+    response = await exposure_paths_for_tenant(
         tenant_id=tenant_id,
         scan_id=scan_id,
         limit=100,

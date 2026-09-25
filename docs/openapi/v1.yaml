@@ -18871,7 +18871,9 @@ paths:
 
         flags. ``?node=<id>`` returns one level of direct children for on-demand
 
-        drill-down; ``?mode=attack_path`` returns the nodes/edges on materialised
+        drill-down, paged by ``offset``/``limit`` with ``pagination`` and truthful
+
+        ``completeness``; ``?mode=attack_path`` returns the nodes/edges on materialised
 
         attack paths first with the rest collapsed.
 
@@ -18941,6 +18943,28 @@ paths:
           - attack_path
           title: Mode
           type: string
+      - description: 'Drill-down only: ranked-children page offset'
+        in: query
+        name: offset
+        required: false
+        schema:
+          default: 0
+          description: 'Drill-down only: ranked-children page offset'
+          maximum: 1000000
+          minimum: 0
+          title: Offset
+          type: integer
+      - description: 'Drill-down only: maximum direct children returned per page'
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 200
+          description: 'Drill-down only: maximum direct children returned per page'
+          maximum: 1000
+          minimum: 1
+          title: Limit
+          type: integer
       responses:
         '200':
           content:

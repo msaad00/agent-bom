@@ -22,7 +22,7 @@ export function GraphEvaluationSummary({ evaluation }: GraphEvaluationSummaryPro
   return (
     <section
       aria-label="Graph evaluation"
-      className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--background)]/70 p-3"
+      className="mt-3 rounded-xl border border-outline bg-background/70 p-3"
       data-testid="graph-evaluation-summary"
     >
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -33,13 +33,13 @@ export function GraphEvaluationSummary({ evaluation }: GraphEvaluationSummaryPro
               {evaluation.grade}
             </span>
           </div>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-[var(--text-secondary)]">
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-ink-secondary">
             Scores whether this graph view has enough entity variety, relationships, path signal, evidence, and readable rendering for review.
           </p>
         </div>
-        <div className="flex shrink-0 items-baseline gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-3 py-2">
-          <span className="text-2xl font-semibold tabular-nums text-[var(--foreground)]">{Math.round(evaluation.score)}</span>
-          <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">score</span>
+        <div className="flex shrink-0 items-baseline gap-2 rounded-lg border border-outline bg-surface/70 px-3 py-2">
+          <span className="text-2xl font-semibold tabular-nums text-foreground">{Math.round(evaluation.score)}</span>
+          <span className="text-[10px] uppercase tracking-[0.16em] text-ink-tertiary">score</span>
         </div>
       </div>
 
@@ -47,21 +47,21 @@ export function GraphEvaluationSummary({ evaluation }: GraphEvaluationSummaryPro
         {evaluation.dimensions.map((dimension) => {
           const Icon = dimensionIcon[dimension.id];
           return (
-            <div key={dimension.id} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/60 p-2.5">
+            <div key={dimension.id} className="rounded-lg border border-outline bg-surface/60 p-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)]" />
-                  <span className="truncate text-xs font-medium text-[var(--foreground)]">{dimension.label}</span>
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" />
+                  <span className="truncate text-xs font-medium text-foreground">{dimension.label}</span>
                 </div>
-                <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">{Math.round(dimension.score)}</span>
+                <span className="text-xs font-semibold tabular-nums text-foreground">{Math.round(dimension.score)}</span>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-elevated)]">
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-elevated">
                 <div
                   className={`h-full rounded-full ${barTone(dimension.score)}`}
                   style={{ width: `${Math.max(6, Math.min(100, dimension.score))}%` }}
                 />
               </div>
-              <p className="mt-2 break-words text-[11px] leading-4 text-[var(--text-tertiary)]">{dimension.detail}</p>
+              <p className="mt-2 break-words text-[11px] leading-4 text-ink-tertiary">{dimension.detail}</p>
             </div>
           );
         })}
@@ -72,7 +72,7 @@ export function GraphEvaluationSummary({ evaluation }: GraphEvaluationSummaryPro
           {evaluation.warnings.slice(0, 3).map((warning) => (
             <span
               key={warning}
-              className="inline-flex max-w-full items-start gap-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[11px] leading-4 text-amber-100"
+              className="inline-flex max-w-full items-start gap-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[11px] leading-4 text-amber-800 dark:text-amber-100"
             >
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-300" />
               <span className="break-words">{warning}</span>

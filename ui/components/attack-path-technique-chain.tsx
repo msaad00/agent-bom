@@ -31,17 +31,17 @@ export function AttackPathTechniqueChain({ path }: { path: AttackPath }) {
   const ordered = [...mappings].sort((a, b) => a.hop_index - b.hop_index);
 
   return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]/70 p-3 lg:col-span-4">
+    <div className="rounded-xl border border-outline bg-surface/70 p-3 lg:col-span-4">
       <div className="flex items-start gap-2">
         <Crosshair
-          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)]"
+          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-tertiary"
           aria-hidden="true"
         />
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary">
             Mapped ATT&amp;CK / ATLAS techniques
           </p>
-          <p className="mt-1 text-[11px] leading-4 text-[var(--text-tertiary)]">
+          <p className="mt-1 text-[11px] leading-4 text-ink-tertiary">
             Potential kill-chain techniques inferred from this path&apos;s graph
             evidence — not observed attacker activity.
           </p>
@@ -59,7 +59,7 @@ export function AttackPathTechniqueChain({ path }: { path: AttackPath }) {
           >
             {i > 0 && (
               <div
-                className="flex items-center text-[var(--text-tertiary)]"
+                className="flex items-center text-ink-tertiary"
                 aria-hidden="true"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -71,24 +71,24 @@ export function AttackPathTechniqueChain({ path }: { path: AttackPath }) {
                   ? `Evidence: ${m.provenance} · confidence ${confidenceLabel(m.confidence)}`
                   : `Confidence ${confidenceLabel(m.confidence)}`
               }
-              className="flex min-w-[9.5rem] max-w-[15rem] shrink-0 flex-col gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)]/80 px-2.5 py-2"
+              className="flex min-w-[9.5rem] max-w-[15rem] shrink-0 flex-col gap-1 rounded-lg border border-outline bg-surface-elevated/80 px-2.5 py-2"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[9px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                <span className="text-[9px] uppercase tracking-[0.16em] text-ink-tertiary">
                   Hop {m.hop_index + 1}
                 </span>
-                <span className="rounded border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                <span className="rounded border border-outline bg-surface/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] text-ink-secondary">
                   {catalogLabel(m.catalog)}
                 </span>
               </div>
               <span
                 data-testid="technique-id"
-                className="font-mono text-[11px] font-semibold text-[var(--foreground)]"
+                className="font-mono text-[11px] font-semibold text-foreground"
               >
                 {m.technique_id}
               </span>
               {m.technique_name && (
-                <span className="text-[11px] leading-4 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+                <span className="text-[11px] leading-4 text-ink-secondary [overflow-wrap:anywhere]">
                   {m.technique_name}
                 </span>
               )}
@@ -97,14 +97,14 @@ export function AttackPathTechniqueChain({ path }: { path: AttackPath }) {
                   {m.tactics.map((tactic) => (
                     <span
                       key={`${m.technique_id}-${tactic}`}
-                      className="rounded bg-[var(--surface)]/80 px-1.5 py-0.5 text-[9px] text-[var(--text-tertiary)]"
+                      className="rounded bg-surface/80 px-1.5 py-0.5 text-[9px] text-ink-tertiary"
                     >
                       {tactic}
                     </span>
                   ))}
                 </div>
               )}
-              <span className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+              <span className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-ink-tertiary">
                 Confidence {confidenceLabel(m.confidence)}
               </span>
             </div>

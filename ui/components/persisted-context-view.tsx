@@ -26,7 +26,7 @@ export function AdminAssessment({ attributes }: { attributes: Record<string, unk
   if (typeof status !== "string") return null;
   const labels: Record<string, string> = { admin: "Admin", conditional_admin: "Conditional admin", not_admin: "Not admin", unknown: "Unknown" };
   return <div className="mt-2 text-sm"><p>Admin assessment: <strong>{labels[status] ?? "Unknown"}</strong></p>
-    <p className="text-xs text-[var(--text-secondary)]">{status === "conditional_admin" ? "Broad admin permissions are conditional. The required request context has not been verified." : status === "not_admin" ? "Collected policies do not establish admin permissions." : status === "admin" ? "Collected identity policies grant admin permissions within their recorded resource scope. Other authorization controls may still apply." : "Available evidence does not establish an admin verdict."}</p>
+    <p className="text-xs text-ink-secondary">{status === "conditional_admin" ? "Broad admin permissions are conditional. The required request context has not been verified." : status === "not_admin" ? "Collected policies do not establish admin permissions." : status === "admin" ? "Collected identity policies grant admin permissions within their recorded resource scope. Other authorization controls may still apply." : "Available evidence does not establish an admin verdict."}</p>
     {Array.isArray(attributes.admin_equivalence_resource_scopes) && attributes.admin_equivalence_resource_scopes.length > 0 && <p className="break-all text-xs">Scope: {attributes.admin_equivalence_resource_scopes.filter((scope): scope is string => typeof scope === "string").join(", ")}</p>}
   </div>;
 }
@@ -47,10 +47,10 @@ const contextEdgeTypes = { smoothstep: ContextRecordedEdge };
 
 function ContextOverviewNode({ data, selected, targetPosition, sourcePosition }: NodeProps<Node<LineageNodeData>>) {
   const Icon = entityIcon(data.nodeType);
-  return <div className={`h-[72px] w-[180px] rounded-xl border bg-[var(--surface)] px-3 py-2 shadow-sm ${selected ? "ring-2 ring-[var(--foreground)] ring-offset-2 ring-offset-[var(--surface)]" : ""}`} style={{ borderColor: NODE_COLOR_MAP[data.nodeType] ?? "var(--border-strong)" }}>
+  return <div className={`h-[72px] w-[180px] rounded-xl border bg-surface px-3 py-2 shadow-sm ${selected ? "ring-2 ring-[var(--foreground)] ring-offset-2 ring-offset-[var(--surface)]" : ""}`} style={{ borderColor: NODE_COLOR_MAP[data.nodeType] ?? "var(--border-strong)" }}>
     <Handle type="target" position={targetPosition ?? Position.Left} className="!h-1.5 !w-1.5" />
     <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 line-clamp-2 break-normal [overflow-wrap:anywhere] text-[16px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
-    <p className="mt-1 truncate text-[11px] text-[var(--text-secondary)]">{data.entityType?.replaceAll("_", " ") ?? data.nodeType}</p>
+    <p className="mt-1 truncate text-[11px] text-ink-secondary">{data.entityType?.replaceAll("_", " ") ?? data.nodeType}</p>
     <Handle type="source" position={sourcePosition ?? Position.Right} className="!h-1.5 !w-1.5" />
   </div>;
 }
@@ -106,7 +106,7 @@ function OwnedContextView({ owner }: { owner: string }) {
   const scanId = snapshot?.jobId === jobId ? snapshot.scanId : "";
   return <section aria-label="Persisted Context neighborhood" className="min-w-0 space-y-2 p-3">
     <GraphLensSwitcher variant="compact" scanId={scanId || undefined} />
-    <header className="flex flex-wrap items-center justify-between gap-2"><div><h1 className="text-lg font-semibold">Context Map</h1><p className="text-xs text-[var(--text-secondary)]">Recorded connections · investigate one neighborhood at a time</p></div>
+    <header className="flex flex-wrap items-center justify-between gap-2"><div><h1 className="text-lg font-semibold">Context Map</h1><p className="text-xs text-ink-secondary">Recorded connections · investigate one neighborhood at a time</p></div>
     <label className="block text-sm">Completed scan <select aria-label="Completed scan" className="context-action ml-2 max-w-full" value={jobId} onChange={event => setJobId(event.target.value)}>
       {!jobs.length && <option value="">No completed scans</option>}
       {jobId && !jobs.some(job => job.job_id === jobId) && <option value={jobId}>{jobId}</option>}
@@ -201,31 +201,31 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
         {rootId && selector?.agents.length && !selector.agents.some(agent => agent.id === rootId) ? <option value={rootId}>{rootId}</option> : null}
         {selector?.agents.map(agent => <option key={agent.id} value={agent.id}>{agent.label} · {agent.id}</option>)}
       </select></label>
-      {selector && <span className="text-xs text-[var(--text-secondary)]">{selector.pagination.total.toLocaleString()} {query ? "matching" : "recorded"} agents · snapshot scope</span>}
+      {selector && <span className="text-xs text-ink-secondary">{selector.pagination.total.toLocaleString()} {query ? "matching" : "recorded"} agents · snapshot scope</span>}
       {selector?.pagination.next_cursor && <button className="context-action" disabled={selectorBusy} onClick={() => setCursor(selector.pagination.next_cursor || undefined)}>Next agents</button>}
       {cursor && <button className="context-action" onClick={() => setCursor(undefined)}>First agents</button>}
-      <details className="relative"><summary className="context-action cursor-pointer">Search &amp; direction</summary><div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)] p-3">
+      <details className="relative"><summary className="context-action cursor-pointer">Search &amp; direction</summary><div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-outline bg-surface p-3">
       <label className="min-w-0 text-sm">Agent search<input aria-label="Agent search" className="context-action mt-1 block w-full" value={query} onChange={event => { setQuery(event.target.value); setCursor(undefined); }} placeholder="Search recorded agent names or IDs" /></label>
       <label className="text-sm">Direction<select aria-label="Relationship direction" className="context-action ml-2" value={direction} onChange={event => { setDirection(event.target.value as IncidentDirection); setSelectedId(null); setSelectedEdge(null); setFocusId(null); setExpandedCanvas(false); }}><option value="both">Incoming + outgoing</option><option value="in">Incoming</option><option value="out">Outgoing</option></select></label>
       </div></details>
       {focusId && <button className="context-action" onClick={() => { setFocusId(null); setSelectedEdge(null); }}>Back to neighborhood</button>}
       <button className="context-action" disabled={graph.busy || !rootId} onClick={() => { setSelectedId(null); setSelectedEdge(null); setFocusId(null); graph.restart(); }}>Restart neighborhood</button>
-      <button className="context-action" aria-pressed={expandedCanvas} onClick={() => setExpandedCanvas(value => !value)}>{expandedCanvas ? "Compact canvas" : "Expand canvas"}</button><span className="ml-2 text-xs text-[var(--text-secondary)]">{expandedCanvas ? "Up to 24 entities / 36 relationships" : "Up to 8 entities / 12 relationships"} · loaded evidence only</span>
+      <button className="context-action" aria-pressed={expandedCanvas} onClick={() => setExpandedCanvas(value => !value)}>{expandedCanvas ? "Compact canvas" : "Expand canvas"}</button><span className="ml-2 text-xs text-ink-secondary">{expandedCanvas ? "Up to 24 entities / 36 relationships" : "Up to 8 entities / 12 relationships"} · loaded evidence only</span>
     </div>
     {selectorError && <p role="alert">{selectorError}</p>}
     {!selectorBusy && !selector?.agents.length && !selectorError && <p>No persisted agent nodes match this search. Repository and SBOM evidence remains available in Repository or Lineage.</p>}
     {graph.error && <p role="alert">{graph.error}</p>}
-    <p role="status" className="text-sm text-[var(--text-secondary)]">{graph.busy ? "Loading relationships… " : ""}{graph.nodes.length} loaded entities · {graph.edges.length} loaded relationships · total unknown. Canvas: {display.nodes.length} entities, {display.edges.length} relationships.</p>
+    <p role="status" className="text-sm text-ink-secondary">{graph.busy ? "Loading relationships… " : ""}{graph.nodes.length} loaded entities · {graph.edges.length} loaded relationships · total unknown. Canvas: {display.nodes.length} entities, {display.edges.length} relationships.</p>
     {graph.pages.some(page => page.completeness.missing_endpoint_count > 0) && <p>Some recorded endpoints are unavailable; this neighborhood is incomplete.</p>}
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">
-      <div aria-label="Persisted neighborhood canvas" className="relative h-[32rem] lg:h-[36rem] min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)]">
+      <div aria-label="Persisted neighborhood canvas" className="relative h-[32rem] lg:h-[36rem] min-w-0 rounded-xl border border-outline bg-surface">
         {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.08, minZoom: focusId ? (mobile ? 0.75 : 0.85) : 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} /><Controls className={CONTROLS_CLASS} />
         </ReactFlow>}
       </div>
-      <aside aria-label="Agent neighborhood inspector" className="max-h-[32rem] lg:max-h-[36rem] overflow-y-auto min-w-0 space-y-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-4">
+      <aside aria-label="Agent neighborhood inspector" className="max-h-[32rem] lg:max-h-[36rem] overflow-y-auto min-w-0 space-y-3 rounded-xl border border-outline bg-surface p-4">
         <h2 className="break-words text-lg font-semibold">{edge ? recordedLabel(String(edge.relationship)) : selected?.label || "Select an entity"}</h2>
         {edge ? <><p className="break-words">{label(edge.source)} {edge.direction === "bidirectional" ? "↔" : edge.direction === "directed" ? "→" : "—"} {label(edge.target)}</p><p>Recorded direction: {edge.direction}</p><p className="break-words">Evidence basis: {String(edge.evidence.evidence_tier ?? edge.evidence.evidence_basis ?? edge.evidence.basis ?? "unknown")}</p><p className="break-words">Runtime outcome: {String(edge.evidence.runtime_outcome ?? "unknown")}</p><button className="context-action" onClick={() => setSelectedEdge(null)}>Close inspection</button></> : selected ? <>
           <Link className="context-action inline-block" href={buildGraphInvestigationHref({ scanId, rootId: selected.id })}>Investigate reach &amp; permissions</Link>
@@ -236,17 +236,17 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
             {!!pages.length && selected.id !== rootId && <button className="context-action" onClick={() => { graph.collapse(selected.id); setFocusId(null); }}>Collapse connections</button>}
           </div>
           {!!pages.length && selected.id !== rootId && <p className="text-xs">Collapse also clears later expansions.</p>}
-          <p className="text-sm text-[var(--text-secondary)]">{incident.length} loaded relationships for this entity. {lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p>
+          <p className="text-sm text-ink-secondary">{incident.length} loaded relationships for this entity. {lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p>
           <LoadedRelationshipList key={selected.id} nodeId={selected.id} incident={incident} label={label} onSelect={setSelectedEdge} />
         </> : <p>Choose a persisted agent to begin.</p>}
         <details><summary className="cursor-pointer font-semibold">Loaded entities ({graph.nodes.length})</summary>
           <label className="block py-2 text-xs">Find loaded entity<input aria-label="Find loaded entity" className="context-action mt-1 w-full" value={loadedQuery} onChange={event => setLoadedQuery(event.target.value)} placeholder="Name or exact identifier" /></label>
           <div className="max-h-60 overflow-y-auto">{[...new Set(graph.nodes.map(node => String(node.entity_type)))].sort().map(kind => {
             const items = graph.nodes.filter(node => node.entity_type === kind && `${node.id} ${node.label}`.toLocaleLowerCase().includes(loadedQuery.toLocaleLowerCase().trim()));
-            return items.length ? <section key={kind} aria-label={`Loaded ${kind}`} className="py-1"><h3 className="text-xs font-semibold capitalize text-[var(--text-secondary)]">{kind.replaceAll("_", " ")} · {items.length} loaded</h3>{items.map(node => <button className="context-connection" key={node.id} onClick={() => { setSelectedId(node.id); setSelectedEdge(null); }}><span className="block break-words">{node.label}</span><code className="break-all text-xs">{node.id}</code></button>)}</section> : null;
+            return items.length ? <section key={kind} aria-label={`Loaded ${kind}`} className="py-1"><h3 className="text-xs font-semibold capitalize text-ink-secondary">{kind.replaceAll("_", " ")} · {items.length} loaded</h3>{items.map(node => <button className="context-connection" key={node.id} onClick={() => { setSelectedId(node.id); setSelectedEdge(null); }}><span className="block break-words">{node.label}</span><code className="break-all text-xs">{node.id}</code></button>)}</section> : null;
           })}</div>
         </details>
-        <details><summary className="cursor-pointer text-sm">Scope &amp; evidence limits</summary><p className="break-all text-xs">Snapshot: {scanId}</p><p className="mt-2 text-sm text-[var(--text-secondary)]">Permission and exploitability are not assessed by these pages. Shared infrastructure does not prove agents communicated. Page completeness is not estate or collection completeness.</p></details>
+        <details><summary className="cursor-pointer text-sm">Scope &amp; evidence limits</summary><p className="break-all text-xs">Snapshot: {scanId}</p><p className="mt-2 text-sm text-ink-secondary">Permission and exploitability are not assessed by these pages. Shared infrastructure does not prove agents communicated. Page completeness is not estate or collection completeness.</p></details>
       </aside>
     </div>
   </>;
@@ -259,7 +259,7 @@ export function LoadedRelationshipList({ nodeId, incident, label, onSelect }: {
   const [visibleCount, setVisibleCount] = useState(24);
   const shown = Math.min(visibleCount, incident.length);
   return <div>
-    <p className="mb-2 text-xs text-[var(--text-secondary)]" role="status">Showing {shown} of {incident.length} loaded relationships</p>
+    <p className="mb-2 text-xs text-ink-secondary" role="status">Showing {shown} of {incident.length} loaded relationships</p>
     <div className="max-h-64 space-y-2 overflow-y-auto">{incident.slice(0, visibleCount).map(item =>
       <button key={JSON.stringify([item.source, item.target, item.relationship])} className="context-connection" onClick={() => onSelect(JSON.stringify([item.source, item.target, item.relationship]))}>
         <span className="block text-xs">{item.direction === "bidirectional" ? "Bidirectional ↔" : item.direction === "directed" ? (item.source === nodeId ? "Outgoing →" : "← Incoming") : "Related ·"} {recordedLabel(String(item.relationship))}</span>

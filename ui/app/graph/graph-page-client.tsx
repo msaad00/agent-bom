@@ -155,9 +155,7 @@ import type {
 import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
-  LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD,
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
-  LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD,
 } from "@/lib/large-graph-overview";
 import {
   decideGraphRenderer,
@@ -1741,7 +1739,7 @@ function GraphPageInner() {
   const compactInvestigationTopology = investigationLayout !== undefined;
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
-  const graphLayoutKind = compactMobileTopology ? "dagre" : "dagre-lr";
+  const graphLayoutKind = compactMobileTopology || investigationMode ? "dagre" : "dagre-lr";
   const scenarioContextIds = useMemo(() => {
     if (!selectedScenarioId || !scenarioComparison?.available || scenarioExpanded || attackPathLens || selectedAttackPath || investigationMode) return undefined;
     return graphScenarioContextIds(aggregated.nodes, aggregated.edges, scenarioComparison.difference, mergedGraphData?.edges);
@@ -2287,7 +2285,7 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
-    if (scenarioExpanded || scenarioContextIds) return viewportOptions;
+    if (scenarioExpanded || scenarioContextIds || (investigationMode && displayNodes.length <= 8)) return { ...viewportOptions, maxZoom: 1 };
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
     if ((canvasLens === "estate" && displayNodes.length <= 6 && !selectedNodeId && !selectedAttackPath && !investigationMode && scenarioState === "current")) return viewportOptions;
@@ -2540,7 +2538,7 @@ function GraphPageInner() {
 
   const loadRootInvestigation = useCallback(
     async (
-      request: GraphInvestigationRequest & { node?: UnifiedNode | undefined },
+      request: GraphInvestigationRequest & { node?: UnifiedNode | undefined; nodeLimit?: number },
     ) => {
       if (!selectedScanId) return;
       const requestId = ++investigationRequestId.current;
@@ -2597,7 +2595,7 @@ function GraphPageInner() {
           scan_id: selectedScanId,
           direction,
           max_depth: queryFilters.maxDepth,
-          max_nodes: 24,
+          max_nodes: request.nodeLimit ?? 4,
           max_edges: 96,
           timeout_ms: 2500,
           traversable_only: false,
@@ -2767,7 +2765,7 @@ function GraphPageInner() {
         const [impact, context] = await Promise.all([
           api.getGraphImpact(nodeId, selectedScanId || undefined, 4, { signal }),
           api.queryGraph({ roots: [nodeId], scan_id: selectedScanId || undefined,
-            direction: "reverse", max_depth: 4, max_nodes: 24, max_edges: 96,
+            direction: "reverse", max_depth: 4, max_nodes: 4, max_edges: 32,
             timeout_ms: 2500, traversable_only: true, include_roots: true,
             include_attack_paths: false }, { signal }),
         ]);
@@ -3015,17 +3013,15 @@ function GraphPageInner() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="hidden text-[10px] uppercase tracking-[0.24em] text-sky-400 sm:block">
-                Unified graph
-              </p>
+              {!investigationMode && <p className="hidden text-[10px] uppercase tracking-[0.24em] text-sky-400 sm:block">Unified graph</p>}
               <h1 className="text-lg font-semibold text-foreground sm:mt-1">
                 {canvasLens === "estate" ? "Investigation Canvas" : "Lineage Graph"}
               </h1>
-              <p className="hidden text-xs text-ink-tertiary sm:block">
+              {!investigationMode && <p className="hidden text-xs text-ink-tertiary sm:block">
                 {canvasLens === "estate"
                   ? "Review priority findings, then follow their connections and evidence."
                   : "Evidence-backed relationships across agents, servers, packages, credentials, tools, and findings."}
-              </p>
+              </p>}
             </div>
             {narrowViewport && <details className="relative shrink-0" data-testid="mobile-graph-view">
               <summary className="graph-page-action cursor-pointer">Snapshot &amp; view</summary>
@@ -3145,12 +3141,12 @@ function GraphPageInner() {
             data-testid="graph-evidence-controls"
             className="mt-2 border-t border-outline group"
           >
-            <summary className="graph-drawer-summary !flex-nowrap !px-0">
+            <summary className="graph-drawer-summary !flex-nowrap !px-0 !py-1">
               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
                   Graph settings
                 </span>
-                <p className="text-xs text-ink-secondary">
+                <p className={investigationMode ? "hidden" : "text-xs text-ink-secondary"}>
                   {rollupCanvasOwnsPresentation ? <>
                     {rollupItems.length.toLocaleString()} nodes and scopes · {estateNodeCount.toLocaleString()} nodes in snapshot
                     {rollupView?.completeness?.truncated ? " · incomplete scope" : ""}
@@ -3594,38 +3590,9 @@ function GraphPageInner() {
             </span>
           </summary>
           <ul className="mt-2 space-y-1.5">
-            <li>
-              Each snapshot is a persisted control-plane view of entities,
-              edges, attack paths, and relationship counts at one capture time.
-            </li>
-            <li>
-              Node IDs are stable identifiers inside the graph model; the detail
-              panel shows the node ID, first seen, last seen, sources, and edge
-              counts.
-            </li>
-            <li>
-              Pagination changes the visible canvas, not the persisted snapshot
-              itself. Narrow the scope when the graph gets large; page when you
-              need broader coverage.
-            </li>
-            <li>
-              Relevant paths is for operator triage. Expanded is for topology
-              review. Attack-path cards are the fix-first shortlist, not the
-              whole graph.
-            </li>
-            <li>
-              Pages at or above{" "}
-              {LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD.toLocaleString()} visible
-              nodes or {LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD.toLocaleString()}{" "}
-              visible edges use the bounded WebGL overview. Narrowing, search
-              results, attack-path focus, and reachability drill-ins return to
-              React Flow.
-            </li>
-            <li>
-              Hop depth controls how far traversal can move from the selected
-              agent or root. Entity layers control what kinds of nodes can
-              render, without changing the persisted graph.
-            </li>
+            <li>Snapshot counts cover persisted assets; displayed counts cover this view.</li>
+            <li>Select an asset for evidence. Faded assets are outside its context.</li>
+            <li>Arrows show recorded direction, not proven access or exploitation.</li>
           </ul>
         </details>
           </div>
@@ -3852,6 +3819,7 @@ function GraphPageInner() {
               {showMiniMap && <button type="button" aria-pressed={minimapExpanded} onClick={() => setMinimapExpanded((value) => !value)} className="text-foreground underline underline-offset-4">{minimapExpanded ? "Hide minimap" : "Show minimap"}</button>}
               <button type="button" onClick={fitVisible} className="text-foreground underline underline-offset-4">Fit all</button>
               <button type="button" onClick={fitSelection} className="text-foreground underline underline-offset-4" title="Focus an asset at readable zoom; pan to follow its connections">Readable view</button>
+          {investigationMode?.truncated && investigationMode.nodeCount < 24 && !loadingGraph && <button type="button" className="graph-page-action min-h-11 sm:min-h-7" onClick={() => void loadRootInvestigation({ rootId: investigationMode.rootId, rootLabel: investigationMode.rootLabel, direction: investigationDirection, nodeLimit: Math.min(24, Math.max(8, investigationMode.nodeCount * 2)) })}>Show more connections</button>}
             </div>
           )}
           {graphRenderer.kind === "react-flow" && displayNodes.length > 0 && <GraphLegendDock items={legendItems} />}
@@ -4148,9 +4116,9 @@ export function ReachabilityDrillInPanel({
       </div>
 
       {summary && (
-        <details className="mt-2 border-t border-outline pt-2" data-testid="reachability-evidence-details">
-          <summary className="cursor-pointer font-medium">Types and paths · {summary.pathPreviews.length} path previews</summary>
-          <div className="mt-2 space-y-3">
+        <details className="relative mt-1" data-testid="reachability-evidence-details">
+          <summary className="cursor-pointer text-[11px]">Types and paths · {summary.pathPreviews.length} path previews</summary>
+          <div className="absolute left-0 top-full z-30 mt-2 max-h-72 w-80 max-w-full overflow-y-auto rounded-xl border border-outline bg-surface p-3 space-y-3 shadow-lg">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.2em] text-ink-secondary">
                 Related by type

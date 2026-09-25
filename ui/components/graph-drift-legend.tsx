@@ -95,8 +95,8 @@ export function GraphDriftLegend({
                     className="inline-block h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: meta.color }}
                   />
-                  <span className="text-[11px] text-[var(--text-secondary)]">{meta.label}</span>
-                  <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
+                  <span className="text-[11px] text-ink-secondary">{meta.label}</span>
+                  <span className="font-mono text-[11px] text-ink-tertiary">
                     {counts[kind]}
                   </span>
                 </div>
@@ -112,7 +112,7 @@ export function GraphDriftLegend({
               {attributeSummaries.map((summary) => (
                 <span
                   key={summary}
-                  className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] text-amber-100"
+                  className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] text-amber-800 dark:text-amber-100"
                 >
                   {summary}
                 </span>

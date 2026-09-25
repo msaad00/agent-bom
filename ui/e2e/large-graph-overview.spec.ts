@@ -289,7 +289,7 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
         roots: ["pkg:42"],
         direction: "both",
         max_depth: 4,
-        max_nodes: 240,
+        max_nodes: 40,
         max_edges: 8000,
         timeout_ms: 2500,
         budget: {},
@@ -494,7 +494,7 @@ test("identity investigation links preserve the selected root during client navi
   await page.getByRole("tab", { name: "Discovered identity risk" }).click();
   const query = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.method() === "POST");
   await page.getByRole("link", { name: /Investigated identity.*86/ }).click();
-  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 24, max_edges: 96 });
+  expect((await query).postDataJSON()).toMatchObject({ scan_id: scanId, roots: ["pkg:42"], max_depth: 1, max_nodes: 4, max_edges: 96 });
   await expect(page.getByRole("textbox", { name: "Search nodes, tags, severities, or attributes" })).toHaveValue("Investigated identity");
   await expect(page).toHaveURL(/root=pkg%3A42/);
   await expect(page.getByTestId("sigma-graph-overview")).toBeHidden();
@@ -506,14 +506,14 @@ test("root investigations expose depth and direction controls with bounded reque
   await routeLargeGraphPage(page);
   const initial = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query"));
   await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
-  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 24 });
+  expect((await initial).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 1, max_nodes: 4 });
   await page.getByText("Traversal options", { exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Traversal depth" })).toHaveValue("1");
   await expect(page.getByTestId("graph-headline-metrics")).toHaveCount(0);
   await expect(page.getByText("Analysis status unavailable", { exact: true })).toHaveCount(0);
   const deeper = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().max_depth === 2);
   await page.getByRole("combobox", { name: "Traversal depth" }).selectOption("2");
-  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 24, max_edges: 96 });
+  expect((await deeper).postDataJSON()).toMatchObject({ roots: ["pkg:42"], scan_id: scanId, max_nodes: 4, max_edges: 96 });
   const reverse = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().direction === "reverse");
   await page.getByText("Traversal options", { exact: true }).click();
   await page.getByRole("combobox", { name: "Traversal direction" }).selectOption("reverse");
@@ -588,6 +588,21 @@ test("blast radius distinguishes related nodes from assets and keeps the type br
   await breakdown.locator("summary").click();
   await expect(breakdown.getByText("Vulnerability: 1", { exact: true })).toBeVisible();
   await expect(page.getByText(/Graph relationships do not establish compromise/)).toBeVisible();
+});
+
+test("partial investigations expand only after an explicit request", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  await page.route("**/v1/graph/query", route => {
+    const limit = route.request().postDataJSON().max_nodes;
+    const nodes = Array.from({ length: limit }, (_, i) => node(`pkg:${42 + i}`, "package", `package-${42 + i}`, "none", 0));
+    return route.fulfill({ json: { scan_id: scanId, nodes, edges: nodes.slice(1).map(n => edge("pkg:42", n.id, "depends_on")), attack_paths: [], roots: ["pkg:42"], truncated: true, direction: "both", stats: {} } });
+  });
+  await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  const next = page.waitForRequest(req => req.url().endsWith("/v1/graph/query") && req.postDataJSON().max_nodes === 8);
+  await page.getByRole("button", { name: "Show more connections", exact: true }).click();
+  await next;
+  await expect(page.locator(".react-flow__node")).toHaveCount(8);
 });
 
 test("slow blast radius retains the canvas and ends with a retryable timeout", async ({ page }) => {

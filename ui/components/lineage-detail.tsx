@@ -92,7 +92,7 @@ const TYPE_ICON: Record<
 };
 
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
-  provider: "border-[var(--border-subtle)]",
+  provider: "border-outline",
   agent: "border-emerald-700",
   org: "border-teal-800",
   account: "border-teal-700",
@@ -108,7 +108,7 @@ const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   cluster: "border-sky-700",
   server: "border-blue-700",
   sharedServer: "border-cyan-700",
-  package: "border-[var(--border-subtle)]",
+  package: "border-outline",
   vulnerability: "border-red-700",
   misconfiguration: "border-orange-700",
   credential: "border-amber-700",
@@ -379,7 +379,7 @@ export function LineageDetailPanel({
                   {data.effectiveReach.band}
                 </span>
               </div>
-              <div className="text-[10px] font-mono text-[var(--text-secondary)] break-all">
+              <div className="text-[10px] font-mono text-ink-secondary break-all">
                 {reachFormula(data.effectiveReach)}
               </div>
               {data.effectiveReach.reachable_tools &&
@@ -432,7 +432,7 @@ export function LineageDetailPanel({
             </span>
           )}
           {data.description && (
-            <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
+            <div className="text-xs text-ink-secondary">{data.description}</div>
           )}
         </div>
       )}
@@ -450,7 +450,7 @@ export function LineageDetailPanel({
       )}
 
       {data.nodeType === "tool" && data.description && (
-        <div className="text-xs text-[var(--text-secondary)]">{data.description}</div>
+        <div className="text-xs text-ink-secondary">{data.description}</div>
       )}
 
       {data.nodeType === "model" && (
@@ -558,7 +558,7 @@ export function LineageDetailPanel({
   const relationshipsSection = hasRelationships ? (
     <div className="space-y-3">
       {relationshipSlot}
-      <details open={!relationshipSlot} className="text-sm text-[var(--text-secondary)]">
+      <details open={!relationshipSlot} className="text-sm text-ink-secondary">
         <summary className="cursor-pointer">Relationship counts</summary>
         <div className="mt-2 space-y-2">
           {data.neighborCount != null && (
@@ -598,12 +598,12 @@ export function LineageDetailPanel({
   const impactSection = hasImpact ? (
     <div className="space-y-3 text-sm">
       <div className="space-y-1">
-        <p className="font-medium text-[var(--foreground)]">Upstream connected entities</p>
-        <p className="leading-5 text-[var(--text-secondary)]">
+        <p className="font-medium text-foreground">Upstream connected entities</p>
+        <p className="leading-5 text-ink-secondary">
           Reverse graph connections identify potential dependency impact. They do not establish exploitability, successful actions or observed damage.
         </p>
       </div>
-      <div className="space-y-1 text-[var(--text-secondary)]" data-testid="graph-impact-coverage">
+      <div className="space-y-1 text-ink-secondary" data-testid="graph-impact-coverage">
         <p className="font-medium">
           {impactPartial
             ? `Partial traversal · ${impactCoverage?.returned ?? data.impactCount ?? "Unknown"} entities returned`
@@ -620,11 +620,11 @@ export function LineageDetailPanel({
       </div>
       <div className="flex flex-wrap gap-2">
         {impactTypes.map(([key, value]) => (
-          <span key={key} className="rounded border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-1 text-[var(--text-secondary)]">
+          <span key={key} className="rounded border border-outline bg-surface-muted px-2 py-1 text-ink-secondary">
             {prettifyKey(key)}: {value}
           </span>
         ))}
-        {impactTypes.length === 0 && data.impactCount === 0 && <p className="text-[var(--text-secondary)]">No upstream entities returned</p>}
+        {impactTypes.length === 0 && data.impactCount === 0 && <p className="text-ink-secondary">No upstream entities returned</p>}
       </div>
     </div>
   ) : null;
@@ -711,7 +711,7 @@ export function LineageDetailPanel({
     <div
       role="tablist"
       aria-label="Node detail sections"
-      className="flex shrink-0 gap-1 overflow-x-auto border-b border-[color:var(--border-subtle)] px-4"
+      className="flex shrink-0 gap-1 overflow-x-auto border-b border-outline px-4"
     >
       {tabs.map((tab) => {
         const selected = tab.id === activeId;
@@ -725,8 +725,8 @@ export function LineageDetailPanel({
             onClick={() => setActiveTab(tab.id)}
             className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
               selected
-                ? "border-[color:var(--accent-border)] text-[var(--foreground)]"
-                : "border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                ? "border-[color:var(--accent-border)] text-foreground"
+                : "border-transparent text-ink-tertiary hover:text-ink-secondary"
             }`}
           >
             {tab.label}
@@ -754,10 +754,10 @@ export function LineageDetailPanel({
   }
 
   const shellClass = isOverlay
-    ? `absolute right-0 top-0 bottom-0 flex max-w-full flex-col bg-[var(--background)] border-l ${TYPE_BORDER[data.nodeType]} z-50`
+    ? `absolute right-0 top-0 bottom-0 flex max-w-full flex-col bg-background border-l ${TYPE_BORDER[data.nodeType]} z-50`
     : isDocked
-      ? `relative flex min-h-0 max-w-[45%] shrink-0 flex-col border-l ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95`
-    : `relative flex w-full max-w-none flex-col border ${TYPE_BORDER[data.nodeType]} bg-[var(--background)]/95 rounded-xl`;
+      ? `relative flex min-h-0 max-w-[45%] shrink-0 flex-col border-l ${TYPE_BORDER[data.nodeType]} bg-background/95`
+    : `relative flex w-full max-w-none flex-col border ${TYPE_BORDER[data.nodeType]} bg-background/95 rounded-xl`;
 
   return (
     <div
@@ -781,12 +781,12 @@ export function LineageDetailPanel({
       {/* Header — always visible */}
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
         <div className="min-w-0">
-          <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
+          <span className="text-[10px] uppercase tracking-wider text-ink-tertiary">
             {typeLabel}
           </span>
           <div className="flex items-center gap-2 mt-0.5">
-            <Icon className="w-4 h-4 shrink-0 text-[var(--text-secondary)]" />
-            <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">
+            <Icon className="w-4 h-4 shrink-0 text-ink-secondary" />
+            <h3 className="truncate text-sm font-semibold text-foreground">
               {data.label}
             </h3>
           </div>
@@ -794,7 +794,7 @@ export function LineageDetailPanel({
         <button
           onClick={onClose}
           aria-label="Close"
-          className="shrink-0 p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          className="shrink-0 p-1 text-ink-tertiary hover:text-ink-secondary transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -836,7 +836,7 @@ function GenericAssetSection({
   return (
     <div className="space-y-3">
       {description && (
-        <div className="text-xs text-[var(--text-secondary)]">{description}</div>
+        <div className="text-xs text-ink-secondary">{description}</div>
       )}
       {version && <Row label="Version / hash" value={version} />}
       {typeof attributes?.verified === "boolean" && (
@@ -860,7 +860,7 @@ function TagList({
   const toneClass =
     tone === "blue"
       ? "bg-blue-950 text-blue-300 border-blue-800"
-      : "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]";
+      : "bg-surface-elevated text-ink-secondary border-outline";
   return (
     <div>
       <Label>{label}</Label>
@@ -892,7 +892,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <Label>{label}</Label>
-      <div className="text-xs font-mono text-[var(--text-secondary)] bg-[var(--surface)] rounded px-2 py-1 break-all">
+      <div className="text-xs font-mono text-ink-secondary bg-surface rounded px-2 py-1 break-all">
         {value}
       </div>
     </div>
@@ -901,7 +901,7 @@ function CodeBlock({ label, value }: { label: string; value: string }) {
 
 function Label({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] mb-0.5">
+    <div className="text-[10px] uppercase tracking-wider text-ink-tertiary mb-0.5">
       {children}
     </div>
   );
@@ -918,9 +918,9 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 text-xs">
-      <span className="text-[var(--text-tertiary)]">{label}</span>
+      <span className="text-ink-tertiary">{label}</span>
       <span
-        className={`text-[var(--text-secondary)] font-mono text-right break-all ${className}`}
+        className={`text-ink-secondary font-mono text-right break-all ${className}`}
       >
         {value}
       </span>
@@ -983,7 +983,7 @@ function EvidenceTierBadge({
   // replay_only
   if (!captureReplay) {
     return (
-      <div className="flex items-center gap-1.5 rounded border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-[10px] font-mono text-[var(--text-secondary)]">
+      <div className="flex items-center gap-1.5 rounded border border-outline bg-surface px-2 py-1 text-[10px] font-mono text-ink-secondary">
         <ShieldOff className="w-3 h-3" />
         <span>Not persisted</span>
       </div>
@@ -1024,7 +1024,7 @@ function RuntimeEvidenceBadge({
   > = {
     static_scan: {
       text: "Static scan evidence",
-      className: "border-[var(--border-subtle)] bg-[var(--surface)] text-[var(--text-secondary)]",
+      className: "border-outline bg-surface text-ink-secondary",
     },
     runtime_observed: {
       text: "Runtime observed path",

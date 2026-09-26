@@ -74,7 +74,8 @@ def test_force_cancel_helper_has_bounded_grace_and_race_safe_fallback() -> None:
     assert "for attempt in 1 2 3 4 5" in helper
     assert 'gh run cancel "${RUN_ID}"' in helper
     assert "actions/runs/${RUN_ID}/force-cancel" in helper
-    assert helper.count('if [ "${status}" = "completed" ]') == 3
+    assert helper.count('if [ "${status}" = "completed" ]') == 2
+    assert helper.count("if wait_until_completed; then") == 2
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")
@@ -106,6 +107,43 @@ exit 70
 
     assert result.returncode == 0, result.stderr
     assert "force-cancel" not in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")
+def test_cancel_helper_waits_out_a_pending_cancellation_after_force_cancel_409(tmp_path: Path) -> None:
+    """The accepted cancel is still winding down: force-cancel gets 409 and status lags.
+
+    Replays a real recovery run where the superseded run completed as cancelled
+    within a second, yet the helper failed on a stale in_progress read.
+    """
+    counter = tmp_path / "views"
+    bin_dir = _gh_stub(
+        tmp_path,
+        f"""#!/usr/bin/env bash
+if [ "$1 $2" = "run cancel" ]; then
+  echo "Request to cancel workflow 12345 submitted."
+  exit 0
+fi
+if [ "$1 $2" = "run view" ]; then
+  n=$(( $(cat {counter} 2>/dev/null || echo 0) + 1 ))
+  echo "$n" > {counter}
+  if [ "$n" -le 6 ]; then echo in_progress; else echo completed; fi
+  exit 0
+fi
+if [ "$1" = "api" ]; then
+  echo "gh: Cannot cancel a workflow run that is not in progress. (HTTP 409)" >&2
+  exit 1
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 70
+""",
+    )
+
+    result = _run_cancel_helper(bin_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert "requesting force-cancel" in result.stdout
+    assert "failed to cancel" not in result.stderr
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash is required")

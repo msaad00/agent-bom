@@ -25,6 +25,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # check_version_alignment.py verifies PUBLISHED_VERSION names a real
+          # release tag; a tag-only checkout carries just the tag being built.
+          fetch-tags: true
 
       - name: Verify tag commit is exact green main
         env:

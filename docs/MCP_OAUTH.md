@@ -24,7 +24,9 @@ conflicting configuration fails startup. The audience must exactly match the
 public `/mcp` URL. Issuer and JWKS URLs must use the same HTTPS origin.
 
 The resulting `/.well-known/oauth-protected-resource/mcp` document identifies
-the resource and issuer. Anonymous requests receive 401. A valid access token
+the resource and issuer, and `/.well-known/mcp/server-card.json` advertises the
+`oauth2` authentication scheme (static bearer credentials are rejected in this
+mode). Anonymous requests receive 401. A valid access token
 requires a verified RS256/ES256 signature, exact issuer/audience, explicit
 approved subject, `read` scope, and an `iat`/`exp` interval of at most one hour.
 Tokens do not grant write privileges even if they contain administrative

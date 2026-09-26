@@ -7,7 +7,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.106.0] - 2026-09-26
+## [0.106.1] - 2026-09-26
+
+0.106.1 is the first published release of this line. The `v0.106.0` tag exists but its release run stopped at the version guard before building anything, so 0.106.0 was never published to PyPI, Docker Hub, Helm or GitHub Releases.
 
 ### Security
 
@@ -75,6 +77,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Stop printing the ephemeral audit-signing-key warning in CLI scan output. It is now logged at API startup and when an audit entry is first signed without `AGENT_BOM_AUDIT_HMAC_KEY`.
 - Replace the "Contact your administrator" dead end on the dashboard login when the API was started without any key. The page now shows the restart commands (`agent-bom api --api-key <key>`, or `--allow-insecure-no-auth` for local use); authentication behavior is unchanged.
 - Point CLI help `Docs:` links at the documentation site, and stop directing users to the `mcp-server` extra for `agent-bom mcp server`, which works from the base install.
+- Fetch every release tag in the release version guard. A tag-push checkout carried only the pushed tag, so the guard reported the published release as untagged and stopped the release.
 - Store OSV version pins only when no stored range already matches the version, shrinking the PyPI advisory table from 1.34M to 44k rows (204 MB to 12.6 MB) with identical match results. Existing databases shrink on the next sync.
 - Rescore stored CVSS 4.0 vectors at read time, so databases synced before the CVSS 4.0 fix no longer report inflated severities, including read-only databases.
 - Count unreadable Firefox/Chromium extension entries, discovery probes, MLflow runs, and dpkg `status.d` directories as coverage gaps instead of aborting the scan or, on Python 3.14, skipping them silently.
@@ -95,6 +98,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Update dependency and CI action pins, registry metadata, and operator documentation.
 - **Upgrade note:** with `AGENT_BOM_STATE_DIR` set, assets, local analytics, history, baselines, report artifacts, outboxes, and catalogs now live under that directory instead of `~/.agent-bom`. SQLite deployments without `AGENT_BOM_DB` keep graph scenarios in the state-directory control-plane database instead of `./agent_bom.db`. Existing files are not migrated; move them before upgrading to keep them.
 - `agent-bom api --persist` now sets `AGENT_BOM_DB` like `serve`.
+- The README opens with the agent context map, self-host and deployment models; the quick-start sample output is collapsed.
 
 ## [0.105.0] - 2026-09-15
 
@@ -3735,8 +3739,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.106.0...HEAD
-[0.106.0]: https://github.com/msaad00/agent-bom/compare/v0.105.0...v0.106.0
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.106.1...HEAD
+[0.106.1]: https://github.com/msaad00/agent-bom/compare/v0.105.0...v0.106.1
 [0.105.0]: https://github.com/msaad00/agent-bom/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/msaad00/agent-bom/compare/v0.103.2...v0.104.0
 [0.103.2]: https://github.com/msaad00/agent-bom/compare/v0.103.1...v0.103.2

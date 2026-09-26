@@ -29,30 +29,40 @@ if ! gh run cancel "${RUN_ID}" --repo "${REPO}"; then
   echo "cancel request for workflow run ${RUN_ID} was rejected (status: ${status}); escalating."
 fi
 
-for attempt in 1 2 3 4 5; do
-  status="$(
-    gh run view "${RUN_ID}" --repo "${REPO}" --json status --jq .status \
-      2>/dev/null || printf 'unknown'
-  )"
-  if [ "${status}" = "completed" ]; then
-    exit 0
-  fi
-  if [ "${attempt}" -lt 5 ]; then
-    sleep "${CANCEL_POLL_SECONDS:-2}"
-  fi
-done
+run_status() {
+  gh run view "${RUN_ID}" --repo "${REPO}" --json status --jq .status \
+    2>/dev/null || printf 'unknown'
+}
+
+# Poll for a bounded grace period; succeed as soon as the run is completed.
+wait_until_completed() {
+  for attempt in 1 2 3 4 5; do
+    status="$(run_status)"
+    if [ "${status}" = "completed" ]; then
+      return 0
+    fi
+    if [ "${attempt}" -lt 5 ]; then
+      sleep "${CANCEL_POLL_SECONDS:-2}"
+    fi
+  done
+  return 1
+}
+
+if wait_until_completed; then
+  exit 0
+fi
 
 echo "workflow run ${RUN_ID} did not stop after normal cancellation; requesting force-cancel."
 if gh api --method POST "repos/${REPO}/actions/runs/${RUN_ID}/force-cancel" >/dev/null; then
   exit 0
 fi
 
-# The run can complete between the last poll and the force-cancel request.
-status="$(
-  gh run view "${RUN_ID}" --repo "${REPO}" --json status --jq .status \
-    2>/dev/null || printf 'unknown'
-)"
-if [ "${status}" = "completed" ]; then
+# GitHub rejects force-cancel (HTTP 409 "not in progress") while a normal
+# cancellation is already winding the run down, and the status API can still
+# report in_progress for a few seconds after that. Wait out that window
+# before calling the cancellation failed.
+echo "force-cancel for workflow run ${RUN_ID} was rejected; waiting for the pending cancellation."
+if wait_until_completed; then
   exit 0
 fi
 

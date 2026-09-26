@@ -14,14 +14,15 @@ agents+blast_radii produced by the scan, walk it via
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Iterable
 
-from agent_bom.graph.builder import build_unified_graph_from_report
+from agent_bom.graph.builder import _package_node_id_from_parts, build_unified_graph_from_report
 from agent_bom.graph.dependency_reach import compute_dependency_reach
 
 if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult
     from agent_bom.finding import Finding
+    from agent_bom.graph.container import AttackPath
     from agent_bom.graph.dependency_reach import ReachabilityReport
     from agent_bom.models import Agent, BlastRadius, Package
 
@@ -98,6 +99,57 @@ def apply_dependency_reachability_to_blast_radii(
             br.calculate_risk_score()
         stamped += 1
 
+    return stamped
+
+
+def apply_graph_path_reachability_to_blast_radii(
+    blast_radii: list["BlastRadius"],
+    attack_paths: Iterable["AttackPath"],
+    *,
+    rescore: bool = True,
+) -> int:
+    """Stamp ``graph_reachable*`` from evidence-bearing attack paths.
+
+    Uses the same rule as the findings API: only a path carrying an exploit,
+    exposure or runtime edge counts, and a path must pass through the row's own
+    package node so a shared CVE on another package is not marked reachable.
+    Unmatched rows keep ``None``. Returns the number of rows marked reachable.
+    """
+    paths = list(attack_paths)
+    if not blast_radii or not paths:
+        return 0
+    try:
+        from agent_bom.api.finding_reachability import project_attack_path_reachability
+
+        rows: list[dict[str, Any]] = []
+        for br in blast_radii:
+            vuln = br.vulnerability
+            pkg = br.package
+            rows.append(
+                {
+                    "cve_id": vuln.id,
+                    "aliases": list(vuln.aliases),
+                    "node_id": _package_node_id_from_parts(pkg.name, pkg.version, pkg.ecosystem, pkg.purl),
+                    "graph_reachable": br.graph_reachable,
+                    "graph_min_hop_distance": br.graph_min_hop_distance,
+                    "graph_reachable_from_agents": list(br.graph_reachable_from_agents),
+                }
+            )
+        stamped = project_attack_path_reachability(rows, paths)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Attack-path reachability surfacing skipped: %s", exc)
+        return 0
+    if not stamped:
+        return 0
+
+    for br, row in zip(blast_radii, rows):
+        if row["graph_reachable"] is not True:
+            continue
+        br.graph_reachable = True
+        br.graph_min_hop_distance = row["graph_min_hop_distance"]
+        br.graph_reachable_from_agents = list(row["graph_reachable_from_agents"])
+        if rescore:
+            br.calculate_risk_score()
     return stamped
 
 
@@ -221,6 +273,7 @@ def resync_cve_findings_from_blast_radii(
 
 __all__ = [
     "apply_dependency_reachability_to_blast_radii",
+    "apply_graph_path_reachability_to_blast_radii",
     "apply_symbol_reachability_to_blast_radii",
     "resync_cve_findings_from_blast_radii",
 ]

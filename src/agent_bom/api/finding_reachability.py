@@ -9,7 +9,7 @@ inventing ``False`` evidence.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
 from agent_bom.graph.types import RelationshipType
 
@@ -172,12 +172,28 @@ def project_persisted_graph_reachability(
         return FindingReachabilityProjection(projected, truncated=False)
 
     bounded_limit = max(1, min(int(path_limit), MAX_FINDING_REACHABILITY_PATHS))
-    _effective_scan_id, _created_at, paths, total = graph_store.attack_paths(
+    effective_scan_id, _created_at, paths, total = graph_store.attack_paths(
         tenant_id=tenant_id,
         scan_id=scan_id or "",
         offset=0,
         limit=bounded_limit,
     )
+    project_attack_path_reachability(projected, paths, scan_id=effective_scan_id or "")
+    return FindingReachabilityProjection(projected, truncated=total > len(paths))
+
+
+def project_attack_path_reachability(
+    rows: list[dict[str, Any]],
+    paths: Iterable[AttackPath],
+    *,
+    scan_id: str | None = None,
+) -> int:
+    """Stamp evidence-bearing ``paths`` onto matching ``rows`` in place.
+
+    Only paths with an observed reachability edge count; topology-only paths
+    leave rows untouched. When ``scan_id`` is given, rows stamped with another
+    scan are skipped. Returns the number of rows marked reachable.
+    """
 
     paths_by_finding: dict[str, list[AttackPath]] = {}
     paths_by_vulnerability: dict[str, list[AttackPath]] = {}
@@ -190,9 +206,9 @@ def project_persisted_graph_reachability(
             paths_by_vulnerability.setdefault(vulnerability_id, []).append(path)
 
     evidence_by_row: dict[int, _ReachabilityEvidence] = {}
-    for index, row in enumerate(projected):
+    for index, row in enumerate(rows):
         row_scan = _text(row.get("scan_id"))
-        if row_scan and row_scan != _effective_scan_id:
+        if scan_id is not None and row_scan and row_scan != scan_id:
             continue
         candidates: dict[int, AttackPath] = {}
         for finding_id in _row_finding_ids(row):
@@ -212,7 +228,7 @@ def project_persisted_graph_reachability(
             evidence.agents.update(_reaching_agents(path))
 
     for index, evidence in evidence_by_row.items():
-        row = projected[index]
+        row = rows[index]
         prior_distance = row.get("graph_min_hop_distance")
         row["graph_reachable"] = True
         row["graph_min_hop_distance"] = (
@@ -225,4 +241,4 @@ def project_persisted_graph_reachability(
             evidence.agents.update(_text(value) for value in prior_agents if _text(value))
         row["graph_reachable_from_agents"] = sorted(evidence.agents)
 
-    return FindingReachabilityProjection(projected, truncated=total > len(paths))
+    return len(evidence_by_row)

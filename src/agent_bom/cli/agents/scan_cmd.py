@@ -2247,12 +2247,12 @@ def scan(
     # and MCP surfaces (all three call one shared build+attach helper). The
     # unified stream (report.to_findings()) is the single source of truth for the
     # toxic COMBINATION count, so the printed count can never contradict it.
-    _dependency_reachability = None
+    _scan_graph_surface = None
     if agents:
         from agent_bom.cli._tenant import resolve_cli_tenant_id as _resolve_cli_tenant_id
         from agent_bom.graph.scan_findings import surface_graph_derived_findings
 
-        _dependency_reachability = surface_graph_derived_findings(
+        _scan_graph_surface = surface_graph_derived_findings(
             report,
             scan_id=_scan_id,
             tenant_id=_resolve_cli_tenant_id(),
@@ -2944,15 +2944,15 @@ def scan(
 
     ctx.step_timings["scanning"] = _time.monotonic() - _step_t0
 
-    # Stamp structural dependency closure (`dependency_reachable*`) and
-    # function-level symbol reach onto each blast-radius row. Evidence-backed
-    # `graph_reachable` is projected from persisted attack paths at findings
-    # read time (api/finding_reachability.py), never from topology alone, so
-    # it stays null here. Wrapped in try/except so a graph build failure never
-    # breaks `agent-bom agents`.
+    # Stamp structural dependency closure (`dependency_reachable*`),
+    # evidence-backed `graph_reachable*` from the scan graph's attack paths
+    # (the same rule the findings API applies; topology-only paths stay null),
+    # and function-level symbol reach onto each blast-radius row. Wrapped in
+    # try/except so a graph build failure never breaks `agent-bom agents`.
     try:
         from agent_bom.graph.blast_reach import (
             apply_dependency_reachability_to_blast_radii,
+            apply_graph_path_reachability_to_blast_radii,
             apply_symbol_reachability_to_blast_radii,
             resync_cve_findings_from_blast_radii,
         )
@@ -2961,8 +2961,10 @@ def scan(
             blast_radii,
             agents,
             rescore=True,
-            reachability_report=_dependency_reachability,
+            reachability_report=_scan_graph_surface.dependency_reachability if _scan_graph_surface else None,
         )
+        if _scan_graph_surface is not None:
+            apply_graph_path_reachability_to_blast_radii(blast_radii, _scan_graph_surface.attack_paths)
         # Join AST function-level symbol reach to CVE affected-symbols so each
         # Python finding carries a function_reachable / package_reachable /
         # unreachable signal. No-op when no Python entrypoints were analysed.

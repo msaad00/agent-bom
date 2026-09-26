@@ -180,7 +180,14 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     import re
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    markers = ["## Self-host in your environment", "### Deployment models", "## Quick start", "## Built for the teams", "## Product tour", "## Trust and evidence"]
+    markers = [
+        "## Self-host in your environment",
+        "### Deployment models",
+        "## Quick start",
+        "## Built for the teams",
+        "## Product tour",
+        "## Trust and evidence",
+    ]
     positions = [readme.index(marker) for marker in markers]
     assert positions == sorted(positions)
     hero = readme[: positions[0]]

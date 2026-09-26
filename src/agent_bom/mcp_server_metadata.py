@@ -600,7 +600,7 @@ _SERVER_CARD_RESOURCES = [
 ]
 
 
-def build_server_card(*, auth_required: bool = False, profile: str = "full") -> dict[str, Any]:
+def build_server_card(*, auth_required: bool = False, profile: str = "full", oauth: bool = False) -> dict[str, Any]:
     from agent_bom import __version__
     from agent_bom.mcp_server_helpers import get_registry_data
 
@@ -667,9 +667,11 @@ def build_server_card(*, auth_required: bool = False, profile: str = "full") -> 
     card["serverInfo"] = {"name": card["name"], "version": card["version"]}
     card["authentication"] = {
         "required": auth_required,
-        # HTTP/SSE accepts operator-provisioned bounded bearer credentials.
-        # The server does not issue tokens or expose OAuth registration flows.
-        "schemes": ["bearer"] if auth_required else [],
+        # Static mode accepts operator-provisioned bearer credentials only.
+        # OAuth mode validates tokens from the external issuer named in the
+        # protected-resource metadata; static credentials are then rejected.
+        # Neither mode issues tokens or exposes registration endpoints.
+        "schemes": (["oauth2"] if oauth else ["bearer"]) if auth_required else [],
     }
     return card
 
@@ -710,12 +712,13 @@ def attach_metadata_routes(
     auth_required: bool,
     tool_metrics_snapshot: Callable[[], dict[str, Any]],
     profile: str = "full",
+    oauth: bool = False,
 ) -> None:
     @mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
     async def server_card_route(request):
         from starlette.responses import JSONResponse
 
-        card = build_server_card(auth_required=auth_required, profile=profile)
+        card = build_server_card(auth_required=auth_required, profile=profile, oauth=oauth)
         # The static metadata catalog owns descriptions and capability classes;
         # the live FastMCP registry owns exact JSON input/output schemas. Serve
         # the latter here so marketplaces never index a hand-maintained schema.

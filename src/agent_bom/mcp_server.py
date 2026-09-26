@@ -1412,6 +1412,7 @@ def create_mcp_server(
         auth_required=bool(bearer_token or oauth_enabled),
         tool_metrics_snapshot=_tool_metrics_snapshot,
         profile=profile,
+        oauth=oauth_enabled,
     )
 
     # Strict-arg contract on every registered tool (#2197 audit P1).

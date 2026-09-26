@@ -55,7 +55,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Preserve dashboard metadata in refreshed images and enforce deployment and registry freshness checks while retaining Smithery as an explicitly non-blocking surface.
 - Keep screenshot proof sensitive to rendering toolchain and resolved dependency changes while allowing Node type-only maintenance updates.
 - Persist Native App graph and control-plane evidence, including the audit signing key, on an encrypted per-tenant volume so restarts preserve verification.
-- Support opt-in external OAuth verification for remote MCP with a pinned issuer/audience and bounded token lifetime, and obtain fresh read tokens for deployment probes instead of embedding credentials in command arguments or logs.
+- Support opt-in external OAuth verification for remote MCP with a pinned issuer/audience and bounded token lifetime, and obtain fresh read tokens for deployment probes instead of embedding credentials in command arguments or logs. The public server card advertises the `oauth2` scheme in that mode and `bearer` only for static credentials.
 - Render the agent mesh from paged persisted graph relationships, publish Native App audit keys atomically under a directory lock, and expose Snowflake workload onboarding only in Native App mode.
 - Retain supporting agent identifiers and minimum hop distance when converting blast-radius results into finding rows, so corroborated reachability evidence is no longer dropped during response sanitization.
 - Align demo agent-to-MCP-server relationships across the estate graph, fleet server counts, and MCP observation agent lists so they no longer diverge.

@@ -179,3 +179,16 @@ def test_external_and_static_modes_cannot_be_combined(oauth_env):
             token_verifier_factory=Mock(),
             oauth_enabled=True,
         )
+
+
+def test_server_card_advertises_oauth_when_the_issuer_protects_the_transport(oauth_env, monkeypatch, tmp_path, verifier):
+    from agent_bom.mcp_server import create_mcp_server
+
+    monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr("agent_bom.mcp_tools.oauth.OAuthTokenVerifier", lambda config: verifier)
+    server = create_mcp_server(host="0.0.0.0", port=8000, bearer_token=None, oauth_enabled=True)
+    with TestClient(server.streamable_http_app(), base_url="https://mcp.example") as client:
+        card = client.get("/.well-known/mcp/server-card.json").json()
+        assert card["authentication"] == {"required": True, "schemes": ["oauth2"]}
+        assert client.get("/.well-known/oauth-protected-resource/mcp").json()["authorization_servers"] == [ISSUER]
+        assert client.post("/mcp", json={}).status_code == 401

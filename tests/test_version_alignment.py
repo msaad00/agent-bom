@@ -302,6 +302,26 @@ def test_published_version_must_name_a_real_tag_when_tags_are_known(monkeypatch)
     assert any("v0.106.0" in line and "tag" in line for line in drift), drift
 
 
+def test_every_workflow_running_the_gate_checks_out_all_release_tags() -> None:
+    """A checkout holding only the pushed tag makes PUBLISHED_VERSION look unreleased."""
+    import yaml
+
+    checked = []
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        workflow = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for name, job in (workflow.get("jobs") or {}).items():
+            steps = job.get("steps") or []
+            if not any("check_version_alignment.py" in str(step.get("run", "")) for step in steps):
+                continue
+            checkouts = [step.get("with") or {} for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
+            assert checkouts, f"{path.name}:{name} runs the gate without a checkout"
+            opts = checkouts[0]
+            full_history = str(opts.get("fetch-depth", "1")).strip() == "0"
+            assert opts.get("fetch-tags") is True or full_history, f"{path.name}:{name} runs the gate without fetching release tags"
+            checked.append(f"{path.name}:{name}")
+    assert "release.yml:version-guard" in checked, checked
+
+
 def test_rewrite_moves_each_class_to_its_own_version(tmp_path, monkeypatch) -> None:
     cva = _load_script("check_version_alignment.py")
     deploy = tmp_path / "deploy"

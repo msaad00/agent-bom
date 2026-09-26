@@ -7,7 +7,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.106.0] - 2026-09-23
+## [0.106.0] - 2026-09-26
+
+### Security
+
+- Scope `GET /v1/graph/exposure-paths` and `POST /v1/graph/should-i-deploy` to the authenticated request tenant. These REST routes previously resolved the MCP process tenant, so on SQLite every tenant received the `default` tenant's credential-exposure paths and deploy verdict, and on Postgres with row-level security every tenant received an empty result.
+- Keep demo estate data out of product stores. Demo mode now pins every local store to `AGENT_BOM_DEMO_STATE_DIR` (default `<state dir>/demo-estate`) before any store opens, refuses explicit store paths that point into product state, and refuses to seed over a non-demo snapshot.
 
 ### Added
 
@@ -70,11 +75,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Stop printing the ephemeral audit-signing-key warning in CLI scan output. It is now logged at API startup and when an audit entry is first signed without `AGENT_BOM_AUDIT_HMAC_KEY`.
 - Replace the "Contact your administrator" dead end on the dashboard login when the API was started without any key. The page now shows the restart commands (`agent-bom api --api-key <key>`, or `--allow-insecure-no-auth` for local use); authentication behavior is unchanged.
 - Point CLI help `Docs:` links at the documentation site, and stop directing users to the `mcp-server` extra for `agent-bom mcp server`, which works from the base install.
+- Store OSV version pins only when no stored range already matches the version, shrinking the PyPI advisory table from 1.34M to 44k rows (204 MB to 12.6 MB) with identical match results. Existing databases shrink on the next sync.
+- Rescore stored CVSS 4.0 vectors at read time, so databases synced before the CVSS 4.0 fix no longer report inflated severities, including read-only databases.
+- Count unreadable Firefox/Chromium extension entries, discovery probes, MLflow runs, and dpkg `status.d` directories as coverage gaps instead of aborting the scan or, on Python 3.14, skipping them silently.
+- Match MCP registry and `fleet_scan` entries by exact package identifier (version stripped, PEP 503 names for PyPI, no match when ambiguous), so local servers are no longer labelled as unrelated third-party packages.
+- Follow markdown paragraph rules in skill audit, so a negated instruction wrapped across lines is no longer reported as a critical bypass.
+- Start SAST taint analysis at Flask, Quart, and FastAPI route handlers, not only MCP tool handlers. FastAPI `Depends()`/`Security()` parameters are not treated as sources.
+- Give graph agent nodes the risk score and severity of the worst vulnerability they reach. Agents that reach none stay unassessed rather than scoring zero.
+- Set `graph_reachable`, minimum hop distance, and reaching agents on CLI scan findings from evidence-bearing scan graph paths, using the same rule as the API. Topology-only paths still leave reachability unset.
+- Page `GET /v1/graph/rollup?node=` drill-down with `offset`/`limit` (default 200) instead of returning every child, and support rollup on the Neptune backend.
+- Show one findings count across the nav badge, dashboard, and findings page. `/v1/posture/counts` adds `issues` (issue-group counts matching the page) and `agents` (distinct agents in the tenant's current graph snapshot); occurrence totals are unchanged.
+- Report a slow or failed enterprise demo build as loading or failed instead of "not enabled".
+- Open the graph on the first level that offers a choice, and offer retry or a bounded map when a rollup fails instead of falling back to the raw topology.
+- Advertise `oauth2` in the MCP server card when an external OAuth issuer protects the transport.
 
 ### Changed
 
 - Increase opt-in DSPM object sampling from 10 to 50 objects per bucket/container and database sampling from 100 to 500 rows per table; byte and cell limits remain bounded.
 - Update dependency and CI action pins, registry metadata, and operator documentation.
+- **Upgrade note:** with `AGENT_BOM_STATE_DIR` set, assets, local analytics, history, baselines, report artifacts, outboxes, and catalogs now live under that directory instead of `~/.agent-bom`. SQLite deployments without `AGENT_BOM_DB` keep graph scenarios in the state-directory control-plane database instead of `./agent_bom.db`. Existing files are not migrated; move them before upgrading to keep them.
+- `agent-bom api --persist` now sets `AGENT_BOM_DB` like `serve`.
 
 ## [0.105.0] - 2026-09-15
 

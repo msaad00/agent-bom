@@ -159,3 +159,54 @@ def test_walker_does_not_traverse_runtime_or_lateral_edges() -> None:
 
     report = compute_dependency_reach(g)
     assert not report.packages["pkg:lateral@1"].reachable
+
+
+def _built_graph_for_agents() -> UnifiedGraph:
+    from agent_bom.graph.builder import build_unified_graph_from_report
+    from agent_bom.models import Agent, AgentType, AIBOMReport, BlastRadius, MCPServer, Package, Severity, Vulnerability
+    from agent_bom.output import to_json
+
+    critical = Vulnerability(id="CVE-2099-0001", summary="critical", severity=Severity.CRITICAL, cvss_score=9.8)
+    medium = Vulnerability(id="CVE-2099-0002", summary="medium", severity=Severity.MEDIUM, cvss_score=5.0)
+    vulnerable = Package(name="lodash", version="4.17.20", ecosystem="npm", vulnerabilities=[critical, medium])
+    clean = Package(name="left-pad", version="1.3.0", ecosystem="npm")
+    vulnerable_server = MCPServer(name="sqlite-mcp", command="npx -y mcp-server-sqlite", packages=[vulnerable])
+    clean_server = MCPServer(name="notes-mcp", command="npx -y mcp-notes", packages=[clean])
+    exposed = Agent(name="cursor", agent_type=AgentType.CURSOR, config_path="/tmp/cursor.json", mcp_servers=[vulnerable_server])
+    isolated = Agent(name="claude-desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/claude.json", mcp_servers=[clean_server])
+    blast_radii = []
+    for vuln in (critical, medium):
+        blast = BlastRadius(
+            vulnerability=vuln,
+            package=vulnerable,
+            affected_servers=[vulnerable_server],
+            affected_agents=[exposed],
+            exposed_credentials=[],
+            exposed_tools=[],
+        )
+        blast.calculate_risk_score()
+        blast_radii.append(blast)
+    report = AIBOMReport(agents=[exposed, isolated], blast_radii=blast_radii, scan_id="agent-risk")
+    return build_unified_graph_from_report(to_json(report), scan_id="agent-risk", tenant_id="t1")
+
+
+def test_agent_risk_is_the_worst_vulnerability_it_structurally_reaches() -> None:
+    graph = _built_graph_for_agents()
+    vuln_risks = {node.id: node.risk_score for node in graph.nodes_by_type(EntityType.VULNERABILITY)}
+    agent = graph.get_node("agent:cursor")
+
+    assert agent is not None
+    assert max(vuln_risks.values()) > 0
+    assert agent.risk_score == max(vuln_risks.values())
+    assert agent.severity == "critical"
+    assert agent.risk_assessment["status"] == "assessed"
+
+
+def test_agent_without_reachable_vulnerabilities_stays_unassessed() -> None:
+    graph = _built_graph_for_agents()
+    agent = graph.get_node("agent:claude-desktop")
+
+    assert agent is not None
+    assert agent.risk_score == 0
+    assert agent.severity == ""
+    assert agent.risk_assessment["status"] != "assessed"

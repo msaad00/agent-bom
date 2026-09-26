@@ -91,40 +91,26 @@ def _load_registry() -> dict:
 def _match_server(name: str, registry: dict) -> tuple[str, dict] | None:
     """Find a registry entry matching the given server name.
 
-    Tries exact key match, then package match, then display name match,
-    then substring match. Returns (registry_key, entry) or None.
+    Matches the exact package identifier (version suffix stripped) the same way
+    MCP config parsing does, then the exact catalog display name. Generic
+    command tokens and substrings are never matched, and an ambiguous name
+    returns None. Returns (registry_key, entry) or None.
     """
-    name_lower = name.lower().strip()
-    if not name_lower:
+    from agent_bom.parsers import _package_reference, registry_entry_for_references
+
+    name_clean = name.strip()
+    if not name_clean:
         return None
 
-    # 1. Exact key match
-    for key, entry in registry.items():
-        if key.lower() == name_lower:
-            return key, entry
+    ref = _package_reference(name_clean)
+    if ref:
+        match = registry_entry_for_references({ref}, registry)
+        if match is not None:
+            return match
 
-    # 2. Package name match
-    for key, entry in registry.items():
-        if entry.get("package", "").lower() == name_lower:
-            return key, entry
-
-    # 3. Display name match
-    for key, entry in registry.items():
-        if entry.get("name", "").lower() == name_lower:
-            return key, entry
-
-    # 4. Command pattern match
-    for key, entry in registry.items():
-        for pattern in entry.get("command_patterns", []):
-            if pattern.lower() == name_lower or name_lower.endswith(pattern.lower()):
-                return key, entry
-
-    # 5. Substring match (last resort — match on key or package)
-    for key, entry in registry.items():
-        if name_lower in key.lower() or name_lower in entry.get("package", "").lower():
-            return key, entry
-
-    return None
+    name_lower = name_clean.lower()
+    by_display_name = [(key, entry) for key, entry in registry.items() if str(entry.get("name", "")).strip().lower() == name_lower]
+    return by_display_name[0] if len(by_display_name) == 1 else None
 
 
 def _compute_verdict(matched: bool, risk_level: str, cves: list[str]) -> str:

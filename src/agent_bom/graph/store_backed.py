@@ -422,6 +422,10 @@ class StoreBackedUnifiedGraph(UnifiedGraph):
         et = entity_type.value if isinstance(entity_type, EntityType) else str(entity_type)
         return list(self._iter_nodes(mark_dirty=True, entity_type=et))
 
+    def iter_nodes_by_type(self, entity_type: EntityType) -> Iterator[UnifiedNode]:
+        et = entity_type.value if isinstance(entity_type, EntityType) else str(entity_type)
+        return self._iter_nodes(mark_dirty=False, entity_type=et)
+
     def to_dict(self) -> dict[str, Any]:
         self.flush()
         return super().to_dict()

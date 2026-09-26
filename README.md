@@ -17,15 +17,49 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#self-host-in-your-environment"><b>Self-host</b></a> ·
+  <a href="#deployment-models"><b>Deployment models</b></a> ·
+  <a href="#quick-start"><b>Quick start</b></a> ·
   <a href="#product-tour">Product tour</a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
+<p align="center">
+  <a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></a>
+</p>
+
 agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account,
 matches them against vulnerability advisories, and shows which agent can reach which vulnerable package, tool or secret.
-Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard.
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. The map above uses labeled sample data.
+
+## Self-host in your environment
+
+**Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
+
+```bash
+docker compose up -d
+```
+
+Open **http://localhost:3000**, then **Connections** or **New Scan**.
+For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
+The pilot binds to loopback and retains state in a Docker volume. Use the authenticated deployment guide for a shared instance.
+
+### Deployment models
+[Docker pilot](docs/DEPLOY_QUICKSTART.md) · [Authenticated deployment](site-docs/deployment/authenticated-hosted-instance.md) ·
+[Compose with PostgreSQL](deploy/docker-compose.platform.yml) · [Helm](site-docs/deployment/control-plane-helm.md) · [EKS Terraform](deploy/terraform/platform-eks) ·
+[Snowflake Native App preview](docs/snowflake-native-app/INSTALL.md) · [Air-gapped bundle](site-docs/deployment/airgapped-image-bundle.md) ·
+[Choose a deployment](site-docs/deployment/overview.md) · [Enterprise configuration](docs/ENTERPRISE.md) · [Connect cloud accounts](docs/CLOUD_CONNECT.md)
+
+<details>
+<summary>Work with your existing tools</summary>
+
+Use **CLI or GitHub Action**, **REST API**, or **MCP**; export **SARIF, CycloneDX, SPDX, JSON and HTML**.
+Cloud connectors and fleet sync collect inventory; proxy and gateway deployments add runtime evidence.
+
+[Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
+[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) · [Smithery setup and manifest](site-docs/integrations/smithery.md)
+
+</details>
 
 ## Quick start
 
@@ -36,8 +70,10 @@ pip install agent-bom
 agent-bom scan .
 ```
 
-**No project handy?** Scan the bundled sample estate offline: `agent-bom scan --demo --offline`.
-Agents, MCP servers and what they can reach come first, then the CVEs behind them (excerpt):
+<details>
+<summary>No project handy? Scan the bundled sample estate offline</summary>
+
+`agent-bom scan --demo --offline` lists agents, MCP servers and what they can reach first, then the CVEs behind them (excerpt):
 
 ```text
   Security posture:   CRIT  2   HIGH  16   MED   5 · all finding categories
@@ -63,6 +99,8 @@ The sample deliberately triggers a security gate (exit `1`). Save CI evidence wi
   <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />
 </p>
 
+</details>
+
 **Give assistants the same evidence:** `agent-bom mcp server` (MCP support is included by default).
 Source version: **v0.106.0** · Latest release: **v0.105.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
 profile. The full catalog has 86 MCP tools, 7 resources, and 8 workflow prompts.
@@ -81,35 +119,6 @@ add the ecosystems you need before running `agent-bom scan . --offline`.
 The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
 A non-zero exit can mean a security gate or incomplete assessment: inspect the
 report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
-
-</details>
-
-## Self-host in your environment
-
-**Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
-
-```bash
-docker compose up -d
-```
-
-Open **http://localhost:3000**, then **Connections** or **New Scan**.
-For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
-The pilot binds to loopback and retains state in a Docker volume. Use the authenticated deployment guide for a shared instance.
-
-Going further: [Docker pilot](docs/DEPLOY_QUICKSTART.md) · [Authenticated deployment](site-docs/deployment/authenticated-hosted-instance.md) ·
-[Compose with PostgreSQL](deploy/docker-compose.platform.yml) · [Helm](site-docs/deployment/control-plane-helm.md) · [EKS Terraform](deploy/terraform/platform-eks) ·
-[Snowflake Native App preview](docs/snowflake-native-app/INSTALL.md) · [Air-gapped bundle](site-docs/deployment/airgapped-image-bundle.md) ·
-[Choose a deployment](site-docs/deployment/overview.md) · [Enterprise configuration](docs/ENTERPRISE.md) ·
-[Connect cloud accounts](docs/CLOUD_CONNECT.md)
-
-<details>
-<summary>Work with your existing tools</summary>
-
-Use **CLI or GitHub Action**, **REST API**, or **MCP**; export **SARIF, CycloneDX, SPDX, JSON and HTML**.
-Cloud connectors and fleet sync collect inventory; proxy and gateway deployments add runtime evidence.
-
-[Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
-[Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) · [Smithery setup and manifest](site-docs/integrations/smithery.md)
 
 </details>
 
@@ -147,15 +156,6 @@ Inspect the source receipts and carry the selected finding into remediation. A r
 <a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab path linking a Pillow advisory, workload identity and modeled data asset" width="1440"></a>
 
 Inspect each hop’s source evidence, permissions and remediation. This reference lab uses modeled infrastructure; select the image for full-size detail.
-
-<details>
-<summary>Explore an agent’s connected assets</summary>
-
-<a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="1440"></a>
-
-Expand connections, focus an entity, then return to the loaded overview. This example uses labeled sample data.
-
-</details>
 
 <details>
 <summary>Explore graph navigation, permissions and evidence</summary>

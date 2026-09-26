@@ -180,14 +180,14 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     import re
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    markers = ["## Quick start", "## Self-host in your environment", "## Built for the teams", "## Product tour", "## Trust and evidence"]
+    markers = ["## Self-host in your environment", "### Deployment models", "## Quick start", "## Built for the teams", "## Product tour", "## Trust and evidence"]
     positions = [readme.index(marker) for marker in markers]
     assert positions == sorted(positions)
     hero = readme[: positions[0]]
     assert "MCP server" in hero and "agents" in hero
     assert hero.count("img.shields.io/") == 8
     assert hero.count("Open security scanner and self-hosted control plane") == 1
-    for anchor in ("#product-tour", "#self-host-in-your-environment", "#quick-start"):
+    for anchor in ("#product-tour", "#self-host-in-your-environment", "#deployment-models", "#quick-start"):
         assert f'href="{anchor}"' in hero
     assert "Scan your software and AI infrastructure" not in hero
     for noise in ("package ecosystems", "compliance surfaces", "MCP tools · no account required", "demo.agent-bom.com"):
@@ -196,14 +196,15 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     block = re.search(r"```bash\n(.*?)\n```", quick_start, re.S)
     assert block and block.group(1).splitlines() == ["pip install agent-bom", "agent-bom scan ."]
     assert "agent-bom mcp server" in quick_start
-    demo = readme.index("docs/images/demo-latest.gif")
-    assert readme[:demo].count("<details>") == readme[:demo].count("</details>")
+    sample = quick_start.split("<summary>No project handy?", 1)[1].split("</details>", 1)[0]
+    assert "agent-bom scan --demo --offline" in sample and "docs/images/demo-latest.gif" in sample
+    assert "```text" not in quick_start.split("<summary>No project handy?", 1)[0]
     assert len(readme.splitlines()) <= 210
     images = re.findall(r'<img src="docs/images/([^"]+-live.png)"', readme)
     assert images == [
+        "context-map-live.png",
         "dashboard-live.png",
         "correlation-graph-live.png",
-        "context-map-live.png",
         "dependency-map-live.png",
         "remediation-live.png",
     ]

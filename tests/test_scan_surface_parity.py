@@ -368,3 +368,68 @@ def test_default_cli_toxic_count_is_single_honest_number():
     # The legacy "N detected (…critical, …high)" wording must not appear; the
     # single reconciled toxic line uses "finding(s)".
     assert "detected (" not in result.output
+
+
+def _cli_json_with_injected_path(edges: list[str]) -> dict:
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+    from agent_bom.graph import attack_path_fusion
+    from agent_bom.graph.builder import _package_node_id_from_parts
+    from agent_bom.graph.container import AttackPath
+
+    agents, brs = _seeded_estate()
+    pkg = agents[0].mcp_servers[0].packages[0]
+    real_fusion = attack_path_fusion.apply_attack_path_fusion
+
+    def fusion_with_injected_path(graph):
+        stats = real_fusion(graph)
+        package_node = _package_node_id_from_parts(pkg.name, pkg.version, pkg.ecosystem, pkg.purl)
+        assert package_node in graph.nodes, sorted(n for n in graph.nodes if n.startswith("pkg:"))
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:assistant",
+                target="vuln:CVE-2024-9999",
+                hops=["agent:assistant", "server:gh", package_node, "vuln:CVE-2024-9999"],
+                edges=edges,
+                vuln_ids=["CVE-2024-9999"],
+            )
+        )
+        return stats
+
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=agents),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=brs),
+        patch("agent_bom.cli.agents.extract_packages", return_value=[pkg]),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=None),
+        patch("agent_bom.vex.is_vex_suppressed", return_value=False),
+        patch.object(attack_path_fusion, "apply_attack_path_fusion", fusion_with_injected_path),
+    ):
+        result = CliRunner().invoke(main, ["scan", "--no-auto-update-db", "--format", "json"], catch_exceptions=False)
+    return json.loads(result.output[result.output.index("{") :])
+
+
+def _cve_rows(payload: dict) -> tuple[dict, dict]:
+    (blast_row,) = [row for row in payload["blast_radius"] if row.get("vulnerability_id") == "CVE-2024-9999"]
+    (finding_row,) = [row for row in payload["findings"] if row.get("finding_type") == "CVE" and row.get("cve_id") == "CVE-2024-9999"]
+    return blast_row, finding_row
+
+
+def test_default_cli_scan_projects_evidence_bearing_graph_path_onto_rows():
+    blast_row, finding_row = _cve_rows(_cli_json_with_injected_path(["invoked", "depends_on", "vulnerable_to"]))
+
+    assert blast_row["graph_reachable"] is True
+    assert blast_row["graph_min_hop_distance"] == 2
+    assert blast_row["graph_reachable_from_agents"] == ["agent:assistant"]
+    assert finding_row["graph_reachable"] is True
+    assert finding_row["graph_reachable_from_agents"] == ["agent:assistant"]
+
+
+def test_default_cli_scan_keeps_topology_only_graph_path_unknown():
+    blast_row, finding_row = _cve_rows(_cli_json_with_injected_path(["uses", "depends_on", "vulnerable_to"]))
+
+    assert blast_row["graph_reachable"] is None
+    assert blast_row["graph_min_hop_distance"] is None
+    assert finding_row["graph_reachable"] is None

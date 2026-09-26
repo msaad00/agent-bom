@@ -139,12 +139,14 @@ def test_precomputed_reachability_skips_a_second_graph_projection(monkeypatch, r
 
     blast_radii, agents = reachable_setup
     report = AIBOMReport(agents=agents, blast_radii=blast_radii)
-    reachability = surface_graph_derived_findings(
+    surface = surface_graph_derived_findings(
         report,
         scan_id="shared-projection",
         tenant_id="default",
         include_dependency_reachability=True,
     )
+    assert surface is not None
+    reachability = surface.dependency_reachability
     assert reachability is not None
 
     def fail_if_rebuilt(*_args, **_kwargs):
@@ -161,3 +163,102 @@ def test_precomputed_reachability_skips_a_second_graph_projection(monkeypatch, r
 
     assert stamped == 1
     assert blast_radii[0].dependency_reachable is True
+
+
+def _package_node(br: BlastRadius) -> str:
+    from agent_bom.graph.builder import _package_node_id_from_parts
+
+    pkg = br.package
+    return _package_node_id_from_parts(pkg.name, pkg.version, pkg.ecosystem, pkg.purl)
+
+
+def _path(br: BlastRadius, *, edges: list[str], package_node: str | None = None):
+    from agent_bom.graph.container import AttackPath
+
+    vuln_node = f"vuln:{br.vulnerability.id}"
+    return AttackPath(
+        source="agent:cursor",
+        target=vuln_node,
+        hops=["agent:cursor", "server:sqlite-mcp", package_node or _package_node(br), vuln_node],
+        edges=edges,
+        vuln_ids=[br.vulnerability.id],
+    )
+
+
+def test_evidence_bearing_graph_path_marks_blast_row_reachable(reachable_setup) -> None:
+    from agent_bom.graph.blast_reach import apply_graph_path_reachability_to_blast_radii
+
+    blast_radii, _ = reachable_setup
+    br = blast_radii[0]
+
+    stamped = apply_graph_path_reachability_to_blast_radii(blast_radii, [_path(br, edges=["invoked", "depends_on", "vulnerable_to"])])
+
+    assert stamped == 1
+    assert br.graph_reachable is True
+    assert br.graph_min_hop_distance == 2
+    assert br.graph_reachable_from_agents == ["agent:cursor"]
+
+
+def test_topology_only_graph_path_leaves_blast_row_unknown(reachable_setup) -> None:
+    from agent_bom.graph.blast_reach import apply_graph_path_reachability_to_blast_radii
+
+    blast_radii, _ = reachable_setup
+    br = blast_radii[0]
+
+    stamped = apply_graph_path_reachability_to_blast_radii(blast_radii, [_path(br, edges=["uses", "depends_on", "vulnerable_to"])])
+
+    assert stamped == 0
+    assert br.graph_reachable is None
+    assert br.graph_min_hop_distance is None
+    assert br.graph_reachable_from_agents == []
+
+
+def test_evidence_path_through_another_package_does_not_mark_shared_cve(reachable_setup) -> None:
+    from agent_bom.graph.blast_reach import apply_graph_path_reachability_to_blast_radii
+
+    blast_radii, _ = reachable_setup
+    br = blast_radii[0]
+    other = _path(br, edges=["invoked", "depends_on", "vulnerable_to"], package_node="pkg:npm:other-lib@1.0.0")
+
+    assert apply_graph_path_reachability_to_blast_radii(blast_radii, [other]) == 0
+    assert br.graph_reachable is None
+
+
+def test_scan_graph_surface_projects_fused_evidence_paths_onto_blast_rows(monkeypatch, reachable_setup) -> None:
+    """The shared scan graph hands its attack paths to the CLI projection."""
+    from agent_bom.graph import attack_path_fusion
+    from agent_bom.graph.blast_reach import apply_graph_path_reachability_to_blast_radii
+    from agent_bom.graph.scan_findings import surface_graph_derived_findings
+    from agent_bom.models import AIBOMReport
+
+    blast_radii, agents = reachable_setup
+    br = blast_radii[0]
+    real_fusion = attack_path_fusion.apply_attack_path_fusion
+    seen_package_nodes: list[str] = []
+
+    def fusion_with_exposure(graph):
+        stats = real_fusion(graph)
+        package_node = _package_node(br)
+        assert package_node in graph.nodes
+        seen_package_nodes.append(package_node)
+        graph.attack_paths.append(_path(br, edges=["exposed_to", "depends_on", "vulnerable_to"]))
+        return stats
+
+    monkeypatch.setattr(attack_path_fusion, "apply_attack_path_fusion", fusion_with_exposure)
+    report = AIBOMReport(agents=agents, blast_radii=blast_radii)
+    surface = surface_graph_derived_findings(
+        report,
+        scan_id="fused-evidence",
+        tenant_id="default",
+        include_dependency_reachability=True,
+    )
+
+    assert surface is not None
+    assert seen_package_nodes
+    assert surface.dependency_reachability is not None
+    assert apply_graph_path_reachability_to_blast_radii(blast_radii, surface.attack_paths) == 1
+    assert br.graph_reachable is True
+    assert report.to_findings()  # findings rebuild from the stamped row
+    from agent_bom.finding import blast_radius_to_finding
+
+    assert blast_radius_to_finding(br).graph_reachable is True

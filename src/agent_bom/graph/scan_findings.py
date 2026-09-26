@@ -20,14 +20,23 @@ failure must never fail the scan job.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from agent_bom.graph.container import UnifiedGraph
+    from agent_bom.graph.container import AttackPath, UnifiedGraph
     from agent_bom.graph.dependency_reach import ReachabilityReport
     from agent_bom.models import AIBOMReport
 
 _logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class ScanGraphSurface:
+    """Graph outputs a scan surface reuses after the shared build."""
+
+    dependency_reachability: "ReachabilityReport | None" = None
+    attack_paths: list["AttackPath"] = field(default_factory=list)
 
 
 def attach_graph_derived_findings(report: "AIBOMReport", graph: "UnifiedGraph") -> None:
@@ -147,17 +156,19 @@ def surface_graph_derived_findings(
     scan_id: str,
     tenant_id: str,
     include_dependency_reachability: bool = False,
-) -> "ReachabilityReport | None":
+) -> ScanGraphSurface | None:
     """Build the unified graph from ``report`` and attach graph-derived findings.
 
     The single build+attach entry point shared by the CLI (default path), the API
     scan pipeline, and the MCP scan tool, so every scan surface emits the same
     graph-derived categories (``COMBINATION`` / ``CIEM_OVER_PRIVILEGE`` / ``NHI``).
 
-    When ``include_dependency_reachability`` is true, compute and return the
-    structural reachability report from this same graph so callers do not
+    Returns the graph's attack paths so callers can project evidence-bearing
+    paths onto rows, and, when ``include_dependency_reachability`` is true, the
+    structural reachability report from this same graph, so callers do not
     serialize and project the scan a second time. The interim JSON and graph are
-    released when this returns. Best-effort: failures are logged and swallowed.
+    released when this returns; ``None`` when the graph build fails.
+    Best-effort: failures are logged and swallowed.
     """
     try:
         from agent_bom.graph.builder import build_unified_graph_from_report
@@ -170,16 +181,17 @@ def surface_graph_derived_findings(
         return None
 
     attach_graph_derived_findings(report, graph)
+    surface = ScanGraphSurface(attack_paths=list(graph.attack_paths))
     if not include_dependency_reachability:
-        return None
+        return surface
 
     try:
         from agent_bom.graph.dependency_reach import compute_dependency_reach
 
-        return compute_dependency_reach(graph)
+        surface.dependency_reachability = compute_dependency_reach(graph)
     except Exception as exc:  # noqa: BLE001 — best-effort enrichment
         _logger.debug("dependency reachability reuse skipped: %s", exc)
-        return None
+    return surface
 
 
-__all__ = ["attach_graph_derived_findings", "surface_graph_derived_findings"]
+__all__ = ["ScanGraphSurface", "attach_graph_derived_findings", "surface_graph_derived_findings"]

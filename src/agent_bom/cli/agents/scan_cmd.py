@@ -2944,10 +2944,12 @@ def scan(
 
     ctx.step_timings["scanning"] = _time.monotonic() - _step_t0
 
-    # Surface graph-walk reachability onto each blast-radius row so the
-    # CLI report carries the same `graph_reachable` / `graph_min_hop_distance`
-    # / `graph_reachable_from_agents` evidence the API path produces. Wrapped
-    # in try/except so a graph build failure never breaks `agent-bom agents`.
+    # Stamp structural dependency closure (`dependency_reachable*`) and
+    # function-level symbol reach onto each blast-radius row. Evidence-backed
+    # `graph_reachable` is projected from persisted attack paths at findings
+    # read time (api/finding_reachability.py), never from topology alone, so
+    # it stays null here. Wrapped in try/except so a graph build failure never
+    # breaks `agent-bom agents`.
     try:
         from agent_bom.graph.blast_reach import (
             apply_dependency_reachability_to_blast_radii,

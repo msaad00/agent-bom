@@ -711,13 +711,9 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
-    result.dependency_symbol_reach.extend(
-        _build_dependency_symbol_reach(
-            function_analyses,
-            [entry for entry in result.application_entrypoints if entry.language == "python"],
-        )
-    )
-    result.flow_findings.extend(_build_taint_findings(function_analyses))
+    python_application_entrypoints = [entry for entry in result.application_entrypoints if entry.language == "python"]
+    result.dependency_symbol_reach.extend(_build_dependency_symbol_reach(function_analyses, python_application_entrypoints))
+    result.flow_findings.extend(_build_taint_findings(function_analyses, python_application_entrypoints))
     js_ts_call_edges, js_ts_interprocedural_findings = _build_js_ts_flow_findings(
         functions=js_ts_functions,
         tool_registrations=js_ts_tool_registrations,

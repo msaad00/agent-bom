@@ -288,15 +288,25 @@ def _match_registry_entry(server: MCPServer) -> dict | None:
     if not registry:
         return None
     refs = {ref for ref in (_package_reference(tok) for tok in [Path(server.command or "").name, *server.args]) if ref}
+    match = registry_entry_for_references(refs, registry)
+    return match[1] if match else None
+
+
+def registry_entry_for_references(refs: set[str], registry: dict) -> tuple[str, dict] | None:
+    """Return the one ``(key, entry)`` whose key or package equals a reference.
+
+    Identifiers compare exactly (PEP 503 for PyPI). Several matching entries
+    make the attribution ambiguous, so nothing is returned.
+    """
     if not refs:
         return None
-    matches: dict[str, dict] = {}
+    matches: dict[str, tuple[str, dict]] = {}
     for key, entry in registry.items():
         ecosystem = str(entry.get("ecosystem", ""))
         wanted = {_registry_identifier(ref, ecosystem) for ref in refs}
         package = str(entry.get("package") or key)
         if {_registry_identifier(key, ecosystem), _registry_identifier(package, ecosystem)} & wanted:
-            matches[package.lower()] = entry
+            matches[package.lower()] = (key, entry)
     if len(matches) != 1:
         if len(matches) > 1:
             logger.debug("Registry: %d catalog entries match one server; attribution is ambiguous", len(matches))

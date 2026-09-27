@@ -12,6 +12,7 @@ from agent_bom.api.routes.scan import _finding_sort_key, _merged_scan_bulk_page
 from agent_bom.api.server import ScanJob, ScanRequest, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 
@@ -42,7 +43,7 @@ def _seed_bulk(store: InMemoryComplianceHubStore, tenant: str, count: int) -> No
     store.upsert_current_batch(
         tenant,
         findings,
-        observed_at="2026-07-06T00:00:00Z",
+        observed_at=recent("2026-07-06T00:00:00Z"),
         batch_id="merge-batch",
         source="test",
     )
@@ -101,11 +102,11 @@ def test_findings_api_merges_scan_and_bulk_at_deep_offset() -> None:
     job = ScanJob(
         job_id="merge-scan-job",
         tenant_id=tenant,
-        created_at="2026-07-06T10:00:00Z",
+        created_at=recent("2026-07-06T10:00:00Z"),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-07-06T10:01:00Z"
+    job.completed_at = recent("2026-07-06T10:01:00Z")
     job.result = {
         "findings": [
             {

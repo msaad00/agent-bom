@@ -25,6 +25,7 @@ from agent_bom.api.server import ScanJob, ScanRequest, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store
 from agent_bom.export.runner import iter_current_findings, run_findings_export
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 
@@ -56,11 +57,11 @@ def _seed_scan_job(tenant: str, count: int) -> None:
     job = ScanJob(
         job_id=f"scan-job-{uuid4().hex}",
         tenant_id=tenant,
-        created_at="2026-07-19T10:00:00Z",
+        created_at=recent("2026-07-19T10:00:00Z"),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-07-19T10:01:00Z"
+    job.completed_at = recent("2026-07-19T10:01:00Z")
     job.result = {"findings": [_scan_finding(i) for i in range(count)]}
     _get_store().put(job)
 
@@ -174,7 +175,7 @@ def test_keyset_walks_mixed_scan_and_bulk_zero_dup_zero_drop() -> None:
         for idx in range(23)
     ]
     store.add(tenant, bulk)
-    store.upsert_current_batch(tenant, bulk, observed_at="2026-07-19T00:00:00Z", batch_id="mix-batch", source="test")
+    store.upsert_current_batch(tenant, bulk, observed_at=recent("2026-07-19T00:00:00Z"), batch_id="mix-batch", source="test")
     _seed_scan_job(tenant, 11)
 
     client = TestClient(app)
@@ -215,17 +216,17 @@ def test_keyset_walk_mixed_estate_all_sorts_reconciles_total(sort: str) -> None:
         for idx in range(17)
     ]
     store.add(tenant, bulk)
-    store.upsert_current_batch(tenant, bulk, observed_at="2026-07-19T00:00:00Z", batch_id="mixed-sorts-batch", source="test")
+    store.upsert_current_batch(tenant, bulk, observed_at=recent("2026-07-19T00:00:00Z"), batch_id="mixed-sorts-batch", source="test")
 
     set_job_store(InMemoryJobStore())
     job = ScanJob(
         job_id=f"scan-job-{uuid4().hex}",
         tenant_id=tenant,
-        created_at="2026-07-19T10:00:00Z",
+        created_at=recent("2026-07-19T10:00:00Z"),
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.completed_at = "2026-07-19T10:01:00Z"
+    job.completed_at = recent("2026-07-19T10:01:00Z")
     job.result = {
         "findings": [
             {

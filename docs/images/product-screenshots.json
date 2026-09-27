@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-27T07:00:29.812Z",
-  "source_commit": "db562b23ec007d9a82309a10165179257aa28c63",
+  "captured_at": "2026-09-27T15:35:10.581Z",
+  "source_commit": "95415e5ae2eeac9f84f2021fbbe4c0a54cf2498e",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:b4139d865be9974709c0897eab6b787ddfb9086b2a1765a63dfd7505a3ec3e7b",
+  "capture_inputs_sha256": "sha256:8118ea041db90fbeeb18de5125f00cc35fdba1f28beedfc392782dc2e1aa95a0",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Combined posture and assessment overview with current findings, evaluated-control counts, and visible framework logos",
       "visible_version": "0.106.1",
-      "sha256": "sha256:76bfd9b6a64e5ae1fab6843bb938a2322c9bd02fb581f94727b80aced765c613"
+      "sha256": "sha256:f3fe72c2dfc5b6c51e6a165b4a83931cde13adac8e787c15c9c9f634cdee8195"
     },
     {
       "presentation": "light desktop",
@@ -84,7 +84,7 @@
       "page": "/scan?id=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic scan receipt with explicit partial coverage and one recorded agent identity selected for composition export",
       "visible_version": "0.106.1",
-      "sha256": "sha256:3342386e8e60806e1b64781ba5ef86393d9c6c5e375202762300568a9bb68823"
+      "sha256": "sha256:1d66fad1143d2337c26662568e6f72badacc708ca797e86e23fecc27dbdc3829"
     },
     {
       "presentation": "dark desktop",
@@ -92,7 +92,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.1",
-      "sha256": "sha256:a63fcd331be97edc1e366fa023bf9d148c34fd4ac771f172421f12eb641aeab3"
+      "sha256": "sha256:76acab40bb27ef03f02579e0690de045822d5e9a9c98502213757bc3b4908cb3"
     },
     {
       "presentation": "dark desktop",
@@ -124,7 +124,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.1",
-      "sha256": "sha256:8f9a97303cdcb7a606c48307615beef67300c0777c3ec30432abc89784188026"
+      "sha256": "sha256:470e020461a4717c3a30fc9da63d121e7d1ff39c69b12faccfb774c6b9f64542"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.106.1",
-      "sha256": "sha256:f7e9a0b186af0372492fbdade00ca0c241f40b4738fdf0417a3e7f64f9df650d"
+      "sha256": "sha256:9a0307c348d3eabf7dc5bdebad6e27166e42124c44849f9daad7c377a2131b8a"
     },
     {
       "presentation": "dark mobile",
@@ -217,7 +217,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.1",
-      "sha256": "sha256:fafbc50bd1c5b4fb77dfd049fdec5b79a2271264271d2f8625639ace2de827de"
+      "sha256": "sha256:4185b1e7268b08cf447f9f23db34aea91fd579062060b12d1fa7abd277212268"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -281,7 +281,7 @@
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
       "visible_version": "0.106.1",
-      "sha256": "sha256:ee8b4379b6861ce660a255713e6447edf3c8ae03caace183cd1c0da95c473caa"
+      "sha256": "sha256:049981836e040eb0a885d0977a15030d2ba2f90a08eb54c3298294b5a43ad8a6"
     },
     {
       "presentation": "dark desktop",

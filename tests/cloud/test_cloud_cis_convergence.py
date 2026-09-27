@@ -208,8 +208,10 @@ async def test_findings_endpoint_filters_cloud_cis_by_scan_id() -> None:
                 job_id=report.scan_id,
                 tenant_id="tenant-cis",
                 status=JobStatus.DONE,
-                created_at="2026-06-29T00:00:00Z",
-                completed_at="2026-06-29T00:00:01Z",
+                # Exercise scan-ID filtering inside the normal read window.
+                # A fixed historical date eventually expires after 90 days.
+                created_at=report.generated_at.isoformat(),
+                completed_at=report.generated_at.isoformat(),
                 request=ScanRequest(),
                 result=to_json(report),
             )

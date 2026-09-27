@@ -59,6 +59,16 @@ def test_scan_text_passes_when_aligned() -> None:
     assert cva.scan_text("deploy/example.yml", text, "0.97.1") == []
 
 
+def test_persona_onboarding_tracks_published_release() -> None:
+    """The in-product copy/paste path participates in the release generator."""
+    cva = _load_script("check_version_alignment.py")
+    persona = ROOT / "ui" / "components" / "persona-start-routes.tsx"
+    assert persona in cva.SCAN_ROOTS
+    text = persona.read_text()
+    assert "agentbom/agent-bom:latest" not in text
+    assert cva.scan_text(str(persona.relative_to(ROOT)), text, cva.canonical_version(), published=cva.published_version()) == []
+
+
 def test_latest_demo_image_must_not_be_pinned(tmp_path, monkeypatch) -> None:
     """A demo compose designated :latest can't silently freeze on an old pin."""
     cva = _load_script("check_version_alignment.py")

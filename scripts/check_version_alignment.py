@@ -52,6 +52,7 @@ SCAN_ROOTS: tuple[Path, ...] = (
     ROOT / "site-docs",
     ROOT / "deploy",
     ROOT / "integrations",
+    ROOT / "ui" / "components" / "persona-start-routes.tsx",
 )
 
 _BINARY_SUFFIXES = {

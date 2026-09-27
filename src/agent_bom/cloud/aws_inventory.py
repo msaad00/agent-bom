@@ -271,6 +271,41 @@ def is_access_denied_error(exc: BaseException) -> bool:
     return any(marker in field for field in haystacks for marker in _ACCESS_DENIED_MARKERS)
 
 
+_BILLING_DISABLED_MARKERS = (
+    "billing_disabled",
+    "requires billing to be enabled",
+    "billing account for the owning project is disabled",
+    "billing is disabled",
+)
+_SERVICE_DISABLED_MARKERS = (
+    "service_disabled",
+    "accessnotconfigured",
+    "has not been used in project",
+    "api is not enabled",
+)
+
+
+def classify_project_disabled_error(exc: BaseException) -> str:
+    """Return ``billing_disabled`` / ``service_disabled`` for GCP project-state 403s.
+
+    GCP answers a call against a project whose billing is disabled, or whose
+    API is not enabled, with HTTP 403 — the same status as a missing IAM
+    permission. These are project-state problems (``ErrorInfo.reason`` of
+    ``BILLING_DISABLED`` / ``SERVICE_DISABLED``) that no read-only role grant
+    can fix, so they must not be reported as a permission gap. Returns ``""``
+    for anything else.
+    """
+    # google-api-core exposes the ErrorInfo reason as ``.reason``; the
+    # discovery client (googleapiclient HttpError) carries it in
+    # ``.error_details``. Neither is guaranteed to appear in ``str(exc)``.
+    text = f"{_error_code(exc)} {getattr(exc, 'reason', '') or ''} {getattr(exc, 'error_details', '') or ''} {exc}".lower()
+    if any(marker in text for marker in _BILLING_DISABLED_MARKERS):
+        return "billing_disabled"
+    if any(marker in text for marker in _SERVICE_DISABLED_MARKERS):
+        return "service_disabled"
+    return ""
+
+
 def build_missing_permission(*, cloud: str, permission: str, resource_type: str) -> dict[str, str]:
     """Return one structured ``missing_permissions`` entry.
 
@@ -326,7 +361,18 @@ def record_discovery_failure(
     result. Secrets are stripped via ``sanitize_discovery_warning``.
     """
     detail = sanitize_discovery_warning(exc)
-    if is_access_denied_error(exc):
+    project_state = classify_project_disabled_error(exc)
+    if project_state == "billing_disabled":
+        warnings.append(
+            f"Skipped {resource_type}: billing is disabled for this project — enable billing (or exclude the project) "
+            f"to cover this resource type; no role change is needed. ({detail})"
+        )
+    elif project_state == "service_disabled":
+        warnings.append(
+            f"Skipped {resource_type}: the service API is not enabled in this project — nothing to inventory unless it is "
+            f"enabled; no role change is needed. ({detail})"
+        )
+    elif is_access_denied_error(exc):
         warnings.append(
             f"Skipped {resource_type}: role lacks {permission} — add it to the read-only policy to cover this resource type. ({detail})"
         )
@@ -1056,8 +1102,8 @@ def _discover_s3_buckets(
 ) -> list[dict[str, Any]]:
     """Enumerate every S3 bucket in the account (read-only).
 
-    Public-access posture is read from the bucket's PublicAccessBlock and
-    PolicyStatus — never from object contents. Buckets become ``DATA_STORE``
+    Public-access posture is read from PolicyStatus, the bucket ACL, and the
+    bucket- and account-level PublicAccessBlock — never from object contents. Buckets become ``DATA_STORE``
     nodes so DSPM and exposure overlays apply.
     """
     s3 = session.client("s3")
@@ -1071,13 +1117,14 @@ def _discover_s3_buckets(
         )
         return buckets
 
+    account_block = _account_public_access_block(session, account_id, warnings) if listed else {}
     for bucket in listed:
         name = str(bucket.get("Name", "") or "").strip()
         if not name:
             continue
         arn = f"arn:aws:s3:::{name}"
         location = _bucket_location(s3, name, warnings)
-        publicly_accessible = _bucket_public(s3, name, warnings)
+        publicly_accessible = _bucket_public(s3, name, warnings, account_block=account_block)
         tags = _bucket_tags(s3, name, warnings)
         bucket_record = {
             "name": name,
@@ -1109,32 +1156,81 @@ def _bucket_location(s3: Any, name: str, warnings: list[str]) -> str:
     return str(constraint or "us-east-1")
 
 
-def _bucket_public(s3: Any, name: str, warnings: list[str]) -> bool:
-    """Best-effort public-access determination from posture APIs only.
+_PUBLIC_ACL_GRANTEE_URIS = frozenset(
+    {
+        "http://acs.amazonaws.com/groups/global/AllUsers",
+        "http://acs.amazonaws.com/groups/global/AuthenticatedUsers",
+    }
+)
 
-    A bucket is treated as publicly accessible when its PolicyStatus is public
-    OR its PublicAccessBlock does not fully block public access. Errors degrade
-    to ``False`` (unknown) with a warning — never a guess that inflates risk.
+
+def _account_public_access_block(session: Any, account_id: str | None, warnings: list[str]) -> dict[str, Any]:
+    """Read the account-level S3 Block Public Access settings (read-only).
+
+    Returns ``{}`` when the account has no configuration or it cannot be read,
+    which leaves bucket-level evidence in charge.
     """
+    if not account_id:
+        return {}
+    try:
+        client = session.client("s3control")
+        block = client.get_public_access_block(AccountId=account_id).get("PublicAccessBlockConfiguration", {})
+    except Exception as exc:  # noqa: BLE001 — account block is optional evidence
+        if "NoSuchPublicAccessBlock" not in str(exc):
+            warnings.append(f"Could not read account-level S3 public-access block: {sanitize_discovery_warning(exc)}")
+        return {}
+    return block if isinstance(block, dict) else {}
+
+
+def _bucket_public(s3: Any, name: str, warnings: list[str], *, account_block: dict[str, Any] | None = None) -> bool:
+    """Whether the bucket is effectively public, from posture APIs only.
+
+    Public requires an actual grant — a bucket policy S3 evaluates as public
+    (``GetBucketPolicyStatus.IsPublic``) or an ACL grant to AllUsers /
+    AuthenticatedUsers — that is not neutralized by an effective Block Public
+    Access setting: ``RestrictPublicBuckets`` neutralizes a public policy and
+    ``IgnorePublicAcls`` neutralizes public ACLs, at bucket OR account level.
+    A missing or partial block with no grant is not public. Read errors degrade
+    to "no grant observed" with a warning, never a guess that inflates risk.
+    """
+    policy_public = False
     try:
         status = s3.get_bucket_policy_status(Bucket=name).get("PolicyStatus", {})
-        if bool(status.get("IsPublic")):
-            return True
+        policy_public = bool(status.get("IsPublic"))
     except Exception as exc:  # noqa: BLE001
         # NoSuchBucketPolicy is normal (no policy attached) — only warn otherwise.
         if "NoSuchBucketPolicy" not in str(exc):
             warnings.append(f"Could not read policy status for S3 bucket {name}: {sanitize_discovery_warning(exc)}")
 
+    acl_public = False
     try:
-        block = s3.get_public_access_block(Bucket=name).get("PublicAccessBlockConfiguration", {})
+        grants = s3.get_bucket_acl(Bucket=name).get("Grants", [])
+        acl_public = any(
+            isinstance(grant, dict)
+            and isinstance(grant.get("Grantee"), dict)
+            and str(grant["Grantee"].get("URI") or "") in _PUBLIC_ACL_GRANTEE_URIS
+            for grant in grants or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not read ACL for S3 bucket {name}: {sanitize_discovery_warning(exc)}")
+
+    if not policy_public and not acl_public:
+        return False
+
+    bucket_block: dict[str, Any] = {}
+    try:
+        bucket_block = s3.get_public_access_block(Bucket=name).get("PublicAccessBlockConfiguration", {}) or {}
     except Exception as exc:  # noqa: BLE001
         if "NoSuchPublicAccessBlock" not in str(exc):
             warnings.append(f"Could not read public-access block for S3 bucket {name}: {sanitize_discovery_warning(exc)}")
-        return False
-    fully_blocked = all(
-        bool(block.get(key)) for key in ("BlockPublicAcls", "IgnorePublicAcls", "BlockPublicPolicy", "RestrictPublicBuckets")
-    )
-    return not fully_blocked
+    account = account_block or {}
+
+    def _effective(key: str) -> bool:
+        return bool(bucket_block.get(key)) or bool(account.get(key))
+
+    policy_exposes = policy_public and not _effective("RestrictPublicBuckets")
+    acl_exposes = acl_public and not _effective("IgnorePublicAcls")
+    return policy_exposes or acl_exposes
 
 
 def _bucket_tags(s3: Any, name: str, warnings: list[str]) -> dict[str, str]:

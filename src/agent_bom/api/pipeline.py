@@ -671,8 +671,27 @@ def _persist_graph_snapshot(
             edges=edge_count,
             lock=lock,
         )
-        alerts = compute_delta_alerts_from_digest(prior_digest, graph)
-        delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
+        # The snapshot is committed at this point. Delta alerting is a
+        # downstream notification: a formatting or delivery defect is logged
+        # and recorded on the job, never allowed to fail (and so roll back)
+        # the graph that was just persisted.
+        alerts: list[dict[str, Any]] = []
+        delivery: dict[str, Any] | None = None
+        try:
+            alerts = compute_delta_alerts_from_digest(prior_digest, graph)
+            delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
+        except Exception as alert_exc:  # noqa: BLE001 — alerting must never fail graph persistence
+            _logger.warning(
+                "Graph delta alerting failed for scan=%s tenant=%s: %s",
+                scan_id,
+                tenant_id,
+                sanitize_text(sanitize_error(alert_exc, generic=True)),
+            )
+            if lock:
+                with lock:
+                    job.progress.append("Graph delta alerting failed; snapshot persisted without delta notifications")
+            alerts = []
+            delivery = None
         _logger.info(
             "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
             scan_id,

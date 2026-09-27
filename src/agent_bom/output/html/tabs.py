@@ -7,7 +7,7 @@ from __future__ import annotations
 # small scan collapses to a couple of tabs while a large multi-cloud scan gets
 # the full set. Order here is the tab order left-to-right.
 _TAB_DEFS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("summary", "Summary", ("summary", "charts")),
+    ("summary", "Summary", ("executive-headline", "summary", "charts")),
     ("agents", "Agents &amp; Servers", ("riskmap", "inventory", "aiinventory")),
     (
         "findings",

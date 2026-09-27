@@ -64,7 +64,7 @@ inputs:
     required: false
     default: '3.11'
   agent-bom-version:
-    description: 'agent-bom package version to install (for example 0.75.x). Empty = latest from PyPI.'
+    description: 'agent-bom package version to install (for example 0.106.1). Empty = the release this action ref ships (pinning msaad00/agent-bom@vX installs agent-bom==X; a ref whose version is not on PyPI yet falls back to the newest release with a warning). Use latest for the newest PyPI release.'
     required: false
     default: ''
   install-from-source:
@@ -202,6 +202,7 @@ runs:
       shell: bash
       env:
         AGENT_BOM_VERSION: ${{ inputs.agent-bom-version }}
+        ACTION_PATH: ${{ github.action_path }}
         AI_ENRICH: ${{ inputs.ai-enrich }}
         INSTALL_FROM_SOURCE: ${{ inputs.install-from-source }}
         HTTP_PROXY: ${{ env.HTTP_PROXY }}
@@ -220,14 +221,28 @@ runs:
             pip install "." packaging
           fi
         else
-          PKG="agent-bom"
-          if [ -n "$AGENT_BOM_VERSION" ]; then
-            PKG="agent-bom==$AGENT_BOM_VERSION"
-          fi
+          EXTRAS=""
           if [ "$AI_ENRICH" = "true" ]; then
-            pip install "${PKG}[ai-enrich]" packaging
+            EXTRAS="[ai-enrich]"
+          fi
+          if [ "$AGENT_BOM_VERSION" = "latest" ]; then
+            pip install "agent-bom${EXTRAS}" packaging
+          elif [ -n "$AGENT_BOM_VERSION" ]; then
+            pip install "agent-bom${EXTRAS}==$AGENT_BOM_VERSION" packaging
           else
-            pip install "$PKG" packaging
+            # Default to the release this action ref ships: a tag checkout's
+            # pyproject.toml carries that tag's version (release version-guard).
+            REF_VERSION=""
+            if [ -f "$ACTION_PATH/pyproject.toml" ]; then
+              REF_VERSION=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ACTION_PATH/pyproject.toml" | head -n 1)
+            fi
+            if [ -z "$REF_VERSION" ]; then
+              echo "::warning::Could not read the agent-bom version from this action ref; installing the newest release."
+              pip install "agent-bom${EXTRAS}" packaging
+            elif ! pip install "agent-bom${EXTRAS}==$REF_VERSION" packaging; then
+              echo "::warning::agent-bom $REF_VERSION (this action ref's version) is not installable from PyPI yet; installing the newest release. Pin a release tag or set agent-bom-version."
+              pip install "agent-bom${EXTRAS}" packaging
+            fi
           fi
         fi
 

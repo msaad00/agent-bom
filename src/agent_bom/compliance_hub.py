@@ -43,6 +43,7 @@ from agent_bom.framework_mapping import (
     FRAMEWORK_OWASP_MCP,
     FRAMEWORK_PCI_DSS,
     FRAMEWORK_SOC2,
+    controls_for_finding_shape,
     is_framework_relevant,
     select_frameworks,
 )
@@ -105,4 +106,15 @@ def apply_hub_classification(finding: "Finding", *, include_gov: bool = False) -
     finding.applicable_frameworks = [slug for slug in ALL_FRAMEWORKS if slug in seen] + [
         slug for slug in finding.applicable_frameworks if slug not in ALL_FRAMEWORKS
     ]
+    location = finding.asset.location or (finding.evidence.get("file") if isinstance(finding.evidence, dict) else None)
+    shape_tags = controls_for_finding_shape(
+        finding.finding_type,
+        source=finding.source,
+        cwe_ids=finding.cwe_ids,
+        asset_type=finding.asset.asset_type,
+        location=str(location) if location else None,
+    )
+    for tag_field, controls in shape_tags.items():
+        existing = list(getattr(finding, tag_field))
+        setattr(finding, tag_field, existing + [control for control in controls if control not in existing])
     return finding

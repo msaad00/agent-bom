@@ -904,7 +904,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
         <div className="agents-inventory-panel">
           <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first view</p>
           <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">
-            This detail page is valuable before runtime proxy rollout. It shows the granted MCP surface area for
+            This detail page is valuable before runtime proxy rollout. It shows the configured MCP surface area for
             <span className="mx-1 font-semibold text-[color:var(--foreground)]">{agent.name}</span>
             using discovery and scan data alone: server transport, exposed tools, env-backed credentials, and attached package risk.
           </p>

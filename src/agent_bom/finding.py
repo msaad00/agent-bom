@@ -1779,7 +1779,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         attack_vector_summary=getattr(br, "attack_vector_summary", None),
         affected_servers=[s.name for s in br.affected_servers],
         affected_agents=[entity_name(a) for a in br.affected_agents],
-        exposed_credentials=list(br.exposed_credentials),
+        exposed_credentials=sorted(set(br.exposed_credentials)),
         exposed_tools=[entity_name(t) for t in br.exposed_tools],
     )
     return apply_hub_classification(finding)

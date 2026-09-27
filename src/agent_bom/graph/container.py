@@ -9,12 +9,12 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
 from agent_bom.graph.bottleneck import BottleneckAnalysis, compute_bottlenecks
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
-from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType, GraphSemanticLayer, NodeStatus, RelationshipType
 from agent_bom.graph.util import _now_iso
 

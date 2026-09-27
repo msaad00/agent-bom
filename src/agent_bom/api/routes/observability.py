@@ -57,7 +57,7 @@ from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.canonical_ids import canonical_id
 from agent_bom.config import API_MAX_OCSF_INGEST_EVENTS
-from agent_bom.graph.severity import ocsf_to_severity
+from agent_bom.core.severity import ocsf_to_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import (

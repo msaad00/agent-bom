@@ -30,7 +30,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-from agent_bom.graph.severity import severity_policy_rank
+from agent_bom.core.severity import severity_policy_rank
 
 logger = logging.getLogger(__name__)
 

@@ -165,7 +165,7 @@ class ComplianceNarrative:
 
 
 def _severity_order(sev: str) -> int:
-    from agent_bom.graph.severity import severity_worst_first_rank
+    from agent_bom.core.severity import severity_worst_first_rank
 
     return severity_worst_first_rank(sev)
 

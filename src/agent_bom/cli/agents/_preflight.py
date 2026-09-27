@@ -18,7 +18,7 @@ import click
 
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._output import render_output
-from agent_bom.graph.severity import severity_at_or_above
+from agent_bom.core.severity import severity_at_or_above
 from agent_bom.models import AIBOMReport
 
 

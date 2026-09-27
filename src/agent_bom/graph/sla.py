@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.graph.severity import normalize_severity
+from agent_bom.core.severity import normalize_severity
 
 # Severity → remediation window in days from the finding's first-seen anchor.
 # Built-in product defaults; ``info``/``unknown`` intentionally

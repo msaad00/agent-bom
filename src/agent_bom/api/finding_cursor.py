@@ -6,7 +6,8 @@ import base64
 import json
 from typing import Any
 
-from agent_bom.graph.severity import severity_policy_rank
+from agent_bom.core.cvss import normalize_cvss_score
+from agent_bom.core.severity import severity_policy_rank
 
 _ALLOWED_SORTS = frozenset({"effective_reach", "cvss", "severity", "ordinal"})
 
@@ -18,12 +19,7 @@ _CVSS_NULL_SORT_VALUE = 0.0
 
 
 def cvss_sort_value(raw: Any) -> float:
-    if raw is None:
-        return _CVSS_NULL_SORT_VALUE
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return _CVSS_NULL_SORT_VALUE
+    return normalize_cvss_score(raw) or _CVSS_NULL_SORT_VALUE
 
 
 def severity_rank_sort_value(row: dict[str, Any]) -> float:

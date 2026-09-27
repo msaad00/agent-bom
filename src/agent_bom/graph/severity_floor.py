@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
-from agent_bom.graph.severity import SEVERITY_RANK
 
 #: Entity types a severity floor is allowed to filter on. Everything else is
 #: topology and survives any floor.

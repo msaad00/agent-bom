@@ -9,12 +9,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agent_bom.canonical_ids import canonical_graph_node_id
-from agent_bom.graph.ocsf import ENTITY_OCSF_MAP
-from agent_bom.graph.severity import (
+from agent_bom.core.severity import (
     OCSF_SEVERITY_NAMES,
     SEVERITY_TO_OCSF,
     OCSFSeverity,
 )
+from agent_bom.graph.ocsf import ENTITY_OCSF_MAP
 from agent_bom.graph.types import EntityType, NodeStatus
 from agent_bom.graph.util import _now_iso
 

@@ -39,11 +39,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from agent_bom.core.severity import SEVERITY_RISK_SCORE, normalize_severity
 from agent_bom.demo_estate.enterprise import EnterpriseEstate, EstateAsset
 from agent_bom.graph.container import AttackPath, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
-from agent_bom.graph.severity import SEVERITY_RISK_SCORE, normalize_severity
 from agent_bom.graph.types import EntityType, RelationshipType
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

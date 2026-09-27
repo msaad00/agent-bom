@@ -24,10 +24,10 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, cast
 
 from agent_bom.cloud.normalization import coerce_truthy
+from agent_bom.core.severity import OCSF_SEVERITY_NAMES, SEVERITY_BUCKETS_WORST_FIRST, SEVERITY_RANK
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.severity import OCSF_SEVERITY_NAMES, SEVERITY_BUCKETS_WORST_FIRST, SEVERITY_RANK
 from agent_bom.graph.types import EntityType, RelationshipType
 
 # Severity buckets reported in every roll-up histogram, worst → least.

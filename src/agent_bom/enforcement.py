@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-from agent_bom.graph.severity import severity_at_or_above
+from agent_bom.core.severity import severity_at_or_above
 from agent_bom.models import MCPServer, Severity
 from agent_bom.runtime.text_normalize import normalize_text as _normalize_text
 

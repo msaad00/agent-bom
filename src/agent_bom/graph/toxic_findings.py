@@ -34,10 +34,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from agent_bom.cloud.normalization import coerce_truthy
+from agent_bom.core.severity import severity_rank
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.severity import severity_rank
 from agent_bom.graph.types import EntityType, RelationshipType
 
 _GRAPH_SOURCE = "graph-toxic-combination"

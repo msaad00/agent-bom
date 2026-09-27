@@ -14,7 +14,7 @@ import os
 from collections import Counter
 from typing import Any
 
-from agent_bom.graph.severity import normalize_severity
+from agent_bom.core.severity import normalize_severity
 from agent_bom.mcp_server_runtime import ToolErrorPayload
 from agent_bom.mcp_tools.result_store import DurableScanResultStore
 

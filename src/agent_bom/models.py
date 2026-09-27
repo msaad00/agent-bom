@@ -22,6 +22,7 @@ from agent_bom.canonical_ids import (
     canonical_package_id,
     legacy_agent_id_v1,
 )
+from agent_bom.core.severity import Severity as Severity
 from agent_bom.evidence.scan_run import ScanRun
 from agent_bom.package_utils import (
     host_matches_domain as _host_matches_domain,
@@ -38,15 +39,6 @@ from agent_bom.package_utils import (
 def _utc_now_iso() -> str:
     """Return a UTC ISO-8601 timestamp for discovery lifecycle defaults."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-class Severity(str, Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    NONE = "none"
-    UNKNOWN = "unknown"  # No CVSS/severity data available — not the same as NONE (no vulnerability)
 
 
 class AgentType(str, Enum):

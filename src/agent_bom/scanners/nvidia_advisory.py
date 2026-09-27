@@ -159,17 +159,11 @@ def _parse_csaf_severity(scores: list[dict]) -> tuple[Severity, float | None]:
     """Extract severity and CVSS score from CSAF scores array."""
     for score_entry in scores:
         cvss = score_entry.get("cvss_v3") or score_entry.get("cvss_v4") or {}
-        base_score = cvss.get("baseScore")
-        if base_score is not None:
-            base_score = float(base_score)
-            if base_score >= 9.0:
-                return Severity.CRITICAL, base_score
-            elif base_score >= 7.0:
-                return Severity.HIGH, base_score
-            elif base_score >= 4.0:
-                return Severity.MEDIUM, base_score
-            else:
-                return Severity.LOW, base_score
+        if cvss.get("baseScore") is not None:
+            from agent_bom.core.cvss import cvss_to_severity, normalize_cvss_score
+
+            base_score = normalize_cvss_score(cvss["baseScore"])
+            return cvss_to_severity(base_score), base_score
     return Severity.MEDIUM, None
 
 

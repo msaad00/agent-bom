@@ -26,7 +26,7 @@ from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.constants import is_credential_key
-from agent_bom.graph.severity import normalize_severity
+from agent_bom.core.severity import normalize_severity
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
     sanitize_command_args,

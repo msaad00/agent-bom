@@ -9,7 +9,7 @@ import sys
 from copy import deepcopy
 from typing import Any
 
-from agent_bom.graph.severity import severity_policy_rank
+from agent_bom.core.severity import severity_policy_rank
 
 # Keys whose value is credential material and must never appear in the
 # machine-readable envelope, which automation callers routinely capture and log.

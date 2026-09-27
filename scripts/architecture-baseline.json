@@ -1,0 +1,3118 @@
+{
+  "debt": {
+    "a2a_auth_posture.py": {
+      "file_lines": 667
+    },
+    "agent_identity.py::_verify_jwt_signature": {
+      "function_lines": 81
+    },
+    "agent_manifest.py": {
+      "file_lines": 626
+    },
+    "agent_manifest.py::_graph": {
+      "complexity": 19,
+      "function_lines": 114
+    },
+    "ai_components/framework_agents.py": {
+      "file_lines": 650
+    },
+    "ai_components/framework_agents.py::_scan_python_file": {
+      "complexity": 20,
+      "function_lines": 93
+    },
+    "ai_components/patterns.py": {
+      "file_lines": 808
+    },
+    "ai_components/scanner.py::_scan_file": {
+      "complexity": 20,
+      "function_lines": 148
+    },
+    "ai_enrich.py": {
+      "file_lines": 2086
+    },
+    "ai_enrich.py::_apply_skill_analysis": {
+      "function_lines": 92
+    },
+    "ai_enrich.py::_build_skill_analysis_prompt": {
+      "function_lines": 84
+    },
+    "ai_enrich.py::_run_ai_enrichment_impl": {
+      "function_lines": 124
+    },
+    "alerts/scan_alerts.py::alerts_from_scan_result": {
+      "function_lines": 104
+    },
+    "api/agent_identity_store.py": {
+      "file_lines": 1616
+    },
+    "api/agent_identity_store.py::cleanup_expired_grants": {
+      "function_lines": 85
+    },
+    "api/agent_identity_store.py::deprovision_dormant_identities": {
+      "function_lines": 83
+    },
+    "api/anomaly.py::detect_temporal_cost_anomalies": {
+      "function_lines": 89
+    },
+    "api/audit_log.py": {
+      "file_lines": 1021
+    },
+    "api/audit_log.py::_describe_rotation_posture": {
+      "function_lines": 91
+    },
+    "api/auto_correlation.py::_reconcile_parent": {
+      "function_lines": 179
+    },
+    "api/blueprint_store.py": {
+      "file_lines": 898
+    },
+    "api/clickhouse_store.py": {
+      "file_lines": 1183
+    },
+    "api/clickhouse_store.py::BufferedAnalyticsStore._flush_pending": {
+      "complexity": 21
+    },
+    "api/compliance_hub_store.py": {
+      "file_lines": 2843
+    },
+    "api/compliance_hub_store.py::SQLiteComplianceHubStore.list_current_page": {
+      "function_lines": 122
+    },
+    "api/compliance_hub_store.py::_upsert_current_finding_sqlite": {
+      "function_lines": 164
+    },
+    "api/compliance_hub_store.py::collect_scope_filtered_page": {
+      "function_lines": 88
+    },
+    "api/connection_store.py": {
+      "file_lines": 617
+    },
+    "api/cost_forecast.py::forecast_spend": {
+      "function_lines": 95
+    },
+    "api/cost_store.py": {
+      "file_lines": 869
+    },
+    "api/cost_store.py::SQLiteCostStore._init_db": {
+      "function_lines": 82
+    },
+    "api/credential_expiry.py::classify_credential": {
+      "function_lines": 92
+    },
+    "api/credential_rotation.py::build_credential_rotation_governance": {
+      "function_lines": 107
+    },
+    "api/fleet_store.py": {
+      "file_lines": 853
+    },
+    "api/gateway_activity_store.py": {
+      "file_lines": 1114
+    },
+    "api/gateway_activity_store.py::SQLiteGatewayActivityStore.append_batch": {
+      "function_lines": 114
+    },
+    "api/graph_store.py": {
+      "file_lines": 2915
+    },
+    "api/graph_store.py::SQLiteGraphStore._frontier_edge_query": {
+      "function_lines": 81
+    },
+    "api/graph_store.py::SQLiteGraphStore._walk_graph": {
+      "complexity": 31,
+      "function_lines": 142
+    },
+    "api/graph_store.py::SQLiteGraphStore.compliance_summary": {
+      "function_lines": 98
+    },
+    "api/graph_store.py::SQLiteGraphStore.query_inventory": {
+      "complexity": 17,
+      "function_lines": 230
+    },
+    "api/graph_store.py::SQLiteGraphStore.search_nodes": {
+      "function_lines": 125
+    },
+    "api/graph_store.py::SQLiteGraphStore.snapshot_stats": {
+      "function_lines": 157
+    },
+    "api/graph_store.py::containment_drilldown_graph": {
+      "function_lines": 85
+    },
+    "api/hub_ingest.py::hub_ingest_store_writes": {
+      "function_lines": 90
+    },
+    "api/hub_observations_partition.py": {
+      "file_lines": 618
+    },
+    "api/idempotency_store.py": {
+      "file_lines": 1254
+    },
+    "api/inventory_service.py::build_asset_list": {
+      "function_lines": 131
+    },
+    "api/mcp_config_store.py": {
+      "file_lines": 671
+    },
+    "api/metrics.py::render_prometheus_lines": {
+      "complexity": 20,
+      "function_lines": 91
+    },
+    "api/middleware.py": {
+      "file_lines": 2849
+    },
+    "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
+      "function_lines": 84
+    },
+    "api/middleware.py::APIKeyMiddleware._try_browser_session_auth": {
+      "complexity": 17
+    },
+    "api/middleware.py::APIKeyMiddleware._try_proxy_header_auth": {
+      "function_lines": 94
+    },
+    "api/middleware.py::MaxBodySizeMiddleware.dispatch": {
+      "complexity": 25,
+      "function_lines": 97
+    },
+    "api/middleware.py::TrustHeadersMiddleware.dispatch": {
+      "complexity": 20,
+      "function_lines": 125
+    },
+    "api/middleware.py::describe_proxy_control_plane_mtls_posture": {
+      "function_lines": 103
+    },
+    "api/middleware.py::get_rate_limit_key_status": {
+      "function_lines": 112
+    },
+    "api/model_key_broker.py": {
+      "file_lines": 714
+    },
+    "api/models.py": {
+      "file_lines": 1336
+    },
+    "api/neptune_graph.py": {
+      "file_lines": 674
+    },
+    "api/neptune_graph.py::NeptuneGraphStore.save_graph": {
+      "function_lines": 86
+    },
+    "api/oauth_as.py": {
+      "file_lines": 803
+    },
+    "api/oidc.py": {
+      "file_lines": 720
+    },
+    "api/oidc.py::verify_oidc_token": {
+      "function_lines": 87
+    },
+    "api/pipeline.py": {
+      "file_lines": 2086
+    },
+    "api/pipeline.py::_persist_graph_snapshot": {
+      "function_lines": 169
+    },
+    "api/pipeline.py::_run_scan_sync": {
+      "complexity": 136,
+      "function_lines": 1063
+    },
+    "api/postgres_access.py::PostgresKeyStore._init_tables": {
+      "function_lines": 92
+    },
+    "api/postgres_audit.py": {
+      "file_lines": 702
+    },
+    "api/postgres_common.py": {
+      "file_lines": 666
+    },
+    "api/postgres_compliance_hub.py": {
+      "file_lines": 1621
+    },
+    "api/postgres_compliance_hub.py::PostgresComplianceHubStore._init_tables": {
+      "function_lines": 223
+    },
+    "api/postgres_compliance_hub.py::PostgresComplianceHubStore._write_current_batch": {
+      "complexity": 16,
+      "function_lines": 211
+    },
+    "api/postgres_compliance_hub.py::PostgresComplianceHubStore._write_ledger_batch": {
+      "function_lines": 94
+    },
+    "api/postgres_compliance_hub.py::PostgresComplianceHubStore.list_current_page": {
+      "function_lines": 120
+    },
+    "api/postgres_gateway_activity.py::PostgresGatewayActivityStore.append_batch": {
+      "function_lines": 122
+    },
+    "api/postgres_graph.py": {
+      "file_lines": 3751
+    },
+    "api/postgres_graph.py::PostgresGraphStore._init_tables": {
+      "function_lines": 279
+    },
+    "api/postgres_graph.py::PostgresGraphStore._snapshot_digests": {
+      "function_lines": 95
+    },
+    "api/postgres_graph.py::PostgresGraphStore._walk_graph": {
+      "complexity": 35,
+      "function_lines": 171
+    },
+    "api/postgres_graph.py::PostgresGraphStore.compliance_summary": {
+      "function_lines": 90
+    },
+    "api/postgres_graph.py::PostgresGraphStore.load_graph": {
+      "function_lines": 190
+    },
+    "api/postgres_graph.py::PostgresGraphStore.query_inventory": {
+      "complexity": 16,
+      "function_lines": 211
+    },
+    "api/postgres_graph.py::PostgresGraphStore.save_graph_streaming": {
+      "complexity": 25,
+      "function_lines": 482
+    },
+    "api/postgres_graph.py::PostgresGraphStore.search_nodes": {
+      "function_lines": 99
+    },
+    "api/postgres_graph.py::PostgresGraphStore.snapshot_stats": {
+      "function_lines": 157
+    },
+    "api/postgres_job_store.py": {
+      "file_lines": 820
+    },
+    "api/postgres_job_store.py::PostgresJobStore._init_tables": {
+      "function_lines": 134
+    },
+    "api/postgres_policy.py": {
+      "file_lines": 633
+    },
+    "api/postgres_policy.py::PostgresPolicyStore._init_tables": {
+      "function_lines": 147
+    },
+    "api/repo_tree_scan.py::scan_cloned_repo_tree": {
+      "complexity": 52,
+      "function_lines": 363
+    },
+    "api/risk_campaigns.py::derive_campaigns": {
+      "function_lines": 115
+    },
+    "api/routes/campaigns.py": {
+      "file_lines": 948
+    },
+    "api/routes/campaigns.py::verify_campaign_workflow": {
+      "function_lines": 143
+    },
+    "api/routes/cloud.py": {
+      "file_lines": 1488
+    },
+    "api/routes/cloud.py::_build_account_summary": {
+      "function_lines": 141
+    },
+    "api/routes/cloud.py::_run_cis_benchmark": {
+      "function_lines": 85
+    },
+    "api/routes/cloud.py::cloud_cis_benchmark": {
+      "function_lines": 98
+    },
+    "api/routes/cloud.py::cloud_runtime_evidence_ingest": {
+      "complexity": 29,
+      "function_lines": 229
+    },
+    "api/routes/cloud.py::cloud_runtime_evidence_ingest._ingest": {
+      "complexity": 16,
+      "function_lines": 159
+    },
+    "api/routes/cloud.py::cloud_side_scan_trigger": {
+      "function_lines": 129
+    },
+    "api/routes/cloud_connections.py": {
+      "file_lines": 1800
+    },
+    "api/routes/cloud_connections.py::_run_aws_connection_scan": {
+      "function_lines": 112
+    },
+    "api/routes/cloud_connections.py::_run_database_connection_scan": {
+      "function_lines": 119
+    },
+    "api/routes/cloud_connections.py::create_connection": {
+      "function_lines": 136
+    },
+    "api/routes/cloud_connections.py::ingest_connection_events": {
+      "function_lines": 123
+    },
+    "api/routes/cloud_connections.py::scan_connection": {
+      "function_lines": 132
+    },
+    "api/routes/cloud_connections.py::test_connection": {
+      "function_lines": 103
+    },
+    "api/routes/compliance.py": {
+      "file_lines": 3079
+    },
+    "api/routes/compliance.py::_build_compliance": {
+      "complexity": 23,
+      "function_lines": 322
+    },
+    "api/routes/compliance.py::_build_compliance._build_controls": {
+      "function_lines": 95
+    },
+    "api/routes/compliance.py::_cis_benchmark_trends_impl": {
+      "function_lines": 115
+    },
+    "api/routes/compliance.py::_list_cis_benchmark_checks_impl": {
+      "function_lines": 81
+    },
+    "api/routes/compliance.py::_list_hub_findings_impl": {
+      "function_lines": 99
+    },
+    "api/routes/compliance.py::export_compliance_pack": {
+      "function_lines": 228
+    },
+    "api/routes/compliance.py::export_compliance_report": {
+      "function_lines": 308
+    },
+    "api/routes/compliance.py::get_compliance_summary": {
+      "function_lines": 82
+    },
+    "api/routes/compliance.py::ingest_compliance_findings": {
+      "function_lines": 136
+    },
+    "api/routes/discovery.py": {
+      "file_lines": 960
+    },
+    "api/routes/discovery.py::_serialize_agent": {
+      "function_lines": 128
+    },
+    "api/routes/discovery.py::get_agent_lifecycle": {
+      "function_lines": 180
+    },
+    "api/routes/enterprise.py": {
+      "file_lines": 3216
+    },
+    "api/routes/enterprise.py::auth_policy": {
+      "function_lines": 97
+    },
+    "api/routes/enterprise.py::export_finding_triage_vex": {
+      "complexity": 20,
+      "function_lines": 194
+    },
+    "api/routes/enterprise.py::ingest_finding_triage_vex": {
+      "function_lines": 91
+    },
+    "api/routes/enterprise.py::oidc_browser_callback": {
+      "complexity": 20,
+      "function_lines": 142
+    },
+    "api/routes/fleet.py": {
+      "file_lines": 801
+    },
+    "api/routes/fleet.py::quarantine_fleet_agent": {
+      "function_lines": 102
+    },
+    "api/routes/fleet.py::sync_fleet": {
+      "complexity": 23,
+      "function_lines": 254
+    },
+    "api/routes/gateway.py": {
+      "file_lines": 669
+    },
+    "api/routes/gateway.py::evaluate_gateway": {
+      "function_lines": 93
+    },
+    "api/routes/gateway_feed.py": {
+      "file_lines": 1279
+    },
+    "api/routes/graph.py": {
+      "file_lines": 4098
+    },
+    "api/routes/graph.py::get_graph": {
+      "function_lines": 183
+    },
+    "api/routes/graph.py::get_graph_node_neighbors": {
+      "function_lines": 134
+    },
+    "api/routes/graph.py::get_graph_paths": {
+      "function_lines": 85
+    },
+    "api/routes/graph.py::get_graph_rollup": {
+      "function_lines": 137
+    },
+    "api/routes/graph.py::query_graph": {
+      "function_lines": 114
+    },
+    "api/routes/graph_scenarios.py": {
+      "file_lines": 779
+    },
+    "api/routes/graph_scenarios.py::_apply_operations": {
+      "function_lines": 126
+    },
+    "api/routes/graph_scenarios.py::compare_graph_scenario": {
+      "function_lines": 183
+    },
+    "api/routes/identities.py": {
+      "file_lines": 1086
+    },
+    "api/routes/observability.py": {
+      "file_lines": 2051
+    },
+    "api/routes/observability.py::_ingest_traces_sync": {
+      "function_lines": 95
+    },
+    "api/routes/observability.py::_normalize_pushed_report": {
+      "function_lines": 96
+    },
+    "api/routes/observability.py::receive_push": {
+      "complexity": 47,
+      "function_lines": 392
+    },
+    "api/routes/observability.py::receive_push._persist": {
+      "function_lines": 83
+    },
+    "api/routes/overview.py": {
+      "file_lines": 1927
+    },
+    "api/routes/overview.py::_build_overview": {
+      "function_lines": 81
+    },
+    "api/routes/overview.py::_compose_overview": {
+      "function_lines": 215
+    },
+    "api/routes/overview.py::_estate_rollup": {
+      "function_lines": 146
+    },
+    "api/routes/privacy.py::_tenant_dataset": {
+      "function_lines": 87
+    },
+    "api/routes/proxy.py": {
+      "file_lines": 1618
+    },
+    "api/routes/proxy.py::_gateway_activity_record_from_alert": {
+      "function_lines": 89
+    },
+    "api/routes/proxy.py::ingest_proxy_audit": {
+      "complexity": 29,
+      "function_lines": 223
+    },
+    "api/routes/scan.py": {
+      "file_lines": 4851
+    },
+    "api/routes/scan.py::_finding_facets_bounded": {
+      "function_lines": 189
+    },
+    "api/routes/scan.py::_iter_scan_findings": {
+      "complexity": 26,
+      "function_lines": 149
+    },
+    "api/routes/scan.py::_list_finding_groups_impl": {
+      "complexity": 21,
+      "function_lines": 184
+    },
+    "api/routes/scan.py::_list_findings_impl": {
+      "complexity": 34,
+      "function_lines": 479
+    },
+    "api/routes/scan.py::_list_findings_view_impl": {
+      "function_lines": 171
+    },
+    "api/routes/scan.py::_merged_scan_bulk_page": {
+      "complexity": 24,
+      "function_lines": 134
+    },
+    "api/routes/scan.py::create_scan": {
+      "function_lines": 147
+    },
+    "api/routes/scan.py::current_findings_snapshot": {
+      "complexity": 18,
+      "function_lines": 140
+    },
+    "api/routes/scan.py::enqueue_correlation_cohort": {
+      "complexity": 25,
+      "function_lines": 191
+    },
+    "api/routes/scan.py::enqueue_scan_job": {
+      "function_lines": 175
+    },
+    "api/routes/scan.py::ingest_bulk_findings": {
+      "function_lines": 120
+    },
+    "api/routes/scan.py::list_findings": {
+      "function_lines": 94
+    },
+    "api/routes/scim.py": {
+      "file_lines": 892
+    },
+    "api/routes/scim.py::_apply_group_patch": {
+      "complexity": 18
+    },
+    "api/routes/scim.py::_apply_user_patch": {
+      "complexity": 17
+    },
+    "api/routes/sources.py": {
+      "file_lines": 721
+    },
+    "api/routes/sources.py::run_source_cohort": {
+      "complexity": 19,
+      "function_lines": 167
+    },
+    "api/scan_batches.py::refresh_batch_parent": {
+      "complexity": 17,
+      "function_lines": 105
+    },
+    "api/scheduler.py::scheduler_loop": {
+      "complexity": 17,
+      "function_lines": 120
+    },
+    "api/scim.py::describe_scim_posture": {
+      "function_lines": 110
+    },
+    "api/secret_lifecycle.py::_rotation_posture": {
+      "function_lines": 89
+    },
+    "api/server.py": {
+      "file_lines": 1809
+    },
+    "api/server.py::_cleanup_tick": {
+      "function_lines": 136
+    },
+    "api/server.py::_enqueue_scheduled_scan": {
+      "complexity": 18,
+      "function_lines": 146
+    },
+    "api/server.py::_lifespan": {
+      "complexity": 71,
+      "function_lines": 396
+    },
+    "api/server.py::configure_api": {
+      "function_lines": 88
+    },
+    "api/snowflake_store.py": {
+      "file_lines": 1170
+    },
+    "api/store.py": {
+      "file_lines": 709
+    },
+    "api/stores.py": {
+      "file_lines": 617
+    },
+    "api/tenant_quota.py::get_tenant_quota_runtime": {
+      "function_lines": 97
+    },
+    "asset_tracker.py::AssetTracker.record_scan": {
+      "function_lines": 119
+    },
+    "ast/application_entrypoints.py::_non_python_entries": {
+      "complexity": 21,
+      "function_lines": 222
+    },
+    "ast/application_entrypoints.py::_python_entries": {
+      "complexity": 29,
+      "function_lines": 107
+    },
+    "ast/js_ts/engine.py": {
+      "file_lines": 881
+    },
+    "ast/js_ts/facade.py": {
+      "file_lines": 1099
+    },
+    "ast/js_ts/facade.py::build_js_ts_dependency_symbol_reach": {
+      "complexity": 17
+    },
+    "ast/js_ts/facade.py::build_js_ts_flow_findings": {
+      "complexity": 56,
+      "function_lines": 270
+    },
+    "ast/js_ts/facade.py::scan_js_ts_file": {
+      "complexity": 33,
+      "function_lines": 301
+    },
+    "ast/kotlin/analyzer.py::_collect_kotlin_tool_registrations": {
+      "function_lines": 83
+    },
+    "ast_analyzer.py": {
+      "file_lines": 883
+    },
+    "ast_analyzer.py::analyze_project": {
+      "complexity": 89,
+      "function_lines": 685
+    },
+    "ast_csharp.py::build_csharp_dependency_symbol_reach": {
+      "complexity": 16
+    },
+    "ast_go.py": {
+      "file_lines": 1093
+    },
+    "ast_go.py::build_go_dependency_symbol_reach": {
+      "complexity": 17,
+      "function_lines": 94
+    },
+    "ast_go.py::build_go_flow_findings": {
+      "complexity": 43,
+      "function_lines": 260
+    },
+    "ast_go.py::scan_go_file": {
+      "function_lines": 132
+    },
+    "ast_java.py::_collect_java_tool_registrations": {
+      "function_lines": 93
+    },
+    "ast_java.py::build_java_dependency_symbol_reach": {
+      "complexity": 16
+    },
+    "ast_models.py": {
+      "file_lines": 618
+    },
+    "ast_models.py::ASTAnalysisResult.to_dict": {
+      "function_lines": 135
+    },
+    "ast_php.py::build_php_dependency_symbol_reach": {
+      "complexity": 17,
+      "function_lines": 88
+    },
+    "ast_python_analysis.py": {
+      "file_lines": 2447
+    },
+    "ast_python_analysis.py::_analyze_file": {
+      "complexity": 53,
+      "function_lines": 353
+    },
+    "ast_python_analysis.py::_build_call_graph": {
+      "complexity": 16,
+      "function_lines": 81
+    },
+    "ast_python_analysis.py::_build_function_cfg_edges": {
+      "complexity": 18,
+      "function_lines": 83
+    },
+    "ast_python_analysis.py::_build_taint_findings": {
+      "complexity": 114,
+      "function_lines": 540
+    },
+    "ast_python_analysis.py::_build_taint_findings.analyze_function": {
+      "complexity": 71,
+      "function_lines": 399
+    },
+    "ast_python_analysis.py::_build_taint_findings.analyze_function.call_taint": {
+      "complexity": 27,
+      "function_lines": 183
+    },
+    "ast_python_analysis.py::_build_taint_findings.analyze_function.expr_taint": {
+      "complexity": 21
+    },
+    "ast_python_analysis.py::_build_taint_findings.analyze_function.walk_statements": {
+      "complexity": 20,
+      "function_lines": 122
+    },
+    "ast_python_analysis.py::_build_taint_findings.validator_param_names": {
+      "complexity": 19
+    },
+    "ast_python_analysis.py::_call_has_tainted_argument": {
+      "complexity": 19
+    },
+    "ast_ruby.py::_collect_ruby_tool_registrations": {
+      "function_lines": 97
+    },
+    "ast_ruby.py::build_ruby_dependency_symbol_reach": {
+      "complexity": 16
+    },
+    "ast_rust.py::_collect_rust_tool_registrations": {
+      "complexity": 18,
+      "function_lines": 97
+    },
+    "ast_rust.py::build_rust_dependency_symbol_reach": {
+      "complexity": 16
+    },
+    "ast_source_mask.py::mask_line_comments_and_strings": {
+      "complexity": 20,
+      "function_lines": 131
+    },
+    "ast_swift.py": {
+      "file_lines": 615
+    },
+    "ast_swift.py::build_swift_dependency_symbol_reach": {
+      "complexity": 17,
+      "function_lines": 90
+    },
+    "atlas.py::tag_blast_radius": {
+      "complexity": 27,
+      "function_lines": 135
+    },
+    "audit_replay.py": {
+      "file_lines": 618
+    },
+    "audit_replay.py::display_rich": {
+      "complexity": 34,
+      "function_lines": 188
+    },
+    "audit_replay.py::parse_audit_log": {
+      "function_lines": 109
+    },
+    "capabilities.py::_build_registry": {
+      "function_lines": 117
+    },
+    "cli/__init__.py": {
+      "file_lines": 632
+    },
+    "cli/_analysis.py": {
+      "file_lines": 775
+    },
+    "cli/_analysis.py::analytics_cmd": {
+      "complexity": 16,
+      "function_lines": 114
+    },
+    "cli/_analysis.py::graph_cmd": {
+      "function_lines": 88
+    },
+    "cli/_analysis.py::introspect_cmd": {
+      "complexity": 32,
+      "function_lines": 198
+    },
+    "cli/_attest_group.py::compliance_verify_cmd": {
+      "complexity": 24,
+      "function_lines": 120
+    },
+    "cli/_auth_group.py::setup_oidc_cmd": {
+      "complexity": 23,
+      "function_lines": 131
+    },
+    "cli/_check.py": {
+      "file_lines": 1394
+    },
+    "cli/_check.py::_check_payload_to_sarif": {
+      "function_lines": 106
+    },
+    "cli/_check.py::_exit_model_verification": {
+      "function_lines": 91
+    },
+    "cli/_check.py::check": {
+      "complexity": 51,
+      "function_lines": 533
+    },
+    "cli/_check.py::verify": {
+      "complexity": 29,
+      "function_lines": 219
+    },
+    "cli/_cloud_group.py": {
+      "file_lines": 1108
+    },
+    "cli/_cloud_group.py::_run_cloud_scan": {
+      "function_lines": 101
+    },
+    "cli/_cloud_group.py::side_scan_cmd": {
+      "function_lines": 111
+    },
+    "cli/_common.py::_build_agents_from_inventory": {
+      "function_lines": 122
+    },
+    "cli/_db.py::db_framework_status": {
+      "function_lines": 104
+    },
+    "cli/_db.py::db_update": {
+      "function_lines": 104
+    },
+    "cli/_doctor.py::doctor_cmd": {
+      "complexity": 34,
+      "function_lines": 301
+    },
+    "cli/_entry_points.py": {
+      "file_lines": 850
+    },
+    "cli/_entry_points.py::_connect_options": {
+      "function_lines": 124
+    },
+    "cli/_entry_points.py::_make_connect_subcommand": {
+      "function_lines": 82
+    },
+    "cli/_focused_commands.py::code_cmd": {
+      "complexity": 17,
+      "function_lines": 92
+    },
+    "cli/_focused_commands.py::secrets_cmd": {
+      "function_lines": 83
+    },
+    "cli/_gateway.py": {
+      "file_lines": 773
+    },
+    "cli/_gateway.py::serve_cmd": {
+      "complexity": 42,
+      "function_lines": 322
+    },
+    "cli/_history.py": {
+      "file_lines": 794
+    },
+    "cli/_history.py::_report_from_json": {
+      "complexity": 18,
+      "function_lines": 115
+    },
+    "cli/_history.py::history_cmd": {
+      "function_lines": 94
+    },
+    "cli/_history.py::rescan_command": {
+      "complexity": 38,
+      "function_lines": 245
+    },
+    "cli/_inventory.py::inventory": {
+      "complexity": 17,
+      "function_lines": 98
+    },
+    "cli/_inventory.py::where": {
+      "complexity": 16,
+      "function_lines": 107
+    },
+    "cli/_quickstart.py::_run_quickstart": {
+      "function_lines": 108
+    },
+    "cli/_remediate.py::remediate_cmd": {
+      "complexity": 30,
+      "function_lines": 175
+    },
+    "cli/_runtime.py": {
+      "file_lines": 998
+    },
+    "cli/_runtime.py::protect_cmd": {
+      "complexity": 17,
+      "function_lines": 144
+    },
+    "cli/_runtime.py::proxy_bootstrap_cmd": {
+      "function_lines": 91
+    },
+    "cli/_runtime.py::proxy_cmd": {
+      "function_lines": 166
+    },
+    "cli/_runtime.py::proxy_configure_cmd": {
+      "function_lines": 88
+    },
+    "cli/_scan_runner.py::run_default_scan": {
+      "function_lines": 187
+    },
+    "cli/_server.py": {
+      "file_lines": 1286
+    },
+    "cli/_server.py::api_cmd": {
+      "function_lines": 162
+    },
+    "cli/_server.py::mcp_server_cmd": {
+      "function_lines": 111
+    },
+    "cli/_server.py::serve_cmd": {
+      "function_lines": 168
+    },
+    "cli/_skills_group.py::skills_scan_cmd": {
+      "complexity": 30,
+      "function_lines": 182
+    },
+    "cli/agents/_cloud.py": {
+      "file_lines": 756
+    },
+    "cli/agents/_cloud.py::run_benchmarks": {
+      "complexity": 59,
+      "function_lines": 433
+    },
+    "cli/agents/_cloud.py::run_cloud_discovery": {
+      "complexity": 52,
+      "function_lines": 230
+    },
+    "cli/agents/_discovery.py": {
+      "file_lines": 1295
+    },
+    "cli/agents/_discovery.py::run_local_discovery": {
+      "complexity": 149,
+      "function_lines": 1221
+    },
+    "cli/agents/_output.py": {
+      "file_lines": 675
+    },
+    "cli/agents/_output.py::_stdout_serialization": {
+      "complexity": 17
+    },
+    "cli/agents/_output.py::render_output": {
+      "complexity": 83,
+      "function_lines": 391
+    },
+    "cli/agents/_output.py::render_output._emit_report": {
+      "complexity": 74,
+      "function_lines": 309
+    },
+    "cli/agents/_post.py::compute_exit_code": {
+      "complexity": 59,
+      "function_lines": 252
+    },
+    "cli/agents/_post.py::run_integrations": {
+      "complexity": 38,
+      "function_lines": 230
+    },
+    "cli/agents/_preflight.py::emit_dry_run_plan": {
+      "complexity": 42,
+      "function_lines": 161
+    },
+    "cli/agents/_preflight.py::run_iac_only_scan": {
+      "complexity": 17,
+      "function_lines": 160
+    },
+    "cli/agents/scan_cmd.py": {
+      "file_lines": 3539
+    },
+    "cli/agents/scan_cmd.py::_exit_incomplete_scan_with_partial_summary": {
+      "function_lines": 103
+    },
+    "cli/agents/scan_cmd.py::scan": {
+      "complexity": 396,
+      "function_lines": 3156
+    },
+    "cli/options_sources.py::input_options": {
+      "function_lines": 129
+    },
+    "cli/options_sources.py::output_options": {
+      "function_lines": 170
+    },
+    "cli/options_surfaces.py": {
+      "file_lines": 635
+    },
+    "cli/options_surfaces.py::discovery_options": {
+      "function_lines": 121
+    },
+    "cli/options_surfaces.py::integration_options": {
+      "function_lines": 116
+    },
+    "cli/run.py::run_cmd": {
+      "function_lines": 122
+    },
+    "client.py": {
+      "file_lines": 1208
+    },
+    "cloud/aisvs_benchmark.py": {
+      "file_lines": 674
+    },
+    "cloud/audit_trail.py": {
+      "file_lines": 679
+    },
+    "cloud/audit_trail.py::read_aws_cloudtrail": {
+      "complexity": 18
+    },
+    "cloud/authorization_evaluator.py::evaluate_authorization": {
+      "complexity": 24,
+      "function_lines": 99
+    },
+    "cloud/aws.py": {
+      "file_lines": 1627
+    },
+    "cloud/aws.py::_discover_ec2_instances": {
+      "function_lines": 82
+    },
+    "cloud/aws.py::_discover_eks_images": {
+      "function_lines": 82
+    },
+    "cloud/aws.py::_discover_lambda_functions": {
+      "function_lines": 81
+    },
+    "cloud/aws.py::_discover_sagemaker": {
+      "function_lines": 99
+    },
+    "cloud/aws.py::_discover_step_functions": {
+      "function_lines": 112
+    },
+    "cloud/aws.py::_enrich_agents_with_iam": {
+      "function_lines": 82
+    },
+    "cloud/aws.py::discover": {
+      "complexity": 34,
+      "function_lines": 275
+    },
+    "cloud/aws_cis_benchmark.py": {
+      "file_lines": 3449
+    },
+    "cloud/aws_cis_benchmark.py::_check_3_10": {
+      "complexity": 17
+    },
+    "cloud/aws_cis_benchmark.py::_check_3_11": {
+      "complexity": 17
+    },
+    "cloud/aws_cis_benchmark.py::run_all_account_benchmarks": {
+      "complexity": 16,
+      "function_lines": 112
+    },
+    "cloud/aws_cis_benchmark.py::run_benchmark": {
+      "complexity": 21,
+      "function_lines": 164
+    },
+    "cloud/aws_cis_benchmark.py::run_benchmark_all_regions": {
+      "complexity": 19,
+      "function_lines": 123
+    },
+    "cloud/aws_iam_collector.py::_collect_policies": {
+      "complexity": 17
+    },
+    "cloud/aws_iam_collector.py::collect_iam_roles_usage_evidence": {
+      "function_lines": 120
+    },
+    "cloud/aws_inventory.py": {
+      "file_lines": 2744
+    },
+    "cloud/aws_inventory.py::_discover_iam": {
+      "function_lines": 90
+    },
+    "cloud/aws_inventory.py::_discover_network_edge": {
+      "complexity": 39,
+      "function_lines": 276
+    },
+    "cloud/aws_inventory.py::discover_all_account_inventories": {
+      "function_lines": 106
+    },
+    "cloud/aws_inventory.py::discover_inventory": {
+      "complexity": 23,
+      "function_lines": 207
+    },
+    "cloud/aws_inventory.py::discover_inventory_all_regions": {
+      "complexity": 27,
+      "function_lines": 219
+    },
+    "cloud/aws_organizations.py::_derive_findings": {
+      "function_lines": 93
+    },
+    "cloud/aws_organizations.py::discover_organization": {
+      "complexity": 29,
+      "function_lines": 165
+    },
+    "cloud/azure.py": {
+      "file_lines": 829
+    },
+    "cloud/azure.py::_discover_ai_foundry": {
+      "function_lines": 85
+    },
+    "cloud/azure.py::_discover_azure_functions": {
+      "complexity": 18,
+      "function_lines": 135
+    },
+    "cloud/azure.py::_discover_container_apps": {
+      "function_lines": 97
+    },
+    "cloud/azure.py::_discover_ml_endpoints": {
+      "function_lines": 127
+    },
+    "cloud/azure.py::_discover_openai_deployments": {
+      "function_lines": 107
+    },
+    "cloud/azure.py::discover": {
+      "function_lines": 103
+    },
+    "cloud/azure_authorization_collector.py::collect_azure_authorization": {
+      "complexity": 24,
+      "function_lines": 170
+    },
+    "cloud/azure_cis_benchmark.py": {
+      "file_lines": 4090
+    },
+    "cloud/azure_cis_benchmark.py::run_benchmark": {
+      "complexity": 20,
+      "function_lines": 238
+    },
+    "cloud/azure_event_ingest.py::consume_azure_events": {
+      "function_lines": 131
+    },
+    "cloud/azure_event_ingest.py::dispatch_change_event": {
+      "function_lines": 147
+    },
+    "cloud/azure_inventory.py": {
+      "file_lines": 2433
+    },
+    "cloud/azure_inventory.py::_discover_databases": {
+      "function_lines": 104
+    },
+    "cloud/azure_inventory.py::_discover_entra_directory": {
+      "complexity": 18,
+      "function_lines": 128
+    },
+    "cloud/azure_inventory.py::discover_inventory": {
+      "complexity": 27,
+      "function_lines": 329
+    },
+    "cloud/azure_rbac_evidence.py::_authoritative_bundle": {
+      "function_lines": 129
+    },
+    "cloud/azure_rbac_evidence.py::normalize_azure_rbac_inventory": {
+      "function_lines": 97
+    },
+    "cloud/benchmark_provenance.py::evaluate_drift": {
+      "complexity": 17
+    },
+    "cloud/container_sbom.py::scan_container_image": {
+      "function_lines": 123
+    },
+    "cloud/coreweave.py::_discover_gpu_pods": {
+      "function_lines": 91
+    },
+    "cloud/coreweave.py::_discover_inference_services": {
+      "function_lines": 94
+    },
+    "cloud/coreweave.py::_discover_infiniband_jobs": {
+      "function_lines": 83
+    },
+    "cloud/coreweave.py::discover": {
+      "complexity": 16,
+      "function_lines": 94
+    },
+    "cloud/crusoe.py::discover": {
+      "function_lines": 104
+    },
+    "cloud/databricks.py::discover": {
+      "function_lines": 176
+    },
+    "cloud/databricks_security.py": {
+      "file_lines": 605
+    },
+    "cloud/event_ingest.py::consume_aws_events": {
+      "function_lines": 141
+    },
+    "cloud/event_ingest.py::dispatch_change_event": {
+      "function_lines": 139
+    },
+    "cloud/gcp.py": {
+      "file_lines": 613
+    },
+    "cloud/gcp.py::_discover_cloud_functions": {
+      "function_lines": 133
+    },
+    "cloud/gcp.py::_discover_cloud_run": {
+      "function_lines": 97
+    },
+    "cloud/gcp.py::_discover_gke_clusters": {
+      "function_lines": 99
+    },
+    "cloud/gcp.py::_discover_vertex_ai": {
+      "function_lines": 121
+    },
+    "cloud/gcp.py::discover": {
+      "function_lines": 93
+    },
+    "cloud/gcp_authorization_collector.py::collect_gcp_authorization": {
+      "complexity": 45,
+      "function_lines": 327
+    },
+    "cloud/gcp_cis_benchmark.py": {
+      "file_lines": 2949
+    },
+    "cloud/gcp_cis_benchmark.py::run_benchmark": {
+      "function_lines": 135
+    },
+    "cloud/gcp_event_ingest.py::consume_gcp_events": {
+      "function_lines": 132
+    },
+    "cloud/gcp_event_ingest.py::dispatch_change_event": {
+      "function_lines": 139
+    },
+    "cloud/gcp_iam_evidence.py::_authoritative_bundle": {
+      "complexity": 19,
+      "function_lines": 142
+    },
+    "cloud/gcp_iam_evidence.py::normalize_gcp_iam_inventory": {
+      "function_lines": 126
+    },
+    "cloud/gcp_inventory.py": {
+      "file_lines": 2032
+    },
+    "cloud/gcp_inventory.py::_discover_load_balancers": {
+      "function_lines": 111
+    },
+    "cloud/gcp_inventory.py::discover_inventory": {
+      "complexity": 24,
+      "function_lines": 274
+    },
+    "cloud/gcp_organizations.py::_derive_findings": {
+      "function_lines": 86
+    },
+    "cloud/gpu_infra.py": {
+      "file_lines": 942
+    },
+    "cloud/gpu_infra.py::discover_docker_gpu_containers": {
+      "complexity": 18,
+      "function_lines": 146
+    },
+    "cloud/gpu_infra.py::gpu_infra_to_agents": {
+      "function_lines": 101
+    },
+    "cloud/lambda_labs.py::discover": {
+      "function_lines": 91
+    },
+    "cloud/mlflow_provider.py::_discover_experiments": {
+      "function_lines": 81
+    },
+    "cloud/mlflow_provider.py::_discover_registered_models": {
+      "function_lines": 100
+    },
+    "cloud/model_provenance.py::check_hf_model": {
+      "complexity": 18,
+      "function_lines": 141
+    },
+    "cloud/nebius.py": {
+      "file_lines": 666
+    },
+    "cloud/nebius.py::_discover_gpu_instances": {
+      "function_lines": 104
+    },
+    "cloud/nebius.py::_discover_infiniband_jobs": {
+      "function_lines": 114
+    },
+    "cloud/nebius.py::_discover_k8s_gpu_pods": {
+      "function_lines": 114
+    },
+    "cloud/nebius.py::discover": {
+      "function_lines": 88
+    },
+    "cloud/ollama.py::discover": {
+      "function_lines": 126
+    },
+    "cloud/onboarding.py": {
+      "file_lines": 666
+    },
+    "cloud/onboarding.py::aws_cloudformation_template": {
+      "function_lines": 94
+    },
+    "cloud/openai_provider.py::_discover_assistants": {
+      "function_lines": 109
+    },
+    "cloud/openai_provider.py::_discover_fine_tunes": {
+      "function_lines": 94
+    },
+    "cloud/registry_sweep.py": {
+      "file_lines": 636
+    },
+    "cloud/registry_sweep.py::sweep_registry": {
+      "function_lines": 91
+    },
+    "cloud/runpod.py::discover": {
+      "function_lines": 147
+    },
+    "cloud/runtime_workload_evidence.py": {
+      "file_lines": 941
+    },
+    "cloud/runtime_workload_evidence_store.py": {
+      "file_lines": 682
+    },
+    "cloud/runtime_workload_evidence_store.py::PostgresRuntimeWorkloadEvidenceStore._create_schema": {
+      "function_lines": 153
+    },
+    "cloud/sbom_pull.py::_pull_ecr": {
+      "function_lines": 103
+    },
+    "cloud/side_scan.py": {
+      "file_lines": 734
+    },
+    "cloud/side_scan_lifecycle.py": {
+      "file_lines": 1282
+    },
+    "cloud/side_scan_provider_adapters.py": {
+      "file_lines": 783
+    },
+    "cloud/side_scan_targets.py": {
+      "file_lines": 645
+    },
+    "cloud/side_scan_targets.py::run_cloud_side_scan_targets": {
+      "complexity": 23,
+      "function_lines": 115
+    },
+    "cloud/side_scan_targets.py::run_provider_side_scan": {
+      "function_lines": 194
+    },
+    "cloud/snowflake.py": {
+      "file_lines": 4219
+    },
+    "cloud/snowflake.py::_discover_snowflake_notebooks": {
+      "function_lines": 164
+    },
+    "cloud/snowflake.py::_find_agent_usage_anomalies": {
+      "function_lines": 109
+    },
+    "cloud/snowflake.py::_live_role_grants": {
+      "complexity": 19,
+      "function_lines": 104
+    },
+    "cloud/snowflake.py::_mine_access_history": {
+      "function_lines": 103
+    },
+    "cloud/snowflake.py::discover": {
+      "complexity": 18,
+      "function_lines": 191
+    },
+    "cloud/snowflake.py::discover_auth_posture": {
+      "complexity": 18,
+      "function_lines": 167
+    },
+    "cloud/snowflake.py::discover_data_exfil": {
+      "complexity": 19,
+      "function_lines": 189
+    },
+    "cloud/snowflake.py::discover_governance": {
+      "function_lines": 99
+    },
+    "cloud/snowflake.py::discover_login_anomalies": {
+      "function_lines": 153
+    },
+    "cloud/snowflake.py::discover_organization": {
+      "function_lines": 137
+    },
+    "cloud/snowflake.py::discover_snowflake_external_data": {
+      "function_lines": 140
+    },
+    "cloud/snowflake.py::discover_snowflake_integrations": {
+      "function_lines": 119
+    },
+    "cloud/snowflake.py::discover_snowflake_pipeline": {
+      "complexity": 17,
+      "function_lines": 164
+    },
+    "cloud/snowflake.py::discover_snowflake_services": {
+      "complexity": 19,
+      "function_lines": 143
+    },
+    "cloud/snowflake.py::enrich_report_with_snowflake_estate": {
+      "complexity": 25,
+      "function_lines": 153
+    },
+    "cloud/snowflake.py::merge_live_identity_into_object_graph": {
+      "complexity": 17
+    },
+    "cloud/snowflake_cis_benchmark.py": {
+      "file_lines": 890
+    },
+    "cloud/snowflake_cis_benchmark.py::run_benchmark": {
+      "function_lines": 116
+    },
+    "cloud/vastai.py::discover": {
+      "function_lines": 104
+    },
+    "cloud/vector_db.py::check_pinecone": {
+      "function_lines": 83
+    },
+    "cloud/vector_db.py::check_vector_db": {
+      "function_lines": 106
+    },
+    "cloud_sdk_freshness.py": {
+      "file_lines": 852
+    },
+    "cloud_sdk_freshness.py::cloud_api_deprecation_posture": {
+      "function_lines": 115
+    },
+    "cloud_sdk_freshness.py::cloud_sdk_pin_drift": {
+      "function_lines": 94
+    },
+    "cloud_sdk_freshness.py::cloud_sdk_posture": {
+      "function_lines": 119
+    },
+    "cmmc.py::tag_blast_radius": {
+      "complexity": 21,
+      "function_lines": 107
+    },
+    "compliance_nist_catalog.py::build_nist_800_53_catalog_line": {
+      "complexity": 16,
+      "function_lines": 123
+    },
+    "config.py": {
+      "file_lines": 971
+    },
+    "connectors/servicenow_connector.py::_discover_async": {
+      "function_lines": 86
+    },
+    "constants.py": {
+      "file_lines": 767
+    },
+    "context_graph.py": {
+      "file_lines": 1105
+    },
+    "context_graph.py::_build_lateral_path": {
+      "complexity": 42,
+      "function_lines": 118
+    },
+    "context_graph.py::build_context_graph": {
+      "complexity": 26,
+      "function_lines": 309
+    },
+    "context_graph.py::compute_interaction_risks": {
+      "complexity": 32,
+      "function_lines": 152
+    },
+    "coverage.py::detect_release_coverage_gaps": {
+      "function_lines": 99
+    },
+    "cross_env_correlation.py": {
+      "file_lines": 877
+    },
+    "cross_env_correlation.py::_extract_local_azure_openai_evidence": {
+      "complexity": 16
+    },
+    "data_boundaries.py::describe_data_access_boundaries": {
+      "function_lines": 171
+    },
+    "db/graph_store.py": {
+      "file_lines": 2373
+    },
+    "db/graph_store.py::_init_db": {
+      "complexity": 21
+    },
+    "db/graph_store.py::_snapshot_digests": {
+      "function_lines": 95
+    },
+    "db/graph_store.py::load_graph": {
+      "complexity": 16,
+      "function_lines": 196
+    },
+    "db/graph_store.py::save_graph_streaming": {
+      "complexity": 22,
+      "function_lines": 380
+    },
+    "db/local_analytics.py": {
+      "file_lines": 741
+    },
+    "db/local_analytics.py::LocalAnalyticsStore.record_scan_report": {
+      "function_lines": 91
+    },
+    "db/lookup.py": {
+      "file_lines": 768
+    },
+    "db/lookup.py::lookup_packages_batch": {
+      "function_lines": 111
+    },
+    "db/sync.py": {
+      "file_lines": 2132
+    },
+    "db/sync.py::_ingest_ghsa_advisory": {
+      "function_lines": 116
+    },
+    "db/sync.py::_parse_osv_entry": {
+      "complexity": 21,
+      "function_lines": 150
+    },
+    "db/sync.py::sync_db": {
+      "complexity": 16,
+      "function_lines": 151
+    },
+    "db/sync.py::sync_ghsa": {
+      "function_lines": 132
+    },
+    "db/sync.py::sync_nvd": {
+      "complexity": 23,
+      "function_lines": 191
+    },
+    "db/sync.py::sync_nvd_incremental": {
+      "complexity": 18,
+      "function_lines": 147
+    },
+    "db/sync.py::sync_osv": {
+      "function_lines": 83
+    },
+    "delivery.py": {
+      "file_lines": 888
+    },
+    "delivery.py::DeliveryClient.deliver": {
+      "function_lines": 156
+    },
+    "demo_estate/bootstrap.py::maybe_bootstrap_demo_estate": {
+      "complexity": 18,
+      "function_lines": 181
+    },
+    "demo_estate/enterprise.py": {
+      "file_lines": 639
+    },
+    "demo_estate/enterprise_ai.py": {
+      "file_lines": 779
+    },
+    "demo_estate/enterprise_ai.py::build_delivery_assets": {
+      "function_lines": 205
+    },
+    "demo_estate/enterprise_ai.py::build_third_party_ai_assets": {
+      "complexity": 16,
+      "function_lines": 209
+    },
+    "demo_estate/enterprise_findings.py": {
+      "file_lines": 954
+    },
+    "demo_estate/enterprise_findings.py::build_estate_findings": {
+      "complexity": 18,
+      "function_lines": 142
+    },
+    "demo_estate/enterprise_journeys.py::build_journeys": {
+      "function_lines": 186
+    },
+    "demo_estate/enterprise_risk.py": {
+      "file_lines": 1184
+    },
+    "demo_estate/enterprise_risk.py::build_runtime_findings": {
+      "function_lines": 82
+    },
+    "demo_estate/enterprise_risk.py::build_vulnerability_evidence": {
+      "function_lines": 89
+    },
+    "demo_estate/enterprise_scale.py": {
+      "file_lines": 674
+    },
+    "demo_estate/estate_graph.py": {
+      "file_lines": 680
+    },
+    "demo_estate/estate_graph.py::project_estate_into_graph": {
+      "complexity": 18,
+      "function_lines": 270
+    },
+    "demo_estate/presentation.py::build_enterprise_demo_story": {
+      "function_lines": 125
+    },
+    "demo_estate/showcase_catalog.py::seed_showcase_catalog_if_empty": {
+      "function_lines": 135
+    },
+    "demo_estate/showcase_graph.py": {
+      "file_lines": 1007
+    },
+    "demo_estate/showcase_graph.py::build_showcase_graph": {
+      "function_lines": 248
+    },
+    "demo_estate/showcase_graph.py::seed_showcase_fleet_and_runtime": {
+      "function_lines": 116
+    },
+    "demo_estate/showcase_graph.py::seed_showcase_graph_if_empty": {
+      "function_lines": 95
+    },
+    "demo_estate/showcase_surfaces.py::_seed_skills_scan": {
+      "function_lines": 85
+    },
+    "deploy_profiles.py::helm_validation_profiles": {
+      "function_lines": 94
+    },
+    "deploy_teardown.py::build_reference_teardown_plan": {
+      "function_lines": 88
+    },
+    "deployment_probe.py::verify_mcp_auth": {
+      "complexity": 16,
+      "function_lines": 86
+    },
+    "discovery/__init__.py": {
+      "file_lines": 1366
+    },
+    "discovery/__init__.py::discover_all": {
+      "complexity": 18,
+      "function_lines": 137
+    },
+    "discovery/__init__.py::discover_compose_mcp_servers": {
+      "complexity": 18,
+      "function_lines": 103
+    },
+    "discovery/__init__.py::discover_container_labels": {
+      "complexity": 19,
+      "function_lines": 142
+    },
+    "discovery/__init__.py::discover_global_configs": {
+      "complexity": 21,
+      "function_lines": 106
+    },
+    "discovery/__init__.py::discover_k8s_mcp_servers": {
+      "complexity": 16,
+      "function_lines": 147
+    },
+    "discovery/__init__.py::discover_running_processes": {
+      "function_lines": 85
+    },
+    "discovery/config_parsers.py": {
+      "file_lines": 695
+    },
+    "discovery/config_parsers.py::parse_mcp_config": {
+      "complexity": 19,
+      "function_lines": 143
+    },
+    "endpoint/inventory.py": {
+      "file_lines": 700
+    },
+    "endpoint/inventory.py::_listener_fallback": {
+      "complexity": 21,
+      "function_lines": 84
+    },
+    "endpoint/inventory.py::collect_processes_and_listeners": {
+      "complexity": 17,
+      "function_lines": 109
+    },
+    "endpoint/scope.py::workstation_scan_scopes": {
+      "function_lines": 133
+    },
+    "endpoint_onboarding.py::render_launch_agent_plist": {
+      "function_lines": 90
+    },
+    "endpoint_onboarding.py::write_endpoint_onboarding_bundle": {
+      "function_lines": 158
+    },
+    "enforcement.py": {
+      "file_lines": 773
+    },
+    "enforcement.py::check_claude_config": {
+      "complexity": 19,
+      "function_lines": 170
+    },
+    "enrichment.py": {
+      "file_lines": 951
+    },
+    "enrichment.py::enrich_vulnerabilities": {
+      "complexity": 50,
+      "function_lines": 213
+    },
+    "enrichment.py::fetch_epss_scores": {
+      "function_lines": 83
+    },
+    "event_normalization.py::build_agentic_identity_graph_projection": {
+      "function_lines": 109
+    },
+    "event_normalization.py::build_runtime_alert_relationships": {
+      "function_lines": 82
+    },
+    "evidence/agent_bom.py::build_agent_bom": {
+      "function_lines": 93
+    },
+    "evidence/scan_agent_bom.py::build_scan_agent_bom": {
+      "function_lines": 112
+    },
+    "exec_score.py::compute_exec_score": {
+      "function_lines": 142
+    },
+    "exploitability.py::fused_triage_priority": {
+      "complexity": 18
+    },
+    "export/destinations.py": {
+      "file_lines": 1171
+    },
+    "export/destinations.py::BigQueryWarehouseDestination.write_findings": {
+      "function_lines": 86
+    },
+    "export/destinations.py::ClickHouseWarehouseDestination.write_findings": {
+      "function_lines": 94
+    },
+    "export/destinations.py::SnowflakeWarehouseDestination.write_findings": {
+      "function_lines": 102
+    },
+    "export/destinations.py::build_destination": {
+      "complexity": 24,
+      "function_lines": 123
+    },
+    "filesystem.py": {
+      "file_lines": 624
+    },
+    "filesystem.py::parse_rpm_packages": {
+      "function_lines": 84
+    },
+    "filesystem.py::scan_disk_path_native": {
+      "function_lines": 95
+    },
+    "finding.py": {
+      "file_lines": 1859
+    },
+    "finding.py::Finding.to_dict": {
+      "function_lines": 136
+    },
+    "finding.py::blast_radius_to_finding": {
+      "complexity": 23,
+      "function_lines": 272
+    },
+    "finding.py::cloud_cis_check_to_finding": {
+      "function_lines": 141
+    },
+    "finding_runtime_evidence.py::compliance_tags_from_finding_row": {
+      "complexity": 17
+    },
+    "finding_scope.py": {
+      "file_lines": 997
+    },
+    "finding_scope.py::row_matches_scope": {
+      "complexity": 19
+    },
+    "finding_scope.py::safe_finding_response_payload": {
+      "complexity": 32,
+      "function_lines": 168
+    },
+    "fleet/trust_scoring.py::compute_trust_score": {
+      "function_lines": 108
+    },
+    "framework_mapping.py": {
+      "file_lines": 681
+    },
+    "gateway_server.py": {
+      "file_lines": 4265
+    },
+    "gateway_server.py::create_gateway_app": {
+      "complexity": 235,
+      "function_lines": 2246
+    },
+    "gateway_server.py::create_gateway_app.firewall_check": {
+      "function_lines": 116
+    },
+    "gateway_server.py::create_gateway_app.relay": {
+      "complexity": 164,
+      "function_lines": 1735
+    },
+    "github_actions.py::_extract_workflow_info": {
+      "complexity": 16,
+      "function_lines": 86
+    },
+    "github_actions.py::scan_github_actions": {
+      "complexity": 17,
+      "function_lines": 113
+    },
+    "glama.py::sync_from_glama": {
+      "complexity": 17,
+      "function_lines": 131
+    },
+    "graph/adjacency_page.py::incident_edge_page": {
+      "complexity": 25,
+      "function_lines": 142
+    },
+    "graph/aspm_overlay.py::apply_aspm_overlay": {
+      "complexity": 23,
+      "function_lines": 174
+    },
+    "graph/asset_entity.py::link_findings_to_graph_nodes": {
+      "complexity": 27,
+      "function_lines": 116
+    },
+    "graph/attack_path_campaigns.py::_explore_partition": {
+      "function_lines": 112
+    },
+    "graph/attack_path_campaigns.py::compute_partitioned_campaigns": {
+      "function_lines": 83
+    },
+    "graph/attack_path_fusion.py::_walk_from_entry": {
+      "function_lines": 99
+    },
+    "graph/attack_path_fusion.py::_walk_from_entry.dfs": {
+      "function_lines": 87
+    },
+    "graph/authorization_evidence.py::apply_authorization_evidence": {
+      "complexity": 33,
+      "function_lines": 174
+    },
+    "graph/build_workspace.py": {
+      "file_lines": 688
+    },
+    "graph/builder.py": {
+      "file_lines": 7487
+    },
+    "graph/builder.py::_add_agent_cloud_lineage": {
+      "function_lines": 282
+    },
+    "graph/builder.py::_add_ai_stack_frameworks": {
+      "complexity": 19,
+      "function_lines": 121
+    },
+    "graph/builder.py::_add_aws_organization": {
+      "function_lines": 104
+    },
+    "graph/builder.py::_add_cloud_audit_behavioral": {
+      "function_lines": 120
+    },
+    "graph/builder.py::_add_cloud_inventory": {
+      "complexity": 47,
+      "function_lines": 549
+    },
+    "graph/builder.py::_add_cloud_org_architecture_findings": {
+      "function_lines": 87
+    },
+    "graph/builder.py::_add_cloud_role_assignments": {
+      "complexity": 23,
+      "function_lines": 152
+    },
+    "graph/builder.py::_add_framework_topology": {
+      "complexity": 30,
+      "function_lines": 204
+    },
+    "graph/builder.py::_add_gcp_organization": {
+      "complexity": 20,
+      "function_lines": 171
+    },
+    "graph/builder.py::_add_inventory_group": {
+      "function_lines": 107
+    },
+    "graph/builder.py::_add_inventory_principal": {
+      "function_lines": 153
+    },
+    "graph/builder.py::_add_network_edge_inventory": {
+      "complexity": 46,
+      "function_lines": 343
+    },
+    "graph/builder.py::_add_normalized_cloud_resources": {
+      "function_lines": 109
+    },
+    "graph/builder.py::_add_snowflake_exfil": {
+      "complexity": 18,
+      "function_lines": 179
+    },
+    "graph/builder.py::_add_snowflake_external_data": {
+      "function_lines": 130
+    },
+    "graph/builder.py::_add_snowflake_governance": {
+      "complexity": 20,
+      "function_lines": 162
+    },
+    "graph/builder.py::_add_snowflake_identity": {
+      "function_lines": 109
+    },
+    "graph/builder.py::_add_snowflake_object_graph": {
+      "complexity": 29,
+      "function_lines": 211
+    },
+    "graph/builder.py::_add_snowflake_pipeline": {
+      "complexity": 20,
+      "function_lines": 146
+    },
+    "graph/builder.py::_add_snowflake_services": {
+      "complexity": 20,
+      "function_lines": 140
+    },
+    "graph/builder.py::_add_snowflake_source_lanes": {
+      "function_lines": 90
+    },
+    "graph/builder.py::_apply_ast_tool_overlay": {
+      "function_lines": 141
+    },
+    "graph/builder.py::_wire_network_entry_exposure_paths": {
+      "complexity": 28,
+      "function_lines": 104
+    },
+    "graph/builder.py::build_unified_graph_from_report": {
+      "complexity": 96,
+      "function_lines": 1265
+    },
+    "graph/ci_graph_overlay.py::apply_ci_graph_overlay": {
+      "complexity": 16,
+      "function_lines": 92
+    },
+    "graph/cnapp_overlay.py::_sensitive_text": {
+      "complexity": 22
+    },
+    "graph/cnapp_overlay.py::apply_cnapp_overlay": {
+      "complexity": 53,
+      "function_lines": 318
+    },
+    "graph/container.py": {
+      "file_lines": 1396
+    },
+    "graph/container.py::UnifiedGraph.filtered_view": {
+      "complexity": 16
+    },
+    "graph/container.py::UnifiedGraph.traverse_subgraph": {
+      "complexity": 27,
+      "function_lines": 123
+    },
+    "graph/correlation.py": {
+      "file_lines": 851
+    },
+    "graph/correlation.py::correlation_identity": {
+      "complexity": 19,
+      "function_lines": 147
+    },
+    "graph/correlation.py::merge_graph_snapshots": {
+      "function_lines": 93
+    },
+    "graph/correlation_service.py::GraphCorrelationService._execute": {
+      "complexity": 16,
+      "function_lines": 159
+    },
+    "graph/correlation_workspace.py::CorrelationMergeWorkspace.add_snapshot": {
+      "function_lines": 113
+    },
+    "graph/correlation_workspace.py::CorrelationMergeWorkspace.finish": {
+      "function_lines": 114
+    },
+    "graph/cost_overlay.py::apply_cost_overlay": {
+      "function_lines": 88
+    },
+    "graph/edge.py::merge_edge_evidence": {
+      "complexity": 32,
+      "function_lines": 122
+    },
+    "graph/effective_permissions.py": {
+      "file_lines": 621
+    },
+    "graph/effective_permissions.py::apply_effective_permissions": {
+      "complexity": 61,
+      "function_lines": 387
+    },
+    "graph/governance_overlay.py::apply_governance_overlay": {
+      "complexity": 50,
+      "function_lines": 327
+    },
+    "graph/hop_evidence.py::authority_evidence": {
+      "complexity": 18
+    },
+    "graph/nhi_governance.py": {
+      "file_lines": 811
+    },
+    "graph/nhi_governance.py::build_nhi_governance_findings": {
+      "function_lines": 87
+    },
+    "graph/nhi_governance.py::evaluate_identity_governance": {
+      "complexity": 16,
+      "function_lines": 145
+    },
+    "graph/observation_scope.py::comparable_observation_sql": {
+      "function_lines": 83
+    },
+    "graph/path_derivation.py": {
+      "file_lines": 702
+    },
+    "graph/path_derivation.py::_derived_attack_paths": {
+      "complexity": 31,
+      "function_lines": 175
+    },
+    "graph/path_derivation.py::_derived_governance_attack_paths": {
+      "complexity": 25,
+      "function_lines": 155
+    },
+    "graph/path_derivation.py::_derived_toxic_combination_paths": {
+      "complexity": 20,
+      "function_lines": 88
+    },
+    "graph/path_derivation.py::_fusion_signals_for_path": {
+      "complexity": 21,
+      "function_lines": 111
+    },
+    "graph/path_evidence.py::annotate_attack_path_evidence": {
+      "function_lines": 102
+    },
+    "graph/path_evidence.py::exposure_evidence_dimensions": {
+      "function_lines": 93
+    },
+    "graph/reachability_truth.py::assess_reachability": {
+      "complexity": 16
+    },
+    "graph/remediation_receipts.py::_hop_allowed": {
+      "complexity": 19
+    },
+    "graph/remediation_receipts.py::_remaining_path": {
+      "complexity": 18
+    },
+    "graph/remediation_receipts.py::compare_recorded_access": {
+      "complexity": 20,
+      "function_lines": 118
+    },
+    "graph/repo_structure_overlay.py::apply_repo_structure_overlay": {
+      "complexity": 26,
+      "function_lines": 211
+    },
+    "graph/rollup.py": {
+      "file_lines": 973
+    },
+    "graph/rollup.py::attack_path_view": {
+      "function_lines": 82
+    },
+    "graph/rollup.py::drill_down": {
+      "function_lines": 113
+    },
+    "graph/rollup.py::rollup_view": {
+      "function_lines": 162
+    },
+    "graph/scope.py::_repository_subgraph": {
+      "function_lines": 89
+    },
+    "graph/scope.py::select_observed_scope": {
+      "function_lines": 83
+    },
+    "graph/toxic_findings.py": {
+      "file_lines": 765
+    },
+    "graph/webhooks.py::compute_delta_alerts": {
+      "function_lines": 188
+    },
+    "hardware_evidence.py::_ingest_host": {
+      "function_lines": 104
+    },
+    "history.py::_diff_inventory": {
+      "function_lines": 103
+    },
+    "history.py::_get_inventory_snapshot": {
+      "complexity": 18,
+      "function_lines": 94
+    },
+    "http_client.py::request_with_retry": {
+      "function_lines": 122
+    },
+    "http_client.py::sync_request_with_retry": {
+      "function_lines": 98
+    },
+    "iac/__init__.py::scan_iac_with_context": {
+      "complexity": 31,
+      "function_lines": 170
+    },
+    "iac/cloudformation.py::scan_cloudformation": {
+      "complexity": 68,
+      "function_lines": 464
+    },
+    "iac/dbt_security.py::_scan_profiles": {
+      "function_lines": 84
+    },
+    "iac/dockerfile.py::scan_dockerfile": {
+      "complexity": 38,
+      "function_lines": 441
+    },
+    "iac/helm.py::scan_values_yaml": {
+      "complexity": 29,
+      "function_lines": 307
+    },
+    "iac/kubernetes.py": {
+      "file_lines": 875
+    },
+    "iac/kubernetes.py::scan_k8s_manifest": {
+      "complexity": 66,
+      "function_lines": 736
+    },
+    "iac/terraform_ai.py::scan_terraform_ai": {
+      "function_lines": 90
+    },
+    "iac/terraform_security.py": {
+      "file_lines": 1508
+    },
+    "iac/terraform_security.py::scan_terraform_security": {
+      "complexity": 115,
+      "function_lines": 1252
+    },
+    "identity/entra_nhi.py::discover_entra_non_human_identities": {
+      "function_lines": 82
+    },
+    "identity/join_contract.py": {
+      "file_lines": 626
+    },
+    "identity/join_contract.py::IdentityResourceJoinContract.validate_contract": {
+      "complexity": 37,
+      "function_lines": 169
+    },
+    "identity/okta_nhi.py::discover_okta_non_human_identities": {
+      "function_lines": 85
+    },
+    "image.py": {
+      "file_lines": 940
+    },
+    "image.py::_packages_from_tar": {
+      "complexity": 58,
+      "function_lines": 232
+    },
+    "image.py::_scan_with_docker": {
+      "function_lines": 84
+    },
+    "integrations/jira.py::create_jira_ticket": {
+      "function_lines": 89
+    },
+    "integrity.py": {
+      "file_lines": 788
+    },
+    "integrity.py::check_pypi_provenance": {
+      "complexity": 16,
+      "function_lines": 88
+    },
+    "intel_lookup.py": {
+      "file_lines": 1067
+    },
+    "intel_lookup.py::build_daily_brief": {
+      "function_lines": 121
+    },
+    "intel_lookup.py::lookup_advisory": {
+      "function_lines": 93
+    },
+    "inventory.py::_load_csv_inventory": {
+      "function_lines": 87
+    },
+    "jupyter.py::scan_jupyter_notebooks": {
+      "function_lines": 101
+    },
+    "k8s.py": {
+      "file_lines": 1143
+    },
+    "k8s.py::evaluate_kubelet_config": {
+      "function_lines": 136
+    },
+    "k8s.py::evaluate_pod_security": {
+      "function_lines": 174
+    },
+    "k8s.py::evaluate_rbac": {
+      "function_lines": 97
+    },
+    "k8s.py::scan_live_cluster_posture_with_evidence": {
+      "complexity": 28,
+      "function_lines": 321
+    },
+    "license_policy.py::evaluate_license_policy": {
+      "complexity": 17,
+      "function_lines": 149
+    },
+    "mcp_auth_posture.py": {
+      "file_lines": 652
+    },
+    "mcp_blocklist.py::match_mcp_server": {
+      "complexity": 16,
+      "function_lines": 86
+    },
+    "mcp_hardening.py::build_mcp_hardening_catalog": {
+      "function_lines": 180
+    },
+    "mcp_introspect.py": {
+      "file_lines": 850
+    },
+    "mcp_introspect.py::_query_capabilities": {
+      "function_lines": 104
+    },
+    "mcp_introspect.py::enrich_servers": {
+      "complexity": 17
+    },
+    "mcp_official_registry.py::sync_from_official_registry": {
+      "function_lines": 115
+    },
+    "mcp_scan_attestation.py": {
+      "file_lines": 916
+    },
+    "mcp_scan_attestation.py::_semantic_check": {
+      "complexity": 18,
+      "function_lines": 84
+    },
+    "mcp_scan_attestation.py::evidence_from_scan_report": {
+      "function_lines": 87
+    },
+    "mcp_scan_attestation.py::verify_mcp_scan_attestation": {
+      "complexity": 18,
+      "function_lines": 93
+    },
+    "mcp_server.py": {
+      "file_lines": 1499
+    },
+    "mcp_server.py::create_mcp_server": {
+      "complexity": 21,
+      "function_lines": 958
+    },
+    "mcp_server.py::create_mcp_server.scan": {
+      "function_lines": 194
+    },
+    "mcp_server_catalog.py::attach_resources_and_prompts": {
+      "complexity": 17,
+      "function_lines": 201
+    },
+    "mcp_server_metadata.py": {
+      "file_lines": 753
+    },
+    "mcp_server_operator_tools.py": {
+      "file_lines": 1544
+    },
+    "mcp_server_operator_tools.py::register_operator_tools": {
+      "complexity": 53,
+      "function_lines": 1528
+    },
+    "mcp_server_runtime.py": {
+      "file_lines": 899
+    },
+    "mcp_server_runtime.py::execute_tool_async": {
+      "function_lines": 143
+    },
+    "mcp_server_runtime.py::execute_tool_sync_async": {
+      "function_lines": 140
+    },
+    "mcp_server_runtime_catalog.py::register_runtime_catalog_tools": {
+      "function_lines": 116
+    },
+    "mcp_server_scan.py::run_scan_pipeline": {
+      "complexity": 31,
+      "function_lines": 182
+    },
+    "mcp_server_specialized.py::register_specialized_ai_tools": {
+      "complexity": 20,
+      "function_lines": 424
+    },
+    "mcp_server_specialized.py::register_specialized_ai_tools.ingest_external_scan": {
+      "function_lines": 87
+    },
+    "mcp_tools/analysis.py::blast_radius_impl": {
+      "function_lines": 101
+    },
+    "mcp_tools/compliance.py::cis_benchmark_impl": {
+      "function_lines": 86
+    },
+    "mcp_tools/compliance.py::compliance_impl": {
+      "function_lines": 142
+    },
+    "mcp_tools/graph.py": {
+      "file_lines": 627
+    },
+    "mcp_tools/graph.py::deploy_decision_for_tenant": {
+      "function_lines": 93
+    },
+    "mcp_tools/graph.py::exposure_paths_for_tenant": {
+      "complexity": 20,
+      "function_lines": 195
+    },
+    "mcp_tools/graph.py::graph_correlate_impl": {
+      "function_lines": 83
+    },
+    "mcp_tools/intel.py::youcom_search_impl": {
+      "function_lines": 120
+    },
+    "mcp_tools/registry.py::marketplace_check_impl": {
+      "complexity": 21,
+      "function_lines": 115
+    },
+    "mcp_tools/risk_campaigns.py::risk_campaign_workflow_impl": {
+      "complexity": 18,
+      "function_lines": 137
+    },
+    "mcp_tools/runtime.py": {
+      "file_lines": 922
+    },
+    "mcp_tools/runtime.py::runtime_correlate_impl": {
+      "function_lines": 98
+    },
+    "mcp_tools/scanning.py": {
+      "file_lines": 746
+    },
+    "mcp_tools/scanning.py::_scan_impl_inner": {
+      "complexity": 41,
+      "function_lines": 289
+    },
+    "mcp_tools/scanning.py::check_impl": {
+      "complexity": 18,
+      "function_lines": 166
+    },
+    "mcp_tools/scanning.py::scan_impl": {
+      "function_lines": 112
+    },
+    "mcp_tools/side_scan.py::cloud_side_scan_impl": {
+      "function_lines": 114
+    },
+    "mitre_fetch.py::_parse_capec_stix": {
+      "complexity": 23
+    },
+    "model_files.py": {
+      "file_lines": 1049
+    },
+    "model_files.py::check_huggingface_provenance": {
+      "function_lines": 90
+    },
+    "model_files.py::model_file_findings": {
+      "function_lines": 81
+    },
+    "model_files.py::scan_model_files": {
+      "complexity": 23,
+      "function_lines": 138
+    },
+    "model_files.py::scan_model_manifests": {
+      "complexity": 29,
+      "function_lines": 148
+    },
+    "model_files.py::summarize_model_supply_chain": {
+      "function_lines": 91
+    },
+    "model_hash.py::verify_model_hashes": {
+      "function_lines": 125
+    },
+    "model_pickle_scan.py": {
+      "file_lines": 622
+    },
+    "model_pickle_scan.py::_scan_opcode_stream": {
+      "complexity": 26,
+      "function_lines": 135
+    },
+    "models.py": {
+      "file_lines": 1711
+    },
+    "models.py::AIBOMReport.to_findings": {
+      "function_lines": 81
+    },
+    "models.py::BlastRadius.calculate_risk_score": {
+      "function_lines": 114
+    },
+    "nist_800_53.py::tag_blast_radius": {
+      "complexity": 16,
+      "function_lines": 89
+    },
+    "nist_ai_rmf.py::tag_blast_radius": {
+      "function_lines": 82
+    },
+    "observe_enforce.py::propose_block_rules": {
+      "function_lines": 87
+    },
+    "oci_parser.py": {
+      "file_lines": 1871
+    },
+    "oci_parser.py::_extract_packages_from_layer": {
+      "complexity": 131,
+      "function_lines": 606
+    },
+    "oci_parser.py::_parse_layers_from_tarball": {
+      "function_lines": 126
+    },
+    "oci_parser.py::_parse_rpm_header_blob": {
+      "complexity": 16
+    },
+    "oci_parser.py::parse_oci_layout_dir": {
+      "complexity": 21,
+      "function_lines": 142
+    },
+    "oci_parser.py::parse_oci_tarball": {
+      "function_lines": 81
+    },
+    "otel_ingest.py": {
+      "file_lines": 653
+    },
+    "otel_ingest.py::parse_ml_api_spans": {
+      "function_lines": 101
+    },
+    "output/agent_mesh.py::build_agent_mesh": {
+      "function_lines": 166
+    },
+    "output/attack_flow.py::build_attack_flow": {
+      "complexity": 33,
+      "function_lines": 342
+    },
+    "output/attack_flow.py::build_lateral_movement_flow": {
+      "complexity": 18,
+      "function_lines": 179
+    },
+    "output/compact.py": {
+      "file_lines": 937
+    },
+    "output/compact.py::print_compact_blast_radius": {
+      "complexity": 42,
+      "function_lines": 208
+    },
+    "output/compact.py::print_compact_cis_posture": {
+      "function_lines": 116
+    },
+    "output/compact.py::print_compact_summary": {
+      "complexity": 33,
+      "function_lines": 210
+    },
+    "output/compliance_export.py::export_compliance_bundle": {
+      "function_lines": 140
+    },
+    "output/compliance_narrative.py": {
+      "file_lines": 1075
+    },
+    "output/compliance_narrative.py::_build_framework_narrative": {
+      "complexity": 21,
+      "function_lines": 151
+    },
+    "output/compliance_narrative.py::_build_remediation_impact": {
+      "function_lines": 97
+    },
+    "output/compliance_narrative.py::blast_radii_from_finding_rows": {
+      "complexity": 17,
+      "function_lines": 96
+    },
+    "output/compliance_narrative.py::generate_compliance_narrative": {
+      "function_lines": 127
+    },
+    "output/console_render.py": {
+      "file_lines": 2227
+    },
+    "output/console_render.py::build_remediation_plan": {
+      "complexity": 51,
+      "function_lines": 312
+    },
+    "output/console_render.py::print_agent_tree": {
+      "complexity": 22,
+      "function_lines": 104
+    },
+    "output/console_render.py::print_blast_radius": {
+      "complexity": 31,
+      "function_lines": 154
+    },
+    "output/console_render.py::print_cis_findings": {
+      "complexity": 16,
+      "function_lines": 121
+    },
+    "output/console_render.py::print_diff": {
+      "complexity": 39,
+      "function_lines": 128
+    },
+    "output/console_render.py::print_export_hint": {
+      "function_lines": 166
+    },
+    "output/console_render.py::print_posture_summary": {
+      "complexity": 47,
+      "function_lines": 217
+    },
+    "output/console_render.py::print_remediation_plan": {
+      "complexity": 23,
+      "function_lines": 132
+    },
+    "output/console_render.py::print_summary": {
+      "complexity": 26,
+      "function_lines": 164
+    },
+    "output/console_render.py::print_threat_frameworks": {
+      "complexity": 47,
+      "function_lines": 298
+    },
+    "output/cyclonedx_fmt.py": {
+      "file_lines": 971
+    },
+    "output/cyclonedx_fmt.py::_cyclonedx_vulnerability": {
+      "complexity": 22,
+      "function_lines": 123
+    },
+    "output/cyclonedx_fmt.py::to_cyclonedx": {
+      "complexity": 52,
+      "function_lines": 340
+    },
+    "output/exposure_path.py::exposure_path_for_finding": {
+      "function_lines": 87
+    },
+    "output/graph.py": {
+      "file_lines": 2037
+    },
+    "output/graph.py::_append_repo_structure_elements": {
+      "complexity": 25,
+      "function_lines": 153
+    },
+    "output/graph.py::_append_source_tool_elements": {
+      "complexity": 20,
+      "function_lines": 163
+    },
+    "output/graph.py::build_attack_flow_elements": {
+      "function_lines": 122
+    },
+    "output/graph.py::build_graph_elements": {
+      "complexity": 28,
+      "function_lines": 384
+    },
+    "output/graph.py::sanitize_graph_elements": {
+      "complexity": 16
+    },
+    "output/graph_export.py": {
+      "file_lines": 858
+    },
+    "output/graph_export.py::build_graph_from_scan_data": {
+      "function_lines": 88
+    },
+    "output/graph_export.py::to_mermaid": {
+      "function_lines": 105
+    },
+    "output/html/document.py::to_html": {
+      "function_lines": 318
+    },
+    "output/html/scripts.py": {
+      "file_lines": 1362
+    },
+    "output/html/scripts.py::render_graph_script": {
+      "function_lines": 1151
+    },
+    "output/html/sections.py": {
+      "file_lines": 1582
+    },
+    "output/html/sections.py::_cis_benchmark_section": {
+      "complexity": 17,
+      "function_lines": 191
+    },
+    "output/html/sections.py::_compliance_section": {
+      "function_lines": 121
+    },
+    "output/html/sections.py::_inventory_cards": {
+      "function_lines": 119
+    },
+    "output/html/sections.py::_policy_findings_section": {
+      "function_lines": 93
+    },
+    "output/html/sections.py::_trust_assessment_section": {
+      "function_lines": 82
+    },
+    "output/html/sections.py::_vuln_table": {
+      "complexity": 16,
+      "function_lines": 181
+    },
+    "output/html/styles.py::render_styles": {
+      "function_lines": 230
+    },
+    "output/interop_security.py::sanitize_linked_document": {
+      "complexity": 16
+    },
+    "output/json_fmt.py": {
+      "file_lines": 1563
+    },
+    "output/json_fmt.py::_blast_radius_json_entry": {
+      "function_lines": 130
+    },
+    "output/json_fmt.py::_build_ai_bom_entities_snapshot": {
+      "complexity": 16,
+      "function_lines": 148
+    },
+    "output/json_fmt.py::_build_framework_summary": {
+      "function_lines": 150
+    },
+    "output/json_fmt.py::_build_mcp_runtime_diff": {
+      "function_lines": 97
+    },
+    "output/json_fmt.py::to_json": {
+      "complexity": 67,
+      "function_lines": 516
+    },
+    "output/markdown.py::to_markdown": {
+      "complexity": 36,
+      "function_lines": 190
+    },
+    "output/mermaid.py::to_mermaid": {
+      "function_lines": 102
+    },
+    "output/mermaid.py::to_mermaid_supply_chain": {
+      "complexity": 19,
+      "function_lines": 107
+    },
+    "output/ocsf.py::finding_to_ocsf": {
+      "function_lines": 112
+    },
+    "output/pdf.py::_build_report_lines": {
+      "complexity": 16
+    },
+    "output/prometheus.py::push_otlp": {
+      "function_lines": 100
+    },
+    "output/prometheus.py::push_otlp_traces": {
+      "function_lines": 93
+    },
+    "output/prometheus.py::to_prometheus": {
+      "complexity": 20,
+      "function_lines": 179
+    },
+    "output/sarif.py": {
+      "file_lines": 1409
+    },
+    "output/sarif.py::_cve_sarif_result": {
+      "complexity": 18,
+      "function_lines": 142
+    },
+    "output/sarif.py::to_sarif": {
+      "complexity": 33,
+      "function_lines": 520
+    },
+    "output/spdx2_fmt.py::to_spdx2": {
+      "complexity": 16,
+      "function_lines": 157
+    },
+    "output/spdx_fmt.py::to_spdx": {
+      "complexity": 30,
+      "function_lines": 326
+    },
+    "output/svg.py::to_svg": {
+      "complexity": 34,
+      "function_lines": 319
+    },
+    "owasp_mcp.py::tag_blast_radius": {
+      "complexity": 17,
+      "function_lines": 85
+    },
+    "parsers/__init__.py": {
+      "file_lines": 966
+    },
+    "parsers/__init__.py::extract_packages": {
+      "complexity": 17,
+      "function_lines": 129
+    },
+    "parsers/__init__.py::scan_project_directory": {
+      "complexity": 22,
+      "function_lines": 113
+    },
+    "parsers/__init__.py::scan_project_directory._walk": {
+      "complexity": 17
+    },
+    "parsers/__init__.py::summarize_project_inventory": {
+      "function_lines": 93
+    },
+    "parsers/compiled_parsers.py": {
+      "file_lines": 1539
+    },
+    "parsers/compiled_parsers.py::_parse_pom_modules": {
+      "complexity": 16,
+      "function_lines": 102
+    },
+    "parsers/compiled_parsers.py::parse_conda_packages": {
+      "complexity": 36,
+      "function_lines": 227
+    },
+    "parsers/compiled_parsers.py::parse_conda_packages._parse_env_file": {
+      "complexity": 22,
+      "function_lines": 120
+    },
+    "parsers/compiled_parsers.py::parse_go_packages": {
+      "complexity": 22,
+      "function_lines": 138
+    },
+    "parsers/compiled_parsers.py::parse_gradle_packages": {
+      "complexity": 36,
+      "function_lines": 233
+    },
+    "parsers/compiled_parsers.py::parse_gradle_packages._parse_version_catalog": {
+      "complexity": 16,
+      "function_lines": 81
+    },
+    "parsers/compiled_parsers.py::verify_go_checksums": {
+      "function_lines": 109
+    },
+    "parsers/dataset_pii_scanner.py": {
+      "file_lines": 623
+    },
+    "parsers/external_import.py::fold_external_packages": {
+      "complexity": 17
+    },
+    "parsers/external_scanners.py": {
+      "file_lines": 792
+    },
+    "parsers/node_parsers.py": {
+      "file_lines": 793
+    },
+    "parsers/node_parsers.py::_workspace_package_versions": {
+      "complexity": 17
+    },
+    "parsers/node_parsers.py::parse_npm_packages": {
+      "complexity": 17,
+      "function_lines": 152
+    },
+    "parsers/node_parsers.py::parse_yarn_lock": {
+      "complexity": 18,
+      "function_lines": 95
+    },
+    "parsers/npm_semver.py::_desugar": {
+      "complexity": 20
+    },
+    "parsers/os_parsers.py::parse_apk_packages": {
+      "function_lines": 88
+    },
+    "parsers/php_parsers.py::parse_composer_lock": {
+      "function_lines": 82
+    },
+    "parsers/prompt_scanner.py": {
+      "file_lines": 748
+    },
+    "parsers/prompt_scanner.py::_analyze_content": {
+      "function_lines": 117
+    },
+    "parsers/python_parsers.py": {
+      "file_lines": 695
+    },
+    "parsers/python_parsers.py::parse_pip_environment": {
+      "function_lines": 87
+    },
+    "parsers/python_parsers.py::parse_pip_packages": {
+      "complexity": 26,
+      "function_lines": 158
+    },
+    "parsers/python_parsers.py::parse_uv_lock": {
+      "complexity": 20,
+      "function_lines": 101
+    },
+    "parsers/ruby_parsers.py::parse_gemfile_lock": {
+      "complexity": 17,
+      "function_lines": 128
+    },
+    "parsers/sarif.py::normalize_sarif_document": {
+      "function_lines": 86
+    },
+    "parsers/skill_audit.py::_check_server": {
+      "function_lines": 160
+    },
+    "parsers/skill_audit.py::audit_skill_result": {
+      "function_lines": 99
+    },
+    "parsers/skill_audit_behavior.py": {
+      "file_lines": 1252
+    },
+    "parsers/skill_audit_behavior.py::_scan_behavioral_risks": {
+      "function_lines": 103
+    },
+    "parsers/skill_audit_behavior.py::_scan_js_ts_semantic_risks": {
+      "function_lines": 85
+    },
+    "parsers/skill_audit_behavior.py::_scan_python_ast_risks": {
+      "function_lines": 92
+    },
+    "parsers/skill_audit_metadata.py::_check_metadata_quality": {
+      "function_lines": 208
+    },
+    "parsers/skills.py": {
+      "file_lines": 727
+    },
+    "parsers/skills.py::looks_like_instruction_surface": {
+      "complexity": 16
+    },
+    "parsers/skills.py::parse_skill_file": {
+      "complexity": 26,
+      "function_lines": 129
+    },
+    "parsers/swift_parsers.py::parse_package_resolved": {
+      "function_lines": 96
+    },
+    "parsers/training_pipeline.py": {
+      "file_lines": 631
+    },
+    "parsers/training_pipeline.py::parse_mlflow_mlmodel": {
+      "complexity": 17,
+      "function_lines": 83
+    },
+    "parsers/training_pipeline.py::parse_wandb_metadata": {
+      "complexity": 20,
+      "function_lines": 84
+    },
+    "parsers/trust_assessment.py": {
+      "file_lines": 920
+    },
+    "parsers/trust_assessment.py::_assess_instruction_scope": {
+      "function_lines": 85
+    },
+    "parsers/trust_assessment.py::_assess_persistence_privilege": {
+      "function_lines": 98
+    },
+    "parsers/trust_assessment.py::_generate_recommendations": {
+      "complexity": 18
+    },
+    "policy.py": {
+      "file_lines": 760
+    },
+    "policy.py::_rule_matches": {
+      "complexity": 40,
+      "function_lines": 121
+    },
+    "policy.py::_validate_policy": {
+      "complexity": 19
+    },
+    "policy.py::evaluate_policy": {
+      "function_lines": 100
+    },
+    "posture.py": {
+      "file_lines": 783
+    },
+    "posture.py::compute_credential_risk_ranking": {
+      "complexity": 17,
+      "function_lines": 109
+    },
+    "posture.py::compute_incident_correlation": {
+      "function_lines": 97
+    },
+    "posture.py::compute_posture_scorecard": {
+      "complexity": 41,
+      "function_lines": 347
+    },
+    "proxy.py": {
+      "file_lines": 2244
+    },
+    "proxy.py::_maybe_block_on_firewall": {
+      "function_lines": 89
+    },
+    "proxy.py::_proxy_sse_server": {
+      "complexity": 40,
+      "function_lines": 365
+    },
+    "proxy.py::run_proxy": {
+      "complexity": 149,
+      "function_lines": 1019
+    },
+    "proxy.py::run_proxy.relay_client_to_server": {
+      "complexity": 39,
+      "function_lines": 297
+    },
+    "proxy.py::run_proxy.relay_server_to_client": {
+      "complexity": 31,
+      "function_lines": 169
+    },
+    "proxy_audit.py": {
+      "file_lines": 809
+    },
+    "proxy_configure.py::apply_proxy_configs": {
+      "complexity": 17,
+      "function_lines": 89
+    },
+    "proxy_configure.py::auto_configure_proxies": {
+      "complexity": 16,
+      "function_lines": 96
+    },
+    "proxy_policy.py": {
+      "file_lines": 956
+    },
+    "proxy_policy.py::check_policy_detail": {
+      "complexity": 25,
+      "function_lines": 110
+    },
+    "proxy_policy.py::deliver_policy_webhook": {
+      "function_lines": 88
+    },
+    "proxy_policy.py::evaluate_conditions": {
+      "complexity": 20
+    },
+    "push.py::_push_async": {
+      "function_lines": 104
+    },
+    "python_agents.py": {
+      "file_lines": 708
+    },
+    "python_agents.py::_extract_agent_defs": {
+      "complexity": 45,
+      "function_lines": 135
+    },
+    "python_agents.py::_extract_agent_defs.resolve_tool_expr": {
+      "complexity": 17
+    },
+    "python_agents.py::scan_python_agents": {
+      "function_lines": 142
+    },
+    "rbac.py::require_authenticated_permission": {
+      "function_lines": 89
+    },
+    "reachability_cve.py": {
+      "file_lines": 778
+    },
+    "reachability_cve.py::classify_reachability": {
+      "function_lines": 102
+    },
+    "reachability_cve.py::extract_advisory_identifiers": {
+      "complexity": 19
+    },
+    "reachability_cve.py::extract_affected_symbols": {
+      "complexity": 17
+    },
+    "registry.py": {
+      "file_lines": 887
+    },
+    "registry.py::enrich_registry_entries": {
+      "complexity": 20,
+      "function_lines": 81
+    },
+    "registry.py::enrich_registry_with_cves": {
+      "complexity": 41,
+      "function_lines": 213
+    },
+    "registry.py::update_registry_versions": {
+      "function_lines": 92
+    },
+    "registry_enrichment.py::enrich_registry": {
+      "function_lines": 100
+    },
+    "remediate.py": {
+      "file_lines": 799
+    },
+    "remediation_apply.py::apply_remediation_plan": {
+      "function_lines": 91
+    },
+    "repo_scan.py::_clone_into_tempdir": {
+      "function_lines": 89
+    },
+    "repo_scan.py::fetch_repo_trust": {
+      "function_lines": 105
+    },
+    "resolver.py": {
+      "file_lines": 880
+    },
+    "resolver.py::enrich_licenses": {
+      "complexity": 18
+    },
+    "resolver.py::enrich_supply_chain_metadata": {
+      "complexity": 24
+    },
+    "resolver.py::resolve_all_versions": {
+      "complexity": 34,
+      "function_lines": 152
+    },
+    "resolvers/drift_detector.py::detect_drift": {
+      "function_lines": 82
+    },
+    "risk_analyzer.py::score_server_risk": {
+      "function_lines": 93
+    },
+    "runtime/audit_delivery.py": {
+      "file_lines": 613
+    },
+    "runtime/correlation_facts.py": {
+      "file_lines": 623
+    },
+    "runtime/correlation_facts.py::create_runtime_facts_bundle_from_correlation": {
+      "complexity": 18,
+      "function_lines": 102
+    },
+    "runtime/correlation_facts.py::verify_runtime_facts_bundle": {
+      "complexity": 21,
+      "function_lines": 97
+    },
+    "runtime/detectors.py": {
+      "file_lines": 886
+    },
+    "runtime/detectors.py::ResponseInspector.check": {
+      "function_lines": 117
+    },
+    "runtime/profile_resolution.py::resolve_runtime_profile": {
+      "complexity": 16,
+      "function_lines": 82
+    },
+    "runtime/protection.py": {
+      "file_lines": 914
+    },
+    "runtime/protection.py::ProtectionEngine.assess_threat": {
+      "function_lines": 92
+    },
+    "runtime/protection.py::ProtectionEngine.process_tool_call": {
+      "function_lines": 90
+    },
+    "runtime/server.py::run_http_mode": {
+      "function_lines": 103
+    },
+    "runtime_blueprints.py::evaluate_runtime_blueprint_drift": {
+      "function_lines": 126
+    },
+    "runtime_correlation.py::correlate": {
+      "function_lines": 97
+    },
+    "sast.py::_resolve_sast_configs": {
+      "complexity": 19
+    },
+    "sast.py::scan_code": {
+      "function_lines": 110
+    },
+    "sbom.py": {
+      "file_lines": 697
+    },
+    "sbom.py::_spdx3_vulnerabilities": {
+      "complexity": 21,
+      "function_lines": 98
+    },
+    "sbom.py::parse_cyclonedx": {
+      "complexity": 45,
+      "function_lines": 186
+    },
+    "sbom.py::parse_spdx": {
+      "complexity": 24,
+      "function_lines": 137
+    },
+    "sbom_attestation.py": {
+      "file_lines": 992
+    },
+    "sbom_attestation.py::sign_sbom_file": {
+      "function_lines": 84
+    },
+    "sbom_attestation.py::verify_sbom_attestation": {
+      "complexity": 35,
+      "function_lines": 206
+    },
+    "scan_enrichment.py::enrich_report_with_estate_discovery": {
+      "function_lines": 81
+    },
+    "scanners/blast_radius.py::expand_blast_radius_hops": {
+      "complexity": 18,
+      "function_lines": 82
+    },
+    "scanners/ghsa_advisory.py::check_github_advisories": {
+      "complexity": 32,
+      "function_lines": 188
+    },
+    "scanners/nvidia_advisory.py::check_nvidia_advisories": {
+      "complexity": 20,
+      "function_lines": 84
+    },
+    "scanners/osv.py::parse_fixed_version": {
+      "complexity": 25,
+      "function_lines": 103
+    },
+    "scanners/osv.py::query_osv_batch_impl": {
+      "complexity": 53,
+      "function_lines": 315
+    },
+    "scanners/osv.py::query_osv_batch_impl._process_batch": {
+      "complexity": 23,
+      "function_lines": 99
+    },
+    "scanners/package_scan.py": {
+      "file_lines": 2196
+    },
+    "scanners/package_scan.py::_db_covered_ecosystems": {
+      "complexity": 16,
+      "function_lines": 86
+    },
+    "scanners/package_scan.py::_is_version_affected": {
+      "complexity": 16,
+      "function_lines": 110
+    },
+    "scanners/package_scan.py::build_vulnerabilities": {
+      "function_lines": 97
+    },
+    "scanners/package_scan.py::scan_agents": {
+      "complexity": 40,
+      "function_lines": 253
+    },
+    "scanners/package_scan.py::scan_packages": {
+      "complexity": 74,
+      "function_lines": 479
+    },
+    "scanners/registry.py": {
+      "file_lines": 625
+    },
+    "scanners/registry.py::builtin_scanner_registrations": {
+      "function_lines": 401
+    },
+    "scanners/risk.py::osv_severity_basis": {
+      "complexity": 20
+    },
+    "scorecard.py::fetch_scorecard": {
+      "complexity": 19,
+      "function_lines": 94
+    },
+    "secret_scanner.py": {
+      "file_lines": 724
+    },
+    "secret_scanner.py::_scan_file": {
+      "complexity": 22,
+      "function_lines": 138
+    },
+    "secret_scanner.py::scan_secrets": {
+      "complexity": 18,
+      "function_lines": 104
+    },
+    "security.py": {
+      "file_lines": 1336
+    },
+    "security.py::validate_url": {
+      "complexity": 19,
+      "function_lines": 91
+    },
+    "skills_policy.py::evaluate_skills_policy": {
+      "function_lines": 121
+    },
+    "skills_service.py": {
+      "file_lines": 633
+    },
+    "skills_service.py::_rescan_skill_catalog_async": {
+      "function_lines": 120
+    },
+    "smithery.py::sync_from_smithery": {
+      "function_lines": 127
+    },
+    "terraform.py::scan_terraform_dir": {
+      "function_lines": 146
+    },
+    "transitive.py": {
+      "file_lines": 681
+    },
+    "traversal.py::iter_discovery_files": {
+      "complexity": 21,
+      "function_lines": 124
+    },
+    "trust_score.py": {
+      "file_lines": 660
+    },
+    "version_utils.py": {
+      "file_lines": 1421
+    },
+    "version_utils.py::_compare_rpm_like": {
+      "complexity": 19
+    },
+    "version_utils.py::_resolve_version_range": {
+      "complexity": 21
+    },
+    "version_utils.py::compare_version_order": {
+      "complexity": 22,
+      "function_lines": 100
+    },
+    "vex.py": {
+      "file_lines": 682
+    },
+    "vex.py::generate_vex": {
+      "complexity": 16,
+      "function_lines": 114
+    },
+    "vuln_compliance.py::tag_vulnerability": {
+      "complexity": 57,
+      "function_lines": 168
+    },
+    "vuln_freshness.py::compute_freshness": {
+      "function_lines": 104
+    }
+  },
+  "limits": {
+    "complexity": 15,
+    "file_lines": 600,
+    "function_lines": 80
+  }
+}

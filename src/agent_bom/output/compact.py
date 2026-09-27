@@ -688,8 +688,8 @@ def print_compact_graph_findings(report: AIBOMReport, limit: int = 10) -> None:
     """
     from rich.markup import escape
 
+    from agent_bom.core.severity import severity_worst_first_rank
     from agent_bom.finding import Finding
-    from agent_bom.graph.severity import severity_worst_first_rank
     from agent_bom.output import _sev_badge, console
     from agent_bom.output.finding_views import _MACHINE_EXPORT_TYPES, finding_severity
 
@@ -835,7 +835,7 @@ def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
 
         # Sort by remediation priority (1 = fix first), then severity.
         def _sort_key(c: dict) -> tuple[int, int]:
-            from agent_bom.graph.severity import severity_worst_first_rank
+            from agent_bom.core.severity import severity_worst_first_rank
 
             rem = c.get("remediation") or {}
             priority = rem.get("priority", 3)

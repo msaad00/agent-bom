@@ -15,8 +15,8 @@ from rich.console import Console
 
 from agent_bom import __version__
 from agent_bom.cli._common import _sync_runtime_consoles
+from agent_bom.core.severity import severity_at_or_above
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEMS
-from agent_bom.graph.severity import severity_at_or_above
 
 
 def _response_has_version(response, ecosystem: str, version: str) -> bool:

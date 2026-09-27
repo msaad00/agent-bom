@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, normalize_severity, severity_at_or_above
+from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, normalize_severity, severity_at_or_above
 
 _VERDICT_ORDER = {"benign": 0, "suspicious": 1, "malicious": 2}
 _REVIEW_ORDER = {"trusted": 0, "review": 1, "high_risk": 2, "blocked": 3}

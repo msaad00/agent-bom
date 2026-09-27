@@ -51,13 +51,13 @@ from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.exec_score import compute_exec_score
-from agent_bom.graph.severity import (
+from agent_bom.core.severity import (
     SEVERITY_DISPLAY_BUCKETS,
     SEVERITY_THRESHOLD_LABELS,
     UNRATED_SEVERITY_BUCKET,
     severity_display_bucket,
 )
+from agent_bom.exec_score import compute_exec_score
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 

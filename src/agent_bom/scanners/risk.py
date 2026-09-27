@@ -7,38 +7,25 @@ does not own CVSS parsing, OSV severity interpretation, and related helpers.
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from cvss import CVSS4
-
-from agent_bom.models import Severity
+from agent_bom.core.cvss import (
+    cvss_to_severity as cvss_to_severity,
+)
+from agent_bom.core.cvss import (
+    normalize_cvss_score as _normalize_cvss_score,
+)
+from agent_bom.core.cvss import parse_cvss4_vector as _parse_cvss4_vector  # noqa: F401 - compatibility export
+from agent_bom.core.cvss import (
+    parse_cvss_vector as parse_cvss_vector,
+)
+from agent_bom.core.severity import Severity, severity_from_label
 
 _logger = logging.getLogger(__name__)
 
 _OSV_MEDIUM_FALLBACK_PREFIXES = ("OSV-", "PYSEC-", "RUSTSEC-", "GO-", "MAL-", "GSD-")
 _DISTRO_MEDIUM_FALLBACK_PREFIXES = ("DEBIAN-CVE-",)
-_SEVERITY_LABELS = {
-    "CRITICAL": Severity.CRITICAL,
-    "HIGH": Severity.HIGH,
-    "IMPORTANT": Severity.HIGH,
-    "MODERATE": Severity.MEDIUM,
-    "MEDIUM": Severity.MEDIUM,
-    "LOW": Severity.LOW,
-    "MINOR": Severity.LOW,
-    "NEGLIGIBLE": Severity.LOW,
-    "UNIMPORTANT": Severity.LOW,
-    "NONE": Severity.NONE,
-}
-
-
-def severity_from_label(raw: Any) -> Severity:
-    """Normalize scanner/vendor severity labels without inflating unknown data."""
-    if raw is None:
-        return Severity.UNKNOWN
-    normalized = str(raw).strip().replace("-", "_").replace(" ", "_").upper()
-    return _SEVERITY_LABELS.get(normalized, Severity.UNKNOWN)
 
 
 def advisory_id_severity_fallback(advisory_id: str) -> tuple[Severity, Optional[str]]:
@@ -57,111 +44,6 @@ def advisory_id_severity_fallback(advisory_id: str) -> tuple[Severity, Optional[
     if normalized.startswith(_DISTRO_MEDIUM_FALLBACK_PREFIXES):
         return Severity.MEDIUM, "distro_advisory_heuristic"
     return Severity.UNKNOWN, None
-
-
-def cvss_to_severity(score: Optional[float]) -> Severity:
-    if score is None:
-        return Severity.UNKNOWN
-    if score >= 9.0:
-        return Severity.CRITICAL
-    if score >= 7.0:
-        return Severity.HIGH
-    if score >= 4.0:
-        return Severity.MEDIUM
-    if score > 0:
-        return Severity.LOW
-    return Severity.NONE
-
-
-# CVSS 3.1 Base Score metric weights.
-# Reference: FIRST CVSS v3.1 Specification, Section 7.4 — Metric Values
-# https://www.first.org/cvss/v3.1/specification-document#7-4-Metric-Values
-_CVSS3_AV = {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20}
-_CVSS3_AC = {"L": 0.77, "H": 0.44}
-_CVSS3_PR_U = {"N": 0.85, "L": 0.62, "H": 0.27}
-_CVSS3_PR_C = {"N": 0.85, "L": 0.68, "H": 0.50}
-_CVSS3_UI = {"N": 0.85, "R": 0.62}
-_CVSS3_CIA = {"N": 0.00, "L": 0.22, "H": 0.56}
-
-
-def _parse_cvss4_vector(vector: str) -> Optional[float]:
-    """Score CVSS 4.0 with its macrovector algorithm, not v3-style weights."""
-    try:
-        return float(CVSS4(vector).scores()[0])
-    except Exception as exc:  # noqa: BLE001
-        _logger.debug("CVSS 4.0 vector parse failed for %r: %s", vector, exc)
-        return None
-
-
-def parse_cvss_vector(vector: str) -> Optional[float]:
-    """Compute CVSS base score from a vector string (v3.x and v4.0)."""
-    try:
-        if vector.startswith("CVSS:4"):
-            return _parse_cvss4_vector(vector)
-        if not vector.startswith("CVSS:3"):
-            return None
-
-        parts = vector.split("/")[1:]
-        metrics = dict(p.split(":") for p in parts)
-
-        av = _CVSS3_AV.get(metrics.get("AV", ""), None)
-        ac = _CVSS3_AC.get(metrics.get("AC", ""), None)
-        scope = metrics.get("S", "U")
-        pr_map = _CVSS3_PR_C if scope == "C" else _CVSS3_PR_U
-        pr = pr_map.get(metrics.get("PR", ""), None)
-        ui = _CVSS3_UI.get(metrics.get("UI", ""), None)
-        c = _CVSS3_CIA.get(metrics.get("C", ""), None)
-        i = _CVSS3_CIA.get(metrics.get("I", ""), None)
-        a = _CVSS3_CIA.get(metrics.get("A", ""), None)
-
-        if any(value is None for value in (av, ac, pr, ui, c, i, a)):
-            return None
-
-        av, ac, pr, ui = float(av), float(ac), float(pr), float(ui)  # type: ignore[arg-type]
-        c, i, a = float(c), float(i), float(a)  # type: ignore[arg-type]
-
-        isc_base = 1.0 - (1.0 - c) * (1.0 - i) * (1.0 - a)
-        if scope == "C":
-            isc = 7.52 * (isc_base - 0.029) - 3.25 * ((isc_base - 0.02) ** 15)
-        else:
-            isc = 6.42 * isc_base
-
-        if isc <= 0:
-            return 0.0
-
-        exploitability = 8.22 * av * ac * pr * ui
-        raw = min(1.08 * (isc + exploitability), 10.0) if scope == "C" else min(isc + exploitability, 10.0)
-        return math.ceil(raw * 10) / 10.0
-    except Exception as exc:  # noqa: BLE001
-        _logger.debug("CVSS vector parse failed for %r: %s", vector, exc)
-        return None
-
-
-def _normalize_cvss_score(value: Any) -> Optional[float]:
-    """Extract a 0-10 CVSS score from common OSV/vendor record shapes."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        score = float(value)
-        return score if 0.0 <= score <= 10.0 else None
-    if isinstance(value, str):
-        try:
-            score = float(value)
-            return score if 0.0 <= score <= 10.0 else None
-        except ValueError:
-            computed = parse_cvss_vector(value)
-            return computed if computed is not None and 0.0 <= computed <= 10.0 else None
-    if isinstance(value, dict):
-        for key in ("score", "baseScore", "base_score", "cvss", "vector", "vectorString"):
-            nested_score = _normalize_cvss_score(value.get(key))
-            if nested_score is not None:
-                return nested_score
-    if isinstance(value, list):
-        scores = [_normalize_cvss_score(item) for item in value]
-        valid_scores = [score for score in scores if score is not None]
-        if valid_scores:
-            return max(valid_scores)
-    return None
 
 
 def _first_vendor_severity(*blocks: Any) -> tuple[Severity, Optional[str]]:

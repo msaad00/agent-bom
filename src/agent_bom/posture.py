@@ -34,8 +34,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Mapping
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.core.severity import severity_policy_rank
 from agent_bom.evidence.scan_run import vulnerability_coverage_caveat, vulnerability_coverage_incomplete
-from agent_bom.graph.severity import severity_policy_rank
 from agent_bom.scorecard import summarize_scorecard_coverage
 from agent_bom.vex import active_blast_radii
 

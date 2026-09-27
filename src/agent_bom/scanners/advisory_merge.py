@@ -7,7 +7,7 @@ from copy import deepcopy
 from dataclasses import asdict
 
 from agent_bom.advisory_ids import derive_cve_from_advisory_id
-from agent_bom.graph.severity import severity_rank
+from agent_bom.core.severity import severity_rank
 from agent_bom.models import Vulnerability
 
 

@@ -19,10 +19,10 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from packageurl import PackageURL
 
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
-from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.graph.util import _now_iso
 

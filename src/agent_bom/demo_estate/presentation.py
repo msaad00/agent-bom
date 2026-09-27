@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.core.severity import severity_worst_first_rank
 from agent_bom.demo_estate.enterprise import NARRATIVE_INCIDENT_TRACE_ID
 from agent_bom.demo_estate.enterprise_composition import build_demo_estate
 from agent_bom.demo_estate.enterprise_correlation import (
@@ -22,7 +23,6 @@ from agent_bom.demo_estate.enterprise_findings import (
     to_finding_view,
 )
 from agent_bom.demo_estate.showcase_graph import SHOWCASE_SCAN_ID
-from agent_bom.graph.severity import severity_worst_first_rank
 
 ENTERPRISE_STORY_SCHEMA_VERSION = "enterprise_demo_story.v1"
 ENTERPRISE_STORY_SCENARIO = (

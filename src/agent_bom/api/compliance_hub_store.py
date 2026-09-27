@@ -50,7 +50,7 @@ from agent_bom.api.hub_reference_store import (
     normalize_finding_payload_for_store,
     persist_finding_references_sqlite,
 )
-from agent_bom.graph.severity import severity_policy_rank
+from agent_bom.core.severity import severity_policy_rank
 
 _logger = logging.getLogger(__name__)
 

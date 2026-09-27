@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_worst_first_rank
+from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_worst_first_rank
 
 #: A control only counts as evaluated when it produced a real verdict.
 #: ``not_applicable`` and ``skipped`` checks are evidence of nothing.

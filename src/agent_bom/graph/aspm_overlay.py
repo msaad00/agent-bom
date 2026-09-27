@@ -40,10 +40,10 @@ from datetime import datetime
 from typing import Any
 
 from agent_bom.cloud.normalization import coerce_truthy
+from agent_bom.core.severity import SEVERITY_BUCKETS_ASPM, SEVERITY_RANK, SEVERITY_RISK_SCORE
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
-from agent_bom.graph.severity import SEVERITY_BUCKETS_ASPM, SEVERITY_RANK, SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, GraphSemanticLayer, RelationshipType
 
 _OVERLAY_SOURCE = "aspm-overlay"

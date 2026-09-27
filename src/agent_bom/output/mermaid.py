@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from agent_bom.graph.severity import severity_rank
+from agent_bom.core.severity import severity_rank
 from agent_bom.output.finding_views import sanitize_output_text
 
 if TYPE_CHECKING:

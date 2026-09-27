@@ -49,6 +49,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.core.severity import SEVERITY_DISPLAY_BUCKETS, severity_display_bucket
 from agent_bom.demo_estate.enterprise import (
     NARRATIVE_INCIDENT_TRACE_ID,
     EnterpriseEstate,
@@ -61,7 +62,6 @@ from agent_bom.demo_estate.enterprise_correlation import (
 )
 from agent_bom.demo_estate.enterprise_risk import build_risk_findings
 from agent_bom.finding import Finding, cloud_cis_check_to_finding
-from agent_bom.graph.severity import SEVERITY_DISPLAY_BUCKETS, severity_display_bucket
 
 ESTATE_FINDINGS_VERSION = "enterprise_findings.v1"
 

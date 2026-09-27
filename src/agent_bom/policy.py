@@ -47,7 +47,7 @@ import operator
 import re
 from pathlib import Path
 
-from agent_bom.graph.severity import SEVERITY_POLICY_ORDER as SEVERITY_ORDER
+from agent_bom.core.severity import SEVERITY_POLICY_ORDER as SEVERITY_ORDER
 
 RISK_LEVEL_ORDER = {"high": 3, "medium": 2, "low": 1}
 

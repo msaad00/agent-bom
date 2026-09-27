@@ -1,7 +1,7 @@
 [
   {
     "name": "scan",
-    "description": "Run a full AI supply chain security scan and return an AI-BOM.\n\nPoint it at a target with one of:\n  \u2022 repo_url     \u2014 a public git repo URL (cloned + scanned, no checkout)\n  \u2022 config_path  \u2014 a local project / MCP-config directory\n  \u2022 image        \u2014 a Docker image\n  \u2022 sbom_path    \u2014 an existing CycloneDX/SPDX SBOM\n  \u2022 package      \u2014 a single package or MCP launch command (pair it with\n                   ``ecosystem`` when the spec names no launcher)\nWith none of these, it auto-discovers local MCP clients (Claude Desktop,\nCursor, Windsurf, VS Code Copilot, OpenClaw, etc.).\n\nIt extracts package dependencies, queries OSV.dev for CVEs, assesses\nconfig security (credential exposure, tool access), computes blast\nradius, and returns structured results. Scanning is fully static and\nread-only \u2014 repository and image contents are parsed, never executed.\n\nReturns:\n    JSON with the complete AI-BOM report including agents, packages,\n    vulnerabilities, blast radius, and remediation guidance.",
+    "description": "Run a full AI supply chain security scan and return an AI-BOM.\n\nPoint it at a target with one of:\n  \u2022 repo_url     \u2014 a public git repo URL (cloned + scanned, no checkout)\n  \u2022 config_path  \u2014 a local project / MCP-config directory\n  \u2022 image        \u2014 a Docker image\n  \u2022 sbom_path    \u2014 an existing CycloneDX/SPDX SBOM\n  \u2022 package      \u2014 a single package or MCP launch command (pair it with\n                   ``ecosystem`` when the spec names no launcher)\nWith none of these, it auto-discovers local MCP clients (Claude Desktop,\nCursor, Windsurf, VS Code Copilot, OpenClaw, etc.).\n\nIt extracts package dependencies, looks up CVEs (online via OSV.dev and\nadvisory sources unless offline mode is requested or configured),\nassesses config security (credential exposure, tool access), computes\nblast radius, and returns structured results. Scanning is fully static\nand read-only \u2014 repository and image contents are parsed, never executed.\n\nReturns:\n    JSON. By default a bounded summary: counts (packages, agents,\n    findings by severity/category), top findings, affected paths, and a\n    result_id. Page any full-fidelity section with\n    scan(result_id=..., section='findings', offset=0, limit=25).\n    An incomplete scan (e.g. vulnerability source unavailable) is\n    returned as an error result whose body is still JSON.",
     "arguments": [
       {
         "name": "repo_url",
@@ -46,7 +46,7 @@
       {
         "name": "offline",
         "type": "boolean",
-        "desc": "Use the local vulnerability DB only and skip registry, OSV, GHSA, and NVIDIA network lookups."
+        "desc": "true: use the local vulnerability DB only and skip registry, OSV, GHSA, and NVIDIA network lookups (requires a populated DB from `agent-bom db update`). false: query those sources online. Omitted: online unless the server operator set AGENT_BOM_OFFLINE or AGENT_BOM_VULN_DB_OFFLINE."
       },
       {
         "name": "scorecard",
@@ -92,6 +92,31 @@
         "name": "policy",
         "type": "object",
         "desc": "Policy object to evaluate alongside scan results, e.g. {\"rules\": [{\"id\": \"no-critical\", \"severity_gte\": \"critical\", \"action\": \"fail\"}]}."
+      },
+      {
+        "name": "detail",
+        "type": "string",
+        "desc": "JSON output only. 'summary' (default): counts, top findings, affected paths, and a result_id for paged follow-ups. 'full': the whole AI-BOM document, shortened structurally (still valid JSON, with _truncation metadata) if it exceeds the response budget."
+      },
+      {
+        "name": "result_id",
+        "type": "string",
+        "desc": "result_id from a previous scan response. With it, no new scan runs: returns that result's summary, or one page of `section`."
+      },
+      {
+        "name": "section",
+        "type": "string",
+        "desc": "Section of a stored result to page, e.g. 'findings', 'blast_radius', 'packages', 'exposure_paths'."
+      },
+      {
+        "name": "offset",
+        "type": "integer",
+        "desc": "Zero-based item offset into `section`."
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "desc": "Maximum items per page of `section` (1-200)."
       }
     ]
   },

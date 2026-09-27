@@ -261,7 +261,10 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_MCP_MAX_REQUEST_TRACES` | `int` | `256` | — |
 | `AGENT_BOM_MCP_MAX_RESPONSE` | `int` | `500000` | — |
 | `AGENT_BOM_MCP_MAX_TOOL_METRICS` | `int` | `128` | — |
+| `AGENT_BOM_MCP_SCAN_RESULT_CACHE_SIZE` | `int` | `4` | Full scan results kept per process so `scan(result_id=..., section=...)` can page a report that is too large for one response. Bounded by count and age. |
+| `AGENT_BOM_MCP_SCAN_RESULT_TTL_SECONDS` | `float` | `1800.0` | — |
 | `AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS` | `float` | `30.0` | — |
+| `AGENT_BOM_MCP_WORKSPACE_ROOTS` | `str` | `''` | Extra directories (os.pathsep-separated absolute paths) that MCP path arguments may resolve into, in addition to HOME — e.g. /workspaces in a devcontainer. Filesystem roots are ignored; read at call time. |
 
 ## MCP server: how remote clients are told to reach us
 | Env var | Type | Default | Description |

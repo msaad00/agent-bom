@@ -36,7 +36,20 @@ def test_aws_flow_logging_is_evaluated_and_counted_once(passes: bool) -> None:
     client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-one", "FlowLogStatus": "ACTIVE"}] if passes else []}
     session = MagicMock(region_name="us-east-1")
     session.client.return_value = client
-    report = run_benchmark(session=session, checks=["3.9", "5.6"], region_scope_complete=True)
+    # The cloud SDK is optional in the contract-smoke environment. All reads
+    # use the supplied fake session; keep the import guard hermetic too.
+    exceptions = types.ModuleType("botocore.exceptions")
+    exceptions.ClientError = type("ClientError", (Exception,), {})
+    with patch.dict(
+        sys.modules,
+        {
+            "boto3": types.ModuleType("boto3"),
+            "botocore": types.ModuleType("botocore"),
+            "botocore.config": None,
+            "botocore.exceptions": exceptions,
+        },
+    ):
+        report = run_benchmark(session=session, checks=["3.9", "5.6"], region_scope_complete=True)
 
     assert [check.check_id for check in report.checks] == ["3.9"]
     assert report.total == 1

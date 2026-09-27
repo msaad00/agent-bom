@@ -163,6 +163,7 @@ _PII_CODE_EXTENSIONS = frozenset(
         ".ps1",
     }
 )
+_URL_USERINFO_PREFIX_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s/@'\"]*$")
 _PII_CONTEXT_RE = re.compile(
     r"(?:=|:|\b(?:addr|address|allowlist|bind|database|endpoint|host|ip|listen|proxy|redis|server|url|uri)\b)",
     re.IGNORECASE,
@@ -537,6 +538,11 @@ def _scan_file(
             for name, pattern in PII_PATTERNS:
                 match = pattern.search(line)
                 if not match:
+                    continue
+                if name == "Email Address" and _URL_USERINFO_PREFIX_RE.search(line, 0, match.start()):
+                    # `scheme://user:pass@host` — the `pass@host` tail is URL
+                    # userinfo, reported above as a credential when it carries
+                    # a password, never as a person's email address.
                     continue
                 if name == "IP Address (IPv4)":
                     if not _IPV4_PII_CONTEXT_RE.search(line) or not _is_reportable_ipv4(match.group(0)):

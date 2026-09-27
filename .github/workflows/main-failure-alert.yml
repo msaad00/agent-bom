@@ -104,6 +104,9 @@ jobs:
             const sha = context.payload.workflow_run.head_sha.slice(0, 7);
             const title = `ci-regression: ${workflow} failing on main`;
             const labels = ["ci-regression", "release-blocker"];
+            // Scheduled publish/deploy runs retry every few hours while an external
+            // registry catches up, so they need a longer streak than CI to mean "broken".
+            const FAILURE_STREAK = workflow === "CI/CD Pipeline" || workflow === "Release" ? 3 : 5;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const body = [
@@ -114,16 +117,31 @@ jobs:
               `- Actor: @${context.payload.workflow_run.actor.login}`,
               `- Latest runs: ${context.serverUrl}/${owner}/${repo}/actions/workflows/${context.payload.workflow_run.workflow_id}`,
               "",
-              "This issue was opened automatically so main failures do not sit unnoticed.",
+              `Opened automatically after ${FAILURE_STREAK} consecutive failed runs on main; closes on the next green run.`,
             ].join("\n");
 
             // Completion events can arrive after a newer run has started or finished.
             const run = context.payload.workflow_run;
             const {data} = await github.rest.actions.listWorkflowRuns({
-              owner, repo, workflow_id: run.workflow_id, branch: "main", per_page: 1,
+              owner, repo, workflow_id: run.workflow_id, branch: "main", per_page: 20,
             });
             const latest = data.workflow_runs[0];
             if (!latest || latest.id !== run.id || latest.run_attempt !== run.run_attempt) return;
+            // One red run is a flake, a fix already in flight, or a provider that has
+            // not synced yet. Only a workflow that keeps failing on main is an incident.
+            const failed = new Set(["failure", "timed_out", "startup_failure"]);
+            let streak = 0;
+            for (const past of data.workflow_runs) {
+              if (past.id === run.id) {
+                streak += 1;
+                continue;
+              }
+              if (past.status !== "completed" || !past.conclusion) continue;
+              if (failed.has(past.conclusion)) streak += 1;
+              else if (past.conclusion === "success") break;
+              if (streak >= FAILURE_STREAK) break;
+            }
+            if (streak < FAILURE_STREAK) return;
             // CI recovery must describe the current branch, not an older green SHA.
             if (workflow === "CI/CD Pipeline") {
               const {data: branch} = await github.rest.repos.getBranch({owner, repo, branch: "main"});

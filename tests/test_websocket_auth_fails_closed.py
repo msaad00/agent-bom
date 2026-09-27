@@ -35,7 +35,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from agent_bom.api.routes import proxy as proxy_routes
+from agent_bom.api import websocket_auth as proxy_routes
 
 # Every environment variable any credential source reads, cleared before each
 # case so one source can be switched on in isolation.

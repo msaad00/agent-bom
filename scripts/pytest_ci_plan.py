@@ -21,6 +21,10 @@ AUTHORIZATION_SOURCES = frozenset(
         "src/agent_bom/api/middleware.py",
         "src/agent_bom/api/route_policy.py",
         "src/agent_bom/api/session_authorization.py",
+        "src/agent_bom/api/stream_authorization.py",
+        "src/agent_bom/api/sse_authorization.py",
+        "src/agent_bom/api/websocket_auth.py",
+        "src/agent_bom/api/tenancy.py",
         "src/agent_bom/api/routes/proxy.py",
     }
 )
@@ -30,6 +34,8 @@ AUTHORIZATION_CONTRACTS = (
     "tests/api/test_session_authorization_backends.py",
     "tests/api/test_auth_scope_boundaries.py",
     "tests/api/test_auth_contract_matrix.py",
+    "tests/api/test_stream_authorization.py",
+    "tests/test_websocket_auth_fails_closed.py",
 )
 MCP_TOOL_CONTRACTS = (
     "tests/test_mcp_tool_output_contract.py",

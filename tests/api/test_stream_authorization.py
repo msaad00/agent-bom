@@ -17,7 +17,7 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from agent_bom.api import auth, stream_authorization
+from agent_bom.api import auth, stream_authorization, websocket_auth
 from agent_bom.api.routes import proxy
 
 
@@ -29,8 +29,8 @@ async def test_open_metrics_stream_stops_after_key_restriction(monkeypatch, rest
     raw, key = auth.create_api_key(name="stream-fixture", role=auth.Role.ADMIN, scopes=["runtime:read"], tenant_id="tenant-a")
     store.add(key)
     monkeypatch.setattr(auth, "get_key_store", lambda: store)
-    monkeypatch.setattr(proxy, "_ws_auth_required", lambda: True)
-    monkeypatch.setattr(proxy, "_ws_handshake_within_rate_limit", AsyncMock(return_value=True))
+    monkeypatch.setattr(websocket_auth, "_ws_auth_required", lambda: True)
+    monkeypatch.setattr(websocket_auth, "_ws_handshake_within_rate_limit", AsyncMock(return_value=True))
     monkeypatch.setattr(proxy, "_runtime_metrics_for_tenant", lambda _: {})
 
     class Socket:
@@ -75,8 +75,8 @@ async def test_open_metrics_stream_stops_after_key_restriction(monkeypatch, rest
 async def test_idle_alert_stream_closes_when_key_is_revoked(scoped_store, monkeypatch):
     raw, key = auth.create_api_key(name="idle-stream", role=auth.Role.VIEWER, scopes=["runtime:read"])
     scoped_store.add(key)
-    monkeypatch.setattr(proxy, "_ws_auth_required", lambda: True)
-    monkeypatch.setattr(proxy, "_ws_handshake_within_rate_limit", AsyncMock(return_value=True))
+    monkeypatch.setattr(websocket_auth, "_ws_auth_required", lambda: True)
+    monkeypatch.setattr(websocket_auth, "_ws_handshake_within_rate_limit", AsyncMock(return_value=True))
 
     class Socket:
         headers = Headers({"Authorization": f"Bearer {raw}"})
@@ -232,6 +232,57 @@ async def test_stream_without_authenticator_never_starts_source():
     events = stream_authorization.authorized_events(Request({"type": "http"}), source())
     assert [event async for event in events] == [{"event": "reconnect", "data": '{"reason":"reauthenticate"}'}]
     assert not started
+
+
+@pytest.mark.asyncio
+async def test_stalled_websocket_consumer_is_closed(monkeypatch):
+    monkeypatch.setattr(websocket_auth, "_STREAM_SEND_TIMEOUT_SECONDS", 0.01)
+    lease = stream_authorization.StreamAuthorization(AsyncMock(return_value=True))
+    context = websocket_auth._WebSocketAuthContext(authorization=lease)
+
+    class Socket:
+        close_code = None
+
+        async def send_json(self, data):
+            await asyncio.Event().wait()
+
+        async def close(self, code):
+            self.close_code = code
+
+    socket = Socket()
+    assert not await asyncio.wait_for(websocket_auth.send_stream_json(socket, context, {}), timeout=1)
+    assert socket.close_code == 1013
+
+
+@pytest.mark.asyncio
+async def test_stalled_sse_consumer_cancels_source(monkeypatch):
+    from sse_starlette.sse import SendTimeoutError
+
+    from agent_bom.api import sse_authorization
+
+    monkeypatch.setattr(sse_authorization, "_STREAM_SEND_TIMEOUT_SECONDS", 0.01)
+    closed = asyncio.Event()
+
+    async def source():
+        try:
+            yield {"data": "first"}
+        finally:
+            closed.set()
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            await asyncio.Event().wait()
+
+    async def receive():
+        await asyncio.Event().wait()
+
+    lease = stream_authorization.StreamAuthorization(AsyncMock(return_value=True))
+    response = sse_authorization.AuthorizedEventSourceResponse(source())
+    with pytest.raises((SendTimeoutError, BaseExceptionGroup)) as error:
+        await asyncio.wait_for(response({"type": "http", "state": {"stream_authorization": lease}}, receive, send), timeout=1)
+    if isinstance(error.value, BaseExceptionGroup):
+        assert error.value.subgroup(SendTimeoutError) is not None
+    assert closed.is_set()
 
 
 @pytest.mark.asyncio

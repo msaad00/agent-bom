@@ -89,6 +89,8 @@ a `reconnect` event with reason `reauthenticate`; WebSockets close with code
 gateway's existing 30-second reconnect limit remains in place.
 
 Authorization checks have a five-second timeout and fail closed on errors.
+Data sends also time out after five seconds; stalled WebSocket consumers close
+with code 1013 and SSE responses cancel their pending source read.
 The five-second lease bounds cached authority; it does not retract previously
 sent frames or cancel provider work already executing. Static deployment
 configuration changes still require the owning server's normal reload/restart.

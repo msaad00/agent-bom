@@ -2042,7 +2042,7 @@ async def scan_agents(
                     exposed_tools.append(tool)
 
         # Deduplicate credentials and tools to prevent inflation
-        exposed_creds_deduped = list(set(exposed_creds))
+        exposed_creds_deduped = sorted(set(exposed_creds))
         seen_tool_names: set[str] = set()
         deduped_tools = []
         for t in exposed_tools:

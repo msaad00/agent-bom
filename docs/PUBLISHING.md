@@ -256,6 +256,41 @@ submission pin). Merge it to advance the docs. `scripts/check_version_alignment.
 fails if `PUBLISHED_VERSION` is ahead of the source version or, when release tags
 are available locally, names a tag that does not exist.
 
+### Release checkouts run their own tag
+
+Because pull-only pins track `PUBLISHED_VERSION`, a checkout of tag `vX` still
+pins the previous release in `deploy/docker-compose.pilot.yml` and
+`deploy/k8s/*.yaml`. Moving those pins to `X` before tagging would make `main`
+name an image that does not exist until the release run publishes it, so the
+release flow does not do that. Instead:
+
+- every image in `deploy/docker-compose.pilot.yml` reads
+  `${AGENT_BOM_IMAGE_TAG:-<published>}`, and the self-host instructions (README,
+  [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md)) clone `--branch vX` and set
+  `AGENT_BOM_IMAGE_TAG=X` together;
+- [`deploy/k8s/README.md`](../deploy/k8s/README.md) shows the same substitution
+  for raw manifests;
+- `scripts/check_version_alignment.py` (run by CI and the release
+  `version-guard` job) fails if a pilot image ignores the override, and treats
+  the documented `--branch vX` / `AGENT_BOM_IMAGE_TAG=X` values as copy-paste
+  pins that track `PUBLISHED_VERSION`.
+
+The GitHub Action follows the same rule without an override: with
+`agent-bom-version` empty, `msaad00/agent-bom@vX` installs `agent-bom==X` (the
+version in the action ref's `pyproject.toml`), and falls back to the newest
+release with a warning only when that version is not on PyPI yet.
+
+### Pre-tag release smoke
+
+```bash
+./scripts/release_smoke.sh
+AGENT_BOM_RELEASE_SMOKE_FINDINGS_BENCH=1 ./scripts/release_smoke.sh   # optional read bench
+```
+
+Proves install, offline demo scan and CSV export. When
+`AGENT_BOM_RELEASE_SMOKE_API_URL` is set, it also probes `${URL}/healthz` for JSON
+liveness (`/health` is the same probe).
+
 Each GitHub Release should include these verification assets alongside the
 wheel and source tarball:
 

@@ -226,6 +226,10 @@ class GCPCISReport:
         return sum(1 for c in self.checks if c.status == CheckStatus.NOT_APPLICABLE)
 
     @property
+    def no_data(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.NO_DATA)
+
+    @property
     def evaluated(self) -> int:
         return self.passed + self.failed
 
@@ -253,6 +257,7 @@ class GCPCISReport:
             "failed": self.failed,
             "errored": self.errored,
             "not_applicable": self.not_applicable,
+            "no_data": self.no_data,
             "evaluated": self.evaluated,
             "total": self.total,
             "checks": [

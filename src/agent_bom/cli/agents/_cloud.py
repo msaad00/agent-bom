@@ -519,7 +519,7 @@ def run_benchmarks(
                 else:
                     from agent_bom.cloud.gcp_cis_benchmark import run_benchmark as run_gcp_cis
 
-                    ctx.gcp_cis_benchmark_report = run_gcp_cis()
+                    ctx.gcp_cis_benchmark_report = run_gcp_cis(project_id=gcp_project or None)
             passed = ctx.gcp_cis_benchmark_report.passed
             failed = ctx.gcp_cis_benchmark_report.failed
             total = ctx.gcp_cis_benchmark_report.total

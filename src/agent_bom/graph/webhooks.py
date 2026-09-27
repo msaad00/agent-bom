@@ -457,7 +457,14 @@ def format_alerts_for_siem(alerts: list[dict[str, Any]], product_version: str = 
 
     ocsf_events = []
     for alert in alerts:
-        severity_str = alert.get("severity", "medium").lower()
+        severity_str = str(alert.get("severity") or "medium").lower()
+        alert_type = str(alert.get("type") or "graph_delta")
+        title = str(alert.get("title") or "")
+        node_ids = alert.get("node_ids")
+        primary_node = str(node_ids[0]) if isinstance(node_ids, list) and node_ids else ""
+        uid = f"delta:{alert.get('scan_id') or ''}:{alert_type}"
+        if primary_node:
+            uid = f"{uid}:{primary_node}"
         ocsf_events.append(
             {
                 "class_uid": 2004,
@@ -470,12 +477,12 @@ def format_alerts_for_siem(alerts: list[dict[str, Any]], product_version: str = 
                 "status_id": 1,
                 "status": "New",
                 "time": int(time.time() * 1000),
-                "message": alert["title"],
+                "message": title,
                 "finding_info": {
-                    "title": alert["title"],
-                    "desc": alert["description"],
-                    "types": [alert["type"]],
-                    "uid": f"delta:{alert['scan_id']}:{alert['type']}:{alert.get('node_ids', [''])[0]}",
+                    "title": title,
+                    "desc": str(alert.get("description") or ""),
+                    "types": [alert_type],
+                    "uid": uid,
                 },
                 "metadata": {
                     "product": {

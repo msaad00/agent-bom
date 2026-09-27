@@ -426,6 +426,9 @@ def test_push_graph_failure_rolls_back_job_endpoint_and_quota(monkeypatch: pytes
     graph_rollbacks: list[tuple[str, str]] = []
 
     class _GraphStore:
+        def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+            return scan_id, ""
+
         def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
             graph_rollbacks.append((tenant_id, scan_id))
             return 0
@@ -487,6 +490,9 @@ def test_push_final_job_receipt_failure_rolls_back_all_projections(monkeypatch: 
     graph_rollbacks: list[tuple[str, str]] = []
 
     class _GraphStore:
+        def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+            return scan_id, ""
+
         def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
             graph_rollbacks.append((tenant_id, scan_id))
             return 1

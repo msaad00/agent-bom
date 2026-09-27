@@ -7,7 +7,7 @@ import logging
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import click
 from rich.console import Console
@@ -29,13 +29,16 @@ class _NarrativeReport:
     """Lightweight report shim for compliance narratives loaded from saved JSON."""
 
     agents: list["Agent"]
-    blast_radii: list["BlastRadius"]
+    # Package advisories as BlastRadius, plus non-advisory findings (secrets,
+    # personal data, code flaws) projected by blast_radii_from_finding_rows.
+    blast_radii: list[Any]
     summary_total_agents: int
     summary_total_packages: int
     # When the saved scan actually ran. Detective controls are scored from
     # evidence freshness, so a narrative regenerated from an old artifact must
     # report them stale rather than inheriting today's date.
     generated_at: "datetime | None" = None
+    non_advisory_findings: int = 0
 
     @property
     def total_agents(self) -> int:
@@ -45,7 +48,13 @@ class _NarrativeReport:
     def total_packages(self) -> int:
         if self.summary_total_packages > 0:
             return self.summary_total_packages
-        return len({(br.package.ecosystem, br.package.name, br.package.version) for br in self.blast_radii})
+        return len(
+            {
+                (br.package.ecosystem, br.package.name, br.package.version)
+                for br in self.blast_radii
+                if getattr(br, "finding_type", "CVE") == "CVE"
+            }
+        )
 
 
 def _report_from_json(data: dict) -> "_NarrativeReport":
@@ -125,13 +134,43 @@ def _report_from_json(data: dict) -> "_NarrativeReport":
             setattr(blast_radius, tag_field, tags)
         blast_radii.append(blast_radius)
 
+    # The package block has no owner/SLA; the unified finding stream does. Join
+    # on (advisory, package@version) so the headline never invents either.
+    raw_findings = [row for row in data.get("findings") or [] if isinstance(row, dict)]
+    ownership: dict[tuple[str, str], dict[str, object]] = {}
+    for row in raw_findings:
+        if str(row.get("finding_type") or "CVE") != "CVE":
+            continue
+        raw_evidence = row.get("evidence")
+        evidence: dict = raw_evidence if isinstance(raw_evidence, dict) else {}
+        key = (
+            str(row.get("cve_id") or row.get("vulnerability_id") or ""),
+            f"{evidence.get('package_name') or ''}@{evidence.get('package_version') or ''}",
+        )
+        slot = ownership.setdefault(key, {"owner": None, "sla_due_at": None})
+        slot["owner"] = slot["owner"] or row.get("owner")
+        due = row.get("sla_due_at")
+        if isinstance(due, str) and due and (not slot["sla_due_at"] or due < str(slot["sla_due_at"])):
+            slot["sla_due_at"] = due
+    narrative_rows: list[Any] = list(blast_radii)
+    for blast_radius in blast_radii:
+        slot = ownership.get((blast_radius.vulnerability.id, f"{blast_radius.package.name}@{blast_radius.package.version}"), {})
+        setattr(blast_radius, "owner", slot.get("owner"))
+        setattr(blast_radius, "sla_due_at", slot.get("sla_due_at"))
+
+    from agent_bom.output.compliance_narrative import blast_radii_from_finding_rows
+
+    non_advisory = blast_radii_from_finding_rows([row for row in raw_findings if str(row.get("finding_type") or "CVE") != "CVE"])
+    narrative_rows.extend(non_advisory)
+
     summary = data.get("summary") or {}
     return _NarrativeReport(
         agents=[agents_by_name[name] for name in sorted(agents_by_name)],
-        blast_radii=blast_radii,
+        blast_radii=narrative_rows,
         summary_total_agents=int(summary.get("total_agents") or 0),
         summary_total_packages=int(summary.get("total_packages") or 0),
         generated_at=_parse_generated_at(data.get("generated_at")),
+        non_advisory_findings=len(non_advisory),
     )
 
 
@@ -621,6 +660,25 @@ def _render_failing_controls_markdown(lines: list, failing_controls: list) -> No
     lines.append("")
 
 
+def _render_executive_headline_markdown(lines: list, headline: dict) -> None:
+    """Render the leadership paragraph and its top-risk table (owner/SLA as recorded)."""
+    if not headline:
+        return
+    lines.extend(["## Executive headline", "", str(headline.get("summary", "")), ""])
+    risks = headline.get("top_risks") or []
+    if risks:
+        lines.append("| Risk | Severity | Agents reached | Owner | SLA due |")
+        lines.append("|---|---|---|---|---|")
+        for risk in risks:
+            agents = ", ".join(risk.get("affected_agents") or []) or "none recorded"
+            lines.append(
+                f"| {risk.get('title')} | {risk.get('severity')} | {agents} | "
+                f"{risk.get('owner') or 'unassigned'} | {risk.get('sla_due_at') or 'no SLA set'} |"
+            )
+        lines.append("")
+    lines.extend([f"> {headline.get('claim_boundary', '')}", ""])
+
+
 def _render_nist_catalog_markdown(lines: list, catalog: dict) -> None:
     """Render the catalog-backed NIST 800-53 line + per-control drill.
 
@@ -632,7 +690,7 @@ def _render_nist_catalog_markdown(lines: list, catalog: dict) -> None:
         return
     summary = catalog.get("summary", {})
     label = catalog.get("framework_label", "NIST SP 800-53")
-    lines.extend([f"## {label} (vendor-asserted)", ""])
+    lines.extend([f"### {label} (vendor-asserted)", ""])
     if catalog.get("status") == "no_data":
         lines.extend(
             [
@@ -689,15 +747,19 @@ def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_fo
     from agent_bom.output.compliance_narrative import generate_compliance_narrative
 
     console = Console()
+    saved = _report_from_json(_json.loads(Path(scan_file).read_text()))
     narrative = generate_compliance_narrative(
-        cast("AIBOMReport", _report_from_json(_json.loads(Path(scan_file).read_text()))),
+        cast("AIBOMReport", saved),
         framework=framework,
+        # Secrets and code flaws are not vulnerabilities; name the mix honestly.
+        finding_label="security finding" if saved.non_advisory_findings else "vulnerability",
     )
 
     if output_format == "json":
         rendered = _json.dumps(asdict(narrative), indent=2)
     else:
         lines = ["# Compliance Narrative", "", f"> {narrative.claim_boundary}", "", narrative.executive_summary, ""]
+        _render_executive_headline_markdown(lines, narrative.executive_headline)
         for fw in narrative.framework_narratives:
             lines.extend(
                 [
@@ -715,7 +777,10 @@ def compliance_narrative_cmd(scan_file: str, framework: Optional[str], output_fo
                 for recommendation in fw.recommendations:
                     lines.append(f"- {recommendation}")
                 lines.append("")
-        _render_nist_catalog_markdown(lines, narrative.nist_800_53_catalog)
+            if fw.slug == "nist-800-53":
+                # A second view of the same framework, so it is nested here
+                # rather than counted as another framework section.
+                _render_nist_catalog_markdown(lines, narrative.nist_800_53_catalog)
         if narrative.remediation_impact:
             lines.extend(["## Remediation Impact", ""])
             for impact in narrative.remediation_impact:

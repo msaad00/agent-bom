@@ -25,8 +25,8 @@ Supported frameworks (slug → display name):
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -156,6 +156,9 @@ class ComplianceNarrative:
     # representation the /v1/compliance API line reports (one source of truth).
     # Empty dict when a single-framework narrative is scoped to a non-NIST slug.
     nist_800_53_catalog: dict = field(default_factory=dict)
+    # One-paragraph leadership read plus the top risks it names, from the same
+    # rows the framework sections evaluate (see agent_bom.output.executive_headline).
+    executive_headline: dict = field(default_factory=dict)
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -569,6 +572,10 @@ def _build_remediation_impact(
     groups: dict[tuple[str, str], dict] = {}
 
     for br in blast_radii_dicts:
+        # A hardcoded secret or a code flaw is not fixed by a package upgrade;
+        # its remediation lives on the finding, not in this bridge.
+        if (br.get("finding_type") or "CVE") != "CVE":
+            continue
         raw_pkg = br.get("package", "")  # "name@version" format from json_fmt
         fix_ver = br.get("fixed_version") or ""
 
@@ -709,12 +716,19 @@ def _build_risk_narrative(
         if top_creds:
             cred_exposure = f" with {len(top_creds)} exposed credential{'s' if len(top_creds) > 1 else ''}"
 
-        parts.append(f"The highest-risk finding is {top_vuln} in {top_pkg} (risk score {top_score:.1f}/10{agent_exposure}{cred_exposure}).")
+        subject = top["title"] if (top.get("finding_type") or "CVE") != "CVE" and top.get("title") else f"{top_vuln} in {top_pkg}"
+        parts.append(f"The highest-risk finding is {subject} (risk score {top_score:.1f}/10{agent_exposure}{cred_exposure}).")
 
     return " ".join(parts)
 
 
 # ─── Executive summary ────────────────────────────────────────────────────────
+
+
+def _named_list(names: list[str], shown: int = 3) -> str:
+    """Name the first few items and count the rest, so a list is never silently cut."""
+    head = ", ".join(names[:shown])
+    return f"{head} and {len(names) - shown} more" if len(names) > shown else head
 
 
 def _build_executive_summary(
@@ -761,10 +775,10 @@ def _build_executive_summary(
     # Framework posture
     total_fws = len(framework_narratives)
     if action_fws:
-        fw_names = ", ".join(fn.framework for fn in action_fws[:3])
+        fw_names = _named_list([fn.framework for fn in action_fws])
         sentences.append(f"{len(action_fws)} of {total_fws} framework mappings have evidence requiring action: {fw_names}.")
     elif review_fws:
-        fw_names = ", ".join(fn.framework for fn in review_fws[:3])
+        fw_names = _named_list([fn.framework for fn in review_fws])
         sentences.append(
             f"No framework mapping has critical/high findings; {len(review_fws)} "
             f"{'require' if len(review_fws) > 1 else 'requires'} review: {fw_names}."
@@ -786,6 +800,13 @@ def _build_executive_summary(
         sentences.append("Continue regular scanning and independent control validation to maintain current evidence coverage.")
 
     return " ".join(sentences)
+
+
+def _headline_title(row: Mapping[str, object]) -> str:
+    vulnerability_id = str(row.get("vulnerability_id") or "Unavailable")
+    if row.get("finding_type") == "CVE" and row.get("package"):
+        return f"{vulnerability_id} in {row['package']}"
+    return vulnerability_id
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
@@ -824,13 +845,17 @@ def generate_compliance_narrative(
             {
                 "vulnerability_id": br.vulnerability.id,
                 "severity": br.vulnerability.severity.value,
-                "package": f"{br.package.name}@{br.package.version}",
+                "package": f"{br.package.name}@{br.package.version}" if br.package.version else br.package.name,
                 "fixed_version": br.vulnerability.fixed_version,
                 "risk_score": br.risk_score,
                 "is_kev": br.vulnerability.is_kev,
                 "affected_agents": [a.name for a in br.affected_agents],
                 "affected_servers": [s.name for s in br.affected_servers],
                 "exposed_credentials": br.exposed_credentials,
+                "finding_type": getattr(br, "finding_type", None) or "CVE",
+                "title": getattr(br, "title", None),
+                "owner": getattr(br, "owner", None),
+                "sla_due_at": getattr(br, "sla_due_at", None),
                 **{field: list(getattr(br, field, []) or []) for field in COMPLIANCE_TAG_FIELDS},
             }
         )
@@ -889,6 +914,21 @@ def generate_compliance_narrative(
 
         nist_800_53_catalog = build_nist_800_53_catalog_line(blast_dicts, {}, 1 if blast_dicts else 0)
 
+    from agent_bom.output.executive_headline import build_executive_headline
+
+    headline = build_executive_headline(
+        {
+            "id": b["vulnerability_id"],
+            "title": b.get("title") or _headline_title(b),
+            "severity": b.get("severity"),
+            "risk_score": b.get("risk_score"),
+            "affected_agents": b.get("affected_agents"),
+            "owner": b.get("owner"),
+            "sla_due_at": b.get("sla_due_at"),
+        }
+        for b in blast_dicts
+    )
+
     return ComplianceNarrative(
         executive_summary=executive_summary,
         framework_narratives=framework_narratives,
@@ -897,24 +937,16 @@ def generate_compliance_narrative(
         generated_at=generated_at,
         claim_boundary=COMPLIANCE_CLAIM_BOUNDARY,
         nist_800_53_catalog=nist_800_53_catalog,
+        executive_headline=asdict(headline),
     )
 
 
-def generate_compliance_narrative_from_findings(
-    findings: list[Mapping[str, object]],
-    *,
-    total_agents: int,
-    total_packages: int,
-    generated_at: str | None = None,
-    framework: str | None = None,
-) -> ComplianceNarrative:
-    """Generate the narrative from the canonical persisted finding stream.
+def blast_radii_from_finding_rows(findings: Iterable[Mapping[str, object]]) -> list[SimpleNamespace]:
+    """Project unified finding rows onto the blast-radius shape the narrative evaluates.
 
-    The control plane stores complete unified findings, not Python model
-    instances. Re-running a scanner or padding a model with ``agent-0`` and
-    ``pkg-0`` placeholders makes the narrative answer a different question from
-    the finding queue. This adapter preserves each persisted finding and its
-    control mappings, then reuses the established narrative calculation.
+    Every row keeps its own control tags (legacy ``*_tags`` arrays, structured
+    ``controls`` and flattened ``framework_tags``), its finding type, owner and
+    SLA, so non-advisory findings are evaluated alongside package advisories.
     """
     from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
@@ -976,6 +1008,9 @@ def generate_compliance_narrative_from_findings(
             risk_score = 0.0
         raw_agents = row.get("affected_agents")
         affected_agents = raw_agents if isinstance(raw_agents, (list, tuple, set)) else []
+        if not affected_agents and asset.get("asset_type") == "agent" and asset.get("name"):
+            # The finding is about this agent (e.g. a toxic combination on it).
+            affected_agents = [asset["name"]]
         raw_servers = row.get("affected_servers")
         affected_servers = raw_servers if isinstance(raw_servers, (list, tuple, set)) else []
         raw_credentials = row.get("exposed_credentials")
@@ -993,9 +1028,34 @@ def generate_compliance_narrative_from_findings(
                 affected_agents=[SimpleNamespace(name=str(name)) for name in affected_agents],
                 affected_servers=[SimpleNamespace(name=str(name)) for name in affected_servers],
                 exposed_credentials=[str(name) for name in exposed_credentials],
+                finding_type=str(row.get("finding_type") or "CVE"),
+                title=str(row["title"]) if row.get("title") else None,
+                owner=row.get("owner"),
+                sla_due_at=row.get("sla_due_at"),
                 **tag_values,
             )
         )
+
+    return blast_radii
+
+
+def generate_compliance_narrative_from_findings(
+    findings: list[Mapping[str, object]],
+    *,
+    total_agents: int,
+    total_packages: int,
+    generated_at: str | None = None,
+    framework: str | None = None,
+) -> ComplianceNarrative:
+    """Generate the narrative from the canonical persisted finding stream.
+
+    The control plane stores complete unified findings, not Python model
+    instances. Re-running a scanner or padding a model with ``agent-0`` and
+    ``pkg-0`` placeholders makes the narrative answer a different question from
+    the finding queue. This adapter preserves each persisted finding and its
+    control mappings, then reuses the established narrative calculation.
+    """
+    blast_radii = blast_radii_from_finding_rows(findings)
 
     observed_at: datetime | None = None
     if generated_at:

@@ -1212,6 +1212,13 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         job_store = _get_store()
         job_persisted = False
         endpoint_persisted = False
+        graph_scan_id = str(job_result.get("scan_id") or job.job_id)
+        # A rollback may only remove what this push wrote. Resolve up front
+        # whether a snapshot with this id already existed (another push, or an
+        # older client that reused a content-derived id): that snapshot is not
+        # ours to delete. Unknown (backend cannot answer) is treated as
+        # pre-existing so a failure can never destroy someone else's graph.
+        graph_snapshot_preexisted = _graph_snapshot_exists(tenant_id, graph_scan_id)
         # Keep quota admission and all three durable projections in one
         # compensating transaction. Graph persistence is last and atomic within
         # its backend; a failure restores the prior endpoint and removes the job,
@@ -1229,13 +1236,17 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 # before exposing the completed idempotency receipt.
                 job_store.put(job)
             except Exception:
-                try:
-                    _get_graph_store().delete_snapshot(
-                        tenant_id=tenant_id,
-                        scan_id=str(job_result.get("scan_id") or job.job_id),
+                if graph_snapshot_preexisted:
+                    _logger.warning(
+                        "Graph rollback skipped for scan=%s tenant=%s: snapshot existed before this push",
+                        sanitize_text(graph_scan_id),
+                        sanitize_text(tenant_id),
                     )
-                except Exception as rollback_exc:  # noqa: BLE001
-                    _logger.error("Graph rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
+                else:
+                    try:
+                        _get_graph_store().delete_snapshot(tenant_id=tenant_id, scan_id=graph_scan_id)
+                    except Exception as rollback_exc:  # noqa: BLE001
+                        _logger.error("Graph rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
                 if endpoint_persisted and body.source_id:
                     try:
                         if previous_endpoint is None:
@@ -1298,6 +1309,21 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         if idempotency_heartbeat is not None:
             idempotency_heartbeat.__exit__()
     return _pushed_job_receipt(job)
+
+
+def _graph_snapshot_exists(tenant_id: str, scan_id: str) -> bool:
+    """Return whether a snapshot for ``scan_id`` is already persisted.
+
+    Fails safe: when the backend cannot answer, report ``True`` so a later
+    rollback leaves the snapshot alone rather than risk deleting data this
+    push did not write.
+    """
+    try:
+        _resolved, generation = _get_graph_store().snapshot_identity(tenant_id=tenant_id, scan_id=scan_id)
+    except Exception as exc:  # noqa: BLE001 — unknown must never authorize a delete
+        _logger.warning("Graph snapshot pre-check unavailable: %s", sanitize_text(sanitize_error(exc, generic=True)))
+        return True
+    return bool(generation)
 
 
 def _release_push_idempotency_claim(

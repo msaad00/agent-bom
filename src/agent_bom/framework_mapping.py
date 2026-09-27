@@ -82,6 +82,7 @@ __all__ = [
     "iso_control_provenance_for_cwes",
     "iso_controls_for_cwes_via_nist",
     "select_frameworks",
+    "controls_for_finding_shape",
     "is_framework_relevant",
     "ALL_FRAMEWORKS",
     "CIS_FOUNDATIONS_TO_NIST_800_53",
@@ -432,6 +433,102 @@ def is_framework_relevant(
         finding_type,
         include_gov=include_gov,
     )
+
+
+# ─── Finding-shape -> control tags (non-advisory findings) ────────────────────
+# Committed credentials, committed personal data and first-party code flaws
+# carry no package advisory, so the CVE taggers never see them. Without this
+# table they reached every report with empty control lists and dropped out of
+# the compliance narrative entirely. Conservative by design: only controls whose
+# objective the finding directly evidences, only IDs present in the shipped
+# catalogs, and ISO only through NIST's published 800-53 crosswalk.
+
+# Committed credentials are CWE-798; its curated row (LLM06, PR.AA-01, CC6.1,
+# CIS-16.1, IA-5, SC-28) is the one mapping source for them.
+_CREDENTIAL_CWES: tuple[str, ...] = ("CWE-798",)
+# Personal data in a file is data at rest that should not be there. It is not a
+# credential, so none of the identity-management controls apply.
+_PERSONAL_DATA_TAGS: dict[str, tuple[str, ...]] = {
+    "owasp_tags": ("LLM06",),
+    "nist_csf_tags": ("PR.DS-01",),
+    "nist_800_53_tags": ("SC-28",),
+}
+# A first-party code flaw is evidence against the secure-development controls
+# regardless of which CWE (if any) the detector attached.
+_SECURE_DEVELOPMENT_TAGS: dict[str, tuple[str, ...]] = {
+    "iso_27001_tags": ("A.8.28",),
+    "soc2_tags": ("CC8.1",),
+    "pci_dss_tags": ("6.2.4",),
+    "cis_tags": ("CIS-16.1",),
+}
+_CWE_TABLE_TAG_FIELDS: dict[str, str] = {
+    "owasp_llm": "owasp_tags",
+    "nist_csf": "nist_csf_tags",
+    "nist_800_53": "nist_800_53_tags",
+    "soc2": "soc2_tags",
+    "cis": "cis_tags",
+    "pci_dss": "pci_dss_tags",
+}
+
+
+def _is_mcp_location(source: FindingSource, asset_type: str | None, location: str | None) -> bool:
+    if source is FindingSource.MCP_SCAN or (asset_type or "").startswith("mcp"):
+        return True
+    basename = (location or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return "mcp" in basename
+
+
+def controls_for_finding_shape(
+    finding_type: FindingType,
+    *,
+    source: FindingSource,
+    cwe_ids: Iterable[str] = (),
+    asset_type: str | None = None,
+    location: str | None = None,
+) -> dict[str, list[str]]:
+    """Return ``{tag_field: [control, ...]}`` for a non-advisory finding.
+
+    Empty for every finding type this table does not own (CVE findings are
+    tagged from their advisory by the CVE taggers).
+    """
+    from agent_bom.evidence.control_modes import finding_taggable_controls
+    from agent_bom.fedramp import FEDRAMP_MODERATE
+
+    tags: dict[str, list[str]] = {}
+
+    def add(field_name: str, controls: Iterable[str]) -> None:
+        bucket = tags.setdefault(field_name, [])
+        for control in controls:
+            if control not in bucket:
+                bucket.append(control)
+
+    def add_cwe_rows(cwes: Iterable[str]) -> None:
+        cwe_list = list(cwes)
+        for framework_key, field_name in _CWE_TABLE_TAG_FIELDS.items():
+            add(field_name, controls_for_cwes(cwe_list, framework_key))
+
+    if finding_type is FindingType.CREDENTIAL_EXPOSURE:
+        add_cwe_rows(_CREDENTIAL_CWES)
+        if _is_mcp_location(source, asset_type, location):
+            add("owasp_mcp_tags", ("MCP01",))
+    elif finding_type is FindingType.PII_EXPOSURE:
+        for field_name, controls in _PERSONAL_DATA_TAGS.items():
+            add(field_name, controls)
+    elif finding_type is FindingType.SAST:
+        for field_name, controls in _SECURE_DEVELOPMENT_TAGS.items():
+            add(field_name, controls)
+        add_cwe_rows(cwe_ids)
+    else:
+        return {}
+
+    nist_ids = tags.get("nist_800_53_tags", [])
+    add("iso_27001_tags", (iso for nist_id in nist_ids for iso in nist_to_iso(nist_id)))
+    add("fedramp_tags", (f"FedRAMP-{nist_id}" for nist_id in nist_ids if nist_id in FEDRAMP_MODERATE))
+    return {
+        field_name: sorted(finding_taggable_controls(field_name, controls))
+        for field_name, controls in tags.items()
+        if finding_taggable_controls(field_name, controls)
+    }
 
 
 # ─── PR3: check -> NIST 800-53 control curation (VENDOR-ASSERTED) ─────────────

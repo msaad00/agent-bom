@@ -139,11 +139,20 @@ scripts/deploy/install.sh pilot         # fastest — laptop Docker, ~2 min
 
 ### Local pilot (fastest proof)
 
+Run the pilot from a release tag checkout and set `AGENT_BOM_IMAGE_TAG` to that
+tag, so the containers run the same release as the checked-out files:
+
 ```bash
-scripts/deploy/install.sh pilot
+git clone --depth 1 --branch v0.106.1 https://github.com/msaad00/agent-bom.git && cd agent-bom
+AGENT_BOM_IMAGE_TAG=0.106.1 scripts/deploy/install.sh pilot
 # Dashboard → http://localhost:3000
 # API       → http://localhost:8422/docs
 ```
+
+Without the variable, `deploy/docker-compose.pilot.yml` runs the image version it
+pins. Those pins name the latest release that was already published when the
+files were committed, so on a tag checkout they can trail that tag by one
+release; they never name an image that has not been published.
 
 Optional curated demo estate (showcase graph + offline scan on API start):
 

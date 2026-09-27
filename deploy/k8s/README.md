@@ -23,6 +23,16 @@ and **inline runtime enforcement** of MCP traffic.
 
 ## Apply
 
+The image pins name the latest release that was already published when these
+files were committed, so on a release tag checkout they can trail that tag by
+one release. To run the release you checked out, substitute its version while
+applying, for example:
+
+```bash
+sed "s#\(agentbom/agent-bom:\)[0-9.]*#\1${AGENT_BOM_IMAGE_TAG:?set to the checked-out release}#" \
+  deploy/k8s/cronjob.yaml | kubectl apply -f -
+```
+
 Namespace and RBAC first, then whichever lane you need:
 
 ```bash

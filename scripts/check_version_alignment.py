@@ -87,7 +87,8 @@ class ManagedPattern(NamedTuple):
 MANAGED_PATTERNS: tuple[ManagedPattern, ...] = (
     ManagedPattern(
         "image pin",
-        re.compile(r"(agentbom/agent-bom(?:-[a-z]+)?:)(\d+\.\d+\.\d+)"),
+        # Also matches the default of a checkout override, `:${AGENT_BOM_IMAGE_TAG:-X}`.
+        re.compile(r"(agentbom/agent-bom(?:-[a-z]+)?:(?:\$\{[A-Z_]+:-)?)(\d+\.\d+\.\d+)"),
         "image",
     ),
     ManagedPattern(
@@ -98,6 +99,16 @@ MANAGED_PATTERNS: tuple[ManagedPattern, ...] = (
     ManagedPattern(
         "consumer pre-commit rev",
         re.compile(r"(repo: https://github\.com/msaad00/agent-bom\n[#\s]*rev:[ \t]+v)(\d+\.\d+\.\d+)"),
+        "published",
+    ),
+    ManagedPattern(
+        "release checkout tag",
+        re.compile(r"(--branch v)(\d+\.\d+\.\d+)"),
+        "published",
+    ),
+    ManagedPattern(
+        "release checkout image tag",
+        re.compile(r"(AGENT_BOM_IMAGE_TAG=)(\d+\.\d+\.\d+)"),
         "published",
     ),
     ManagedPattern(
@@ -117,6 +128,16 @@ SOURCE_BUILT: dict[str, str] = {
     "deploy/docker-compose.platform.yml": "UI service has a build: from ../ui; the API builds agent-bom:latest",
     "deploy/docker-compose.runtime-example.yml": "runtime proxy has a build: from Dockerfile.runtime",
 }
+
+# Pull-only composes a user runs from a release checkout. Their pins track
+# PUBLISHED_VERSION like every copy-paste surface, so at tag vX they still name
+# the previous release (main never points at an unpublished image). Every image
+# in them must therefore honor the named override, which the release-checkout
+# instructions (README, docs/DEPLOY_QUICKSTART.md) set to the tag being run.
+CHECKOUT_OVERRIDE: dict[str, str] = {
+    "deploy/docker-compose.pilot.yml": "AGENT_BOM_IMAGE_TAG",
+}
+_AGENTBOM_IMAGE_LINE = re.compile(r"^\s*image:\s*[\"']?(agentbom/agent-bom[^\s\"']*)", re.M)
 
 # Hosted-demo composes that must ALWAYS run ``:latest`` (redeployed on every
 # release), so they can never be silently frozen on a stale semver pin. Each
@@ -221,6 +242,8 @@ def find_drift(version: str, *, published: str | None = None) -> list[str]:
             continue
         drift.extend(scan_text(_rel(path), text, version, published=published))
 
+    scanned = {_rel(path) for path in _iter_files()}
+    drift.extend(find_override_drift(only=scanned))
     for rel, needle in LATEST_REQUIRED:
         path = ROOT / rel
         if not path.exists():
@@ -228,6 +251,32 @@ def find_drift(version: str, *, published: str | None = None) -> list[str]:
         elif needle not in path.read_text(encoding="utf-8", errors="ignore"):
             drift.append(f"{rel}: hosted-demo runtime must stay ':latest' ('{needle}' not found) — do not pin the always-redeployed demo")
     return sorted(drift)
+
+
+def find_override_drift(only: set[str] | None = None) -> list[str]:
+    """Return every checkout-overridable compose image that ignores its override.
+
+    ``only`` limits the check to those relative paths (the files a drift scan
+    actually walked); ``None`` checks every entry and flags a missing file.
+    """
+    drift: list[str] = []
+    for rel, variable in CHECKOUT_OVERRIDE.items():
+        if only is not None and rel not in only:
+            continue
+        path = ROOT / rel
+        if not path.exists():
+            drift.append(f"{rel}: checkout-overridable compose missing")
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        wanted = re.compile(r"agentbom/agent-bom(?:-[a-z]+)?:\$\{" + re.escape(variable) + r":-\d+\.\d+\.\d+\}")
+        for match in _AGENTBOM_IMAGE_LINE.finditer(text):
+            if not wanted.fullmatch(match.group(1)):
+                lineno = text.count("\n", 0, match.start(1)) + 1
+                drift.append(
+                    f"{rel}:{lineno}: image {match.group(1)} must be agentbom/...:${{{variable}:-<published>}} "
+                    "so a release checkout can run its own tag"
+                )
+    return drift
 
 
 def _rel(path: Path) -> str:

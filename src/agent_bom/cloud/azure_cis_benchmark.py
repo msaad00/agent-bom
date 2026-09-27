@@ -104,6 +104,10 @@ class AzureCISReport:
         return sum(1 for c in self.checks if c.status == CheckStatus.NOT_APPLICABLE)
 
     @property
+    def no_data(self) -> int:
+        return sum(1 for c in self.checks if c.status == CheckStatus.NO_DATA)
+
+    @property
     def evaluated(self) -> int:
         return self.passed + self.failed
 
@@ -131,6 +135,7 @@ class AzureCISReport:
             "failed": self.failed,
             "errored": self.errored,
             "not_applicable": self.not_applicable,
+            "no_data": self.no_data,
             "evaluated": self.evaluated,
             "total": self.total,
             "checks": [
@@ -178,6 +183,33 @@ _APPSERVICE_SECTION = "9 - App Service"
 # left as manual verification. Fail-closed contract: any denied, missing, or
 # unreadable Graph evidence yields ``unevaluable`` (ERROR), never an assumed PASS.
 # ---------------------------------------------------------------------------
+
+
+def _pass_or_no_data(result: CISCheckResult, count: int, resource_kind: str, pass_evidence: str) -> CISCheckResult:
+    """PASS only when at least one resource was evaluated; zero resources is NO_DATA.
+
+    "All 0 servers are compliant" is not evidence of compliance — it is the
+    absence of evidence, reported the same way ``finalize_read_coverage`` does.
+    """
+    if count:
+        result.status = CheckStatus.PASS
+        result.evidence = pass_evidence
+    else:
+        result.status = CheckStatus.NO_DATA
+        result.evidence = f"No {resource_kind}(s) were discovered; this check has no data and cannot report PASS."
+    return result
+
+
+def _enum_text(value: Any) -> str:
+    """Wire value of an Azure SDK field that may be a ``str``-mixin Enum.
+
+    The SDK deserializes known values into enum members, and ``str()`` of a
+    ``(str, Enum)`` member is ``'Bypass.AZURE_SERVICES'`` — not the wire value
+    ``'AzureServices'`` — so every comparison must use ``.value``.
+    """
+    if value is None:
+        return ""
+    return str(getattr(value, "value", value) or "").strip()
 
 
 def _mark_unevaluable(result: CISCheckResult, exc: Exception) -> CISCheckResult:
@@ -244,6 +276,46 @@ def _ca_client_app_types(policy: dict[str, Any]) -> list[str]:
 def _ca_sign_in_risk_levels(policy: dict[str, Any]) -> list[str]:
     levels = _ca_conditions(policy).get("signInRiskLevels")
     return [str(level).strip().lower() for level in levels] if isinstance(levels, list) else []
+
+
+def _resolve_without_conditional_access(
+    result: CISCheckResult, graph: Any, policies: list[dict[str, Any]], *, control: str
+) -> CISCheckResult:
+    """Decide a Conditional Access control when no CA policy satisfies it.
+
+    Microsoft Entra security defaults enforce MFA (all users, administrators,
+    Azure management) and block legacy authentication without any CA policy,
+    and they cannot be on while CA policies are enforced. So with no enabled CA
+    policy the verdict depends on the security-defaults state:
+
+    * enabled  -> PASS (the control is enforced by security defaults);
+    * disabled -> FAIL;
+    * unreadable and no CA policy at all -> unevaluable (never a critical FAIL
+      on missing evidence). With CA policies present, security defaults are off
+      by construction and the missing CA coverage is a FAIL.
+    """
+    if any(_ca_enabled(p) for p in policies):
+        result.status = CheckStatus.FAIL
+        result.evidence = f"No enabled Conditional Access policy {control} ({len(policies)} policy(ies) reviewed)."
+        return result
+    try:
+        defaults = graph.get(SECURITY_DEFAULTS_PATH)
+    except GraphError as exc:
+        if policies:
+            result.status = CheckStatus.FAIL
+            result.evidence = f"No enabled Conditional Access policy {control} ({len(policies)} policy(ies) reviewed)."
+            return result
+        return _mark_unevaluable(result, exc)
+    if bool(defaults.get("isEnabled")):
+        result.status = CheckStatus.PASS
+        result.evidence = f"Microsoft Entra security defaults are enabled, which {control} without a Conditional Access policy."
+    else:
+        result.status = CheckStatus.FAIL
+        result.evidence = (
+            f"No enabled Conditional Access policy {control}, and Microsoft Entra security defaults are disabled "
+            f"({len(policies)} policy(ies) reviewed)."
+        )
+    return result
 
 
 def _check_1_1(auth_client: Any, subscription_id: str) -> CISCheckResult:
@@ -457,8 +529,7 @@ def _check_1_6(graph: Any) -> CISCheckResult:
             result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for all users."
             result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
         else:
-            result.status = CheckStatus.FAIL
-            result.evidence = f"No enabled Conditional Access policy requires MFA for all users ({len(policies)} policy(ies) reviewed)."
+            _resolve_without_conditional_access(result, graph, policies, control="requires MFA for all users")
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -525,8 +596,9 @@ def _check_1_8(graph: Any) -> CISCheckResult:
             result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for the Azure management app."
             result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
         else:
-            result.status = CheckStatus.FAIL
-            result.evidence = "No enabled Conditional Access policy requires MFA for the Microsoft Azure Management cloud app."
+            _resolve_without_conditional_access(
+                result, graph, policies, control="requires MFA for the Microsoft Azure Management cloud app"
+            )
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -550,8 +622,7 @@ def _check_1_9(graph: Any) -> CISCheckResult:
             result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) require MFA for administrative directory roles."
             result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
         else:
-            result.status = CheckStatus.FAIL
-            result.evidence = "No enabled Conditional Access policy requires MFA for administrative directory roles."
+            _resolve_without_conditional_access(result, graph, policies, control="requires MFA for administrative directory roles")
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -775,8 +846,9 @@ def _check_1_18(graph: Any) -> CISCheckResult:
             result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) block legacy authentication clients."
             result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
         else:
-            result.status = CheckStatus.FAIL
-            result.evidence = "No enabled Conditional Access policy blocks legacy authentication clients (exchangeActiveSync / other)."
+            _resolve_without_conditional_access(
+                result, graph, policies, control="blocks legacy authentication clients (exchangeActiveSync / other)"
+            )
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -859,8 +931,9 @@ def _check_1_22(graph: Any) -> CISCheckResult:
             result.evidence = f"{len(matching)} enabled Conditional Access policy(ies) enforce MFA for administrative role holders."
             result.resource_ids = [str(p.get("displayName") or p.get("id")) for p in matching[:10]]
         else:
-            result.status = CheckStatus.FAIL
-            result.evidence = "No enabled Conditional Access policy enforces MFA for users holding administrative directory roles."
+            _resolve_without_conditional_access(
+                result, graph, policies, control="enforces MFA for users holding administrative directory roles"
+            )
     except GraphError as exc:
         return _mark_unevaluable(result, exc)
     return result
@@ -1246,8 +1319,9 @@ def _check_3_1(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts without secure transfer: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have secure transfer enabled."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have secure transfer enabled."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not list storage accounts: {exc}"
@@ -1277,8 +1351,9 @@ def _check_3_7(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts with public blob access allowed: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have public blob access disabled."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have public blob access disabled."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account blob access settings: {exc}"
@@ -1303,7 +1378,7 @@ def _check_3_2(storage_client: Any) -> CISCheckResult:
         for acct in accounts:
             network_rule_set = getattr(acct, "network_rule_set", None)
             default_action = getattr(network_rule_set, "default_action", None) if network_rule_set else None
-            default_action_str = str(default_action or "").strip()
+            default_action_str = _enum_text(default_action)
             if default_action_str.lower() != "deny":
                 failing.append(acct.name)
 
@@ -1312,8 +1387,9 @@ def _check_3_2(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts with default network access set to Allow: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have default network access set to Deny."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have default network access set to Deny."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account network rules: {exc}"
@@ -1394,7 +1470,7 @@ def _check_3_3(storage_client: Any) -> CISCheckResult:
         for acct in accounts:
             encryption = getattr(acct, "encryption", None)
             key_source = getattr(encryption, "key_source", "") if encryption else ""
-            key_source_str = str(key_source or "").strip()
+            key_source_str = _enum_text(key_source)
             if key_source_str.lower() != "microsoft.keyvault":
                 non_cmk.append(acct.name)
         if non_cmk:
@@ -1402,8 +1478,9 @@ def _check_3_3(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts not using CMK encryption: {', '.join(non_cmk)}"
             result.resource_ids = non_cmk
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) use Customer Managed Key encryption."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) use Customer Managed Key encryption."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account encryption settings: {exc}"
@@ -1422,14 +1499,12 @@ def _check_3_4(storage_client: Any) -> CISCheckResult:
     )
     try:
         accounts = list(storage_client.storage_accounts.list())
-        result.status = CheckStatus.PASS
+        result.status = CheckStatus.NO_DATA
         result.evidence = (
-            f"Found {len(accounts)} storage account(s). Queue service logging must be verified "
-            "via the Storage Account > Diagnostics settings (classic) or Azure Monitor. "
-            "This check requires per-account data-plane access."
+            f"Not evaluated — Queue service logging is a per-account data-plane setting this read-only "
+            f"management-plane scan does not read ({len(accounts)} storage account(s) found). Verify via "
+            "Storage Account > Diagnostics settings (classic) or Azure Monitor; this is NOT treated as passed."
         )
-        if not accounts:
-            result.evidence = "No storage accounts found."
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not list storage accounts: {exc}"
@@ -1448,14 +1523,12 @@ def _check_3_5(storage_client: Any) -> CISCheckResult:
     )
     try:
         accounts = list(storage_client.storage_accounts.list())
-        result.status = CheckStatus.PASS
+        result.status = CheckStatus.NO_DATA
         result.evidence = (
-            f"Found {len(accounts)} storage account(s). Table service logging must be verified "
-            "via the Storage Account > Diagnostics settings (classic) or Azure Monitor. "
-            "This check requires per-account data-plane access."
+            f"Not evaluated — Table service logging is a per-account data-plane setting this read-only "
+            f"management-plane scan does not read ({len(accounts)} storage account(s) found). Verify via "
+            "Storage Account > Diagnostics settings (classic) or Azure Monitor; this is NOT treated as passed."
         )
-        if not accounts:
-            result.evidence = "No storage accounts found."
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not list storage accounts: {exc}"
@@ -1474,14 +1547,12 @@ def _check_3_6(storage_client: Any) -> CISCheckResult:
     )
     try:
         accounts = list(storage_client.storage_accounts.list())
-        result.status = CheckStatus.PASS
+        result.status = CheckStatus.NO_DATA
         result.evidence = (
-            f"Found {len(accounts)} storage account(s). Blob service logging must be verified "
-            "via the Storage Account > Diagnostics settings (classic) or Azure Monitor. "
-            "This check requires per-account data-plane access."
+            f"Not evaluated — Blob service logging is a per-account data-plane setting this read-only "
+            f"management-plane scan does not read ({len(accounts)} storage account(s) found). Verify via "
+            "Storage Account > Diagnostics settings (classic) or Azure Monitor; this is NOT treated as passed."
         )
-        if not accounts:
-            result.evidence = "No storage accounts found."
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not list storage accounts: {exc}"
@@ -1504,7 +1575,7 @@ def _check_3_8(storage_client: Any) -> CISCheckResult:
         for acct in accounts:
             network_rule_set = getattr(acct, "network_rule_set", None)
             default_action = getattr(network_rule_set, "default_action", None) if network_rule_set else None
-            default_action_str = str(default_action or "").strip()
+            default_action_str = _enum_text(default_action)
             if default_action_str.lower() != "deny":
                 failing.append(acct.name)
         if failing:
@@ -1512,8 +1583,9 @@ def _check_3_8(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts with default network access Allow: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have default network access set to Deny."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have default network access set to Deny."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account network rules: {exc}"
@@ -1536,17 +1608,17 @@ def _check_3_9(storage_client: Any) -> CISCheckResult:
         for acct in accounts:
             network_rule_set = getattr(acct, "network_rule_set", None)
             if network_rule_set:
-                bypass = getattr(network_rule_set, "bypass", "") or ""
-                bypass_str = str(bypass).strip()
-                if "azureservices" not in bypass_str.lower():
+                bypass_str = _enum_text(getattr(network_rule_set, "bypass", None))
+                if "azureservices" not in {part.strip().lower() for part in bypass_str.split(",")}:
                     failing.append(acct.name)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"Storage accounts without trusted Azure services bypass: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) allow trusted Azure services."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) allow trusted Azure services."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account trusted services settings: {exc}"
@@ -1575,8 +1647,9 @@ def _check_3_11(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts without private endpoints: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have private endpoints configured."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have private endpoints configured."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account private endpoints: {exc}"
@@ -1606,8 +1679,9 @@ def _check_3_12(storage_client: Any) -> CISCheckResult:
             result.evidence = f"Storage accounts without infrastructure encryption: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(accounts)} storage account(s) have infrastructure encryption enabled."
+            _pass_or_no_data(
+                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have infrastructure encryption enabled."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check storage account infrastructure encryption: {exc}"
@@ -1649,7 +1723,7 @@ def _check_4_1_1(sql_client: Any) -> CISCheckResult:
                 audit_settings = sql_client.server_blob_auditing_policies.get(resource_group, server_name)
                 inspected += 1
                 state = getattr(audit_settings, "state", None)
-                if str(state or "").lower() != "enabled":
+                if _enum_text(state).lower() != "enabled":
                     failing.append(server_name)
             except Exception as exc:
                 if is_access_denied_error(exc):
@@ -1691,7 +1765,7 @@ def _check_4_2_1(sql_client: Any) -> CISCheckResult:
         for server in servers:
             server_name = server.name or "unknown"
             min_tls = getattr(server, "minimal_tls_version", None)
-            min_tls_str = str(min_tls or "").strip()
+            min_tls_str = _enum_text(min_tls)
             # Acceptable values: "1.2", "Tls1.2", "TLS1.2", etc.
             if min_tls_str and "1.2" not in min_tls_str and "1.3" not in min_tls_str:
                 failing.append(f"{server_name} (TLS: {min_tls_str})")
@@ -1703,8 +1777,7 @@ def _check_4_2_1(sql_client: Any) -> CISCheckResult:
             result.evidence = f"Servers without TLS 1.2+: {', '.join(failing)}"
             result.resource_ids = [f.split(" ")[0] for f in failing]
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) enforce TLS 1.2 or higher."
+            _pass_or_no_data(result, len(servers), "SQL server", f"All {len(servers)} SQL server(s) enforce TLS 1.2 or higher.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check database server TLS settings: {exc}"
@@ -1845,7 +1918,7 @@ def _check_4_1_4(sql_client: Any) -> CISCheckResult:
                 atp = sql_client.server_advanced_threat_protection_settings.get(resource_group, server_name)
                 inspected += 1
                 state = getattr(atp, "state", "") or ""
-                if str(state).lower() != "enabled":
+                if _enum_text(state).lower() != "enabled":
                     failing.append(server_name)
             except Exception as exc:
                 if is_access_denied_error(exc):
@@ -1904,8 +1977,9 @@ def _check_4_1_5(sql_client: Any) -> CISCheckResult:
             result.evidence = f"SQL servers without Vulnerability Assessment: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) have Vulnerability Assessment configured."
+            _pass_or_no_data(
+                result, len(servers), "SQL server", f"All {len(servers)} SQL server(s) have Vulnerability Assessment configured."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check SQL server Vulnerability Assessment settings: {exc}"
@@ -1928,15 +2002,14 @@ def _check_4_1_6(sql_client: Any) -> CISCheckResult:
         for server in servers:
             server_name = server.name or "unknown"
             public_access = getattr(server, "public_network_access", "") or ""
-            if str(public_access).lower() != "disabled":
+            if _enum_text(public_access).lower() != "disabled":
                 failing.append(server_name)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"SQL servers with public network access enabled: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} SQL server(s) have public network access disabled."
+            _pass_or_no_data(result, len(servers), "SQL server", f"All {len(servers)} SQL server(s) have public network access disabled.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check SQL server public network access: {exc}"
@@ -1959,15 +2032,14 @@ def _check_4_2_2(mysql_client: Any) -> CISCheckResult:
         for server in servers:
             server_name = server.name or "unknown"
             ssl_enforcement = getattr(server, "ssl_enforcement", "") or ""
-            if str(ssl_enforcement).lower() != "enabled":
+            if _enum_text(ssl_enforcement).lower() != "enabled":
                 failing.append(server_name)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"MySQL servers without SSL enforcement: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} MySQL server(s) have SSL enforcement enabled."
+            _pass_or_no_data(result, len(servers), "MySQL server", f"All {len(servers)} MySQL server(s) have SSL enforcement enabled.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check MySQL SSL enforcement: {exc}"
@@ -2043,15 +2115,16 @@ def _check_4_3_1(postgresql_client: Any) -> CISCheckResult:
         for server in servers:
             server_name = server.name or "unknown"
             ssl_enforcement = getattr(server, "ssl_enforcement", "") or ""
-            if str(ssl_enforcement).lower() != "enabled":
+            if _enum_text(ssl_enforcement).lower() != "enabled":
                 failing.append(server_name)
         if failing:
             result.status = CheckStatus.FAIL
             result.evidence = f"PostgreSQL servers without SSL enforcement: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(servers)} PostgreSQL server(s) have SSL enforcement enabled."
+            _pass_or_no_data(
+                result, len(servers), "PostgreSQL server", f"All {len(servers)} PostgreSQL server(s) have SSL enforcement enabled."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check PostgreSQL SSL enforcement: {exc}"
@@ -2275,7 +2348,36 @@ def _check_4_3_5(postgresql_client: Any) -> CISCheckResult:
 # ---------------------------------------------------------------------------
 
 
-def _check_5_1_1(monitor_client: Any, subscription_id: str) -> CISCheckResult:
+_SUBSCRIPTION_DIAGNOSTIC_SETTINGS_API_VERSION = "2021-05-01-preview"
+
+
+def _list_subscription_diagnostic_settings(credential: Any, subscription_id: str) -> list[dict[str, Any]]:
+    """List subscription (Activity Log) diagnostic settings via read-only ARM.
+
+    azure-mgmt-monitor 7.x targets only the latest API surface and no longer
+    ships the diagnostic-settings operation groups, so this calls the
+    documented ``Subscription Diagnostic Settings - List`` endpoint directly
+    with the credential's own bearer token. Raises on any failure; the caller
+    turns that into an ERROR result.
+    """
+    import json
+    import urllib.parse
+    import urllib.request
+
+    token = credential.get_token("https://management.azure.com/.default").token
+    sub = urllib.parse.quote(subscription_id, safe="")
+    url = (
+        f"https://management.azure.com/subscriptions/{sub}/providers/Microsoft.Insights/diagnosticSettings"
+        f"?api-version={_SUBSCRIPTION_DIAGNOSTIC_SETTINGS_API_VERSION}"
+    )
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})  # noqa: S310 — fixed https ARM endpoint
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310  # nosec B310 — fixed https ARM endpoint
+        payload = json.loads(response.read().decode("utf-8"))
+    value = payload.get("value") if isinstance(payload, dict) else None
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _check_5_1_1(monitor_client: Any, subscription_id: str, *, credential: Any = None) -> CISCheckResult:
     """CIS 5.1.1 — Ensure a Diagnostic Setting exists for the Activity Log."""
     result = CISCheckResult(
         check_id="5.1.1",
@@ -2289,8 +2391,14 @@ def _check_5_1_1(monitor_client: Any, subscription_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        resource_uri = f"/subscriptions/{subscription_id}"
-        settings = list(monitor_client.diagnostic_settings.list(resource_uri))
+        legacy_operations = getattr(monitor_client, "diagnostic_settings", None)
+        if legacy_operations is not None:
+            # azure-mgmt-monitor < 7 still exposes the operation group.
+            settings = list(legacy_operations.list(f"/subscriptions/{subscription_id}"))
+        elif credential is not None:
+            settings = _list_subscription_diagnostic_settings(credential, subscription_id)
+        else:
+            raise CloudDiscoveryError("No diagnostic-settings API is available on this Azure Monitor client.")
 
         if settings:
             result.status = CheckStatus.PASS
@@ -2338,8 +2446,9 @@ def _check_5_1_2(monitor_client: Any, subscription_id: str) -> CISCheckResult:
             result.status = CheckStatus.FAIL
             result.evidence = f"Log profiles with insufficient retention: {', '.join(failing)}"
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(profiles)} log profile(s) have retention ≥ 365 days or indefinite."
+            _pass_or_no_data(
+                result, len(profiles), "log profile", f"All {len(profiles)} log profile(s) have retention ≥ 365 days or indefinite."
+            )
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check log profile retention: {exc}"
@@ -2778,11 +2887,10 @@ def _check_6_6(network_client: Any) -> CISCheckResult:
             result.evidence = f"Application Gateways without WAF enabled: {', '.join(failing)}"
             result.resource_ids = failing
         elif app_gws:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(app_gws)} Application Gateway(s) have WAF enabled."
+            _pass_or_no_data(result, len(app_gws), "Application Gateway", f"All {len(app_gws)} Application Gateway(s) have WAF enabled.")
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = "No Application Gateways found. WAF check is not applicable."
+            result.status = CheckStatus.NOT_APPLICABLE
+            result.evidence = "No Application Gateways found; WAF check is not applicable."
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check Application Gateway WAF settings: {exc}"
@@ -2835,8 +2943,7 @@ def _check_7_1(compute_client: Any) -> CISCheckResult:
             result.evidence = f"VMs not using Managed Disks: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(vms)} VM(s) use Managed Disks."
+            _pass_or_no_data(result, len(vms), "VM", f"All {len(vms)} VM(s) use Managed Disks.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check VM disk configuration: {exc}"
@@ -2868,8 +2975,7 @@ def _check_7_2(compute_client: Any) -> CISCheckResult:
             result.evidence = f"VMs without managed OS disks: {', '.join(failing)}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(vms)} VM(s) use Managed Disks for OS disks."
+            _pass_or_no_data(result, len(vms), "VM", f"All {len(vms)} VM(s) use Managed Disks for OS disks.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check VM managed disk configuration: {exc}"
@@ -2903,8 +3009,7 @@ def _check_7_3(compute_client: Any) -> CISCheckResult:
             result.evidence = f"Disks not encrypted with CMK: {', '.join(failing[:10])}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(disks)} disk(s) are encrypted with Customer Managed Key."
+            _pass_or_no_data(result, len(disks), "disk", f"All {len(disks)} disk(s) are encrypted with Customer Managed Key.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check disk encryption settings: {exc}"
@@ -2931,15 +3036,20 @@ def _check_7_4(compute_client: Any) -> CISCheckResult:
                 ext_name = getattr(ext, "name", "unknown") or "unknown"
                 vm_extensions.append(f"{vm_name}/{ext_name}")
         if vm_extensions:
-            result.status = CheckStatus.PASS
+            # There is no approved-extension list to evaluate against, so this
+            # is an inventory for review, not a compliance verdict.
+            result.status = CheckStatus.NO_DATA
             result.evidence = (
-                f"Found {len(vm_extensions)} extension(s) across {len(vms)} VM(s). "
-                "Review extensions to ensure only approved ones are installed: "
-                f"{', '.join(vm_extensions[:10])}"
+                f"Not evaluated — no approved-extension list is configured. Found {len(vm_extensions)} extension(s) "
+                f"across {len(vms)} VM(s) for manual review: {', '.join(vm_extensions[:10])}"
             )
-        else:
+            result.resource_ids = vm_extensions[:20]
+        elif vms:
             result.status = CheckStatus.PASS
             result.evidence = f"No extensions found on {len(vms)} VM(s)."
+        else:
+            result.status = CheckStatus.NO_DATA
+            result.evidence = "No VM(s) were discovered; this check has no data and cannot report PASS."
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check VM extensions: {exc}"
@@ -2958,9 +3068,9 @@ def _check_7_5(compute_client: Any) -> CISCheckResult:
     )
     try:
         vms = list(compute_client.virtual_machines.list_all())
-        result.status = CheckStatus.PASS
+        result.status = CheckStatus.NO_DATA
         result.evidence = (
-            f"Found {len(vms)} VM(s). OS patch status requires Azure Update Management or "
+            f"Not evaluated — found {len(vms)} VM(s); OS patch status requires Azure Update Management or "
             "Microsoft Defender for Cloud recommendations. Verify patch compliance in "
             "Azure Portal > Update Management or Defender for Cloud > Recommendations."
         )
@@ -3001,8 +3111,7 @@ def _check_7_6(compute_client: Any) -> CISCheckResult:
             result.evidence = f"VMs without detected endpoint protection: {', '.join(vms_without_ep[:10])}"
             result.resource_ids = vms_without_ep
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(vms)} VM(s) have endpoint protection extensions installed."
+            _pass_or_no_data(result, len(vms), "VM", f"All {len(vms)} VM(s) have endpoint protection extensions installed.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check VM endpoint protection: {exc}"
@@ -3512,8 +3621,7 @@ def _check_9_2(webapp_client: Any) -> CISCheckResult:
             result.evidence = f"Web apps without HTTPS-only enabled: {', '.join(failing[:10])}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(apps)} web app(s) have HTTPS-only enabled."
+            _pass_or_no_data(result, len(apps), "web app", f"All {len(apps)} web app(s) have HTTPS-only enabled.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check web app HTTPS settings: {exc}"
@@ -3547,7 +3655,7 @@ def _check_9_3(webapp_client: Any) -> CISCheckResult:
             try:
                 config = webapp_client.web_apps.get_configuration(resource_group, app_name)
                 inspected += 1
-                min_tls = str(getattr(config, "min_tls_version", "") or "").strip()
+                min_tls = _enum_text(getattr(config, "min_tls_version", None))
                 if not min_tls:
                     # An unreported minimum TLS version is not a pass — the app is
                     # not demonstrably enforcing TLS 1.2+, so flag it.
@@ -3604,8 +3712,7 @@ def _check_9_4(webapp_client: Any) -> CISCheckResult:
             result.evidence = f"Web apps without Managed Identity: {', '.join(failing[:10])}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(apps)} web app(s) have Managed Identity enabled."
+            _pass_or_no_data(result, len(apps), "web app", f"All {len(apps)} web app(s) have Managed Identity enabled.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check web app Managed Identity settings: {exc}"
@@ -3635,8 +3742,7 @@ def _check_9_5(webapp_client: Any) -> CISCheckResult:
             result.evidence = f"Web apps without client certificates enabled: {', '.join(failing[:10])}"
             result.resource_ids = failing
         else:
-            result.status = CheckStatus.PASS
-            result.evidence = f"All {len(apps)} web app(s) have client certificates enabled."
+            _pass_or_no_data(result, len(apps), "web app", f"All {len(apps)} web app(s) have client certificates enabled.")
     except Exception as exc:
         result.status = CheckStatus.ERROR
         result.evidence = f"Could not check web app client certificate settings: {exc}"
@@ -3877,7 +3983,7 @@ def run_benchmark(
         ("4.3.4", lambda: _check_4_3_4(_postgresql_client())),
         ("4.3.5", lambda: _check_4_3_5(_postgresql_client())),
         # Section 5 — Logging and Monitoring
-        ("5.1.1", lambda: _check_5_1_1(_monitor_client(), resolved_sub)),
+        ("5.1.1", lambda: _check_5_1_1(_monitor_client(), resolved_sub, credential=credential)),
         ("5.1.2", lambda: _check_5_1_2(_monitor_client(), resolved_sub)),
         ("5.1.3", lambda: _check_5_1_3(_monitor_client(), resolved_sub)),
         ("5.1.4", lambda: _check_5_1_4(_monitor_client(), resolved_sub)),

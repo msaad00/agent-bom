@@ -53,7 +53,7 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 	@echo "→ OpenAPI artifacts (docs/openapi/)";   python scripts/export_openapi.py --check
 	@echo "→ v1 schemas (docs/schemas/v1/)";        python scripts/generate_v1_schemas.py --check
 	@echo "→ per-agent BOM schema";                python scripts/generate_agent_bom_schema.py --check
-	@echo "→ Postgres migration contracts";         python -m pytest tests/test_postgres_migrations.py -q
+	@echo "→ Postgres migration contracts";         python -m pytest tests/test_postgres_migrations.py tests/test_postgres_schema_authority.py -q
 	@echo "→ agent capability manifest";             python scripts/generate_agent_capability_manifest.py --check
 	@echo "→ documented surface counts";            python scripts/check-counts.py
 	@echo "→ product surface contract";             python scripts/check_product_surface_contract.py

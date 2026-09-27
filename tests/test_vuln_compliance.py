@@ -265,7 +265,8 @@ class TestCweMappingTags:
         # NIST's OLIR crosswalk does not map SI-10 to an ISO control. Do not
         # resurrect the conflicting vendor CWE -> ISO catch-all.
         assert "A.8.28" not in tags["iso_27001"]
-        assert "PR.DS-01" in tags["nist_csf"]
+        # XSS runs in the victim's browser; it is not a data-at-rest control failure.
+        assert "PR.DS-01" not in tags["nist_csf"]
 
     def test_cwe_798_hardcoded_creds(self):
         tags = tag_vulnerability(

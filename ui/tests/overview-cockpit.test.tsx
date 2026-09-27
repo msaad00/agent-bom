@@ -44,7 +44,6 @@ describe("OverviewCockpit", () => {
     kev: 1,
     credentials: 8,
     agents: 8,
-    cves: 15,
     scans: 1,
     latestScan: "Jul 9, 10:45 PM",
     mode: "Local",
@@ -387,6 +386,75 @@ describe("OverviewCockpit", () => {
     expect(within(screen.getByTestId("coverage-lane-aispm")).getByText(evidenceStatus === "partial" ? "Partial count" : "Count unavailable")).toBeInTheDocument();
   });
 
+  describe("security areas without a connected source", () => {
+    const zero = { critical: 0, high: 0, medium: 0, low: 0, unrated: 0 };
+    const emptyLanes = (["cspm", "vuln", "aspm", "dspm", "aispm"] as const).map((domain) => ({
+      domain, label: domain, href: `/findings?domain=${domain}`, count: 0, severity: zero,
+      evidence_status: "complete" as const, count_exact: true,
+    }));
+    const locked = { state: "locked" as const, count: 0 };
+    const live = { state: "live" as const, count: 2 };
+
+    it("says Not connected with an in-product connect action when no cloud source exists", () => {
+      render(<OverviewCockpit {...baseProps} scans={3} coverage={emptyLanes}
+        services={{ cloud_accounts: locked, data_sources: locked }} />);
+      const cspm = screen.getByTestId("coverage-lane-cspm");
+      expect(within(cspm).getByText("Not connected")).toBeInTheDocument();
+      expect(within(cspm).queryByText("No open findings")).not.toBeInTheDocument();
+      expect(within(cspm).getByRole("link", { name: "Connect cloud account" })).toHaveAttribute("href", "/connections?tab=connect");
+      const dspm = screen.getByTestId("coverage-lane-dspm");
+      expect(within(dspm).getByText("Not connected")).toBeInTheDocument();
+      expect(within(dspm).getByRole("link", { name: "Connect a data source" })).toHaveAttribute("href", "/connections?tab=connect");
+      // Scans exist, so scan-fed areas are genuinely clean.
+      expect(within(screen.getByTestId("coverage-lane-vuln")).getByText("No open findings")).toBeInTheDocument();
+      expect(within(screen.getByTestId("coverage-lane-vuln")).queryByText("Not connected")).not.toBeInTheDocument();
+    });
+
+    it("says No open findings once the cloud source is connected", () => {
+      render(<OverviewCockpit {...baseProps} scans={3} coverage={emptyLanes}
+        services={{ cloud_accounts: live, data_sources: locked }} />);
+      const cspm = screen.getByTestId("coverage-lane-cspm");
+      expect(within(cspm).getByText("No open findings")).toBeInTheDocument();
+      expect(within(cspm).queryByText("Not connected")).not.toBeInTheDocument();
+      expect(within(cspm).queryByRole("link", { name: "Connect cloud account" })).not.toBeInTheDocument();
+      // Cloud accounts carry storage/data posture too.
+      expect(within(screen.getByTestId("coverage-lane-dspm")).getByText("No open findings")).toBeInTheDocument();
+    });
+
+    it("marks scan-fed areas Not connected with a scan action before any scan completes", () => {
+      render(<OverviewCockpit {...baseProps} scans={0} coverage={emptyLanes}
+        services={{ cloud_accounts: locked, data_sources: locked }} />);
+      for (const domain of ["vuln", "aspm", "aispm"]) {
+        const lane = screen.getByTestId(`coverage-lane-${domain}`);
+        expect(within(lane).getByText("Not connected")).toBeInTheDocument();
+        expect(within(lane).getByRole("link", { name: "Run a scan" })).toHaveAttribute("href", "/scan");
+      }
+      expect(screen.queryByText("No open findings")).not.toBeInTheDocument();
+    });
+
+    it("never hides real findings behind Not connected", () => {
+      const lanes = emptyLanes.map((lane) => lane.domain === "cspm"
+        ? { ...lane, count: 4, severity: { ...zero, high: 4 } } : lane);
+      render(<OverviewCockpit {...baseProps} scans={1} coverage={lanes}
+        services={{ cloud_accounts: locked, data_sources: locked }} />);
+      const cspm = screen.getByTestId("coverage-lane-cspm");
+      expect(within(cspm).getByText("4")).toBeInTheDocument();
+      expect(within(cspm).queryByText("Not connected")).not.toBeInTheDocument();
+    });
+  });
+
+  it("puts assessment coverage beside a small-sample pass rate", () => {
+    render(<OverviewCockpit {...baseProps} compliance={{ overallScore: 9, overallStatus: "fail", evaluatedControls: 86, totalControls: 412, frameworks: [
+      { id: "cis", label: "CIS Controls", kind: "scored", pass: 8, fail: 78, warn: 0, total: 150 },
+      { id: "soc2", label: "SOC 2", kind: "scored", pass: 0, fail: 0, warn: 0, total: 150 },
+      { id: "iso", label: "ISO 27001", kind: "scored", pass: 0, fail: 0, warn: 0, total: 112 },
+      { id: "atlas", label: "MITRE ATLAS", kind: "applicability", applicable: 3, pass: 0, fail: 0, warn: 0, total: 10 },
+    ] }} />);
+    const context = screen.getByTestId("overview-compliance-pass-context");
+    expect(context).toHaveTextContent("9% pass rate · 86 of 412 controls assessed (21%) · 1 of 3 frameworks evaluated");
+    expect(context).toBeVisible();
+  });
+
   it("keeps asset read failures distinct from an empty estate", async () => {
     render(<OverviewCockpit {...baseProps} inventoryUnavailable />);
     await userEvent.click(screen.getByRole("tab", { name: "Assets & coverage" }));
@@ -539,25 +607,41 @@ describe("OverviewCockpit", () => {
         postureSummary="No vulnerabilities found; strong best-practice/config posture (A, 95%)"
         critical={0}
         high={0}
-        cves={78}
+        severity={{ critical: 0, high: 0, medium: 60, low: 18, total: 78 }}
       />,
     );
 
     expect(screen.queryByText(/no vulnerabilities/i)).not.toBeInTheDocument();
     expect(
-      screen.getByText(/78 unique open CVEs across connected surfaces/i),
+      screen.getByText("78 open issues across connected surfaces · same basis as the severity tiles."),
     ).toBeInTheDocument();
   });
 
-  it("distinguishes unique CVEs from finding instances in the posture headline", () => {
-    render(<OverviewCockpit {...baseProps} cves={799} critical={440} high={1337} />);
+  it("counts the posture headline on the same basis as the severity tiles", () => {
+    // 57 open issue groups, 8 of them without a severity: the four tiles sum to 49.
+    render(
+      <OverviewCockpit
+        {...baseProps}
+        critical={3}
+        high={10}
+        severity={{ critical: 3, high: 10, medium: 30, low: 6, total: 57 }}
+      />,
+    );
 
+    const strip = screen.getByTestId("overview-severity-issue-strip");
+    const tileSum = ["Critical", "High", "Medium", "Low"]
+      .map((label) => Number(within(strip).getByText(label).nextElementSibling?.textContent))
+      .reduce((sum, value) => sum + value, 0);
+    expect(tileSum).toBe(49);
     expect(
-      screen.getByText(
-        /799 unique open CVEs · 440 critical findings · 1,337 high findings across connected surfaces/i,
-      ),
+      screen.getByText("57 open issues (8 without a severity) · 3 critical · 10 high across connected surfaces · same basis as the severity tiles."),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/799 open CVEs · 440 critical · 1337 high/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/unique open CVE/i)).not.toBeInTheDocument();
+  });
+
+  it("uses the tile total, not a CVE-id count, when the only open issues are low", () => {
+    render(<OverviewCockpit {...baseProps} critical={0} high={0} severity={{ critical: 0, high: 0, medium: 0, low: 1, total: 1 }} />);
+    expect(screen.getByText("1 open issue across connected surfaces · same basis as the severity tiles.")).toBeInTheDocument();
   });
 
   it("keeps the command center evidence-first instead of repeating an onboarding journey", () => {

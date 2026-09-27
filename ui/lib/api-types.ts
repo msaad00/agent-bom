@@ -1108,6 +1108,11 @@ export interface ServiceEntry {
   count: number;
   requires?: string[] | undefined;
   detail?: string | undefined;
+  /** cloud_accounts only: newest completed cloud scan (connection or push). */
+  last_scan_at?: string | null | undefined;
+  /** cloud_accounts only: brokered connections vs scopes seen in scan results. */
+  connections?: number | undefined;
+  scanned_scopes?: number | undefined;
 }
 
 export interface IssueSeverityCounts {

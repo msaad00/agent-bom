@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from agent_bom.agent_manifest import build_control_plane_agent_manifest
+from agent_bom.api.cloud_scan_scopes import cloud_account_summary
 from agent_bom.api.connection_store import get_connection_store
 from agent_bom.api.cost_store import get_cost_store
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_source_store
@@ -34,18 +35,18 @@ def _entry(
     return payload
 
 
-def _cloud_accounts(tenant_id: str) -> dict[str, Any]:
+def _cloud_accounts(tenant_id: str, scanned_scopes: dict[str, Any] | None) -> dict[str, Any]:
     connections = get_connection_store().list_for_tenant(tenant_id)
-    if not connections:
+    summary = cloud_account_summary(connections, scanned_scopes)
+    if summary["count"] == 0:
         return _entry("locked")
-    scanned = sum(1 for record in connections if record.last_scan_at)
-    providers = sorted({record.provider for record in connections if record.provider})
-    if scanned > 0:
-        return _entry("live", count=len(connections), detail=",".join(providers))
-    active = sum(1 for record in connections if record.status == "active")
-    if active > 0:
-        return _entry("connected", count=len(connections), detail=",".join(providers))
-    return _entry("connected", count=len(connections), detail=",".join(providers))
+    detail = ",".join(summary["providers"])
+    state: ServiceState = "live" if summary["last_scan_at"] else "connected"
+    entry = _entry(state, count=summary["count"], detail=detail)
+    entry["last_scan_at"] = summary["last_scan_at"]
+    entry["connections"] = summary["connections"]
+    entry["scanned_scopes"] = summary["scanned_scopes"]
+    return entry
 
 
 def _data_sources(tenant_id: str) -> dict[str, Any]:
@@ -104,11 +105,21 @@ def _compliance(deployment: dict[str, Any]) -> dict[str, Any]:
     return _entry("locked")
 
 
-def derive_service_registry(tenant_id: str, deployment: dict[str, Any]) -> dict[str, Any]:
-    """Build the tenant-scoped service registry from stores and deployment flags."""
+def derive_service_registry(
+    tenant_id: str,
+    deployment: dict[str, Any],
+    *,
+    scanned_cloud_scopes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the tenant-scoped service registry from stores and deployment flags.
+
+    ``scanned_cloud_scopes`` is the tenant's :func:`scanned_cloud_scopes`
+    rollup, so pushed cloud scans count as covered accounts alongside
+    brokered connections.
+    """
 
     services = {
-        "cloud_accounts": _cloud_accounts(tenant_id),
+        "cloud_accounts": _cloud_accounts(tenant_id, scanned_cloud_scopes),
         "data_sources": _data_sources(tenant_id),
         "local_agents": _local_agents(tenant_id, deployment),
         "fleet": _fleet(tenant_id, deployment),

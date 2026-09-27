@@ -42,6 +42,48 @@ submitting it to a pool. Invalid context raises `ValueError`; successful and fai
 work restore the previous tenant context. Job producers must supply the tenant
 established by their authentication or operator configuration boundary.
 
+### API-key operation scopes and browser sessions
+
+Use an administrative key with `auth:read` to inspect the enforced scope catalog:
+
+```bash
+curl --fail -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  "$AGENT_BOM_API_URL/v1/auth/scopes"
+```
+
+The JSON catalog lists each method, resource prefix, minimum role and required
+scope. Grant the resource scopes needed by the integration, then verify its
+first read or write with that key. For example, `scan:write` submits scans and
+`scan:read` reads their results or SSE stream; `source:read` lists sources,
+`source:write` manages them, and `runtime:read` opens proxy WebSocket streams.
+The existing role and tenant checks also apply: a viewer with `fleet:write`
+cannot perform an administrative fleet mutation.
+
+Non-empty scope lists now fail closed with HTTP 403 on unrelated operations,
+including operations that previously had only a role check. An unclassified
+operation also returns 403 to a scoped key. Existing scoped integrations may
+need additional explicit grants from the catalog. Empty scope lists retain the
+legacy unrestricted-within-role contract, as does `*`; neither overrides role
+or tenant restrictions. `GET /v1/auth/me` (and HEAD) is the exact self-identity
+exception, available to authenticated callers without a resource scope.
+HEAD uses GET policy. Only CORS preflight OPTIONS requests bypass authentication;
+ordinary OPTIONS requests go through the credential and scope checks.
+
+Key-backed browser cookies use the intersection of their signed grants and the
+current key record. Downgrades and scope reductions take effect on the next
+request; broadening a key does not broaden an existing cookie. Revoked, expired,
+missing or foreign-tenant backing keys return 401. Disjoint session/key grants
+return 403 rather than becoming unrestricted. The backing-key read runs under
+the signed session tenant, including PostgreSQL RLS, and restores prior context.
+Downstream handlers receive the effective role and intersected scopes, so key
+delegation cannot use stale cookie privileges. Sign in again after an intentional
+grant expansion. WebSocket scope checks apply at connection authentication;
+continuous reauthorization of an already-open stream is a separate boundary.
+
+For upgrades, inspect the catalog and update narrowly scoped integration keys
+before switching traffic. Rolling back restores the earlier scope gaps; prefer
+correcting a missing explicit grant over reverting enforcement.
+
 ## CLI
 
 The CLI runs out-of-band; there is no authenticated request to derive

@@ -1210,17 +1210,17 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
 
     from agent_bom.api.auth import get_key_store
 
-    store = get_key_store()
-    api_key = store.verify(token)
+    api_key = get_key_store().verify(token)
     if api_key is not None:
+        if not api_key.has_scope("runtime:read"):
+            return None
         subjects = (api_key.name.removeprefix("saml:"), api_key.name, api_key.scim_subject_id)
         role = _ws_runtime_role(api_key.tenant_id, api_key.role.value, *subjects)
         if role is not None and _role_allows(role, "viewer"):
             return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=role, auth_method="api_key")
 
-    # Direct ASGI imports may configure AGENT_BOM_API_KEYS after module import.
-    # Mirror the env key fallback so WebSockets do not bypass RBAC-key auth
-    # when the HTTP middleware is protected.
+    # Direct ASGI imports may configure env keys after module import. A denied
+    # stored-key scope above is terminal and cannot fall back to this identity.
     for item in resolve_secret("AGENT_BOM_API_KEYS").split(","):
         raw_key, sep, role_value = item.strip().partition(":")
         if sep and raw_key and _hmac.compare_digest(token, raw_key.strip()) and _role_allows(role_value, "viewer"):

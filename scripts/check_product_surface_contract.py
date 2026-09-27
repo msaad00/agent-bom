@@ -45,7 +45,7 @@ def _require_route_policy(failures: list[str]) -> None:
     from agent_bom.api.route_policy import required_role, required_scope
 
     expected = (
-        ("GET", "/v1/auth/policy", None),
+        ("GET", "/v1/auth/policy", "auth:read"),
         ("GET", "/v1/auth/scim/config", "auth.scim:read"),
         ("GET", "/v1/auth/secrets/lifecycle", "auth.secrets:read"),
         ("GET", "/v1/auth/secrets/rotation-plan", "auth.secrets:read"),

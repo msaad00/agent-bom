@@ -33,7 +33,7 @@ from agent_bom.api.browser_session import (
     verify_browser_session_token,
     verify_csrf,
 )
-from agent_bom.api.route_policy import ROLE_RULES, SCOPE_RULES, required_role, required_scope, scope_catalog
+from agent_bom.api.route_policy import ROLE_RULES, SCOPE_RULES, request_scopes_allow, required_role, required_scope, scope_catalog
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -1353,7 +1353,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # the actual request never fires because the preflight failed.
         # CORSMiddleware will reply with the right Access-Control-Allow-*
         # headers for the configured origin set.
-        if request.method == "OPTIONS":
+        if request.method == "OPTIONS" and "origin" in request.headers and "access-control-request-method" in request.headers:
             return await call_next(request)
         from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_route_allowed
 
@@ -1586,11 +1586,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 )
             )
         required_scope = self._required_scope(request.method, request.url.path)
-        if not api_key.has_scope(required_scope):
+        if not request_scopes_allow(api_key.scopes, request.method, request.url.path):
             return Invalid(
                 JSONResponse(
                     status_code=403,
-                    content={"detail": f"Forbidden — requires scope {required_scope}"},
+                    content={
+                        "detail": f"Forbidden — requires scope {required_scope}"
+                        if required_scope
+                        else "Forbidden — operation has no scope grant"
+                    },
                 )
             )
         request.state.api_key_name = api_key.name
@@ -1678,7 +1682,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         return await self._call_with_tenant_context(request, call_next)
 
     async def _try_browser_session_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint, token: str) -> Response:
-        from agent_bom.api.auth import Role, get_key_store
+        from agent_bom.api.auth import Role
         from agent_bom.api.shared_auth_state import AuthStateUnavailable
 
         try:
@@ -1714,39 +1718,35 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 return scim_error
             effective_role = resolved_role or session_role
 
-        required = Role(self._required_role(request.method, request.url.path))
-        if not self._role_allows(effective_role, required):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, browser session has {effective_role.value}"},
-            )
-
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
             csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
             if not verify_csrf(payload, csrf_cookie, csrf_header):
                 return JSONResponse(status_code=403, content={"detail": "Forbidden — missing or invalid CSRF token"})
 
-        store = get_key_store()
+        from fastapi import HTTPException
+
+        from agent_bom.api.session_authorization import authorize_browser_session
+
         key_id = str(payload.get("key_id") or "")
-        if key_id:
-            stored = store.get(key_id)
-            if stored is None or stored.tenant_id != tenant_id or not stored.is_usable():
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized — browser session key is no longer active"})
-            required_scope = self._required_scope(request.method, request.url.path)
-            if not stored.has_scope(required_scope):
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
-        elif auth_method == "managed_trial_oidc":
-            required_scope = self._required_scope(request.method, request.url.path)
-            session_scopes = {str(scope) for scope in (payload.get("scopes") or [])}
-            if required_scope and required_scope not in session_scopes:
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
+        try:
+            effective_role, session_scopes = authorize_browser_session(
+                role=effective_role,
+                scopes=list(payload.get("scopes") or []),
+                tenant_id=tenant_id,
+                key_id=key_id,
+                auth_method=auth_method,
+                method=request.method,
+                path=request.url.path,
+            )
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
         request.state.api_key_name = subject
         request.state.api_key_role = effective_role.value
         request.state.tenant_id = tenant_id
         request.state.api_key_id = key_id or None
-        request.state.api_key_scopes = list(payload.get("scopes") or [])
+        request.state.api_key_scopes = session_scopes
         request.state.auth_method = auth_method
         return await self._call_with_tenant_context(request, call_next)
 

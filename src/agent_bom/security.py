@@ -964,7 +964,7 @@ def sanitize_sensitive_payload(
     Caches are bounded and live for a single traversal, so repeated package
     fields are redacted once without retaining sensitive strings globally.
     """
-    from agent_bom.payload_redaction import redact_payload
+    from agent_bom.redaction.payload import redact_payload
 
     string_cache = {} if _string_cache is None else _string_cache
     return redact_payload(value, key, max_str_len, depth, string_cache, {} if _key_cache is None else _key_cache)

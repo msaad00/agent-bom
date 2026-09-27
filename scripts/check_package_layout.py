@@ -22,6 +22,8 @@ PKG = ROOT / "src" / "agent_bom"
 ALLOWED_TOP_LEVEL_MODULES: frozenset[str] = frozenset(
     {
         "__init__.py",
+        # Required at the package root for `python -m agent_bom`.
+        "__main__.py",
         "a2a_auth_posture.py",
         "accuracy_baseline.py",
         "advisory_ids.py",

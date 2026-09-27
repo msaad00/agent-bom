@@ -196,3 +196,34 @@ def test_ci_runbook_documents_fallback_workflows() -> None:
     assert "`ci.yml`" in runbook
     assert "`pr-security-gate.yml`" in runbook
     assert "`codeql.yml`" in runbook
+
+
+def test_merge_queue_check_reads_live_protection_and_workflow_state(tmp_path: Path) -> None:
+    bin_dir = _gh_stub(
+        tmp_path,
+        """#!/usr/bin/env bash
+case "$1 $2" in
+  'api repos/owner/repo/rules/branches/main') echo '[]' ;;
+  'api repos/owner/repo/branches/main/protection')
+    case "$*" in
+      *contexts*) echo '{"strict":false,"contexts":["Test (Python 3.13)"]}' ;;
+      *) echo '["required_status_checks"]' ;;
+    esac ;;
+  'api repos/owner/repo/actions/workflows/auto-retrigger-stranded.yml') echo '  state=active' ;;
+  *) echo 'unsupported gh invocation' >&2; exit 70 ;;
+esac
+""",
+    )
+    env = {**os.environ, "GH_REPO": "owner/repo", "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts" / "enable_merge_queue.sh"), "--check"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"strict":false' in result.stdout
+    assert '"Test (Python 3.13)"' in result.stdout
+    assert "state=active" in result.stdout
+    assert "workflow not present" not in result.stdout

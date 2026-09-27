@@ -25,6 +25,7 @@ from agent_bom.api.compliance_hub_store import (
 from agent_bom.api.finding_cursor import cursor_from_current_row
 from agent_bom.api.server import app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _AUTH = proxy_headers(tenant="default")
@@ -73,7 +74,7 @@ def _seed_sqlite_bulk(findings: list[dict]) -> SQLiteComplianceHubStore:
     store.upsert_current_batch(
         "default",
         findings,
-        observed_at="2026-07-18T00:00:00Z",
+        observed_at=recent("2026-07-18T00:00:00Z"),
         batch_id="batch-scope-keyset",
         source="test",
     )
@@ -253,7 +254,7 @@ def test_sqlite_list_current_page_scope_no_dup_no_drop() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         store = SQLiteComplianceHubStore(f"{tmp}/unit.db")
         store.add(tenant, findings)
-        store.upsert_current_batch(tenant, findings, observed_at="2026-07-18T00:00:00Z", batch_id="b", source="test")
+        store.upsert_current_batch(tenant, findings, observed_at=recent("2026-07-18T00:00:00Z"), batch_id="b", source="test")
 
         seen: list[str] = []
         cursor = None
@@ -282,7 +283,7 @@ def test_collect_scope_filtered_page_helper_no_dup_no_drop() -> None:
         {
             "canonical_id": f"c{idx:03d}",
             "effective_reach_score": float(40 - idx),  # strictly descending -> deterministic
-            "last_seen": "2026-07-18T00:00:00Z",
+            "last_seen": recent("2026-07-18T00:00:00Z"),
             "match": idx % 2 == 0,
             "payload": {"id": f"r{idx:03d}", "match": idx % 2 == 0},
         }
@@ -345,7 +346,7 @@ def test_collect_scope_filtered_page_stops_at_scan_budget_with_resume_cursor() -
         {
             "canonical_id": f"c{idx:03d}",
             "effective_reach_score": float(100 - idx),
-            "last_seen": "2026-07-18T00:00:00Z",
+            "last_seen": recent("2026-07-18T00:00:00Z"),
             "payload": {"id": f"r{idx:03d}"},
         }
         for idx in range(20)
@@ -457,8 +458,8 @@ def test_postgres_list_current_page_scoped_no_dup_no_drop(monkeypatch) -> None:
         master.append(
             {
                 "canonical_id": f"c{idx:04d}",
-                "first_seen": "2026-07-18T00:00:00Z",
-                "last_seen": "2026-07-18T00:00:00Z",
+                "first_seen": recent("2026-07-18T00:00:00Z"),
+                "last_seen": recent("2026-07-18T00:00:00Z"),
                 "status": "open",
                 "severity": "high",
                 "severity_rank": 4,
@@ -466,7 +467,7 @@ def test_postgres_list_current_page_scoped_no_dup_no_drop(monkeypatch) -> None:
                 # strictly descending -> deterministic keyset order
                 "effective_reach_score": float(500 - idx),
                 "scan_count": 1,
-                "updated_at": "2026-07-18T00:00:00Z",
+                "updated_at": recent("2026-07-18T00:00:00Z"),
                 "payload": {"id": f"pg-{idx:04d}", "provider": provider, "security_domain": "cspm"},
             }
         )
@@ -546,7 +547,7 @@ def _seed_memory_bulk(findings: list[dict]) -> InMemoryComplianceHubStore:
     store.upsert_current_batch(
         "default",
         findings,
-        observed_at="2026-07-18T00:00:00Z",
+        observed_at=recent("2026-07-18T00:00:00Z"),
         batch_id="batch-scope-budget",
         source="test",
     )

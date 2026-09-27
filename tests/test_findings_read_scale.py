@@ -12,6 +12,7 @@ from agent_bom.api.compliance_hub_store import (
     set_compliance_hub_store,
 )
 from agent_bom.api.server import app
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _FINDINGS_COUNT = 2000
@@ -79,7 +80,7 @@ def _seed_tenant(count: int) -> str:
     store.upsert_current_batch(
         tenant_id,
         findings,
-        observed_at="2026-07-03T12:00:00Z",
+        observed_at=recent("2026-07-03T12:00:00Z"),
         batch_id=batch_id,
         source="test_findings_read_scale",
     )
@@ -144,7 +145,7 @@ def test_findings_approximate_total_skips_count_on_deep_page() -> None:
     store.upsert_current_batch(
         tenant_id,
         findings,
-        observed_at="2026-07-03T12:00:00Z",
+        observed_at=recent("2026-07-03T12:00:00Z"),
         batch_id=batch_id,
         source="test_findings_read_scale",
     )

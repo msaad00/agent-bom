@@ -9,6 +9,7 @@ from starlette.testclient import TestClient
 from agent_bom.api.compliance_hub_store import SQLiteComplianceHubStore, set_compliance_hub_store
 from agent_bom.api.finding_cursor import decode_finding_cursor, encode_finding_cursor
 from agent_bom.api.server import app
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 
@@ -24,12 +25,12 @@ def test_finding_cursor_round_trip() -> None:
     token = encode_finding_cursor(
         sort="effective_reach",
         primary=88.5,
-        last_seen="2026-07-04T00:00:00Z",
+        last_seen=recent("2026-07-04T00:00:00Z"),
         canonical_id="finding-abc",
     )
     primary, last_seen, canonical_id = decode_finding_cursor(token, expected_sort="effective_reach")
     assert primary == 88.5
-    assert last_seen == "2026-07-04T00:00:00Z"
+    assert last_seen == recent("2026-07-04T00:00:00Z")
     assert canonical_id == "finding-abc"
 
 
@@ -56,7 +57,7 @@ def test_sqlite_list_current_page_keyset_walk() -> None:
         store.upsert_current_batch(
             tenant,
             findings,
-            observed_at="2026-07-04T00:00:00Z",
+            observed_at=recent("2026-07-04T00:00:00Z"),
             batch_id="batch-keyset",
             source="test",
         )
@@ -110,7 +111,7 @@ def test_findings_api_keyset_pagination() -> None:
     store.upsert_current_batch(
         tenant,
         findings,
-        observed_at="2026-07-04T00:00:00Z",
+        observed_at=recent("2026-07-04T00:00:00Z"),
         batch_id="batch-api",
         source="test",
     )
@@ -158,7 +159,7 @@ def test_sqlite_cvss_keyset_walks_all_rows_without_cvss_column_populated() -> No
         store.upsert_current_batch(
             tenant,
             findings,
-            observed_at="2026-07-04T00:00:00Z",
+            observed_at=recent("2026-07-04T00:00:00Z"),
             batch_id="batch-cvss-keyset",
             source="test",
         )
@@ -208,12 +209,12 @@ def test_severity_cursor_from_payload_row_derives_rank_from_severity() -> None:
         "id": "payload-1",
         "canonical_id": "payload-1",
         "severity": "high",
-        "last_seen": "2026-07-19T00:00:00Z",
+        "last_seen": recent("2026-07-19T00:00:00Z"),
     }
     token = cursor_from_current_row(payload_row, sort="severity")
     primary, last_seen, canonical_id = decode_finding_cursor(token, expected_sort="severity")
     assert primary == float(severity_policy_rank("high"))
-    assert last_seen == "2026-07-19T00:00:00Z"
+    assert last_seen == recent("2026-07-19T00:00:00Z")
     assert canonical_id == "payload-1"
 
 
@@ -226,7 +227,7 @@ def test_row_is_after_cursor_severity_derives_rank_from_severity() -> None:
     medium_row = {
         "canonical_id": "medium-1",
         "severity": "medium",
-        "last_seen": "2026-07-19T00:00:00Z",
+        "last_seen": recent("2026-07-19T00:00:00Z"),
     }
     # Descending severity sort: a medium row sorts BEFORE a low cursor, so it
     # is not "after" the cursor. Rank-0 fallback wrongly claimed it was.
@@ -234,7 +235,7 @@ def test_row_is_after_cursor_severity_derives_rank_from_severity() -> None:
         medium_row,
         sort="severity",
         primary=float(severity_policy_rank("low")),
-        last_seen="2026-07-19T00:00:00Z",
+        last_seen=recent("2026-07-19T00:00:00Z"),
         canonical_id="low-1",
     )
     # And it IS after a critical cursor.
@@ -242,7 +243,7 @@ def test_row_is_after_cursor_severity_derives_rank_from_severity() -> None:
         medium_row,
         sort="severity",
         primary=float(severity_policy_rank("critical")),
-        last_seen="2026-07-19T00:00:00Z",
+        last_seen=recent("2026-07-19T00:00:00Z"),
         canonical_id="crit-1",
     )
 

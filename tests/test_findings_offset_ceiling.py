@@ -20,6 +20,7 @@ from agent_bom.api.compliance_hub_store import (
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING
 from agent_bom.api.server import app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _AUTH = proxy_headers(tenant="default")
@@ -50,7 +51,7 @@ def _seed() -> None:
         for i in range(30)
     ]
     store.add("default", findings)
-    store.upsert_current_batch("default", findings, observed_at="2026-07-18T00:00:00Z", batch_id="b", source="test")
+    store.upsert_current_batch("default", findings, observed_at=recent("2026-07-18T00:00:00Z"), batch_id="b", source="test")
     set_compliance_hub_store(store)
     set_job_store(InMemoryJobStore())
 

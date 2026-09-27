@@ -23,6 +23,7 @@ from agent_bom.api.compliance_hub_store import (
 from agent_bom.api.finding_lifecycle import collect_present_canonical_ids
 from agent_bom.api.server import app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _AUTH = proxy_headers(tenant="default")
@@ -52,9 +53,9 @@ def _seed_and_resolve(findings: list[dict], keep_open: list[dict], *, tenant: st
     tmp = tempfile.mkdtemp()
     store = SQLiteComplianceHubStore(f"{tmp}/status.db")
     store.add(tenant, findings)
-    store.upsert_current_batch(tenant, findings, observed_at="2026-07-18T00:00:00Z", batch_id="b", source="test")
+    store.upsert_current_batch(tenant, findings, observed_at=recent("2026-07-18T00:00:00Z"), batch_id="b", source="test")
     present = collect_present_canonical_ids(keep_open, source="test")
-    resolved = store.reconcile_current_absent(tenant, present_canonical_ids=present, observed_at="2026-07-18T06:00:00Z")
+    resolved = store.reconcile_current_absent(tenant, present_canonical_ids=present, observed_at=recent("2026-07-18T06:00:00Z"))
     assert resolved == len(findings) - len(keep_open), "reconcile did not resolve the expected absent rows"
     set_compliance_hub_store(store)
     set_job_store(InMemoryJobStore())
@@ -132,9 +133,9 @@ def test_current_severity_breakdown_status_filter() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         store = SQLiteComplianceHubStore(f"{tmp}/bd.db")
         store.add(tenant, findings)
-        store.upsert_current_batch(tenant, findings, observed_at="2026-07-18T00:00:00Z", batch_id="b", source="test")
+        store.upsert_current_batch(tenant, findings, observed_at=recent("2026-07-18T00:00:00Z"), batch_id="b", source="test")
         present = collect_present_canonical_ids(keep_open, source="test")
-        store.reconcile_current_absent(tenant, present_canonical_ids=present, observed_at="2026-07-18T06:00:00Z")
+        store.reconcile_current_absent(tenant, present_canonical_ids=present, observed_at=recent("2026-07-18T06:00:00Z"))
 
         open_bd = store.current_severity_breakdown(tenant, origin="bulk_ingest", status="open")
         assert open_bd["critical"] == 5, "default/open breakdown must exclude resolved"

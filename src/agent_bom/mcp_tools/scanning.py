@@ -8,7 +8,7 @@ import re
 
 from mcp.server.fastmcp.exceptions import ToolError
 
-from agent_bom.graph.severity import normalize_severity, severity_at_or_above
+from agent_bom.core.severity import normalize_severity, severity_at_or_above
 from agent_bom.mcp_tools.result_store import ResultStore
 from agent_bom.mcp_tools.scan_response import (
     MAX_PAGE_LIMIT,

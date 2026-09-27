@@ -5,6 +5,18 @@ Re-exports everything from submodules so consumers can do::
     from agent_bom.graph import UnifiedGraph, EntityType, SEVERITY_RANK
 """
 
+from agent_bom.core.severity import (
+    OCSF_SEVERITY_NAMES,
+    OCSF_TO_SYSLOG,
+    SEVERITY_BADGE,
+    SEVERITY_RANK,
+    SEVERITY_RISK_SCORE,
+    SEVERITY_TO_OCSF,
+    OCSFSeverity,
+    ocsf_to_severity,
+    severity_rank,
+    severity_to_ocsf,
+)
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.builder import build_unified_graph_from_report
 from agent_bom.graph.compat import EDGE_KIND_TO_RELATIONSHIP, NODE_KIND_TO_ENTITY
@@ -31,18 +43,6 @@ from agent_bom.graph.evaluation import GraphEvaluationResult, evaluate_graph, gr
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.ocsf import ENTITY_OCSF_MAP, FINDING_ENTITY_TYPES, ocsf_type_uid
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, SemanticCluster, build_semantic_clusters, semantic_cluster_stats
-from agent_bom.graph.severity import (
-    OCSF_SEVERITY_NAMES,
-    OCSF_TO_SYSLOG,
-    SEVERITY_BADGE,
-    SEVERITY_RANK,
-    SEVERITY_RISK_SCORE,
-    SEVERITY_TO_OCSF,
-    OCSFSeverity,
-    ocsf_to_severity,
-    severity_rank,
-    severity_to_ocsf,
-)
 from agent_bom.graph.types import EntityType, GraphLayout, GraphSemanticLayer, NodeStatus, RelationshipType
 from agent_bom.graph.util import _now_iso
 from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts, format_alerts_for_siem

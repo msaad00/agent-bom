@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from agent_bom.cli._grouped_help import SuggestingGroup
-from agent_bom.graph.severity import severity_worst_first_rank
+from agent_bom.core.severity import severity_worst_first_rank
 from agent_bom.skills_policy import SkillsPolicyError, evaluate_skills_policy, load_skills_policy
 from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets, verify_skill_targets
 

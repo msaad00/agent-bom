@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.graph.severity import severity_rank
+from agent_bom.core.severity import severity_rank
 from agent_bom.risk_analyzer import CAPABILITY_WEIGHTS, ToolCapability
 
 if TYPE_CHECKING:

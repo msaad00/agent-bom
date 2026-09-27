@@ -464,7 +464,7 @@ def exposure_evidence_dimensions(
 
 def finding_severity_for_path(path: AttackPath, nodes_by_id: Mapping[str, Any]) -> str:
     """Keep finding severity independent of permission-bearing asset priority."""
-    from agent_bom.graph.severity import severity_rank
+    from agent_bom.core.severity import severity_rank
 
     known = []
     for hop in path.hops:

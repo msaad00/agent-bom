@@ -497,7 +497,7 @@ class Finding:
 
     def __post_init__(self) -> None:
         """Compute stable ID from finding content if not explicitly set."""
-        from agent_bom.graph.severity import normalize_severity
+        from agent_bom.core.severity import normalize_severity
 
         self.severity = normalize_severity(self.severity)
         # Keep finding scope and asset scope consistent: mirror finding-level

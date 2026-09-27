@@ -21,11 +21,11 @@ from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id,
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
 from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
 from agent_bom.constants import is_credential_key as _is_credential_key
+from agent_bom.core.severity import SEVERITY_RANK, SEVERITY_RISK_SCORE
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
-from agent_bom.graph.severity import SEVERITY_RANK, SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.package_utils import canonical_package_key, normalize_package_name

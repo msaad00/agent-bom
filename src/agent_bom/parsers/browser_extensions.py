@@ -21,7 +21,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent_bom.graph.severity import severity_worst_first_rank
+from agent_bom.core.severity import severity_worst_first_rank
 
 logger = logging.getLogger(__name__)
 

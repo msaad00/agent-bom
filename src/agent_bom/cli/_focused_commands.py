@@ -24,7 +24,7 @@ import click
 
 from agent_bom.cli._scan_help import AliasedChoice
 from agent_bom.cli.options_sources import SCAN_OUTPUT_FORMAT_ALIASES, SCAN_OUTPUT_FORMATS
-from agent_bom.graph.severity import severity_at_or_above
+from agent_bom.core.severity import severity_at_or_above
 
 
 def _scan_format_option():

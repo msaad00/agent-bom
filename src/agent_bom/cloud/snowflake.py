@@ -1660,7 +1660,7 @@ def _derive_findings(report: GovernanceReport) -> list[GovernanceFinding]:
     findings.extend(_find_agent_usage_anomalies(report))
 
     # Sort by severity
-    from agent_bom.graph.severity import severity_worst_first_rank
+    from agent_bom.core.severity import severity_worst_first_rank
 
     findings.sort(key=lambda f: severity_worst_first_rank(f.severity.value if hasattr(f.severity, "value") else str(f.severity)))
 

@@ -35,16 +35,6 @@ _AMD_PSIRT_JSON = "https://www.amd.com/en/resources/product-security.json"
 # Fallback: AMD ROCm GitHub security advisories GraphQL endpoint
 _ROCM_GHSA_URL = "https://api.github.com/repos/ROCm/ROCm/security-advisories"
 
-# CVSS severity buckets matching AMD's own wording
-_AMD_SEVERITY_MAP: dict[str, str] = {
-    "critical": "critical",
-    "high": "high",
-    "medium": "medium",
-    "moderate": "medium",
-    "low": "low",
-    "informational": "low",
-}
-
 # ROCm product → our product key (matches _AMD_PRODUCT_MAP in amd_advisory.py)
 _PRODUCT_KEYWORD_MAP: dict[str, str] = {
     "rocm": "rocm",
@@ -83,19 +73,16 @@ def _classify_products(title: str, description: str) -> list[str]:
 
 
 def _cvss_to_severity(cvss: float | None, label: str) -> str:
-    if label:
-        mapped = _AMD_SEVERITY_MAP.get(label.lower().strip())
-        if mapped:
-            return mapped
+    from agent_bom.core.cvss import cvss_to_severity
+    from agent_bom.core.severity import normalize_severity
+
+    mapped = normalize_severity(label)
+    if mapped != "unknown":
+        # Preserve AMD's informational-advisory triage convention.
+        return "low" if mapped == "info" else mapped
     if cvss is None:
-        return "medium"
-    if cvss >= 9.0:
-        return "critical"
-    if cvss >= 7.0:
-        return "high"
-    if cvss >= 4.0:
-        return "medium"
-    return "low"
+        return "medium"  # Existing advisory-only triage fallback, not a CVSS score.
+    return cvss_to_severity(cvss).value
 
 
 def _fetch_amd_psirt_json(timeout: int = 15) -> list[dict]:
@@ -199,7 +186,7 @@ def _parse_ghsa(raw: dict[str, Any]) -> tuple | None:
         return None
 
     products = _classify_products(summary, "")
-    severity_str = _AMD_SEVERITY_MAP.get(severity.lower(), "medium")
+    severity_str = _cvss_to_severity(cvss_score, severity)
     return (identifier, summary, severity_str, cvss_score, products, None, refs)
 
 

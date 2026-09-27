@@ -67,9 +67,9 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from agent_bom.core.severity import normalize_severity
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.node import stable_node_id
-from agent_bom.graph.severity import normalize_severity
 
 SCHEMA_VERSION = "agent-bom.hardware-evidence/v1"
 _SUPPORTED_SCHEMAS = frozenset({SCHEMA_VERSION})

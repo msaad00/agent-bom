@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from agent_bom.compliance_hub import apply_hub_classification
+from agent_bom.core.severity import normalize_severity
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
-from agent_bom.graph.severity import normalize_severity
 from agent_bom.parsers.sarif import (
     NormalizedSarifResult,
     SarifValidationError,

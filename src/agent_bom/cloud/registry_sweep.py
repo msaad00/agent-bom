@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from agent_bom.cloud.normalization import sanitize_discovery_warning
-from agent_bom.graph.severity import severity_rank
+from agent_bom.core.severity import severity_rank
 
 logger = logging.getLogger(__name__)
 

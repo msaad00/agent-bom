@@ -22,7 +22,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from agent_bom.graph.severity import severity_rank
+from agent_bom.core.severity import severity_rank
 from agent_bom.models import MCPServer, Severity
 
 logger = logging.getLogger(__name__)

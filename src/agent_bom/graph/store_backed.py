@@ -49,6 +49,7 @@ from collections import OrderedDict
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Optional
 
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.analysis import GraphAnalysisStatus
 from agent_bom.graph.build_workspace import (
     WorkspaceBackend,
@@ -62,7 +63,6 @@ from agent_bom.graph.build_workspace import (
 from agent_bom.graph.container import GraphCompleteness, UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
 from agent_bom.graph.util import _now_iso
 

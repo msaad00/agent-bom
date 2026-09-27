@@ -50,6 +50,7 @@ format-check:  ## Fail if anything is unformatted (what CI runs)
 	ruff format --check $(LINT_PATHS)
 
 preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do this before pushing a PR
+	@echo "→ architecture boundaries and complexity ratchet"; python scripts/check_architecture.py
 	@echo "→ OpenAPI artifacts (docs/openapi/)";   python scripts/export_openapi.py --check
 	@echo "→ v1 schemas (docs/schemas/v1/)";        python scripts/generate_v1_schemas.py --check
 	@echo "→ per-agent BOM schema";                python scripts/generate_agent_bom_schema.py --check

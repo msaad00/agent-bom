@@ -7,8 +7,8 @@ from functools import wraps
 from typing import Any, Callable, ParamSpec, TypeVar
 
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
+from agent_bom.core.severity import normalize_severity
 from agent_bom.finding import Finding, FindingType, blast_radius_to_finding
-from agent_bom.graph.severity import normalize_severity
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.security import sanitize_log_label, sanitize_text, text_requires_redaction
 

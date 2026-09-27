@@ -214,7 +214,7 @@ def scan_iac_with_context(
 
     findings: list[IaCFinding] = []
     files_matched: dict[str, int] = defaultdict(int)
-    from agent_bom.graph.severity import severity_worst_first_rank
+    from agent_bom.core.severity import severity_worst_first_rank
 
     walk_root = root_path.parent if explicit_file else root_path
     walk_paths = [root_path] if explicit_file else sorted(iter_discovery_files(root_path))

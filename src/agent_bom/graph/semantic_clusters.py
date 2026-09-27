@@ -7,9 +7,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
-from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType, RelationshipType
 
 SEMANTIC_CLUSTER_KINDS = (

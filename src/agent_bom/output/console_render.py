@@ -11,7 +11,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.tree import Tree
 
-from agent_bom.graph.severity import SEVERITY_THRESHOLD_LABELS, severity_rank, severity_worst_first_rank
+from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_rank, severity_worst_first_rank
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
 from agent_bom.output.cis_posture import (
     ERROR,

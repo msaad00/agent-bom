@@ -13,7 +13,7 @@ import click
 from rich.console import Console
 
 from agent_bom import __version__
-from agent_bom.graph.severity import SEVERITY_POLICY_ORDER
+from agent_bom.core.severity import SEVERITY_POLICY_ORDER
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.output.brand_tokens import cli_banner_plain
 from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload

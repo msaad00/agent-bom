@@ -555,7 +555,7 @@ def _coerce_bulk_severity(value: Any, *, ordinal: int) -> str:
             status_code=422,
             detail=f"finding {ordinal}: severity must be a string severity label, not {type(value).__name__}",
         )
-    from agent_bom.graph.severity import normalize_severity
+    from agent_bom.core.severity import normalize_severity
 
     return normalize_severity(value)
 
@@ -3094,10 +3094,12 @@ def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, flo
     deterministic for a given input.
     """
     from agent_bom.api.compliance_hub_store import compute_effective_reach_score
-    from agent_bom.graph.severity import severity_policy_rank
+    from agent_bom.core.severity import severity_policy_rank
 
     sev_rank = severity_policy_rank(str(row.get("severity", "")))
-    cvss = float(row.get("cvss_score") or 0.0)
+    from agent_bom.api.finding_cursor import cvss_sort_value
+
+    cvss = cvss_sort_value(row.get("cvss_score"))
     reach_val = compute_effective_reach_score(row)
 
     if sort == "cvss":

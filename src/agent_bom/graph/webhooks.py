@@ -17,10 +17,10 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
+from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.event_normalization import build_event_ref, build_event_relationships
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.risk_scale import RISK_SCALE_MAX
-from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
 from agent_bom.posture_streaming import PostureEvent, WebhookDestination, WebhookOutbox, default_webhook_outbox
 from agent_bom.security import sanitize_error
@@ -453,7 +453,7 @@ def format_alerts_for_siem(alerts: list[dict[str, Any]], product_version: str = 
     """Convert delta alerts to OCSF Detection Finding format for SIEM push."""
     import time
 
-    from agent_bom.graph.severity import SEVERITY_TO_OCSF
+    from agent_bom.core.severity import SEVERITY_TO_OCSF
 
     ocsf_events = []
     for alert in alerts:

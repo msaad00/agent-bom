@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
-from agent_bom.graph.severity import severity_worst_first_rank
+from agent_bom.core.severity import severity_worst_first_rank
 from agent_bom.models import Agent
 
 if TYPE_CHECKING:

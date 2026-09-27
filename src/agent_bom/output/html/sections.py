@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
-from agent_bom.finding import FindingType
-from agent_bom.graph.severity import (
+from agent_bom.core.severity import (
     SEVERITY_THRESHOLD_LABELS,
     severity_policy_rank,
     severity_worst_first_rank,
 )
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
+from agent_bom.finding import FindingType
 from agent_bom.output.cis_posture import (
     ERROR,
     EVALUATED_STATUSES,

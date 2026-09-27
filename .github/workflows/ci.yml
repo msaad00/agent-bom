@@ -434,6 +434,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Documentation-only lint skip
         if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
@@ -456,6 +458,12 @@ jobs:
       - name: Ruff
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run make lint-ruff
+
+      - name: Architecture boundaries and complexity ratchet
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
+        env:
+          ARCHITECTURE_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || github.sha }}
+        run: uv run python scripts/check_architecture.py --base-ref "$ARCHITECTURE_BASE"
 
       - name: Ruff format
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'

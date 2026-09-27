@@ -707,11 +707,24 @@ class PostgresGraphStore:
             conn.commit()
         return total
 
-    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int:
         """Atomically remove one tenant-scoped snapshot and all projections."""
         tenant_id = normalize_graph_tenant_id(tenant_id)
         total = 0
         with _tenant_connection(self._pool) as conn:
+            # Match save_graph_streaming's lock before checking or deleting any
+            # projection; a row lock alone cannot protect a missing snapshot.
+            conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"{tenant_id}\x1f{scan_id}",),
+            )
+            if expected_generation is not None:
+                row = conn.execute(
+                    "SELECT snapshot_generation FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+                    (tenant_id, scan_id),
+                ).fetchone()
+                if not expected_generation or row is None or row[0] != expected_generation:
+                    return 0
             for table in (
                 "graph_node_search",
                 "attack_paths",
@@ -755,6 +768,7 @@ class PostgresGraphStore:
         snapshot_kind: str = "scan",
         correlation_id: str = "",
         evidence_manifest_sha256: str = "",
+        write_generation: str = "",
         correlation_result_manifest: Mapping[str, Any] | None = None,
         correlation_completed_at: str = "",
         correlation_execution_owner: str = "",
@@ -1162,7 +1176,7 @@ class PostgresGraphStore:
                     snapshot_kind,
                     correlation_id or None,
                     evidence_manifest_sha256,
-                    uuid.uuid4().hex,
+                    write_generation or uuid.uuid4().hex,
                 ),
             )
             if correlation_result_manifest is not None:

@@ -267,6 +267,7 @@ class NeptuneGraphStore:
         snapshot_kind: str = "scan",
         correlation_id: str = "",
         evidence_manifest_sha256: str = "",
+        write_generation: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables.
 
@@ -276,6 +277,8 @@ class NeptuneGraphStore:
         NOT yet realise the #4055 peak-RSS bound the SQLite/Postgres streaming
         paths do — see the PR notes. Neptune is not the millions-of-nodes target.
         """
+        if write_generation:
+            self._unsupported("generation-owned snapshot persistence")
         if snapshot_kind != "scan" or correlation_id or evidence_manifest_sha256:
             self._unsupported("correlation snapshot persistence")
         graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id, created_at=created_at)
@@ -536,8 +539,10 @@ class NeptuneGraphStore:
         count = rows[0].get("count", 0) if isinstance(rows[0], dict) else rows[0]
         return int(_first(count, 0) or 0)
 
-    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int:
         """Remove one tenant-scoped snapshot from the experimental backend."""
+        if expected_generation is not None:
+            self._unsupported("generation-owned snapshot rollback")
         rows = self._submit(
             """
             g.V().has('tenant_id', tenant_id).has('scan_id', scan_id).fold().

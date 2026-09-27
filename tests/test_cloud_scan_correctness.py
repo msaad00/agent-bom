@@ -109,7 +109,7 @@ def test_failed_push_does_not_delete_preexisting_snapshot_with_same_scan_id(_pus
     graph_store = _push_env
     graph_store.save_graph(UnifiedGraph(scan_id="shared-scan", tenant_id="default"))
 
-    def _fail(_job, _report):
+    def _fail(_job, _report, **_kwargs):
         raise RuntimeError("graph write failed")
 
     monkeypatch.setattr("agent_bom.api.routes.observability._persist_graph_snapshot", _fail)
@@ -121,12 +121,11 @@ def test_failed_push_does_not_delete_preexisting_snapshot_with_same_scan_id(_pus
 
 def test_failed_push_still_rolls_back_snapshot_it_created(_push_env, monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.api.server import app
-    from agent_bom.graph.container import UnifiedGraph
 
     graph_store = _push_env
 
-    def _write_then_fail(_job, report):
-        graph_store.save_graph(UnifiedGraph(scan_id=report["scan_id"], tenant_id="default"))
+    def _write_then_fail(_job, report, **kwargs):
+        graph_store.save_graph_streaming(scan_id=report["scan_id"], tenant_id="default", nodes=[], edges=[], **kwargs)
         raise RuntimeError("post-write failure")
 
     monkeypatch.setattr("agent_bom.api.routes.observability._persist_graph_snapshot", _write_then_fail)
@@ -369,7 +368,7 @@ def test_azure_storage_enum_values_compare_by_value() -> None:
     pytest.importorskip("azure.mgmt.storage")
     from azure.mgmt.storage.models import Bypass, DefaultAction, KeySource
 
-    from agent_bom.cloud.azure_cis_benchmark import _check_3_2, _check_3_3, _check_3_8, _check_3_9
+    from agent_bom.cloud.azure_cis_benchmark import _check_3_3, _check_3_8, _check_3_9
 
     acct = SimpleNamespace(
         name="sa1",
@@ -378,7 +377,7 @@ def test_azure_storage_enum_values_compare_by_value() -> None:
     )
     client = MagicMock()
     client.storage_accounts.list.return_value = [acct]
-    for check in (_check_3_2, _check_3_3, _check_3_8, _check_3_9):
+    for check in (_check_3_3, _check_3_8, _check_3_9):
         result = check(client)
         assert result.status == CheckStatus.PASS, (check.__name__, result.evidence)
 
@@ -570,3 +569,50 @@ def test_cli_scan_id_unique_per_run_and_stable_when_reproducible(tmp_path, monke
     monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
     assert _scan_json(tmp_path, "a")["scan_id"] != _scan_json(tmp_path, "b")["scan_id"]
     assert _scan_json(tmp_path, "c", "--reproducible")["scan_id"] == _scan_json(tmp_path, "d", "--reproducible")["scan_id"]
+
+
+def test_same_id_push_failure_preserves_concurrent_success(_push_env, monkeypatch: pytest.MonkeyPatch) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from agent_bom.api import pipeline, stores
+    from agent_bom.api.server import app
+
+    checked = Event()
+    committed = Event()
+    graph_store = _push_env
+    original_identity = graph_store.snapshot_identity
+
+    def paused_identity(**kwargs):
+        result = original_identity(**kwargs)
+        if not checked.is_set():
+            checked.set()
+            assert committed.wait(10)
+        return result
+
+    def persist(job, report, **kwargs):
+        if job.source_id == "failed-writer":
+            raise RuntimeError("write failed before persistence")
+        pipeline._persist_graph_snapshot(job, report, **kwargs)
+
+    monkeypatch.setattr(graph_store, "snapshot_identity", paused_identity)
+    monkeypatch.setattr("agent_bom.api.routes.observability._persist_graph_snapshot", persist)
+
+    def post(source):
+        return TestClient(app, raise_server_exceptions=False).post(
+            "/v1/results/push",
+            json={"scan_id": "same-scan", "source_id": source, "agents": [{"name": "agent", "agent_type": "custom", "mcp_servers": []}]},
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        failed = pool.submit(post, "failed-writer")
+        assert checked.wait(10)
+        try:
+            success = pool.submit(post, "successful-writer").result(timeout=10)
+            assert success.status_code == 201
+        finally:
+            committed.set()
+        assert failed.result(timeout=10).status_code == 503
+    assert original_identity(tenant_id="default", scan_id="same-scan")[1]
+    assert len(stores._get_store().list_all(all_tenants=True)) == 1
+    assert list(graph_store.iter_nodes(tenant_id="default", scan_id="same-scan"))

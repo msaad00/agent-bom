@@ -102,6 +102,15 @@ Neptune and ClickHouse are specialized options, not interchangeable control-
 plane databases. Snowflake supports selected job/fleet/schedule/exception/policy
 and warehouse-native paths; consult the backend parity matrix before deployment.
 
+Pushed-result rollback on SQLite and Postgres checks a server-generated snapshot
+generation under the same database write lock used by persistence. A failed push
+can remove only its own generation; a concurrent replacement, pre-existing
+snapshot, or unknown ownership is preserved. Failure returns HTTP 503 and does
+not acknowledge the push as committed. This is compensation across job, endpoint,
+and graph stores, not a single transaction across all three stores. Experimental
+Neptune rejects generation-owned push persistence before writing because it does
+not implement this atomic ownership contract; use SQLite or Postgres for pushes.
+
 ---
 
 ## 1b. Implementation Stack

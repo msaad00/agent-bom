@@ -1337,7 +1337,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             import json as _json
             from pathlib import Path as _Path
 
-            from agent_bom.external_import import build_external_agent
+            from agent_bom.parsers.external_import import build_external_agent
             from agent_bom.parsers.external_scanners import ingest_external_report
 
             try:
@@ -1582,7 +1582,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                         max_depth=3,
                     )
         if req.external_scan:
-            from agent_bom.external_import import fold_external_packages
+            from agent_bom.parsers.external_import import fold_external_packages
 
             warnings_all.extend(fold_external_packages(agents, findings=external_findings))
         total_pkgs = sum(len(server.packages) for agent in agents for server in agent.mcp_servers if not server.security_blocked)

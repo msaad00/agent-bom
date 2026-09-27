@@ -1523,7 +1523,7 @@ def scan(
 
         if external_scan_path:
             # After extraction so native packages exist to fold external evidence onto.
-            from agent_bom.external_import import fold_external_packages
+            from agent_bom.parsers.external_import import fold_external_packages
 
             _pkg_count_before_fold = sum(len(s.packages) for a in agents for s in a.mcp_servers)
             for _notice in fold_external_packages(agents, findings=ctx.external_findings):

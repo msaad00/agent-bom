@@ -1581,7 +1581,7 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_org_architecture_findings() if finding.id not in org_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._malicious_package_findings() if finding.id not in malicious_existing)
-        from agent_bom.external_import import merge_external_code_findings
+        from agent_bom.parsers.external_import import merge_external_code_findings
 
         base = merge_external_code_findings(base)
         if self.codeowners:

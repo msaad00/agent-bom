@@ -291,7 +291,7 @@ def run_local_discovery(
     if not skill_only and external_scan_path:
         import json as _json
 
-        from agent_bom.external_import import build_external_agent
+        from agent_bom.parsers.external_import import build_external_agent
         from agent_bom.parsers.external_scanners import ingest_external_report
 
         try:

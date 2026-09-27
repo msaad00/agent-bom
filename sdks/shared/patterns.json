@@ -58,7 +58,7 @@
     },
     {
       "name": "Connection String",
-      "pattern": "(?:mongodb|postgres|mysql|redis)://[^\\s]{10,}",
+      "pattern": "\\b(?:postgres(?:ql)?|mongodb(?:\\+srv)?|mysql|mariadb|rediss?|amqps?|mssql|sqlserver|oracle|clickhouse|cockroachdb)://[^:\\s/@'\\\"]+:(?!\\$\\{|<|\\{\\{)[^@\\s/'\\\"]+@[^\\s'\\\"]+",
       "flags": "i"
     },
     {

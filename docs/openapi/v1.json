@@ -1986,6 +1986,31 @@
         "title": "CampaignVerificationResponse",
         "type": "object"
       },
+      "CaptureSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "scan_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Scan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "agent_id"
+        ],
+        "title": "CaptureSnapshot",
+        "type": "object"
+      },
       "CloudChangeEventIngestItem": {
         "additionalProperties": false,
         "description": "One normalized posture-change event (event-collector \u2192 control plane).",
@@ -6980,6 +7005,228 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "LifecyclePage": {
+        "additionalProperties": false,
+        "properties": {
+          "history_limit_reached": {
+            "default": false,
+            "title": "History Limit Reached",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LifecycleRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "required": [
+          "items",
+          "next_offset"
+        ],
+        "title": "LifecyclePage",
+        "type": "object"
+      },
+      "LifecycleRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "assurance": {
+            "const": "operator_recorded",
+            "default": "operator_recorded",
+            "title": "Assurance",
+            "type": "string"
+          },
+          "composition_digest": {
+            "anyOf": [
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composition Digest"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "identity_id": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Id"
+          },
+          "kind": {
+            "enum": [
+              "agent",
+              "deployment",
+              "instance",
+              "run",
+              "snapshot"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "record_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Recorded By",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "retired_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired By"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "tenant_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "kind",
+          "record_id",
+          "tenant_id",
+          "agent_id",
+          "recorded_at",
+          "recorded_by"
+        ],
+        "title": "LifecycleRecord",
+        "type": "object"
+      },
       "ManagedTrialInvitationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7884,6 +8131,128 @@
           }
         },
         "title": "PushPayload",
+        "type": "object"
+      },
+      "RegisterDeployment": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "deployment_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "agent_id",
+          "snapshot_id",
+          "version"
+        ],
+        "title": "RegisterDeployment",
+        "type": "object"
+      },
+      "RegisterInstance": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "identity_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Identity Id",
+            "type": "string"
+          },
+          "instance_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Instance Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "deployment_id",
+          "identity_id"
+        ],
+        "title": "RegisterInstance",
+        "type": "object"
+      },
+      "RegisterRun": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "instance_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^\\S(?:[^\\x00-\\x1f\\x7f]*\\S)?$",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "instance_id"
+        ],
+        "title": "RegisterRun",
         "type": "object"
       },
       "RelationshipType": {
@@ -11698,6 +12067,916 @@
         "summary": "Get Agent Bom Manifest",
         "tags": [
           "Agent BOM"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/deployments": {
+      "post": {
+        "operationId": "register_deployment_v1_agent_lifecycle_deployments_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeployment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Deployment",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/history": {
+      "get": {
+        "description": "Bounded oldest-first pages of metadata; BOM payloads use exact export.",
+        "operationId": "get_history_v1_agent_lifecycle_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "snapshot",
+              "enum": [
+                "agent",
+                "deployment",
+                "instance",
+                "run",
+                "snapshot"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecyclePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/instances": {
+      "post": {
+        "operationId": "register_instance_v1_agent_lifecycle_instances_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterInstance"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Instance",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/records": {
+      "get": {
+        "operationId": "get_record_v1_agent_lifecycle_records_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "deployment",
+                "instance",
+                "run",
+                "snapshot"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Record",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/retire": {
+      "post": {
+        "operationId": "retire_record_v1_agent_lifecycle_retire_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "deployment",
+                "instance"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Record",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/runs": {
+      "post": {
+        "operationId": "register_run_v1_agent_lifecycle_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Run",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/snapshots": {
+      "post": {
+        "description": "Retain one completed scan export and register its observed logical agent.\n\nNo producer JSON or name-based join is accepted. Registration records an\noperator action; it does not upgrade the exported identity to verified.",
+        "operationId": "capture_snapshot_v1_agent_lifecycle_snapshots_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureSnapshot"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture Snapshot",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/snapshots/compare": {
+      "get": {
+        "operationId": "compare_snapshots_v1_agent_lifecycle_snapshots_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Before",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "After",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Snapshots V1 Agent Lifecycle Snapshots Compare Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Snapshots",
+        "tags": [
+          "Agent lifecycle"
+        ]
+      }
+    },
+    "/v1/agent-lifecycle/snapshots/export": {
+      "get": {
+        "operationId": "export_snapshot_v1_agent_lifecycle_snapshots_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBomDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Snapshot",
+        "tags": [
+          "Agent lifecycle"
         ]
       }
     },

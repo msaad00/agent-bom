@@ -32,3 +32,23 @@ source scan but are not attributed to an individual agent through a name.
 
 This is fail-closed attribution: missing identity produces an unknown binding,
 not a guessed owner, permission, runtime relationship, or clean assessment.
+
+## One project, one agent
+
+A project scan (`agent-bom scan -p <dir>`, or an API scan of a directory)
+observes the same project through several collectors: its MCP config
+(`.mcp.json`, `.vscode/mcp.json`, …), package manifests, AI-component imports,
+code-defined framework agents, filesystem, and SAST. Discovery collapses every
+collector rooted at the same directory into one `project:<dir name>` agent whose
+canonical ID is the manifest-rooted project ID. The contributing collectors are
+listed in the agent's `metadata.evidence_sources`; code-defined agent
+constructs are recorded as `metadata.code_agents` (and on the graph node as
+`code_agents`) rather than as extra agents. Framework agents that take part in
+multi-agent delegation keep their own graph nodes. Only servers with the
+`mcp-server` surface count as MCP servers.
+
+Every surface counts agents the same way: distinct canonical agent IDs in the
+tenant's completed scans, latest observation first. `/v1/inventory`,
+`/v1/agents` (unless the API host is bound to the tenant; see
+[ENTERPRISE_DEPLOYMENT.md](ENTERPRISE_DEPLOYMENT.md)), posture counts,
+inventory summary, and the graph report the same number for the same scans.

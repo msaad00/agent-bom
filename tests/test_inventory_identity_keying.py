@@ -22,6 +22,7 @@ from agent_bom.api.routes import fleet as fleet_routes
 from agent_bom.api.stores import set_fleet_store
 from agent_bom.canonical_ids import legacy_agent_id_v1
 from agent_bom.models import Agent, AgentType, MCPServer
+from tests._host_discovery import host_bound_to
 
 
 def _request(tenant_id: str) -> SimpleNamespace:
@@ -209,6 +210,7 @@ def test_build_agents_response_enriches_from_matching_source_record() -> None:
     assert local.canonical_id == match.canonical_id
 
     with (
+        patch.dict("os.environ", host_bound_to("default")),
         patch("agent_bom.discovery.discover_all", return_value=[local]),
         patch("agent_bom.parsers.extract_packages", return_value=[]),
         patch.object(discovery_routes, "_persist_agent_observations", lambda *a, **k: None),

@@ -1001,7 +1001,12 @@ def build_unified_graph_from_report(
     # ── Framework-native static topology (CrewAI / LangGraph / AutoGen) ──
     ai_inventory = report_json.get("ai_inventory", {})
     if isinstance(ai_inventory, dict):
-        _add_framework_topology(graph, ai_inventory.get("framework_agents", []), data_source_tag)
+        _add_framework_topology(
+            graph,
+            ai_inventory.get("framework_agents", []),
+            data_source_tag,
+            host_agent_id=_project_host_agent_id(graph, agents_data),
+        )
         _add_ai_stack_frameworks(graph, ai_inventory, data_source_tag)
 
     # ── Cross-environment correlation (#1892 Phase 1: AWS Bedrock) ──
@@ -6884,16 +6889,59 @@ def _add_cross_env_correlation(
         )
 
 
-def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_source: str) -> None:
+def _project_host_agent_id(graph: UnifiedGraph, agents_data: Any) -> str | None:
+    """The single project agent that owns this report's source-code inventory.
+
+    Code-level framework constructs are evidence about that project agent, not
+    additional agents. With zero or several project roots there is no single
+    owner, so the constructs keep their own nodes.
+    """
+    if not isinstance(agents_data, list):
+        return None
+    hosts: list[str] = []
+    for agent in agents_data:
+        if not isinstance(agent, dict):
+            continue
+        metadata = agent.get("metadata")
+        if not (isinstance(metadata, dict) and metadata.get("project_root")):
+            continue
+        node_id = _agent_node_id(agent.get("name"), _agent_identity_scope(agent))
+        node = graph.nodes.get(node_id)
+        if node is not None and node.entity_type == EntityType.AGENT:
+            hosts.append(node_id)
+    return hosts[0] if len(hosts) == 1 else None
+
+
+def _add_framework_topology(
+    graph: UnifiedGraph,
+    framework_agents: Any,
+    data_source: str,
+    *,
+    host_agent_id: str | None = None,
+) -> None:
     """Add framework nodes, model nodes, framework-native agents, and topology edges.
 
     Frameworks (LangChain, LangGraph, CrewAI, …) are first-class BOM entities.
     Agents link via ``uses_framework``; model string refs become ``model`` nodes
     linked via ``serves_model``.
+
+    With a ``host_agent_id`` (the project agent), a construct that takes no part
+    in multi-agent delegation is folded into the host as ``code_agents``
+    evidence; delegation participants remain distinct agents.
     """
     if not isinstance(framework_agents, list):
         return
     known_agent_ids: set[str] = set()
+    topology_participants: set[str] = set()
+    for item in framework_agents:
+        if not isinstance(item, dict):
+            continue
+        for edge in item.get("topology_edges", []) or []:
+            if isinstance(edge, dict):
+                topology_participants.add(str(edge.get("source_id") or "").strip())
+                topology_participants.add(str(edge.get("target_id") or "").strip())
+    host = graph.nodes.get(host_agent_id) if host_agent_id else None
+    folded: list[dict[str, Any]] = []
     framework_ids: dict[str, str] = {}
 
     def _framework_node_id(name: str) -> str:
@@ -6949,28 +6997,41 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
         agent_id = str(item.get("stable_id") or "").strip()
         if not agent_id:
             continue
-        known_agent_ids.add(agent_id)
         framework_name = str(item.get("framework") or "").strip()
-        graph.add_node(
-            UnifiedNode(
-                id=agent_id,
-                entity_type=EntityType.AGENT,
-                label=str(item.get("name") or agent_id),
-                attributes={
-                    "agent_type": "framework-agent",
+        if host is not None and agent_id not in topology_participants:
+            folded.append(
+                {
+                    "name": str(item.get("name") or agent_id),
                     "framework": framework_name,
                     "file_path": item.get("file_path", ""),
                     "line_number": item.get("line_number", 0),
                     "confidence": item.get("confidence", ""),
-                    "model_refs": item.get("model_refs", []),
-                    "credential_refs": item.get("credential_refs", []),
                     "capabilities": item.get("capabilities", []),
-                    "dynamic_edges": item.get("dynamic_edges", False),
-                },
-                dimensions=NodeDimensions(agent_type="framework-agent", surface=framework_name),
-                data_sources=[data_source, "source-ast"],
+                }
             )
-        )
+            agent_id = host.id
+        else:
+            known_agent_ids.add(agent_id)
+            graph.add_node(
+                UnifiedNode(
+                    id=agent_id,
+                    entity_type=EntityType.AGENT,
+                    label=str(item.get("name") or agent_id),
+                    attributes={
+                        "agent_type": "framework-agent",
+                        "framework": framework_name,
+                        "file_path": item.get("file_path", ""),
+                        "line_number": item.get("line_number", 0),
+                        "confidence": item.get("confidence", ""),
+                        "model_refs": item.get("model_refs", []),
+                        "credential_refs": item.get("credential_refs", []),
+                        "capabilities": item.get("capabilities", []),
+                        "dynamic_edges": item.get("dynamic_edges", False),
+                    },
+                    dimensions=NodeDimensions(agent_type="framework-agent", surface=framework_name),
+                    data_sources=[data_source, "source-ast"],
+                )
+            )
         fw_id = _ensure_framework(framework_name)
         if fw_id:
             graph.add_edge(
@@ -6992,6 +7053,10 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
                         evidence={"source": "source-ast", "model_ref": str(model_ref)},
                     )
                 )
+
+    if host is not None and folded:
+        host.attributes["code_agents"] = folded
+        host.data_sources = list(dict.fromkeys([*host.data_sources, "source-ast"]))
 
     for item in framework_agents:
         if not isinstance(item, dict):

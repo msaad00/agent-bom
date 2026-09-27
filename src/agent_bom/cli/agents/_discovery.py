@@ -1298,3 +1298,7 @@ def run_local_discovery(
                 for f in all_iac_findings
             ],
         }
+
+    from agent_bom.discovery.identity import consolidate_project_agents
+
+    ctx.agents = consolidate_project_agents(ctx.agents)

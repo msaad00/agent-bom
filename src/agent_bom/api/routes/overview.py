@@ -1354,12 +1354,14 @@ def _exec_posture(
     )
 
 
-def _cloud_account_count(request: Request) -> int:
-    """Connected cloud accounts for the Cloud posture domain tile."""
+def _cloud_account_count(request: Request, scanned_scopes: dict[str, Any] | None) -> int:
+    """Covered cloud accounts: connected plus scanned/pushed scopes, deduped."""
     try:
+        from agent_bom.api.cloud_scan_scopes import cloud_account_summary
         from agent_bom.api.connection_store import get_connection_store
 
-        return len(get_connection_store().list_for_tenant(_tenant_id(request)))
+        connections = get_connection_store().list_for_tenant(_tenant_id(request))
+        return int(cloud_account_summary(connections, scanned_scopes)["count"])
     except Exception:  # pragma: no cover - connection store optional
         _logger.debug("cloud account snapshot failed", exc_info=False)
         return 0
@@ -1643,6 +1645,8 @@ def _compose_overview(
     scan_cache_key: str | None = None,
 ) -> dict[str, Any]:
     """Fold scan evidence once per durable revision; refresh live overlays."""
+    from agent_bom.api.cloud_scan_scopes import scanned_cloud_scopes
+
     if scan_inputs is None:
         estate = _estate_rollup(jobs)
         from agent_bom.api.routes.compliance import _result_evidence_context, _result_has_runtime_signals
@@ -1668,6 +1672,7 @@ def _compose_overview(
             "posture": _posture_snapshot(jobs),
             "repo_scans": _repo_scan_count(jobs),
             "runtime_results": runtime_results,
+            "cloud_scopes": scanned_cloud_scopes(jobs),
         }
         if scan_cache_key:
             _scan_aggregate_put(scan_cache_key, scan_inputs, jobs)
@@ -1717,7 +1722,10 @@ def _compose_overview(
     headline_high = exec_counts["high"]
     critical_high = headline_critical + headline_high
 
-    cloud_accounts = _cloud_account_count(request)
+    cloud_scopes = scan_inputs.get("cloud_scopes")
+    if cloud_scopes is None:
+        cloud_scopes = scanned_cloud_scopes(jobs)
+    cloud_accounts = _cloud_account_count(request, cloud_scopes)
     repo_scans = scan_inputs["repo_scans"]
     # Fold hub-ingested (pushed) findings into the Vuln/SCA tile so a push-only
     # estate (findings pushed, no scan job) can't show "0 open CVEs · ok" while

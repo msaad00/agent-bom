@@ -1268,7 +1268,16 @@ def _enforce_graph_query_budget(body: GraphQueryRequest) -> dict[str, int]:
 
 
 async def _graph_store_call(fn: Callable[..., _GraphCallResult], /, *args: Any, **kwargs: Any) -> _GraphCallResult:
-    """Run sync graph store methods off the event loop."""
+    """Run sync graph store methods off the event loop.
+
+    A ``scan_id`` that names one of the caller's scan jobs is resolved to the
+    snapshot id its report was stored under, so every graph read accepts the
+    job id a push or scan response returned.
+    """
+    if kwargs.get("scan_id") and "tenant_id" in kwargs:
+        from agent_bom.api.graph_scan_ids import resolve_graph_scan_id
+
+        kwargs["scan_id"] = await asyncio.to_thread(resolve_graph_scan_id, str(kwargs["tenant_id"] or ""), str(kwargs["scan_id"]))
     try:
         if _graph_request_admitted.get():
             return await asyncio.to_thread(fn, *args, **kwargs)

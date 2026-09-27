@@ -341,6 +341,10 @@ async def exposure_paths_for_tenant(
 
     if scan_id and "\x00" in scan_id:
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Invalid graph snapshot identifier.")
+    if scan_id:
+        from agent_bom.api.graph_scan_ids import resolve_graph_scan_id
+
+        scan_id = await asyncio.to_thread(resolve_graph_scan_id, tenant_id, scan_id)
 
     # Cursors locate evidence; authorization always comes from the caller's
     # tenant. Pin the snapshot and filter so a new scan cannot shift page two.

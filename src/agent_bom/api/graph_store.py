@@ -509,7 +509,7 @@ def containment_drilldown_graph(
     adapter implements only part of the protocol) takes the same fallback, so
     its answer is unchanged rather than a 501.
     """
-    from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES, ROLLUP_RELATIONSHIPS
+    from agent_bom.graph.rollup import ROLLUP_RELATIONSHIPS, ROLLUP_SUBTREE_RELATIONSHIP_TYPES
 
     def _full_load() -> UnifiedGraph:
         return store.load_graph(
@@ -531,15 +531,31 @@ def containment_drilldown_graph(
             # edge budget must clear the node budget or it, not the node budget,
             # becomes the binding limit.
             max_edges=budget * 4,
-            relationship_types=set(ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES),
+            relationship_types=set(ROLLUP_SUBTREE_RELATIONSHIP_TYPES),
             include_roots=True,
         )
     except _unsupported_traversal_errors():
         return _full_load()
     if truncated:
         return _full_load()
+    graph = _typed_containment_subtree(graph, node_id)
     _attach_sibling_relationships(store, graph, tenant_id=tenant_id, scan_id=scan_id)
     return graph
+
+
+def _typed_containment_subtree(graph: UnifiedGraph, node_id: str) -> UnifiedGraph:
+    """Drop nodes the walk reached over an edge the roll-up does not treat as containment.
+
+    The store walk filters by relationship type only, so a ``USES`` edge out of
+    an application widens it exactly like an agent's ``USES`` of its server. The
+    roll-up types containment by endpoint; the subtree must use the same rule.
+    """
+    from agent_bom.graph.rollup import containment_descendants
+
+    keep = {node_id, *containment_descendants(graph, node_id)}
+    if len(keep) == len(graph.nodes):
+        return graph
+    return graph._inherit_completeness(graph._subgraph(node_filter=lambda node: node.id in keep))
 
 
 def _attach_sibling_relationships(

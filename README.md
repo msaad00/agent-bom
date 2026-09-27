@@ -148,6 +148,8 @@ The offline synthetic enterprise estate includes evaluated checks; results do no
 
 Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), and [framework controls and evidence](site-docs/features/compliance.md).
 
+From a completed scan, expand **Evidence & agent BOM** to inspect collection gaps and export one recorded agent’s composition. [Follow the scan-to-BOM investigation journey](docs/SCAN_EVIDENCE_JOURNEY.md).
+
 ### AppSec and cloud teams: explain why a finding matters
 
 Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between the service, container, tool, workload identity and modeled data asset.

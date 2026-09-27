@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import { useScanStream } from "@/lib/use-scan-stream";
+import { ScanEvidencePanel } from "@/components/scan-evidence-panel";
 import { JobPipelinePanel } from "@/components/job-pipeline-panel";
 import { RepoScanOverviewPanel } from "@/components/repo-scan-overview-panel";
 import { FrameworkTagChips } from "@/components/framework-tag-chips";
@@ -233,6 +234,8 @@ export function ScanResultView({ id }: { id: string }) {
           <strong>Scan failed:</strong> {job.error ?? "Unknown error"}
         </div>
       )}
+
+      {job?.status === "done" && result ? <ScanEvidencePanel key={id} jobId={id} result={result} /> : null}
 
       {/* Summary stats */}
       {summary && (

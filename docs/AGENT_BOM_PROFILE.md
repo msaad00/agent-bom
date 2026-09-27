@@ -6,10 +6,32 @@ CycloneDX, SPDX, or A2A. The `agent-bom.manifest/v1` fleet export stays unchange
 
 The Python builder `agent_bom.evidence.agent_bom.build_agent_bom` accepts one
 discovered `Agent` and returns an `AgentBomDocument`. Serialize it with
-`model_dump_json(indent=2)`; validate it with
-`AgentBomDocument.model_validate_json(text)`. The interchange schema is
+`model_dump_json(indent=2)`; validate untrusted JSON with
+`agent_bom.evidence.agent_bom.validate_agent_bom_json(text)`, which enforces an
+8 MiB input bound and rejects duplicate JSON keys. The interchange schema is
 [profile-v1.json](schemas/agent-bom/profile-v1.json). Regenerate it with
 `python scripts/generate_agent_bom_schema.py`; verify it with `--check`.
+
+## Export and validate
+
+For a project containing exactly one discovered agent:
+
+```bash
+agent-bom manifest --project . --single-agent --output agent.bom.json
+agent-bom manifest --validate agent.bom.json
+```
+
+For multiple agents, run `agent-bom manifest --project .`, select an exact ID
+from `agents[].id`, then export with `--agent-id ID` instead of `--single-agent`.
+Display names are not selectors. An unknown or ambiguous ID fails without
+writing a file. Existing fleet output remains the default.
+
+The CLI validator accepts at most 8 MiB and rejects duplicate keys, non-finite
+numbers, invalid references and changed content digests. It performs no agent
+discovery and prints no imported content on failure. Python integrations should
+use `validate_agent_bom_json` for the same parsing boundary. The next step after
+validation is to inspect coverage: validation proves neither verified identity
+nor control compliance.
 
 ## Contents and evidence boundary
 

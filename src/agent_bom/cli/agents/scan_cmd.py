@@ -1187,9 +1187,19 @@ def scan(
     if project and not skill_only and _explicit_targets and not (demo or self_scan):
         from agent_bom.repo_auto_detect import expand_project_scan_targets
 
-        # Only surfaces that actually exist in the project were skipped; an
-        # inventory-only project (quickstart sample) has nothing to report.
-        _skipped_surfaces = expand_project_scan_targets(project).auto_enabled
+        # Explicitly enabled surfaces are scanned even beside an inventory;
+        # report only the remaining detected surfaces that were skipped.
+        _skipped_surfaces = expand_project_scan_targets(
+            project,
+            jupyter_dirs=jupyter_dirs,
+            code_paths=code_paths,
+            scan_prompts=scan_prompts,
+            tf_dirs=tf_dirs,
+            gha_path=gha_path,
+            agent_projects=agent_projects,
+            ai_inventory_paths=ai_inventory_paths,
+            iac_paths=iac_paths,
+        ).auto_enabled
         if _skipped_surfaces:
             _skip_notice = (
                 f"Project surface auto-detection ({', '.join(_skipped_surfaces)}) was skipped for {project} "

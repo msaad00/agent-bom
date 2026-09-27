@@ -100,6 +100,9 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert scan_args[1] == "agents"
     assert "--context-graph" in scan_args
     assert "--offline" in scan_args
+    assert "--scan-prompts" in scan_args
+    assert scan_args[scan_args.index("--agent-project") + 1] == str(sample_dir)
+    assert scan_args[scan_args.index("--ai-inventory") + 1] == str(sample_dir)
     assert "--no-scan" in scan_args
     assert "-o" in scan_args
     assert str(sample_dir / "agent-bom-report.json") in scan_args
@@ -175,11 +178,7 @@ def test_quickstart_run_offline_succeeds_with_empty_vulnerability_db(tmp_path, m
     assert result.exit_code == 0, result.output
     report = json.loads((sample_dir / "agent-bom-report.json").read_text())
     assert report["scan_run"]["outcome"] == "complete"
-    # The sample pairs -p with --inventory on purpose; the only allowed issue is
-    # the informational notice naming the project surfaces that pairing skips.
-    issues = report["scan_run"]["issues"]
-    assert [issue["code"] for issue in issues if issue["code"] != "project_auto_detect_skipped"] == []
-    assert all(issue.get("affects_coverage") is False for issue in issues)
+    assert report["scan_run"]["issues"] == []
     assert report["coverage_warnings"] == []
     assert report["summary"]["total_agents"] > 0
     assert report["summary"]["total_packages"] > 0

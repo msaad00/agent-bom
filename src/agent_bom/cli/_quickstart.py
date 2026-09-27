@@ -185,6 +185,7 @@ def _run_quickstart(
         "-o",
         str(report_path),
     ]
+    scan_args.extend(_sample_surface_args(sample_dir))
     if offline:
         # A fresh install has no local vulnerability database. Keep the
         # one-command onboarding deterministic and honest: inventory packages,
@@ -337,8 +338,11 @@ def _resolve_agent_bom() -> str | None:
     return shutil.which("agent-bom")
 
 
+def _sample_surface_args(sample_dir: Path) -> list[str]:
+    return ["--scan-prompts", "--agent-project", str(sample_dir), "--ai-inventory", str(sample_dir)]
+
+
 def _sample_scan_command(sample_dir: Path, *, offline: bool) -> str:
-    command = f"agent-bom scan --inventory {sample_dir / 'inventory.json'} -p {sample_dir}"
-    if offline:
-        return f"{command} --offline"
-    return f"{command} --enrich"
+    args = ["agent-bom", "scan", "--inventory", str(sample_dir / "inventory.json"), "-p", str(sample_dir)]
+    args.extend(["--offline", "--no-scan"] if offline else ["--enrich"])
+    return shlex.join([*args, *_sample_surface_args(sample_dir)])

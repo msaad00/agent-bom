@@ -15,7 +15,7 @@ expose different profiles; connect only the entries needed for the task.
 |---|---:|---|---|
 | `scan` (default) | 8 | Package/project scan, exposure and fix planning | quick-audit, pre-install-check, remediation-plan |
 | `graph` | 8 | Inventory rollup, asset drill-down and scoped correlation | Use inventory_summary → inventory_list → inventory_asset, then inspect paths |
-| `cloud` | 5 | Inventory, connection scope and CIS posture | cloud-connection-review |
+| `cloud` | 6 | Inventory, connection scope and CIS posture | cloud-connection-review |
 | `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
 | `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |
 
@@ -26,7 +26,7 @@ cannot be invoked. Profiles are not permissions: graph writes still require the
 existing authenticated role, tenant scope and audit reason.
 
 Existing clients that require the complete catalog can explicitly use
-`agent-bom mcp server --profile full`. It retains all 86 tools. The previous
+`agent-bom mcp server --profile full`. It retains all 88 tools. The previous
 25-tool `--profile guided` option remains available for compatibility with all
 eight workflow prompts. Neither is the recommended first-run configuration.
 Third-party tool plugins remain separately opt-in and are exposed only by `full`.

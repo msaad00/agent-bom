@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Authenticated read-only Jamf Pro and CrowdStrike Falcon inventory sync with encrypted credentials, resumable collection, tenant-isolated SQLite/Postgres evidence and explicit freshness/collection gaps. Manage connections through the API, CLI and a bounded Connections → Endpoints tab; inspect inventory and run authorized syncs through MCP. Sensor health remains distinct from policy compliance.
+
 ### Fixed
 
 - `POST /v1/scan` now runs the same secret scan as `agent-bom scan -p` for `agent_projects` and `filesystem_paths`, not only for `repo_url` clones.

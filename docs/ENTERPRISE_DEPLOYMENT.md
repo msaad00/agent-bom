@@ -814,3 +814,11 @@ replacing their ledger payload; it never infers a source by comparing dates or
 reconstructs assignments already overwritten before this change. Unknown source
 values are not proof that an operator approved a deadline. Existing JSON payload
 storage carries this additive metadata without a database-column migration.
+
+### Read-only endpoint inventory
+
+For authenticated Jamf Pro and CrowdStrike Falcon collection, use
+[Endpoint connectors](ENDPOINT_CONNECTORS.md): configure the existing connection
+encryption key, connect with read-only privileges, sync, then inspect the scoped
+inventory artifact and collection gaps. Deployment wrappers and live inventory
+collection have separate credential and evidence boundaries.

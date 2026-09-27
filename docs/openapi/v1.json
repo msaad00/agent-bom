@@ -213,6 +213,27 @@
         "title": "AdoptionEventRequest",
         "type": "object"
       },
+      "AgentBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "agent_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "AgentBinding",
+        "type": "object"
+      },
       "AgentBomComponent": {
         "additionalProperties": false,
         "properties": {
@@ -2828,6 +2849,247 @@
         "title": "CompositionModel",
         "type": "object"
       },
+      "Connection": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "client_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Client Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "freshness_hours": {
+            "default": 24,
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Freshness Hours",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "jamf_url": {
+            "default": "",
+            "title": "Jamf Url",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "page_size": {
+            "default": 100,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "provider": {
+            "enum": [
+              "jamf",
+              "crowdstrike"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "region": {
+            "default": "us1",
+            "enum": [
+              "us1",
+              "us2",
+              "eu1",
+              "usgov1",
+              "usgov2"
+            ],
+            "title": "Region",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "account_id",
+          "client_id",
+          "id",
+          "tenant_id",
+          "created_at"
+        ],
+        "title": "Connection",
+        "type": "object"
+      },
+      "ConnectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Account Id",
+            "type": "string"
+          },
+          "client_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Client Id",
+            "type": "string"
+          },
+          "client_secret": {
+            "format": "password",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Client Secret",
+            "type": "string",
+            "writeOnly": true
+          },
+          "freshness_hours": {
+            "default": 24,
+            "maximum": 168.0,
+            "minimum": 1.0,
+            "title": "Freshness Hours",
+            "type": "integer"
+          },
+          "jamf_url": {
+            "default": "",
+            "title": "Jamf Url",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "page_size": {
+            "default": 100,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "provider": {
+            "enum": [
+              "jamf",
+              "crowdstrike"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "region": {
+            "default": "us1",
+            "enum": [
+              "us1",
+              "us2",
+              "eu1",
+              "usgov1",
+              "usgov2"
+            ],
+            "title": "Region",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "account_id",
+          "client_id",
+          "client_secret"
+        ],
+        "title": "ConnectionCreate",
+        "type": "object"
+      },
+      "ConnectionList": {
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionStatus"
+            },
+            "title": "Connections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "connections"
+        ],
+        "title": "ConnectionList",
+        "type": "object"
+      },
+      "ConnectionStatus": {
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/Connection"
+          },
+          "sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "connection",
+          "sync"
+        ],
+        "title": "ConnectionStatus",
+        "type": "object"
+      },
+      "ConnectionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "client_secret": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 4096,
+                "minLength": 1,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Secret"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "title": "ConnectionUpdate",
+        "type": "object"
+      },
       "CorrelationCohortChildReceipt": {
         "additionalProperties": false,
         "description": "Signed assignment for one external producer in an immutable cohort.",
@@ -3505,6 +3767,143 @@
           "graph_alignment"
         ],
         "title": "DemoEstateStatus",
+        "type": "object"
+      },
+      "DevicePage": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceSignal"
+            },
+            "title": "Devices",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "recent_receipts": {
+            "items": {
+              "$ref": "#/components/schemas/SyncState"
+            },
+            "title": "Recent Receipts",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "endpoint.inventory.v1",
+            "default": "endpoint.inventory.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sync",
+          "devices",
+          "offset",
+          "limit"
+        ],
+        "title": "DevicePage",
+        "type": "object"
+      },
+      "DeviceSignal": {
+        "description": "A vendor-neutral device posture/compliance signal (no secrets).\n\n``managed`` / ``compliant`` / ``disk_encrypted`` are tri-state: ``True`` /\n``False`` / ``None`` (unknown / not reported). ABAC ``require_device_*``\nconditions treat only ``True`` as satisfying \u2014 unknown fails closed.",
+        "properties": {
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "compliant": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compliant"
+          },
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "disk_encrypted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disk Encrypted"
+          },
+          "hostname": {
+            "default": "",
+            "title": "Hostname",
+            "type": "string"
+          },
+          "last_seen": {
+            "default": "",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "managed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managed"
+          },
+          "observed_at": {
+            "default": "",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "os_version": {
+            "default": "",
+            "title": "Os Version",
+            "type": "string"
+          },
+          "risk_level": {
+            "default": "",
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "device_id",
+          "source"
+        ],
+        "title": "DeviceSignal",
         "type": "object"
       },
       "DraftVersionBody": {
@@ -10542,6 +10941,106 @@
           }
         },
         "title": "StorageHealth",
+        "type": "object"
+      },
+      "SyncRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "max_pages": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Pages",
+            "type": "integer"
+          },
+          "restart": {
+            "default": false,
+            "title": "Restart",
+            "type": "boolean"
+          }
+        },
+        "title": "SyncRequest",
+        "type": "object"
+      },
+      "SyncState": {
+        "additionalProperties": false,
+        "properties": {
+          "connection_id": {
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "cursor": {
+            "default": "",
+            "title": "Cursor",
+            "type": "string"
+          },
+          "cursor_at": {
+            "default": "",
+            "title": "Cursor At",
+            "type": "string"
+          },
+          "device_count": {
+            "default": 0,
+            "title": "Device Count",
+            "type": "integer"
+          },
+          "expected_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Count"
+          },
+          "gap": {
+            "default": "",
+            "title": "Gap",
+            "type": "string"
+          },
+          "pages": {
+            "default": 0,
+            "title": "Pages",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "default": "collecting",
+            "enum": [
+              "collecting",
+              "partial",
+              "complete",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "connection_id",
+          "tenant_id",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "SyncState",
         "type": "object"
       },
       "TenantQuotaUpdateRequest": {
@@ -20347,6 +20846,591 @@
         "summary": "List Discovery Providers",
         "tags": [
           "discovery"
+        ]
+      }
+    },
+    "/v1/endpoint-connectors": {
+      "get": {
+        "operationId": "list_connections_v1_endpoint_connectors_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Connections",
+        "tags": [
+          "endpoint-connectors"
+        ]
+      },
+      "post": {
+        "operationId": "connect_v1_endpoint_connectors_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Connect",
+        "tags": [
+          "endpoint-connectors"
+        ]
+      }
+    },
+    "/v1/endpoint-connectors/devices/{device_id}/agent-binding": {
+      "put": {
+        "operationId": "bind_agent_v1_endpoint_connectors_devices__device_id__agent_binding_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Bind Agent V1 Endpoint Connectors Devices  Device Id  Agent Binding Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bind Agent",
+        "tags": [
+          "endpoint-connectors"
+        ]
+      }
+    },
+    "/v1/endpoint-connectors/{connection_id}": {
+      "patch": {
+        "operationId": "update_v1_endpoint_connectors__connection_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update",
+        "tags": [
+          "endpoint-connectors"
+        ]
+      }
+    },
+    "/v1/endpoint-connectors/{connection_id}/devices": {
+      "get": {
+        "operationId": "devices_v1_endpoint_connectors__connection_id__devices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Devices",
+        "tags": [
+          "endpoint-connectors"
+        ]
+      }
+    },
+    "/v1/endpoint-connectors/{connection_id}/sync": {
+      "post": {
+        "operationId": "sync_v1_endpoint_connectors__connection_id__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync",
+        "tags": [
+          "endpoint-connectors"
         ]
       }
     },

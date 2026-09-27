@@ -7,7 +7,7 @@ Start with:
 
 Default: 8 focused tools; select a task profile with --profile.
 
-Full profile Tools (86):
+Full profile Tools (88):
     scan                — Full discovery → scan → output pipeline
     check               — Check a specific package for CVEs before installing
     intel_lookup        — Look up a CVE, GHSA, or OSV advisory from local threat intel
@@ -85,6 +85,8 @@ Full profile Tools (86):
     credential_expiry   — Expiring / overdue credential and rotation posture
     nhi_discover        — Discover non-human identities (Okta / Entra), reference-only
     cloud_inventory     — Estate-wide cloud asset inventory summary, opt-in per provider
+    endpoint_inventory  — Scoped Jamf/Falcon inventory with freshness and collection gaps
+    endpoint_sync       — Collect vendor inventory through stored credentials, admin-gated
     access_review       — List or get NHI access-review / recertification campaigns
     create_ticket       — File an ITSM ticket for a finding through a stored connector
     sync_ticket_status  — Refresh a filed ITSM ticket's status through the stored connector
@@ -224,6 +226,7 @@ class _StaticBearerTokenVerifier:
                     "scan:write",
                     "shield:write",
                     "ticketing:write",
+                    "connectors:write",
                 ],
                 expires_at=_mcp_token_expiry_epoch(self._operator_token_expires_at),
                 resource=None,
@@ -575,7 +578,6 @@ def create_mcp_server(
     configure_registration(mcp, profile)
 
     # Import tool implementations
-    from agent_bom.mcp_server_specialized import register_specialized_ai_tools
     from agent_bom.mcp_tools.analysis import blast_radius_impl
     from agent_bom.mcp_tools.compliance import (
         compliance_impl,
@@ -1422,10 +1424,12 @@ def create_mcp_server(
         truncate_response=_truncate_response,
     )
 
-    from agent_bom.mcp_server_ticketing_tools import register_ticketing_tools
+    from agent_bom.mcp_tools.registration import register_connected_tools
 
-    register_ticketing_tools(
+    register_connected_tools(
         mcp,
+        safe_path=_safe_path,
+        read_only=_READ_ONLY,
         write_action=_WRITE_ACTION,
         execute_tool_async=_execute_tool_async,
         truncate_response=_truncate_response,
@@ -1455,15 +1459,6 @@ def create_mcp_server(
         logger=logger,
         tool_metrics_snapshot=_tool_metrics_snapshot,
         profile=profile,
-    )
-
-    register_specialized_ai_tools(
-        mcp,
-        read_only=_READ_ONLY,
-        write_action=_WRITE_ACTION,
-        execute_tool_async=_execute_tool_async,
-        safe_path=_safe_path,
-        truncate_response=_truncate_response,
     )
 
     attach_metadata_routes(

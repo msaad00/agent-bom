@@ -51,6 +51,11 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("gateway_policies", "sqlite/postgres", ("gateway_policies", "policy_audit_log")),
     StorageSchemaComponent("llm_costs", "sqlite/postgres", ("llm_costs", "llm_cost_budgets")),
     StorageSchemaComponent("cloud_connections", "sqlite/postgres", ("cloud_connections",)),
+    StorageSchemaComponent(
+        "endpoint_connectors",
+        "sqlite/postgres",
+        ("endpoint_connections", "endpoint_syncs", "endpoint_devices", "endpoint_sync_events", "endpoint_agent_bindings"),
+    ),
     StorageSchemaComponent("ticketing_connections", "sqlite/postgres", ("ticketing_connections", "ticket_links")),
     StorageSchemaComponent(
         "compliance_hub",

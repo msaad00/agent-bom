@@ -65,3 +65,15 @@ def test_credential_decisions_have_one_domain_owner():
         tree = ast.parse(f"def {function}(value):\n return value\n")
         assert boundary_errors("api/credential_expiry.py", tree)
         assert not boundary_errors("core/credential_policy.py", tree)
+
+
+def test_graph_persistence_service_cannot_import_its_callers_or_store_singleton():
+    for source in (
+        "from agent_bom.api.pipeline import _get_graph_store",
+        "from .pipeline import _get_graph_store",
+        "from agent_bom.api import pipeline",
+        "def f():\n from agent_bom.api.stores import _get_graph_store",
+        "import agent_bom.api.server",
+    ):
+        assert boundary_errors("api/graph_persistence.py", ast.parse(source))
+    assert not boundary_errors("api/graph_persistence.py", ast.parse("from agent_bom.api.graph_store import GraphStoreProtocol"))

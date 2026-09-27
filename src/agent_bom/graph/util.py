@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 
 def _now_iso() -> str:
     """Current UTC time as ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def clean_graph_part(value: Any) -> str:
+    return str(value or "").strip()

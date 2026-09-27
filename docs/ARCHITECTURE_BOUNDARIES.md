@@ -25,3 +25,10 @@ base commit, so editing the baseline cannot approve growth. A new or renamed ove
 no inherited exception. The Python gate excludes browser bundles and generated
 JSON/schema/TypeScript artifacts, which retain their owning generation checks.
 It sets no PR line-count limit.
+
+Cloud role-assignment projection lives in `graph/cloud_rbac.py`, separate from
+the report builder. Azure resource-group graph keys include the complete ARM
+scope, normalized for case and trailing slashes; names alone cannot identify a
+group across subscriptions. Rescans build these scoped keys; retained historical
+snapshots are not rewritten. Authoritative authorization evidence still takes
+precedence, and partial evidence does not fall back to legacy role-name edges.

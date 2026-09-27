@@ -406,3 +406,61 @@ class TestSPDXIndex:
         agents = [_agent(servers=[_server(packages=[_pkg(license="EUPL-1.2")])])]
         report = evaluate_license_policy(agents)
         assert report.compliant is False
+
+
+class TestUnknownLicensesAreNotCompliance:
+    """Nine unknown licenses out of eleven is not evidence of compliance."""
+
+    def _mixed(self, unknown: int, known: int = 2, *, custom: bool = False) -> list:
+        pkgs = [_pkg(name=f"known-{i}", license="MIT") for i in range(known)]
+        pkgs += [_pkg(name=f"unknown-{i}", license=None) for i in range(unknown)]
+        if custom:
+            pkgs.append(_pkg(name="custom", license="Acme Proprietary EULA"))
+        return [_agent(servers=[_server(packages=pkgs)])]
+
+    def test_unknown_licenses_make_the_verdict_undetermined(self):
+        report = evaluate_license_policy(self._mixed(unknown=9))
+        data = to_serializable(report)
+
+        assert report.compliant is False
+        assert data["compliant"] is False
+        assert data["status"] == "undetermined"
+        assert data["coverage"] == {"evaluated": 2, "unknown": 9, "total": 11, "percent": 18.2}
+        assert data["summary"]["status"] == "undetermined"
+
+    def test_unrecognised_license_is_not_evaluated_either(self):
+        data = to_serializable(evaluate_license_policy(self._mixed(unknown=0, custom=True)))
+
+        assert data["status"] == "undetermined"
+        assert data["coverage"]["unknown"] == 1
+        assert data["coverage"]["evaluated"] == 2
+
+    def test_full_coverage_without_violations_is_compliant(self):
+        data = to_serializable(evaluate_license_policy(self._mixed(unknown=0)))
+
+        assert data["compliant"] is True
+        assert data["status"] == "compliant"
+        assert data["coverage"]["percent"] == 100.0
+
+    def test_a_violation_is_non_compliant_regardless_of_coverage(self):
+        agents = self._mixed(unknown=3)
+        agents[0].mcp_servers[0].packages.append(_pkg(name="gpl", license="GPL-3.0-only"))
+        data = to_serializable(evaluate_license_policy(agents))
+
+        assert data["compliant"] is False
+        assert data["status"] == "non_compliant"
+
+    def test_console_names_the_coverage_gap(self):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from agent_bom.license_policy import print_license_report
+
+        buffer = StringIO()
+        print_license_report(evaluate_license_policy(self._mixed(unknown=9)), Console(file=buffer, width=200))
+        text = buffer.getvalue()
+
+        assert "UNDETERMINED" in text
+        assert "COMPLIANT" not in text
+        assert "9 of 11" in text

@@ -2402,8 +2402,14 @@ def scan(
             print_license_report(_lic_report, con)
         elif not quiet:
             _f_count = len(_lic_report.findings)
-            _status = "[green]compliant[/green]" if _lic_report.compliant else "[red]non-compliant[/red]"
-            con.print(f"  [green]✓[/green] License check: {_lic_report.total_packages} packages, {_f_count} finding(s), {_status}")
+            _cov = _lic_report.coverage
+            _status = {"compliant": "[green]compliant[/green]", "non_compliant": "[red]non-compliant[/red]"}.get(
+                _lic_report.status, "[yellow]undetermined[/yellow]"
+            )
+            con.print(
+                f"  [green]✓[/green] License check: {_lic_report.total_packages} packages, {_f_count} finding(s), {_status} "
+                f"({_cov['percent']}% license coverage)"
+            )
 
     # ── VEX support ──────────────────────────────────────────────────
     if vex_path and agents:

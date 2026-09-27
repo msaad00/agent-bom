@@ -14,7 +14,9 @@ onto them would fail the control the finding proves is working, so they are
 scored from scan freshness instead
 (see :mod:`agent_bom.evidence.control_modes`).
 
-Reference: https://www.nist.gov/cyberframework
+Reference: NIST CSWP 29 (2024-02-26), Appendix A, PR.PS-06 (printed p. 20).
+https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf
+Catalog labels are abbreviated; mappings are evidence associations, not certification.
 """
 
 from __future__ import annotations
@@ -47,6 +49,7 @@ NIST_CSF: dict[str, str] = {
     "PR.AA-03": "Users, services, and hardware are authenticated",
     "PR.DS-01": "Data-at-rest is protected",
     "PR.DS-02": "Data-in-transit is protected",
+    "PR.PS-06": "Secure software development practices integrated and monitored throughout the lifecycle",
     # DETECT — Anomaly and event detection
     "DE.CM-01": "Networks and network services are monitored",
     "DE.CM-09": "Computing hardware and software are monitored for vulnerabilities",

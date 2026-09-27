@@ -858,8 +858,8 @@ MCP_MAX_RESPONSE_CHARS = _int("AGENT_BOM_MCP_MAX_RESPONSE", 500_000)
 MCP_MAX_CONCURRENT_TOOLS = _int("AGENT_BOM_MCP_MAX_CONCURRENT_TOOLS", 8)
 MCP_TOOL_TIMEOUT_SECONDS = _float("AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS", 30.0)
 MCP_MAX_TOOL_METRICS = _int("AGENT_BOM_MCP_MAX_TOOL_METRICS", 128)
-# Full scan results kept per process so `scan(result_id=..., section=...)` can
-# page a report that is too large for one response. Bounded by count and age.
+# Full scan results kept per tenant in shared SQLite/Postgres storage so
+# `scan(result_id=..., section=...)` survives worker changes. Bounded by count and age.
 MCP_SCAN_RESULT_CACHE_SIZE = _int("AGENT_BOM_MCP_SCAN_RESULT_CACHE_SIZE", 4)
 MCP_SCAN_RESULT_TTL_SECONDS = _float("AGENT_BOM_MCP_SCAN_RESULT_TTL_SECONDS", 1800.0)
 # Extra directories (os.pathsep-separated absolute paths) that MCP path

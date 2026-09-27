@@ -112,3 +112,72 @@ def test_escalation_records_where_the_band_came_from():
     assert merged[0].severity == Severity.HIGH
     assert merged[0].severity_source, "an escalated band must say which advisory set it"
     assert "PYSEC-2026-1472" in str(merged[0].severity_source)
+
+
+def test_online_and_offline_alias_clusters_share_order_independent_evidence():
+    from dataclasses import asdict
+    from itertools import permutations
+
+    from agent_bom.models import Package
+    from agent_bom.scanners.package_scan import build_vulnerabilities
+
+    raw = [
+        {"id": "GHSA-aaaa-bbbb-cccc", "aliases": ["CVE-2026-1234"], "summary": "lower", "database_specific": {"severity": "MODERATE"}},
+        {"id": "PYSEC-2026-42", "aliases": ["CVE-2026-1234"], "summary": "higher", "database_specific": {"severity": "HIGH"}},
+    ]
+    online = [build_vulnerabilities(list(order), Package(name="example", version="", ecosystem="pypi")) for order in permutations(raw)]
+    assert all(len(rows) == 1 and rows[0].severity == Severity.HIGH for rows in online)
+    assert asdict(online[0][0]) == asdict(online[1][0])
+    offline = _merge([_local(r["id"], r["database_specific"]["severity"], r["aliases"], None) for r in raw])
+    for field in ("id", "severity", "severity_source", "aliases", "cvss_score", "cvss_vector"):
+        assert getattr(online[0][0], field) == getattr(offline[0], field)
+
+
+def test_transitive_alias_bridge_collapses_all_clusters_with_matching_score():
+    from dataclasses import asdict
+    from itertools import permutations
+
+    from agent_bom.models import Package, Vulnerability
+    from agent_bom.scanners.package_scan import merge_scanner_vulnerabilities
+
+    records = [
+        Vulnerability(id="GHSA-a", summary="low", severity=Severity.LOW, cvss_score=3.1, aliases=["CVE-2026-1234"]),
+        Vulnerability(id="PYSEC-b", summary="high", severity=Severity.HIGH, cvss_score=8.8, aliases=["GHSA-b"]),
+        Vulnerability(id="GHSA-b", summary="bridge", severity=Severity.MEDIUM, cvss_score=5.4, aliases=["GHSA-a"]),
+    ]
+    outcomes = []
+    for order in permutations(records):
+        pkg = Package(name="example", version="1", ecosystem="pypi")
+        added = merge_scanner_vulnerabilities(pkg, list(order))
+        assert len(added) == len(pkg.vulnerabilities) == 1
+        vuln = pkg.vulnerabilities[0]
+        assert vuln.id == "CVE-2026-1234"
+        assert vuln.cvss_score == 8.8
+        assert vuln.severity == Severity.HIGH
+        assert set(vuln.aliases) == {"GHSA-a", "GHSA-b", "PYSEC-b"}
+        outcomes.append(asdict(vuln))
+    assert all(item == outcomes[0] for item in outcomes)
+
+
+def test_incremental_alias_merge_preserves_winning_advisory_provenance():
+    from dataclasses import asdict
+    from itertools import permutations
+
+    from agent_bom.models import Package, Vulnerability
+    from agent_bom.scanners.package_scan import merge_scanner_vulnerabilities
+
+    records = [
+        Vulnerability(id="PYSEC-winner", summary="high", severity=Severity.HIGH, cvss_score=8.8, aliases=["GHSA-bridge"]),
+        Vulnerability(id="GHSA-first", summary="low", severity=Severity.LOW, aliases=["CVE-2026-1234"]),
+        Vulnerability(id="GHSA-bridge", summary="bridge", severity=Severity.MEDIUM, aliases=["GHSA-first"]),
+    ]
+    outcomes = []
+    for order in permutations(records):
+        pkg = Package(name="example", version="1", ecosystem="pypi")
+        for record in order:
+            merge_scanner_vulnerabilities(pkg, [record])
+        assert len(pkg.vulnerabilities) == 1
+        winner = pkg.vulnerabilities[0]
+        assert winner.severity_source == "advisory:PYSEC-winner"
+        outcomes.append(asdict(winner))
+    assert all(outcome == outcomes[0] for outcome in outcomes)

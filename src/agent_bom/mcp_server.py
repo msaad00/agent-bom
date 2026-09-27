@@ -156,6 +156,7 @@ from agent_bom.mcp_server_runtime_catalog import (
     register_runtime_catalog_tools as _register_runtime_catalog_tools,
 )
 from agent_bom.mcp_tools.profiles import _GUIDED_TOOL_NAMES as _GUIDED_TOOL_NAMES
+from agent_bom.mcp_tools.result_store import scan_result_owner as _scan_result_owner
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -787,7 +788,7 @@ def create_mcp_server(
             limit=limit,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,
-            _result_owner=_current_tool_request()["caller"] or "local",
+            _result_owner=_scan_result_owner(_mcp_request_ctx.get),
             _max_response_chars=_MAX_RESPONSE_CHARS,
         )
         return _json_tool_result(text)

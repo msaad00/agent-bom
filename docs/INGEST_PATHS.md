@@ -14,7 +14,7 @@ path normalizes into the same `Finding` / blast-radius model; the difference is
 
 ## SARIF (SAST / Semgrep / CodeQL / Bandit)
 
-SARIF is auto-detected by `detect_and_parse` (shipped #3585). For **full scan
+SARIF is auto-detected by the shared typed importer. For **full scan
 depth** — package graph, blast radius, compliance mapping, and local exports —
 ingest through the main scan path:
 
@@ -36,6 +36,19 @@ agent-bom findings push findings.sarif \
   --api-url https://agent-bom.internal.example.com \
   --api-key "$AGENT_BOM_API_KEY"
 ```
+
+The importer retains file, line, rule and scanner provenance as SAST findings.
+Control-plane persistence applies its existing redaction policy to raw paths and
+evidence; stable finding and asset identities preserve correlation.
+Dependency findings use the package coordinates supplied by the report. Missing
+package identities or versions remain unresolved evidence; source files never
+become synthetic packages. The same rules apply to MCP `ingest_external_scan`.
+A push has no local inventory against which to resolve a name-only dependency;
+use `--external-scan` alongside a project when that correlation is needed.
+
+SAST findings map to the secure-development outcome PR.PS-06 in
+[NIST CSF 2.0, Appendix A](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf).
+This is a finding-to-control association, not a compliance certification.
 
 ## Trivy / Grype / Syft JSON
 
@@ -111,3 +124,25 @@ agent-bom to orchestrate the pull and scan without a separate Trivy invocation.
 - CLI map: [CLI_MAP.md](CLI_MAP.md)
 - FinOps lane: [COST_MODEL.md](COST_MODEL.md)
 - Quick wins roadmap: [ROADMAP_QUICK_WINS.md](ROADMAP_QUICK_WINS.md)
+
+## Page MCP scan results across workers
+
+Call `scan(offline=True)` for a summary and `result_id`, then call
+`scan(result_id="...", section="findings", offset=0, limit=25)` to retrieve
+bounded pages of the redacted report. SQLite uses `mcp-scan-results.db` under
+`AGENT_BOM_STATE_DIR`; local workers must share that directory. For replicas
+on separate hosts, configure `AGENT_BOM_POSTGRES_URL` (or a Postgres
+`AGENT_BOM_DB`) and run the deployment's Alembic migration before starting them.
+
+The server's MCP tenant binding controls scope. HTTP reads require the same
+verified bearer token that created the result; changing or revoking that token
+removes access to its earlier result IDs. Stdio processes share their OS user's
+local scope. Client-supplied IDs or metadata cannot select another caller.
+
+By default, each tenant retains at most four results for 30 minutes, with a
+128 MiB limit per serialized report. Configure count/TTL through
+`AGENT_BOM_MCP_SCAN_RESULT_CACHE_SIZE` and `AGENT_BOM_MCP_SCAN_RESULT_TTL_SECONDS`.
+Expired results cannot be read and are removed on the next successful write for
+that tenant; this cache is not an audit archive. Eviction is transactional.
+Missing migrations and unavailable storage fail closed, without an in-memory
+fallback. Older binaries ignore the additive table on rollback.

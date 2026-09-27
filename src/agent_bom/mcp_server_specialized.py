@@ -382,13 +382,11 @@ def register_specialized_ai_tools(
             import os
 
             from agent_bom.client import AgentBomClient
-            from agent_bom.findings_push import packages_to_bulk_findings
-            from agent_bom.parsers.external_scanners import detect_and_parse
+            from agent_bom.findings_push import parse_push_report
 
             try:
                 data = _json.loads(scan_json)
-                packages = detect_and_parse(data)
-                findings = packages_to_bulk_findings(packages, source=source)
+                packages, findings = parse_push_report(data, source=source)
                 result: dict[str, object] = {
                     "packages": len(packages),
                     "findings": len(findings),

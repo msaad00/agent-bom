@@ -72,6 +72,7 @@ def test_first_party_code_flaw_maps_to_secure_development_controls() -> None:
         }
     )
     assert finding.cwe_ids == ["CWE-78"]
+    assert "PR.PS-06" in finding.nist_csf_tags
     assert "A.8.28" in finding.iso_27001_tags
     assert "CC8.1" in finding.soc2_tags
     assert "6.2.4" in finding.pci_dss_tags
@@ -83,6 +84,7 @@ def test_first_party_code_flaw_maps_to_secure_development_controls() -> None:
 
 def test_code_flaw_without_a_cwe_still_maps_to_secure_development() -> None:
     finding = ast_flow_dict_to_finding({"category": "dynamic_code_execution_eval", "file": "app.py", "line": 3, "sink": "eval"})
+    assert "PR.PS-06" in finding.nist_csf_tags
     assert "A.8.28" in finding.iso_27001_tags
     assert "CC8.1" in finding.soc2_tags
 

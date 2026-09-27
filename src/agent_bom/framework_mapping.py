@@ -456,6 +456,7 @@ _PERSONAL_DATA_TAGS: dict[str, tuple[str, ...]] = {
 # A first-party code flaw is evidence against the secure-development controls
 # regardless of which CWE (if any) the detector attached.
 _SECURE_DEVELOPMENT_TAGS: dict[str, tuple[str, ...]] = {
+    "nist_csf_tags": ("PR.PS-06",),
     "iso_27001_tags": ("A.8.28",),
     "soc2_tags": ("CC8.1",),
     "pci_dss_tags": ("6.2.4",),

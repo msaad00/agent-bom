@@ -18,6 +18,11 @@ for (const theme of ["light", "dark"] as const) {
           authenticated: true, auth_required: false, configured_modes: [], recommended_ui_mode: "no_auth",
           auth_method: "anonymous", role: "viewer", tenant_id: "default", memberships: [],
         } });
+        if (url.pathname === "/v1/agent-lifecycle/history") {
+          expect(url.searchParams.get("agent_id")).toBe("provider:b");
+          return route.fulfill({ json: { items: ["a", "b"].map((id) => ({ record_id: `sha256:${id.repeat(64)}`, agent_id: "provider:b", observed_at: result.generated_at, recorded_at: result.generated_at, assurance: "operator_recorded" })), next_offset: null } });
+        }
+        if (url.pathname === "/v1/agent-lifecycle/snapshots/compare") return route.fulfill({ json: { snapshot_changed: true, composition_changed: false } });
         if (url.pathname.endsWith("/agent-bom")) {
           expect(url.searchParams.get("agent_id")).toBe("provider:b");
           return route.fulfill({ json: { fixture: true, subject: "provider:b" } });
@@ -36,6 +41,10 @@ for (const theme of ["light", "dark"] as const) {
       const download = page.waitForEvent("download");
       await panel.getByRole("button", { name: "Download agent BOM" }).click();
       expect((await download).suggestedFilename()).toBe("agent.bom.json");
+      await panel.getByText("Saved BOM history", { exact: true }).click();
+      await panel.getByRole("button", { name: "Load history" }).click();
+      await panel.getByRole("button", { name: "Compare first two snapshots on this page" }).click();
+      await expect(panel.getByText(/Snapshot changed; recorded composition is unchanged/)).toBeVisible();
       await panel.scrollIntoViewIfNeeded();
       expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
       await panel.screenshot({ path: testInfo.outputPath(`scan-evidence-${theme}-${width}.png`) });

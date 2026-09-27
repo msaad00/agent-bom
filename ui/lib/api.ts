@@ -891,6 +891,13 @@ export const api = {
   downloadScanAgentBom: (jobId: string, agentId: string) =>
     getBlob(`/v1/scan/${encodeURIComponent(jobId)}/agent-bom?agent_id=${encodeURIComponent(agentId)}`),
 
+  captureAgentSnapshot: (jobId: string, agentId: string) =>
+    post<AgentLifecycleRecord>("/v1/agent-lifecycle/snapshots", { scan_id: jobId, agent_id: agentId }),
+  agentLifecycleHistory: (agentId: string, offset = 0) =>
+    get<AgentLifecyclePage>(`/v1/agent-lifecycle/history?agent_id=${encodeURIComponent(agentId)}&limit=20&offset=${offset}`),
+  compareAgentSnapshots: (before: string, after: string) =>
+    get<{ composition_changed: boolean; snapshot_changed: boolean }>(`/v1/agent-lifecycle/snapshots/compare?before=${encodeURIComponent(before)}&after=${encodeURIComponent(after)}`),
+
   /** Delete a job record */
   deleteScan: (jobId: string) => del(`/v1/scan/${jobId}`),
 
@@ -2250,3 +2257,18 @@ export const CMMC_PRACTICES: Record<string, string> = {
 // working unchanged so callers don't need to migrate in one big bang.
 
 export { severityColor, severityDot, formatDate, isConfigured, agentClass, agentClassCounts } from "./api-format";
+
+export interface AgentLifecycleRecord {
+  record_id: string;
+  agent_id: string;
+  snapshot_id: string | null;
+  recorded_at: string;
+  observed_at: string | null;
+  composition_digest: string | null;
+  assurance: "operator_recorded";
+}
+export interface AgentLifecyclePage {
+  history_limit_reached?: boolean;
+  items: AgentLifecycleRecord[];
+  next_offset: number | null;
+}

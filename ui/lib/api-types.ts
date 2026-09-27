@@ -1108,6 +1108,11 @@ export interface ServiceEntry {
   count: number;
   requires?: string[] | undefined;
   detail?: string | undefined;
+  /** cloud_accounts only: newest completed cloud scan (connection or push). */
+  last_scan_at?: string | null | undefined;
+  /** cloud_accounts only: brokered connections vs scopes seen in scan results. */
+  connections?: number | undefined;
+  scanned_scopes?: number | undefined;
 }
 
 export interface IssueSeverityCounts {
@@ -1313,6 +1318,8 @@ export interface DiscoveryEnvelope {
 
 export interface MCPServer {
   name: string;
+  /** "mcp-server" for a real MCP server; manifests, SBOMs, and AI-inventory wrappers carry other surfaces. */
+  surface?: string | undefined;
   command?: string | undefined;
   args?: string[] | undefined;
   transport?: string | undefined;
@@ -2516,8 +2523,10 @@ export interface JobListItem {
 export type ScanJobStatus = JobListItem & { graph_scan_id?: string | null | undefined };
 
 export interface AgentsResponse {
+  /** "scanned_estate" (the tenant's scanned agents) or "local_discovery" (an operator-bound API host). */
   scope?: string;
   source?: string;
+  count_definition?: string;
   agents: Agent[];
   count: number;
   warnings: string[];

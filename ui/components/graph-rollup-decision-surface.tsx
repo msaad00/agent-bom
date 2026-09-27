@@ -176,7 +176,7 @@ export function GraphRollupDecisionSurface({
         {(
           [
             ["priority", `Priority ${priorityCount}`],
-            ["exposed", `Exposure in scope ${exposedCount}`],
+            ["exposed", `Internet-exposed ${exposedCount}`],
             ["all", `All ${items.length}`],
           ] as const
         ).map(([value, label]) => (
@@ -305,7 +305,7 @@ export function GraphRollupDecisionSurface({
                   <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-200">{item.has_children ? "Toxic combination in scope" : "Toxic combination"}</span>
                 ) : null}
                 {item.aggregate.internet_exposed ? (
-                  <span className="rounded border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-orange-700 dark:text-orange-200">{item.has_children ? "Exposure in scope" : "Internet exposed"}</span>
+                  <span className="rounded border border-orange-500/30 bg-orange-500/10 px-1.5 py-0.5 text-orange-700 dark:text-orange-200">{item.has_children ? "Internet exposure in scope" : "Internet exposed"}</span>
                 ) : null}
               </div>}
             </article>

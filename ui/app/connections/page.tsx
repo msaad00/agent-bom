@@ -1311,6 +1311,13 @@ function ConnectionsHub() {
       .sort((a, b) => b.localeCompare(a));
     return stamps[0] ?? null;
   }, [connections]);
+  // The registry also counts cloud scopes evidenced only by pushed CLI scans
+  // (no brokered connection), so the banner takes the larger count and the
+  // later of the two scan times.
+  const cloudAccountCount = Math.max(connections.length, registryCloudService.count);
+  const lastCloudScan = [lastAccountScan, registryCloudService.last_scan_at ?? null]
+    .filter((v): v is string => Boolean(v))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
   const hasConnections = connections.length > 0;
   // The direct connection inventory is the most specific source of truth for
   // this page. Older posture responses can omit service-registry state, so do
@@ -1478,9 +1485,9 @@ function ConnectionsHub() {
         }
         banner={
           <dl aria-label="Source status" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-            <div className="flex gap-2"><dt className="text-ink-secondary">Cloud accounts</dt><dd className="font-semibold tabular-nums">{loading ? "…" : error ? "Unavailable" : connections.length}</dd></div>
+            <div className="flex gap-2"><dt className="text-ink-secondary">Cloud accounts</dt><dd className="font-semibold tabular-nums">{loading ? "…" : error ? "Unavailable" : cloudAccountCount}</dd></div>
             <div className="flex gap-2"><dt className="text-ink-secondary">Registered sources</dt><dd className="font-semibold tabular-nums">{sourcesLoading ? "…" : sourcesUnavailable ? "Unavailable" : sources.length}</dd></div>
-            <div className="flex gap-2"><dt className="text-ink-secondary">Last cloud scan</dt><dd>{loading ? "…" : error ? "Unavailable" : formatWhenShort(lastAccountScan)}</dd></div>
+            <div className="flex gap-2"><dt className="text-ink-secondary">Last cloud scan</dt><dd>{loading ? "…" : error ? "Unavailable" : formatWhenShort(lastCloudScan)}</dd></div>
           </dl>
         }
       />

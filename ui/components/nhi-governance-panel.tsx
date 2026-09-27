@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, ShieldAlert } from "lucide-react";
 
@@ -10,8 +10,19 @@ import { buildGraphInvestigationHref } from "@/lib/attack-paths";
 /**
  * Non-human identity governance posture from GET /v1/graph/nhi/governance.
  */
-export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string | undefined; refreshKey?: number }) {
+export function NhiGovernancePanel({
+  scanId,
+  refreshKey = 0,
+  onEvaluatedChange,
+}: {
+  scanId?: string | undefined;
+  refreshKey?: number;
+  /** Governed graph identities in the loaded snapshot; null when unavailable. */
+  onEvaluatedChange?: ((count: number | null) => void) | undefined;
+}) {
   const [query, setQuery] = useState("");
+  const reportEvaluated = useRef(onEvaluatedChange);
+  reportEvaluated.current = onEvaluatedChange;
   const [posture, setPosture] = useState<NhiGovernancePosture | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,11 +36,15 @@ export function NhiGovernancePanel({ scanId, refreshKey = 0 }: { scanId?: string
       .then((result) => {
         if (cancelled) return;
         setPosture(result);
+        const evaluated = typeof result?.evaluated === "number" ? result.evaluated
+          : Array.isArray(result?.identities) ? result.identities.length : 0;
+        reportEvaluated.current?.(evaluated);
       })
       .catch(() => {
         if (cancelled) return;
         setError("Could not load NHI governance posture");
         setPosture(null);
+        reportEvaluated.current?.(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from agent_bom.canonical_ids import mcp_server_identity_discriminator
-from agent_bom.models import Agent, MCPResource, MCPServer, MCPTool, Package
+from agent_bom.models import Agent, AgentStatus, AgentType, MCPResource, MCPServer, MCPTool, Package
 
 
 def server_identity_key(server: MCPServer) -> str:
@@ -114,3 +116,108 @@ def _merge_strings(existing: list[str], incoming: list[str]) -> list[str]:
             merged.append(item)
             seen.add(item)
     return merged
+
+
+# Discovery sources that describe one local project directory rather than a
+# host-level AI client. Several of them fire for the same ``-p`` target, and each
+# used to emit its own agent, so one project surfaced as three to five agents.
+PROJECT_LOCAL_SOURCES = frozenset({"project", "project-config", "ai-inventory", "python-agents", "filesystem", "sast"})
+PROJECT_ROOT_METADATA_KEY = "project_root"
+
+
+def project_root_for(agent: Agent) -> str | None:
+    """Resolved project directory an agent was discovered from, if it is project-local."""
+    explicit = (agent.metadata or {}).get(PROJECT_ROOT_METADATA_KEY)
+    if isinstance(explicit, str) and explicit:
+        return str(Path(explicit).resolve())
+    if agent.source not in PROJECT_LOCAL_SOURCES or not agent.config_path:
+        return None
+    path = Path(agent.config_path)
+    if not path.is_dir():
+        return None
+    return str(path.resolve())
+
+
+def consolidate_project_agents(agents: list[Agent]) -> list[Agent]:
+    """Collapse every project-local discovery source for one root into one agent.
+
+    The canonical identity is ``project:<root name>`` rooted at the project
+    directory, matching the manifest-scan agent so its canonical id is stable.
+    Each contributing source stays visible as evidence on the merged agent
+    (``evidence_sources``), code-defined agent constructs are recorded as
+    ``code_agents``, and every server/package/tool is kept. Host-level agents
+    and single-source projects are returned unchanged.
+    """
+    groups: dict[str, list[int]] = {}
+    for index, agent in enumerate(agents):
+        root = project_root_for(agent)
+        if root is not None:
+            groups.setdefault(root, []).append(index)
+
+    merged_at: dict[int, Agent] = {}
+    absorbed: set[int] = set()
+    for root, indexes in groups.items():
+        if len(indexes) < 2:
+            continue
+        members = [agents[index] for index in indexes]
+        merged_at[indexes[0]] = _merge_project_members(root, members, Path(root).name or root)
+        absorbed.update(indexes[1:])
+
+    return [merged_at.get(index, agent) for index, agent in enumerate(agents) if index not in absorbed]
+
+
+def _merge_project_members(root: str, members: list[Agent], label: str) -> Agent:
+    name = f"project:{label}"
+    manifest = next((member for member in members if member.source == "project" and member.name == name), None)
+
+    servers: list[MCPServer] = []
+    by_key: dict[str, MCPServer] = {}
+    for member in members:
+        for server in member.mcp_servers:
+            key = server_identity_key(server)
+            existing = by_key.get(key)
+            if existing is None:
+                by_key[key] = server
+                servers.append(server)
+            else:
+                _merge_server(existing, server)
+
+    metadata: dict[str, object] = {}
+    evidence: set[str] = set()
+    code_agents: list[str] = []
+    for member in members:
+        member_metadata = member.metadata or {}
+        for key, value in member_metadata.items():
+            metadata.setdefault(key, value)
+        prior_evidence = member_metadata.get("evidence_sources")
+        if isinstance(prior_evidence, list):
+            evidence.update(str(item) for item in prior_evidence)
+        elif member.source:
+            evidence.add(member.source)
+        prior_code = member_metadata.get("code_agents")
+        candidates = [str(item) for item in prior_code] if isinstance(prior_code, list) else []
+        if not candidates and member.source == "python-agents":
+            candidates = [member.name]
+        code_agents.extend(item for item in candidates if item not in code_agents)
+    metadata[PROJECT_ROOT_METADATA_KEY] = root
+    metadata["evidence_sources"] = sorted(evidence)
+    if code_agents:
+        metadata["code_agents"] = code_agents
+
+    discovered = sorted(member.discovered_at for member in members if member.discovered_at)
+    last_seen = sorted(member.last_seen for member in members if member.last_seen)
+    configured = any(member.status == AgentStatus.CONFIGURED for member in members)
+    return Agent(
+        name=name,
+        agent_type=AgentType.CUSTOM,
+        config_path=manifest.config_path if manifest is not None else root,
+        mcp_servers=servers,
+        source="project",
+        status=AgentStatus.CONFIGURED if configured else members[0].status,
+        discovered_at=discovered[0] if discovered else "",
+        last_seen=last_seen[-1] if last_seen else None,
+        metadata=metadata,
+        automation_settings=[setting for member in members for setting in member.automation_settings],
+        discovery_provenance=next((member.discovery_provenance for member in members if member.discovery_provenance), None),
+        discovery_envelope=next((member.discovery_envelope for member in members if member.discovery_envelope), None),
+    )

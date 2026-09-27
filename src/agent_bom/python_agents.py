@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from agent_bom.ast_signal_utils import is_agent_tool_decorator
-from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, ServerSurface, TransportType
 from agent_bom.traversal import iter_discovery_files
 
 # ─── Framework registry ───────────────────────────────────────────────────────
@@ -684,6 +684,7 @@ def scan_python_agents(project_path: str) -> tuple[list[Agent], list[str]]:
             args=[],
             env=cred_env,
             transport=TransportType.STDIO,
+            surface=ServerSurface.OTHER,
             packages=pkgs,
             config_path=str(project),
             tools=tools,

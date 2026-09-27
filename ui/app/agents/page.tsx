@@ -79,10 +79,14 @@ import { useAuthState } from "@/components/auth-provider";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
 
+function isMcpServer(server: Agent["mcp_servers"][number]): boolean {
+  return (server.surface ?? "mcp-server") === "mcp-server";
+}
+
 function useAgentStats(agents: Agent[]) {
   const configured = agents.filter(isConfigured);
   const notConfigured = agents.filter((a) => !isConfigured(a));
-  const totalServers = agents.reduce((s, a) => s + a.mcp_servers.length, 0);
+  const totalServers = agents.reduce((s, a) => s + a.mcp_servers.filter(isMcpServer).length, 0);
   const totalPackages = agents.reduce(
     (s, a) => s + a.mcp_servers.reduce((ss, srv) => ss + srv.packages.length, 0),
     0
@@ -233,6 +237,7 @@ function ConfiguredPill() {
 
 function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [scope, setScope] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -243,7 +248,10 @@ function AgentsList() {
 
   useEffect(() => {
     api.listAgents()
-      .then((r) => setAgents(r.agents))
+      .then((r) => {
+        setAgents(r.agents);
+        setScope(r.scope);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -253,6 +261,7 @@ function AgentsList() {
   // Split real agents into AI clients (host apps) vs background/framework agents,
   // so the headline doesn't imply e.g. Cursor is an autonomous agent.
   const agentClasses = agentClassCounts(agents);
+  const scannedEstate = scope === "scanned_estate";
 
   const filteredConfigured = configured.filter((a) =>
     !search || a.name.toLowerCase().includes(search.toLowerCase())
@@ -368,9 +377,11 @@ function AgentsList() {
           <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">Agents</h1>
           <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
             Discovered AI clients/hosts and background agents, with their MCP servers
-            {estateAgents !== null && (
+            {scannedEstate ? (
+              <> from this workspace&apos;s scans, one per project or AI client.</>
+            ) : estateAgents !== null ? (
               <> on this API host. Estate agents: {estateAgents} <Link href="/inventory?type=agent" className="text-[color:var(--accent)]">Open agent inventory</Link></>
-            )}
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -415,12 +426,12 @@ function AgentsList() {
           data-testid="agents-kpis"
           items={[
             {
-              label: "On this host",
+              label: scannedEstate ? "Scanned agents" : "On this host",
               value: agents.length,
               icon: Shield,
               hint: `${configured.length} configured${installedOnly.length > 0 ? ` · ${installedOnly.length} not` : ""}`,
             },
-            { label: "Servers", value: totalServers, icon: Server, hint: `${remoteServers} remote` },
+            { label: "MCP servers", value: totalServers, icon: Server, hint: `${remoteServers} remote` },
             { label: "Packages", value: totalPackages, icon: Package, hint: ecosystemHint },
             {
               label: "Credentials",

@@ -542,7 +542,9 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
                         name=f"project:{search_dir.name}",
                         agent_type=AgentType.CUSTOM,
                         config_path=str(config_path),
+                        source="project-config",
                         mcp_servers=servers,
+                        metadata={"project_root": str(search_dir.resolve())},
                     )
                     agents.append(agent)
                     console.print(

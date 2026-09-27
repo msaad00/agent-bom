@@ -52,6 +52,23 @@ _ACCOUNT_RESOURCE_CONTAINMENT_RELS: frozenset[str] = frozenset({RelationshipType
 _ACCOUNT_RESOURCE_CONTAINMENT_SOURCES: frozenset[str] = frozenset({EntityType.ACCOUNT.value})
 _ACCOUNT_RESOURCE_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CLOUD_RESOURCE.value})
 
+# The agent stack is the containment of a local/AI estate that has no cloud
+# tree: an agent owns the MCP servers it uses, a server owns its packages, tools
+# and credentials, and a package owns its vulnerabilities. Typed by endpoint so
+# an unrelated USES / DEPENDS_ON edge never becomes a parent link.
+_AGENT_STACK_CONTAINMENT: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        (RelationshipType.USES.value, EntityType.AGENT.value, EntityType.SERVER.value),
+        (RelationshipType.DEPENDS_ON.value, EntityType.SERVER.value, EntityType.PACKAGE.value),
+        (RelationshipType.DEPENDS_ON.value, EntityType.PACKAGE.value, EntityType.PACKAGE.value),
+        (RelationshipType.PROVIDES_TOOL.value, EntityType.SERVER.value, EntityType.TOOL.value),
+        (RelationshipType.EXPOSES_CRED.value, EntityType.SERVER.value, EntityType.CREDENTIAL.value),
+        (RelationshipType.VULNERABLE_TO.value, EntityType.PACKAGE.value, EntityType.VULNERABILITY.value),
+        (RelationshipType.VULNERABLE_TO.value, EntityType.SERVER.value, EntityType.VULNERABILITY.value),
+    }
+)
+_AGENT_STACK_RELS: frozenset[str] = frozenset(rel for rel, _source, _target in _AGENT_STACK_CONTAINMENT)
+
 # The relationships a caller must fetch to answer a roll-up. Derived from the
 # two sets above rather than restated, so a containment relationship added here
 # cannot leave the loader/traversal fetching a narrower set and silently
@@ -59,6 +76,12 @@ _ACCOUNT_RESOURCE_CONTAINMENT_TARGETS: frozenset[str] = frozenset({EntityType.CL
 ROLLUP_CONTAINMENT_RELATIONSHIPS: frozenset[str] = _CONTAINMENT_RELS | _ACCOUNT_RESOURCE_CONTAINMENT_RELS
 ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES: frozenset[RelationshipType] = frozenset(
     RelationshipType(value) for value in ROLLUP_CONTAINMENT_RELATIONSHIPS
+)
+# What a drill-down subtree walk follows: estate containment plus the agent
+# stack. Kept apart from ROLLUP_CONTAINMENT_RELATIONSHIPS, whose untyped
+# consumers (page ancestor context) must not treat every USES edge as a parent.
+ROLLUP_SUBTREE_RELATIONSHIP_TYPES: frozenset[RelationshipType] = ROLLUP_CONTAINMENT_RELATIONSHIP_TYPES | frozenset(
+    RelationshipType(value) for value in _AGENT_STACK_RELS
 )
 
 # What a roll-up must *fetch*, which is not what it walks. The containment set
@@ -260,11 +283,15 @@ def _edge_is_containment(graph: UnifiedGraph, edge: Any) -> bool:
     rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
     if rel in _CONTAINMENT_RELS:
         return True
-    if rel not in _ACCOUNT_RESOURCE_CONTAINMENT_RELS:
+    if rel not in _ACCOUNT_RESOURCE_CONTAINMENT_RELS and rel not in _AGENT_STACK_RELS:
         return False
     source = graph.nodes.get(edge.source)
     target = graph.nodes.get(edge.target)
     if source is None or target is None:
+        return False
+    if (rel, _node_type_value(source), _node_type_value(target)) in _AGENT_STACK_CONTAINMENT:
+        return True
+    if rel not in _ACCOUNT_RESOURCE_CONTAINMENT_RELS:
         return False
     return (
         _node_type_value(source) in _ACCOUNT_RESOURCE_CONTAINMENT_SOURCES
@@ -332,6 +359,11 @@ def _descendants(root: str, children: dict[str, list[str]]) -> list[str]:
             if kid not in seen:
                 queue.append(kid)
     return sorted(seen)
+
+
+def containment_descendants(graph: UnifiedGraph, root: str) -> list[str]:
+    """Typed containment descendants of *root*, as the roll-up defines them."""
+    return _descendants(root, _contains_children(graph))
 
 
 def _aggregate(

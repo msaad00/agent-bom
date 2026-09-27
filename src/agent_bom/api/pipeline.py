@@ -1425,6 +1425,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                 if secrets_block["total"] > 0:
                     warnings_all.append(f"{secrets_block['total']} hardcoded secret(s) or credential pattern(s) found in project files")
 
+        from agent_bom.discovery.identity import consolidate_project_agents
+
+        agents = consolidate_project_agents(agents)
         pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
 
         # ── Scope filtering (pre-extraction) ──

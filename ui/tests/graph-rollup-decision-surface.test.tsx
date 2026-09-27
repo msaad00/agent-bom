@@ -148,9 +148,11 @@ describe("GraphRollupDecisionSurface", () => {
 
     expect(screen.getByText("Prioritized findings and scopes")).toBeInTheDocument();
     expect(screen.getByText("Toxic combination in scope")).toBeInTheDocument();
-    expect(screen.getByText("Exposure in scope")).toBeInTheDocument();
+    // Internet exposure is a distinct signal from agent exposure paths; the chip must say which.
+    expect(screen.getByText("Internet exposure in scope")).toBeInTheDocument();
     expect(screen.queryByText("Internet exposed", { exact: true })).not.toBeInTheDocument();
-    const exposedFilter = screen.getByRole("button", { name: "Exposure in scope 1" });
+    expect(screen.queryByRole("button", { name: "Exposure in scope 1" })).not.toBeInTheDocument();
+    const exposedFilter = screen.getByRole("button", { name: "Internet-exposed 1" });
     fireEvent.click(exposedFilter);
     expect(exposedFilter).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("1 connected node")).toBeInTheDocument();

@@ -60,10 +60,12 @@ def test_readme_first_scan_output_leads_with_agent_and_mcp_findings() -> None:
     output = re.search(r"```text\n(.*?)\n```", quick_start, re.S)
     assert output, "quick start must show real first-scan output"
     text = output.group(1)
+    # Same order as the real console output (tests/test_readme_demo_excerpt.py
+    # runs the command and checks each excerpt line in order).
     agents = text.index("DISCOVER | Agents")
-    mcp = text.index("Agent calls MCP server without verified identity")
     cve = text.index("CVE-")
-    assert agents < mcp < cve
+    mcp = text.index("Agent calls MCP server without verified identity")
+    assert agents < cve < mcp
     assert "Blast:" in text
 
 

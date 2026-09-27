@@ -218,7 +218,10 @@ agent-bom scan .
 ```
 
 Add `--inventory <file>` when you already have agent/server inventory from a
-fleet collector, SIEM export, or manually curated source of truth.
+fleet collector, SIEM export, or manually curated source of truth. Add
+`--no-discover` when that file is the complete evidence boundary and you do not
+want project, cwd, skill, model, dataset, or secret auto-discovery merged into
+the result.
 
 ## 5. Gate CI on the result
 
@@ -253,19 +256,10 @@ counts:
     warn-on-severity: medium
 ```
 
+The action ref pins the scanner too: a release ref `vX.Y.Z` installs
+`agent-bom==X.Y.Z` unless you set `agent-bom-version` (use `latest` for the
+newest PyPI release).
+
 The full exit-code and HTTP-status contract — including which codes are stable,
 which are reserved, and how the action's outputs map to them — lives in
 [`site-docs/reference/exit-codes.md`](../site-docs/reference/exit-codes.md).
-
-## 6. Release smoke (pre-tag)
-
-```bash
-./scripts/release_smoke.sh
-```
-
-Proves install → offline demo scan → CSV export. Optional API health when
-`AGENT_BOM_RELEASE_SMOKE_API_URL` is set (probes `${URL}/healthz` for JSON
-liveness; `/health` is the same probe).
-Add `--inventory-only` when that file is the complete evidence boundary and
-you do not want project, cwd, skill, model, dataset, or secret auto-discovery
-merged into the result.

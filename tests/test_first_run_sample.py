@@ -198,3 +198,18 @@ def test_samples_first_run_cli_accepts_target_alias(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "agent-bom scan --inventory" in result.output
     assert (target / "inventory.json").exists()
+
+
+def test_first_run_guide_is_for_users_and_release_smoke_lives_in_the_runbook() -> None:
+    guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "PUBLISHING.md").read_text(encoding="utf-8")
+
+    assert "release_smoke.sh" not in guide
+    assert "Release smoke" not in guide
+    assert "scripts/release_smoke.sh" in runbook
+    assert "AGENT_BOM_RELEASE_SMOKE_API_URL" in runbook
+    # The evidence-boundary sentence belongs to the --inventory step and names
+    # the supported flag, not the hidden deprecated alias.
+    own_repo = guide.split("## 4. Move To Your Own Repo", 1)[1].split("\n## ", 1)[0]
+    assert "--inventory <file>" in own_repo and "--no-discover" in own_repo
+    assert "--inventory-only" not in guide

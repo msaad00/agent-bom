@@ -191,6 +191,63 @@ def _scan_outcome_banner(report: "AIBOMReport") -> str:
     )
 
 
+def _headline_row(finding: "Finding") -> dict[str, object]:
+    from agent_bom.graph.sla import finding_sla_fields
+
+    sla = finding_sla_fields(
+        {
+            "severity": finding.effective_severity(),
+            "first_seen": finding.first_seen,
+            "evidence": finding.evidence,
+            "sla_due_at": finding.sla_due_at,
+            "sla_due_at_source": finding.sla_due_at_source or ("explicit" if finding.sla_due_at is not None else None),
+        }
+    )
+    return {
+        "id": finding.vulnerability_id or finding.id,
+        "title": finding.title,
+        "severity": severity_value(finding),
+        "risk_score": finding.risk_score,
+        "affected_agents": finding.affected_agents
+        or ([finding.asset.name] if finding.asset.asset_type == "agent" and finding.asset.name else []),
+        "owner": finding.owner,
+        "sla_due_at": sla.get("sla_due_at"),
+    }
+
+
+def _executive_headline_section(findings: list["Finding"], policy_findings: list["Finding"]) -> str:
+    """Leadership paragraph over every finding in the report, with owner/SLA as recorded."""
+    from agent_bom.output.executive_headline import build_executive_headline
+
+    headline = build_executive_headline(_headline_row(finding) for finding in [*findings, *policy_findings])
+    rows = "".join(
+        "<tr>"
+        f"<td>{_esc(risk.title)}</td>"
+        f"<td>{_sev_badge(_esc(risk.severity))}</td>"
+        f"<td>{_esc(', '.join(risk.affected_agents) or 'none recorded')}</td>"
+        f"<td>{_esc(risk.owner or 'unassigned')}</td>"
+        f"<td>{_esc(risk.sla_due_at or 'no SLA set')}</td>"
+        "</tr>"
+        for risk in headline.top_risks
+    )
+    table = (
+        '<table style="margin-top:10px"><thead><tr><th>Top risk</th><th>Severity</th><th>Agents reached</th>'
+        f"<th>Owner</th><th>SLA due</th></tr></thead><tbody>{rows}</tbody></table>"
+        if rows
+        else ""
+    )
+    return (
+        '<section id="executive-headline">'
+        '<div class="sec-title">Executive headline</div>'
+        '<div class="panel">'
+        f'<p style="margin:0;line-height:1.55">{_esc(headline.summary)}</p>'
+        f"{table}"
+        f'<p style="margin:10px 0 0;font-size:.72rem;color:#64748b">{_esc(headline.claim_boundary)}</p>'
+        "</div>"
+        "</section>"
+    )
+
+
 def _summary_cards(report: "AIBOMReport", findings: list["Finding"], policy_findings: list["Finding"]) -> str:
     crit = sum(1 for finding in findings if severity_value(finding) == "critical")
     policy_crit = sum(1 for finding in policy_findings if str(finding.severity).lower() == "critical")

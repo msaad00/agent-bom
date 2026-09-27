@@ -23,6 +23,7 @@ from agent_bom.output.html.sections import (
     _cytoscape_elements,
     _delta_banner,
     _enforcement_section,
+    _executive_headline_section,
     _exposure_path_section,
     _inventory_cards,
     _non_cve_findings,
@@ -242,6 +243,8 @@ def to_html(
   {_delta_banner(report)}
   {_warn_gate_banner(report)}
   {_scan_outcome_banner(report)}
+
+  {_executive_headline_section(findings, policy_findings)}
 
   <!-- Summary stat cards -->
   <section id="summary">

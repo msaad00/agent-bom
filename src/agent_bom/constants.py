@@ -387,6 +387,9 @@ def is_credential_key(name: str) -> bool:
 # ── CWE-to-Compliance Mapping ────────────────────────────────────────────────
 # Maps CWE weakness IDs to applicable compliance framework tags.
 # Used by compliance taggers for ALL vulnerabilities with CWE data (OSV, NVD, GHSA, SAST).
+# Client-side web flaws (XSS, CSRF, open redirect) carry no NIST CSF tag: the
+# shipped CSF catalog has no secure-development subcategory, and "PR.DS-01
+# Data-at-rest is protected" is not what those weaknesses break.
 
 CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-78": {  # OS Command Injection
@@ -399,7 +402,6 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-79": {  # Cross-Site Scripting (XSS)
         "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
-        "nist_csf": ["PR.DS-01"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-89": {  # SQL Injection
@@ -468,7 +470,6 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-80": {  # Script Injection (Basic XSS)
         "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
-        "nist_csf": ["PR.DS-01"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-90": {  # LDAP Injection
@@ -493,7 +494,6 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-352": {  # Cross-Site Request Forgery (CSRF)
         "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
-        "nist_csf": ["PR.DS-01"],
         "soc2": ["CC6.1"],
         "nist_800_53": ["SI-10", "AC-3"],
     },
@@ -514,7 +514,6 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-601": {  # Open Redirect
         "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
-        "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["SI-10"],
     },

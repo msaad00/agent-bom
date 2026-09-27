@@ -127,7 +127,7 @@ async def test_offline_enrichment_joins_epss_and_kev_caches(tmp_path, monkeypatc
     (tmp_path / "kev_cache.json").write_text(
         json.dumps(
             {
-                "_cached_at": now - 999_999,
+                "_cached_at": now,
                 "data": {
                     "CVE-2025-9999": {
                         "date_added": "2026-05-01",
@@ -216,3 +216,39 @@ async def test_offline_enrichment_uses_bundled_kev_without_state_cache(tmp_path,
     assert enriched == 1
     assert vuln.is_kev is True
     assert vuln.kev_date_added == "2026-06-10"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("location", ["memory", "disk"])
+@pytest.mark.parametrize("fresh", [True, False])
+async def test_offline_enrichment_and_kev_gate_use_same_freshness(tmp_path, monkeypatch, location, fresh):
+    from datetime import datetime, timezone
+
+    from agent_bom.enrichment_posture import describe_enrichment_posture
+
+    cached_at = time.time() - (60 if fresh else enrichment._KEV_CACHE_TTL_SECONDS + 60)
+    catalog = {"CVE-2026-1234": {"date_added": "2026-01-01", "due_date": "2026-01-22"}}
+    if location == "memory":
+        monkeypatch.setattr(enrichment, "_kev_cache", catalog)
+        monkeypatch.setattr(enrichment, "_kev_cache_time", datetime.fromtimestamp(cached_at, tz=timezone.utc))
+    else:
+        (tmp_path / "kev_cache.json").write_text(json.dumps({"_cached_at": cached_at, "data": catalog}))
+    monkeypatch.setattr(enrichment, "_load_bundled_kev_catalog", lambda: {})
+
+    async def no_network(*_args, **_kwargs):
+        raise AssertionError("offline KEV must not make network requests")
+
+    monkeypatch.setattr(enrichment, "request_with_retry", no_network)
+    enriched_vuln = Vulnerability(id="CVE-2026-1234", summary="cache fixture", severity=Severity.HIGH)
+    gate_vuln = Vulnerability(id="CVE-2026-1234", summary="cache fixture", severity=Severity.HIGH)
+    enriched = await enrichment.enrich_vulnerabilities([enriched_vuln], enable_epss=False, enable_nvd=False, offline=True)
+    gate_hits = await enrichment.join_kev_catalog([gate_vuln], offline=True)
+    assert enriched == gate_hits == int(fresh)
+    assert enriched_vuln.is_kev is fresh
+    assert gate_vuln.is_kev is fresh
+    kev_posture = next(s for s in describe_enrichment_posture()["sources"] if s["source"] == "cisa_kev")
+    assert kev_posture["status"] == ("ok" if fresh else "unknown")
+    if not fresh:
+        assert kev_posture["cache_hit_count"] == 0
+        assert enriched_vuln.kev_date_added is None
+        assert enriched_vuln.kev_due_date is None

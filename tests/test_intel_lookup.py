@@ -606,3 +606,60 @@ def test_governed_raw_artifact_fetch_rejects_manual_only_sources() -> None:
 
     with pytest.raises(GovernedIntelFetchError):
         ensure_source_fetch_allowed(intel)
+
+
+_NON_PYPI_COORDINATES = [
+    # (purl, DB ecosystem key, DB package name)
+    ("pkg:maven/org.apache.logging.log4j/log4j-core@2.14.0", "maven", "org.apache.logging.log4j:log4j-core"),
+    ("pkg:golang/github.com/gin-gonic/gin@1.6.0", "go", "github.com/gin-gonic/gin"),
+    ("pkg:cargo/smallvec@0.6.0", "crates.io", "smallvec"),
+    ("pkg:gem/rack@2.0.0", "rubygems", "rack"),
+    ("pkg:composer/symfony/http-kernel@4.0.0", "packagist", "symfony/http-kernel"),
+    ("pkg:npm/%40babel/core@7.0.0", "npm", "@babel/core"),
+    ("pkg:npm/@babel/core@7.0.0", "npm", "@babel/core"),
+]
+
+
+@pytest.mark.parametrize(("purl", "db_ecosystem", "db_name"), _NON_PYPI_COORDINATES)
+def test_match_packages_resolves_purl_types_to_db_ecosystem_keys(intel_db, purl, db_ecosystem, db_name) -> None:  # noqa: ANN001
+    conn = init_db(intel_db)
+    vuln_id = f"GHSA-test-{db_ecosystem}"
+    conn.execute(
+        "INSERT INTO vulns (id, summary, severity, cvss_score, source) VALUES (?, ?, ?, ?, ?)",
+        (vuln_id, f"{db_name} advisory", "high", 7.5, "osv"),
+    )
+    conn.execute(
+        "INSERT INTO affected(vuln_id, ecosystem, package_name, introduced, fixed, last_affected) VALUES (?, ?, ?, ?, ?, ?)",
+        (vuln_id, db_ecosystem, db_name, "0", "99.0.0", ""),
+    )
+    conn.commit()
+    conn.close()
+
+    result = match_packages([{"purl": purl}], db_path=intel_db)
+    assert result["match_count"] == 1, purl
+    assert [advisory["id"] for advisory in result["matches"][0]["advisories"]] == [vuln_id]
+
+
+def test_parse_purl_keeps_npm_scope_without_version() -> None:
+    from agent_bom.intel_lookup import parse_purl
+
+    assert parse_purl("pkg:npm/@babel/core") == {"ecosystem": "npm", "name": "@babel/core", "version": ""}
+    assert parse_purl("pkg:npm/@babel/core@7.0.0")["name"] == "@babel/core"
+    assert parse_purl("pkg:npm/%40babel/core@7.0.0")["name"] == "@babel/core"
+
+
+def test_parse_purl_maven_uses_group_colon_artifact() -> None:
+    from agent_bom.intel_lookup import parse_purl
+
+    parsed = parse_purl("pkg:maven/org.apache.logging.log4j/log4j-core@2.14.0?type=jar")
+    assert parsed == {"ecosystem": "maven", "name": "org.apache.logging.log4j:log4j-core", "version": "2.14.0"}
+
+
+def test_external_scanner_purl_coordinates_use_maven_group_colon_artifact() -> None:
+    from agent_bom.parsers.external_scanners import _purl_coordinates
+
+    assert _purl_coordinates("pkg:maven/org.apache.logging.log4j/log4j-core@2.14.0") == (
+        "org.apache.logging.log4j:log4j-core",
+        "2.14.0",
+        "maven",
+    )

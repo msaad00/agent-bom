@@ -183,7 +183,7 @@ def test_inventory_fanout_merges_each_account(monkeypatch) -> None:
 
     scanned: list[str] = []
 
-    def _fake_inv(*, session=None, force=False):
+    def _fake_inv(*, region=None, session=None, force=False):
         aid = str(session).split("::")[-1]
         scanned.append(aid)
         return _inv(aid)
@@ -206,7 +206,7 @@ def test_inventory_fanout_skips_denied_account_with_warning(monkeypatch) -> None
         return f"session::{aid}"
 
     monkeypatch.setattr(aws_orgs, "assume_account_session", _fake_assume)
-    monkeypatch.setattr(aws_inv, "discover_inventory", lambda *, session=None, force=False: _inv(str(session).split("::")[-1]))
+    monkeypatch.setattr(aws_inv, "discover_inventory", lambda *, region=None, session=None, force=False: _inv(str(session).split("::")[-1]))
 
     payloads = aws_inv.discover_all_account_inventories()
     by_acct = {p["account_id"]: p for p in payloads}
@@ -220,7 +220,7 @@ def test_inventory_fanout_honors_cap(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_AWS_MAX_ACCOUNTS", "2")
     monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["a1", "a2", "a3", "a4"])
     monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
-    monkeypatch.setattr(aws_inv, "discover_inventory", lambda *, session=None, force=False: _inv(str(session).split("::")[-1]))
+    monkeypatch.setattr(aws_inv, "discover_inventory", lambda *, region=None, session=None, force=False: _inv(str(session).split("::")[-1]))
 
     payloads = aws_inv.discover_all_account_inventories()
     assert len(payloads) == 2
@@ -232,7 +232,7 @@ def test_inventory_fanout_falls_back_to_single_account(monkeypatch) -> None:
     monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: [])
     called: list[bool] = []
 
-    def _single(*, profile=None, force=False, session=None):
+    def _single(*, region=None, profile=None, force=False, session=None):
         called.append(True)
         return _inv("solo")
 
@@ -240,6 +240,56 @@ def test_inventory_fanout_falls_back_to_single_account(monkeypatch) -> None:
     payloads = aws_inv.discover_all_account_inventories()
     assert called == [True]
     assert payloads[0]["account_id"] == "solo"
+
+
+def test_inventory_fanout_threads_region_to_every_member_account(monkeypatch) -> None:
+    monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: ["a1", "a2"])
+    monkeypatch.setattr(aws_orgs, "assume_account_session", lambda aid, **kw: f"session::{aid}")
+    seen: dict[str, str | None] = {}
+
+    def _fake_inv(*, region=None, session=None, force=False):
+        seen[str(session).split("::")[-1]] = region
+        return _inv(str(session).split("::")[-1])
+
+    monkeypatch.setattr(aws_inv, "discover_inventory", _fake_inv)
+
+    payloads = aws_inv.discover_all_account_inventories(region="eu-west-2")
+    assert all(p["status"] == "ok" for p in payloads)
+    assert seen == {"a1": "eu-west-2", "a2": "eu-west-2"}
+
+
+def test_inventory_fanout_threads_region_to_standalone_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
+    monkeypatch.setattr(aws_orgs, "list_member_account_ids", lambda profile=None, *, force=False, session=None: [])
+    seen: list[str | None] = []
+
+    def _single(*, region=None, profile=None, force=False, session=None):
+        seen.append(region)
+        return _inv("solo")
+
+    monkeypatch.setattr(aws_inv, "discover_inventory", _single)
+    aws_inv.discover_all_account_inventories(region="ap-south-1")
+    assert seen == ["ap-south-1"]
+
+
+def test_scan_enrichment_passes_region_to_org_fanout(monkeypatch) -> None:
+    from agent_bom import scan_enrichment
+
+    monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
+    monkeypatch.setattr(aws_orgs, "org_fanout_enabled", lambda: True)
+    captured: dict = {}
+
+    def _fanout(**kwargs):
+        captured.update(kwargs)
+        return [_inv("111111111111")]
+
+    monkeypatch.setattr(aws_inv, "discover_all_account_inventories", _fanout)
+    monkeypatch.setattr("agent_bom.cloud.azure_inventory.inventory_enabled", lambda: False)
+    monkeypatch.setattr("agent_bom.cloud.gcp_inventory.inventory_enabled", lambda: False)
+
+    scan_enrichment.collect_cloud_inventory(aws_region="eu-central-1", aws_profile="audit")
+    assert captured == {"region": "eu-central-1", "profile": "audit"}
 
 
 def test_inventory_fanout_disabled_returns_empty(monkeypatch) -> None:

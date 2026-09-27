@@ -1638,6 +1638,9 @@ jobs:
         # importable.
         run: uv run python scripts/generate_v1_schemas.py --check
 
+      - name: Verify per-agent BOM profile schema
+        run: uv run python scripts/generate_agent_bom_schema.py --check
+
       - name: Verify OpenAPI artifacts match FastAPI routes
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         # Drift gate for generated control-plane clients. Regenerate locally

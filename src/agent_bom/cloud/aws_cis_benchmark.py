@@ -233,22 +233,44 @@ def finalize_read_coverage(
     permission: str,
     resource_kind: str,
     pass_evidence: str,
+    unavailable: dict[str, list[str]] | None = None,
 ) -> CISCheckResult:
-    """Decide PASS vs ERROR for a per-resource read check with no failures.
+    """Finalize per-resource read coverage without erasing known failures.
 
     Strict GRC contract: any permission denial on a listed resource means the
     full scope cannot be certified compliant. PASS only when every listed
     resource was read successfully and at least one resource was evaluated.
-    Call this only in the branch where the ``failing`` accumulator is empty —
-    FAIL is decided by the caller and left untouched.
+    Known failures remain FAIL while retaining explicit partial coverage.
+    Unavailable reads carry a bounded cause label, never raw provider errors.
 
     Decision table (``denied`` is the list of resources whose read was denied):
       * ``denied`` non-empty  -> ERROR (names missing permission + coverage);
       * ``denied`` empty and ``inspected`` zero -> NO_DATA (never PASS);
       * ``denied`` empty and resources inspected -> PASS with ``pass_evidence``.
     """
+    prior_failure = result.status == CheckStatus.FAIL
+    prior_evidence, prior_resources = result.evidence, list(result.resource_ids)
+    unavailable = {cause: resources for cause, resources in (unavailable or {}).items() if resources}
+    unavailable_count = sum(len(resources) for resources in unavailable.values())
     denied_count = len(denied)
-    if denied_count:
+    if unavailable_count:
+        total = inspected + denied_count + unavailable_count
+        causes = [f"{cause}: {len(resources)}" for cause, resources in sorted(unavailable.items())]
+        if denied_count:
+            causes.append(f"permission denied: {denied_count}")
+        result.status = CheckStatus.ERROR
+        result.evidence = (
+            f"Incomplete evaluation: read {inspected}/{total} {resource_kind}(s); "
+            f"unread resources ({'; '.join(causes)}). Compliance is unknown for skipped resources."
+        )
+        if "billing_disabled" in unavailable:
+            result.evidence += " Restore project billing before retrying."
+        if "service_disabled" in unavailable:
+            result.evidence += " Enable the required project API before retrying."
+        if denied_count:
+            result.evidence += f" Grant '{permission}' for resources with permission denied."
+        result.resource_ids = [*denied, *(resource for resources in unavailable.values() for resource in resources)][:20]
+    elif denied_count:
         result.status = CheckStatus.ERROR
         if inspected == 0:
             result.evidence = (
@@ -271,6 +293,10 @@ def finalize_read_coverage(
     else:
         result.status = CheckStatus.PASS
         result.evidence = pass_evidence
+    if prior_failure:
+        result.status = CheckStatus.FAIL
+        result.evidence = prior_evidence + (" " + result.evidence if denied_count or unavailable_count else "")
+        result.resource_ids = prior_resources
     return result
 
 

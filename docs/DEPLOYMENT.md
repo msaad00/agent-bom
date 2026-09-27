@@ -368,6 +368,12 @@ upgrades; see [`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md) and
 
 ### Authentication
 
+Snowflake job-store reads, deletes and summary listings require an explicit
+`tenant_id`. Omitted scope fails before opening a database connection. Trusted
+background reconciliation must explicitly request `all_tenants=True`; the
+configured Snowflake row-access policy remains in force. Older binaries retain
+the prior behavior, so keep request-serving instances on the corrected version.
+
 The Snowflake stores auto-detect auth method:
 
 | Env Var | Method |

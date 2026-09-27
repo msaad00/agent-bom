@@ -272,6 +272,43 @@ class TestResolveSnowflakeAuth:
         assert "password" not in kwargs
 
 
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [("get", ("job",)), ("delete", ("job",)), ("list_all", ()), ("list_summary", ()), ("count_active", ())],
+)
+def test_snowflake_jobs_missing_tenant_fails_before_connection(method, args):
+    from agent_bom.api.snowflake_store import SnowflakeJobStore
+
+    store = object.__new__(SnowflakeJobStore)
+    store._connect = MagicMock(return_value=_mock_connection())
+    with pytest.raises(ValueError, match="requires a tenant_id"):
+        getattr(store, method)(*args)
+    store._connect.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [("get", ("job",)), ("delete", ("job",)), ("list_all", ()), ("list_summary", ())],
+)
+@pytest.mark.parametrize("tenant", [None, "tenant-a", "tenant' OR 1=1 --"])
+def test_snowflake_jobs_explicit_maintenance_scope_preserves_tenant_filter(method, args, tenant):
+    from agent_bom.api.snowflake_store import SnowflakeJobStore
+
+    conn = _mock_connection()
+    store = object.__new__(SnowflakeJobStore)
+    store._connect = MagicMock(return_value=conn)
+    getattr(store, method)(*args, tenant_id=tenant, all_tenants=True)
+    call_args = conn.cursor().execute.call_args.args
+    sql, params = call_args[0], call_args[1] if len(call_args) > 1 else ()
+    if tenant is None:
+        assert "tenant_id = %s" not in sql
+        assert "tenant-a" not in params
+    else:
+        assert "tenant_id = %s" in sql
+        assert tenant in params
+        assert tenant not in sql
+
+
 # ─── SnowflakeJobStore ───────────────────────────────────────────────────────
 
 
@@ -361,7 +398,7 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.get("missing") is None
+        assert store.get("missing", tenant_id="default") is None
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_variant_dict(self, mock_connect):
@@ -372,7 +409,7 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.get("j1")
+        result = store.get("j1", tenant_id="default")
         assert result is not None
         assert result.job_id == "j1"
 
@@ -392,7 +429,7 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.delete("missing") is False
+        assert store.delete("missing", tenant_id="default") is False
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_all(self, mock_connect):
@@ -402,7 +439,7 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.list_all()
+        result = store.list_all(tenant_id="default")
         assert len(result) == 2
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
@@ -411,7 +448,7 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.list_summary()
+        result = store.list_summary(tenant_id="tenant-alpha")
         assert len(result) == 1
         assert result[0]["job_id"] == "j1"
         assert result[0]["tenant_id"] == "tenant-alpha"

@@ -350,34 +350,14 @@ def tool_metrics_snapshot(
     }
 
 
-def _verified_token_caller(current_request: Any) -> str | None:
-    """Return a stable caller key bound to the verified access token, if any.
-
-    Keying the rate-limit window on the authenticated identity (the token's
-    ``client_id`` or, failing that, a hash of the token material) means a caller
-    cannot reset its window simply by opening a fresh connection. Returns None
-    when no verified token is attached so unauthenticated/local callers fall
-    back to the per-connection label.
-    """
-    holders: list[Any] = []
-    for holder_name in ("access_token", "auth", "token"):
-        holder = getattr(current_request, holder_name, None)
-        if holder is not None:
-            holders.append(holder)
-    experimental = getattr(current_request, "experimental", None)
-    if experimental is not None:
-        for holder_name in ("access_token", "auth", "token"):
-            holder = getattr(experimental, holder_name, None)
-            if holder is not None:
-                holders.append(holder)
-    for holder in holders:
-        client_id = getattr(holder, "client_id", None)
-        if client_id and str(client_id).strip():
-            return f"token-client:{str(client_id).strip()}"
-        for token_attr in ("token", "access_token", "jti"):
-            raw = getattr(holder, token_attr, None)
-            if isinstance(raw, str) and raw.strip():
-                return f"token-hash:{hashlib.sha256(raw.strip().encode()).hexdigest()[:32]}"
+def _verified_token_caller(token: Any) -> str | None:
+    """Bind rate windows and audit identity to a verified token principal."""
+    if token is None:
+        return None
+    if token.client_id and token.client_id.strip():
+        return f"token-client:{token.client_id.strip()}"
+    if token.token:
+        return f"token-hash:{hashlib.sha256(token.token.encode()).hexdigest()[:32]}"
     return None
 
 
@@ -391,23 +371,11 @@ def current_tool_request(request_ctx_getter: Callable[[], Any]) -> dict[str, str
     client_id = getattr(meta, "client_id", None) if meta else None
     session = getattr(current_request, "session", None)
     session_label = f"session-{id(session) % 1_000_000}" if session is not None else "local"
-    auth_scopes: set[str] = set()
-    for holder_name in ("access_token", "auth", "token"):
-        holder = getattr(current_request, holder_name, None)
-        scopes = getattr(holder, "scopes", None)
-        if isinstance(scopes, list | tuple | set):
-            auth_scopes.update(str(scope).strip().lower() for scope in scopes if str(scope).strip())
-    experimental = getattr(current_request, "experimental", None)
-    for holder_name in ("access_token", "auth", "token"):
-        holder = getattr(experimental, holder_name, None) if experimental is not None else None
-        scopes = getattr(holder, "scopes", None)
-        if isinstance(scopes, list | tuple | set):
-            auth_scopes.update(str(scope).strip().lower() for scope in scopes if str(scope).strip())
-    # Prefer the verified access-token identity so a hostile caller cannot reset
-    # its rate-limit window by reconnecting (which mints a fresh per-connection
-    # session object id). The client-declared meta.client_id is only a fallback
-    # for unauthenticated/local transports.
-    verified_caller = _verified_token_caller(current_request)
+    from agent_bom.mcp_tools.request_identity import verified_access_token
+
+    token = verified_access_token(current_request)
+    auth_scopes = {scope.strip().lower() for scope in token.scopes if scope.strip()} if token is not None else set()
+    verified_caller = _verified_token_caller(token)
     return {
         "caller": verified_caller or client_id or session_label,
         "client_id": client_id,
@@ -570,6 +538,24 @@ def authorize_destructive_tool(
     return None
 
 
+def _authorize_dispatch(
+    tool_name: str, request_meta: dict[str, str | None], kwargs: dict[str, Any], required_scope: str | None
+) -> tuple[str, dict[str, Any] | None]:
+    """Use the same verified actor and effective role in async and sync workers."""
+    actor = request_meta.get("caller") or "mcp-operator"
+    kwargs["_authenticated_actor"] = actor
+    denial = authorize_destructive_tool(
+        tool_name,
+        operator_role=str(kwargs.get("operator_role", "") or ""),
+        operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
+        auth_scopes=str(request_meta.get("auth_scopes", "") or ""),
+        required_scope=required_scope,
+    )
+    if denial is None and "operator_role" in kwargs:
+        kwargs["operator_role"] = "admin"
+    return actor, denial
+
+
 async def execute_tool_async(
     tool_name: str,
     handler: Callable[..., Awaitable[_ToolReturn]],
@@ -590,16 +576,7 @@ async def execute_tool_async(
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
     if destructive:
-        authenticated_actor = request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator"
-        kwargs.setdefault("_authenticated_actor", authenticated_actor)
-        auth_scopes = str(request_meta.get("auth_scopes", "") or "")
-        denial = authorize_destructive_tool(
-            tool_name,
-            operator_role=str(kwargs.get("operator_role", "") or ""),
-            operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
-            auth_scopes=auth_scopes,
-            required_scope=required_scope,
-        )
+        authenticated_actor, denial = _authorize_dispatch(tool_name, request_meta, kwargs, required_scope)
         if denial is not None:
             log_caller = _log_value(request_meta["caller"])
             log_actor = _log_value(str(authenticated_actor or "unset"))
@@ -620,8 +597,6 @@ async def execute_tool_async(
                 log_actor,
             )
             return ToolErrorPayload(truncate_response_fn(json.dumps(denial)))
-        if "operator_role" in kwargs and _scope_set(auth_scopes) & {"admin", "operator", "admin:*", "*"}:
-            kwargs["operator_role"] = "admin"
     log_caller = _log_value(request_meta["caller"])
     log_request_id = _log_value(request_meta["request_id"])
     retry_after = check_caller_rate_limit_fn(request_meta["caller"] or "local")
@@ -735,16 +710,7 @@ async def execute_tool_sync_async(
 ) -> _ToolReturn | str:
     request_meta = request_meta_factory()
     if destructive:
-        authenticated_actor = request_meta.get("client_id") or request_meta.get("caller") or "mcp-operator"
-        kwargs.setdefault("_authenticated_actor", authenticated_actor)
-        auth_scopes = str(request_meta.get("auth_scopes", "") or "")
-        denial = authorize_destructive_tool(
-            tool_name,
-            operator_role=str(kwargs.get("operator_role", "") or ""),
-            operator_scopes=str(kwargs.get("operator_scopes", "") or ""),
-            auth_scopes=auth_scopes,
-            required_scope=required_scope,
-        )
+        authenticated_actor, denial = _authorize_dispatch(tool_name, request_meta, kwargs, required_scope)
         if denial is not None:
             log_caller = _log_value(request_meta["caller"])
             log_actor = _log_value(str(authenticated_actor or "unset"))

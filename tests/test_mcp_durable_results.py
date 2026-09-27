@@ -67,10 +67,15 @@ def test_oversize_and_storage_errors_fail_closed(tmp_path):
         store(path).get("caller", "id")
 
 
-def test_verified_token_binds_owner_not_self_declared_client_id(monkeypatch):
-    token = SimpleNamespace(token="token-a", client_id="shared-client")
-    monkeypatch.setattr("mcp.server.auth.middleware.auth_context.get_access_token", lambda: token)
-    context = SimpleNamespace(request=object(), meta=SimpleNamespace(client_id="spoofed"))
+def test_verified_token_binds_owner_not_self_declared_client_id():
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+    from mcp.server.auth.provider import AccessToken
+    from starlette.requests import Request
+
+    token = AccessToken(token="token-a", client_id="shared-client", scopes=["read"])
+    context = SimpleNamespace(
+        request=Request({"type": "http", "user": AuthenticatedUser(token)}), meta=SimpleNamespace(client_id="spoofed")
+    )
     first = scan_result_owner(lambda: context)
     context.meta.client_id = "changed"
     assert scan_result_owner(lambda: context) == first

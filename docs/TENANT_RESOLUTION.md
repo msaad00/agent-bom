@@ -128,6 +128,21 @@ logs a warning. The same static guardrail in
 `tests/test_cli_mcp_tenant_resolution.py` covers `src/agent_bom/mcp_*.py`
 and `src/agent_bom/mcp_tools/`.
 
+Remote MCP caller identity is separate from this process-bound tenant. Tool
+dispatch reads the SDK-verified token on the current HTTP request for scopes,
+rate-limit identity and the audit actor. Client metadata and tool arguments
+cannot supply authority or override that actor. Transports without an HTTP
+request use the SDK authentication context. Missing or expired verified grants
+fail closed for write tools; local stdio reads retain the operator's OS boundary.
+
+Saved scan results use the same current-request identity and a digest of the
+token, rather than a client-provided name or a transport task's earlier token.
+Unauthenticated HTTP callers cannot read saved results. Token rotation changes
+result ownership, so clients must retain an unexpired original credential or
+run a new scan. The server-bound tenant remains authoritative in both cases.
+These changes require no storage migration. Reverting them restores the earlier
+identity-resolution defects and is not an authorization rollback strategy.
+
 ## Why not push tenant context through MCP request headers?
 
 MCP tool calls in the current MCP spec do not carry a tenant

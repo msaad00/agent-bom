@@ -1781,7 +1781,7 @@
       "file_lines": 688
     },
     "graph/builder.py": {
-      "file_lines": 7487
+      "file_lines": 7295
     },
     "graph/builder.py::_add_agent_cloud_lineage": {
       "function_lines": 282
@@ -1802,10 +1802,6 @@
     },
     "graph/builder.py::_add_cloud_org_architecture_findings": {
       "function_lines": 87
-    },
-    "graph/builder.py::_add_cloud_role_assignments": {
-      "complexity": 23,
-      "function_lines": 152
     },
     "graph/builder.py::_add_framework_topology": {
       "complexity": 30,

@@ -157,7 +157,7 @@
       "function_lines": 91
     },
     "api/middleware.py": {
-      "file_lines": 2849
+      "file_lines": 2619
     },
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
       "function_lines": 84

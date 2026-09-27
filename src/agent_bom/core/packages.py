@@ -1,0 +1,361 @@
+"""Shared package and advisory reference normalization helpers.
+
+These helpers were historically defined in ``agent_bom.models`` and are used
+across scanners, cache keys, parsers, and advisory matching. Keeping them in a
+small dedicated module lowers import pressure on the large models file while
+preserving the same normalization rules.
+"""
+
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+from typing import Optional
+from urllib.parse import unquote, urlparse
+
+_NORMALIZE_RE = re.compile(r"[-_.]+")
+_PURL_TYPE_ALIASES = {
+    "golang": "go",
+}
+
+
+@lru_cache(maxsize=16384)
+def reference_host_and_path(reference: str) -> tuple[str, str]:
+    """Return normalized hostname and path for a reference URL."""
+    try:
+        parsed = urlparse(reference)
+    except ValueError:
+        return "", ""
+    return (parsed.hostname or "").lower(), (parsed.path or "").lower()
+
+
+@lru_cache(maxsize=1024)
+def host_matches_domain(host: str, domain: str) -> bool:
+    """Return True when host equals domain or is a subdomain of it."""
+    return host == domain or host.endswith(f".{domain}")
+
+
+@lru_cache(maxsize=65536)
+def normalize_package_name(name: str, ecosystem: str = "") -> str:
+    """Normalize a package name for consistent matching."""
+    if not name:
+        return name
+    eco = ecosystem.lower()
+    if eco == "pypi":
+        return _NORMALIZE_RE.sub("-", name).lower()
+    return name.lower()
+
+
+def normalize_package_ecosystem(ecosystem: str) -> str:
+    """Normalize ecosystem aliases used by PURLs, OSV, and parsers."""
+    eco = (ecosystem or "").strip().lower()
+    return _PURL_TYPE_ALIASES.get(eco, eco)
+
+
+def _normalize_package_version(version: str, ecosystem: str) -> str:
+    """Normalize versions for identity keys without making parsing mandatory."""
+    version = (version or "").strip()
+    if not version:
+        return ""
+    try:
+        from agent_bom.core.versions.validation import normalize_version
+
+        return normalize_version(version, normalize_package_ecosystem(ecosystem))
+    except Exception:
+        return version
+
+
+def _purl_identity(purl: str) -> tuple[str, str, str] | None:
+    """Return (ecosystem, normalized name, normalized version) from a purl."""
+    if not purl:
+        return None
+    try:
+        from packageurl import PackageURL
+
+        parsed = PackageURL.from_string(purl)
+    except Exception:
+        return None
+
+    ecosystem = normalize_package_ecosystem(parsed.type or "")
+    name_parts = [part for part in (parsed.namespace, parsed.name) if part]
+    raw_name = "/".join(unquote(part.strip()) for part in name_parts)
+    name = normalize_package_name(raw_name, ecosystem)
+    version = _normalize_package_version(parsed.version or "", ecosystem)
+    if not ecosystem or not name:
+        return None
+    return ecosystem, name, version
+
+
+# Registry ecosystems whose purl type + name/namespace layout are unambiguous
+# from (ecosystem, name, version) alone. OS packages (deb/rpm/apk) are absent
+# on purpose: their purls require a distro namespace and qualifiers that the
+# bare package identity does not carry, so synthesizing one would be a guess.
+_PURL_SYNTHESIS_TYPES = {
+    "npm": "npm",
+    "pypi": "pypi",
+    "go": "golang",
+    "golang": "golang",
+    "cargo": "cargo",
+    "maven": "maven",
+    "nuget": "nuget",
+    "gem": "gem",
+    "rubygems": "gem",
+    "composer": "composer",
+    "conda": "conda",
+}
+
+_UNRESOLVED_VERSIONS = frozenset({"", "unknown", "latest"})
+
+
+def synthesize_purl(name: str, version: str, ecosystem: str) -> Optional[str]:
+    """Build a spec-valid purl from a known ecosystem+name+version.
+
+    Returns ``None`` when the ecosystem has no unambiguous purl type or the
+    version is unresolved — an absent purl is honest; a guessed one is not.
+    ``PackageURL`` applies the per-type normalization rules (pypi lowering and
+    ``_``→``-``, npm lowering, component percent-encoding).
+    """
+    purl_type = _PURL_SYNTHESIS_TYPES.get((ecosystem or "").strip().lower())
+    raw_name = (name or "").strip()
+    raw_version = (version or "").strip()
+    if not purl_type or not raw_name or raw_version.lower() in _UNRESOLVED_VERSIONS:
+        return None
+
+    namespace: str | None = None
+    if purl_type == "maven":
+        # Maven identities arrive as group:artifact (or group/artifact).
+        group_artifact = raw_name.replace(":", "/")
+        if "/" not in group_artifact:
+            return None
+        namespace, _, raw_name = group_artifact.rpartition("/")
+    elif "/" in raw_name:
+        # npm @scope/name, golang module paths, composer vendor/package.
+        namespace, _, raw_name = raw_name.rpartition("/")
+
+    try:
+        from packageurl import PackageURL
+
+        return PackageURL(type=purl_type, namespace=namespace or None, name=raw_name, version=raw_version).to_string()
+    except Exception:
+        return None
+
+
+def canonical_package_identity(name: str, version: str, ecosystem: str, purl: str | None = None) -> tuple[str, str, str]:
+    """Return the canonical package identity used by scan, graph, and history.
+
+    The identity intentionally mirrors scanner deduplication: ecosystem aliases
+    collapse, PyPI separators/case normalize, and versions use the same
+    ecosystem-specific normalization used for matching. A valid explicit PURL is
+    authoritative, but it is normalized before hashing or graph ID construction.
+    """
+    parsed = _purl_identity(purl or "")
+    if parsed is not None:
+        purl_ecosystem, purl_name, purl_version = parsed
+        return (
+            purl_ecosystem,
+            purl_name,
+            purl_version or _normalize_package_version(version, purl_ecosystem),
+        )
+    normalized_ecosystem = normalize_package_ecosystem(ecosystem)
+    return (
+        normalized_ecosystem,
+        normalize_package_name((name or "").strip(), normalized_ecosystem),
+        _normalize_package_version(version, normalized_ecosystem),
+    )
+
+
+def canonical_package_key(name: str, version: str, ecosystem: str, purl: str | None = None) -> str:
+    """Return a compact stable key for package maps and graph node IDs."""
+    normalized_ecosystem, normalized_name, normalized_version = canonical_package_identity(name, version, ecosystem, purl)
+    suffix = f"@{normalized_version}" if normalized_version else ""
+    return f"{normalized_ecosystem}:{normalized_name}{suffix}"
+
+
+def vulnerability_occurrence_key(vulnerability_id: str, package_ref: str, ecosystem: str = "") -> tuple[str, str, str]:
+    """Return stable finding identity across package-version remediation.
+
+    ``package_ref`` is the report form ``name@version``. The version is
+    deliberately excluded: upgrading a package must not turn an already-known
+    vulnerability into a phantom new finding. Package inventory diffing remains
+    version-aware and reports the upgrade separately.
+    """
+    raw_ref = (package_ref or "").strip()
+    package_name = raw_ref
+    if raw_ref.startswith("@"):
+        separator = raw_ref.rfind("@")
+        if separator > 0:
+            package_name = raw_ref[:separator]
+    elif "@" in raw_ref:
+        package_name = raw_ref.rsplit("@", 1)[0]
+
+    normalized_ecosystem = normalize_package_ecosystem(ecosystem)
+    return (
+        (vulnerability_id or "").strip().upper(),
+        normalized_ecosystem,
+        normalize_package_name(package_name, normalized_ecosystem),
+    )
+
+
+@lru_cache(maxsize=4096)
+def debian_release_branch(distro_version: str) -> str:
+    """Normalize Debian ``VERSION_ID`` to the advisory release key.
+
+    Debian security data is release-major scoped (``debian:12``), while
+    container metadata may carry point releases such as ``12.5``. The scanner
+    must collapse those to the major release before querying OSV/local DB rows.
+    """
+    raw = (distro_version or "").strip()
+    if not raw:
+        return raw
+    return raw.split(".", 1)[0]
+
+
+@lru_cache(maxsize=4096)
+def ubuntu_release_branch(distro_version: str) -> str:
+    """Normalize Ubuntu ``VERSION_ID`` to the advisory release key.
+
+    Ubuntu advisory ecosystems are keyed by major.minor branch
+    (``Ubuntu:22.04``), not point releases. Official images usually expose
+    ``22.04``, but derivative metadata can include ``22.04.4``; truncate that
+    to ``22.04`` so release-scoped lookups do not silently miss advisory rows.
+    """
+    raw = (distro_version or "").strip()
+    if not raw:
+        return raw
+    parts = raw.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"{parts[0]}.{parts[1]}"
+    return raw
+
+
+# Alpine secdb publishes advisories per minor branch (v3.14 … v3.23). Keep this
+# tuple aligned with ``sync_alpine_secdb`` and apk OSV fallback lists.
+ALPINE_SECDB_BRANCHES: tuple[str, ...] = tuple(f"v3.{minor}" for minor in range(14, 24))
+
+
+def alpine_osv_fallback_ecosystems() -> tuple[str, ...]:
+    """OSV ecosystem identifiers used when an apk package lacks distro metadata."""
+    return tuple(f"Alpine:{branch}" for branch in ALPINE_SECDB_BRANCHES)
+
+
+@lru_cache(maxsize=4096)
+def alpine_release_branch(distro_version: str) -> str:
+    """Normalize an Alpine ``VERSION_ID`` to its secdb branch key (``v{major}.{minor}``).
+
+    Alpine security advisories are published per *minor branch* (``v3.16``), not
+    per point release. A full ``VERSION_ID`` such as ``3.16.9`` must be truncated
+    to ``v3.16`` so apk advisory lookups resolve against the branch's advisory
+    rows instead of zero rows under the (never-stored) point-release key. This
+    aligns apk release keying with mainstream advisory scanners.
+
+    Behaviour:
+    - ``3.16.9`` / ``v3.16.9`` -> ``v3.16``
+    - ``3.20.10`` -> ``v3.20``
+    - ``3.16`` / ``v3.16`` -> ``v3.16`` (already a branch)
+    - non-numeric / single-component streams (``edge``) keep prior ``v``-prefix
+      behaviour so no real branch key changes meaning.
+    """
+    raw = (distro_version or "").strip()
+    if not raw:
+        return raw
+    body = raw[1:] if raw.startswith("v") else raw
+    parts = body.split(".")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"v{parts[0]}.{parts[1]}"
+    return raw if raw.startswith("v") else f"v{raw}"
+
+
+@lru_cache(maxsize=16384)
+def parse_debian_source_name(source_field: str) -> Optional[str]:
+    """Extract the Debian source package name from a ``Source:`` field."""
+    if not source_field:
+        return None
+    source_name = source_field.split("(", 1)[0].strip()
+    if source_name.startswith("${") and source_name.endswith("}"):
+        return None
+    return source_name or None
+
+
+# ── PyPI distribution ↔ import name aliases ──────────────────────────────────
+# A distribution and the module you import from it are frequently different
+# strings: you install ``PyYAML`` and write ``import yaml``. Static analysis
+# sees the import name while an SCA finding carries the distribution name, so
+# comparing them directly misses real matches.
+
+# distribution (normalized: lowercase, dashes) → import names it provides.
+_DISTRIBUTION_TO_IMPORTS: dict[str, tuple[str, ...]] = {
+    "attrs": ("attr", "attrs"),
+    "beautifulsoup4": ("bs4",),
+    "opencv-python": ("cv2",),
+    "opencv-python-headless": ("cv2",),
+    "pillow": ("pil",),
+    "protobuf": ("google",),
+    "pycryptodome": ("crypto",),
+    "pycryptodomex": ("cryptodome",),
+    "pyjwt": ("jwt",),
+    "pymysql": ("pymysql",),
+    "pyyaml": ("yaml",),
+    "python-dateutil": ("dateutil",),
+    "python-docx": ("docx",),
+    "python-magic": ("magic",),
+    "python-multipart": ("multipart",),
+    "python-pptx": ("pptx",),
+    "scikit-image": ("skimage",),
+    "scikit-learn": ("sklearn",),
+    "msgpack-python": ("msgpack",),
+    "typing-extensions": ("typing_extensions",),
+    "memcached": ("memcache",),
+    "faiss-cpu": ("faiss",),
+    "faiss-gpu": ("faiss",),
+    "google-auth": ("google",),
+    "google-api-python-client": ("googleapiclient",),
+    "azure-identity": ("azure",),
+    "grpcio": ("grpc",),
+    "setuptools": ("setuptools", "pkg_resources"),
+}
+
+
+def _normalize_distribution(name: str) -> str:
+    """Normalize a distribution name to its PEP 503 comparison form."""
+    return name.strip().lower().replace("_", "-")
+
+
+def import_names_for_distribution(distribution: str) -> tuple[str, ...]:
+    """Return the lowercase import names a PyPI *distribution* may provide.
+
+    Always includes the distribution's own normalized forms, so callers can use
+    the result as the complete candidate set for a lookup.
+    """
+    normalized = _normalize_distribution(distribution)
+    if not normalized:
+        return ()
+
+    candidates: list[str] = [normalized, normalized.replace("-", "_")]
+    candidates.extend(_DISTRIBUTION_TO_IMPORTS.get(normalized, ()))
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            ordered.append(candidate)
+    return tuple(ordered)
+
+
+__all__ = [
+    "import_names_for_distribution",
+    "ALPINE_SECDB_BRANCHES",
+    "alpine_osv_fallback_ecosystems",
+    "alpine_release_branch",
+    "canonical_package_identity",
+    "canonical_package_key",
+    "debian_release_branch",
+    "host_matches_domain",
+    "normalize_package_ecosystem",
+    "normalize_package_name",
+    "parse_debian_source_name",
+    "reference_host_and_path",
+    "synthesize_purl",
+    "ubuntu_release_branch",
+    "vulnerability_occurrence_key",
+]

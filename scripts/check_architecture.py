@@ -19,6 +19,11 @@ OWNED_FUNCTIONS = {
     "severity_policy_rank": "core/severity.py",
     "cvss_to_severity": "core/cvss.py",
     "parse_cvss_vector": "core/cvss.py",
+    "normalize_package_name": "core/packages.py",
+    "canonical_package_identity": "core/packages.py",
+    "canonical_package_key": "core/packages.py",
+    "normalize_version": "core/versions/validation.py",
+    "compare_version_order": "core/versions/ordering.py",
 }
 
 
@@ -84,6 +89,7 @@ def measure(root: Path) -> tuple[dict[str, dict[str, int]], list[str]]:
             "check",
             "--select",
             "C901",
+            "--ignore-noqa",
             "--config",
             "lint.mccabe.max-complexity=15",
             "--output-format",

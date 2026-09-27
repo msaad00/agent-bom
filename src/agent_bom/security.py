@@ -88,14 +88,24 @@ SENSITIVE_PATTERNS = [
     r"bearer",
     r"jwt",
 ]
+_SENSITIVE_KEY_RE = re.compile("|".join(f"(?:{pattern})" for pattern in SENSITIVE_PATTERNS))
+
+# CR/LF/TAB become spaces; every other C0 control and DEL is dropped.
+_LOG_LABEL_CONTROL_TABLE: dict[int, str | None] = {code_point: None for code_point in range(0x20)}
+_LOG_LABEL_CONTROL_TABLE.update({0x09: " ", 0x0A: " ", 0x0D: " ", 0x7F: None})
+_MULTI_SPACE_RE = re.compile(r" {2,}")
 
 
 def sanitize_log_label(value: object, max_len: int = 500) -> str:
     """Return a single-line, ANSI-free label for logs and terminal output."""
-    text = ANSI_ESCAPE_RE.sub("", str(value))
-    text = text.replace("\r", " ").replace("\n", " ").replace("\t", " ")
-    text = "".join(ch for ch in text if ch >= " " and ch != "\x7f")
-    return re.sub(r" {2,}", " ", text).strip()[:max_len]
+    text = str(value)
+    # ``isprintable`` is False for ESC, every C0 control and DEL, so a printable
+    # string has no ANSI sequence or control character to remove.
+    if not text.isprintable():
+        text = ANSI_ESCAPE_RE.sub("", text).translate(_LOG_LABEL_CONTROL_TABLE)
+    if "  " in text:
+        text = _MULTI_SPACE_RE.sub(" ", text)
+    return text.strip()[:max_len]
 
 
 class SecurityError(Exception):
@@ -371,7 +381,7 @@ def _is_obfuscated_credential(value: str) -> bool:
             decoded = base64.b64decode(stripped + "==").decode("utf-8", errors="strict")
             decoded_lower = decoded.lower()
             # Decoded text contains a sensitive keyword
-            if any(re.search(p, decoded_lower) for p in SENSITIVE_PATTERNS):
+            if _SENSITIVE_KEY_RE.search(decoded_lower):
                 return True
             # Decoded text matches a known credential value pattern
             if _contains_value_credential(decoded):
@@ -406,8 +416,7 @@ def env_key_is_credential(key: str) -> bool:
     """
     from agent_bom.constants import is_credential_key
 
-    low = key.lower()
-    return is_credential_key(key) or any(re.search(pattern, low) for pattern in SENSITIVE_PATTERNS)
+    return _SENSITIVE_KEY_RE.search(key.lower()) is not None or is_credential_key(key)
 
 
 def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
@@ -504,8 +513,14 @@ def sanitize_url(value: str | None) -> str | None:
     if not parsed.scheme or not parsed.netloc:
         return value
     host = parsed.hostname or parsed.netloc.rsplit("@", 1)[-1]
-    if parsed.port:
-        host = f"{host}:{parsed.port}"
+    try:
+        port = parsed.port
+    except ValueError:
+        # A non-numeric or out-of-range port only raises on access; free text
+        # such as ``http://host:PORT/`` must not abort a whole report export.
+        return "<redacted-url>"
+    if port:
+        host = f"{host}:{port}"
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
 
@@ -592,10 +607,16 @@ _TITLE_CASE_WORD_RE = re.compile(r"^[A-Z][A-Za-z]+$")
 _TITLE_CASE_CONTINUATION_RE = re.compile(r"[ \t]{1,8}[A-Z][A-Za-z]{0,64}\b")
 
 
+_HTTP_URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+
+
 def sanitize_text(value: object, max_len: int = 1000) -> str:
     """Redact credential-shaped substrings, credential-bearing URLs, and emails in text."""
     text = sanitize_log_label(value, max_len=max_len)
-    text = re.sub(r"https?://[^\s\"'<>]+", lambda match: str(sanitize_url(match.group(0)) or ""), text)
+    # A substitution is skipped only when its pattern cannot match: URLs need
+    # ``://``, a keyed value needs ``=`` or ``:``, an email needs ``@``.
+    if "://" in text:
+        text = _HTTP_URL_RE.sub(lambda match: str(sanitize_url(match.group(0)) or ""), text)
     for pattern in _VALUE_CREDENTIAL_PATTERNS:
         text = pattern.sub("<redacted>", text)
     if "://" in text:
@@ -604,9 +625,11 @@ def sanitize_text(value: object, max_len: int = 1000) -> str:
     # secret access key, so the harmless half was redacted while the dangerous
     # half was printed verbatim. Anything the shapes above miss is caught by the
     # variable *name* it is written under, using the product-wide predicate.
-    text = _TEXT_KEY_VALUE_RE.sub(_redact_keyed_value, text)
+    if "=" in text or ":" in text:
+        text = _TEXT_KEY_VALUE_RE.sub(_redact_keyed_value, text)
     # Email is sensitive PII — mask any addresses left in free text.
-    text = mask_email(text)
+    if "@" in text:
+        text = mask_email(text)
     return text[:max_len]
 
 
@@ -684,7 +707,13 @@ def text_requires_redaction(value: object) -> bool:
 
 
 def _looks_sensitive_value(value: str) -> bool:
-    return sanitize_env_vars({"ARG": value}).get("ARG") == "***REDACTED***"
+    """Whether ``sanitize_env_vars`` would redact ``value`` under a neutral name.
+
+    The placeholder name ``ARG`` is not credential-named, so only the value
+    checks apply; calling them directly skips re-classifying a constant name.
+    """
+    text = str(value)
+    return _contains_value_credential(text) or _is_obfuscated_credential(text)
 
 
 def sanitize_command_args(args: list[Any] | tuple[Any, ...]) -> list[str]:
@@ -743,7 +772,7 @@ def sanitize_security_warnings(values: list[Any] | tuple[Any, ...]) -> list[str]
 
 
 def _key_looks_sensitive(key: object) -> bool:
-    return any(re.search(pattern, str(key).lower()) for pattern in SENSITIVE_PATTERNS)
+    return _SENSITIVE_KEY_RE.search(str(key).lower()) is not None
 
 
 # Fields whose string members are credential *env-var names* — identifiers such
@@ -822,10 +851,6 @@ def sanitize_path_label(value: object) -> str:
     return f"<path:{basename}>"
 
 
-_SANITIZE_PAYLOAD_CACHE_LIMIT = 262_144
-_SANITIZE_PAYLOAD_CACHE_MISS = object()
-
-
 _REPORT_COORDINATE_KEYS = {
     "id",
     "canonical_id",
@@ -853,6 +878,9 @@ _REPORT_AUTH_MODES = {
     "managed_identity",
     "workload_identity",
 }
+# ``\s`` on a str pattern is the same predicate as ``str.isspace``.
+_WHITESPACE_RE = re.compile(r"\s")
+_WHITESPACE_OR_C0_RE = re.compile(r"[\s\x00-\x1f]")
 
 
 def _safe_report_coordinate(value: str) -> bool:
@@ -862,7 +890,7 @@ def _safe_report_coordinate(value: str) -> bool:
     Retain credential-pattern, encoded-secret and per-component entropy checks;
     a field named node_id is not permission to export an embedded token.
     """
-    if ":" not in value or "://" in value or any(character.isspace() or ord(character) < 32 for character in value):
+    if ":" not in value or "://" in value or _WHITESPACE_OR_C0_RE.search(value):
         return False
     if text_requires_redaction(value):
         return False
@@ -915,9 +943,7 @@ def _sanitize_sensitive_string(value: str, *, key: object | None, max_str_len: i
         return sanitize_path_label(value)
     if _looks_like_path_value(value):
         return sanitize_path_label(value)
-    if not text_requires_redaction(value) and (
-        len(value.strip()) < _HIGH_ENTROPY_MIN_LEN or any(character.isspace() for character in value)
-    ):
+    if not text_requires_redaction(value) and (len(value.strip()) < _HIGH_ENTROPY_MIN_LEN or _WHITESPACE_RE.search(value)):
         return sanitize_log_label(value, max_len=max_str_len)
     if _looks_sensitive_value(value):
         return "***REDACTED***"
@@ -935,59 +961,13 @@ def sanitize_sensitive_payload(
 ) -> object:
     """Recursively redact sensitive runtime/audit payloads before persistence/export.
 
-    One report repeats the same immutable package fields across its inventory,
-    agent, and AI-BOM contract views. Keep bounded caches for the duration of a
-    single traversal so those values are redacted once, without retaining
-    potentially sensitive strings globally between exports.
+    Caches are bounded and live for a single traversal, so repeated package
+    fields are redacted once without retaining sensitive strings globally.
     """
-    if _string_cache is None:
-        _string_cache = {}
-    if _key_cache is None:
-        _key_cache = {}
-    if depth >= 24:
-        return "[truncated]"
-    if value is None or isinstance(value, bool | int | float):
-        return value
-    if isinstance(value, str):
-        cache_key = (str(key) if key is not None else None, value, max_str_len)
-        cached = _string_cache.get(cache_key, _SANITIZE_PAYLOAD_CACHE_MISS)
-        if cached is not _SANITIZE_PAYLOAD_CACHE_MISS:
-            return cached
-        sanitized_value = _sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
-        if len(_string_cache) < _SANITIZE_PAYLOAD_CACHE_LIMIT:
-            _string_cache[cache_key] = sanitized_value
-        return sanitized_value
-    if isinstance(value, dict):
-        sanitized: dict[str, object] = {}
-        for raw_key, raw_value in value.items():
-            raw_key_text = str(raw_key)
-            clean_key = _key_cache.get(raw_key_text)
-            if clean_key is None:
-                clean_key = sanitize_text(raw_key, max_len=200)
-                if len(_key_cache) < _SANITIZE_PAYLOAD_CACHE_LIMIT:
-                    _key_cache[raw_key_text] = clean_key
-            sanitized[clean_key] = sanitize_sensitive_payload(
-                raw_value,
-                key=clean_key,
-                max_str_len=max_str_len,
-                depth=depth + 1,
-                _string_cache=_string_cache,
-                _key_cache=_key_cache,
-            )
-        return sanitized
-    if isinstance(value, list | tuple | set):
-        return [
-            sanitize_sensitive_payload(
-                item,
-                key=key,
-                max_str_len=max_str_len,
-                depth=depth + 1,
-                _string_cache=_string_cache,
-                _key_cache=_key_cache,
-            )
-            for item in list(value)
-        ]
-    return sanitize_text(value, max_len=max_str_len)
+    from agent_bom.redaction.payload import redact_payload
+
+    string_cache = {} if _string_cache is None else _string_cache
+    return redact_payload(value, key, max_str_len, depth, string_cache, {} if _key_cache is None else _key_cache)
 
 
 def validate_file_size(path: Path, max_size_bytes: int = 10 * 1024 * 1024) -> None:

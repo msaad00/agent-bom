@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
-from agent_bom.demo_estate.enterprise_findings import ESTATE_FINDING_SEVERITY_BUCKETS
-from agent_bom.demo_estate.presentation import EnterpriseDemoStory, build_enterprise_demo_story
 
-_SEVERITY_ORDER = ESTATE_FINDING_SEVERITY_BUCKETS
+if TYPE_CHECKING:
+    from agent_bom.demo_estate.presentation import EnterpriseDemoStory
+
+# The demo estate builds its whole synthetic graph at import time; load it only
+# when a demo command runs so it never taxes CLI startup.
 # Enough rows to show the incident and a little of the population around it.
 # The summary above them always reports the whole estate, so this bound trims
 # what is printed and never what is claimed.
@@ -24,7 +27,9 @@ def _render_story(story: EnterpriseDemoStory) -> str:
     asset_path = "\n    → ".join(primary.asset_path)
     partial = [f"{row.source.value} ({row.failure_code})" for row in story.collection_health if row.status.value == "partial"]
     posture = story.finding_summary
-    severity = " · ".join(f"{band} {posture.by_severity[band]}" for band in _SEVERITY_ORDER)
+    from agent_bom.demo_estate.enterprise_findings import ESTATE_FINDING_SEVERITY_BUCKETS
+
+    severity = " · ".join(f"{band} {posture.by_severity[band]}" for band in ESTATE_FINDING_SEVERITY_BUCKETS)
     return "\n".join(
         [
             f"{story.estate_name} — synthetic enterprise evidence",
@@ -134,6 +139,8 @@ def demo_group(ctx: click.Context) -> None:
 @click.option("--tenant-id", default="demo-tenant", show_default=True)
 def demo_story_cmd(output_format: str, output: Path | None, tenant_id: str) -> None:
     """Show the correlated multi-vendor enterprise scenario without network access."""
+
+    from agent_bom.demo_estate.presentation import build_enterprise_demo_story
 
     story = build_enterprise_demo_story(tenant_id=tenant_id)
     json_payload = story.model_dump_json(indent=2)

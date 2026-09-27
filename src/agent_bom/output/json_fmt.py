@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
 from typing import Any
@@ -21,6 +20,7 @@ from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.output.exposure_path import exposure_path_for_report_finding
 from agent_bom.output.finding_views import cve_findings
+from agent_bom.output.json_writer import write_json_document
 from agent_bom.security import (
     sanitize_command_args,
     sanitize_path_label,
@@ -1559,5 +1559,4 @@ def export_json(
     """Export report as JSON file."""
     data = to_redacted_json(report, report_json=report_json)
     with Path(output_path).open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-        fh.write("\n")
+        write_json_document(data, fh)

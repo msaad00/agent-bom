@@ -73,6 +73,33 @@ class AgentBomClient:
         """Export one recorded agent's composition; display names are not selectors."""
         return self._request("GET", f"/v1/scan/{quote(job_id, safe='')}/agent-bom", params={"agent_id": agent_id})
 
+    def capture_agent_snapshot(self, job_id: str, agent_id: str) -> JsonObject:
+        """Persist a completed scan BOM under its immutable snapshot digest."""
+        return self._request("POST", "/v1/agent-lifecycle/snapshots", json={"scan_id": job_id, "agent_id": agent_id})
+
+    def agent_lifecycle_history(self, agent_id: str, *, kind: str = "snapshot", limit: int = 50, offset: int = 0) -> JsonObject:
+        return self._request(
+            "GET", "/v1/agent-lifecycle/history", params={"agent_id": agent_id, "kind": kind, "limit": limit, "offset": offset}
+        )
+
+    def get_agent_snapshot(self, snapshot_id: str) -> JsonObject:
+        return self._request("GET", "/v1/agent-lifecycle/snapshots/export", params={"snapshot_id": snapshot_id})
+
+    def compare_agent_snapshots(self, before: str, after: str) -> JsonObject:
+        return self._request("GET", "/v1/agent-lifecycle/snapshots/compare", params={"before": before, "after": after})
+
+    def register_agent_deployment(self, deployment: JsonObject) -> JsonObject:
+        return self._request("POST", "/v1/agent-lifecycle/deployments", json=deployment)
+
+    def register_agent_instance(self, instance: JsonObject) -> JsonObject:
+        return self._request("POST", "/v1/agent-lifecycle/instances", json=instance)
+
+    def register_agent_run(self, run: JsonObject) -> JsonObject:
+        return self._request("POST", "/v1/agent-lifecycle/runs", json=run)
+
+    def retire_agent_lifecycle_record(self, kind: str, record_id: str) -> JsonObject:
+        return self._request("POST", "/v1/agent-lifecycle/retire", params={"kind": kind, "record_id": record_id})
+
     def runtime_profiles(self) -> JsonObject:
         """List tenant-scoped assignments, including lifecycle status and revisions."""
         return self._request("GET", "/v1/mcp-config/assignments")

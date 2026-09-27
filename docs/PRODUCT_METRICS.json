@@ -34,7 +34,7 @@
     },
     {
       "name": "API route modules",
-      "value": 50,
+      "value": 51,
       "source": "src/agent_bom/api/routes",
       "notes": "Counts Python files in the routes package, including __init__.py."
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 915,
+      "value": 918,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

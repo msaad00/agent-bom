@@ -583,7 +583,7 @@
       "function_lines": 88
     },
     "api/snowflake_store.py": {
-      "file_lines": 1161
+      "file_lines": 1170
     },
     "api/store.py": {
       "file_lines": 709
@@ -1015,7 +1015,7 @@
       "function_lines": 275
     },
     "cloud/aws_cis_benchmark.py": {
-      "file_lines": 3423
+      "file_lines": 3449
     },
     "cloud/aws_cis_benchmark.py::_check_3_10": {
       "complexity": 17
@@ -1185,7 +1185,7 @@
       "function_lines": 327
     },
     "cloud/gcp_cis_benchmark.py": {
-      "file_lines": 2944
+      "file_lines": 2949
     },
     "cloud/gcp_cis_benchmark.py::run_benchmark": {
       "function_lines": 135

@@ -31,6 +31,10 @@ AUTHORIZATION_CONTRACTS = (
     "tests/api/test_auth_scope_boundaries.py",
     "tests/api/test_auth_contract_matrix.py",
 )
+MCP_TOOL_CONTRACTS = (
+    "tests/test_mcp_tool_output_contract.py",
+    "tests/test_mcp_strict_args.py",
+)
 
 
 def discover_test_files(root: Path) -> list[Path]:
@@ -62,6 +66,12 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
 
     for changed in changed_files:
         normalized = Path(changed.as_posix().lstrip("./"))
+        if (
+            normalized.as_posix().startswith("src/agent_bom/mcp_tools/")
+            or normalized.as_posix().startswith("src/agent_bom/mcp_server")
+            or normalized.as_posix() == "src/agent_bom/mcp_strict_args.py"
+        ):
+            selected.update(root / path for path in MCP_TOOL_CONTRACTS if root / path in available)
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
         direct = root / normalized

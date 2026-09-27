@@ -175,8 +175,11 @@ def test_quickstart_run_offline_succeeds_with_empty_vulnerability_db(tmp_path, m
     assert result.exit_code == 0, result.output
     report = json.loads((sample_dir / "agent-bom-report.json").read_text())
     assert report["scan_run"]["outcome"] == "complete"
-    assert report["scan_run"]["issues"] == []
-    assert report["scan_run"]["warning_count"] == 0
+    # The sample pairs -p with --inventory on purpose; the only allowed issue is
+    # the informational notice naming the project surfaces that pairing skips.
+    issues = report["scan_run"]["issues"]
+    assert [issue["code"] for issue in issues if issue["code"] != "project_auto_detect_skipped"] == []
+    assert all(issue.get("affects_coverage") is False for issue in issues)
     assert report["coverage_warnings"] == []
     assert report["summary"]["total_agents"] > 0
     assert report["summary"]["total_packages"] > 0

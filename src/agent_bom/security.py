@@ -588,7 +588,7 @@ _CREDENTIAL_METADATA_KEY_WORDS = frozenset({"type", "kind", "name", "label", "ca
 # `: ` followed by a run of capitalised words is prose; anything with digits or
 # symbols, or written with `=` or quotes, is still treated as an assignment.
 _TITLE_CASE_WORD_RE = re.compile(r"^[A-Z][A-Za-z]+$")
-_TITLE_CASE_CONTINUATION_RE = re.compile(r"[ \t]+[A-Z][A-Za-z]*\b")
+_TITLE_CASE_CONTINUATION_RE = re.compile(r"[ \t]{1,8}[A-Z][A-Za-z]{0,64}\b")
 
 
 def sanitize_text(value: object, max_len: int = 1000) -> str:

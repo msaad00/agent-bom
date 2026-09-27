@@ -1078,13 +1078,20 @@ def scan(
     # --demo/--self-scan synthesize their own project + inventory pair; only a
     # user-supplied project combined with an explicit target deserves a notice.
     if project and not skill_only and _explicit_targets and not (demo or self_scan):
-        _skip_notice = (
-            f"Project surface auto-detection (IaC, code, notebooks, prompts, workflows) was skipped for {project} "
-            f"because an explicit target was given ({', '.join(_explicit_targets)}); pass --iac/--code/--tf-dir to include them."
-        )
-        ctx.scan_notices.append({"code": "project_auto_detect_skipped", "source": "project", "message": _skip_notice})
-        if not quiet:
-            con.print(f"[yellow]![/yellow] {_skip_notice}")
+        from agent_bom.repo_auto_detect import expand_project_scan_targets
+
+        # Only surfaces that actually exist in the project were skipped; an
+        # inventory-only project (quickstart sample) has nothing to report.
+        _skipped_surfaces = expand_project_scan_targets(project).auto_enabled
+        if _skipped_surfaces:
+            _skip_notice = (
+                f"Project surface auto-detection ({', '.join(_skipped_surfaces)}) was skipped for {project} "
+                f"because an explicit target was given ({', '.join(_explicit_targets)}); pass the matching surface flags "
+                "(see `agent-bom scan --help`) to include them."
+            )
+            ctx.scan_notices.append({"code": "project_auto_detect_skipped", "source": "project", "message": _skip_notice})
+            if not quiet:
+                con.print(f"[yellow]![/yellow] {_skip_notice}")
     # Named project expansion is bounded to the requested root, not ambient discovery.
     if project and not skill_only and not _explicit_targets:
         from agent_bom.repo_auto_detect import expand_project_scan_targets

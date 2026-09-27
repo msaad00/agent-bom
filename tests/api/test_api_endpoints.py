@@ -1046,13 +1046,15 @@ def test_baseline_compare_requires_job_ids_without_404():
 # ---------------------------------------------------------------------------
 
 
-def test_agents_endpoint_declares_local_discovery_scope():
-    """GET /v1/agents self-labels as local-disk discovery, distinct from the estate.
+def test_agents_endpoint_declares_local_discovery_scope(monkeypatch):
+    """With host discovery bound to the tenant, GET /v1/agents labels itself local discovery.
 
     /v1/agents (live local-config discovery) and /v1/inventory (scanned-estate
     roll-up) were disjoint with no marker telling clients which population each
     represents. Each now declares a ``scope`` so the two never silently overlap.
     """
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
+    monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")
     client, _ = _fresh_client()
     with patch("agent_bom.discovery.discover_all", return_value=[]):
         from agent_bom.api.routes.discovery import _clear_agents_response_cache_for_tests
@@ -1065,6 +1067,18 @@ def test_agents_endpoint_declares_local_discovery_scope():
     assert body.get("source")
     # Cross-reference the scanned-estate surface so consumers don't conflate them.
     assert "/v1/inventory" in body["source"]
+
+
+def test_agents_endpoint_serves_the_scanned_estate_without_a_host_binding(monkeypatch):
+    """Without an operator binding, the API host's own environment is never shown to a tenant."""
+    monkeypatch.delenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", raising=False)
+    client, _ = _fresh_client()
+    from agent_bom.api.routes.discovery import _clear_agents_response_cache_for_tests
+
+    _clear_agents_response_cache_for_tests()
+    resp = client.get("/v1/agents")
+    assert resp.status_code == 200
+    assert resp.json()["scope"] == "scanned_estate"
 
 
 def test_inventory_endpoint_declares_scanned_estate_scope():

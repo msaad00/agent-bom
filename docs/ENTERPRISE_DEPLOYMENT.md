@@ -583,6 +583,10 @@ are denied. Leave this variable unset on shared control planes. The gate is
 checked both before accepting API/source runs and again by the worker;
 revoking permission also blocks queued jobs before discovery. Rejections are
 fail-closed and do not include filesystem paths or other tenant identifiers.
+`GET /v1/agents` (and its mesh/detail routes) applies the same gate: only
+the bound tenant, or demo mode, sees the API host's own AI clients. Every other
+tenant gets its scanned-estate agents (`scope: "scanned_estate"`), the same
+population `/v1/inventory` returns.
 
 For secret lifecycle posture, production deployments should declare the external
 secret authority and rotation metadata without exposing secret values:

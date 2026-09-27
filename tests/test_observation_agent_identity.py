@@ -16,6 +16,7 @@ from agent_bom.api.mcp_observation_store import (
 from agent_bom.api.routes.discovery import _observation_ids
 from agent_bom.api.server import app
 from agent_bom.models import Agent, AgentType, MCPServer
+from tests._host_discovery import host_bound_to
 
 
 def observed(**kwargs):
@@ -101,6 +102,8 @@ def test_fleet_sync_same_name_identity_and_rename(monkeypatch):
 
 
 def test_agent_detail_rejects_ambiguous_label_and_accepts_exact_id(monkeypatch):
+    for key, value in host_bound_to("default").items():
+        monkeypatch.setenv(key, value)
     agents = [Agent(name="same", agent_type=AgentType.CUSTOM, config_path=path) for path in ("/a", "/b")]
     monkeypatch.setattr("agent_bom.api.routes.discovery._discover_agents_with_demo_fallback", lambda: agents)
     monkeypatch.setattr(stores, "_fleet_store", InMemoryFleetStore())

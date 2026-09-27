@@ -402,6 +402,31 @@ describe("ConnectionsPage — Connect segment", () => {
     expect(screen.getByText("Jun 27")).toBeInTheDocument();
   });
 
+  it("counts pushed cloud scans in the source status banner", async () => {
+    apiMock.getPostureCounts.mockResolvedValue({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 0,
+      kev: 0,
+      compound_issues: 0,
+      scan_count: 3,
+      services: {
+        cloud_accounts: { state: "live", count: 2, detail: "aws,azure", last_scan_at: "2026-09-20T12:00:00Z", connections: 0, scanned_scopes: 2 },
+        data_sources: { state: "locked", count: 0 },
+      },
+    });
+
+    render(<ConnectionsPage />);
+    await waitForConnectTab();
+
+    const status = screen.getByLabelText("Source status");
+    await waitFor(() => expect(within(status).getByText("Cloud accounts").nextElementSibling).toHaveTextContent("2"));
+    expect(within(status).getByText("Last cloud scan").nextElementSibling).toHaveTextContent("Sep 20");
+    expect(within(status).queryByText("Never")).not.toBeInTheDocument();
+  });
+
   it("carries one AWS ExternalId from setup through details into create + verify", async () => {
     apiMock.createCloudConnection.mockResolvedValue(CREATED_RECORD);
     apiMock.testCloudConnection.mockResolvedValue(TEST_OK);

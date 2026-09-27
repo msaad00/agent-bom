@@ -51,6 +51,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
 from agent_bom.asset_tracker import AssetTracker
+from tests._host_discovery import host_bound_to
 
 
 def _now() -> str:
@@ -967,7 +968,7 @@ async def test_discovery_and_traces_are_tenant_scoped():
         agent_type: str = "claude-desktop"
         mcp_servers: list[_Server] = field(default_factory=lambda: [_Server()])
 
-    with patch("agent_bom.discovery.discover_all", return_value=[_Agent()]):
+    with patch.dict("os.environ", host_bound_to("tenant-alpha")), patch("agent_bom.discovery.discover_all", return_value=[_Agent()]):
         with patch("agent_bom.parsers.extract_packages", return_value=[]):
             detail = await discovery_routes.get_agent_detail(req, "alpha")
             assert [item["vulnerability_id"] for item in detail["blast_radius"]] == ["CVE-alpha"]

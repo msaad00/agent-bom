@@ -12,6 +12,14 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from tests._host_discovery import host_bound_to
+
+
+@pytest.fixture(autouse=True)
+def _host_bound_to_default_tenant(monkeypatch):
+    """These tests exercise live host discovery, which an operator enables per tenant."""
+    for key, value in host_bound_to("default").items():
+        monkeypatch.setenv(key, value)
 
 
 def _mock_agents():

@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-27T03:19:00.525Z",
-  "source_commit": "d8eae94d11fdcd44196e4595294f292141d9af9d",
+  "captured_at": "2026-09-27T15:35:10.581Z",
+  "source_commit": "95415e5ae2eeac9f84f2021fbbe4c0a54cf2498e",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:74085092aec9a457b4aff238f9cd6fef8511dc3349d8e45b5f2a642dd57c93c8",
+  "capture_inputs_sha256": "sha256:8118ea041db90fbeeb18de5125f00cc35fdba1f28beedfc392782dc2e1aa95a0",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -12,7 +12,7 @@
       "page": "/?capture=1",
       "scope": "Combined posture and assessment overview with current findings, evaluated-control counts, and visible framework logos",
       "visible_version": "0.106.1",
-      "sha256": "sha256:ebd69ffcddfdb0dae04cfda872cbab6e661541fab9f5b7512e95e4ed4150d974"
+      "sha256": "sha256:f3fe72c2dfc5b6c51e6a165b4a83931cde13adac8e787c15c9c9f634cdee8195"
     },
     {
       "presentation": "light desktop",
@@ -20,7 +20,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview in the light theme",
       "visible_version": "0.106.1",
-      "sha256": "sha256:50357a07fcae205e4174ad55e741de6827142e6f6f9e814f4026d59418578a7b"
+      "sha256": "sha256:0718aff43a30bf9082f3ebdc83e92a4c8b522582f8f7c685a3495f1384357379"
     },
     {
       "presentation": "dark mobile",
@@ -28,7 +28,7 @@
       "page": "/?capture=1",
       "scope": "Risk overview at a 390 by 844 viewport",
       "visible_version": "0.106.1",
-      "sha256": "sha256:9d87f8d5b131525b65370541ffd6249199791c051a541b4909fea32d07c89b75"
+      "sha256": "sha256:eedb57bb0f4aa30253adc5975c33d44f51c5ecdf23ec8a2824b93ac5d93e7386"
     },
     {
       "presentation": "dark desktop",
@@ -36,7 +36,7 @@
       "page": "/?capture=1",
       "scope": "Top risks tab from the offline synthetic enterprise estate",
       "visible_version": "0.106.1",
-      "sha256": "sha256:4766dad786f58ef593a8e301827529fe36f5f5f67606935fe1e5980a0c57d388"
+      "sha256": "sha256:b2c1531c4ddcb61ba8930f4b641b210d1547fbf1ab8418eae5ac1df709524952"
     },
     {
       "presentation": "light desktop",
@@ -44,7 +44,7 @@
       "page": "/?capture=1",
       "scope": "Executive impact summaries with technical details collapsed",
       "visible_version": "0.106.1",
-      "sha256": "sha256:7f624c5dda34c67ba68502d6e3d0946779fbd33b789997ac2286d951d1c886c1"
+      "sha256": "sha256:81714c4d3530b1d02fceba72d774147ee73a276069ea3b32e822646a98debcce"
     },
     {
       "presentation": "dark mobile",
@@ -60,7 +60,7 @@
       "page": "/?capture=1",
       "scope": "Default Overview assessment summary with four priority frameworks and risk mappings collapsed",
       "visible_version": "0.106.1",
-      "sha256": "sha256:e1c39ec8ffbf2c59fe4cb618b7c4f2a46983894e7e3f7e68caadabe1dbc3f23a"
+      "sha256": "sha256:d9d98a6ee3e4b037c4b9dd1d613229bea2acfdfd01588792b582ec201f5204e0"
     },
     {
       "presentation": "dark desktop",
@@ -225,7 +225,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&capture=1",
       "scope": "Modeled current-state Investigation Canvas at 1512 by 811",
       "visible_version": "0.106.1",
-      "sha256": "sha256:7195c232e205321d265410bffe453850361869280846892d0ad29c7ae823f0b7"
+      "sha256": "sha256:95c9c844e3d6a2ecfa10f31160af1e78aad50f6606d73fe3760cdc94365a5406"
     },
     {
       "presentation": "light desktop 1568x780",

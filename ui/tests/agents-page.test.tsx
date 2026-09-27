@@ -208,6 +208,37 @@ describe("AgentsPage agent population", () => {
     expect(within(subtitle()).getByRole("link", { name: "Open agent inventory" })).toBeInTheDocument();
   });
 
+  it("labels a scanned-estate response as scanned agents, never as this API host", async () => {
+    apiMock.listAgents.mockResolvedValue({
+      scope: "scanned_estate",
+      count: 1,
+      agents: [
+        {
+          name: "project:sampleapp",
+          agent_type: "custom",
+          source: "project",
+          status: "configured",
+          config_path: "/work/sampleapp",
+          mcp_servers: [
+            { name: "github", surface: "mcp-server", packages: [], env: { GITHUB_PERSONAL_ACCESS_TOKEN: "***" } },
+            { name: "filesystem", surface: "mcp-server", packages: [] },
+            { name: "app", surface: "other", command: "project", packages: [{ name: "pyyaml", version: "5.3", ecosystem: "pypi" }] },
+            { name: "ai-inventory", surface: "ai-inventory", packages: [] },
+          ],
+        },
+      ],
+    });
+    render(<AgentsPage />);
+
+    const kpis = within(await screen.findByTestId("agents-kpis"));
+    expect(kpis.getByText("Scanned agents")).toBeInTheDocument();
+    expect(kpis.queryByText("On this host")).not.toBeInTheDocument();
+    expect(subtitle()).not.toHaveTextContent("on this API host");
+    // Manifest directories and the AI-inventory wrapper are not MCP servers.
+    const mcpServersCell = kpis.getByText("MCP servers").parentElement!.parentElement!;
+    expect(within(mcpServersCell).getByText("2")).toBeInTheDocument();
+  });
+
   it("omits the estate count when the server does not report one", async () => {
     render(<AgentsPage />);
 

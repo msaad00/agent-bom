@@ -10,6 +10,28 @@ from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.rbac import role_rank
 
 
+async def authorize_browser_session_async(
+    *, role: Role, scopes: list[str], tenant_id: str, key_id: str, auth_method: str, method: str, path: str
+) -> tuple[Role, list[str]]:
+    """Keep live backing-key reads off the request/stream event loop."""
+    from functools import partial
+
+    import anyio.to_thread
+
+    return await anyio.to_thread.run_sync(
+        partial(
+            authorize_browser_session,
+            role=role,
+            scopes=scopes,
+            tenant_id=tenant_id,
+            key_id=key_id,
+            auth_method=auth_method,
+            method=method,
+            path=path,
+        )
+    )
+
+
 def authorize_browser_session(
     *,
     role: Role,

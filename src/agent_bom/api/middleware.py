@@ -1258,7 +1258,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.scim_user_id = user_id
         request.state.scim_user_name = user_name
 
-    def _resolve_runtime_role(
+    async def _resolve_runtime_role(
         self,
         request: StarletteRequest,
         *,
@@ -1268,7 +1268,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     ) -> tuple[Role | None, JSONResponse | None]:
         from agent_bom.api.auth import resolve_scim_user_role
 
-        resolution = resolve_scim_user_role(tenant_id, *subjects)
+        resolution = await anyio.to_thread.run_sync(resolve_scim_user_role, tenant_id, *subjects)
         if not resolution.matched:
             return upstream_role, None
         if not resolution.active:
@@ -1492,7 +1492,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             tenant_id = oidc_cfg.resolve_tenant(_claims)
             subject = _claims.get("email") or _claims.get("preferred_username") or _claims.get("sub", "oidc-user")
             upstream_role = Role(oidc_role)
-            effective_role, scim_error = self._resolve_runtime_role(
+            effective_role, scim_error = await self._resolve_runtime_role(
                 request,
                 tenant_id=tenant_id,
                 upstream_role=upstream_role,
@@ -1569,7 +1569,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             subjects = [api_key.name.removeprefix("saml:"), api_key.name]
             if api_key.scim_subject_id:
                 subjects.append(api_key.scim_subject_id)
-            resolved_role, scim_error = self._resolve_runtime_role(
+            resolved_role, scim_error = await self._resolve_runtime_role(
                 request,
                 tenant_id=api_key.tenant_id,
                 upstream_role=api_key.role,
@@ -1686,7 +1686,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         from agent_bom.api.shared_auth_state import AuthStateUnavailable
 
         try:
-            payload = verify_browser_session_token(token)
+            payload = await anyio.to_thread.run_sync(verify_browser_session_token, token)
             session_role = Role(str(payload.get("role", "")).lower())
         except AuthStateUnavailable:
             return JSONResponse(status_code=503, content={"detail": "Authentication state unavailable"})
@@ -1708,7 +1708,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if get_dev_api_key() is None or session_role != get_dev_api_role():
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized — loopback session is no longer active"})
         if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):
-            resolved_role, scim_error = self._resolve_runtime_role(
+            resolved_role, scim_error = await self._resolve_runtime_role(
                 request,
                 tenant_id=tenant_id,
                 upstream_role=session_role,
@@ -1726,11 +1726,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         from fastapi import HTTPException
 
-        from agent_bom.api.session_authorization import authorize_browser_session
+        from agent_bom.api.session_authorization import authorize_browser_session_async as authorize_browser_session
 
         key_id = str(payload.get("key_id") or "")
         try:
-            effective_role, session_scopes = authorize_browser_session(
+            effective_role, session_scopes = await authorize_browser_session(
                 role=effective_role,
                 scopes=list(payload.get("scopes") or []),
                 tenant_id=tenant_id,
@@ -1806,7 +1806,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 return JSONResponse(status_code=403, content={"detail": f"Invalid proxy role '{role_header}'"})
 
-        effective_role, scim_error = self._resolve_runtime_role(
+        effective_role, scim_error = await self._resolve_runtime_role(
             request,
             tenant_id=tenant_id,
             upstream_role=proxy_role,
@@ -1848,7 +1848,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def _call_with_tenant_context(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         from agent_bom.api.tenancy import call_with_request_tenant
 
-        return await call_with_request_tenant(request, call_next)
+        return await call_with_request_tenant(request, call_next, authenticate=self.dispatch)
 
 
 DEFAULT_SCAN_RATE_LIMIT_RPM = 600

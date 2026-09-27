@@ -48,6 +48,61 @@ def test_session_key_lookup_binds_verified_tenant_and_restores_context():
         set_key_store(original)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("backend", ["memory", "postgres"])
+@pytest.mark.parametrize("restriction", ["revoked", "scope"])
+async def test_open_stream_rechecks_persisted_session_key(backend, restriction, monkeypatch):
+    from agent_bom.api import stream_authorization
+
+    if backend == "postgres":
+        if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            pytest.skip("AGENT_BOM_POSTGRES_URL required for live stream parity")
+        from agent_bom.api.postgres_access import PostgresKeyStore
+
+        keys = PostgresKeyStore()
+    else:
+        keys = KeyStore()
+    original = get_key_store()
+    set_key_store(keys)
+    monkeypatch.setattr(stream_authorization, "STREAM_RECHECK_SECONDS", 0.0)
+    tenant = f"stream-{uuid4().hex}"
+    _, key = create_api_key("stream-owner", Role.VIEWER, tenant_id=tenant, scopes=["scan:read"])
+    keys.provision_tenant_key(key, team_name=tenant)
+    captured = []
+
+    async def handler(request):
+        captured.append(request.state.stream_authorization)
+        return JSONResponse({"tenant": request.state.tenant_id})
+
+    app = Starlette(routes=[Route("/v1/scan/fixture/stream", handler)])
+    app.add_middleware(APIKeyMiddleware, api_key="")
+    token, _ = create_browser_session_token(
+        subject=key.name,
+        role=key.role.value,
+        tenant_id=tenant,
+        key_id=key.key_id,
+        auth_method="api_key",
+        scopes=key.scopes,
+        max_age_seconds=300,
+    )
+    before = _current_tenant.get()
+    try:
+        with TestClient(app) as client:
+            client.cookies.set(SESSION_COOKIE_NAME, token)
+            assert client.get("/v1/scan/fixture/stream").json() == {"tenant": tenant}
+        assert await captured[0].allowed()
+        if restriction == "scope":
+            key.scopes = ["runtime:read"]
+        else:
+            key.revoked_at = "2026-09-27T00:00:00+00:00"
+        if backend == "postgres":
+            run_tenant_bound(tenant, keys.add, key)
+        assert not await captured[0].allowed()
+        assert _current_tenant.get() == before
+    finally:
+        set_key_store(original)
+
+
 @pytest.mark.parametrize("backend", ["memory", "postgres"])
 def test_cookie_uses_current_persisted_key_authority(backend, monkeypatch):
     if backend == "postgres":

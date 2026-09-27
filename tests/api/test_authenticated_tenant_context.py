@@ -67,7 +67,7 @@ async def test_middleware_rejects_bad_tenant_before_handler_or_database(monkeypa
     next_handler = AsyncMock(return_value=JSONResponse({"unexpected": True}))
     token = set_current_tenant("outer")
     try:
-        response = await APIKeyMiddleware._call_with_tenant_context(None, _request(tenant), next_handler)
+        response = await APIKeyMiddleware(AsyncMock(), api_key="")._call_with_tenant_context(_request(tenant), next_handler)
         assert response.status_code == 500
         assert _current_tenant.get() == "outer"
         next_handler.assert_not_called()
@@ -130,9 +130,11 @@ async def test_middleware_restores_outer_context_after_handler(monkeypatch, rais
     try:
         if raises:
             with pytest.raises(RuntimeError, match="handler failed"):
-                await APIKeyMiddleware._call_with_tenant_context(None, _request("tenant-a"), handler)
+                await APIKeyMiddleware(AsyncMock(), api_key="")._call_with_tenant_context(_request("tenant-a"), handler)
         else:
-            assert (await APIKeyMiddleware._call_with_tenant_context(None, _request("tenant-a"), handler)).status_code == 200
+            assert (
+                await APIKeyMiddleware(AsyncMock(), api_key="")._call_with_tenant_context(_request("tenant-a"), handler)
+            ).status_code == 200
         assert seen == ["tenant-a"]
         assert _current_tenant.get() == "outer"
     finally:
@@ -157,6 +159,6 @@ async def test_middleware_rejects_absent_tenant_attribute():
     request = _request("tenant-a")
     del request.state.tenant_id
     next_handler = AsyncMock(return_value=JSONResponse({"unexpected": True}))
-    response = await APIKeyMiddleware._call_with_tenant_context(None, request, next_handler)
+    response = await APIKeyMiddleware(AsyncMock(), api_key="")._call_with_tenant_context(request, next_handler)
     assert response.status_code == 500
     next_handler.assert_not_called()

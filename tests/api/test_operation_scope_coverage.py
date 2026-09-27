@@ -149,8 +149,8 @@ def test_existing_session_cannot_gain_new_key_scope():
 def test_websocket_rejects_unrelated_scope(monkeypatch, path, transport):
     from starlette.websockets import WebSocketDisconnect
 
-    from agent_bom.api.routes.proxy import _ws_auth_from_token
     from agent_bom.api.server import app, configure_api
+    from agent_bom.api.websocket_auth import _ws_auth_from_token
 
     monkeypatch.delenv("AGENT_BOM_ALLOW_UNAUTHENTICATED_API", raising=False)
     configure_api(api_key=None, allow_unauthenticated=False)
@@ -257,7 +257,7 @@ def test_scope_rules_do_not_authorize_sibling_or_identity_subpaths(mode, path):
 
 @pytest.mark.parametrize("scopes", [[], ["*"], ["runtime:*"], ["runtime:read"]])
 def test_websocket_accepts_runtime_read_authority(scopes):
-    from agent_bom.api.routes.proxy import _ws_auth_from_token
+    from agent_bom.api.websocket_auth import _ws_auth_from_token
 
     raw, key = create_api_key(name="ws-reader", role=Role.VIEWER, scopes=scopes, tenant_id="scope-tenant")
     get_key_store().add(key)

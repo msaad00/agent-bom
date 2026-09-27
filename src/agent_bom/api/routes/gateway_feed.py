@@ -44,7 +44,6 @@ import anyio.to_thread
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sse_starlette.sse import EventSourceResponse
 from starlette.types import Receive, Scope, Send
 
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
@@ -63,6 +62,7 @@ from agent_bom.api.proxy_provenance import (
     producer_assurance_rollup,
     projected_producer_assurance,
 )
+from agent_bom.api.sse_authorization import AuthorizedEventSourceResponse as EventSourceResponse
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.runtime.gateway_events import (

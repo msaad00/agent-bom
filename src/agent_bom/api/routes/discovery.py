@@ -69,6 +69,33 @@ def _discover_agents_with_demo_fallback() -> list[Any]:
     return _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
 
 
+def _host_agents_for_tenant(tenant_id: str) -> list[Any] | None:
+    """Live host agents when this tenant may see them, else ``None``.
+
+    The API host's own AI clients are not a tenant's estate. Live discovery is
+    served only in demo mode or when an operator bound this host to the tenant
+    (the same fail-closed gate the scan pipeline enforces for ``discover_host``).
+    ``None`` tells callers to serve the tenant's scanned estate instead.
+    """
+    from agent_bom.api.scan_boundary import require_host_discovery_for_tenant
+    from agent_bom.demo_estate.bootstrap import demo_estate_enabled
+    from agent_bom.security import SecurityError
+
+    if not demo_estate_enabled():
+        try:
+            require_host_discovery_for_tenant(tenant_id)
+        except SecurityError:
+            return None
+    return _discover_agents_with_demo_fallback()
+
+
+def _scanned_estate_agents(tenant_id: str) -> list[dict[str, Any]]:
+    from agent_bom.api.estate_agents import scanned_estate_agents
+
+    jobs = [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+    return scanned_estate_agents(jobs)
+
+
 def _merge_strings(*values: list[str]) -> list[str]:
     merged: list[str] = []
     seen: set[str] = set()
@@ -427,9 +454,26 @@ def _fleet_identity_index(tenant_id: str) -> dict[str, dict[str, Any]]:
 
 
 def _build_agents_response(tenant_id: str) -> dict[str, Any]:
+    from agent_bom.api.estate_agents import AGENT_COUNT_DEFINITION, count_agent_payloads_by_class
     from agent_bom.parsers import extract_packages
 
-    agents = _discover_agents_with_demo_fallback()
+    host_agents = _host_agents_for_tenant(tenant_id)
+    if host_agents is None:
+        estate = _scanned_estate_agents(tenant_id)
+        return {
+            "scope": "scanned_estate",
+            "source": (
+                "Agents from this tenant's completed scans, one row per canonical agent identity "
+                "(the same population as /v1/inventory). Live discovery of this API host's own "
+                "AI-client configs is disabled unless an operator binds the host to this tenant."
+            ),
+            "count_definition": AGENT_COUNT_DEFINITION,
+            "agents": estate,
+            "count": len(estate),
+            "count_by_class": count_agent_payloads_by_class(estate),
+            "warnings": [],
+        }
+    agents = host_agents
     for agent in agents:
         for server in agent.mcp_servers:
             if not server.packages:
@@ -538,13 +582,20 @@ def _get_agent_mesh_impl(request: Request) -> dict:
     from agent_bom.output.agent_mesh import build_agent_mesh
     from agent_bom.parsers import extract_packages
 
-    agents = _discover_agents_with_demo_fallback()
+    tenant_id = _tenant_id(request)
+    host_agents = _host_agents_for_tenant(tenant_id)
+    if host_agents is None:
+        estate_blast: list[dict] = []
+        for job in _get_store().list_all(tenant_id=tenant_id):
+            if job.status == JobStatus.DONE and job.result:
+                estate_blast.extend(job.result.get("blast_radius", []))
+        return build_agent_mesh(_scanned_estate_agents(tenant_id), estate_blast)
+    agents = host_agents
     for agent in agents:
         for server in agent.mcp_servers:
             if not server.packages:
                 server.packages = extract_packages(server)
 
-    tenant_id = _tenant_id(request)
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
     fleet_index = _fleet_identity_index(tenant_id)
@@ -596,7 +647,10 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
 def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
     from agent_bom.parsers import extract_packages
 
-    agents = _discover_agents_with_demo_fallback()
+    host_agents = _host_agents_for_tenant(_tenant_id(request))
+    if host_agents is None:
+        return _estate_agent_detail(request, agent_name)
+    agents = host_agents
     matches = [a for a in agents if a.canonical_id == agent_name]
     if not matches:
         # Compatibility for display-name URLs: resolve the selection only;
@@ -668,6 +722,57 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
         "blast_radius": agent_blast,
         "credentials": all_credentials,
         "fleet": fleet_agent,
+    }
+
+
+def _estate_agent_detail(request: Request, agent_name: str) -> dict:
+    """Agent detail from the tenant's scanned estate (host discovery disabled)."""
+    from agent_bom.api.estate_agents import agent_identity_key
+
+    tenant_id = _tenant_id(request)
+    estate = _scanned_estate_agents(tenant_id)
+    matches = [agent for agent in estate if agent_identity_key(agent) == agent_name]
+    if not matches:
+        matches = [agent for agent in estate if agent.get("name") == agent_name]
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="Ambiguous agent label; select its canonical ID")
+    if not matches:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = matches[0]
+    canonical_id = agent_identity_key(agent)
+
+    agent_blast: list[dict] = []
+    for job in _get_store().list_all(tenant_id=tenant_id):
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        for br in job.result.get("blast_radius", []):
+            if canonical_id in br.get("affected_agent_ids", []):
+                agent_blast.append(br)
+
+    servers = [server for server in agent.get("mcp_servers") or [] if isinstance(server, dict)]
+    credentials: list[str] = []
+    for server in servers:
+        for name in server.get("credential_env_vars") or []:
+            if isinstance(name, str) and name not in credentials:
+                credentials.append(name)
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unrated": 0}
+    for br in agent_blast:
+        sev = normalize_severity(br.get("severity"))
+        severity_counts[sev if sev in severity_counts else "unrated"] += 1
+
+    return {
+        "agent": agent,
+        "summary": {
+            "total_servers": len(servers),
+            "total_packages": sum(len(server.get("packages") or []) for server in servers),
+            "total_tools": sum(len(server.get("tools") or []) for server in servers),
+            "total_credentials": len(credentials),
+            "total_vulnerabilities": len(agent_blast),
+            "severity_breakdown": severity_counts,
+        },
+        "blast_radius": agent_blast,
+        "credentials": credentials,
+        "fleet": _fleet_identity_index(tenant_id).get(canonical_id),
     }
 
 

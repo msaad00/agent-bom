@@ -135,6 +135,9 @@ def _manifest_roots(findings: list[Any]) -> list[str]:
     return sorted(roots, key=lambda r: (-(r.count("/") + 1) if r else 0, r))
 
 
+_NON_APPLICATION_ASSET_TYPES = frozenset({"package", "agent", "mcp_server", "server", "mcp_tool", "tool", "identity", "credential"})
+
+
 def _app_identity(finding: Any, manifest_roots: list[str]) -> tuple[str, str]:
     """Derive ``(app_key, app_label)`` for a finding, deterministically.
 
@@ -151,11 +154,11 @@ def _app_identity(finding: Any, manifest_roots: list[str]) -> tuple[str, str]:
     human-facing name. Returns ``("", "")`` when nothing identifies an app.
     """
     asset = _finding_asset(finding)
+    asset_type = str(asset.get("asset_type") or "").lower()
     location = _norm_path(asset.get("location"))
-    if not location and str(_finding_field(finding, "source") or "").upper() == "SBOM" and asset.get("asset_type") == "package":
-        # A package name alone does not identify an application. Explicit
-        # project/manifest paths still participate in application correlation.
-        return "", ""
+    if location and asset_type in _NON_APPLICATION_ASSET_TYPES and any(ch.isspace() for ch in location):
+        # An MCP server's "location" is its launch command, not a source path.
+        location = ""
     if location:
         segments = location.split("/")
         is_manifest = segments[-1].lower() in _MANIFEST_FILES
@@ -172,6 +175,10 @@ def _app_identity(finding: Any, manifest_roots: list[str]) -> tuple[str, str]:
                 return root.lower(), root
         return _repo_root(segments)
 
+    if asset_type in _NON_APPLICATION_ASSET_TYPES:
+        # A package, agent, server, or tool name identifies that component, not
+        # the application that ships it; without a path there is no app to name.
+        return "", ""
     asset_name = asset.get("name")
     if isinstance(asset_name, str) and asset_name.strip():
         clean = asset_name.strip()

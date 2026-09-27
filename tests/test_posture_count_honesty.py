@@ -19,6 +19,7 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.models import Agent, AgentType, MCPServer
+from tests._host_discovery import host_bound_to
 
 # ── /v1/agents/{name}: total_vulnerabilities vs severity_breakdown ──────────
 
@@ -58,6 +59,8 @@ def _job_store_with_unrated_blast() -> InMemoryJobStore:
 
 
 def test_agent_detail_severity_breakdown_sums_to_total(monkeypatch):
+    for key, value in host_bound_to("default").items():
+        monkeypatch.setenv(key, value)
     """``total_vulnerabilities`` must equal the sum of ``severity_breakdown``."""
     monkeypatch.setattr("agent_bom.discovery.discover_all", _agent_with_unrated_blast)
     monkeypatch.setattr("agent_bom.api.routes.discovery._get_store", _job_store_with_unrated_blast)

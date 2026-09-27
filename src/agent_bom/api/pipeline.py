@@ -1404,6 +1404,9 @@ def _run_scan_sync(job: ScanJob) -> None:
                 warnings_all.append(message)
                 coverage_warning_messages.add(message)
 
+        from agent_bom.discovery.identity import consolidate_project_agents
+
+        agents = consolidate_project_agents(agents)
         pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
 
         # ── Scope filtering (pre-extraction) ──

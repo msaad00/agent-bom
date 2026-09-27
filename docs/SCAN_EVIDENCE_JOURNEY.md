@@ -1,5 +1,9 @@
 # Inspect scan evidence and an agent BOM
 
+This preview requires matching dashboard and control-plane builds containing
+per-agent scan export. For CLI support, check that `agent-bom manifest --help`
+includes `--scan-result`; a package release can lag the source build.
+
 Run a scan, open its result, and expand **Evidence & agent BOM**. The collection
 receipt shows the recorded time, source list, and completed/incomplete requested
 scopes. Missing denominators remain unknown. A completed job does not establish
@@ -22,3 +26,8 @@ freshness, executed actions, effective privileges or assessed coverage.
 Inspect relationship evidence before taking action. Scan snapshots link to
 findings for that exact scope; correlated snapshots do not fabricate a source
 scan link. Compare the original findings and missing assessments with the BOM.
+
+![Synthetic scan with partial collection coverage and one recorded agent selected for BOM export](images/scan-agent-bom-live.png)
+
+The screenshot uses labeled synthetic evidence. The browser fixture demonstrates
+selection and presentation; it does not establish authenticated provider coverage.

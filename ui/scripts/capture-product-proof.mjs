@@ -3291,7 +3291,8 @@ async function main() {
       const panel = scanPage.locator('details[aria-label="Scan evidence and agent BOM"]');
       await panel.locator("summary").click();
       await panel.getByRole("combobox").selectOption("fixture-agent-1");
-      await panel.scrollIntoViewIfNeeded();
+      const top = await panel.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
+      await scrollTo(scanPage, top - 100);
     }, {
       expectedText: ["Collection partial", "2 of 3 requested scopes complete", "Download agent BOM", "Experimental profile"],
       expectedApiPaths: [`/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/status`],

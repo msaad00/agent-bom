@@ -164,7 +164,7 @@ def test_main_ui_smoke_covers_every_ui_classifier_surface() -> None:
 
 def test_path_gated_jobs_fail_closed_when_classifier_fails() -> None:
     jobs = _ci()["jobs"]
-    for name in ("docs-strict", "ui", "endpoint-packaging", "postgres-integration", "test-alpine", "action-dogfood"):
+    for name in ("docs-strict", "ui", "ui-e2e", "endpoint-packaging", "test-alpine"):
         condition = jobs[name]["if"]
         assert "needs.changes.result != 'success'" in condition
 
@@ -180,6 +180,9 @@ def test_path_gated_jobs_remain_cancellable() -> None:
         "postgres-integration",
         "test-alpine",
         "action-dogfood",
+        "ui-e2e",
+        "graph-performance",
+        "output-scale-performance",
     ):
         condition = jobs[name]["if"]
         assert "!cancelled()" in condition
@@ -244,7 +247,7 @@ def test_alpine_full_suite_timeout_leaves_musl_headroom() -> None:
 def test_alpine_full_suite_uses_bounded_parallelism() -> None:
     """The musl full suite must finish without overcommitting the hosted runner."""
     text = CI_WORKFLOW.read_text(encoding="utf-8")
-    alpine = text.split("      - name: Run tests (musl)", 1)[1].split("  # 3c. PR Base Branch Guard", 1)[0]
+    alpine = text.split("      - name: Run tests (musl)", 1)[1].split("  # 3c. Release Surface Consistency Check", 1)[0]
     full_suite = next(line.strip() for line in alpine.splitlines() if "uv run pytest tests/" in line)
 
     assert "-n 2" in full_suite
@@ -254,33 +257,156 @@ def test_alpine_full_suite_uses_bounded_parallelism() -> None:
 def test_pull_request_pytest_reports_slowest_tests() -> None:
     """PR runs surface the slowest tests so timeout regressions have evidence."""
     jobs = _ci()["jobs"]
-    shard_run = next(step["run"] for step in jobs["test-pr-shard"]["steps"] if step.get("name") == "Run deterministic test shard")
+    smoke_run = next(
+        step["run"] for step in jobs["test-smoke"]["steps"] if step.get("name") == "Run changed-domain and cross-surface smoke"
+    )
     main_run = next(step["run"] for step in jobs["test-main"]["steps"] if step.get("name") == "Run full correctness suite")
 
-    assert "--durations=25" in shard_run
+    assert "--durations=" in smoke_run
     assert "--durations=25" in main_run
     coverage_line = next(line.strip() for line in main_run.splitlines() if "--cov=agent_bom" in line)
     assert "--cov-fail-under=75" in coverage_line
 
 
-def test_pull_request_correctness_is_sharded_behind_required_aggregator() -> None:
-    """PR correctness stays exhaustive without one serial 17-minute job."""
+PR_EXCLUDED_POST_MERGE_JOBS = (
+    "test-main",
+    "graph-performance",
+    "output-scale-performance",
+    "sdk-import-smoke",
+    "postgres-integration",
+    "test-alpine",
+    "action-dogfood",
+    "docker",
+    "ui-e2e",
+)
+
+
+def test_pull_requests_run_only_the_fast_lane() -> None:
+    """The exhaustive suite and long lanes run after merge, never on a PR."""
     jobs = _ci()["jobs"]
+    assert "test-pr-shard" not in jobs
+    for name in PR_EXCLUDED_POST_MERGE_JOBS:
+        condition = jobs[name]["if"]
+        assert "github.event_name != 'pull_request'" in condition, name
+        assert "!cancelled()" in condition, name
 
-    shards = jobs["test-pr-shard"]
-    assert shards["strategy"]["matrix"]["shard"] == [0, 1, 2, 3]
-    shard_run = next(step["run"] for step in shards["steps"] if step.get("name") == "Run deterministic test shard")
-    assert "scripts/pytest_ci_plan.py shard" in shard_run
-    assert "not graph_performance" in shard_run
 
+def test_main_push_aggregator_requires_the_full_suite() -> None:
+    """A green main run must mean every post-merge lane actually passed.
+
+    The release gate (scripts/check_release_main_ci.py) accepts the tag only
+    when the exact main SHA has a successful ``ci.yml`` push run, so skipping
+    the full suite on main would silently weaken the release proof.
+    """
+    jobs = _ci()["jobs"]
     core = jobs["test-core"]
-    assert "test-pr-shard" in core["needs"]
-    assert "graph-performance" in core["needs"]
+    for lane in ("test-smoke", "test-main", "graph-performance", "output-scale-performance", "sdk-import-smoke", "postgres-integration"):
+        assert lane in core["needs"], lane
+    run = next(step["run"] for step in core["steps"] if step.get("name") == "Require every applicable correctness lane")
+    assert 'if [ "$EVENT_NAME" != "pull_request" ]' in run
+    for variable in ("MAIN_RESULT", "GRAPH_RESULT", "OUTPUT_SCALE_RESULT", "SDK_SMOKE_RESULT", "POSTGRES_RESULT"):
+        assert f'"${variable}"' in run
+    assert core["steps"][0]["env"]["EVENT_NAME"] == "${{ github.event_name }}"
 
     required = jobs["test"]
     assert required["name"] == "Test (Python 3.13)"
     assert "test-core" in required["needs"]
     assert "docker" in required["needs"]
+    docker_required = required["steps"][0]["env"]["DOCKER_REQUIRED"]
+    assert "pull_request" not in docker_required
+    assert "refs/heads/main" in docker_required
+
+
+def test_ci_runs_nightly_with_full_musl_suite() -> None:
+    workflow = _ci()
+    on = workflow.get(True, workflow.get("on", {}))
+    assert on["schedule"]
+    alpine = workflow["jobs"]["test-alpine"]
+    run_step = next(step for step in alpine["steps"] if step.get("name") == "Run tests (musl)")
+    assert "github.event_name == 'schedule'" in run_step["env"]["ALPINE_FULL"]
+
+
+def test_pull_request_classifiers_diff_from_the_merge_base() -> None:
+    """A two-dot diff against a newer base pulls main's own commits into the PR.
+
+    ``base.sha`` is main's tip when the PR event fired, not the branch point.
+    ``git diff base head`` then lists every file main changed since the branch
+    point, so unrelated lanes run and the changed-domain selector over-selects.
+    """
+    two_dot = 'git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"'
+    three_dot = 'git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"'
+    for name in ("ci.yml", "pr-security-gate.yml"):
+        text = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert two_dot not in text, name
+        assert three_dot in text, name
+    assert CI_WORKFLOW.read_text(encoding="utf-8").count(three_dot) == 2
+
+
+def test_pull_request_runs_cancel_superseded_but_main_runs_do_not() -> None:
+    concurrency = _ci()["concurrency"]
+    assert "github.event.pull_request.number" in concurrency["group"]
+    assert "github.event_name" in concurrency["group"]
+    assert concurrency["cancel-in-progress"] == "${{ github.ref != 'refs/heads/main' }}"
+
+
+def test_ui_pr_lane_is_fast_and_e2e_runs_after_merge() -> None:
+    jobs = _ci()["jobs"]
+    fast = {step.get("name") for step in jobs["ui"]["steps"]}
+    assert {"UI lint", "UI tests", "Graph schema codegen — Python ↔ TypeScript drift gate"} <= fast
+    assert "UI E2E" not in fast
+    assert "UI container smoke test" not in fast
+
+    export = jobs["ui-export"]
+    assert "UI static-export build (release parity)" in {step.get("name") for step in export["steps"]}
+    assert export["if"] == jobs["ui"]["if"]
+    assert "NEXT_EXPORT=1 npm run build" in CI_WORKFLOW.read_text(encoding="utf-8")
+
+    full = {step.get("name") for step in jobs["ui-e2e"]["steps"]}
+    assert {"UI production build", "UI container smoke test", "UI bundle budget", "UI E2E"} <= full
+    assert "needs.changes.outputs.ui == 'true'" in jobs["ui-e2e"]["if"]
+
+
+def test_mypy_cache_is_restored_on_prs_and_saved_only_from_main() -> None:
+    steps = _ci()["jobs"]["lint"]["steps"]
+    restore = next(step for step in steps if str(step.get("uses", "")).startswith("actions/cache/restore@"))
+    save = next(step for step in steps if str(step.get("uses", "")).startswith("actions/cache/save@"))
+    mypy = next(step for step in steps if step.get("name") == "MyPy")
+    assert steps.index(restore) < steps.index(mypy) < steps.index(save)
+    assert restore["with"]["path"] == save["with"]["path"] == ".mypy_cache"
+    assert "hashFiles('uv.lock')" in restore["with"]["key"]
+    assert "github.event_name == 'push'" in save["if"]
+    assert "refs/heads/main" in save["if"]
+
+
+def test_fuzzing_runs_after_merge_not_on_pull_requests() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/cflite-pr.yml").read_text())
+    triggers = workflow.get(True, workflow.get("on", {}))
+    assert "pull_request" not in triggers
+    assert "push" in triggers and "schedule" in triggers
+    main_fuzz = workflow["jobs"]["Main-Fuzzing"]
+    assert "github.event_name == 'push'" in main_fuzz["if"]
+    run = next(step for step in main_fuzz["steps"] if "run_fuzzers" in str(step.get("uses", "")))
+    assert run["with"]["mode"] == "batch"
+
+
+def test_codeql_pr_analysis_skips_test_code_only() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/codeql.yml").read_text())
+    init = next(step for step in workflow["jobs"]["analyze-python"]["steps"] if "codeql-action/init" in str(step.get("uses", "")))
+    config = yaml.safe_load(init["with"]["config"])
+    assert config["paths-ignore"] == ["tests/**"]
+    assert init["with"]["queries"] == "security-extended"
+
+
+def test_runtime_acceptance_is_post_merge_for_broad_api_changes() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/runtime-acceptance.yml").read_text())
+    triggers = workflow.get(True, workflow.get("on", {}))
+    assert "src/agent_bom/api/**" not in triggers["pull_request"]["paths"]
+    assert "src/agent_bom/api/**" in triggers["push"]["paths"]
+    assert ".github/workflows/runtime-acceptance.yml" in triggers["pull_request"]["paths"]
+
+    alert = yaml.safe_load((ROOT / ".github/workflows/main-failure-alert.yml").read_text())
+    watched = alert.get(True, alert.get("on", {}))["workflow_run"]["workflows"]
+    assert {"CI/CD Pipeline", "Runtime Helm Acceptance", "ClusterFuzzLite"} <= set(watched)
 
 
 def test_python_smoke_gate_combines_changed_domain_and_cross_surface_contracts() -> None:
@@ -306,11 +432,9 @@ def test_readme_contracts_run_for_ui_and_documentation_only_changes() -> None:
         assert f"tests/{contract}" in run
 
 
-def test_package_build_waits_for_smoke_not_long_correctness_shards() -> None:
-    """Wheel proof starts after fast correctness while shards continue in parallel."""
-    needs = _ci()["jobs"]["build"]["needs"]
-    assert "test-smoke" in needs
-    assert "test" not in needs
+def test_required_package_build_starts_immediately() -> None:
+    """Build Package is a required context; it must not queue behind other lanes."""
+    assert _ci()["jobs"]["build"]["needs"] == ["changes"]
 
 
 def test_measured_graph_heap_assertion_has_dedicated_conditional_job() -> None:
@@ -339,7 +463,6 @@ def test_output_scale_budgets_run_in_a_dedicated_uninstrumented_lane() -> None:
     assert setup["with"]["python-version"] == "3.11"
     assert scale_job["needs"] == "changes"
     assert "github.event_name != 'pull_request'" in scale_job["if"]
-    assert "needs.changes.outputs.python == 'true'" in scale_job["if"]
     assert "tests/test_release_output_scale_contract.py" in run
     assert "-m output_performance" in run
     assert "--cov" not in run

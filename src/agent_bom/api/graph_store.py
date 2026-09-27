@@ -170,7 +170,7 @@ class GraphStoreProtocol(Protocol):
 
     def save_graph(self, graph: UnifiedGraph) -> None: ...
 
-    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int: ...
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int: ...
 
     def save_graph_streaming(
         self,
@@ -186,6 +186,7 @@ class GraphStoreProtocol(Protocol):
         snapshot_kind: str = "scan",
         correlation_id: str = "",
         evidence_manifest_sha256: str = "",
+        write_generation: str = "",
     ) -> dict[str, int]: ...
 
     def complete_correlation_run(
@@ -785,11 +786,22 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
-    def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+    def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int:
         """Atomically remove one tenant-scoped snapshot and all projections."""
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_rw_conn()
         try:
+            # Serialize the ownership check with every SQLite writer, including
+            # other processes. Never authorize deletion from a stale read.
+            conn.execute("BEGIN IMMEDIATE")
+            if expected_generation is not None:
+                row = conn.execute(
+                    "SELECT snapshot_generation FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+                    (tenant_id, scan_id),
+                ).fetchone()
+                if not expected_generation or row is None or row[0] != expected_generation:
+                    conn.rollback()
+                    return 0
             total = 0
             for table in (
                 "graph_node_search",
@@ -1751,6 +1763,7 @@ class SQLiteGraphStore:
         snapshot_kind: str = "scan",
         correlation_id: str = "",
         evidence_manifest_sha256: str = "",
+        write_generation: str = "",
     ) -> dict[str, int]:
         """Persist a snapshot from node/edge iterables without materialising a graph.
 
@@ -1773,6 +1786,7 @@ class SQLiteGraphStore:
                 snapshot_kind=snapshot_kind,
                 correlation_id=correlation_id,
                 evidence_manifest_sha256=evidence_manifest_sha256,
+                write_generation=write_generation,
             )
             self._refresh_snapshot_search_index(conn, tenant_id=tenant_id, scan_id=scan_id)
             sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)

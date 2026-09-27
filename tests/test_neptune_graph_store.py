@@ -210,3 +210,13 @@ def test_neptune_incident_edge_pages_are_explicitly_unsupported() -> None:
     with pytest.raises(NeptuneGraphStoreUnsupportedOperationError, match="incident_edges_page"):
         store.incident_edges_page(tenant_id="tenant-a", node_id="agent:a", limit=5)
     assert client.calls == []
+
+
+def test_neptune_generation_owned_push_fails_closed_without_writes() -> None:
+    client = FakeGremlinClient()
+    store = NeptuneGraphStore(NeptuneGraphConfig(endpoint="wss://neptune.example:8182/gremlin"), client=client)
+    with pytest.raises(NeptuneGraphStoreUnsupportedOperationError):
+        store.save_graph_streaming(scan_id="s", tenant_id="t", nodes=[], edges=[], write_generation="owner")
+    with pytest.raises(NeptuneGraphStoreUnsupportedOperationError):
+        store.delete_snapshot(scan_id="s", tenant_id="t", expected_generation="owner")
+    assert client.calls == []

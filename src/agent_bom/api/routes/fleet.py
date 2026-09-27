@@ -13,6 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ from typing import Any, TypeVar, cast
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
-from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
+from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store, _get_policy_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -53,9 +54,14 @@ async def _store_call(fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T
         ) from exc
 
 
-def _quarantine_policy_name(agent_name: str) -> str:
-    """Deterministic gateway-policy name for an agent's quarantine deny rule."""
-    return f"Quarantine deny — {agent_name}"
+def _quarantine_policy_name(agent_id: str) -> str:
+    """Display label derived from the immutable containment subject."""
+    return f"Quarantine deny — {agent_id}"
+
+
+def _quarantine_policy_id(tenant_id: str, agent_id: str) -> str:
+    key = json.dumps(["agent-bom:fleet-quarantine:v1", tenant_id, agent_id], separators=(",", ":"))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
 
 
 def _state_value(agent: Any) -> str:
@@ -277,7 +283,9 @@ def _payload_tags(agent: dict) -> list[str]:
     return sorted({str(tag).strip() for tag in list(agent.get("tags", []) or []) if str(tag).strip()})
 
 
-def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery: str, last_synced: str) -> None:
+def _persist_payload_observations(
+    tenant_id: str, agent: dict, *, fleet_agent_id: str, agent_canonical_id: str, last_discovery: str, last_synced: str
+) -> None:
     store = _get_mcp_observation_store()
     agent_name = str(agent.get("name", "unknown-agent"))
     for idx, server in enumerate(agent.get("mcp_servers", []) or []):
@@ -296,7 +304,7 @@ def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery
                 auth_mode = "local-stdio"
         transport = str(server.get("transport") or "")
         stable_id = str(server.get("stable_id") or f"{server_name}:{server.get('command', '')}")
-        observation_id = f"{agent_name}:{stable_id}"
+        observation_id = agent_observation_id(fleet_agent_id, stable_id)
         candidate = MCPObservation(
             tenant_id=tenant_id,
             observation_id=observation_id,
@@ -304,6 +312,8 @@ def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery
             server_fingerprint=str(server.get("fingerprint") or stable_id),
             server_name=server_name,
             agent_name=agent_name,
+            agent_id=fleet_agent_id,
+            agent_canonical_id=agent_canonical_id,
             transport=transport,
             url=sanitize_url(server_url),
             auth_mode=auth_mode,
@@ -342,7 +352,6 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
     """
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, match_discovered_fleet_agent
-    from agent_bom.canonical_ids import canonical_agent_id
     from agent_bom.discovery import discover_all
     from agent_bom.fleet.trust_scoring import compute_trust_score
 
@@ -373,15 +382,34 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
     if body and body.agents:
         payload_agents = body.agents
         existing_agents = store.list_by_tenant(tenant_id)
-        existing_by_identity = {(agent.source_id or source_id or "server-discovery", agent.name): agent for agent in existing_agents}
-        existing_by_legacy_name = {agent.name: agent for agent in existing_agents if not agent.source_id}
-        incoming_keys = {
-            (
-                str(agent.get("source_id") or source_id or "server-discovery"),
-                str(agent.get("name", "unknown-agent")),
-            )
-            for agent in payload_agents
-        }
+
+        def payload_identity(agent: dict) -> str:
+            identity = agent.get("canonical_id")
+            if not isinstance(identity, str) or not identity or identity != identity.strip() or len(identity) > 512:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Each pushed agent requires a scoped canonical_id; names cannot establish identity. Use fleet sync from the CLI."
+                    ),
+                )
+            return identity
+
+        existing_by_identity: dict[str, list[FleetAgent]] = {}
+        for agent in existing_agents:
+            existing_by_identity.setdefault(agent.canonical_id, []).append(agent)
+        incoming_keys = {payload_identity(agent) for agent in payload_agents}
+        if len(incoming_keys) != len(payload_agents):
+            raise HTTPException(status_code=409, detail="Duplicate agent identities in fleet sync payload")
+        for payload_agent in payload_agents:
+            incoming_source = str(payload_agent.get("source_id") or source_id or "server-discovery")
+            for existing_agent in existing_by_identity.get(payload_identity(payload_agent), []):
+                if existing_agent.source_id and existing_agent.source_id != incoming_source:
+                    raise HTTPException(
+                        status_code=409, detail="Agent identity belongs to another source; use a source-scoped canonical_id"
+                    )
+        # Conflicting identities are not resolved by display name or list order.
+        if any(len(existing_by_identity.get(key, [])) > 1 for key in incoming_keys):
+            raise HTTPException(status_code=409, detail="Ambiguous fleet identity requires explicit reconciliation")
         new_identities = incoming_keys - set(existing_by_identity)
 
         # Hold the per-tenant quota guard across the (check + insert
@@ -397,13 +425,9 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                 name = payload_agent.get("name", "unknown-agent")
                 payload_source_id = str(payload_agent.get("source_id") or source_id or "server-discovery")
                 payload_agent_type = str(payload_agent.get("agent_type", "unknown"))
-                payload_canonical_id = str(payload_agent.get("canonical_id") or "") or canonical_agent_id(
-                    payload_agent_type,
-                    str(name),
-                    source_id=payload_source_id,
-                )
-                identity_key = (payload_source_id, str(name))
-                existing = existing_by_identity.get(identity_key) or existing_by_legacy_name.get(str(name))
+                payload_canonical_id = payload_identity(payload_agent)
+                candidates = existing_by_identity.get(payload_canonical_id, [])
+                existing = candidates[0] if candidates else None
                 server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
                 score = float(payload_agent.get("trust_score", 0.0) or 0.0)
                 factors = dict(payload_agent.get("trust_factors", {}) or {})
@@ -422,6 +446,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                     existing.trust_factors = factors
                     existing.last_discovery = now
                     existing.updated_at = now
+                    existing.name = str(name)
                     existing.config_path = ""
                     existing.agent_type = payload_agent_type or existing.agent_type
                     existing.source_id = payload_source_id or existing.source_id
@@ -461,8 +486,16 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
                         updated_at=now,
                     )
                     store.put(fleet_agent)
+                    existing_by_identity[payload_canonical_id] = [fleet_agent]
                     new_count += 1
-                _persist_payload_observations(tenant_id, payload_agent, last_discovery=now, last_synced=now)
+                _persist_payload_observations(
+                    tenant_id,
+                    payload_agent,
+                    fleet_agent_id=(existing if existing is not None else fleet_agent).agent_id,
+                    agent_canonical_id=payload_canonical_id,
+                    last_discovery=now,
+                    last_synced=now,
+                )
     else:
         discovered = discover_all()
         existing_agents = store.list_by_tenant(tenant_id)
@@ -600,24 +633,20 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     # Releasing an agent has to reverse containment, not just relabel it.
     # Quarantine mints an enforce-mode deny-all policy; leaving the state
     # without disabling it left the agent blocked forever on the control-plane
-    # policy path. Reuses _quarantine_policy_name so the two sides cannot drift.
+    # policy path. Reuses _quarantine_policy_id so the two sides cannot drift.
     if was_quarantined and new_state != FleetLifecycleState.QUARANTINED:
-        disabled = _disable_quarantine_policy(agent.name, tenant_id=tenant_id, actor=actor)
+        disabled = _disable_quarantine_policy(agent.agent_id, tenant_id=tenant_id, actor=actor)
         if disabled is not None:
             result["gateway_policy"] = {"policy_id": disabled, "disabled": True}
     return result
 
 
-def _disable_quarantine_policy(agent_name: str, *, tenant_id: str, actor: str) -> str | None:
+def _disable_quarantine_policy(agent_id: str, *, tenant_id: str, actor: str) -> str | None:
     """Disable the agent's quarantine deny policy; return its id when one was found."""
     from agent_bom.api.audit_log import log_action
 
     policy_store = _get_policy_store()
-    policy_name = _quarantine_policy_name(agent_name)
-    policy = next(
-        (p for p in policy_store.list_policies(tenant_id=tenant_id) if p.name == policy_name),
-        None,
-    )
+    policy = policy_store.get_policy(_quarantine_policy_id(tenant_id, agent_id), tenant_id=tenant_id)
     if policy is None or not policy.enabled:
         return None
     policy.enabled = False
@@ -645,7 +674,9 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
        agent's identity whose single rule denies every tool call
        (``block_tools=["*"]``).
 
-    The deny policy is scoped via ``bound_agents`` so only the quarantined
+    The deny policy binds the exact fleet ``agent_id`` through ``bound_agents``.
+    The caller must authenticate as this ID; names and canonical aliases are
+    never resolved for containment. Only the quarantined
     agent's traffic is blocked at the proxy / gateway relay — other agents are
     unaffected. The operation is idempotent (a second call re-enables the same
     policy rather than stacking duplicates) and both actions are audit-logged.
@@ -677,22 +708,18 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
     # 2) Create or re-enable a gateway DENY policy bound to this agent's identity.
     policy_store = _get_policy_store()
     now = datetime.now(timezone.utc).isoformat()
-    policy_name = _quarantine_policy_name(agent.name)
+    policy_name = _quarantine_policy_name(agent.agent_id)
     deny_rule = GatewayRule(
         id="quarantine-deny-all",
         action="block",
         block_tools=["*"],
         description=f"Quarantine: deny all tool calls for {agent.name}",
     )
-    existing = next(
-        (p for p in policy_store.list_policies(tenant_id=tenant_id) if p.name == policy_name),
-        None,
-    )
+    existing = policy_store.get_policy(_quarantine_policy_id(tenant_id, agent.agent_id), tenant_id=tenant_id)
     if existing is not None:
         existing.mode = PolicyMode.ENFORCE
         existing.rules = [deny_rule]
-        if agent.name not in (existing.bound_agents or []):
-            existing.bound_agents = [*(existing.bound_agents or []), agent.name]
+        existing.bound_agents = [agent.agent_id]
         existing.enabled = True
         existing.updated_at = now
         policy_store.put_policy(existing)
@@ -700,12 +727,12 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
         policy_action = "gateway.policy_updated"
     else:
         policy = GatewayPolicy(
-            policy_id=str(uuid.uuid4()),
+            policy_id=_quarantine_policy_id(tenant_id, agent.agent_id),
             name=policy_name,
             description=f"Auto-generated on fleet quarantine of {agent.name}. Denies all tool calls for this agent's identity.",
             mode=PolicyMode.ENFORCE,
             rules=[deny_rule],
-            bound_agents=[agent.name],
+            bound_agents=[agent.agent_id],
             enabled=True,
             created_at=now,
             updated_at=now,

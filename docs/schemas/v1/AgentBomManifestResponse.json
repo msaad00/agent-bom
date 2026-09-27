@@ -4,6 +4,22 @@
       "additionalProperties": true,
       "description": "Identified server entity with preserved observation membership.",
       "properties": {
+        "agent_binding": {
+          "default": "unbound",
+          "enum": [
+            "inventory_identity",
+            "unbound"
+          ],
+          "title": "Agent Binding",
+          "type": "string"
+        },
+        "agent_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Agent Ids",
+          "type": "array"
+        },
         "agent_name": {
           "default": "",
           "title": "Agent Name",

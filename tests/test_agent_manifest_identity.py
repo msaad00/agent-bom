@@ -33,5 +33,5 @@ def test_shared_server_retains_all_explicit_memberships():
     assert _uses(agents, [{"id": "server", "agent_name": "assistant"}]) == {("prod", "server"), ("dev", "server")}
 
 
-def test_unambiguous_name_hint_preserves_legacy_observation_link():
-    assert _uses([{"id": "agent", "name": "assistant"}], [{"id": "server", "agent_name": "assistant"}]) == {("agent", "server")}
+def test_even_a_currently_unique_name_cannot_establish_identity():
+    assert _uses([{"id": "agent", "name": "assistant"}], [{"id": "server", "agent_name": "assistant"}]) == set()

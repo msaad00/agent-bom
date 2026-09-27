@@ -3,15 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AgentsPage from "@/app/agents/page";
 
-const { apiMock, deploymentMock } = vi.hoisted(() => ({
+const { apiMock, deploymentMock, navigationMock } = vi.hoisted(() => ({
   apiMock: {
     listAgents: vi.fn(),
+    getAgentDetail: vi.fn(),
   },
   deploymentMock: { counts: undefined as unknown },
+  navigationMock: { query: "" },
 }));
 
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigationMock.query),
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   usePathname: () => "/agents",
 }));
@@ -101,6 +103,8 @@ const AGENTS = [
 
 beforeEach(() => {
   deploymentMock.counts = undefined;
+  navigationMock.query = "";
+  apiMock.getAgentDetail.mockReset();
   apiMock.listAgents.mockReset();
   apiMock.listAgents.mockResolvedValue({ agents: AGENTS });
 });
@@ -212,4 +216,18 @@ describe("AgentsPage agent population", () => {
     expect(subtitle()).not.toHaveTextContent("Estate agents");
     expect(screen.queryByRole("link", { name: "Open agent inventory" })).not.toBeInTheDocument();
   });
+});
+
+
+it("does not call an agent clean when no identity-linked findings are available", async () => {
+  navigationMock.query = "name=agent-id-1";
+  apiMock.getAgentDetail.mockResolvedValue({
+    agent: { ...AGENTS[0], mcp_servers: [] },
+    summary: { total_servers: 0, total_packages: 0, total_tools: 0, total_credentials: 0, total_vulnerabilities: 0, severity_breakdown: {} },
+    blast_radius: [], credentials: [], fleet: null,
+  });
+  render(<AgentsPage />);
+  expect(await screen.findByText("No attributed findings")).toHaveAttribute("title", expect.stringContaining("coverage may be incomplete"));
+  expect(screen.queryByText("Clean")).not.toBeInTheDocument();
+  expect(apiMock.getAgentDetail).toHaveBeenCalledWith("agent-id-1");
 });

@@ -210,6 +210,23 @@ def test_validate_valid_file(tmp_path):
     assert "Valid" in result.output
 
 
+def test_validate_hint_uses_supported_exact_inventory_flag(tmp_path):
+    inv_file = tmp_path / "inventory.json"
+    inv_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "generated_at": "2026-09-27T00:00:00Z",
+                "agents": [{"name": "demo", "agent_type": "custom", "mcp_servers": []}],
+            }
+        )
+    )
+    result = CliRunner().invoke(validate, [str(inv_file)])
+    assert result.exit_code == 0, result.output
+    assert "--no-discover" in result.output
+    assert "--inventory-only" not in result.output
+
+
 def test_validate_unknown_inventory_schema_version(tmp_path):
     runner = CliRunner()
     inv_file = tmp_path / "inv.json"

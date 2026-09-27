@@ -197,7 +197,7 @@ def validate(inventory_file: str):
         console.print(
             f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s){breakdown}, {total_servers} server(s), {total_packages} package(s)"
         )
-        console.print(f"\n  [dim]Scan exact inventory with:[/dim] agent-bom scan --inventory {inventory_file} --inventory-only")
+        console.print(f"\n  [dim]Scan exact inventory with:[/dim] agent-bom scan --inventory {inventory_file} --no-discover")
     else:
         console.print(f"\n  [red]✗ Invalid — {len(errors)} error(s):[/red]\n")
         for err in errors:

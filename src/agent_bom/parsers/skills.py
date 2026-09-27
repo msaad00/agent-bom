@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.models import MCPServer, Package, TransportType
-from agent_bom.npm_semver import npm_exact_version
+from agent_bom.parsers.npm_semver import npm_exact_version
 from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)

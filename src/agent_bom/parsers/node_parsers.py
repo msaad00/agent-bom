@@ -19,8 +19,8 @@ from urllib.parse import quote
 from agent_bom.checksums import parse_sri
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
-from agent_bom.npm_semver import npm_exact_version
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.parsers.npm_semver import npm_exact_version
 from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)

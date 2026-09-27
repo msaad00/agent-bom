@@ -20,9 +20,9 @@ from agent_bom.http_client import (
     reset_rate_limit_breaker,
 )
 from agent_bom.models import Package
-from agent_bom.npm_semver import classify_npm_spec
-from agent_bom.npm_semver import satisfies as npm_satisfies
 from agent_bom.package_utils import synthesize_purl
+from agent_bom.parsers.npm_semver import classify_npm_spec
+from agent_bom.parsers.npm_semver import satisfies as npm_satisfies
 
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)

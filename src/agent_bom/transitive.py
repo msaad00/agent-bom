@@ -12,8 +12,8 @@ from rich.console import Console
 
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
-from agent_bom.npm_semver import classify_npm_spec, npm_exact_version, resolve_npm_spec
 from agent_bom.package_utils import synthesize_purl
+from agent_bom.parsers.npm_semver import classify_npm_spec, npm_exact_version, resolve_npm_spec
 
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)

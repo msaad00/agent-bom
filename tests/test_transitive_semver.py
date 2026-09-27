@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_bom.npm_semver import classify_npm_spec, max_satisfying, npm_exact_version, resolve_npm_spec
+from agent_bom.parsers.npm_semver import classify_npm_spec, max_satisfying, npm_exact_version, resolve_npm_spec
 from agent_bom.transitive import _npm_caret_tilde_bounds, _resolve_npm_version, _semver_tuple
 
 

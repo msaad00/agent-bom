@@ -1,12 +1,12 @@
 name: ClusterFuzzLite
 
+# Post-merge lane: fuzzing no longer runs on pull requests (it was the
+# slowest PR workflow at ~9 minutes). Every parser-affecting main push gets a
+# short batch run, and the weekly schedule keeps the long batch run.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    # Fuzzing exercises Python parsers only — skip on docs/UI/deploy-only PRs.
-    # Not a required check, so workflow-level path filtering is safe here.
+    # Fuzzing exercises Python parsers only — skip docs/UI/deploy-only pushes.
     paths:
       - 'src/**'
       - 'tests/**'
@@ -20,9 +20,13 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: cflite-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   Build:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -35,8 +39,8 @@ jobs:
         with:
           language: python
 
-  PR-Fuzzing:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+  Main-Fuzzing:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -49,12 +53,12 @@ jobs:
         with:
           language: python
 
-      - name: Run fuzzers (code change — 60s per target)
+      - name: Run fuzzers (main push — short batch, 60s per target)
         uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fuzz-seconds: 60
-          mode: code-change
+          mode: batch
 
   Batch-Fuzzing:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

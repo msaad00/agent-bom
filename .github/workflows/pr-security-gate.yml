@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           changed=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
           elif [ "${{ github.event_name }}" = "push" ]; then
             before="${{ github.event.before }}"
             if [ -n "$before" ] && ! printf '%s' "$before" | grep -qE '^0+$'; then

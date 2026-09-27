@@ -9,6 +9,9 @@ on:
       - "Publish to MCP Registry"
       - "Publish MCP Container"
       - "Deploy MCP SSE"
+      # Post-merge lanes that left PR CI; a main regression must still page.
+      - "Runtime Helm Acceptance"
+      - "ClusterFuzzLite"
     types: [completed]
 
 concurrency:

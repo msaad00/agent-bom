@@ -3,8 +3,16 @@ name: CI/CD Pipeline
 permissions:
   contents: read
 
+# Lanes (see docs/operations/CI_RUNBOOK.md "CI lanes"):
+#   pull_request   fast lane only: required contexts, changed-domain tests,
+#                  drift gates, and path-gated validators. Target <= 5 min.
+#   push to main   everything: full 4-version suite, performance, Postgres,
+#                  musl, Docker, UI E2E, dogfood. The release gate reads this.
+#   schedule       nightly full run, including the full musl suite.
+# Superseded PR runs are cancelled; main runs never are, because
+# scripts/check_release_main_ci.py needs a completed run on the exact SHA.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
@@ -17,29 +25,11 @@ on:
     branches: [main]
   merge_group:
     types: [checks_requested]
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 jobs:
-  release-workflow-lint:
-    name: Release workflow lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Static guard against the two release-workflow startup_failure classes
-      # that GitHub reports with no logs and actionlint does not model:
-      #   1. a needs.<job> reference to a job not declared in needs:
-      #   2. a reusable-workflow call whose effective permissions are less than
-      #      the union the callee's jobs request (under a deny-all top-level)
-      # Network-free and dependency-free so it can be a hard required check.
-      - name: Validate release call-graph (needs + reusable-workflow permissions)
-        run: python3 scripts/lint_release_workflow.py .github/workflows/release.yml
-
   changes:
     name: Change Path Classifier
     runs-on: ubuntu-latest
@@ -72,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
           else
             before="${{ github.event.before }}"
             if [ -n "$before" ] && ! printf '%s' "$before" | grep -qE '^0+$'; then
@@ -216,6 +206,16 @@ jobs:
           # check_version_alignment.py verifies PUBLISHED_VERSION names a real
           # release tag; the shallow docs-only checkout needs tags for that.
           fetch-tags: true
+
+      # Static guard against the two release-workflow startup_failure classes
+      # that GitHub reports with no logs and actionlint does not model:
+      #   1. a needs.<job> reference to a job not declared in needs:
+      #   2. a reusable-workflow call whose effective permissions are less than
+      #      the union the callee's jobs request (under a deny-all top-level)
+      # Network-free and dependency-free, so it rides in this required job
+      # instead of paying for its own runner.
+      - name: Validate release call-graph (needs + reusable-workflow permissions)
+        run: python3 scripts/lint_release_workflow.py .github/workflows/release.yml
 
       - name: Block Finder duplicate artifacts
         run: python scripts/check_duplicate_artifacts.py
@@ -461,9 +461,31 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run make format-check
 
+      # mypy's incremental cache re-validates every module by content hash, so
+      # a restored cache can only skip work, never hide an error. PRs restore
+      # main's cache read-only; only main pushes write, which keeps PR runs
+      # from filling the repository cache quota.
+      - name: Restore mypy cache
+        if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}-
+
       - name: MyPy
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
         run: uv run make lint-mypy
+
+      - name: Save mypy cache
+        if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          (needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}-${{ github.sha }}
 
       - name: Env-var reference is current (config.py + allowlist gate)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'
@@ -523,19 +545,18 @@ jobs:
   ui:
     name: UI Validate
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     needs: changes
-    # PRs that touch no UI / API-contract / workflow paths skip this expensive
-    # lane. On pushes to main, Main UI Smoke is the canary and already builds
-    # the standalone app; keeping this required context skipped avoids a
-    # second full npm install/build for the same commit.
+    # PR fast lane for UI-affecting changes: lockfile/toolchain guards, lint,
+    # graph-schema drift, and unit tests. `ui-export` builds the NEXT_EXPORT
+    # bundle the release packages in parallel. The standalone container smoke,
+    # bundle budget, and Playwright E2E run post-merge in `ui-e2e`. Main pushes run both jobs, so a green
+    # main run still carries the complete UI proof the release gate reads.
     if: >-
       !cancelled() && (
-        github.event_name != 'push' && (
-          github.event_name != 'pull_request' ||
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.ui == 'true'
-        )
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.ui == 'true'
       )
     permissions:
       contents: read
@@ -626,6 +647,74 @@ jobs:
           cd ui
           npm run test:run
 
+  ui-export:
+    name: UI export build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: changes
+    # Runs beside `ui` rather than after it so the UI PR lane stays inside the
+    # five-minute budget; same trigger as `ui`.
+    if: >-
+      !cancelled() && (
+        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.ui == 'true'
+      )
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up UI toolchain
+        uses: ./.github/actions/setup-ui
+
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          npm ci
+
+      # Release parity gate. The release workflow builds the dashboard with
+      # NEXT_EXPORT=1 (output: export) for the Python package. Export mode
+      # enforces stricter rules than standalone -- every dynamic route must
+      # supply generateStaticParams -- so an export-incompatible route breaks
+      # the release build. Keep in sync with .github/workflows/release.yml.
+      - name: UI static-export build (release parity)
+        run: |
+          cd ui
+          rm -rf .next out
+          NEXT_EXPORT=1 npm run build
+          test -f out/index.html || {
+            echo "::error::NEXT_EXPORT=1 build did not produce ui/out/index.html"
+            exit 1
+          }
+
+  ui-e2e:
+    name: UI E2E and container smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: changes
+    # Post-merge half of UI validation (standalone build, container boot,
+    # bundle budget, Playwright E2E). Runs on every UI-affecting main push and
+    # on every scheduled or manual run.
+    if: >-
+      !cancelled() && github.event_name != 'pull_request' && (
+        github.event_name != 'push' ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.ui == 'true'
+      )
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up UI toolchain
+        uses: ./.github/actions/setup-ui
+
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          npm ci
+
       - name: UI production build
         run: |
           cd ui
@@ -677,25 +766,6 @@ jobs:
         run: |
           cd ui
           npm run test:e2e
-
-      # Release parity gate. The release workflow builds the dashboard with
-      # NEXT_EXPORT=1 (output: export) for the Python package, whereas the
-      # steps above build in standalone mode. Export mode enforces stricter
-      # rules — e.g. every dynamic route must supply generateStaticParams — so
-      # an export-incompatible route (like /accounts/[ref]) passes standalone
-      # CI yet breaks the release build. Run the export build last (it
-      # overwrites .next/out, so it must follow the bundle:check + E2E steps
-      # that consume the standalone output) to catch it in PR CI, not at
-      # release time. Keep in sync with .github/workflows/release.yml.
-      - name: UI static-export build (release parity)
-        run: |
-          cd ui
-          rm -rf .next out
-          NEXT_EXPORT=1 npm run build
-          test -f out/index.html || {
-            echo "::error::NEXT_EXPORT=1 build did not produce ui/out/index.html"
-            exit 1
-          }
 
   compose-contract:
     name: Compose Contract Validate
@@ -896,12 +966,12 @@ jobs:
           ./scripts/build-msi.ps1 -BundleDir $env:BUNDLE_DIR -OutputPath (Join-Path $env:RUNNER_TEMP "agent-bom-endpoint.msi") -Version $version -DryRun
 
   # 3. Python correctness
-  # Public-doc contracts run even for UI-only, docs-only, and mixed changes.
-  # Fast changed-domain/product-boundary feedback starts package proof while
-  # the exhaustive PR shards continue in parallel. The core aggregator below
-  # requires every applicable shard plus measured graph evidence. The existing
-  # branch-protection context `Test (Python 3.13)` is finalized after the
-  # conditional release-image gate so Docker input PRs cannot merge early.
+  # PRs run the changed-domain selection plus cross-surface contracts (public
+  # docs, CLI entry points, product surface, workflow contracts) -- the fast
+  # lane. The exhaustive 4-version suite, measured performance, Postgres, and
+  # musl lanes run on every main push and nightly; the core aggregator below
+  # requires all of them there, so the release gate's "green main" still means
+  # full coverage. `Test (Python 3.13)` is the branch-protection context.
   test-smoke:
     name: Python changed-domain and contract smoke
     runs-on: ubuntu-latest
@@ -926,7 +996,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            mapfile -t CHANGED < <(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+            mapfile -t CHANGED < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")
           elif [ -n "${{ github.event.before }}" ] && ! printf '%s' "${{ github.event.before }}" | grep -qE '^0+$'; then
             mapfile -t CHANGED < <(git diff --name-only "${{ github.event.before }}" "$GITHUB_SHA")
           else
@@ -990,38 +1060,6 @@ jobs:
           print("OK")
           PYEOF
 
-  test-pr-shard:
-    name: Python correctness shard ${{ matrix.shard }} of 0-3
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    needs: changes
-    if: >-
-      github.event_name == 'pull_request' && !cancelled() && (
-        needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
-      )
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: ./.github/actions/setup-python
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: uv sync --frozen --extra dev --extra api --extra mcp-server
-
-      - name: Run deterministic test shard
-        run: |
-          set -euo pipefail
-          mapfile -t TEST_FILES < <(uv run python scripts/pytest_ci_plan.py shard --index "${{ matrix.shard }}" --total 4 --root tests)
-          test "${#TEST_FILES[@]}" -gt 0
-          uv run pytest "${TEST_FILES[@]}" -q --tb=short --durations=25 -m "not network and not slow and not graph_performance" -n 2 --dist loadfile
-
   test-main:
     name: Full correctness (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -1059,45 +1097,23 @@ jobs:
     # The measured contract asserts peak-heap ratios rather than wall-clock
     # latency. Keep enough headroom for SQLite + tracemalloc on CPU-constrained
     # hosted runners while retaining a finite bound for genuine hangs.
+    # Post-merge only (~4 min); perf-scale-evidence.yml repeats it nightly.
     timeout-minutes: 30
     permissions:
       contents: read
     needs: changes
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     steps:
-      - name: Unrelated PR skip
-        if: >-
-          github.event_name == 'pull_request' &&
-          needs.changes.result == 'success' &&
-          needs.changes.outputs.graph_performance != 'true'
-        run: echo "No graph performance input changed; measured scale proof is not required."
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: >-
-          github.event_name != 'pull_request' ||
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.graph_performance == 'true'
 
       - uses: ./.github/actions/setup-python
-        if: >-
-          github.event_name != 'pull_request' ||
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.graph_performance == 'true'
         with:
           python-version: "3.13"
 
       - name: Install graph test dependencies
-        if: >-
-          github.event_name != 'pull_request' ||
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.graph_performance == 'true'
         run: uv sync --frozen --extra dev --extra graph
 
       - name: Run measured graph scale assertion
-        if: >-
-          github.event_name != 'pull_request' ||
-          needs.changes.result != 'success' ||
-          needs.changes.outputs.graph_performance == 'true'
         run: uv run pytest tests/graph/test_store_backed_build_wiring.py -q -m graph_performance
 
   output-scale-performance:
@@ -1106,16 +1122,12 @@ jobs:
     # Wall-clock assertions need an isolated, uninstrumented process. Running
     # them inside the four-worker Python 3.11 coverage lane measures shared
     # runner contention instead of exporter latency (issue #4968).
+    # Post-merge only.
     timeout-minutes: 10
     permissions:
       contents: read
     needs: changes
-    if: >-
-      !cancelled() && (
-        github.event_name != 'pull_request' ||
-        needs.changes.result != 'success' ||
-        needs.changes.outputs.python == 'true'
-      )
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1137,24 +1149,35 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-    needs: [changes, test-smoke, test-pr-shard, test-main, graph-performance, output-scale-performance]
+    needs: [changes, test-smoke, test-main, graph-performance, output-scale-performance, sdk-import-smoke, postgres-integration]
     if: ${{ !cancelled() }}
     steps:
       - name: Require every applicable correctness lane
         env:
+          EVENT_NAME: ${{ github.event_name }}
           SMOKE_RESULT: ${{ needs.test-smoke.result }}
-          PR_SHARDS_RESULT: ${{ needs.test-pr-shard.result }}
           MAIN_RESULT: ${{ needs.test-main.result }}
           GRAPH_RESULT: ${{ needs.graph-performance.result }}
           OUTPUT_SCALE_RESULT: ${{ needs.output-scale-performance.result }}
+          SDK_SMOKE_RESULT: ${{ needs.sdk-import-smoke.result }}
+          POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
         run: |
           set -euo pipefail
-          for result in "$SMOKE_RESULT" "$PR_SHARDS_RESULT" "$MAIN_RESULT" "$GRAPH_RESULT" "$OUTPUT_SCALE_RESULT"; do
-            case "$result" in
-              success|skipped) ;;
-              *) echo "Required correctness lane ended with: $result" >&2; exit 1 ;;
-            esac
-          done
+          if [ "$SMOKE_RESULT" != "success" ]; then
+            echo "Changed-domain and contract smoke ended with: $SMOKE_RESULT" >&2
+            exit 1
+          fi
+          # Pull requests run the fast lane only. Every other event (main push,
+          # nightly, merge queue, manual) must prove the full suite: a skip is
+          # a failure there, because the release gate trusts a green main run.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            for result in "$MAIN_RESULT" "$GRAPH_RESULT" "$OUTPUT_SCALE_RESULT" "$SDK_SMOKE_RESULT" "$POSTGRES_RESULT"; do
+              if [ "$result" != "success" ]; then
+                echo "Post-merge correctness lane ended with: $result" >&2
+                exit 1
+              fi
+            done
+          fi
           echo "All applicable Python correctness lanes passed."
 
   sdk-import-smoke:
@@ -1169,12 +1192,8 @@ jobs:
     # the normal Test job (which installs none of the cloud extras) — CI stays
     # green while a fresh install loses that discovery path at runtime. Install
     # the cloud extras here and actually execute every extra-gated import line.
-    if: >-
-      !cancelled() && (
-        (github.event_name != 'pull_request' && github.event_name != 'push') ||
-        needs.changes.result != 'success' ||
-        needs.changes.outputs.python == 'true'
-      )
+    # Post-merge only.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1198,12 +1217,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: >-
-      !cancelled() && (
-        (github.event_name != 'pull_request' && github.event_name != 'push') ||
-        needs.changes.result != 'success' ||
-        needs.changes.outputs.postgres == 'true'
-      )
+    # Post-merge only, and unconditional there: every main push proves the
+    # live-Postgres/RLS contract instead of only pushes that touch known paths.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     permissions:
       contents: read
     services:
@@ -1463,9 +1479,11 @@ jobs:
   # glibc-only assumptions in code, compiled extensions, or path handling.
   test-alpine:
     name: Test (Alpine/musl)
+    # Post-merge: the targeted musl subset on relevant main pushes, the full
+    # musl suite on dependency changes and every nightly run.
     if: >-
-      !cancelled() && (
-        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+      !cancelled() && github.event_name != 'pull_request' && (
+        github.event_name != 'push' ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.alpine == 'true'
       )
@@ -1525,7 +1543,7 @@ jobs:
 
       - name: Run tests (musl)
         env:
-          ALPINE_FULL: ${{ needs.changes.outputs.alpine_full }}
+          ALPINE_FULL: ${{ needs.changes.outputs.alpine_full == 'true' || github.event_name == 'schedule' }}
         run: |
           set -euxo pipefail
           if [ "${ALPINE_FULL}" = "true" ]; then
@@ -1539,28 +1557,6 @@ jobs:
               tests/test_context_graph.py::TestAPIContextGraph::test_api_endpoint_returns_graph \
               tests/test_context_graph.py::TestAPIContextGraph::test_api_agent_filter
           fi
-
-  # 3c. PR Base Branch Guard — prevent stacked PRs targeting feature branches
-  base-branch-check:
-    name: PR Base Branch Guard
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Verify PR targets main
-        run: |
-          BASE="${{ github.event.pull_request.base.ref }}"
-          if [ "$BASE" != "main" ]; then
-            echo "::error::PR targets '$BASE' instead of 'main'. All PRs must target main to prevent merge-order issues and lost code."
-            echo ""
-            echo "If you have dependent PRs, rebase each onto main independently."
-            echo "Do NOT use stacked PR base branches — they cause cascading conflicts"
-            echo "and code loss when parent branches are deleted after merge."
-            exit 1
-          fi
-          echo "✓ PR correctly targets main"
 
   # 3c. Release Surface Consistency Check
   version-check:
@@ -1674,11 +1670,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [changes, security, lint, test-smoke]
-    # Package proof starts after the compact changed-domain/contract gate while
-    # exhaustive correctness shards continue in parallel. Branch protection
-    # still requires their `Test (Python 3.13)` aggregator before merge.
-    if: ${{ !cancelled() && needs.security.result == 'success' && needs.lint.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.test-smoke.result) }}
+    needs: [changes]
+    # Required context. Runs in parallel with every other lane: a ~1 minute
+    # wheel build is cheaper than the wall-clock of queueing it behind them.
+    if: ${{ !cancelled() }}
     steps:
       - name: Documentation-only package skip
         if: needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'
@@ -1730,11 +1725,13 @@ jobs:
 
   native-image:
     name: Native App image and persistence
-    needs: [changes, security, lint, test-core]
+    needs: [changes]
     if: >-
-      !cancelled() && needs.security.result == 'success' &&
-      needs.lint.result == 'success' && needs.test-core.result == 'success' &&
-      (github.event_name == 'push' || needs.changes.outputs.native_image == 'true')
+      !cancelled() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.result != 'success' ||
+        needs.changes.outputs.native_image == 'true'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -1753,20 +1750,19 @@ jobs:
         run: uv run --extra dev pytest tests/test_native_app_persistence.py -q
 
   # 5. Docker Build + Scan (multi-arch)
-  # Runs on main and on PRs that change release-image inputs. The PR path is
-  # intentionally narrow because the emulated arm64 build is slow, but it must
-  # run before a Dockerfile/lockfile change can reach a tag-triggered release.
+  # Post-merge only: the emulated arm64 build takes ~6 minutes. A Dockerfile or
+  # lockfile change still cannot reach a tag-triggered release without it,
+  # because `Test (Python 3.13)` requires it on main and release.yml requires
+  # a green main push run on the exact tagged SHA.
   docker:
     name: Docker (multi-arch)
     if: >-
-      !cancelled() &&
+      !cancelled() && github.event_name != 'pull_request' &&
       needs.security.result == 'success' &&
       needs.lint.result == 'success' &&
       needs.test-core.result == 'success' && (
         (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-        (github.event_name == 'pull_request' &&
-         needs.changes.result == 'success' &&
-         needs.changes.outputs.alpine_full == 'true')
+        github.event_name == 'schedule'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -1877,9 +1873,7 @@ jobs:
           DOCKER_REQUIRED: >-
             ${{
               (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-              (github.event_name == 'pull_request' &&
-               needs.changes.result == 'success' &&
-               needs.changes.outputs.alpine_full == 'true')
+              github.event_name == 'schedule'
             }}
         run: |
           set -euo pipefail
@@ -1898,11 +1892,12 @@ jobs:
           echo "Correctness and applicable release-image proof passed."
 
   # 6. Dogfood GitHub Action (test action.yml via uses: ./)
+  # Post-merge only; runs on action-affecting main pushes and nightly.
   action-dogfood:
     name: Dogfood GitHub Action
     if: >-
-      !cancelled() && (
-        (github.event_name != 'pull_request' && github.event_name != 'push') ||
+      !cancelled() && github.event_name != 'pull_request' && (
+        github.event_name != 'push' ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.action == 'true'
       )

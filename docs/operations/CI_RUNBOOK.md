@@ -5,6 +5,51 @@ stuck, a workflow fails unexpectedly, or you need to retrigger checks.
 
 ---
 
+## CI lanes
+
+PR CI is a fast lane (target: a mergeable verdict in about five minutes).
+Long suites run after merge on every `main` push and nightly. All of them live
+in `ci.yml` unless noted, so one workflow run carries the full proof.
+
+| Lane | Pull request | Push to `main` | Nightly / manual |
+|---|---|---|---|
+| Lint and Type Check (ruff, mypy with main-seeded cache) | yes (required) | yes | yes |
+| Security Scan (policy gates, bandit, OSV, npm advisories, release call-graph lint) | yes (required) | yes | yes |
+| Build Package (wheel + clean-venv MCP smoke) | yes (required, starts immediately) | yes | yes |
+| Test (Python 3.13): changed-domain tests + cross-surface contracts | yes (required) | yes | yes |
+| Version Alignment (drift, counts, OpenAPI, schemas) | yes | yes | yes |
+| CodeQL (Python excluding `tests/`, Actions) | yes (required) | yes | weekly |
+| PR Security Gate (pip-audit, self-scan), Dependency Review, Gitleaks | yes | yes (except Dependency Review) | - |
+| UI Validate (lint, vitest, schema drift) + UI export build | when UI inputs change | when UI inputs change | yes |
+| Docs Strict, Helm, Compose, Endpoint packaging | when their inputs change | when their inputs change | yes |
+| Native App image and persistence | when its inputs change | yes | yes |
+| Full correctness suite, Python 3.11/3.12/3.13/3.14 (3.11 with coverage floor) | no | yes | yes |
+| Graph performance, Output scale performance, Extra-gated SDK smoke | no | yes | yes |
+| Postgres Integration Contract (live RLS, migrations, schema parity) | no | yes | yes |
+| Test (Alpine/musl) | no | subset; full on dependency changes | full suite nightly, subset manual |
+| Docker (multi-arch) + image scans | no | yes | nightly only |
+| UI E2E and container smoke (Playwright, bundle budget) | no | when UI inputs change | yes |
+| Dogfood GitHub Action | no | when action inputs change | yes |
+| ClusterFuzzLite (`cflite-pr.yml`) | no | short batch on parser changes | weekly long batch |
+| Runtime Helm Acceptance (`runtime-acceptance.yml`) | only gateway/runtime changes | API/Helm/Postgres/UI-gateway changes | manual |
+
+Why a release is still safe: `release.yml` runs
+`scripts/check_release_main_ci.py`, which accepts a tag only when the exact
+`main` HEAD has a completed, successful `ci.yml` **push** run. On push (and on
+nightly, merge-queue, and manual runs), `Python correctness aggregation`
+treats a skipped post-merge lane as a failure, and `Test (Python 3.13)`
+requires the Docker lane, so a green `main` run means the full suite, the
+performance/Postgres lanes, and the release image all passed. Superseded PR
+runs are cancelled; `main` runs never are. A post-merge regression opens a
+`ci-regression` issue through `main-failure-alert.yml`, which watches
+`CI/CD Pipeline`, `Runtime Helm Acceptance`, and `ClusterFuzzLite`.
+
+The tradeoff is explicit: a PR can merge with a failure the fast lane did not
+select, and the next `main` run reports it. Fix forward or revert; do not tag
+until `main` is green.
+
+---
+
 ## Documentation-only fast path
 
 The CI path classifier treats a change as documentation-only only when every

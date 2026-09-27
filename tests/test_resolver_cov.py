@@ -377,6 +377,120 @@ class TestResolvePackageVersion:
             assert pkg.purl == "pkg:npm/example-mcp@1.2.3"
 
 
+def _range_pkg(name: str, declared: str, ecosystem: str = "npm", **kwargs) -> Package:
+    return Package(
+        name=name,
+        version="unknown",
+        ecosystem=ecosystem,
+        declared_version=declared,
+        floating_reference=True,
+        version_confidence="low",
+        **kwargs,
+    )
+
+
+_LATEST_MUST_NOT_BE_USED = AssertionError("a declared range must never resolve via the /latest endpoint")
+
+
+class TestResolveDeclaredRanges:
+    @pytest.mark.asyncio
+    async def test_npm_range_resolves_to_max_satisfying_not_latest(self):
+        pkg = _range_pkg("form-data", "^4.0.0")
+        packument = {"dist-tags": {"latest": "5.0.0"}, "versions": {"4.0.0": {}, "4.0.6": {}, "5.0.0": {}}}
+        with (
+            patch("agent_bom.resolver.resolve_npm_metadata", side_effect=_LATEST_MUST_NOT_BE_USED),
+            patch("agent_bom.transitive.fetch_npm_packument", AsyncMock(return_value=packument)),
+        ):
+            assert await resolve_package_version(pkg, AsyncMock()) is True
+        assert pkg.version == "4.0.6"
+        assert pkg.resolved_version == "4.0.6"
+        assert pkg.declared_version == "^4.0.0"
+        assert pkg.purl == "pkg:npm/form-data@4.0.6"
+        assert pkg.resolved_from_registry is True
+        assert pkg.version_resolved_at
+
+    @pytest.mark.asyncio
+    async def test_scoped_npm_range_purl_is_encoded(self):
+        pkg = _range_pkg("@types/node", "*")
+        packument = {"dist-tags": {"latest": "22.1.0"}, "versions": {"20.0.0": {}, "22.1.0": {}}}
+        with patch("agent_bom.transitive.fetch_npm_packument", AsyncMock(return_value=packument)):
+            assert await resolve_package_version(pkg, AsyncMock()) is True
+        assert pkg.version == "22.1.0"
+        assert pkg.purl == "pkg:npm/%40types/node@22.1.0"
+
+    @pytest.mark.asyncio
+    async def test_unsatisfiable_npm_range_stays_unresolved(self):
+        pkg = _range_pkg("gone", "^9.0.0", registry_version="1.0.0")
+        packument = {"dist-tags": {"latest": "1.0.0"}, "versions": {"1.0.0": {}}}
+        with (
+            patch("agent_bom.resolver.resolve_npm_metadata", side_effect=_LATEST_MUST_NOT_BE_USED),
+            patch("agent_bom.transitive.fetch_npm_packument", AsyncMock(return_value=packument)),
+        ):
+            assert await resolve_package_version(pkg, AsyncMock()) is False
+        assert pkg.version == "unknown"
+        assert pkg.purl is None
+
+    @pytest.mark.asyncio
+    async def test_registry_unreachable_leaves_range_unresolved(self):
+        pkg = _range_pkg("form-data", "^4.0.0")
+        with (
+            patch("agent_bom.resolver.resolve_npm_metadata", side_effect=_LATEST_MUST_NOT_BE_USED),
+            patch("agent_bom.transitive.fetch_npm_packument", AsyncMock(return_value=None)),
+        ):
+            assert await resolve_package_version(pkg, AsyncMock()) is False
+        assert pkg.version == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_non_registry_spec_is_never_resolved(self):
+        pkg = _range_pkg("forked", "github:org/forked")
+        packument_fetch = AsyncMock(return_value=None)
+        with (
+            patch("agent_bom.resolver.resolve_npm_metadata", side_effect=_LATEST_MUST_NOT_BE_USED),
+            patch("agent_bom.transitive.fetch_npm_packument", packument_fetch),
+        ):
+            assert await resolve_package_version(pkg, AsyncMock()) is False
+        packument_fetch.assert_not_called()
+        assert pkg.version == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_pypi_constraint_resolves_inside_the_bound(self):
+        pkg = _range_pkg("jinja2", "<3.1.0", ecosystem="pypi")
+        releases = {"3.0.2": [{}], "3.0.3": [{}], "3.1.4": [{}]}
+        with (
+            patch("agent_bom.resolver.resolve_pypi_metadata", side_effect=_LATEST_MUST_NOT_BE_USED),
+            patch("agent_bom.transitive.fetch_pypi_releases", AsyncMock(return_value=releases)),
+        ):
+            assert await resolve_package_version(pkg, AsyncMock()) is True
+        assert pkg.version == "3.0.3"
+        assert pkg.purl == "pkg:pypi/jinja2@3.0.3"
+
+    @pytest.mark.asyncio
+    async def test_pypi_unsatisfiable_constraint_stays_unresolved(self):
+        pkg = _range_pkg("jinja2", ">=9.0", ecosystem="pypi")
+        with (
+            patch("agent_bom.resolver.resolve_pypi_metadata", side_effect=_LATEST_MUST_NOT_BE_USED),
+            patch("agent_bom.transitive.fetch_pypi_releases", AsyncMock(return_value={"3.1.4": [{}]})),
+        ):
+            assert await resolve_package_version(pkg, AsyncMock()) is False
+        assert pkg.version == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_other_ecosystem_constraint_is_not_resolved_to_latest(self):
+        pkg = _range_pkg("github.com/hashicorp/terraform-provider-aws", "~> 5.0", ecosystem="go")
+        with patch("agent_bom.version_utils.resolve_go_metadata", side_effect=_LATEST_MUST_NOT_BE_USED):
+            assert await resolve_package_version(pkg, AsyncMock()) is False
+        assert pkg.version == "unknown"
+
+    @pytest.mark.asyncio
+    async def test_same_name_different_ranges_resolve_independently(self):
+        a = _range_pkg("minipass", "^5.0.0")
+        b = _range_pkg("minipass", "^7.0.0")
+        packument = {"dist-tags": {"latest": "7.1.2"}, "versions": {"5.0.0": {}, "7.1.2": {}}}
+        with patch("agent_bom.transitive.fetch_npm_packument", AsyncMock(return_value=packument)):
+            await resolve_all_versions([a, b], quiet=True, enrich_license_metadata=False)
+        assert (a.version, b.version) == ("5.0.0", "7.1.2")
+
+
 class TestResolveAllVersions:
     @pytest.mark.asyncio
     async def test_duplicate_package_resolution_is_deduped_and_propagated(self):

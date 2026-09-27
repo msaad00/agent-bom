@@ -32,11 +32,43 @@ Linux paths use `~/.config/` equivalents.
 | Source | Data |
 |--------|------|
 | [OSV](https://osv.dev) | Primary CVE database — covers PyPI, npm, Go, Maven, etc. |
-| [NVD](https://nvd.nist.gov) | CVSS v4 base scores |
+| [NVD](https://nvd.nist.gov) | CVSS base scores (v3.1, then v3.0, then v2) |
 | [EPSS](https://www.first.org/epss/) | Exploit probability scores (0.0–1.0) |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known exploited vulnerabilities catalog |
 | [GitHub Advisories](https://github.com/advisories) | Supplemental advisory data |
 | Commercial vuln API | Optional enrichment when a vendor API token is configured |
+
+### Severity basis
+
+Online (OSV API) and `--offline` (local DB) scans derive severity from an
+advisory with one precedence, so `--fail-on-severity` gates do not depend on
+mode:
+
+1. CVSS base score from the OSV `severity` array — v3.x, then v4.0, then v2.
+2. Otherwise a CVSS score or vector in the advisory's vendor blocks
+   (`database_specific`, `severity_vectors`, `affected[]`), v3.x before v4.0.
+3. A CVSS score sets the severity band (`severity_source: cvss`); the reported
+   `cvss_vector` is the one that produced the score, so its prefix
+   (`CVSS:3.1/`, `CVSS:4.0/`) names the basis.
+4. Otherwise the advisory's own label (`severity_source: osv_database`, …).
+5. Otherwise a conservative namespace fallback (for example GHSA → medium,
+   `severity_source: ghsa_heuristic`).
+
+Local databases synced before this precedence keep their stored scores until the
+next `agent-bom db update`.
+
+### Declared version ranges
+
+A range is never reported as a version. Without a lockfile, a `package.json`
+spec such as `^4.0.0`, `5.0.0 || ^7.0.0`, or `*` (and the same in transitive
+registry metadata, `npx pkg@^1`, install commands, PyPI specifiers, and
+Terraform provider constraints) keeps the raw spec in `declared_version`, is
+marked `floating_reference`, and is resolved online to the version a fresh
+install selects — the `latest` dist-tag when it satisfies the range, else the
+highest satisfying release. When nothing satisfies it, the registry is
+unreachable, or the scan is `--offline`, the version stays `unknown`, has no
+purl, and no advisory is matched against the range's lower bound. Git, URL,
+file, alias, and workspace specs are never resolved to a registry version.
 
 ### Reproducible matching evidence
 

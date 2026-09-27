@@ -55,6 +55,41 @@ class RepoTreeScanResult:
     scan_issues: list[ScanIssue] = field(default_factory=list)
 
 
+def scan_path_secrets(roots: list[Path] | list[str], *, offline: bool) -> tuple[dict[str, Any], list[ScanIssue]]:
+    """Run the CLI's secret scan over each API-submitted root and merge the results.
+
+    One root keeps the scanner's root-relative paths, exactly as ``scan -p``
+    reports them. Several roots prefix each path with its root's name so a
+    finding still says which submitted tree it came from. Offline scans make
+    no live credential-validation calls, matching the CLI.
+    """
+    from agent_bom.secret_scanner import SecretScanResult, scan_secrets
+
+    merged = SecretScanResult()
+    resolved = [Path(root) for root in roots]
+    for root in resolved:
+        part = scan_secrets(root, aws_live_validation=False) if offline else scan_secrets(root)
+        if len(resolved) > 1:
+            for finding in part.findings:
+                finding.file_path = f"{root.name}/{finding.file_path}"
+        merged.findings.extend(part.findings)
+        merged.files_scanned += part.files_scanned
+        merged.ignored_paths += part.ignored_paths
+        merged.pruned_directories += part.pruned_directories
+        merged.warnings.extend(part.warnings)
+    issues = [
+        ScanIssue(
+            code="scanner_coverage_gap",
+            stage="scanning",
+            source="secret-scan",
+            message=f"Secret scan incomplete: {warning}",
+            affects_coverage=True,
+        )
+        for warning in merged.warnings
+    ]
+    return merged.to_dict(), issues
+
+
 @dataclass
 class WeakCryptoFinding:
     file_path: str
@@ -300,26 +335,15 @@ def scan_cloned_repo_tree(
                 f"{'y' if inventory.get('manifest_directories') == 1 else 'ies'}"
             )
 
-    from agent_bom.secret_scanner import scan_secrets
-
     if update_progress is not None:
         update_progress("Scanning for hardcoded secrets and credentials")
-    secret_result = scan_secrets(root)
+    secrets_block, secret_issues = scan_path_secrets([root], offline=offline)
     # A zero-finding result still records whether discovery actually covered
     # the requested tree. Preserve it through both API report assembly paths.
-    ai_inventory["secrets"] = secret_result.to_dict()
-    result.scan_issues.extend(
-        ScanIssue(
-            code="scanner_coverage_gap",
-            stage="scanning",
-            source="secret-scan",
-            message=f"Secret scan incomplete: {warning}",
-            affects_coverage=True,
-        )
-        for warning in secret_result.warnings
-    )
-    if secret_result.total > 0:
-        warnings.append(f"{secret_result.total} hardcoded secret(s) or credential pattern(s) found in repository files")
+    ai_inventory["secrets"] = secrets_block
+    result.scan_issues.extend(secret_issues)
+    if secrets_block["total"] > 0:
+        warnings.append(f"{secrets_block['total']} hardcoded secret(s) or credential pattern(s) found in repository files")
 
     if update_progress is not None:
         update_progress("Scanning for weak or deprecated cryptography")

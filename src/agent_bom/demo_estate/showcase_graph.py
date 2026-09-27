@@ -81,7 +81,7 @@ SHOWCASE_PACKAGES: dict[str, tuple[str, str, str, float]] = {
     "pyyaml@5.3": ("shell-runner-server", "CVE-2020-14343", "critical", 9.8),
     "langchain@0.0.150": ("llm-orchestrator-server", "CVE-2023-36258", "critical", 9.8),
     "pillow@9.0.0": ("etl-server", "CVE-2023-4863", "high", 8.8),
-    "jsonwebtoken@8.5.1": ("helpdesk-server", "CVE-2022-23529", "high", 7.6),
+    "jsonwebtoken@8.5.1": ("helpdesk-server", "CVE-2022-23539", "high", 8.1),
     "axios@1.4.0": ("helpdesk-server", "CVE-2023-45857", "medium", 6.5),
     "cryptography@39.0.0": ("warehouse-server", "CVE-2023-50782", "high", 7.5),
     "ws@8.5.0": ("filesystem-server", "CVE-2024-37890", "high", 7.5),

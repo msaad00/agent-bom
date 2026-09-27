@@ -113,6 +113,7 @@ async def test_mcp_scan_emits_graph_derived_categories():
     result = await scan_impl(
         config_path="/tmp/estate",
         offline=True,
+        detail="full",
         _run_scan_pipeline=_pipeline,
         _truncate_response=_trunc,
     )
@@ -139,6 +140,7 @@ async def test_mcp_matches_api_categories():
         await scan_impl(
             config_path="/tmp/estate",
             offline=True,
+            detail="full",
             _run_scan_pipeline=_pipeline,
             _truncate_response=_trunc,
         )
@@ -230,6 +232,7 @@ async def test_mcp_verify_integrity_populates_the_model_verdict(monkeypatch):
             offline=False,
             auto_update_db=False,
             verify_integrity=True,
+            detail="full",
             _run_scan_pipeline=_pipeline,
             _truncate_response=_trunc,
         )

@@ -169,8 +169,10 @@ def input_options(fn):
                 type=click.Path(exists=True),
                 default=None,
                 help=(
-                    "Path to tool-agnostic SARIF, CycloneDX, SPDX, Trivy, Grype, or Syft output. "
-                    "Imports existing evidence without executing Semgrep and adds blast-radius analysis."
+                    "Path to an existing tool-agnostic report: SARIF 2.x, CycloneDX or SPDX JSON, or Trivy/Grype/Syft JSON. "
+                    "Adds its evidence to the scan without executing the producing tool; project auto-detection still runs. "
+                    "SARIF dependency results (CVE/GHSA rule ids) attach to the real package@version, other SARIF results "
+                    "stay SAST findings with file:line; a CycloneDX/SPDX SBOM without vulnerabilities is ingested like --sbom."
                 ),
             ),
             click.option(
@@ -538,7 +540,10 @@ def policy_options(fn):
             click.option(
                 "--fail-on-kev",
                 is_flag=True,
-                help="Exit 1 if any finding appears in CISA KEV (works offline from the local DB; --enrich not required)",
+                help=(
+                    "Exit 1 if any finding appears in CISA KEV. --enrich is not required: online the KEV catalog is "
+                    "fetched automatically; offline a fresh local DB or KEV cache is used, else the gate fails closed with a hint"
+                ),
             ),
             click.option("--fail-on-malicious", is_flag=True, help="Exit 1 if any package is flagged as known malicious"),
             click.option("--fail-if-ai-risk", is_flag=True, help="Exit 1 if an AI framework package with credentials has vulnerabilities"),

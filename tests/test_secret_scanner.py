@@ -197,3 +197,39 @@ def test_scan_secrets_skips_agent_bom_own_reports(tmp_path: Path):
     )
     result = scan_secrets(tmp_path)
     assert result.total == 0
+
+
+def test_password_in_a_connection_string_is_a_critical_credential_not_an_email(tmp_path: Path):
+    """`user:pass@host` in a DSN is a credential; the `pass@host` tail is not an email."""
+    cursor = tmp_path / ".cursor"
+    cursor.mkdir()
+    (cursor / "mcp.json").write_text(
+        '{"mcpServers": {"pg": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-postgres", '
+        '"postgresql://admin:SuperSecret1@db.internal:5432/prod"]}}}\n',
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    findings = {(f.file_path, f.secret_type, f.severity, f.category) for f in result.findings}
+    assert findings == {(".cursor/mcp.json", "Connection String", "critical", "credential")}
+    assert all("SuperSecret1" not in f.matched_preview for f in result.findings)
+
+
+def test_connection_string_schemes_and_non_credentials(tmp_path: Path):
+    (tmp_path / "config.yaml").write_text(
+        "a: mongodb+srv://svc:p4ssw0rdX@cluster0.example.net/db\n"
+        "b: rediss://default:tok3nValue@cache.internal:6380\n"
+        "c: postgres://db.internal:5432/prod\n"
+        "d: postgresql://app:${DB_PASSWORD}@db.internal/prod\n"
+        "e: ops@example.org\n",
+        encoding="utf-8",
+    )
+
+    result = scan_secrets(tmp_path)
+
+    by_line = {(f.line_number, f.secret_type) for f in result.findings}
+    assert (1, "Connection String") in by_line
+    assert (2, "Connection String") in by_line
+    assert not any(line in (3, 4) for line, _ in by_line), by_line
+    assert (5, "Email Address") in by_line

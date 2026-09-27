@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
@@ -17,6 +18,15 @@ from typing import AbstractSet, Any, Awaitable, Callable, TypeVar
 from agent_bom.security import sanitize_log_label
 
 _ToolReturn = TypeVar("_ToolReturn")
+
+
+class ToolErrorPayload(str):
+    """A JSON tool payload that reports a failed or incomplete call.
+
+    It is an ordinary JSON string for callers that only read text; tools that
+    return a ``CallToolResult`` map it to ``isError=True``.
+    """
+
 
 try:
     from mcp.server.fastmcp.exceptions import ToolError as _FastMCPToolError
@@ -42,9 +52,114 @@ def validate_cve_id(cve_id: str, cve_re, ghsa_re) -> str:  # noqa: ANN001
     return cleaned
 
 
+_MAX_REPORTED_TRUNCATIONS = 50
+_STRING_CAPS: tuple[int | None, ...] = (None, 2000, 400, 80)
+
+
+def _trim_json(
+    node: Any,
+    path: str,
+    list_cap: int,
+    str_cap: int | None,
+    lists: dict[str, dict[str, int]],
+    counters: dict[str, int],
+) -> Any:
+    if isinstance(node, dict):
+        return {key: _trim_json(value, f"{path}.{key}", list_cap, str_cap, lists, counters) for key, value in node.items()}
+    if isinstance(node, list):
+        kept = node[:list_cap]
+        if len(node) > list_cap:
+            counters["lists"] += 1
+            seen = lists.get(path)
+            if seen is not None:
+                seen["total"] = max(seen["total"], len(node))
+            elif len(lists) < _MAX_REPORTED_TRUNCATIONS:
+                lists[path] = {"total": len(node), "returned": len(kept)}
+        child = f"{path}[*]"
+        return [_trim_json(value, child, list_cap, str_cap, lists, counters) for value in kept]
+    if isinstance(node, str) and str_cap is not None and len(node) > str_cap:
+        counters["strings"] += 1
+        return node[:str_cap]
+    return node
+
+
+def _render_trimmed(doc: Any, original_length: int, list_cap: int, str_cap: int | None) -> tuple[str, dict[str, int]]:
+    lists: dict[str, dict[str, int]] = {}
+    counters = {"lists": 0, "strings": 0}
+    body = _trim_json(doc, "$", list_cap, str_cap, lists, counters)
+    meta = {
+        "message": (
+            "Response exceeded the MCP response budget; lists and long strings were shortened. "
+            "Use more specific parameters or paged follow-ups."
+        ),
+        "original_length": original_length,
+        "max_list_items": list_cap,
+        "max_string_chars": str_cap,
+        "lists": lists,
+        "lists_truncated": counters["lists"],
+        "strings_truncated": counters["strings"],
+    }
+    out: dict[str, Any] = {"_truncated": True, "_truncation": meta}
+    if isinstance(body, dict):
+        out.update((key, value) for key, value in body.items() if key not in out)
+    else:
+        out["data"] = body
+    return json.dumps(out, separators=(",", ":"), default=str), counters
+
+
+def _bounded_json(response_str: str, max_response_chars: int) -> str | None:
+    """Shrink a JSON document to fit the budget while keeping it valid JSON.
+
+    Lists are cut to a common item cap and, if still needed, long strings are
+    shortened. Shortened lists are reported with their original length so the
+    caller knows exactly what was left out.
+    """
+    try:
+        doc = json.loads(response_str)
+    except ValueError:
+        return None
+    if not isinstance(doc, dict | list):
+        return None
+    # Pretty-printed payloads can fit once re-serialized compactly.
+    compact = json.dumps(doc, separators=(",", ":"), default=str)
+    if len(compact) <= max_response_chars:
+        return compact
+    original_length = len(response_str)
+    for str_cap in _STRING_CAPS:
+        best, _ = _render_trimmed(doc, original_length, 0, str_cap)
+        if len(best) > max_response_chars:
+            continue
+        # Gallop up from small caps so each render stays near the budget size
+        # (never re-walking the whole document), then bisect the last interval.
+        low, cap, high = 0, 1, None
+        while high is None:
+            rendered, cut = _render_trimmed(doc, original_length, cap, str_cap)
+            if len(rendered) > max_response_chars:
+                high = cap - 1
+            elif cut["lists"] == 0:
+                return rendered
+            else:
+                best, low = rendered, cap
+                cap *= 2
+        while low < high:
+            mid = (low + high + 1) // 2
+            rendered, _ = _render_trimmed(doc, original_length, mid, str_cap)
+            if len(rendered) <= max_response_chars:
+                best, low = rendered, mid
+            else:
+                high = mid - 1
+        return best
+    return None
+
+
 def truncate_response(response_str: str, max_response_chars: int) -> str:
     if len(response_str) <= max_response_chars:
         return response_str
+    # Shrink JSON structurally so the result always parses, instead of
+    # slicing the document mid-value into a string preview.
+    bounded = _bounded_json(response_str, max_response_chars)
+    if bounded is not None:
+        return bounded
     # MCP tool results are JSON contracts. Appending a second JSON object to a
     # sliced first object produced invalid JSON on large estates.
     envelope: dict[str, object] = {
@@ -75,11 +190,36 @@ def truncate_response(response_str: str, max_response_chars: int) -> str:
     return "{}" if max_response_chars >= 2 else "0" if max_response_chars == 1 else ""
 
 
+def mcp_workspace_roots() -> list[Path]:
+    """Operator-configured roots MCP path arguments may resolve into besides HOME.
+
+    Read from ``AGENT_BOM_MCP_WORKSPACE_ROOTS`` (``os.pathsep``-separated) at
+    call time. Relative entries and filesystem roots are ignored so a
+    misconfiguration can never widen the sandbox to the whole disk.
+    """
+    roots: list[Path] = []
+    for raw in os.environ.get("AGENT_BOM_MCP_WORKSPACE_ROOTS", "").split(os.pathsep):
+        entry = raw.strip()
+        if not entry:
+            continue
+        candidate = Path(entry).expanduser()
+        if not candidate.is_absolute() or ".." in candidate.parts:
+            continue
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError):
+            continue
+        if resolved == Path(resolved.anchor) or resolved in roots:
+            continue
+        roots.append(resolved)
+    return roots
+
+
 def safe_path(path_str: str) -> Path:
     from agent_bom.security import SecurityError, validate_path
 
     try:
-        return validate_path(path_str, restrict_to_home=True)
+        return validate_path(path_str, restrict_to_home=True, allowed_roots=mcp_workspace_roots())
     except SecurityError as exc:
         raise ValueError(str(exc)) from exc
 
@@ -479,7 +619,7 @@ async def execute_tool_async(
                 log_caller,
                 log_actor,
             )
-            return truncate_response_fn(json.dumps(denial))
+            return ToolErrorPayload(truncate_response_fn(json.dumps(denial)))
         if "operator_role" in kwargs and _scope_set(auth_scopes) & {"admin", "operator", "admin:*", "*"}:
             kwargs["operator_role"] = "admin"
     log_caller = _log_value(request_meta["caller"])
@@ -497,14 +637,16 @@ async def execute_tool_async(
             error="rate limited",
         )
         logger.warning("mcp tool rate limited: %s caller=%s retry_after=%.3fs", tool_name, log_caller, retry_after)
-        return truncate_response_fn(
-            json.dumps(
-                {
-                    "error": f"Tool '{tool_name}' exceeded the caller rate limit",
-                    "tool": tool_name,
-                    "rate_limited": True,
-                    "retry_after_seconds": retry_after,
-                }
+        return ToolErrorPayload(
+            truncate_response_fn(
+                json.dumps(
+                    {
+                        "error": f"Tool '{tool_name}' exceeded the caller rate limit",
+                        "tool": tool_name,
+                        "rate_limited": True,
+                        "retry_after_seconds": retry_after,
+                    }
+                )
             )
         )
     start = time.perf_counter()
@@ -531,13 +673,15 @@ async def execute_tool_async(
             error=f"timed out after {timeout_seconds:.1f}s",
         )
         logger.warning("mcp tool timed out: %s caller=%s after %.1fs", tool_name, log_caller, timeout_seconds)
-        return truncate_response_fn(
-            json.dumps(
-                {
-                    "error": f"Tool '{tool_name}' timed out after {timeout_seconds:.1f}s",
-                    "tool": tool_name,
-                    "timed_out": True,
-                }
+        return ToolErrorPayload(
+            truncate_response_fn(
+                json.dumps(
+                    {
+                        "error": f"Tool '{tool_name}' timed out after {timeout_seconds:.1f}s",
+                        "tool": tool_name,
+                        "timed_out": True,
+                    }
+                )
             )
         )
     except Exception as exc:
@@ -556,7 +700,7 @@ async def execute_tool_async(
         logger.warning("mcp tool failed: %s caller=%s (%s)", tool_name, log_caller, sanitized)
         if _is_tool_error(exc):
             _raise_sanitized_tool_error(exc, sanitized)
-        return truncate_response_fn(_error_payload(tool_name, sanitized))
+        return ToolErrorPayload(truncate_response_fn(_error_payload(tool_name, sanitized)))
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     record_tool_metric_fn(tool_name, elapsed_ms=elapsed_ms, success=True)
     record_tool_request_fn(

@@ -165,3 +165,56 @@ def test_a_bare_unshaped_secret_is_a_documented_limit() -> None:
     every log line. This asserts the limit rather than leaving it implied.
     """
     assert AWS_SECRET in sanitize_text(f"observed {AWS_SECRET} in output")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("Hardcoded credential: Stripe Key", id="finding-title"),
+        pytest.param("Hardcoded credential: OpenAI API Key", id="finding-title-camel"),
+        pytest.param("Hardcoded credential: AWS Secret Access Key detected", id="title-with-acronym"),
+        pytest.param("secret_type: api_key", id="secret-type-field"),
+        pytest.param("token_type: bearer", id="token-type-field"),
+        pytest.param("secret_name: prod-db-creds", id="secret-reference-name"),
+        pytest.param("credential_names=OPENAI_API_KEY", id="env-var-name"),
+        pytest.param("credential: OPENAI_API_KEY", id="env-var-name-colon"),
+    ],
+)
+def test_labels_and_credential_names_stay_readable(text: str) -> None:
+    """Titles, secret types and env-var names describe a credential; they are not one."""
+    assert sanitize_text(text) == text
+
+
+@pytest.mark.parametrize(
+    "text, secret",
+    [
+        pytest.param("credential: sk-proj-abcdefghijklmnop1234", "sk-proj-abcdefghijklmnop1234", id="shaped-value"),
+        pytest.param("password: Hunter2024 rejected", "Hunter2024", id="password-then-prose"),
+        pytest.param("password: Summer", "Summer", id="single-word-password"),
+    ],
+)
+def test_values_after_a_label_colon_are_still_redacted(text: str, secret: str) -> None:
+    assert secret not in sanitize_text(text)
+
+
+def test_a_title_case_phrase_after_a_label_is_a_documented_limit() -> None:
+    """`label: Word Word` reads as a finding title, so it is kept.
+
+    A passphrase written as capitalised dictionary words after a bare colon is
+    indistinguishable from a title like `credential: Stripe Key`; readability of
+    every finding title wins over that narrow shape. Quoted or `=` forms, and any
+    value with digits or symbols, are still redacted.
+    """
+    assert sanitize_text("credential: Correct Horse") == "credential: Correct Horse"
+    assert "Correct" not in sanitize_text('credential: "Correct Horse"')
+    assert "Correct" not in sanitize_text("credential=Correct Horse")
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Hardcoded credential: Stripe Key", "secret_type: api_key", "password: Hunter2024 rejected", "token=abc123def"],
+)
+def test_fast_path_predicate_agrees_with_redaction(text: str) -> None:
+    from agent_bom.security import text_requires_redaction
+
+    assert text_requires_redaction(text) == (sanitize_text(text) != text)

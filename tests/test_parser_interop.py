@@ -383,7 +383,9 @@ def test_package_json_resolves_workspace_dependencies(tmp_path):
     assert by_name["@langfuse/shared"].reachability_evidence == "workspace_manifest"
     assert by_name["@repo/eslint-config"].version == "0.0.0"
     assert by_name["next"].version == "16.2.6"
-    assert by_name["typescript"].version == "5.9.3"
+    # ``^5.9.3`` with no lockfile names no installed version.
+    assert by_name["typescript"].version == "unknown"
+    assert by_name["typescript"].declared_version == "^5.9.3"
 
 
 @pytest.mark.parametrize("root_pattern", [".", "./", ""])

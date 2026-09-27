@@ -331,8 +331,9 @@ def test_npm_resolve_skips_prerelease():
     assert "rc" not in result
 
 
-def test_npm_resolve_all_prerelease_falls_back_to_latest():
-    """When all candidates are pre-release, falls back to latest."""
+def test_npm_resolve_all_prerelease_is_unresolved():
+    """``^1.0.0`` excludes 1.0.0-beta (it sorts below 1.0.0); npm install fails
+    with ETARGET here, so the resolver must not invent a version either."""
     from agent_bom.transitive import _resolve_npm_version
 
     pkg_data = {
@@ -343,9 +344,8 @@ def test_npm_resolve_all_prerelease_falls_back_to_latest():
         },
     }
 
-    result = _resolve_npm_version("^1.0.0", pkg_data)
-    # No stable candidates, should fall back to latest
-    assert result == "1.0.0-beta"
+    assert _resolve_npm_version("^1.0.0", pkg_data) == ""
+    assert _resolve_npm_version("^1.0.0-alpha", pkg_data) == "1.0.0-beta"
 
 
 def test_npm_is_prerelease():

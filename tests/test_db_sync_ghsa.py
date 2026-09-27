@@ -365,3 +365,31 @@ def test_ghsa_ingest_stores_affected_rows_under_scanner_keys() -> None:
         ("packagist", "vendor/pkg", "", "3.0.0"),
         ("pypi", "requests", "2.0.0", "2.32.0"),
     ]
+
+
+def test_withdrawn_ghsa_advisory_is_not_ingested_and_retracts_a_prior_copy() -> None:
+    """The REST listing returns withdrawn advisories with ``withdrawn_at`` set.
+
+    GHSA-27h2-hvpr-p74q (CVE-2022-23529, jsonwebtoken) was withdrawn on
+    2023-01-27; ingesting it put a retracted HIGH back into offline scans.
+    """
+    conn = _make_conn()
+    live = _make_advisory(ghsa_id="GHSA-27h2-hvpr-p74q", cve_id="CVE-2022-23529", pkg_name="jsonwebtoken", ecosystem="npm")
+    assert _ingest_ghsa_advisory(conn, live, normalize_package_name) is True
+
+    withdrawn = {**live, "withdrawn_at": "2023-01-27T21:51:55Z"}
+    assert _ingest_ghsa_advisory(conn, withdrawn, normalize_package_name) is False
+
+    assert conn.execute("SELECT COUNT(*) FROM vulns WHERE id = 'CVE-2022-23529'").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM affected WHERE vuln_id = 'CVE-2022-23529'").fetchone()[0] == 0
+
+
+def test_withdrawn_ghsa_advisory_leaves_another_sources_record_alone() -> None:
+    conn = _make_conn()
+    conn.execute(
+        "INSERT INTO vulns (id, summary, severity, source) VALUES ('CVE-2024-12345', 'osv record', 'high', 'osv')",
+    )
+    withdrawn = {**_make_advisory(), "withdrawn_at": "2024-02-01T00:00:00Z"}
+
+    assert _ingest_ghsa_advisory(conn, withdrawn, normalize_package_name) is False
+    assert conn.execute("SELECT source FROM vulns WHERE id = 'CVE-2024-12345'").fetchone()[0] == "osv"

@@ -7,6 +7,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- `POST /v1/scan` now runs the same secret scan as `agent-bom scan -p` for `agent_projects` and `filesystem_paths`, not only for `repo_url` clones.
+- MCP `scan` queries vulnerability sources online by default (honoring `AGENT_BOM_OFFLINE`), returns a bounded, always-valid JSON summary with paged `result_id`/`section` follow-ups (`detail="full"` for the whole document), sets `isError` on incomplete or failed scans, and accepts extra workspace roots via `AGENT_BOM_MCP_WORKSPACE_ROOTS` or `agent-bom mcp server --workspace-root`.
+- `--external-scan` no longer disables project auto-detection (IaC, SAST, secrets); when another input does skip it, the scan warns.
+- External SARIF results are mapped by rule type: dependency advisories resolve to the real package@version and merge with native matches, code results stay SAST findings with file and line and merge with the native finding. Merged findings keep both `native` and `external:<tool>` source labels. CycloneDX and SPDX inputs to `--external-scan` import their vulnerabilities, or are ingested as an SBOM with a notice.
+- Redaction keeps finding titles, secret types and credential variable names readable (`Hardcoded credential: Stripe Key`, `secret_type: api_key`) while still redacting values.
+- A password in a database connection string (`postgresql://user:pass@host`) is a critical `Connection String` credential, not personal data.
+- npm and PyPI version ranges are resolved (lockfile first, then registry metadata) instead of being floored to a version; an unresolvable range stays unresolved, is not matched against advisories, and never appears in purls, CycloneDX or SPDX.
+- Online and offline scans derive severity from one documented CVSS precedence, so `--fail-on-severity` no longer depends on mode.
+- `--fail-on-kev` fetches only the KEV catalog when `--enrich` is not set, accepts a fresh local DB as KEV evidence, and prints the remedy when it fails closed, including under `-q`.
+- `--license-check` reports `status: undetermined` with license coverage when licenses are unknown, instead of `compliant: true`.
+- Withdrawn advisories are skipped by the GHSA database sync and removed from the bundled demo data.
+
 ## [0.106.1] - 2026-09-26
 
 0.106.1 is the first published release of this line. The `v0.106.0` tag exists but its release run stopped at the version guard before building anything, so 0.106.0 was never published to PyPI, Docker Hub, Helm or GitHub Releases.

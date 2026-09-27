@@ -76,7 +76,7 @@ agent-bom scan .
 `agent-bom scan --demo --offline` lists the agents it found, then each CVE with the agent, MCP server and credentials it can reach, then agent and MCP policy findings (excerpt of real output):
 
 ```text
-  Security posture:   CRIT  7   HIGH  11   MED   5 · all finding categories
+  Security posture:   CRIT  7   HIGH  10   MED   6 · all finding categories
   5 agents · 10 servers · 23 packages
 DISCOVER | Agents
   Agent                Type              Servers    Pkgs    Creds    Vulns

@@ -10,6 +10,7 @@ import math
 import os
 import re
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
@@ -173,6 +174,7 @@ def validate_path(
     path: str | Path,
     must_exist: bool = False,
     restrict_to_home: bool = False,
+    allowed_roots: Sequence[Path] = (),
 ) -> Path:
     """
     Validate and normalize a file path.
@@ -181,6 +183,9 @@ def validate_path(
         path: Path to validate
         must_exist: If True, path must exist
         restrict_to_home: If True, path must resolve inside the user's home directory
+            or inside one of ``allowed_roots``
+        allowed_roots: Additional already-resolved directories accepted when
+            ``restrict_to_home`` is set
 
     Returns:
         Validated and normalized Path object
@@ -196,8 +201,11 @@ def validate_path(
     except (OSError, RuntimeError) as e:
         raise SecurityError(f"Invalid path '{path}': {e}")
 
-    # Restrict to home directory (used by MCP server for user-provided paths)
-    if restrict_to_home and not resolved.is_relative_to(Path.home()):
+    # Restrict to home / configured roots (MCP server user-provided paths). The
+    # check runs on the resolved path, so a symlink out of a root is rejected.
+    if restrict_to_home and not any(resolved.is_relative_to(root) for root in (Path.home().resolve(), *allowed_roots)):
+        if allowed_roots:
+            raise SecurityError(f"Path resolves outside home directory and configured workspace roots: {path}")
         raise SecurityError(f"Path resolves outside home directory: {path}")
 
     # Check for path traversal attempts (on unresolved path)
@@ -571,6 +579,17 @@ _CREDENTIAL_IDENTIFIER_VALUE_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
 # Below this a value is an enum or a flag, not authentication material.
 _MIN_SECRET_VALUE_LEN = 4
 
+# A key that *describes* a credential rather than holding one: `secret_type`,
+# `token_type`, `secret_name`. Its value is a category or a reference name, and
+# redacting it makes findings unreadable while protecting nothing.
+_CREDENTIAL_METADATA_KEY_WORDS = frozenset({"type", "kind", "name", "label", "category", "class", "title", "pattern", "rule", "format"})
+
+# `Hardcoded credential: Stripe Key` is a finding title, not `key: value`. A bare
+# `: ` followed by a run of capitalised words is prose; anything with digits or
+# symbols, or written with `=` or quotes, is still treated as an assignment.
+_TITLE_CASE_WORD_RE = re.compile(r"^[A-Z][A-Za-z]+$")
+_TITLE_CASE_CONTINUATION_RE = re.compile(r"[ \t]{1,8}[A-Z][A-Za-z]{0,64}\b")
+
 
 def sanitize_text(value: object, max_len: int = 1000) -> str:
     """Redact credential-shaped substrings, credential-bearing URLs, and emails in text."""
@@ -606,7 +625,7 @@ def _redact_keyed_value(match: re.Match[str]) -> str:
     waiting for the value to look secret is what let it through.
     """
     value = match.group("value")
-    if not env_key_is_credential(match.group("key")) or not _is_credential_material(value):
+    if not _keyed_value_is_secret(match):
         return match.group(0)
     prefix = f"{match.group('key')}{match.group('sep')}{match.group('quote')}"
     # A connection URL is evidence: the host says which system was reached. Keep
@@ -614,6 +633,26 @@ def _redact_keyed_value(match: re.Match[str]) -> str:
     if "://" in value:
         return f"{prefix}{sanitize_url(value) or '<redacted>'}"
     return f"{prefix}<redacted>"
+
+
+def _keyed_value_is_secret(match: re.Match[str]) -> bool:
+    key = match.group("key")
+    if not env_key_is_credential(key) or not _is_credential_material(match.group("value")):
+        return False
+    return not (_is_credential_metadata_key(key) or _is_title_prose(match))
+
+
+def _is_credential_metadata_key(key: str) -> bool:
+    tokens = re.findall(r"[a-z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key).casefold())
+    return any(token in _CREDENTIAL_METADATA_KEY_WORDS for token in tokens)
+
+
+def _is_title_prose(match: re.Match[str]) -> bool:
+    if match.group("quote") or "=" in match.group("sep") or not match.group("sep").strip().startswith(":"):
+        return False
+    if match.group("sep").lstrip().startswith(("'", '"')) or not _TITLE_CASE_WORD_RE.match(match.group("value")):
+        return False
+    return bool(_TITLE_CASE_CONTINUATION_RE.match(match.string, match.end()))
 
 
 def _is_credential_material(value: str) -> bool:
@@ -640,10 +679,7 @@ def text_requires_redaction(value: object) -> bool:
     # model/output strings.
     if "=" not in text and ":" not in text:
         return False
-    return any(
-        env_key_is_credential(match.group("key")) and _is_credential_material(match.group("value"))
-        for match in _TEXT_KEY_VALUE_RE.finditer(text)
-    )
+    return any(_keyed_value_is_secret(match) for match in _TEXT_KEY_VALUE_RE.finditer(text))
 
 
 def _looks_sensitive_value(value: str) -> bool:

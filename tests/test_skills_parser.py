@@ -43,6 +43,23 @@ def test_parse_pip_install(tmp_path):
     assert "openai" in names
 
 
+def test_install_ranges_are_unresolved_not_floored(tmp_path):
+    md = tmp_path / "setup.md"
+    md.write_text(
+        "```bash\npip install langchain==0.1.0 openai>=1.0 'httpx~=0.27'\n"
+        "npm install express@4.18.2 form-data@^4.0.0 '@types/node@*' lodash\n```\n"
+    )
+    pkgs = {p.name: p for p in parse_skill_file(md).packages}
+    assert pkgs["langchain"].version == "0.1.0"
+    assert pkgs["express"].version == "4.18.2"
+    assert pkgs["lodash"].version == "latest"
+    for name, declared in (("openai", ">=1.0"), ("httpx", "~=0.27"), ("form-data", "^4.0.0"), ("@types/node", "*")):
+        assert pkgs[name].version == "unknown", name
+        assert pkgs[name].declared_version == declared, name
+        assert pkgs[name].floating_reference is True, name
+        assert pkgs[name].purl is None, name
+
+
 def test_parse_npm_install(tmp_path):
     """Extracts npm install package references."""
     md = tmp_path / "setup.md"

@@ -51,41 +51,34 @@ async def test_conda_unresolvable_stays_unresolved():
 # ── npm semver validation ────────────────────────────────────────────────────
 
 
-def test_npm_package_json_valid_semver(tmp_path):
-    """Valid semver versions are preserved after range stripping."""
+def test_npm_package_json_range_is_unresolved_not_floored(tmp_path):
+    """A range keeps its spec and no version; flooring ^4.18.2 to 4.18.2 matched
+    advisories a fresh install never has."""
     from agent_bom.parsers.node_parsers import parse_npm_packages
 
-    pkg_json = {"dependencies": {"express": "^4.18.2", "lodash": "~4.17.21"}}
+    pkg_json = {"dependencies": {"express": "^4.18.2", "lodash": "~4.17.21", "exact": "4.17.21"}}
     (tmp_path / "package.json").write_text(json.dumps(pkg_json))
 
-    packages = parse_npm_packages(tmp_path)
-    versions = {p.name: p.version for p in packages}
-    assert versions["express"] == "4.18.2"
-    assert versions["lodash"] == "4.17.21"
+    packages = {p.name: p for p in parse_npm_packages(tmp_path)}
+    assert (packages["express"].version, packages["express"].declared_version) == ("unknown", "^4.18.2")
+    assert (packages["lodash"].version, packages["lodash"].declared_version) == ("unknown", "~4.17.21")
+    assert packages["express"].purl is None
+    assert packages["exact"].version == "4.17.21"
 
 
-def test_npm_package_json_incomplete_semver_becomes_latest(tmp_path):
-    """Incomplete semver (e.g. ^1.2) becomes 'latest' for resolver to handle."""
+def test_npm_package_json_incomplete_and_wildcard_ranges_are_unresolved(tmp_path):
+    """``^1.2``, ``~1`` and ``*`` are ranges too: unresolved, spec preserved."""
     from agent_bom.parsers.node_parsers import parse_npm_packages
 
-    pkg_json = {"dependencies": {"foo": "^1.2", "bar": "~1"}}
+    pkg_json = {"dependencies": {"foo": "^1.2", "bar": "~1", "wildcard-pkg": "*", "tagged": "latest"}}
     (tmp_path / "package.json").write_text(json.dumps(pkg_json))
 
-    packages = parse_npm_packages(tmp_path)
-    versions = {p.name: p.version for p in packages}
-    assert versions["foo"] == "latest"
-    assert versions["bar"] == "latest"
-
-
-def test_npm_package_json_star_becomes_latest(tmp_path):
-    """Wildcard version '*' becomes 'latest'."""
-    from agent_bom.parsers.node_parsers import parse_npm_packages
-
-    pkg_json = {"dependencies": {"wildcard-pkg": "*"}}
-    (tmp_path / "package.json").write_text(json.dumps(pkg_json))
-
-    packages = parse_npm_packages(tmp_path)
-    assert packages[0].version == "latest"
+    packages = {p.name: p for p in parse_npm_packages(tmp_path)}
+    for name, declared in (("foo", "^1.2"), ("bar", "~1"), ("wildcard-pkg", "*")):
+        assert packages[name].version == "unknown"
+        assert packages[name].declared_version == declared
+        assert packages[name].floating_reference is True
+    assert packages["tagged"].version == "latest"
 
 
 # ── Conda in auto-resolve filter ─────────────────────────────────────────────

@@ -51,7 +51,10 @@ def _run(coro):
 
 def _call_tool(server, name, args=None):
     """Call a tool and extract the text result."""
-    content_blocks, _meta = _run(server.call_tool(name, args or {}))
+    from mcp.types import CallToolResult
+
+    result = _run(server.call_tool(name, args or {}))
+    content_blocks = result.content if isinstance(result, CallToolResult) else result[0]
     return json.loads(content_blocks[0].text)
 
 
@@ -461,7 +464,7 @@ def test_scan_accepts_direct_npx_package(mock_pipeline):
     result = _call_tool(
         server,
         "scan",
-        {"package": "npx -y @modelcontextprotocol/server-filesystem", "auto_update_db": False},
+        {"package": "npx -y @modelcontextprotocol/server-filesystem", "auto_update_db": False, "offline": True},
     )
 
     assert result["status"] == "no_agents_found"
@@ -539,9 +542,11 @@ def test_scan_tool_forwards_no_discover_for_deterministic_scope(mock_pipeline):
 
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")
-def test_scan_default_read_only_contract_does_not_refresh_db_and_uses_offline_scan(mock_pipeline):
-    """Default read-only scan must avoid DB refresh and online vulnerability scans."""
+def test_scan_default_does_not_refresh_db_and_looks_up_online(mock_pipeline, monkeypatch):
+    """Default scan never refreshes the local DB; lookups are online unless offline is configured."""
     mock_pipeline.return_value = ([], [], [], [])
+    monkeypatch.delenv("AGENT_BOM_OFFLINE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_VULN_DB_OFFLINE", raising=False)
 
     from agent_bom.mcp_server import create_mcp_server
 
@@ -554,7 +559,7 @@ def test_scan_default_read_only_contract_does_not_refresh_db_and_uses_offline_sc
 
     assert result["status"] == "no_agents_found"
     _args, kwargs = mock_pipeline.call_args
-    assert kwargs["offline"] is True
+    assert kwargs["offline"] is False
 
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")

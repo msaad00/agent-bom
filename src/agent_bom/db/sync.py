@@ -35,8 +35,9 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urljoin, urlparse
 
+from agent_bom.models import Severity
 from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
-from agent_bom.scanners.risk import parse_cvss_vector
+from agent_bom.scanners.risk import osv_severity_basis, parse_cvss_vector
 
 _logger = logging.getLogger(__name__)
 
@@ -288,43 +289,6 @@ def _normalize_sync_cvss_score(value: Any) -> Optional[float]:
     return None
 
 
-def _normalize_sync_severity_label(value: Any) -> Optional[str]:
-    """Normalize distro/vendor severity labels to DB severity strings."""
-    if value is None:
-        return None
-    label = str(value).strip().replace("-", "_").replace(" ", "_").upper()
-    mapping = {
-        "CRITICAL": "critical",
-        "HIGH": "high",
-        "IMPORTANT": "high",
-        "MODERATE": "medium",
-        "MEDIUM": "medium",
-        "LOW": "low",
-        "MINOR": "low",
-        "NEGLIGIBLE": "low",
-        "UNIMPORTANT": "low",
-        "NONE": "none",
-    }
-    return mapping.get(label)
-
-
-def _first_sync_cvss_vector(value: Any) -> Optional[str]:
-    """Return the first CVSS vector string from common OSV/vendor shapes."""
-    if isinstance(value, str) and value.startswith("CVSS:"):
-        return value
-    if isinstance(value, dict):
-        for key in ("score", "baseScore", "base_score", "cvss", "vector", "vectorString"):
-            vector = _first_sync_cvss_vector(value.get(key))
-            if vector is not None:
-                return vector
-    if isinstance(value, list):
-        for item in value:
-            vector = _first_sync_cvss_vector(item)
-            if vector is not None:
-                return vector
-    return None
-
-
 def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -400,72 +364,14 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     published = data.get("published", "")
     modified = data.get("modified", "")
 
-    # CVSS score — extract from severity array and database_specific
-    cvss_score: Optional[float] = None
-    cvss_vector: Optional[str] = None
-    db_severity: Optional[str] = None
-
-    for sev in data.get("severity", []):
-        sev_type = sev.get("type", "")
-        sev_score = sev.get("score", "")
-        if sev_type in ("CVSS_V3", "CVSS_V3_1", "CVSS_V4") and sev_score:
-            # Keep score and vector as a matched pair: adopt the vector only from
-            # the entry whose score we take, so a v3.1 score can never pair with a
-            # v4.0 vector from a later entry.
-            if cvss_score is None:
-                parsed_score = _normalize_sync_cvss_score(sev_score)
-                if parsed_score is not None:
-                    cvss_score = parsed_score
-                    cvss_vector = sev_score
-
-    # Pull from database_specific (most reliable source for severity + score)
+    # One severity basis shared with the online OSV scanner (see
+    # ``osv_severity_basis``) so `--offline` and online gates agree. The
+    # advisory-namespace fallback is applied at read time, never persisted.
+    basis = osv_severity_basis(data, advisory_id_fallback=False)
     db_specific = data.get("database_specific", {})
-    if isinstance(db_specific, dict):
-        # Severity string (CRITICAL, HIGH, etc.)
-        db_severity = _normalize_sync_severity_label(db_specific.get("severity"))
-
-        # Numeric CVSS score or CVSS vector, depending on source.
-        for key in ("cvss", "cvss_score", "cvss_v3", "severity_vectors"):
-            raw_cvss = db_specific.get(key)
-            parsed_score = _normalize_sync_cvss_score(raw_cvss)
-            if parsed_score is not None:
-                cvss_score = parsed_score
-                if cvss_vector is None:
-                    cvss_vector = _first_sync_cvss_vector(raw_cvss)
-                break
-
-    # Debian and other distro OSV advisories often carry their vendor
-    # severity/CVSS on affected entries instead of the top-level record.
-    for aff in data.get("affected", []):
-        if not isinstance(aff, dict):
-            continue
-        for block_name in ("database_specific", "ecosystem_specific"):
-            block = aff.get(block_name)
-            if not isinstance(block, dict):
-                continue
-            if db_severity is None:
-                db_severity = _normalize_sync_severity_label(block.get("severity"))
-            if cvss_score is None:
-                for key in ("cvss", "cvss_score", "cvss_v3", "severity_vectors"):
-                    raw_cvss = block.get(key)
-                    parsed_score = _normalize_sync_cvss_score(raw_cvss)
-                    if parsed_score is not None:
-                        cvss_score = parsed_score
-                        if cvss_vector is None:
-                            cvss_vector = _first_sync_cvss_vector(raw_cvss)
-                        break
-            if db_severity is not None and cvss_score is not None:
-                break
-        if db_severity is not None and cvss_score is not None:
-            break
-
-    # Determine severity: prefer database_specific string, then derive from CVSS
-    if db_severity:
-        severity = db_severity
-    elif cvss_score is not None:
-        severity = _cvss_to_severity(cvss_score)
-    else:
-        severity = "unknown"
+    cvss_score: Optional[float] = basis.cvss_score
+    cvss_vector: Optional[str] = basis.cvss_vector
+    severity = basis.severity.value if basis.severity != Severity.UNKNOWN else "unknown"
 
     # Fixed version — take first fixed range across all affected entries
     fixed_version: Optional[str] = None
@@ -1284,6 +1190,15 @@ def _ingest_ghsa_advisory(
     # Use CVE ID if available (allows dedup with OSV entries), else GHSA ID
     vuln_id = cve_id if cve_id else ghsa_id
     if not vuln_id:
+        return False
+
+    # The REST listing includes withdrawn advisories (``withdrawn_at`` set).
+    # Retract a copy this source ingested earlier, as the OSV path does, but
+    # leave a record another source owns under the same id.
+    if advisory.get("withdrawn_at"):
+        if conn.execute("SELECT 1 FROM vulns WHERE id = ? AND source = 'ghsa'", (vuln_id,)).fetchone():
+            conn.execute("DELETE FROM affected WHERE vuln_id = ?", (vuln_id,))
+            conn.execute("DELETE FROM vulns WHERE id = ?", (vuln_id,))
         return False
 
     summary = (advisory.get("summary") or "")[:500]

@@ -1081,6 +1081,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             require_host_discovery_for_tenant(job.tenant_id)
         agents: list[Any] = []
         warnings_all: list[str] = []
+        external_findings: list[Any] = []
         repo_scan_issues: list[ScanIssue] = []
         coverage_warning_messages: set[str] = set()
         side_effects_enabled = not (req.dry_run or req.no_scan)
@@ -1355,30 +1356,16 @@ def _run_scan_sync(job: ScanJob) -> None:
             import json as _json
             from pathlib import Path as _Path
 
-            from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
-            from agent_bom.parsers.external_scanners import detect_and_parse
+            from agent_bom.parsers.external_import import build_external_agent
+            from agent_bom.parsers.external_scanners import ingest_external_report
 
             try:
                 with open(req.external_scan) as _ext_f:
                     _ext_data = _json.load(_ext_f)
-                _ext_packages = detect_and_parse(_ext_data)
-                _ext_resource_name = _Path(req.external_scan).stem
-                _ext_server = MCPServer(
-                    name=_ext_resource_name,
-                    command="external-scan",
-                    args=[req.external_scan],
-                    transport=TransportType.STDIO,
-                    packages=_ext_packages,
-                    surface=ServerSurface.EXTERNAL_SCAN,
-                )
-                _ext_agent = Agent(
-                    name=f"external-scan:{_ext_resource_name}",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=req.external_scan,
-                    source="external-scan",
-                    mcp_servers=[_ext_server],
-                )
-                agents.append(_ext_agent)
+                _ext_import = ingest_external_report(_ext_data)
+                agents.append(build_external_agent(_ext_import, str(_Path(req.external_scan))))
+                external_findings.extend(_ext_import.findings)
+                warnings_all.extend(_ext_import.notices)
             except (OSError, ValueError, _json.JSONDecodeError) as ext_exc:
                 message = f"External scan error: {sanitize_error(ext_exc)}"
                 warnings_all.append(message)
@@ -1422,6 +1409,21 @@ def _run_scan_sync(job: ScanJob) -> None:
                 message = f"Filesystem scan error: {sanitize_error(fs_exc, generic=True)}"
                 warnings_all.append(message)
                 coverage_warning_messages.add(message)
+
+        if not repo_url:
+            from pathlib import Path as _SecretRootPath
+
+            secret_roots = [path for path in (*effective_agent_projects, *req.filesystem_paths) if path and _SecretRootPath(path).is_dir()]
+            if secret_roots:
+                pipeline.update_step("discovery", "Scanning for hardcoded secrets and credentials")
+                from agent_bom.api.repo_tree_scan import scan_path_secrets
+
+                secrets_block, secret_issues = scan_path_secrets(secret_roots, offline=req.offline)
+                repo_ai_inventory_data = repo_ai_inventory_data or {}
+                repo_ai_inventory_data["secrets"] = secrets_block
+                repo_scan_issues = [*repo_scan_issues, *secret_issues]
+                if secrets_block["total"] > 0:
+                    warnings_all.append(f"{secrets_block['total']} hardcoded secret(s) or credential pattern(s) found in project files")
 
         from agent_bom.discovery.identity import consolidate_project_agents
 
@@ -1595,13 +1597,17 @@ def _run_scan_sync(job: ScanJob) -> None:
             for server in agent.mcp_servers:
                 if server.security_blocked:
                     continue  # Don't extract packages from security-blocked servers
-                if not server.packages:
+                if not server.packages and server.command != "external-scan":
                     server.packages = extract_packages(
                         server,
                         resolve_transitive=True,  # Match CLI behavior — resolve full dep tree
                         max_depth=3,
                     )
-                total_pkgs += len(server.packages)
+        if req.external_scan:
+            from agent_bom.parsers.external_import import fold_external_packages
+
+            warnings_all.extend(fold_external_packages(agents, findings=external_findings))
+        total_pkgs = sum(len(server.packages) for agent in agents for server in agent.mcp_servers if not server.security_blocked)
         all_packages = [package for agent in agents for server in agent.mcp_servers for package in server.packages]
         pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
@@ -1743,6 +1749,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         from agent_bom.models import AIBOMReport
 
         report_findings = [blast_radius_to_finding(br) for br in blast_radii]
+        report_findings.extend(external_findings)
         report_findings.extend(blocklist_findings_for_agents(agents))
         try:
             report_findings.extend(evaluate_a2a_auth_posture(agents))
@@ -1789,7 +1796,11 @@ def _run_scan_sync(job: ScanJob) -> None:
             report.vex_data = vex_to_serializable(_vex_doc)
             # Preserve non-CVE policy findings while replacing stale CVE
             # projections with the VEX-updated blast-radius representation.
-            non_cve_findings = [finding for finding in report.findings if finding.finding_type.value != "CVE"]
+            non_cve_findings = [
+                finding
+                for finding in report.findings
+                if finding.finding_type.value != "CVE" or finding.evidence.get("package_resolution") == "unresolved"
+            ]
             report.findings = [blast_radius_to_finding(br) for br in blast_radii] + non_cve_findings
             with lock:
                 job.progress.append(f"VEX applied: {_vex_count} vulnerabilities updated from {req.vex}")

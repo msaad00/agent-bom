@@ -364,6 +364,161 @@ def test_scan_external_scan_invalid_json_exits_nonzero(tmp_path):
     assert "External scan error:" in result.output
 
 
+_EXTERNAL_SARIF = {
+    "version": "2.1.0",
+    "runs": [
+        {
+            "tool": {"driver": {"name": "DepScanner", "rules": [{"id": "CVE-2023-32681"}, {"id": "GHSA-j8r2-6x86-q33q"}]}},
+            "results": [
+                {
+                    "ruleId": "CVE-2023-32681",
+                    "level": "warning",
+                    "message": {"text": "Package: requests\nInstalled Version: 2.25.0"},
+                    "locations": [{"physicalLocation": {"artifactLocation": {"uri": "requirements.txt"}, "region": {"startLine": 1}}}],
+                },
+                {
+                    "ruleId": "GHSA-j8r2-6x86-q33q",
+                    "level": "error",
+                    "message": {"text": "vulnerable dependency found"},
+                    "locations": [{"physicalLocation": {"artifactLocation": {"uri": "requirements.txt"}, "region": {"startLine": 1}}}],
+                },
+            ],
+        },
+        {
+            "tool": {
+                "driver": {
+                    "name": "CodeScanner",
+                    "rules": [{"id": "py.subprocess-shell-true", "properties": {"tags": ["CWE-78: OS Command Injection"]}}],
+                }
+            },
+            "results": [
+                {
+                    "ruleId": "py.subprocess-shell-true",
+                    "level": "error",
+                    "message": {"text": "subprocess call with shell=True"},
+                    "locations": [{"physicalLocation": {"artifactLocation": {"uri": "app/admin.py"}, "region": {"startLine": 3}}}],
+                }
+            ],
+        },
+    ],
+}
+
+
+def _external_scan_fixture_project(tmp_path):
+    project = tmp_path / "proj"
+    (project / "infra").mkdir(parents=True)
+    (project / "app").mkdir()
+    (project / "requirements.txt").write_text("requests==2.25.0\n", encoding="utf-8")
+    (project / "infra" / "main.tf").write_text(
+        'resource "aws_s3_bucket" "logs" {\n  bucket = "demo-logs"\n  acl    = "public-read"\n}\n\n'
+        'resource "aws_security_group" "open" {\n  name = "open"\n  ingress {\n    from_port   = 22\n'
+        '    to_port     = 22\n    protocol    = "tcp"\n    cidr_blocks = ["0.0.0.0/0"]\n  }\n}\n',
+        encoding="utf-8",
+    )
+    (project / "app" / "admin.py").write_text("import os\n\nos.system(input())\n", encoding="utf-8")
+    sarif = tmp_path / "ext.sarif"
+    sarif.write_text(json.dumps(_EXTERNAL_SARIF), encoding="utf-8")
+    return project, sarif
+
+
+def _scan_json(tmp_path, args, name):
+    out = tmp_path / f"{name}.json"
+    result = _run(["scan", *args, "--no-scan", "--offline", "--no-auto-update-db", "-f", "json", "-o", str(out)])
+    assert out.exists(), result.output
+    return result, json.loads(out.read_text(encoding="utf-8"))
+
+
+def _iac_count(payload):
+    iac = payload.get("iac_findings") or {}
+    return len(iac.get("findings") or [])
+
+
+def test_scan_external_scan_keeps_project_auto_detected_iac_surface(tmp_path):
+    project, sarif = _external_scan_fixture_project(tmp_path)
+
+    _native_result, native = _scan_json(tmp_path, ["-p", str(project)], "native")
+    _ext_result, with_external = _scan_json(tmp_path, ["-p", str(project), "--external-scan", str(sarif)], "external")
+
+    assert _iac_count(native) > 0
+    assert _iac_count(with_external) == _iac_count(native)
+
+
+def test_scan_external_scan_sarif_findings_keep_types_and_labels(tmp_path):
+    project, sarif = _external_scan_fixture_project(tmp_path)
+
+    _result, payload = _scan_json(tmp_path, ["-p", str(project), "--external-scan", str(sarif)], "external")
+
+    findings = payload["findings"]
+    external_sast = [f for f in findings if f["finding_type"] == "SAST" and f["source"] == "EXTERNAL"]
+    assert [f["evidence"]["rule_id"] for f in external_sast] == ["py.subprocess-shell-true"]
+    assert external_sast[0]["cve_id"] is None
+    assert external_sast[0]["sources"] == ["external:CodeScanner"]
+    unresolved = [f for f in findings if f["evidence"].get("package_resolution") == "unresolved"]
+    assert [f["cve_id"] for f in unresolved] == ["GHSA-j8r2-6x86-q33q"]
+    assert not any("@0.0.0" in str(f.get("title")) for f in findings)
+    assert not any(f["evidence"].get("package_version") == "0.0.0" for f in findings)
+    package_names = {(p.get("name"), p.get("version")) for p in payload.get("packages", [])}
+    assert not any(version == "0.0.0" for _name, version in package_names)
+    assert ("requirements.txt", "0.0.0") not in package_names
+
+
+def test_scan_project_with_explicit_sbom_warns_that_auto_detection_was_skipped(tmp_path):
+    project, _sarif = _external_scan_fixture_project(tmp_path)
+    sbom = tmp_path / "bom.json"
+    sbom.write_text(json.dumps({"bomFormat": "CycloneDX", "specVersion": "1.5", "components": []}), encoding="utf-8")
+
+    result, payload = _scan_json(tmp_path, ["-p", str(project), "--sbom", str(sbom)], "sbom-skip")
+
+    assert "auto-detection" in result.output
+    assert any("auto-detection" in w and "--sbom" in w for w in payload["warnings"])
+
+
+def test_scan_external_report_inside_project_does_not_reparse_project_manifests(tmp_path):
+    project, sarif = _external_scan_fixture_project(tmp_path)
+    in_project = project / "scan.sarif"
+    in_project.write_text(sarif.read_text(encoding="utf-8"), encoding="utf-8")
+
+    _result, payload = _scan_json(tmp_path, ["-p", str(project), "--external-scan", str(in_project)], "inside")
+
+    external_agents = [a for a in payload["agents"] if str(a.get("name", "")).startswith("external-scan:")]
+    assert len(external_agents) == 1
+    external_packages = [p for s in external_agents[0].get("mcp_servers", []) for p in s.get("packages", [])]
+    # requests@2.25.0 is natively inventoried from requirements.txt, so the
+    # imported evidence folds onto it rather than duplicating the manifest.
+    assert external_packages == []
+    native_requests = [
+        p
+        for a in payload["agents"]
+        if not str(a.get("name", "")).startswith("external-scan:")
+        for s in a.get("mcp_servers", [])
+        for p in s.get("packages", [])
+        if p.get("name") == "requests"
+    ]
+    assert len(native_requests) == 1
+    assert [v["id"] for v in native_requests[0].get("vulnerabilities", [])] == ["CVE-2023-32681"]
+
+
+def test_scan_external_scan_accepts_plain_cyclonedx_sbom(tmp_path):
+    project, _sarif = _external_scan_fixture_project(tmp_path)
+    sbom = tmp_path / "bom.json"
+    sbom.write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.5",
+                "components": [{"type": "library", "name": "flask", "version": "2.2.0", "purl": "pkg:pypi/flask@2.2.0"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result, payload = _scan_json(tmp_path, ["-p", str(project), "--external-scan", str(sbom)], "sbom")
+
+    assert "Unrecognized scanner JSON format" not in result.output
+    assert "SBOM without vulnerability data" in result.output
+    assert any("SBOM without vulnerability data" in w for w in payload["warnings"])
+
+
 # ---------------------------------------------------------------------------
 # scan — zero-config dry run (no network, no real discovery)
 # ---------------------------------------------------------------------------

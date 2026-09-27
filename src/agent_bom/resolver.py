@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -19,6 +20,9 @@ from agent_bom.http_client import (
     reset_rate_limit_breaker,
 )
 from agent_bom.models import Package
+from agent_bom.package_utils import synthesize_purl
+from agent_bom.parsers.npm_semver import classify_npm_spec
+from agent_bom.parsers.npm_semver import satisfies as npm_satisfies
 
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)
@@ -163,9 +167,13 @@ def _apply_registry_version_fallback(pkg: Package) -> bool:
     return True
 
 
-def _resolution_key(pkg: Package) -> tuple[str, str]:
-    """Stable key for deduping identical registry lookups within one run."""
-    return (pkg.ecosystem.lower(), pkg.name.lower())
+def _resolution_key(pkg: Package) -> tuple[str, str, str]:
+    """Stable key for deduping identical registry lookups within one run.
+
+    The declared constraint is part of the key: two ``minipass`` entries
+    declared ``^5`` and ``^7`` resolve to different versions.
+    """
+    return (pkg.ecosystem.lower(), pkg.name.lower(), _declared_constraint(pkg) or "")
 
 
 def _copy_resolution_fields(source: Package, target: Package) -> bool:
@@ -174,6 +182,10 @@ def _copy_resolution_fields(source: Package, target: Package) -> bool:
         return False
     target.version = source.version
     target.purl = source.purl
+    if source.resolved_version:
+        target.resolved_version = source.resolved_version
+        target.resolved_from_registry = source.resolved_from_registry
+        target.version_resolved_at = source.version_resolved_at
     if source.license and not target.license:
         target.license = source.license
     if source.version_source == "registry_fallback":
@@ -428,9 +440,82 @@ async def resolve_pypi_supply_chain(
         _logger.debug("Failed to parse PyPI supply chain metadata for %s: %s", pkg.name, exc)
 
 
+_CONSTRAINT_CHARS = frozenset("^~<>=*|, ")
+
+
+def _declared_constraint(pkg: Package) -> Optional[str]:
+    """Return the declared range/tag that bounds *pkg*'s version, if any.
+
+    ``None`` means the package declares no constraint (or only ``latest``), so
+    the ``latest`` lookup is the honest answer. A returned constraint must be
+    honoured: resolving it to ``latest`` can report a version the declaration
+    excludes and match that version's advisories.
+    """
+    declared = pkg.declared_version
+    if declared is None:
+        return None
+    declared = declared.strip()
+    if declared == "latest":
+        return None
+    ecosystem = pkg.ecosystem.lower()
+    if ecosystem == "npm":
+        return None if classify_npm_spec(declared) == "exact" else declared
+    if ecosystem == "pypi":
+        from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
+        try:
+            return declared if declared and str(SpecifierSet(declared)) else None
+        except InvalidSpecifier:
+            return None
+    if pkg.floating_reference and declared and any(ch in _CONSTRAINT_CHARS for ch in declared):
+        return declared
+    return None
+
+
+def _constraint_admits(ecosystem: str, version: str, constraint: str) -> bool:
+    if ecosystem == "npm":
+        return npm_satisfies(version, constraint)
+    if ecosystem == "pypi":
+        from packaging.specifiers import InvalidSpecifier, SpecifierSet
+        from packaging.version import InvalidVersion, Version
+
+        try:
+            return SpecifierSet(constraint).contains(Version(version))
+        except (InvalidSpecifier, InvalidVersion):
+            return False
+    return False
+
+
+async def _resolve_declared_constraint(pkg: Package, constraint: str, client: httpx.AsyncClient) -> bool:
+    """Resolve a declared range to the version a fresh install selects; never to ``latest``."""
+    from agent_bom import transitive
+
+    ecosystem = pkg.ecosystem.lower()
+    resolved: Optional[str] = None
+    if ecosystem == "npm" and classify_npm_spec(constraint) in ("range", "tag"):
+        resolved = await transitive.resolve_npm_range_version(pkg.name, constraint, client)
+    elif ecosystem == "pypi":
+        resolved = await transitive.resolve_pypi_spec_version(pkg.name, constraint, client)
+    if resolved:
+        pkg.version = resolved
+        pkg.purl = synthesize_purl(pkg.name, resolved, pkg.ecosystem) or f"pkg:{pkg.ecosystem}/{pkg.name}@{resolved}"
+        pkg.resolved_version = resolved
+        pkg.resolved_from_registry = True
+        pkg.version_resolved_at = datetime.now(timezone.utc).isoformat()
+        pkg.version_evidence.append({"type": "registry_range", "declared_version": constraint, "resolved_version": resolved})
+        return True
+    fallback = pkg.registry_version
+    if fallback and fallback not in _INVALID_VERSIONS and _constraint_admits(ecosystem, fallback, constraint):
+        return _apply_registry_version_fallback(pkg)
+    return False
+
+
 async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bool:
     if pkg.version not in _INVALID_VERSIONS - {"{{VERSION}}"}:
         return False
+    constraint = _declared_constraint(pkg)
+    if constraint is not None:
+        return await _resolve_declared_constraint(pkg, constraint, client)
     version, lic = None, None
     if pkg.ecosystem == "npm":
         version, lic = await resolve_npm_metadata(pkg.name, client)
@@ -632,7 +717,7 @@ async def resolve_all_versions(
     _bump_perf("version_candidates", len(unresolved))
     npm_rate_limit_hits_before = _npm_rate_limit_hits()
     resolved_count = 0
-    groups: dict[tuple[str, str], list[Package]] = defaultdict(list)
+    groups: dict[tuple[str, str, str], list[Package]] = defaultdict(list)
     for pkg in unresolved:
         groups[_resolution_key(pkg)].append(pkg)
     representatives = [members[0] for members in groups.values()]

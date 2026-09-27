@@ -33,7 +33,17 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
     ("Generic API Key", re.compile(r"(?:api[_-]?key|apikey|access[_-]?token)\s*[=:]\s*['\"]?[A-Za-z0-9\-_.]{20,}", re.IGNORECASE)),
     ("Private Key Block", re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),
-    ("Connection String", re.compile(r"(?:mongodb|postgres|mysql|redis)://[^\s]{10,}", re.IGNORECASE)),
+    # A DSN is a credential only when its userinfo carries a password; a bare
+    # `postgres://host/db` is a locator. `${VAR}`/`<...>`/`{{...}}` passwords are
+    # templated references, not literals.
+    (
+        "Connection String",
+        re.compile(
+            r"\b(?:postgres(?:ql)?|mongodb(?:\+srv)?|mysql|mariadb|rediss?|amqps?|mssql|sqlserver|oracle|clickhouse|cockroachdb)"
+            r"://[^:\s/@'\"]+:(?!\$\{|<|\{\{)[^@\s/'\"]+@[^\s'\"]+",
+            re.IGNORECASE,
+        ),
+    ),
     # Additional credential patterns for parity
     ("Google API Key", re.compile(r"AIza[0-9A-Za-z\-_]{35}")),
     ("Google OAuth Token", re.compile(r"ya29\.[0-9A-Za-z\-_]+")),

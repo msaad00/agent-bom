@@ -196,6 +196,19 @@ class LicenseReport:
     compliant: bool = True
     unknown_count: int = 0
     total_packages: int = 0
+    # Licenses present but not in the SPDX catalog: as unevaluable as a missing one.
+    unrecognized_count: int = 0
+    # "compliant" | "non_compliant" | "undetermined". Unknown licenses cannot be
+    # checked against policy, so they make the verdict undetermined — never
+    # compliant — and ``compliant`` is True only for a fully evaluated clean set.
+    status: str = "compliant"
+
+    @property
+    def coverage(self) -> dict:
+        not_evaluated = self.unknown_count + self.unrecognized_count
+        evaluated = self.total_packages - not_evaluated
+        percent = round(100.0 * evaluated / self.total_packages, 1) if self.total_packages else 100.0
+        return {"evaluated": evaluated, "unknown": not_evaluated, "total": self.total_packages, "percent": percent}
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +441,7 @@ def evaluate_license_policy(
                         )
                     )
                 elif category == "unknown":
+                    report.unrecognized_count += 1
                     report.findings.append(
                         LicenseFinding(
                             package_name=pkg.name,
@@ -442,6 +456,14 @@ def evaluate_license_policy(
                         )
                     )
 
+    if not report.compliant:
+        report.status = "non_compliant"
+    elif report.unknown_count or report.unrecognized_count:
+        report.status = "undetermined"
+        report.compliant = False
+    else:
+        report.status = "compliant"
+
     # Build summary
     cat_counts: dict[str, int] = {}
     risk_counts: dict[str, int] = {}
@@ -454,6 +476,8 @@ def evaluate_license_policy(
         "findings_count": len(report.findings),
         "unknown_count": report.unknown_count,
         "compliant": report.compliant,
+        "status": report.status,
+        "coverage": report.coverage,
         "by_category": cat_counts,
         "by_risk": risk_counts,
     }
@@ -465,6 +489,8 @@ def to_serializable(report: LicenseReport) -> dict:
     """Convert LicenseReport to a JSON-serializable dict."""
     return {
         "compliant": report.compliant,
+        "status": report.status,
+        "coverage": report.coverage,
         "total_packages": report.total_packages,
         "unknown_count": report.unknown_count,
         "summary": report.summary,
@@ -490,6 +516,15 @@ def to_serializable(report: LicenseReport) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def license_status_label(report: LicenseReport) -> str:
+    """Rich-markup verdict; an undetermined verdict never reads as compliant."""
+    if report.status == "non_compliant":
+        return "[red]NON-COMPLIANT[/red]"
+    if report.status == "undetermined":
+        return "[yellow]UNDETERMINED[/yellow] (unknown licenses; run with --enrich to resolve registry license metadata)"
+    return "[green]COMPLIANT[/green]"
+
+
 def print_license_report(report: LicenseReport, console: Console) -> None:
     """Print license compliance report using Rich console."""
     from rich.table import Table
@@ -498,9 +533,12 @@ def print_license_report(report: LicenseReport, console: Console) -> None:
         console.print("\n  [green]\u2713[/green] License compliance: no findings\n")
         return
 
-    status = "[green]COMPLIANT[/green]" if report.compliant else "[red]NON-COMPLIANT[/red]"
-    console.print(f"\n  License Compliance: {status}")
-    console.print(f"  {report.total_packages} packages evaluated, {len(report.findings)} finding(s), {report.unknown_count} unknown\n")
+    console.print(f"\n  License Compliance: {license_status_label(report)}")
+    coverage = report.coverage
+    console.print(
+        f"  {report.total_packages} packages, {len(report.findings)} finding(s); "
+        f"{coverage['unknown']} of {coverage['total']} without an evaluable license ({coverage['percent']}% coverage)\n"
+    )
 
     table = Table(show_header=True, header_style="bold", pad_edge=False, box=None)
     table.add_column("Package", style="cyan", no_wrap=True)

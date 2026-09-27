@@ -105,9 +105,10 @@ def test_escalation_records_where_the_band_came_from():
     """severity_source shipped empty, which is why this was hard to diagnose."""
     merged = _merge(
         [
-            _local("GHSA-gmj6-6f8f-6699", "medium", ["CVE-2024-56201"], 8.8),
+            _local("GHSA-gmj6-6f8f-6699", "medium", ["CVE-2024-56201"], 5.4),
             _local("PYSEC-2026-1472", "high", ["CVE-2024-56201"], 8.8),
         ]
     )
+    assert merged[0].severity == Severity.HIGH
     assert merged[0].severity_source, "an escalated band must say which advisory set it"
     assert "PYSEC-2026-1472" in str(merged[0].severity_source)

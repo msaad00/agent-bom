@@ -20,6 +20,7 @@ from agent_bom.checksums import parse_sri
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.parsers.npm_semver import npm_exact_version
 from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
@@ -434,18 +435,33 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                                 "resolved_version": version,
                             }
                         )
-                    else:
-                        version = declared_version.lstrip("^~>=< ")
-                        # Validate: must look like a semver (at least major.minor.patch)
-                        # Otherwise mark as "latest" for resolver to handle
-                        if not re.match(r"^\d+\.\d+\.\d+", version):
+                    floating_reason = None
+                    if not workspace_resolution:
+                        # Without a lockfile a range names no installed version:
+                        # flooring ``^4.0.0`` to 4.0.0 matched CVEs a fresh
+                        # install (4.0.x latest) does not have. Exact pins are
+                        # versions; ``latest`` keeps its resolver contract; any
+                        # other spec stays unresolved until the registry range
+                        # resolver (or nothing, offline) selects a version.
+                        exact_version = npm_exact_version(declared_version)
+                        if exact_version is not None:
+                            version = exact_version
+                        elif declared_version.strip() == "latest":
                             version = "latest"
+                        else:
+                            version = "unknown"
+                            version_source = "detected"
+                            version_confidence = "low"
+                            floating_reason = (
+                                f"declared as {declared_version or 'an empty spec'} in package.json with no lockfile — "
+                                "the installed version is unknown"
+                            )
                     packages.append(
                         Package(
                             name=name,
                             version=version,
                             ecosystem="npm",
-                            purl=_npm_purl(name, version),
+                            purl=_npm_purl(name, version) if version != "unknown" else None,
                             is_direct=True,
                             reachability_evidence="workspace_manifest" if workspace_resolution else "declaration_only",
                             version_source=version_source,
@@ -453,6 +469,8 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                             resolved_version=resolved_version,
                             version_confidence=version_confidence,
                             version_evidence=version_evidence,
+                            floating_reference=floating_reason is not None,
+                            floating_reference_reason=floating_reason,
                         )
                     )
         # Same graceful-degradation contract as the package-lock.json branch
@@ -725,17 +743,31 @@ def detect_npx_package(server: MCPServer) -> list[Package]:
             pinned_version = match.group(2)
             declared_version = pinned_version or "latest"
             is_floating = declared_version in {"latest", "*"}
+            exact_pin = npm_exact_version(declared_version)
             cached = _resolve_npx_cached_version(name) if is_floating else None
-            version = cached[0] if cached else declared_version
+            if cached:
+                version = cached[0]
+            elif exact_pin is not None:
+                version = exact_pin
+            elif declared_version == "latest":
+                version = "latest"
+            else:
+                version = "unknown"
             pkg = Package(
                 name=name,
                 version=version,
                 ecosystem="npm",
-                purl=_npm_purl(name, version),
+                purl=_npm_purl(name, version) if version != "unknown" else None,
                 is_direct=True,
             )
             pkg.declared_version = declared_version
-            if not is_floating:
+            if not is_floating and exact_pin is None:
+                # A range/tag argument (``pkg@^1.2.0``, ``pkg@next``) names no
+                # version; the registry range resolver selects one online.
+                pkg.version_confidence = "low"
+                pkg.floating_reference = True
+                pkg.floating_reference_reason = f"npx command declared a version range or tag ({declared_version}), not an exact pin"
+            elif not is_floating:
                 pkg.resolved_version = version
                 pkg.version_source = "command_pin"
                 pkg.version_confidence = "exact"
@@ -752,7 +784,7 @@ def detect_npx_package(server: MCPServer) -> list[Package]:
             else:
                 pkg.resolved_from_registry = True
                 pkg.version_source = "registry_fallback"
-                pkg.registry_version = declared_version
+                pkg.registry_version = declared_version if declared_version != "*" else None
                 pkg.floating_reference = True
                 pkg.floating_reference_reason = "npx command omitted an explicit package version"
             packages.append(pkg)

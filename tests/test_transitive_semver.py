@@ -7,6 +7,9 @@ and therefore matched the wrong CVEs.
 
 from __future__ import annotations
 
+import pytest
+
+from agent_bom.parsers.npm_semver import classify_npm_spec, max_satisfying, npm_exact_version, resolve_npm_spec
 from agent_bom.transitive import _npm_caret_tilde_bounds, _resolve_npm_version, _semver_tuple
 
 
@@ -41,8 +44,10 @@ def test_prerelease_excluded_unless_only_match():
     assert _resolve_npm_version("^1.2.3", _pkg("1.2.3", "1.2.4", "1.3.0-beta")) == "1.2.4"
 
 
-def test_falls_back_to_latest_when_no_match():
-    assert _resolve_npm_version("^5.0.0", _pkg("1.0.0", "2.0.0")) == "2.0.0"
+def test_unsatisfiable_range_does_not_fall_back_to_latest():
+    # Falling back to `latest` (2.0.0) for ^5.0.0 reported a version the range
+    # excludes and matched that version's CVEs. Unsatisfiable → unresolved.
+    assert _resolve_npm_version("^5.0.0", _pkg("1.0.0", "2.0.0")) == ""
 
 
 def test_bounds_helper():
@@ -56,3 +61,96 @@ def test_semver_tuple_pads_and_strips():
     assert _semver_tuple("1.2") == (1, 2, 0)
     assert _semver_tuple("1.2.3-beta.1") == (1, 2, 3)
     assert _semver_tuple("not-a-version") is None
+
+
+# ── Full npm range grammar (node-semver) ─────────────────────────────────────
+
+_FORM_DATA = ("3.0.1", "4.0.0", "4.0.1", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "5.0.0-beta.1")
+_MINIPASS = ("3.3.6", "5.0.0", "6.0.2", "7.0.4", "7.1.2")
+
+
+@pytest.mark.parametrize(
+    ("spec", "versions", "expected"),
+    [
+        ("^4.0.0", _FORM_DATA, "4.0.6"),
+        ("5.0.0 || ^6.0.2 || ^7.0.0", _MINIPASS, "7.1.2"),
+        ("^3.0.0 || ^5.0.0", _MINIPASS, "5.0.0"),
+        ("*", _MINIPASS, "7.1.2"),
+        ("x", _MINIPASS, "7.1.2"),
+        ("", _MINIPASS, "7.1.2"),
+        ("6.x", _MINIPASS, "6.0.2"),
+        ("7.0.*", _MINIPASS, "7.0.4"),
+        ("7", _MINIPASS, "7.1.2"),
+        (">=5.0.0 <7.0.0", _MINIPASS, "6.0.2"),
+        (">= 5.0.0 < 7", _MINIPASS, "6.0.2"),
+        ("5.0.0 - 6", _MINIPASS, "6.0.2"),
+        ("3.0.0 - 7.0", _MINIPASS, "7.0.4"),
+        (">6", _MINIPASS, "7.1.2"),
+        (">6.0", _MINIPASS, "7.1.2"),
+        (">7", _MINIPASS, None),
+        ("<=6.0", _MINIPASS, "6.0.2"),
+        ("<6.0.2", _MINIPASS, "5.0.0"),
+        ("~7.0.1", _MINIPASS, "7.0.4"),
+        ("=6.0.2", _MINIPASS, "6.0.2"),
+        ("v6.0.2", _MINIPASS, "6.0.2"),
+        ("^9.0.0", _MINIPASS, None),
+        (">=5.0.0-beta.0 <6", _FORM_DATA, "5.0.0-beta.1"),
+        ("^5.0.0", _FORM_DATA, None),
+        ("^0.0", ("0.0.1", "0.0.9", "0.1.0"), "0.0.9"),
+        ("^0.2.3", ("0.2.3", "0.2.9", "0.3.0"), "0.2.9"),
+        ("not a range!", _MINIPASS, None),
+    ],
+)
+def test_max_satisfying_follows_node_semver(spec, versions, expected):
+    assert max_satisfying(versions, spec) == expected
+
+
+@pytest.mark.parametrize(
+    ("spec", "kind"),
+    [
+        ("4.0.6", "exact"),
+        ("=4.0.6", "exact"),
+        ("v4.0.6", "exact"),
+        ("1.0.0-rc.1", "exact"),
+        ("^4.0.0", "range"),
+        ("5.0.0 || ^6.0.2 || ^7.0.0", "range"),
+        ("*", "range"),
+        ("", "range"),
+        ("1.x", "range"),
+        ("1.2", "range"),
+        ("latest", "tag"),
+        ("next", "tag"),
+        ("git+https://github.com/org/repo.git#v1.0.0", "non_registry"),
+        ("github:org/repo", "non_registry"),
+        ("org/repo", "non_registry"),
+        ("file:../local", "non_registry"),
+        ("https://example.com/pkg.tgz", "non_registry"),
+        ("npm:other@^1.0.0", "non_registry"),
+        ("workspace:*", "non_registry"),
+        ("link:../x", "non_registry"),
+    ],
+)
+def test_classify_npm_spec(spec, kind):
+    assert classify_npm_spec(spec) == kind
+
+
+def test_exact_version_normalizes_prefixes():
+    assert npm_exact_version("=4.0.6") == "4.0.6"
+    assert npm_exact_version("v4.0.6") == "4.0.6"
+    assert npm_exact_version(" 4.0.6 ") == "4.0.6"
+    assert npm_exact_version("^4.0.6") is None
+    assert npm_exact_version("4.0") is None
+
+
+def test_resolve_prefers_latest_tag_when_it_satisfies():
+    # npm-pick-manifest: the defaultTag wins when it satisfies the range.
+    packument = {"dist-tags": {"latest": "4.0.4"}, "versions": {v: {} for v in _FORM_DATA}}
+    assert resolve_npm_spec("^4.0.0", packument) == "4.0.4"
+    assert resolve_npm_spec("^3.0.0", packument) == "3.0.1"
+    assert resolve_npm_spec("latest", packument) == "4.0.4"
+    assert resolve_npm_spec("4.0.1", packument) == "4.0.1"
+    assert resolve_npm_spec("beta", {"dist-tags": {"beta": "5.0.0-beta.1"}, "versions": {}}) == "5.0.0-beta.1"
+    assert resolve_npm_spec("^9.0.0", packument) is None
+    assert resolve_npm_spec("github:org/repo", packument) is None
+    assert resolve_npm_spec("nosuchtag", packument) is None
+    assert resolve_npm_spec("9.9.9", packument) is None

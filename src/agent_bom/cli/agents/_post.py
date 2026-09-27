@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import click
+
 from agent_bom.cli._common import SEVERITY_ORDER
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.output import to_json
@@ -263,6 +265,19 @@ def _fail_gate_meets(sev: str, threshold: int) -> bool:
     return SEVERITY_ORDER.get(sev, 0) >= threshold
 
 
+def _local_db_kev_is_fresh(report: Any) -> bool:
+    """Whether the scan's local vulnerability DB carried current KEV rows.
+
+    Matching against the local DB already joins ``kev_entries``; when that DB
+    is within its freshness SLO it is KEV evidence even though no catalog was
+    fetched in this process.
+    """
+    freshness = getattr(report, "vuln_data_freshness", None) if report is not None else None
+    if not isinstance(freshness, dict) or freshness.get("stale") is not False:
+        return False
+    return "KEV" in {str(source).upper() for source in freshness.get("sources") or []}
+
+
 def compute_exit_code(
     ctx: ScanContext,
     *,
@@ -431,12 +446,17 @@ def compute_exit_code(
                 None,
             )
             kev_status = str(kev_source.get("status") if kev_source else "unknown")
-            if kev_status != "ok":
-                if not quiet:
-                    con.print(
-                        "\n  [red bold]Exiting with code 1: CISA KEV evidence is unavailable or stale; "
-                        "--fail-on-kev cannot prove a clean result[/red bold]"
-                    )
+            if kev_status != "ok" and not _local_db_kev_is_fresh(report):
+                message = (
+                    f"CISA KEV evidence is unavailable or stale (catalog status: {kev_status}); "
+                    "--fail-on-kev cannot prove a clean result. Run online (the KEV catalog is fetched "
+                    "automatically), or refresh local data with `agent-bom db update`, or pass --enrich."
+                )
+                if quiet:
+                    # -q silences findings, not the reason a gate failed.
+                    click.echo(f"agent-bom: {message}", err=True)
+                else:
+                    con.print(f"\n  [red bold]Exiting with code 1: {message}[/red bold]")
                 exit_code = 1
 
     if fail_if_ai_risk and _active_blast_radii:

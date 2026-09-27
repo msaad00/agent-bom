@@ -27,6 +27,7 @@ def run_monitor(
     workflow_name="Publish to Registries",
     step_name=None,
     probe_env=None,
+    history=("failure",) * 5,
 ):
     data = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
     script = next(
@@ -36,10 +37,15 @@ def run_monitor(
     )
     harness = """
     const fs = require('node:fs');
-    const {script, issues, fresh, latest_id, latest_attempt, main_sha, workflow_name, probe_env} = JSON.parse(fs.readFileSync(0, 'utf8'));
+    const {script, issues, fresh, latest_id, latest_attempt, main_sha, workflow_name, probe_env, history} =
+      JSON.parse(fs.readFileSync(0, 'utf8'));
     const events = [];
     const github = {paginate: async () => issues, rest: {
-      actions: {listWorkflowRuns: async () => ({data: {workflow_runs: [{id: latest_id, run_attempt: latest_attempt}]}})},
+      actions: {listWorkflowRuns: async () => ({data: {workflow_runs: history.map((conclusion, i) => (
+        i === 0 ? {id: latest_id, run_attempt: latest_attempt, status: 'completed', conclusion}
+                : conclusion === 'in_progress'
+                  ? {id: 1000 + i, run_attempt: 1, status: 'in_progress', conclusion: null}
+                  : {id: 1000 + i, run_attempt: 1, status: 'completed', conclusion}))}})},
       repos: {getBranch: async () => ({data: {commit: {sha: main_sha}}})},
       issues: {
       listForRepo: () => {}, createLabel: async () => {},
@@ -68,6 +74,7 @@ def run_monitor(
                 "main_sha": main_sha,
                 "workflow_name": workflow_name,
                 "probe_env": probe_env,
+                "history": list(history),
             }
         ),
         text=True,
@@ -270,3 +277,87 @@ def test_changed_failure_evidence_still_updates_issue(workflow, job, title, old,
     issue = {"number": 123, "title": title, "state": "open", "body": created["body"].replace(old, new)}
     events = run_monitor(workflow, job, [issue])
     assert len(events) == 1 and events[0]["kind"] == "update"
+
+
+@pytest.mark.parametrize(
+    ("history", "alerts"),
+    [
+        (("failure",), False),
+        (("failure", "success", "failure", "failure"), False),
+        (("failure", "failure", "success"), False),
+        (("failure", "failure", "failure"), True),
+        (("failure", "cancelled", "failure", "skipped", "failure"), True),
+        (("timed_out", "failure", "startup_failure"), True),
+        (("failure", "in_progress", "failure", "failure"), True),
+    ],
+)
+def test_regression_issue_opens_only_after_consecutive_main_failures(history, alerts):
+    """A single red run on main is noise; three in a row is an incident."""
+    events = run_monitor(
+        "main-failure-alert.yml",
+        "alert",
+        [],
+        workflow_name="CI/CD Pipeline",
+        history=history,
+    )
+
+    assert bool(events) is alerts
+    if alerts:
+        assert events[0]["kind"] == "create"
+        assert "3 consecutive failed runs" in events[0]["body"]
+
+
+def _freshness_report(status):
+    return json.dumps(
+        {
+            "expected": "0.106.1",
+            "all_fresh": False,
+            "all_required_fresh": False,
+            "surfaces": [
+                {"surface": "PyPI", "status": "fresh", "required": True},
+                {"surface": "Glama", "status": status, "required": True},
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "release_age_hours", "alerts"),
+    [
+        ("stale", 2, False),
+        ("stale", 47, False),
+        ("stale", 72, True),
+        ("unreachable", 2, True),
+        ("unmonitored (misconfigured)", 2, True),
+    ],
+)
+def test_freshness_waits_out_registry_sync_after_a_release(status, release_age_hours, alerts):
+    """A registry one version behind right after a release is sync lag, not drift."""
+    from datetime import datetime, timedelta, timezone
+
+    published_at = (datetime.now(timezone.utc) - timedelta(hours=release_age_hours)).isoformat()
+    events = run_monitor(
+        "surface-freshness.yml",
+        "freshness",
+        [],
+        probe_env={"REPORT": _freshness_report(status), "RELEASE_PUBLISHED_AT": published_at},
+    )
+
+    assert bool(events) is alerts
+
+
+@pytest.mark.parametrize(
+    ("failures", "alerts"),
+    [(3, False), (4, False), (5, True)],
+)
+def test_scheduled_publish_workflows_need_a_longer_failure_streak(failures, alerts):
+    """Registry publishing retries while providers sync; four red runs are still sync lag."""
+    events = run_monitor(
+        "main-failure-alert.yml",
+        "alert",
+        [],
+        workflow_name="Publish to Registries",
+        history=("failure",) * failures,
+    )
+
+    assert bool(events) is alerts

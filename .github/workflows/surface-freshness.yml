@@ -53,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          PUBLISHED_AT=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.published_at')
           VERSION="${TAG#v}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.+-]*)?$ ]]; then
             echo "::error::Latest published release has an invalid version tag"
@@ -75,6 +76,7 @@ jobs:
             echo "version=$VERSION"
             echo "release_sha=$RELEASE_SHA"
             echo "tool_count=$TOOL_COUNT"
+            echo "published_at=$PUBLISHED_AT"
           } >> "$GITHUB_OUTPUT"
           echo "Expected version from published release $TAG at ${RELEASE_SHA:0:12}: $VERSION with $TOOL_COUNT MCP tools"
 
@@ -126,9 +128,18 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           REPORT: ${{ steps.probe.outputs.report }}
+          RELEASE_PUBLISHED_AT: ${{ steps.expected.outputs.published_at }}
         with:
           script: |
             const report = JSON.parse(process.env.REPORT);
+            // Registries index a new release on their own schedule (Glama syncs about
+            // daily). Right after a release a one-version lag is expected, not drift.
+            // Unreachable or unmonitored surfaces still alert immediately.
+            const SYNC_GRACE_HOURS = 48;
+            const releaseAgeHours = (Date.now() - Date.parse(process.env.RELEASE_PUBLISHED_AT || "")) / 36e5;
+            const requiredDrift = (report.surfaces || []).filter((s) => s.required !== false && s.status !== "fresh");
+            const onlySyncLag = requiredDrift.length > 0 && requiredDrift.every((s) => s.status === "stale");
+            const inSyncGrace = onlySyncLag && Number.isFinite(releaseAgeHours) && releaseAgeHours < SYNC_GRACE_HOURS;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const title = "supply-chain-drift: distribution surfaces out of sync";
@@ -196,6 +207,8 @@ jobs:
               }
               return;
             }
+
+            if (inSyncGrace) return;
 
             if (match) {
               // Preserve the first matching evidence snapshot without daily issue churn.

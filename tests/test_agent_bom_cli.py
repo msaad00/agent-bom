@@ -83,3 +83,30 @@ def test_export_does_not_write_a_document_exceeding_import_limit(monkeypatch, tm
     result = CliRunner().invoke(main, ["manifest", "--single-agent", "-o", str(target)])
     assert result.exit_code == 1
     assert not target.exists()
+
+
+def test_real_inventory_file_preserves_identity_evidence(tmp_path):
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    assert json.loads((root / "config/schemas/inventory.schema.json").read_text()) == json.loads(
+        (root / "src/agent_bom/data/inventory.schema.json").read_text()
+    )
+    (tmp_path / "inventory.json").write_text(
+        json.dumps(
+            {
+                "agents": [
+                    {
+                        "name": "example",
+                        "agent_type": "custom",
+                        "source_id": "deployment-a",
+                        "mcp_servers": [{"name": "tools", "command": "example-tools"}],
+                    }
+                ]
+            }
+        )
+    )
+    result = CliRunner().invoke(main, ["manifest", "--project", str(tmp_path), "--single-agent"])
+    assert result.exit_code == 0, result.output
+    document = validate_agent_bom_json(result.output)
+    assert document.content.subject.source_id == "deployment-a"

@@ -54,9 +54,10 @@ Two hubs cover the clustered material — start at the hub, then follow it to th
 - [`ENTERPRISE.md`](ENTERPRISE.md) — **enterprise doc-set hub**: controls-to-code map; indexes deployment, security posture, playbook, procurement, operations-evidence, and support siblings
 - [`RUNTIME_REFERENCE.md`](RUNTIME_REFERENCE.md) — runtime surface map; indexes `RUNTIME_MONITORING.md` and `RUNTIME_PROXY_AUDIT_JSONL.md`
 - [`PERMISSIONS.md`](PERMISSIONS.md) — RBAC roles and permissions
+- [`AGENT_LIFECYCLE.md`](AGENT_LIFECYCLE.md) — retain BOM snapshots and register deployment, instance and run references
 - [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — persistence and evidence stores
 - [`RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) — release verification
-- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (346 paths / 411 operations)
+- [`openapi/v1.json`](openapi/v1.json) — canonical REST contract (355 paths / 420 operations)
 
 ## AI / agent developers (MCP · clients · tools)
 

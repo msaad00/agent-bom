@@ -366,6 +366,7 @@ def test_real_permission_denied_still_names_the_permission() -> None:
 
 
 def test_azure_storage_enum_values_compare_by_value() -> None:
+    pytest.importorskip("azure.mgmt.storage")
     from azure.mgmt.storage.models import Bypass, DefaultAction, KeySource
 
     from agent_bom.cloud.azure_cis_benchmark import _check_3_2, _check_3_3, _check_3_8, _check_3_9
@@ -383,6 +384,7 @@ def test_azure_storage_enum_values_compare_by_value() -> None:
 
 
 def test_azure_tls_enum_values_compare_by_value() -> None:
+    pytest.importorskip("azure.mgmt.sql")
     from azure.mgmt.sql.models import MinimalTlsVersion
 
     from agent_bom.cloud.azure_cis_benchmark import _check_4_2_1
@@ -519,6 +521,8 @@ def test_azure_scan_outcome_partial_when_benchmark_checks_errored() -> None:
 
 
 def test_gcp_api_core_error_info_reason_is_classified() -> None:
+    pytest.importorskip("google.api_core")
+    pytest.importorskip("google.rpc")
     from google.api_core import exceptions as gexc
     from google.rpc import error_details_pb2
 
@@ -533,6 +537,7 @@ def test_gcp_api_core_error_info_reason_is_classified() -> None:
 
 
 def test_azure_sql_public_access_enum_compares_by_value() -> None:
+    pytest.importorskip("azure.mgmt.sql")
     from azure.mgmt.sql.models import ServerNetworkAccessFlag
 
     from agent_bom.cloud.azure_cis_benchmark import _check_4_1_6

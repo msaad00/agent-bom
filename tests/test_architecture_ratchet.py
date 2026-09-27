@@ -77,3 +77,9 @@ def test_graph_persistence_service_cannot_import_its_callers_or_store_singleton(
     ):
         assert boundary_errors("api/graph_persistence.py", ast.parse(source))
     assert not boundary_errors("api/graph_persistence.py", ast.parse("from agent_bom.api.graph_store import GraphStoreProtocol"))
+
+
+def test_explicit_tenant_validation_has_one_domain_owner():
+    tree = ast.parse("def require_explicit_tenant_id(value):\n return value\n")
+    assert boundary_errors("api/tenancy.py", tree)
+    assert not boundary_errors("core/tenancy.py", tree)

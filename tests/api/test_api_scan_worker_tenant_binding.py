@@ -60,9 +60,32 @@ def test_claimed_scan_still_runs_under_the_job_tenant(observed_tenants) -> None:
     assert observed_tenants == ["acme-corp"]
 
 
-@pytest.mark.parametrize("tenant_id", ["", "   ", "default"])
-def test_unset_job_tenant_falls_back_to_default(observed_tenants, tenant_id) -> None:
-    pipeline_module.submit_scan_job(_job(tenant_id))
+@pytest.mark.parametrize("tenant_id", ["", "   "])
+@pytest.mark.parametrize("submission", ["http", "scheduled", "claimed"])
+def test_missing_job_tenant_is_rejected_before_submission(observed_tenants, monkeypatch, tenant_id, submission) -> None:
+    from unittest.mock import Mock
+
+    executor = Mock()
+    monkeypatch.setattr(pipeline_module, "_executor_active_jobs", 0)
+    monkeypatch.setattr(pipeline_module, "_executor_for_submission_locked", lambda: executor)
+    job = _job(tenant_id)
+    with pytest.raises(ValueError, match="tenant"):
+        if submission == "http":
+            pipeline_module.submit_scan_job(job)
+        elif submission == "scheduled":
+            loop = Mock()
+            pipeline_module.submit_scheduled_scan_job(loop, job)
+        else:
+            pipeline_module.submit_claimed_scan_job(job, Mock())
+    executor.submit.assert_not_called()
+    assert pipeline_module._executor_active_jobs == 0
+    if submission == "scheduled":
+        loop.run_in_executor.assert_not_called()
+    assert observed_tenants == []
+
+
+def test_explicit_default_job_tenant_remains_supported(observed_tenants) -> None:
+    pipeline_module.submit_scan_job(_job("default"))
     pipeline_module.shutdown_scan_executor(wait=True, cancel_futures=False)
     assert observed_tenants == ["default"]
 

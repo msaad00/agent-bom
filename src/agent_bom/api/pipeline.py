@@ -50,6 +50,7 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
+from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -174,7 +175,7 @@ def submit_scan_job(job: ScanJob) -> None:
         executor = _executor_for_submission_locked()
         _executor_active_jobs += 1
         try:
-            future = executor.submit(run_tenant_bound, job.tenant_id or "default", _run_scan_sync, job)
+            future = executor.submit(run_tenant_bound, require_explicit_tenant_id(job.tenant_id), _run_scan_sync, job)
         except Exception:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
             raise
@@ -200,7 +201,7 @@ def submit_scheduled_scan_job(loop: Any, job: ScanJob) -> None:
         executor = _executor_for_submission_locked()
         _executor_active_jobs += 1
         try:
-            future = loop.run_in_executor(executor, run_tenant_bound, job.tenant_id or "default", _run_scan_sync, job)
+            future = loop.run_in_executor(executor, run_tenant_bound, require_explicit_tenant_id(job.tenant_id), _run_scan_sync, job)
         except Exception:
             _executor_active_jobs = max(0, _executor_active_jobs - 1)
             raise
@@ -216,17 +217,11 @@ def _run_claimed_scan_sync(job: ScanJob) -> None:
     persistence (PostgresJobStore.put) lands under the job's own tenant and
     passes RLS WITH CHECK, instead of silently writing as the default tenant.
     """
-    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
-
     # A finished job can retain its queue row if dispatch cleanup failed or the
     # process stopped after persisting the result. Reclaim must not rerun it.
     if job.status not in {JobStatus.PENDING, JobStatus.RUNNING}:
         return
-    token = set_current_tenant(job.tenant_id or "default")
-    try:
-        _run_scan_sync(job)
-    finally:
-        reset_current_tenant(token)
+    run_tenant_bound(job.tenant_id, _run_scan_sync, job)
 
 
 def submit_claimed_scan_job(job: ScanJob, on_complete: Any) -> None:
@@ -237,6 +232,8 @@ def submit_claimed_scan_job(job: ScanJob, on_complete: Any) -> None:
     local capacity and clear the job's dispatch-queue row.
     """
     global _executor_active_jobs  # noqa: PLW0603
+
+    require_explicit_tenant_id(job.tenant_id)
 
     with _executor_lock:
         executor = _executor_for_submission_locked()

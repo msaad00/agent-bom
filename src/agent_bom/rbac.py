@@ -25,6 +25,8 @@ from typing import Callable
 
 from fastapi import HTTPException, Request
 
+from agent_bom.api.tenancy import require_request_tenant_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -465,8 +467,7 @@ def require_authenticated_permission(action: str) -> Callable:
                 role = Role(str(state_role).lower())
             except ValueError as exc:
                 raise HTTPException(status_code=403, detail=f"Invalid authenticated role '{state_role}'") from exc
-            if not getattr(request.state, "tenant_id", None):
-                request.state.tenant_id = "default"
+            request.state.tenant_id = require_request_tenant_id(request)
             return _authorize(role, action)
 
         auth_runtime = get_auth_runtime_status()
@@ -507,7 +508,7 @@ def require_authenticated_permission(action: str) -> Callable:
                 role = Role(x_role.lower())
             except ValueError as exc:
                 raise HTTPException(status_code=403, detail=f"Invalid proxy role '{x_role}'") from exc
-            if not x_tenant_id:
+            if not x_tenant_id or not x_tenant_id.strip():
                 raise HTTPException(
                     status_code=401,
                     detail="Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID",

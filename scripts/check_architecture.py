@@ -14,6 +14,7 @@ from pathlib import Path
 LIMITS = {"file_lines": 600, "function_lines": 80, "complexity": 15}
 BASELINE = Path("scripts/architecture-baseline.json")
 OWNED_FUNCTIONS = {
+    "require_explicit_tenant_id": "core/tenancy.py",
     "normalize_severity": "core/severity.py",
     "severity_display_bucket": "core/severity.py",
     "severity_policy_rank": "core/severity.py",

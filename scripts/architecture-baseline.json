@@ -154,7 +154,7 @@
       "function_lines": 91
     },
     "api/middleware.py": {
-      "file_lines": 2619
+      "file_lines": 2610
     },
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
       "function_lines": 84
@@ -201,7 +201,7 @@
       "function_lines": 87
     },
     "api/pipeline.py": {
-      "file_lines": 1794
+      "file_lines": 1791
     },
     "api/pipeline.py::_run_scan_sync": {
       "complexity": 136,
@@ -2832,7 +2832,7 @@
       "function_lines": 142
     },
     "rbac.py::require_authenticated_permission": {
-      "function_lines": 89
+      "function_lines": 88
     },
     "reachability_cve.py": {
       "file_lines": 778

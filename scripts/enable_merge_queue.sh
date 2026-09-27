@@ -1,25 +1,12 @@
 #!/usr/bin/env bash
-# Print the supported path for enabling GitHub merge queue on `main`.
+# Inspect CI protection and print merge-queue guidance for `main`.
 #
-# Why this is no longer a one-shot script
-# ───────────────────────────────────────
-# As of 2026-04, GitHub returns HTTP 422 "Invalid rule 'merge_queue'" when
-# a `merge_queue` rule is POSTed to repos/{owner}/{repo}/rulesets, even on
-# personal repos with `repo`-scoped tokens. The legacy
-# branches/{branch}/protection endpoint never exposed merge_queue at all.
-# The Settings UI is the only supported toggle.
-#
-# For the recurring stranded-CI pain that motivated wanting merge queue,
-# `.github/workflows/auto-retrigger-stranded.yml` is the practical fix:
-# it runs after main advances, polls open PRs every 5 minutes, refreshes
-# ready auto-merge PRs that are behind main with a dedicated automation token,
-# and runs scripts/retrigger_stranded_pr.sh against any whose current head SHA
-# has zero or stale check-runs. If the dedicated token is absent, it can still
-# dispatch required workflows for PR heads that already contain current main.
+# Inspect live protection before an owner-controlled settings change.
+# Workflow trigger support does not establish merge-queue availability.
 #
 # Usage:
-#   scripts/enable_merge_queue.sh         # print steps
-#   scripts/enable_merge_queue.sh --check # print current ruleset/protection state
+#   scripts/enable_merge_queue.sh         # print guidance; does not change settings
+#   scripts/enable_merge_queue.sh --check # inspect current rules and workflow state
 #
 
 set -euo pipefail
@@ -32,39 +19,33 @@ if [ "${1:-}" = "--check" ]; then
   echo
   echo "Active rulesets touching '${BRANCH}':"
   gh api "repos/${REPO}/rules/branches/${BRANCH}" \
-    --jq '[.[] | .type] // [] | unique' 2>/dev/null || echo "  (none / 404)"
+    --jq '[.[] | .type] // [] | unique' 2>/dev/null || echo "  (rules unavailable; check API access and repository settings)"
   echo
   echo "Branch-protection rule fields:"
   gh api "repos/${REPO}/branches/${BRANCH}/protection" \
-    --jq 'keys' 2>/dev/null || echo "  (no legacy branch-protection rule)"
+    --jq '{strict: .required_status_checks.strict, contexts: .required_status_checks.contexts}' 2>/dev/null || echo "  (protection unavailable; check API access and repository settings)"
   echo
   echo "Auto-retrigger workflow status:"
-  gh workflow view auto-retrigger-stranded.yml --json state 2>/dev/null \
-    --jq '"  state=\(.state)"' || echo "  (workflow not present on default branch yet)"
+  gh api "repos/${REPO}/actions/workflows/auto-retrigger-stranded.yml" \
+    --jq '"  state=\(.state)"' 2>/dev/null || echo "  (workflow state unavailable; check API access and workflow configuration)"
   exit 0
 fi
 
 cat <<EOF
-Merge queue cannot currently be enabled via REST on this repo's auth path.
-
-Supported steps (one-time):
-
-  1. https://github.com/${REPO}/settings/branches
-  2. Edit the rule for '${BRANCH}' (or add one if absent)
-  3. Check  ✅  Require merge queue
-  4. Set the merge method to Squash and the same required status checks
-     used today (Lint and Type Check, Test (Python 3.11/3.13/3.14),
-     Build Package, Security Scan, CodeQL)
-  5. Save
-
-Verify with:
+Merge queue is an optional owner-controlled repository setting.
+Inspect live protection and repository availability before changing settings:
 
   scripts/enable_merge_queue.sh --check
 
-Until the toggle is on, the practical fix for stale/stranded PRs is the
-workflow at .github/workflows/auto-retrigger-stranded.yml, which refreshes
-ready auto-merge PRs after main advances and auto-runs
-scripts/retrigger_stranded_pr.sh every 5 minutes. Configure the
-AUTOMATION_GITHUB_TOKEN secret for branch refreshes; without it, the workflow
-falls back to scripts/dispatch_required_ci.sh for already-current PR heads.
+The required contexts verified on 2026-09-27 were:
+  Lint and Type Check, Test (Python 3.13), Build Package, Security Scan, CodeQL
+Recheck the API output; do not substitute the post-merge full-correctness jobs.
+
+The recovery workflow is .github/workflows/auto-retrigger-stranded.yml.
+It responds to PR synchronization and main pushes, with a 15-minute scheduled
+fallback. A dedicated AUTOMATION_GITHUB_TOKEN is needed for unattended branch
+refresh/retrigger recovery; otherwise scripts/dispatch_required_ci.sh can
+recover missing checks on already-current PR heads. Schedules can be delayed.
+
+See docs/operations/CI_RUNBOOK.md. This command does not change settings.
 EOF

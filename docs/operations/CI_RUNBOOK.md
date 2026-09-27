@@ -40,7 +40,10 @@ nightly, merge-queue, and manual runs), `Python correctness aggregation`
 treats a skipped post-merge lane as a failure, and `Test (Python 3.13)`
 requires the Docker lane, so a green `main` run means the full suite, the
 performance/Postgres lanes, and the release image all passed. Superseded PR
-runs are cancelled; `main` runs never are. A post-merge regression opens a
+runs are cancelled; the concurrency policy preserves running `main` runs.
+A newer pending `main` run can replace an older pending run, so verify the
+exact SHA instead of treating an older or cancelled run as release proof.
+A post-merge regression opens a
 `ci-regression` issue through `main-failure-alert.yml`, which watches
 `CI/CD Pipeline`, `Runtime Helm Acceptance`, and `ClusterFuzzLite`.
 
@@ -72,6 +75,26 @@ does not weaken branch-protection or secret-scanning behavior.
 
 ---
 
+## Inspect current protection first
+
+As verified on September 27, 2026, legacy `main` protection uses
+`required_status_checks.strict = false` and these five contexts:
+`Lint and Type Check`, `Test (Python 3.13)`, `Build Package`, `Security Scan`,
+and `CodeQL`. The branch rules endpoint returned no active ruleset rules.
+These are a dated settings snapshot, not configuration enforced by this file.
+Recheck before diagnosing a blocked merge:
+
+```sh
+gh api repos/msaad00/agent-bom/branches/main/protection/required_status_checks \
+  --jq '{strict, contexts}'
+gh api repos/msaad00/agent-bom/rules/branches/main --jq '[.[] | .type] | unique'
+gh pr view <PR_NUMBER> --json headRefOid,reviewDecision,mergeStateStatus,statusCheckRollup
+```
+
+With `strict=false`, a stale base alone is not an up-to-date branch-protection
+requirement. Review, signature, missing-context, or other rules can still block
+merging. Do not change protection settings to compensate for missing CI evidence.
+
 ## Ready PRs blocked behind `main`
 
 ### Symptom
@@ -83,13 +106,13 @@ readiness PRs are stacked behind a strict `main` branch protection rule.
 
 ### Root cause
 
-`main` advanced after the PR checks started. Branch protection has
-`required_status_checks.strict = true`, so GitHub requires the PR head to
-include the latest `main` before it can merge. Clicking **Update branch** fixes
-the base mismatch, but the resulting synthetic merge commit can produce stale
-or canceled check state.
+If live protection reports `required_status_checks.strict = true`, advancing
+`main` can require a refreshed PR head. This conditional diagnosis does not
+apply to the `strict=false` snapshot above. When a refresh is needed, follow
+the signed local-rebase workflow in `AGENTS.md`, revalidate, and push once with
+`--force-with-lease`. Let the new head's checks finish.
 
-### Permanent fix: auto-refresh ready PRs
+### Available recovery automation
 
 `.github/workflows/auto-retrigger-stranded.yml` now runs on PR synchronize
 events, every push to `main`, on a 15-minute schedule, and on manual dispatch.
@@ -104,8 +127,9 @@ it further limits writes to PRs with auto-merge already enabled, so exploratory
 branches are left alone. Branch refresh and close/reopen retrigger require
 `AUTOMATION_GITHUB_TOKEN`, a dedicated GitHub App token or PAT with repo
 pull-request/write access. Do not use `GITHUB_TOKEN` for refresh or
-close/reopen events: GitHub suppresses workflows triggered by that token, which
-recreates the frozen-check loop.
+close/reopen recovery when unattended CI is required: GitHub token-authored
+PR events can require manual workflow approval. Verify the current-head runs
+and approval banner before deciding that a workflow is missing.
 
 If `AUTOMATION_GITHUB_TOKEN` is not configured, the workflow now uses a
 lower-privilege fallback:
@@ -147,15 +171,16 @@ its required checks before, then someone clicked **Update branch** (or the
 
 ### Root cause
 
-GitHub Actions does not recursively trigger workflows from events whose actor
-is `GITHUB_TOKEN`. When auto-merge — or the **Update branch** button — pushes
-the merge-from-base commit to a PR head, that push is authored by
-`GITHUB_TOKEN`. `pull_request` workflows therefore do not fire on that head
-SHA, leaving the PR stranded with the previous head's checks marked stale by
-`required_status_checks.strict = true`.
+Inspect the event, token identity, queued runs, and approval state. An empty
+check list does not by itself prove that GitHub suppressed an event. Current
+GitHub documentation says `GITHUB_TOKEN`-authored `opened`, `synchronize`, and
+`reopened` PR events create approval-required runs; ordinary token-authored
+pushes do not start push workflows. Dispatch events are explicit exceptions.
+A UI branch update is not automatically evidence of a `GITHUB_TOKEN` actor.
 
-This is documented behavior, not an agent-bom-specific bug:
-<https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow>
+See [GitHub's token event behavior](https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs).
+Check the exact head even when `strict=false`: required contexts still need
+valid evidence for that head.
 
 ### Fix the stranded PR (one-shot)
 
@@ -176,20 +201,21 @@ The script:
    retriggering. Downstream jobs such as package build are not created until
    prerequisite jobs finish.
 5. If checks are missing or stale after the run is idle, closes the PR and
-   immediately reopens it. This starts `pull_request` workflows only when the
-   token is not `GITHUB_TOKEN`.
+   immediately reopens it. Use a dedicated App token or PAT for unattended
+   recovery; token-authored PR events may otherwise require approval.
 
 The script no-ops when the required check is already present, so it is safe to
 run on any PR.
 
-### Permanent fix: event-driven auto-retrigger (recommended, already on)
+### Event-driven auto-retrigger
 
 `.github/workflows/auto-retrigger-stranded.yml` runs `scripts/retrigger_stranded_pr.sh`
 against every synchronized PR whose current head SHA has zero or stale
 required checks. It runs immediately after a PR push, after `main`
 advances, every 15 minutes, and through `workflow_dispatch` for on-demand. Once this workflow is on the
-default branch and `AUTOMATION_GITHUB_TOKEN` is configured, stranded PRs
-unstrand themselves within five minutes — no operator action required.
+default branch and `AUTOMATION_GITHUB_TOKEN` is configured, eligible stranded
+PRs can recover automatically. The fallback schedule is every 15 minutes and
+GitHub may delay it; there is no five-minute recovery guarantee.
 
 When the automation token is absent, the workflow falls back to
 `scripts/dispatch_required_ci.sh` and dispatches required workflows for current
@@ -207,52 +233,18 @@ Operator-side troubleshooting if a strand persists past ~10 minutes:
 - Did `gh api commits/{sha}/check-runs` return zero, or did branch protection
   change? Keep `REQUIRED_CHECKS` aligned with the protected contexts.
 
-### Permanent fix alternatives (settings change required)
+### Optional merge-queue configuration
 
-The auto-refresh/retrigger workflow above is the cheapest path. The following
-alternatives still apply if you prefer settings-level fixes; pick one.
+Merge queue is a separate owner-controlled settings decision. The three
+required-check workflows (`ci.yml`, `codeql.yml`, `pr-security-gate.yml`)
+declare `merge_group: types: [checks_requested]`; this proves trigger support,
+not that a queue is enabled or available for the repository's plan.
 
-| Option | Where | Tradeoff |
-|---|---|---|
-| **Enable merge queue on `main`** | Settings → Branches → main protection rule → "Require merge queue" | Cleanest. The `merge_group: types: [checks_requested]` trigger already exists in `ci.yml`, so the queue starts working immediately. PRs no longer need to be rebased before merge. |
-| **Set `required_status_checks.strict = false`** | Settings → Branches → main protection rule → uncheck "Require branches to be up to date before merging" | Simplest. Removes the need to rebase, so "Update branch" is no longer needed. Loses the guarantee that CI passed against current `main` — relies on post-merge workflows to catch regressions. |
-| **Use a GitHub App / PAT for auto-merge** | Replace the bot identity for `Update branch` pushes | Pushes from a non-`GITHUB_TOKEN` identity do fire workflows. Requires creating + scoping a dedicated app or token. |
-
-The merge queue is the recommended option for this repo because the workflow
-is already wired for `merge_group`. The three required-status-check workflows
-(`ci.yml`, `codeql.yml`, `pr-security-gate.yml`) all declare:
-
-```yaml
-on:
-  pull_request:
-  merge_group:
-    types: [checks_requested]
-```
-
-so once branch protection is flipped, the queue runs the same checks that
-gate PRs today — no workflow edits required.
-
-#### How to flip it (UI-only as of 2026-04)
-
-REST attempts return HTTP 422 "Invalid rule 'merge_queue'" on this repo's
-auth path. The Settings UI is the only supported toggle today.
-
-1. https://github.com/msaad00/agent-bom/settings/branches
-2. Edit the rule for `main`
-3. Check ✅ **Require merge queue**
-4. Set merge method to **Squash** and pin the same required status checks
-   used today (Lint and Type Check, Test (Python 3.11/3.12/3.13/3.14), Build
-   Package, Security Scan, CodeQL)
-5. Save
-
-Verify with `scripts/enable_merge_queue.sh --check`.
-
-After enabling, "Update branch" disappears from the PR view; the
-`Merge when ready` button puts the PR into the queue, which rebases + tests
-the merge candidate against current `main` and only fast-forwards once green.
-Stranded-CI from `GITHUB_TOKEN` pushes is no longer reachable: the queue
-authors its merge commits with a non-`GITHUB_TOKEN` identity, so workflows
-fire normally.
+Use `scripts/enable_merge_queue.sh --check` for read-only inspection. If the
+owner enables a supported queue, copy the five live required contexts from
+the API output above and verify a real merge-group run. Do not configure the
+four full-correctness matrix job names as required PR contexts: they run in
+the post-merge lane. Keep the exact-main release gate regardless of queue use.
 
 ---
 

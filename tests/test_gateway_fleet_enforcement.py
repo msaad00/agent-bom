@@ -4,7 +4,7 @@ The fleet roster's QUARANTINED lifecycle state was advisory-only — an operator
 could quarantine a compromised or under-review agent but it kept relaying. These
 tests cover the opt-in enforcement: `enforce` blocks every call from a
 quarantined agent, `warn` audits it, `off` stays advisory, and a fleet-store
-failure fails open.
+failure blocks in enforce mode.
 """
 
 from __future__ import annotations
@@ -116,15 +116,19 @@ def test_off_is_advisory_no_block():
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
 
 
-def test_fleet_store_failure_fails_open():
+def test_fleet_store_failure_fails_closed():
     class _Boom:
-        def list_by_tenant(self, *a, **k):
+        def get(self, *a, **k):
             raise RuntimeError("store down")
+
+        def list_by_tenant(self, *a, **k):
+            return []
 
     set_fleet_store(_Boom())
     client = TestClient(create_gateway_app(_settings("enforce")))
     resp = client.post("/mcp/filesystem", json=_call("token-a"))
-    assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
+    assert _is_blocked(resp)
+    assert resp.json()["error"]["data"]["policy_source"] == "fleet_lookup_unavailable"
 
 
 # ── Identity revocation for non-managed callers (JWT / opaque tokens) ──────────

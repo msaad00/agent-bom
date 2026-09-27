@@ -830,7 +830,7 @@ function scanAgents() {
       ],
     },
     ...DEMO_AGENT_SPECS.map(demoScanAgent),
-  ];
+  ].map((agent, index) => ({ ...agent, canonical_id: `fixture-agent-${index + 1}`, stable_id: `fixture-agent-${index + 1}` }));
 }
 
 function scanJob() {
@@ -902,6 +902,9 @@ function scanJob() {
     ].map((event) => JSON.stringify({ type: "step", status: "done", ...event })),
     summary: scanSummary(agents.length),
     result: {
+      generated_at: CREATED_AT,
+      scan_id: SCAN_ID,
+      scan_run: { outcome: "partial", requested_scope_count: 3, complete_scope_count: 2, incomplete_scope_count: 1 },
       agents,
       blast_radius: buildBlastRadius(),
       remediation_plan: remediationPlan,
@@ -1965,6 +1968,10 @@ async function installRoutes(page) {
       return false;
     }
   }, (route) => fulfill(route, scanJob()));
+  await page.route((url) => url.pathname === `/v1/scan/${SCAN_ID}/stream`, (route) => route.fulfill({
+    contentType: "text/event-stream",
+    body: `data: ${JSON.stringify({ type: "done", status: "done", job_id: SCAN_ID })}\n\n`,
+  }));
   await page.route((url) => url.pathname === `/v1/scan/${SCAN_ID}/status`, (route) => fulfill(route, {
     job_id: SCAN_ID, status: "done", graph_scan_id: SCAN_ID, created_at: CREATED_AT,
   }));
@@ -2796,6 +2803,11 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       scope: "New Scan workspace with scope summary, read-only boundary, expected evidence, connected sources, and job navigation",
     },
     {
+      path: "scan-agent-bom-live.png",
+      page: `/scan?id=${SCAN_ID}&capture=1`,
+      scope: "Synthetic scan receipt with explicit partial coverage and one recorded agent identity selected for composition export",
+    },
+    {
       path: "jobs-pipeline-live.png",
       page: "/jobs?capture=1",
       scope: "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
@@ -3274,6 +3286,17 @@ async function main() {
     }, {
       expectedText: ["New Scan", "What this scan collects and produces", "Read-only boundary", /Scope now/i, /Scan jobs/i],
       expectedApiPaths: ["/v1/cloud/connections", "/v1/sources"],
+    });
+    await capture(page, `/scan?id=${SCAN_ID}&capture=1`, "scan-agent-bom-live.png", async (scanPage) => {
+      const panel = scanPage.locator('details[aria-label="Scan evidence and agent BOM"]');
+      await panel.locator("summary").click();
+      await panel.getByRole("combobox").selectOption("fixture-agent-1");
+      const top = await panel.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
+      await scrollTo(scanPage, top - 100);
+    }, {
+      expectedText: ["Collection partial", "2 of 3 requested scopes complete", "Download agent BOM", "Experimental profile"],
+      expectedApiPaths: [`/v1/scan/${SCAN_ID}`, `/v1/scan/${SCAN_ID}/status`],
+      assertNoHorizontalOverflow: true,
     });
     await capture(page, "/jobs?capture=1", "jobs-pipeline-live.png", async (jobsPage) => {
       const pipeline = jobsPage.getByTestId(`job-pipeline-${SCAN_ID}`);

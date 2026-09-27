@@ -23,7 +23,7 @@ function completenessLabel(
       ? `${returned.toLocaleString()} nodes returned`
       : `${returned.toLocaleString()} nodes returned · ${snapshotTotal.toLocaleString()} nodes in snapshot`;
   }
-  const denominator = snapshotTotal ?? scopeTotal;
+  const denominator = scopeTotal;
   return denominator === null
     ? `${returned.toLocaleString()} nodes in current scope`
     : `${returned.toLocaleString()} of ${denominator.toLocaleString()} nodes in current scope`;
@@ -68,21 +68,23 @@ export function GraphEvidenceSummary({
 }) {
   const items: Array<{ label: string; value: string; detail?: string }> = [
     {
-      label: "Snapshot freshness",
+      label: "Snapshot captured",
       value: capturedLabel(capturedAt),
       ...(capturedAt ? { detail: "Captured" } : {}),
     },
   ];
   if (showCompleteness) {
     items.push({
-      label: "Completeness",
+      label: "Loaded scope",
       value: completenessLabel(
         returnedNodes,
         totalNodes,
         snapshotTotalNodes,
         completeness,
       ),
-      detail: completenessDetail(completeness, completenessReason),
+      detail: [completenessDetail(completeness, completenessReason),
+        snapshotTotalNodes !== null ? `${snapshotTotalNodes.toLocaleString()} nodes in snapshot` : null,
+      ].filter(Boolean).join(" · "),
     });
   }
   if (showRelationships) {

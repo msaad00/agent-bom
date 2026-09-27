@@ -21,19 +21,18 @@ if _pyproject.exists():
     except Exception:
         pass  # Never block import due to pyproject read failure
 
-from agent_bom.sdk import (  # noqa: E402
-    AgentBomSDKError,
-    DiffResult,
-    InventoryResult,
-    PackageCheckResult,
-    async_check,
-    check,
-    diff,
-    scan,
-)
-
 if TYPE_CHECKING:
     from agent_bom.client import AgentBomApiError, AgentBomClient
+    from agent_bom.sdk import (
+        AgentBomSDKError,
+        DiffResult,
+        InventoryResult,
+        PackageCheckResult,
+        async_check,
+        check,
+        diff,
+        scan,
+    )
 
 __all__ = [
     "__version__",
@@ -49,14 +48,33 @@ __all__ = [
     "scan",
 ]
 
+# The SDK imports the MCP server runtime (and through it the MCP framework),
+# which dominates CLI cold start. Resolve the public API on first access
+# (PEP 562) so ``import agent_bom`` and the CLI entry point stay light.
+_LAZY_EXPORTS = {
+    "AgentBomSDKError": "agent_bom.sdk",
+    "DiffResult": "agent_bom.sdk",
+    "InventoryResult": "agent_bom.sdk",
+    "PackageCheckResult": "agent_bom.sdk",
+    "async_check": "agent_bom.sdk",
+    "check": "agent_bom.sdk",
+    "diff": "agent_bom.sdk",
+    "scan": "agent_bom.sdk",
+    "AgentBomApiError": "agent_bom.client",
+    "AgentBomClient": "agent_bom.client",
+}
+
 
 def __getattr__(name: str) -> Any:
-    if name in {"AgentBomApiError", "AgentBomClient"}:
-        from agent_bom.client import AgentBomApiError, AgentBomClient
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module 'agent_bom' has no attribute {name!r}")
+    from importlib import import_module
 
-        exports = {
-            "AgentBomApiError": AgentBomApiError,
-            "AgentBomClient": AgentBomClient,
-        }
-        return exports[name]
-    raise AttributeError(f"module 'agent_bom' has no attribute {name!r}")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

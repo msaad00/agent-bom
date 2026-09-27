@@ -881,9 +881,9 @@ def _evidence_payload(value: object) -> object:
 def _evidence_key_looks_sensitive(key: object | None) -> bool:
     if key is None:
         return False
-    from agent_bom.security import SENSITIVE_PATTERNS
+    from agent_bom.security import _key_looks_sensitive
 
-    return any(re.search(pattern, str(key).lower()) for pattern in SENSITIVE_PATTERNS)
+    return _key_looks_sensitive(key)
 
 
 def _evidence_key_looks_like_url(key: object | None) -> bool:

@@ -1559,5 +1559,25 @@ def export_json(
     """Export report as JSON file."""
     data = to_redacted_json(report, report_json=report_json)
     with Path(output_path).open("w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
+        _write_indented_json(data, fh)
         fh.write("\n")
+
+
+def _write_indented_json(data: dict[str, Any], fh: Any) -> None:
+    """Write ``json.dump(data, fh, indent=2)`` output, one top-level member at a time.
+
+    ``json.dump`` always runs the pure-Python encoder; ``json.dumps`` uses the C
+    encoder. Encoding each top-level member separately keeps that speed while
+    holding only the largest section in memory rather than the whole document.
+    """
+    if not data:
+        fh.write(json.dumps(data, indent=2))
+        return
+    fh.write("{\n")
+    for index, (key, value) in enumerate(data.items()):
+        if index:
+            fh.write(",\n")
+        # ``{"k": v}`` at indent=2 renders the member exactly as it appears in
+        # the full document; strip the enclosing "{\n" and "\n}".
+        fh.write(json.dumps({key: value}, indent=2)[2:-2])
+    fh.write("\n}")

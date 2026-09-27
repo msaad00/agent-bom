@@ -1968,6 +1968,10 @@ async function installRoutes(page) {
       return false;
     }
   }, (route) => fulfill(route, scanJob()));
+  await page.route((url) => url.pathname === `/v1/scan/${SCAN_ID}/stream`, (route) => route.fulfill({
+    contentType: "text/event-stream",
+    body: `data: ${JSON.stringify({ type: "done", status: "done", job_id: SCAN_ID })}\n\n`,
+  }));
   await page.route((url) => url.pathname === `/v1/scan/${SCAN_ID}/status`, (route) => fulfill(route, {
     job_id: SCAN_ID, status: "done", graph_scan_id: SCAN_ID, created_at: CREATED_AT,
   }));

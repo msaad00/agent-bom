@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-27T02:28:00.326Z",
-  "source_commit": "26e5244421d450974935b55dddfb5887f974e626",
+  "captured_at": "2026-09-27T03:19:00.525Z",
+  "source_commit": "d8eae94d11fdcd44196e4595294f292141d9af9d",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:af945d3e420df9d9d752225afdc8843df080a935c635fbf0e904549a61838331",
+  "capture_inputs_sha256": "sha256:74085092aec9a457b4aff238f9cd6fef8511dc3349d8e45b5f2a642dd57c93c8",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/scan?id=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic scan receipt with explicit partial coverage and one recorded agent identity selected for composition export",
       "visible_version": "0.106.1",
-      "sha256": "sha256:3342386e8e60806e1b64781ba5ef86393d9c6c5e375202762300568a9bb68823"
+      "sha256": "sha256:1d66fad1143d2337c26662568e6f72badacc708ca797e86e23fecc27dbdc3829"
     },
     {
       "presentation": "dark desktop",
@@ -281,7 +281,7 @@
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
       "visible_version": "0.106.1",
-      "sha256": "sha256:ee8b4379b6861ce660a255713e6447edf3c8ae03caace183cd1c0da95c473caa"
+      "sha256": "sha256:049981836e040eb0a885d0977a15030d2ba2f90a08eb54c3298294b5a43ad8a6"
     },
     {
       "presentation": "dark desktop",

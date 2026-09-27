@@ -781,6 +781,7 @@ def discover_inventory_all_regions(
 def discover_all_account_inventories(
     profile: str | None = None,
     *,
+    region: str | None = None,
     force: bool = False,
     session: Any = None,
     external_id: str | None = None,
@@ -800,6 +801,8 @@ def discover_all_account_inventories(
     enumeration and member AssumeRole use that session. ``external_id`` and
     ``role_name`` thread into each member AssumeRole (Connections scans pass the
     connection ExternalId and ``auth_params.member_role_name`` / default).
+    ``region`` scopes every per-account inventory (``None`` keeps each
+    session's default region).
 
     Returns a LIST of per-account inventory payloads (the exact shape the graph
     builder's ``_iter_cloud_inventories`` consumes). Partial-permission tolerant:
@@ -834,7 +837,7 @@ def discover_all_account_inventories(
     if not account_ids:
         # Standalone account (not in an org) or no org visibility — fall back to
         # the single ambient-credential inventory so the scan still produces data.
-        return [discover_inventory(profile=profile, force=True, session=session)]
+        return [discover_inventory(region=region, profile=profile, force=True, session=session)]
 
     cap = aws_organizations.max_accounts()
     capped = account_ids[:cap]
@@ -861,7 +864,7 @@ def discover_all_account_inventories(
                 "account_id": account_id,
                 "warnings": [f"Account {account_id} skipped: {sanitize_discovery_warning(exc)}"],
             }
-        return discover_inventory(session=assumed, force=True)
+        return discover_inventory(region=region, session=assumed, force=True)
 
     payloads: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=min(8, len(capped))) as executor:

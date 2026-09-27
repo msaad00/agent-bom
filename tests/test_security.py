@@ -791,3 +791,47 @@ def test_report_identifier_fields_do_not_exempt_embedded_secrets(key):
     opaque = "q7V9mK2xR8pL4nT6wY1cF3hJ5sD0aB2eG8uN9zQ6XkI="
     value = f"pkg:npm/{opaque}@1.0"
     assert sanitize_sensitive_payload({key: value})[key] != value
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://100.100.100.200/latest/meta-data/",  # Alibaba Cloud metadata
+        "https://[::ffff:100.100.100.200]/latest/meta-data/",
+        "https://100.64.0.1/api",  # CGNAT shared address space
+        "https://224.0.0.1/api",  # multicast
+        "https://0.0.0.1/api",
+    ],
+)
+def test_validate_url_rejects_non_global_ip_literals(url):
+    with pytest.raises(SecurityError):
+        validate_url(url)
+
+
+def test_validate_url_alibaba_metadata_blocked_even_with_private_override(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "true")
+    with pytest.raises(SecurityError, match="metadata"):
+        validate_url("https://100.100.100.200/latest/meta-data/")
+
+
+@pytest.mark.parametrize("resolved", ["100.100.100.200", "100.64.0.1", "224.0.0.1", "::ffff:100.64.0.1"])
+def test_validate_url_rejects_hostname_resolving_to_non_global_ip(monkeypatch, resolved):
+    import socket
+
+    family = socket.AF_INET6 if ":" in resolved else socket.AF_INET
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: [(family, socket.SOCK_STREAM, 6, "", (resolved, 0))])
+    with pytest.raises(SecurityError):
+        validate_url("https://rebind.example.test/api")
+
+
+def test_validate_url_allows_public_ip(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_a, **_k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))])
+    validate_url("https://93.184.216.34/api")
+    validate_url("https://public.example.test/api")
+
+
+def test_validate_url_private_override_still_allows_cgnat(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "true")
+    validate_url("https://100.64.0.1/api")

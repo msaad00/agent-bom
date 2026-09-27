@@ -121,16 +121,24 @@ OCSF_TO_SYSLOG: dict[int, int] = {
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
+# Vendor labels that name a canonical band under another word: GHSA and Red
+# Hat publish MODERATE, Red Hat publishes Important.
+_SEVERITY_ALIASES: dict[str, str] = {
+    "informational": "info",
+    "moderate": "medium",
+    "important": "high",
+}
+
+
 def severity_rank(sev: str) -> int:
     """Return numeric rank for a severity string. Higher = worse."""
-    return SEVERITY_RANK.get(sev.lower() if sev else "", 0)
+    return SEVERITY_RANK[normalize_severity(sev)]
 
 
 def normalize_severity(sev: str | None) -> str:
     """Return the canonical lowercase severity label."""
     normalized = (sev or "").strip().lower()
-    if normalized == "informational":
-        return "info"
+    normalized = _SEVERITY_ALIASES.get(normalized, normalized)
     return normalized if normalized in SEVERITY_RANK else "unknown"
 
 
@@ -166,7 +174,7 @@ def severity_worst_first_rank(sev: str | None) -> int:
 
 def severity_to_ocsf(sev: str) -> int:
     """Convert severity string to OCSF severity_id."""
-    return SEVERITY_TO_OCSF.get(sev.lower() if sev else "", OCSFSeverity.UNKNOWN)
+    return SEVERITY_TO_OCSF.get(normalize_severity(sev), OCSFSeverity.UNKNOWN)
 
 
 def ocsf_to_severity(severity_id: int) -> str:

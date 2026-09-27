@@ -48,3 +48,44 @@ def test_finding_normalizes_severity_at_ingest():
         title="Hardcoded credential",
     )
     assert finding.severity == "critical"
+
+
+def test_normalize_severity_maps_vendor_labels_to_canonical_bands():
+    # GHSA publishes MODERATE; Red Hat publishes Important/Moderate.
+    assert normalize_severity("MODERATE") == "medium"
+    assert normalize_severity(" Moderate ") == "medium"
+    assert normalize_severity("Important") == "high"
+    assert normalize_severity("IMPORTANT ") == "high"
+    for label in ("critical", "high", "medium", "low", "none", "info"):
+        assert normalize_severity(label.upper()) == label
+
+
+def test_finding_ingest_keeps_ghsa_moderate_as_medium():
+    finding = Finding(
+        finding_type=FindingType.CREDENTIAL_EXPOSURE,
+        source=FindingSource.SECRET_SCAN,
+        asset=Asset(name="config.py", asset_type="file"),
+        severity="MODERATE",
+        title="GHSA advisory",
+    )
+    assert finding.severity == "medium"
+
+
+def test_bulk_ingest_severity_uses_central_vendor_mapping():
+    from agent_bom.api.routes.scan import _coerce_bulk_severity
+
+    assert _coerce_bulk_severity("MODERATE", ordinal=0) == "medium"
+    assert _coerce_bulk_severity("Important", ordinal=0) == "high"
+    assert _coerce_bulk_severity("not-a-severity", ordinal=0) == "unknown"
+
+
+def test_rank_and_ocsf_helpers_strip_whitespace_and_accept_vendor_labels():
+    from agent_bom.graph.severity import OCSFSeverity, severity_rank, severity_to_ocsf
+
+    assert severity_rank(" high ") == severity_rank("high") == 4
+    assert severity_rank("Moderate") == severity_rank("medium")
+    assert severity_rank("informational") == severity_rank("info") == 1
+    assert severity_to_ocsf(" CRITICAL ") == OCSFSeverity.CRITICAL
+    assert severity_to_ocsf("Important") == OCSFSeverity.HIGH
+    assert severity_to_ocsf("informational") == OCSFSeverity.INFORMATIONAL
+    assert severity_to_ocsf("") == OCSFSeverity.UNKNOWN

@@ -65,7 +65,7 @@ def collect_cloud_inventory(
 
         if aws_inventory.inventory_enabled():
             if aws_organizations.org_fanout_enabled():
-                payloads.extend(aws_inventory.discover_all_account_inventories(profile=aws_profile))
+                payloads.extend(aws_inventory.discover_all_account_inventories(region=aws_region, profile=aws_profile))
             else:
                 payloads.append(aws_inventory.discover_inventory(region=aws_region, profile=aws_profile))
     except Exception:  # noqa: BLE001 — a connector failure must never break a scan

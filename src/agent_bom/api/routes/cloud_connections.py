@@ -913,6 +913,7 @@ def _run_aws_connection_scan(
             external_id = decrypt_secret(record.external_id_encrypted)
             member_role = str(record.auth_params.get("member_role_name") or "").strip() or "agent-bom-readonly"
             inventory_payloads = aws_inventory.discover_all_account_inventories(
+                region=region,
                 force=True,
                 session=session,
                 external_id=external_id,

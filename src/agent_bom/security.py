@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import ipaddress
 import logging
 import math
 import os
@@ -1042,6 +1043,33 @@ def validate_json_file(path: Path) -> dict:
         raise SecurityError(f"Cannot read file {path}: {e}")
 
 
+# Cloud instance-metadata endpoints are never a legitimate egress target, even
+# under the private-egress operator override (AWS/GCP/Azure/OCI, Alibaba Cloud).
+_CLOUD_METADATA_HOSTS = frozenset({"169.254.169.254", "100.100.100.200", "metadata.google.internal"})
+
+
+def _unwrap_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return mapped if mapped is not None else addr
+
+
+def _is_non_public_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True for any address that is not publicly routable unicast.
+
+    ``is_private`` alone misses CGNAT shared space (100.64.0.0/10, where the
+    Alibaba Cloud metadata service lives) and multicast.
+    """
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+        or not addr.is_global
+    )
+
+
 def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), allow_private: bool = False) -> None:
     """
     Validate a URL for safety, including DNS rebinding protection.
@@ -1057,7 +1085,6 @@ def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), all
     Raises:
         SecurityError: If URL is invalid or uses insecure protocol
     """
-    import ipaddress
     import socket
     from urllib.parse import urlparse
 
@@ -1090,14 +1117,16 @@ def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), all
         logger.warning("Private egress URL allowed by operator override")
         return
 
-    # Block cloud metadata endpoints (AWS/GCP/Azure)
-    if hostname in ("169.254.169.254", "metadata.google.internal"):
+    # Block cloud metadata endpoints (AWS/GCP/Azure/Alibaba)
+    if hostname in _CLOUD_METADATA_HOSTS:
         raise SecurityError(f"Cannot connect to cloud metadata endpoint: {hostname}")
 
     # Check if hostname is already an IP literal
     try:
-        addr = ipaddress.ip_address(hostname)
-        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+        addr = _unwrap_ip(ipaddress.ip_address(hostname))
+        if str(addr) in _CLOUD_METADATA_HOSTS:
+            raise SecurityError(f"Cannot connect to cloud metadata endpoint: {hostname}")
+        if _is_non_public_ip(addr):
             if not allow_private:
                 raise SecurityError(f"Cannot connect to private/reserved IP: {hostname}")
             logger.warning("Private egress URL allowed by operator override")
@@ -1114,8 +1143,10 @@ def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), all
     for family, _type, _proto, _canonname, sockaddr in addrinfos:
         resolved_ip = sockaddr[0]
         try:
-            addr = ipaddress.ip_address(resolved_ip)
-            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            addr = _unwrap_ip(ipaddress.ip_address(resolved_ip))
+            if str(addr) in _CLOUD_METADATA_HOSTS:
+                raise SecurityError(f"Hostname '{hostname}' resolves to cloud metadata endpoint: {resolved_ip}")
+            if _is_non_public_ip(addr):
                 if not allow_private:
                     raise SecurityError(f"Hostname '{hostname}' resolves to private/reserved IP: {resolved_ip}")
                 logger.warning("Private egress URL allowed by operator override")

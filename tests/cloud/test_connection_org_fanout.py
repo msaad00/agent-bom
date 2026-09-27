@@ -202,6 +202,7 @@ def test_aws_org_connection_scan_calls_discover_all_with_session(monkeypatch: py
     assert seen["kwargs"].get("force") is True
     assert seen["kwargs"].get("external_id") == "ext-id-for-tests"
     assert seen["kwargs"].get("role_name") == "agent-bom-readonly"
+    assert seen["kwargs"].get("region") == "us-east-1"
     assert result["scan_id"] == "scan-org-1"
     assert result["provider"] == "aws"
 

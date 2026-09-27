@@ -758,24 +758,40 @@ def parse_purl(purl: str) -> dict[str, str]:
 
     if not purl.startswith("pkg:"):
         raise ValueError("purl must start with pkg:")
+    from agent_bom.sbom import _ecosystem_from_purl
+
     body = purl[4:].split("?", 1)[0].split("#", 1)[0]
-    ecosystem, _, remainder = body.partition("/")
-    if not ecosystem or not remainder:
+    purl_type, _, remainder = body.partition("/")
+    if not purl_type or not remainder:
         raise ValueError("purl must include ecosystem and package name")
-    name_part, _, version = remainder.rpartition("@")
+    # Only an '@' in the last path segment separates the version; an unencoded
+    # npm scope ('@babel/core') lives in the namespace.
+    at = remainder.rfind("@")
+    if at > remainder.rfind("/"):
+        name_part, version = remainder[:at], remainder[at + 1 :]
+    else:
+        name_part, version = remainder, ""
     if not name_part:
         name_part = version
         version = ""
+    ecosystem = _ecosystem_from_purl(purl)
     name = unquote(name_part)
-    return {"ecosystem": ecosystem.lower(), "name": name, "version": unquote(version)}
+    if ecosystem == "maven" and "/" in name:
+        group, _, artifact = name.rpartition("/")
+        name = f"{group}:{artifact}"
+    return {"ecosystem": ecosystem, "name": name, "version": unquote(version)}
 
 
 def normalize_package_query(package: dict[str, Any]) -> dict[str, str]:
     """Normalize a package match input into ecosystem/name/version/purl."""
+    from agent_bom.scanners.package_scan import ECOSYSTEM_MAP
 
     purl = str(package.get("purl") or "").strip()
     parsed = parse_purl(purl) if purl else {}
-    ecosystem = str(package.get("ecosystem") or parsed.get("ecosystem") or "").strip().lower()
+    raw_ecosystem = str(package.get("ecosystem") or parsed.get("ecosystem") or "").strip().lower()
+    # Resolve scanner/purl ecosystem names to the advisory DB keys
+    # (cargo -> crates.io, composer -> packagist).
+    ecosystem = ECOSYSTEM_MAP.get(raw_ecosystem, raw_ecosystem).lower()
     name = str(package.get("name") or parsed.get("name") or "").strip()
     version = str(package.get("version") or parsed.get("version") or "").strip()
     if not ecosystem or not name:

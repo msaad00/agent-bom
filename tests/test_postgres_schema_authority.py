@@ -240,7 +240,7 @@ def test_every_postgres_store_guards_runtime_schema_ddl() -> None:
     runtime_schema_files = list((ROOT / "src" / "agent_bom" / "api").glob("postgres*.py"))
     runtime_schema_files.extend(
         ROOT / "src" / "agent_bom" / "api" / name
-        for name in ("idempotency_store.py", "middleware.py", "proxy_replay_store.py", "shared_auth_state.py")
+        for name in ("idempotency_store.py", "lifecycle_store.py", "middleware.py", "proxy_replay_store.py", "shared_auth_state.py")
     )
     runtime_schema_files.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
     runtime_schema_files.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
@@ -288,6 +288,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
             "proxy_replay_store.py",
             "report_job_store.py",
             "export_destination_store.py",
+            "lifecycle_store.py",
             "shared_auth_state.py",
         )
     )

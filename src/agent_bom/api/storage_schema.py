@@ -40,6 +40,7 @@ class StorageSchemaComponent:
 
 
 CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
+    StorageSchemaComponent("agent_lifecycle", "sqlite/postgres", ("agent_lifecycle_records", "agent_bom_snapshots")),
     StorageSchemaComponent("scan_jobs", "sqlite/postgres", ("jobs", "scan_jobs", "cis_benchmark_checks")),
     StorageSchemaComponent("report_jobs", "sqlite/postgres", ("report_jobs",)),
     StorageSchemaComponent("api_keys", "postgres", ("api_keys",)),

@@ -389,3 +389,31 @@ def test_scan_agent_bom_preserves_exact_query_identity() -> None:
 
     with _client(handler) as client:
         assert client.get_scan_agent_bom("job-a", "agent:provider/a?x=1&b=2") == {"snapshot_id": "example"}
+
+
+def test_lifecycle_client_keeps_ids_in_bounded_query_and_json_fields():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        client.capture_agent_snapshot("scan/id", "agent/id")
+        client.agent_lifecycle_history("agent/id", kind="run", limit=10, offset=20)
+        client.get_agent_snapshot("sha256:abc")
+        client.compare_agent_snapshots("sha256:abc", "sha256:def")
+        client.register_agent_deployment({"deployment_id": "d"})
+        client.register_agent_instance({"instance_id": "i"})
+        client.register_agent_run({"run_id": "r"})
+        client.retire_agent_lifecycle_record("instance", "i/id")
+    assert json.loads(requests[0].content) == {"scan_id": "scan/id", "agent_id": "agent/id"}
+    assert dict(requests[1].url.params) == {"agent_id": "agent/id", "kind": "run", "limit": "10", "offset": "20"}
+    assert requests[2].url.params["snapshot_id"] == "sha256:abc"
+    assert requests[3].url.params["after"] == "sha256:def"
+    assert [request.url.path for request in requests[4:7]] == [
+        "/v1/agent-lifecycle/deployments",
+        "/v1/agent-lifecycle/instances",
+        "/v1/agent-lifecycle/runs",
+    ]
+    assert requests[7].url.params["record_id"] == "i/id"

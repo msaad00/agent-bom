@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import re
 import subprocess
 import urllib.error
 from contextlib import redirect_stdout
@@ -1481,7 +1482,8 @@ def test_glama_accepts_current_readme_catalog_sentence():
     script = _load_script("check_glama_listing.py")
     readme = (ROOT / "README.md").read_text()
     sentence = next(line.strip() for line in readme.splitlines() if "The full catalog has" in line)
-    assert script._check("<main>v0.103.2 " + sentence + "</main>", "0.103.2", 86) == []
+    catalog_count = int(re.search(r"The full catalog has (\d+) MCP tools", sentence).group(1))
+    assert script._check("<main>v0.103.2 " + sentence + "</main>", "0.103.2", catalog_count) == []
 
 
 @pytest.mark.parametrize("invalid", [None, "schema", "version", "count", "identity", "no_contract", "stale_copy"])
@@ -1530,7 +1532,7 @@ def test_repository_readme_retains_glama_release_marker():
     assert script._check((ROOT / "README.md").read_text(), script._load_version(), 8) == []
 
 
-def test_glama_profile_release_metadata_does_not_hide_empty_api(monkeypatch, capsys, tmp_path):
+def test_glama_exact_schema_contract_covers_empty_directory_api(monkeypatch, capsys, tmp_path):
     script = _load_script("check_glama_listing.py")
     expected = [{"name": "scan", "inputSchema": {"type": "object"}}]
     schema = _glama_schema_state(expected, description="agent-bom v0.105.0 MCP server mode exposes 1 MCP tools.")
@@ -1554,12 +1556,35 @@ def test_glama_profile_release_metadata_does_not_hide_empty_api(monkeypatch, cap
         ]
     )
     payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert result == 1
-    assert payload["status"] == "stale"
+    assert result == 0
+    assert payload["status"] == "fresh"
     assert payload["profile_version"] == "0.105.0"
     assert payload["listing_version"] == "0.106.0"
-    assert payload["exact_input_schemas"] is False
-    assert "public API exposes 0 tools" in payload["error"]
-    assert "missing expected tools: scan" in payload["error"]
-    assert "missing current Glama listing token" not in payload["error"]
-    assert "input schema differs" not in payload["error"]
+    assert payload["inventory_source"] == "schema-state"
+    assert payload["exact_input_schemas"] is True
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_glama_empty_directory_api_needs_exact_schema_contract(monkeypatch, capsys, tmp_path, mismatch):
+    script = _load_script("check_glama_listing.py")
+    expected = [{"name": "scan", "inputSchema": {"type": "object", "additionalProperties": False}}]
+    tools = [{"name": "scan", "inputSchema": {"type": "object"}}] if mismatch else expected
+    contract = tmp_path / "contract.json"
+    contract.write_text(json.dumps(expected))
+    schema = '<a href="/mcp/servers/msaad00/agent-bom/tools/scan">scan</a>' + _glama_schema_state(tools)
+    monkeypatch.setattr(
+        script, "_fetch", lambda url, timeout: schema if url.endswith("/schema") else "v0.103.2 MCP server mode exposes 1 MCP tools"
+    )
+    monkeypatch.setattr(script, "_fetch_json", lambda *args: {"tools": []})
+    result = script.main(
+        ["--expected", "0.103.2", "--expected-tool-count", "1", "--expected-tool-contract-file", str(contract), "--json", "--retries", "1"]
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert result == int(mismatch)
+    if mismatch:
+        assert payload["status"] == "stale"
+        assert "public API exposes 0 tools; expected 1" in payload["error"]
+    else:
+        assert payload["status"] == "fresh"
+        assert payload["inventory_source"] == "schema-state"
+        assert payload["exact_input_schemas"] is True

@@ -1,5 +1,6 @@
 "use client";
 
+import { GraphSnapshotReceipt } from "@/components/graph-snapshot-receipt";
 import { mergeGraphNodeDetail } from "@/lib/graph-entity-detail";
 import { nodeRiskAssessment, nodeRiskLabel } from "@/lib/node-risk-assessment";
 import { GraphHopEvidenceInspector } from "@/components/graph-hop-evidence-inspector";
@@ -3304,6 +3305,7 @@ function GraphPageInner() {
         </div>
 
         <div className="mt-2">
+          <GraphSnapshotReceipt snapshot={activeSnapshot ?? null} />
           <GraphEvidenceSummary
             capturedAt={activeSnapshot?.created_at ?? null}
             returnedNodes={graphData?.completeness?.returned ?? graphData?.nodes.length ?? null}

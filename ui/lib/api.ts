@@ -887,6 +887,10 @@ export const api = {
   downloadScanGraph: (jobId: string, format: GraphExportFormat = "json") =>
     getBlob(`/v1/scan/${encodeURIComponent(jobId)}/graph-export?format=${encodeURIComponent(format)}`),
 
+  /** Export composition for exactly one recorded agent; never select by name. */
+  downloadScanAgentBom: (jobId: string, agentId: string) =>
+    getBlob(`/v1/scan/${encodeURIComponent(jobId)}/agent-bom?agent_id=${encodeURIComponent(agentId)}`),
+
   /** Delete a job record */
   deleteScan: (jobId: string) => del(`/v1/scan/${jobId}`),
 

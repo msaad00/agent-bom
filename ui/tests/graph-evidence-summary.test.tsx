@@ -17,10 +17,10 @@ describe("GraphEvidenceSummary", () => {
       />,
     );
 
-    expect(screen.getByText(/34 of 36 nodes in current scope/i)).toBeInTheDocument();
-    expect(screen.getByText(/Complete for current scope/i)).toBeInTheDocument();
+    expect(screen.getByText(/34 of 34 nodes in current scope/i)).toBeInTheDocument();
+    expect(screen.getByText(/Complete for current scope.*36 nodes in snapshot/i)).toBeInTheDocument();
     expect(screen.getByText(/7 of 142 relationships/i)).toBeInTheDocument();
-    expect(screen.getByText(/Captured/i)).toBeInTheDocument();
+    expect(screen.getByText("Captured")).toBeInTheDocument();
     expect(screen.queryByText(/quality|score|usable/i)).not.toBeInTheDocument();
   });
 
@@ -74,7 +74,7 @@ describe("GraphEvidenceSummary", () => {
       />,
     );
 
-    expect(screen.getByText(/Captured/i)).toBeInTheDocument();
+    expect(screen.getByText("Captured")).toBeInTheDocument();
     expect(screen.queryByText(/nodes in current scope/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/relationships/i)).not.toBeInTheDocument();
   });

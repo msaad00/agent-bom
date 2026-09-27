@@ -544,3 +544,27 @@ def test_mcp_server_cli_workspace_root_flag_sets_env(workspace: Path, monkeypatc
     result = CliRunner().invoke(mcp_server_cmd, ["--workspace-root", str(workspace), "--workspace-root", str(other)])
     assert result.exit_code == 0, result.output
     assert captured["roots"] == os.pathsep.join([str(workspace.resolve()), str(other.resolve())])
+
+
+@pytest.mark.parametrize(
+    "impl_name",
+    [
+        "dataset_card_scan_impl",
+        "training_pipeline_scan_impl",
+        "prompt_scan_impl",
+        "model_file_scan_impl",
+        "ai_inventory_scan_impl",
+    ],
+)
+def test_directory_tools_share_the_workspace_root_sandbox(workspace: Path, monkeypatch: pytest.MonkeyPatch, impl_name: str) -> None:
+    from agent_bom.mcp_tools import specialized
+
+    impl = getattr(specialized, impl_name)
+    kwargs: dict[str, Any] = {"directory": str(workspace / "proj"), "_truncate_response": lambda text: text}
+
+    blocked = json.loads(asyncio.run(impl(**kwargs)))
+    assert "outside home" in str(blocked.get("error", "")).lower()
+
+    monkeypatch.setenv("AGENT_BOM_MCP_WORKSPACE_ROOTS", str(workspace))
+    allowed = json.loads(asyncio.run(impl(**kwargs)))
+    assert "outside home" not in str(allowed.get("error", "")).lower(), allowed

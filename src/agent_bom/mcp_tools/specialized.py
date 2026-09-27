@@ -20,9 +20,10 @@ async def dataset_card_scan_impl(
 ) -> str:
     """Implementation of the dataset_card_scan tool."""
     try:
+        from agent_bom.mcp_server_runtime import mcp_workspace_roots
         from agent_bom.security import validate_path
 
-        path = validate_path(directory, must_exist=True, restrict_to_home=True)
+        path = validate_path(directory, must_exist=True, restrict_to_home=True, allowed_roots=mcp_workspace_roots())
         from agent_bom.parsers.dataset_cards import scan_dataset_directory
 
         result = scan_dataset_directory(path)
@@ -47,9 +48,10 @@ async def training_pipeline_scan_impl(
 ) -> str:
     """Implementation of the training_pipeline_scan tool."""
     try:
+        from agent_bom.mcp_server_runtime import mcp_workspace_roots
         from agent_bom.security import validate_path
 
-        path = validate_path(directory, must_exist=True, restrict_to_home=True)
+        path = validate_path(directory, must_exist=True, restrict_to_home=True, allowed_roots=mcp_workspace_roots())
         from agent_bom.parsers.training_pipeline import scan_training_directory
 
         result = scan_training_directory(path)
@@ -115,9 +117,10 @@ async def prompt_scan_impl(
 ) -> str:
     """Implementation of the prompt_scan tool."""
     try:
+        from agent_bom.mcp_server_runtime import mcp_workspace_roots
         from agent_bom.security import validate_path
 
-        path = validate_path(directory, must_exist=True, restrict_to_home=True)
+        path = validate_path(directory, must_exist=True, restrict_to_home=True, allowed_roots=mcp_workspace_roots())
         from agent_bom.parsers.prompt_scanner import scan_prompt_files
 
         result = scan_prompt_files(root=path)
@@ -157,9 +160,10 @@ async def model_file_scan_impl(
 ) -> str:
     """Implementation of the model_file_scan tool."""
     try:
+        from agent_bom.mcp_server_runtime import mcp_workspace_roots
         from agent_bom.security import validate_path
 
-        path = validate_path(directory, must_exist=True, restrict_to_home=True)
+        path = validate_path(directory, must_exist=True, restrict_to_home=True, allowed_roots=mcp_workspace_roots())
         from agent_bom.model_files import scan_model_files, scan_model_manifests
 
         model_files, warnings = scan_model_files(str(path))
@@ -192,9 +196,10 @@ async def ai_inventory_scan_impl(
 ) -> str:
     """Implementation of the ai_inventory_scan tool."""
     try:
+        from agent_bom.mcp_server_runtime import mcp_workspace_roots
         from agent_bom.security import validate_path
 
-        path = validate_path(directory, must_exist=True, restrict_to_home=True)
+        path = validate_path(directory, must_exist=True, restrict_to_home=True, allowed_roots=mcp_workspace_roots())
         from agent_bom.ai_components import scan_source
 
         report = scan_source(str(path))

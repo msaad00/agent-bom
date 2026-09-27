@@ -8,6 +8,7 @@ should reference that same contract instead of drifting into parallel models.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,26 @@ def _require_v1_routes(path: str, routes: list[tuple[str, str]], failures: list[
         needle = f'@router.{method.lower()}("{route_path}"'
         if needle not in text:
             failures.append(f"{path}: missing {needle!r} for {method.upper()} {full_path}")
+
+
+def _require_route_policy(failures: list[str]) -> None:
+    """Check enforced policy, independent of the module's source formatting."""
+    sys.path.insert(0, str(ROOT / "src"))
+    from agent_bom.api.route_policy import required_role, required_scope
+
+    expected = (
+        ("GET", "/v1/auth/policy", None),
+        ("GET", "/v1/auth/scim/config", "auth.scim:read"),
+        ("GET", "/v1/auth/secrets/lifecycle", "auth.secrets:read"),
+        ("GET", "/v1/auth/secrets/rotation-plan", "auth.secrets:read"),
+        ("GET", "/v1/auth/secrets/credential-expiry", "auth.secrets:read"),
+        ("GET", "/v1/auth/quota", "auth.quota:read"),
+        ("PUT", "/v1/auth/quota", "auth.quota:write"),
+        ("POST", "/v1/fleet/sync", "fleet:write"),
+    )
+    for method, path, scope in expected:
+        if required_role(method, path) != "admin" or required_scope(method, path) != scope:
+            failures.append(f"Route policy mismatch: {method} {path} requires admin and scope {scope!r}")
 
 
 def main() -> int:
@@ -73,25 +94,7 @@ def main() -> int:
         ],
         failures,
     )
-    _require_text(
-        "src/agent_bom/api/middleware.py",
-        [
-            '("GET", "/v1/auth/policy", "admin")',
-            '("GET", "/v1/auth/scim/config", "admin")',
-            '("GET", "/v1/auth/secrets/lifecycle", "admin")',
-            '("GET", "/v1/auth/secrets/rotation-plan", "admin")',
-            '("GET", "/v1/auth/secrets/credential-expiry", "admin")',
-            '("GET", "/v1/auth/quota", "admin")',
-            '("POST", "/v1/fleet/sync", "admin")',
-            '("GET", "/v1/auth/scim/config", "auth.scim:read")',
-            '("GET", "/v1/auth/secrets/lifecycle", "auth.secrets:read")',
-            '("GET", "/v1/auth/secrets/rotation-plan", "auth.secrets:read")',
-            '("GET", "/v1/auth/secrets/credential-expiry", "auth.secrets:read")',
-            '("PUT", "/v1/auth/quota", "auth.quota:write")',
-            '("POST", "/v1/fleet/sync", "fleet:write")',
-        ],
-        failures,
-    )
+    _require_route_policy(failures)
     _require_text(
         "src/agent_bom/api/routes/scim.py",
         [

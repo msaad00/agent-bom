@@ -182,8 +182,8 @@ def test_subscription_scope_targets_account_node_and_is_privileged() -> None:
 
 def test_resource_group_scope_creates_rg_node() -> None:
     g, edges = _rbac_graph()
-    assert "cloud_resource:azure:resource_group:rg" in g.nodes
-    rg_edge = [e for e in edges if e.target == "cloud_resource:azure:resource_group:rg"]
+    assert "cloud_resource:azure:resource_group:/subscriptions/sub1/resourcegroups/rg" in g.nodes
+    rg_edge = [e for e in edges if e.target == "cloud_resource:azure:resource_group:/subscriptions/sub1/resourcegroups/rg"]
     assert rg_edge and "Contributor" in rg_edge[0].evidence["roles"]
 
 

@@ -90,6 +90,10 @@ agent-bom connect endpoints update CONNECTION_ID --enabled --secret-env FALCON_C
 agent-bom mcp server --profile cloud
 ```
 
+REST reads require an authenticated viewer with `connectors:read`; creation,
+rotation, sync and associations require an admin with `connectors:write` when
+using scoped API keys. The permissions catalog uses the same enforcement policy.
+
 The `cloud`/`full` MCP profiles expose `endpoint_inventory`; an empty connection ID
 lists available connections. `full` additionally exposes `endpoint_sync`, which
 requires the authenticated admin operator and `connectors:write` scope. Neither MCP

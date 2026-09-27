@@ -130,3 +130,31 @@ def test_agent_association_requires_both_exact_ids_in_tenant(client, monkeypatch
     assert result.status_code == 200 and result.json()["assurance"] == "operator_recorded"
     evidence = client.get(f"/v1/endpoint-connectors/{id}/devices", headers=headers()).json()
     assert evidence["devices"][0]["attributes"]["agent_bindings"][0]["agent_id"] == "a"
+
+
+@pytest.mark.parametrize(
+    "method,path,scope,expected",
+    [
+        ("GET", "/v1/endpoint-connectors", "connectors:read", 200),
+        ("GET", "/v1/endpoint-connectors", "scan:read", 403),
+        ("POST", "/v1/endpoint-connectors", "connectors:read", 403),
+        ("POST", "/v1/endpoint-connectors/unknown/sync", "connectors:read", 403),
+        ("PATCH", "/v1/endpoint-connectors/unknown", "connectors:read", 403),
+        ("PUT", "/v1/endpoint-connectors/devices/unknown/agent-binding", "connectors:read", 403),
+        ("POST", "/v1/endpoint-connectors", "connectors:write", 201),
+    ],
+)
+def test_scoped_admin_key_enforced_at_http_boundary(client, monkeypatch, method, path, scope, expected):
+    from agent_bom.api.auth import KeyStore, Role, create_api_key
+    from agent_bom.api.route_policy import required_scope, scope_catalog
+
+    raw, key = create_api_key(name="endpoint-scope-test", role=Role.ADMIN, scopes=[scope], tenant_id="tenant-a")
+    store = KeyStore()
+    store.add(key)
+    monkeypatch.setattr("agent_bom.api.auth.get_key_store", lambda: store)
+    monkeypatch.setattr("agent_bom.api.middleware.get_key_store", lambda: store)
+    response = client.request(method, path, json=BODY, headers={"Authorization": f"Bearer {raw}"})
+    assert response.status_code == expected, response.text
+    needed = "connectors:read" if method == "GET" else "connectors:write"
+    assert required_scope(method, path) == needed
+    assert any(row["scope"] == needed and row["method"] == method for row in scope_catalog())

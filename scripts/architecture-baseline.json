@@ -157,7 +157,7 @@
       "function_lines": 91
     },
     "api/middleware.py": {
-      "file_lines": 2849
+      "file_lines": 2619
     },
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
       "function_lines": 84
@@ -1781,7 +1781,7 @@
       "file_lines": 688
     },
     "graph/builder.py": {
-      "file_lines": 7487
+      "file_lines": 7295
     },
     "graph/builder.py::_add_agent_cloud_lineage": {
       "function_lines": 282
@@ -1802,10 +1802,6 @@
     },
     "graph/builder.py::_add_cloud_org_architecture_findings": {
       "function_lines": 87
-    },
-    "graph/builder.py::_add_cloud_role_assignments": {
-      "complexity": 23,
-      "function_lines": 152
     },
     "graph/builder.py::_add_framework_topology": {
       "complexity": 30,
@@ -3081,19 +3077,6 @@
     },
     "trust_score.py": {
       "file_lines": 660
-    },
-    "version_utils.py": {
-      "file_lines": 1421
-    },
-    "version_utils.py::_compare_rpm_like": {
-      "complexity": 19
-    },
-    "version_utils.py::_resolve_version_range": {
-      "complexity": 21
-    },
-    "version_utils.py::compare_version_order": {
-      "complexity": 22,
-      "function_lines": 100
     },
     "vex.py": {
       "file_lines": 682

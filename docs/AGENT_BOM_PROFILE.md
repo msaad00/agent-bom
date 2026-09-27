@@ -33,6 +33,41 @@ use `validate_agent_bom_json` for the same parsing boundary. The next step after
 validation is to inspect coverage: validation proves neither verified identity
 nor control compliance.
 
+## Export from an existing scan
+
+```bash
+agent-bom scan --demo --offline --format json --output scan.json
+agent-bom manifest --scan-result scan.json --agent-id EXACT_ID --output agent.bom.json
+agent-bom manifest --validate agent.bom.json
+```
+
+Replace `EXACT_ID` with `agents[].canonical_id` (or `stable_id`) from the scan.
+Use `--single-agent` only when the scan contains exactly one agent. This path
+reads at most 32 MiB, preserves the recorded identity and source timestamp,
+and performs no rediscovery or provider requests. Conflicting, missing, or
+ambiguous identity evidence fails closed. Names are never identity selectors.
+
+For a completed control-plane scan, authenticated readers can request
+`GET /v1/scan/{job_id}/agent-bom?agent_id=EXACT_ID`, or use the Python client:
+
+```python
+from agent_bom import AgentBomClient
+
+with AgentBomClient(base_url="https://control.example", bearer_token=token) as client:
+    document = client.get_scan_agent_bom(job_id, agent_id)
+```
+
+The API binds the export to the authenticated tenant and job. Anonymous access
+is rejected unless the operator explicitly enables the existing local no-auth
+mode. Missing or ambiguous identity returns 409; malformed evidence returns 422.
+The receipt links to the source scan; it does not authenticate the workload.
+
+The export contains bounded composition and explicit coverage gaps. Packages
+from repository/container scan groups remain packages; those groups do not
+become MCP servers. Findings, assessed grants, runtime history, compliance and
+cost remain in their source evidence, not implicitly included in this BOM.
+Inspect the original scan alongside the BOM before making a security decision.
+
 ## Contents and evidence boundary
 
 The subject contains its existing canonical inventory ID, deployment source
@@ -79,3 +114,17 @@ snapshot ID rather than grow this BOM on every tool call.
 Persisted history, authenticated identity bindings, authority assessments,
 run linking, and signed attestations require their own evidence integration;
 the inventory builder does not infer them.
+
+## Snapshot time and agent lifecycle
+
+Re-exporting one saved scan preserves its snapshot ID. A later collection has
+a new evidence receipt/time and can produce a different snapshot even if its
+composition is unchanged. Compare components separately from evidence refresh.
+Interactions should reference the applicable snapshot; this composition export
+does not append every conversation or tool call to the BOM.
+
+An ephemeral worker and a long-lived service can both represent agents. Their
+logical agent, deployment/version, running instance and run identities require
+separate verified bindings. A container or VM is hosting context, not proof of
+an agent identity. This export preserves recorded inventory IDs and does not
+provide registration, instance lifecycle management or persisted BOM history.

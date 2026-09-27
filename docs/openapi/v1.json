@@ -213,6 +213,227 @@
         "title": "AdoptionEventRequest",
         "type": "object"
       },
+      "AgentBomComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "component_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Component Id",
+            "type": "string"
+          },
+          "ecosystem": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ecosystem"
+          },
+          "evidence_ids": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "mcp_server",
+              "tool",
+              "package",
+              "model",
+              "data"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "component_id",
+          "kind",
+          "name",
+          "evidence_ids"
+        ],
+        "title": "AgentBomComponent",
+        "type": "object"
+      },
+      "AgentBomContent": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBomComponent"
+            },
+            "maxItems": 10000,
+            "title": "Components",
+            "type": "array"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBomCoverage"
+            },
+            "maxItems": 9,
+            "minItems": 9,
+            "title": "Coverage",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBomReceipt"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBomRelationship"
+            },
+            "maxItems": 20000,
+            "title": "Relationships",
+            "type": "array"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/AgentBomSubject"
+          },
+          "tenant_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "subject",
+          "components",
+          "relationships",
+          "evidence",
+          "coverage"
+        ],
+        "title": "AgentBomContent",
+        "type": "object"
+      },
+      "AgentBomCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "enum": [
+              "composition",
+              "models",
+              "data",
+              "identity",
+              "authority",
+              "runtime",
+              "vulnerabilities",
+              "controls",
+              "cost"
+            ],
+            "title": "Area",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "default": [],
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial",
+              "not_assessed",
+              "unsupported",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "area",
+          "status",
+          "reason"
+        ],
+        "title": "AgentBomCoverage",
+        "type": "object"
+      },
+      "AgentBomDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/AgentBomContent"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "maturity": {
+            "const": "experimental",
+            "default": "experimental",
+            "title": "Maturity",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "agent-bom.profile/v1",
+            "default": "agent-bom.profile/v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generated_at",
+          "snapshot_id",
+          "content"
+        ],
+        "title": "AgentBomDocument",
+        "type": "object"
+      },
       "AgentBomManifestResponse": {
         "additionalProperties": true,
         "description": "Typed identity/count boundary; other manifest sections remain additive.",
@@ -329,6 +550,183 @@
           "canonical_id"
         ],
         "title": "AgentBomManifestServerResponse",
+        "type": "object"
+      },
+      "AgentBomReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "assurance": {
+            "enum": [
+              "producer_asserted",
+              "collector_observed"
+            ],
+            "title": "Assurance",
+            "type": "string"
+          },
+          "evidence_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "configuration",
+              "inventory",
+              "scan",
+              "runtime",
+              "provider_api"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "source": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source",
+          "method",
+          "assurance"
+        ],
+        "title": "AgentBomReceipt",
+        "type": "object"
+      },
+      "AgentBomRelationship": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "enum": [
+              "declared",
+              "observed",
+              "evaluated"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "relationship": {
+            "enum": [
+              "configured_with",
+              "provides_tool",
+              "contains_package",
+              "uses_model",
+              "uses_data",
+              "delegates_to"
+            ],
+            "title": "Relationship",
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "relationship",
+          "basis",
+          "evidence_ids"
+        ],
+        "title": "AgentBomRelationship",
+        "type": "object"
+      },
+      "AgentBomSubject": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_type": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "identity_status": {
+            "enum": [
+              "observed",
+              "verified"
+            ],
+            "title": "Identity Status",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "agent_id",
+          "name",
+          "agent_type",
+          "identity_status"
+        ],
+        "title": "AgentBomSubject",
         "type": "object"
       },
       "AnalyticsHealth": {
@@ -39270,6 +39668,108 @@
           }
         },
         "summary": "Get Scan",
+        "tags": [
+          "scan"
+        ]
+      }
+    },
+    "/v1/scan/{job_id}/agent-bom": {
+      "get": {
+        "description": "Export one exact recorded agent's composition with its source-scan receipt.\n\nInherits authenticated scan-read tenancy. Explicit local no-auth mode is\nthe existing development exception. Labels never resolve identity; missing\nor conflicting identity fails closed. No discovery or provider calls run.\nFindings and runtime/authority assessments remain separate scan evidence.",
+        "operationId": "get_scan_agent_bom_v1_scan__job_id__agent_bom_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Tenant-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Agent-Bom-Proxy-Secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Bom-Proxy-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBomDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Scan Agent Bom",
         "tags": [
           "scan"
         ]

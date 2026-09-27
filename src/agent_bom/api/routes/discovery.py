@@ -734,12 +734,13 @@ def _estate_agent_detail(request: Request, agent_name: str) -> dict:
     matches = [agent for agent in estate if agent_identity_key(agent) == agent_name]
     if not matches:
         matches = [agent for agent in estate if agent.get("name") == agent_name]
-    if len(matches) > 1:
-        raise HTTPException(status_code=409, detail="Ambiguous agent label; select its canonical ID")
+        identities = {agent_identity_key(agent) for agent in matches}
+        if len(matches) > 1 and (len(identities) > 1 or None in identities):
+            raise HTTPException(status_code=409, detail="Ambiguous agent label; select its canonical ID")
     if not matches:
         raise HTTPException(status_code=404, detail="Agent not found")
     agent = matches[0]
-    canonical_id = agent_identity_key(agent)
+    canonical_id = agent_identity_key(agent) or ""
 
     agent_blast: list[dict] = []
     for job in _get_store().list_all(tenant_id=tenant_id):

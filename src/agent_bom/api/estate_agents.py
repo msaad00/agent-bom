@@ -13,23 +13,24 @@ from typing import Any
 AGENT_COUNT_DEFINITION = "distinct canonical agent identities in the tenant's completed scans (latest observation wins)"
 
 
-def agent_identity_key(agent: dict[str, Any]) -> str:
+def agent_identity_key(agent: dict[str, Any]) -> str | None:
+    """Canonical identity of a serialized agent; ``None`` when it carries none."""
     canonical = agent.get("canonical_id") or agent.get("stable_id")
-    if canonical:
-        return str(canonical)
-    return f"{agent.get('agent_type') or ''}|{agent.get('name') or ''}|{agent.get('config_path') or ''}"
+    return str(canonical) if canonical else None
 
 
 def scanned_estate_agents(jobs: Iterable[Any]) -> list[dict[str, Any]]:
-    """Latest observation of each canonical agent across completed scan jobs.
+    """Latest scan's observation of each canonical agent across completed jobs.
 
-    Batch parents are skipped because their children already contribute the
-    same agents. Order is first-seen, so pagination stays stable as rescans
-    replace an agent's payload with its newest observation.
+    A newer scan replaces an older scan's rows for the same canonical id; rows
+    within one scan are all kept (they are distinct occurrences). Rows without
+    identity evidence are never merged by name. Batch parents are skipped
+    because their children already contribute the same agents. Order is
+    first-seen, so pagination stays stable across rescans.
     """
-    latest: dict[str, tuple[str, dict[str, Any]]] = {}
-    order: list[str] = []
-    for job in jobs:
+    latest: dict[str, tuple[str, int, list[dict[str, Any]]]] = {}
+    order: list[tuple[str | None, dict[str, Any] | None]] = []
+    for job_index, job in enumerate(jobs):
         if getattr(job, "child_job_ids", None):
             continue
         result = getattr(job, "result", None)
@@ -40,12 +41,25 @@ def scanned_estate_agents(jobs: Iterable[Any]) -> list[dict[str, Any]]:
             if not isinstance(agent, dict):
                 continue
             key = agent_identity_key(agent)
+            if key is None:
+                order.append((None, agent))
+                continue
             prior = latest.get(key)
             if prior is None:
-                order.append(key)
-            if prior is None or stamp >= prior[0]:
-                latest[key] = (stamp, agent)
-    return [latest[key][1] for key in order]
+                order.append((key, None))
+                latest[key] = (stamp, job_index, [agent])
+            elif prior[1] == job_index:
+                prior[2].append(agent)
+            elif stamp >= prior[0]:
+                latest[key] = (stamp, job_index, [agent])
+    rows: list[dict[str, Any]] = []
+    for key, anonymous in order:
+        if key is None:
+            if anonymous is not None:
+                rows.append(anonymous)
+        else:
+            rows.extend(latest[key][2])
+    return rows
 
 
 def classify_agent_payload(agent: dict[str, Any]) -> str:

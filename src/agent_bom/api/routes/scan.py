@@ -91,11 +91,14 @@ from agent_bom.api.tenancy import require_body_tenant_match, require_request_ten
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id
+from agent_bom.evidence.agent_bom import AgentBomDocument
+from agent_bom.evidence.scan_agent_bom import AgentSelectionError, build_scan_agent_bom
 from agent_bom.finding_scope import (
     FINDING_SEVERITY_FILTERS,
     FindingClass,
     canonical_finding_severity_filter,
 )
+from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
@@ -2246,6 +2249,44 @@ async def get_graph_export(
         "dict | str | PlainTextResponse",
         await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit),
     )
+
+
+@router.get(
+    "/scan/{job_id}/agent-bom",
+    tags=["scan"],
+    response_model=AgentBomDocument,
+    dependencies=[cast(Any, require_authenticated_permission("read"))],
+)
+async def get_scan_agent_bom(
+    request: Request,
+    job_id: str,
+    agent_id: Annotated[str, Query(min_length=1, max_length=512)],
+) -> AgentBomDocument:
+    """Export one exact recorded agent's composition with its source-scan receipt.
+
+    Inherits authenticated scan-read tenancy. Explicit local no-auth mode is
+    the existing development exception. Labels never resolve identity; missing
+    or conflicting identity fails closed. No discovery or provider calls run.
+    Findings and runtime/authority assessments remain separate scan evidence.
+    """
+    job = await _load_job_for_request(request, job_id)
+    if job.status != JobStatus.DONE or not isinstance(job.result, dict):
+        raise HTTPException(status_code=409, detail="A completed scan result is required")
+    try:
+        return cast(
+            AgentBomDocument,
+            await _scan_graph_compute_call(
+                build_scan_agent_bom,
+                job.result,
+                agent_id=agent_id,
+                tenant_id=require_request_tenant_id(request),
+                scan_id=job.job_id,
+            ),
+        )
+    except AgentSelectionError as exc:
+        raise HTTPException(status_code=409, detail="Agent identity is unavailable or ambiguous in this scan") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Scan composition is invalid, unsupported, or exceeds export limits") from exc
 
 
 @router.get("/scan/{job_id}/remediation", tags=["scan"])

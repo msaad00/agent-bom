@@ -378,3 +378,14 @@ def test_inventory_scope_filters_and_qualification_round_trip(method, path, pagi
     }
     assert getattr(client, method)(**filters, **paging) == payload
     assert seen == {"path": path, "params": {**filters, **{key: str(value) for key, value in paging.items()}}, "tenant": "tenant-a"}
+
+
+def test_scan_agent_bom_preserves_exact_query_identity() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/scan/job-a/agent-bom"
+        assert request.url.params["agent_id"] == "agent:provider/a?x=1&b=2"
+        assert request.headers["x-api-key"] == "secret"
+        return httpx.Response(200, json={"snapshot_id": "example"})
+
+    with _client(handler) as client:
+        assert client.get_scan_agent_bom("job-a", "agent:provider/a?x=1&b=2") == {"snapshot_id": "example"}

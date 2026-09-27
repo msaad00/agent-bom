@@ -51,15 +51,83 @@ def _discover_manifest_agents(config: str | None, project: str | None):
 @click.option("--project", "-p", type=click.Path(exists=True), help="Project directory to inspect for agent inventory.")
 @click.option("--tenant-id", default=None, help="Optional tenant identifier to stamp into the manifest.")
 @click.option("--output", "-o", type=click.Path(dir_okay=False), help="Write the manifest JSON to a file instead of stdout.")
+@click.option(
+    "--scan-result", type=click.Path(exists=True, dir_okay=False), help="Export composition from a saved JSON scan without rediscovery."
+)
 @click.option("--compact", is_flag=True, help="Emit compact JSON without indentation.")
-def manifest_cmd(config: str | None, project: str | None, tenant_id: str | None, output: str | None, compact: bool) -> None:
+@click.option("--agent-id", help="Export one agent BOM selected by its exact manifest ID, never its display name.")
+@click.option("--single-agent", is_flag=True, help="Export a per-agent BOM when discovery contains exactly one agent.")
+@click.option(
+    "--validate", "validate_path", type=click.Path(exists=True, dir_okay=False), help="Validate a per-agent BOM file without discovery."
+)
+def manifest_cmd(
+    config: str | None,
+    project: str | None,
+    tenant_id: str | None,
+    output: str | None,
+    compact: bool,
+    agent_id: str | None,
+    single_agent: bool,
+    validate_path: str | None,
+    scan_result: str | None,
+) -> None:
     """Emit the canonical Agent BOM manifest for local agent/MCP posture."""
 
-    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-        agents = _discover_manifest_agents(config, project)
+    if validate_path:
+        if any((config, project, tenant_id, output, compact, agent_id, single_agent, scan_result)):
+            raise click.UsageError("--validate cannot be combined with discovery or output options")
+        from agent_bom.evidence.agent_bom import MAX_AGENT_BOM_BYTES, validate_agent_bom_json
 
-    payload = build_local_agent_manifest(agents, tenant_id=tenant_id)
+        try:
+            with Path(validate_path).open("rb") as handle:
+                payload_bytes = handle.read(MAX_AGENT_BOM_BYTES + 1)
+            document = validate_agent_bom_json(payload_bytes)
+        except (OSError, ValueError):
+            raise click.ClickException("Invalid per-agent BOM: check size, schema, evidence references, and content digest.") from None
+        click.echo(f"Valid per-agent BOM: {document.snapshot_id} (integrity only; producer claims are not authenticated)")
+        return
+    if agent_id and single_agent:
+        raise click.UsageError("Choose --agent-id or --single-agent")
+
+    if scan_result:
+        if config or project or not (agent_id or single_agent):
+            raise click.UsageError("--scan-result requires --agent-id or --single-agent and cannot be combined with discovery options")
+        from agent_bom.evidence.scan_agent_bom import MAX_SCAN_INPUT_BYTES, build_scan_agent_bom, read_scan_json
+
+        try:
+            with Path(scan_result).open("rb") as handle:
+                scan = read_scan_json(handle.read(MAX_SCAN_INPUT_BYTES + 1))
+            payload = build_scan_agent_bom(scan, agent_id=agent_id, tenant_id=tenant_id or "local").model_dump(mode="json")
+        except (OSError, ValueError):
+            raise click.ClickException(
+                "Cannot export scan Agent BOM: check exact identity, source scan/time, inventory, and size limits."
+            ) from None
+    else:
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            agents = list(_discover_manifest_agents(config, project))
+
+        if agent_id or single_agent:
+            from agent_bom.evidence.agent_bom import build_agent_bom
+
+            selected = [agent for agent in agents if agent.stable_id == agent_id] if agent_id else agents
+            if len(selected) != 1:
+                raise click.ClickException(
+                    "Expected exactly one agent. Run manifest without selection to inspect IDs, then use --agent-id."
+                )
+            try:
+                payload = build_agent_bom(selected[0], tenant_id=tenant_id or "local").model_dump(mode="json")
+            except ValueError:
+                raise click.ClickException(
+                    "Cannot export per-agent BOM: inventory is invalid, conflicting, or exceeds profile bounds."
+                ) from None
+        else:
+            payload = build_local_agent_manifest(agents, tenant_id=tenant_id)
     rendered = json.dumps(payload, separators=(",", ":") if compact else None, indent=None if compact else 2)
+    if agent_id or single_agent:
+        from agent_bom.evidence.agent_bom import MAX_AGENT_BOM_BYTES
+
+        if len((rendered + "\n").encode("utf-8")) > MAX_AGENT_BOM_BYTES:
+            raise click.ClickException("Per-agent BOM exceeds 8 MiB. Narrow the inventory before exporting.")
 
     if output:
         Path(output).write_text(rendered + "\n")

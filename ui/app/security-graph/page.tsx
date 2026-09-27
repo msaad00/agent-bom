@@ -1,5 +1,6 @@
 "use client";
 
+import { GraphSnapshotReceipt } from "@/components/graph-snapshot-receipt";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -825,6 +826,8 @@ function AttackPathInvestigationContent() {
           </div>
           )}
       </header>
+
+      <GraphSnapshotReceipt snapshot={selectedSnapshot} />
 
       <div className="hidden sm:block"><GraphLensSwitcher variant="compact" /></div>
       <details className="rounded-lg border border-outline bg-surface p-3 sm:hidden">

@@ -146,9 +146,7 @@ The offline synthetic enterprise estate includes evaluated checks; results do no
   <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="1440"></a>
 </p>
 
-Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), and [framework controls and evidence](site-docs/features/compliance.md).
-
-**Per-agent BOM preview:** from a completed scan, expand **Evidence & agent BOM** to inspect collection gaps and export one recorded agent’s composition. [Follow the scan-to-BOM investigation journey](docs/SCAN_EVIDENCE_JOURNEY.md).
+Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), [framework controls and evidence](site-docs/features/compliance.md), and the [per-agent BOM preview](docs/SCAN_EVIDENCE_JOURNEY.md).
 
 ### AppSec and cloud teams: explain why a finding matters
 

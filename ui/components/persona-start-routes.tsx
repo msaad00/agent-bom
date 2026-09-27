@@ -19,14 +19,14 @@ const STARTS: PersonaStart[] = [
   {
     label: "Docker scan",
     persona: "Developer / evaluator",
-    command: "docker run --rm agentbom/agent-bom:latest agents --demo",
-    artifact: "An isolated synthetic scan without a local install",
+    command: "docker run --rm agentbom/agent-bom:0.105.0 scan --demo --offline",
+    artifact: "Synthetic inventory and findings; exit 1 is the expected security verdict",
     href: "/scan",
   },
   {
     label: "GitHub Action",
     persona: "AppSec / SecOps",
-    command: "uses: msaad00/agent-bom@v0.100.0",
+    command: "uses: msaad00/agent-bom@v0.105.0",
     artifact: "SARIF, pull-request summary, and policy exit code",
     href: "/findings",
   },
@@ -41,7 +41,7 @@ const STARTS: PersonaStart[] = [
     label: "Compliance evidence",
     persona: "GRC / audit",
     command: "agent-bom scan . --compliance",
-    artifact: "Control mappings and signed evidence paths",
+    artifact: "Control mappings with assessment scope; review missing evidence before an audit",
     href: "/compliance",
   },
   {

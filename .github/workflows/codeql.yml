@@ -47,6 +47,13 @@ jobs:
         with:
           languages: python
           queries: security-extended
+          # Test modules are roughly half of the Python tree and are never
+          # shipped; excluding them from extraction keeps this required
+          # context inside the PR time budget. Every shipped path (src/,
+          # scripts/, sdks/, integrations/, deploy/) is still analyzed.
+          config: |
+            paths-ignore:
+              - tests/**
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1

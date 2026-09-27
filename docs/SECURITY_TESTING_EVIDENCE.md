@@ -20,7 +20,7 @@ already completed. External validation remains tracked separately in
 | agent-bom self-scan PR gate | `.github/workflows/pr-security-gate.yml` | SARIF upload plus JSON scan summary |
 | OSV lockfile scans | `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `osv-scanner.toml` | SHA-verified OSV scanner binary and lockfile scan logs |
 | Container image scan | `.github/workflows/ci.yml`, `.github/workflows/container-rescan.yml`, `.image-scan-ignore` | Container scanner table and SARIF artifacts |
-| Fuzzing | `.github/workflows/cflite-pr.yml` | ClusterFuzzLite PR fuzzing for parser/ingest crash coverage |
+| Fuzzing | `.github/workflows/cflite-pr.yml` | ClusterFuzzLite fuzzing on every parser-affecting `main` push plus a weekly long batch, for parser/ingest crash coverage |
 | Release provenance | `.github/workflows/release.yml` | Sigstore, SLSA, SBOM, and release self-scan artifacts |
 | Backup / restore drill | `.github/workflows/backup-restore.yml` | Postgres restore and tenant-aware integrity checks |
 | Post-merge UI smoke | `.github/workflows/main-ui-smoke.yml` | Builds standalone Next bundle on every push to main, boots it, curls `/`, asserts the dashboard CSP still permits hydration; auto-opens an issue if main is broken so the regression is visible within minutes instead of when the next downstream PR opens. |

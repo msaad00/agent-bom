@@ -35,13 +35,23 @@ def test_release_image_installs_the_missing_headers_before_uv_sync() -> None:
     assert 'CFLAGS="-I/usr/local/include/tree-sitter-typescript/tsx/src"' in dockerfile
 
 
-def test_docker_input_prs_run_the_release_shaped_multiarch_gate() -> None:
+def test_release_shaped_multiarch_gate_guards_every_main_commit() -> None:
+    """The arm64 build runs post-merge, and a tag cannot bypass it.
+
+    ``Test (Python 3.13)`` requires the Docker lane on every main push, and
+    release.yml only accepts a tag on a main SHA whose ``ci.yml`` push run is
+    green, so a Dockerfile or lockfile change that breaks arm64 blocks the
+    release even though the emulated build no longer runs on pull requests.
+    """
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     docker_job = workflow.split("\n  docker:\n", 1)[1].split("\n  action-dogfood:\n", 1)[0]
     assert "needs: [changes, security, lint, test-core]" in docker_job
-    assert "github.event_name == 'pull_request'" in docker_job
-    assert "needs.changes.outputs.alpine_full == 'true'" in docker_job
+    assert "github.event_name != 'pull_request'" in docker_job
+    assert "(github.event_name == 'push' && github.ref == 'refs/heads/main')" in docker_job
     assert "--platform linux/amd64,linux/arm64" in docker_job
+
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "scripts/check_release_main_ci.py" in release
 
     required_job = workflow.split("\n  test:\n", 1)[1].split("\n  # 6. Dogfood", 1)[0]
     assert "name: Test (Python 3.13)" in required_job

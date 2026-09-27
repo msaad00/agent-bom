@@ -171,7 +171,7 @@ def main() -> int:
         _CMD_OVERRIDE[:] = shlex.split(args.cmd)
 
     env = dict(os.environ)
-    env.setdefault("AGENT_BOM_NO_UPDATE_CHECK", "1")
+    env.setdefault("AGENT_BOM_SKIP_UPDATE_CHECK", "1")
     results: dict[str, Any] = {"host_load_start": _load(), "scans": {}, "cold_start": None}
 
     if args.cold_start_runs > 0:

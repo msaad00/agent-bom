@@ -13,6 +13,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -53,9 +54,14 @@ async def _store_call(fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T
         ) from exc
 
 
-def _quarantine_policy_name(agent_name: str) -> str:
-    """Deterministic gateway-policy name for an agent's quarantine deny rule."""
-    return f"Quarantine deny — {agent_name}"
+def _quarantine_policy_name(agent_id: str) -> str:
+    """Display label derived from the immutable containment subject."""
+    return f"Quarantine deny — {agent_id}"
+
+
+def _quarantine_policy_id(tenant_id: str, agent_id: str) -> str:
+    key = json.dumps(["agent-bom:fleet-quarantine:v1", tenant_id, agent_id], separators=(",", ":"))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
 
 
 def _state_value(agent: Any) -> str:
@@ -629,22 +635,18 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     # without disabling it left the agent blocked forever on the control-plane
     # policy path. Reuses _quarantine_policy_name so the two sides cannot drift.
     if was_quarantined and new_state != FleetLifecycleState.QUARANTINED:
-        disabled = _disable_quarantine_policy(agent.name, tenant_id=tenant_id, actor=actor)
+        disabled = _disable_quarantine_policy(agent.agent_id, tenant_id=tenant_id, actor=actor)
         if disabled is not None:
             result["gateway_policy"] = {"policy_id": disabled, "disabled": True}
     return result
 
 
-def _disable_quarantine_policy(agent_name: str, *, tenant_id: str, actor: str) -> str | None:
+def _disable_quarantine_policy(agent_id: str, *, tenant_id: str, actor: str) -> str | None:
     """Disable the agent's quarantine deny policy; return its id when one was found."""
     from agent_bom.api.audit_log import log_action
 
     policy_store = _get_policy_store()
-    policy_name = _quarantine_policy_name(agent_name)
-    policy = next(
-        (p for p in policy_store.list_policies(tenant_id=tenant_id) if p.name == policy_name),
-        None,
-    )
+    policy = policy_store.get_policy(_quarantine_policy_id(tenant_id, agent_id), tenant_id=tenant_id)
     if policy is None or not policy.enabled:
         return None
     policy.enabled = False
@@ -672,7 +674,9 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
        agent's identity whose single rule denies every tool call
        (``block_tools=["*"]``).
 
-    The deny policy is scoped via ``bound_agents`` so only the quarantined
+    The deny policy binds the exact fleet ``agent_id`` through ``bound_agents``.
+    The caller must authenticate as this ID; names and canonical aliases are
+    never resolved for containment. Only the quarantined
     agent's traffic is blocked at the proxy / gateway relay — other agents are
     unaffected. The operation is idempotent (a second call re-enables the same
     policy rather than stacking duplicates) and both actions are audit-logged.
@@ -704,22 +708,18 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
     # 2) Create or re-enable a gateway DENY policy bound to this agent's identity.
     policy_store = _get_policy_store()
     now = datetime.now(timezone.utc).isoformat()
-    policy_name = _quarantine_policy_name(agent.name)
+    policy_name = _quarantine_policy_name(agent.agent_id)
     deny_rule = GatewayRule(
         id="quarantine-deny-all",
         action="block",
         block_tools=["*"],
         description=f"Quarantine: deny all tool calls for {agent.name}",
     )
-    existing = next(
-        (p for p in policy_store.list_policies(tenant_id=tenant_id) if p.name == policy_name),
-        None,
-    )
+    existing = policy_store.get_policy(_quarantine_policy_id(tenant_id, agent.agent_id), tenant_id=tenant_id)
     if existing is not None:
         existing.mode = PolicyMode.ENFORCE
         existing.rules = [deny_rule]
-        if agent.name not in (existing.bound_agents or []):
-            existing.bound_agents = [*(existing.bound_agents or []), agent.name]
+        existing.bound_agents = [agent.agent_id]
         existing.enabled = True
         existing.updated_at = now
         policy_store.put_policy(existing)
@@ -727,12 +727,12 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
         policy_action = "gateway.policy_updated"
     else:
         policy = GatewayPolicy(
-            policy_id=str(uuid.uuid4()),
+            policy_id=_quarantine_policy_id(tenant_id, agent.agent_id),
             name=policy_name,
             description=f"Auto-generated on fleet quarantine of {agent.name}. Denies all tool calls for this agent's identity.",
             mode=PolicyMode.ENFORCE,
             rules=[deny_rule],
-            bound_agents=[agent.name],
+            bound_agents=[agent.agent_id],
             enabled=True,
             created_at=now,
             updated_at=now,

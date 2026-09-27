@@ -127,10 +127,17 @@ PROJECT_ROOT_METADATA_KEY = "project_root"
 
 def project_root_for(agent: Agent) -> str | None:
     """Resolved project directory an agent was discovered from, if it is project-local."""
+    if agent.source not in PROJECT_LOCAL_SOURCES:
+        return None
+    # A shared directory is weaker evidence than an explicit device/source
+    # identity. Keep these agents intact instead of replacing their identities
+    # with the synthetic project wrapper's path-derived identity.
+    if agent.source_id or agent.device_fingerprint:
+        return None
     explicit = (agent.metadata or {}).get(PROJECT_ROOT_METADATA_KEY)
     if isinstance(explicit, str) and explicit:
         return str(Path(explicit).resolve())
-    if agent.source not in PROJECT_LOCAL_SOURCES or not agent.config_path:
+    if not agent.config_path:
         return None
     path = Path(agent.config_path)
     if not path.is_dir():

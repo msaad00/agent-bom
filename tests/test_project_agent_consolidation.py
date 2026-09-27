@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.discovery.identity import consolidate_project_agents
@@ -137,6 +138,38 @@ def test_single_source_agent_is_left_untouched(tmp_path: Path) -> None:
 
     assert merged[0] is only
     assert merged[0].name == "langchain:react-agent"
+
+
+@pytest.mark.parametrize("identity_field", ["source_id", "device_fingerprint"])
+def test_project_consolidation_preserves_explicit_agent_identities(tmp_path: Path, identity_field: str) -> None:
+    members = [
+        Agent(
+            name="project:worker",
+            agent_type=AgentType.CUSTOM,
+            config_path=str(tmp_path),
+            source="project",
+            metadata={"project_root": str(tmp_path)},
+            **{identity_field: identity},
+        )
+        for identity in ("worker-one", "worker-two")
+    ]
+    expected = [member.stable_id for member in members]
+
+    merged = consolidate_project_agents(members)
+
+    assert [member.stable_id for member in merged] == expected
+    assert [getattr(member, identity_field) for member in merged] == ["worker-one", "worker-two"]
+
+
+def test_project_root_metadata_does_not_absorb_a_host_agent(tmp_path: Path) -> None:
+    host = _host_agent()
+    host.metadata["project_root"] = str(tmp_path)
+    members = _project_sources(tmp_path)
+
+    merged = consolidate_project_agents([*members, host])
+
+    assert len(merged) == 2
+    assert merged[-1] is host
 
 
 def _write_sample_project(root: Path) -> None:

@@ -355,11 +355,12 @@ def test_redact_json_payload_redacts_secrets_in_nested_finding_fields() -> None:
 def test_sectioned_json_writer_is_byte_identical_to_json_dump(data: dict) -> None:
     import io
 
-    from agent_bom.output.json_fmt import _write_indented_json
+    from agent_bom.output.json_writer import write_json_document
 
     expected, actual = io.StringIO(), io.StringIO()
     json.dump(data, expected, indent=2)
-    _write_indented_json(data, actual)
+    expected.write("\n")
+    write_json_document(data, actual)
     assert actual.getvalue() == expected.getvalue()
 
 

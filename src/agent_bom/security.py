@@ -851,10 +851,6 @@ def sanitize_path_label(value: object) -> str:
     return f"<path:{basename}>"
 
 
-_SANITIZE_PAYLOAD_CACHE_LIMIT = 262_144
-_SANITIZE_PAYLOAD_CACHE_MISS = object()
-
-
 _REPORT_COORDINATE_KEYS = {
     "id",
     "canonical_id",
@@ -965,102 +961,13 @@ def sanitize_sensitive_payload(
 ) -> object:
     """Recursively redact sensitive runtime/audit payloads before persistence/export.
 
-    One report repeats the same immutable package fields across its inventory,
-    agent, and AI-BOM contract views. Keep bounded caches for the duration of a
-    single traversal so those values are redacted once, without retaining
-    potentially sensitive strings globally between exports.
+    Caches are bounded and live for a single traversal, so repeated package
+    fields are redacted once without retaining sensitive strings globally.
     """
-    return _redact_payload_node(
-        value,
-        key,
-        max_str_len,
-        depth,
-        {} if _string_cache is None else _string_cache,
-        {} if _key_cache is None else _key_cache,
-    )
+    from agent_bom.payload_redaction import redact_payload
 
-
-_PAYLOAD_DEPTH_LIMIT = 24
-# Exact types a child can be copied through without a recursive call. Subclasses
-# (IntEnum, StrEnum, ...) still take the general path, as before.
-_PAYLOAD_PASSTHROUGH_TYPES = frozenset({type(None), bool, int, float})
-
-
-def _redact_payload_string(
-    value: str,
-    key: object | None,
-    key_text: str | None,
-    max_str_len: int,
-    string_cache: dict[tuple[str | None, str, int], object],
-) -> object:
-    cache_key = (key_text, value, max_str_len)
-    cached = string_cache.get(cache_key, _SANITIZE_PAYLOAD_CACHE_MISS)
-    if cached is not _SANITIZE_PAYLOAD_CACHE_MISS:
-        return cached
-    sanitized_value = _sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
-    if len(string_cache) < _SANITIZE_PAYLOAD_CACHE_LIMIT:
-        string_cache[cache_key] = sanitized_value
-    return sanitized_value
-
-
-def _redact_payload_node(
-    value: object,
-    key: object | None,
-    max_str_len: int,
-    depth: int,
-    string_cache: dict[tuple[str | None, str, int], object],
-    key_cache: dict[str, str],
-) -> object:
-    """One step of :func:`sanitize_sensitive_payload`.
-
-    Scalar and already-cached string children are resolved inline: a report
-    carries millions of leaves but few distinct (field, value) pairs, so the
-    per-leaf function call used to dominate the walk. Every leaf still goes
-    through the same field-sensitive rules and the same traversal cache.
-    """
-    if depth >= _PAYLOAD_DEPTH_LIMIT:
-        return "[truncated]"
-    if value is None or isinstance(value, bool | int | float):
-        return value
-    if isinstance(value, str):
-        return _redact_payload_string(value, key, str(key) if key is not None else None, max_str_len, string_cache)
-    child_depth = depth + 1
-    inline_leaves = child_depth < _PAYLOAD_DEPTH_LIMIT
-    miss = _SANITIZE_PAYLOAD_CACHE_MISS
-    if isinstance(value, dict):
-        sanitized: dict[str, object] = {}
-        for raw_key, raw_value in value.items():
-            raw_key_text = str(raw_key)
-            clean_key = key_cache.get(raw_key_text)
-            if clean_key is None:
-                clean_key = sanitize_text(raw_key, max_len=200)
-                if len(key_cache) < _SANITIZE_PAYLOAD_CACHE_LIMIT:
-                    key_cache[raw_key_text] = clean_key
-            value_type = type(raw_value)
-            if inline_leaves and value_type in _PAYLOAD_PASSTHROUGH_TYPES:
-                sanitized[clean_key] = raw_value
-            elif inline_leaves and value_type is str:
-                cached = string_cache.get((clean_key, raw_value, max_str_len), miss)
-                sanitized[clean_key] = (
-                    cached if cached is not miss else _redact_payload_string(raw_value, clean_key, clean_key, max_str_len, string_cache)
-                )
-            else:
-                sanitized[clean_key] = _redact_payload_node(raw_value, clean_key, max_str_len, child_depth, string_cache, key_cache)
-        return sanitized
-    if isinstance(value, list | tuple | set):
-        key_text = str(key) if key is not None else None
-        items: list[object] = []
-        for item in list(value):
-            item_type = type(item)
-            if inline_leaves and item_type in _PAYLOAD_PASSTHROUGH_TYPES:
-                items.append(item)
-            elif inline_leaves and item_type is str:
-                cached = string_cache.get((key_text, item, max_str_len), miss)
-                items.append(cached if cached is not miss else _redact_payload_string(item, key, key_text, max_str_len, string_cache))
-            else:
-                items.append(_redact_payload_node(item, key, max_str_len, child_depth, string_cache, key_cache))
-        return items
-    return sanitize_text(value, max_len=max_str_len)
+    string_cache = {} if _string_cache is None else _string_cache
+    return redact_payload(value, key, max_str_len, depth, string_cache, {} if _key_cache is None else _key_cache)
 
 
 def validate_file_size(path: Path, max_size_bytes: int = 10 * 1024 * 1024) -> None:

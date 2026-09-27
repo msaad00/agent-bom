@@ -201,10 +201,7 @@
       "function_lines": 87
     },
     "api/pipeline.py": {
-      "file_lines": 2086
-    },
-    "api/pipeline.py::_persist_graph_snapshot": {
-      "function_lines": 169
+      "file_lines": 1794
     },
     "api/pipeline.py::_run_scan_sync": {
       "complexity": 136,
@@ -744,7 +741,7 @@
       "function_lines": 117
     },
     "cli/__init__.py": {
-      "file_lines": 632
+      "file_lines": 631
     },
     "cli/_analysis.py": {
       "file_lines": 775
@@ -2159,11 +2156,11 @@
       "function_lines": 93
     },
     "mcp_server.py": {
-      "file_lines": 1499
+      "file_lines": 1494
     },
     "mcp_server.py::create_mcp_server": {
       "complexity": 21,
-      "function_lines": 958
+      "function_lines": 950
     },
     "mcp_server.py::create_mcp_server.scan": {
       "function_lines": 194
@@ -2173,7 +2170,7 @@
       "function_lines": 201
     },
     "mcp_server_metadata.py": {
-      "file_lines": 753
+      "file_lines": 742
     },
     "mcp_server_operator_tools.py": {
       "file_lines": 1544

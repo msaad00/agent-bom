@@ -14,17 +14,30 @@ import ctypes
 import gc
 import json
 import logging
-import os
 import sys
 import threading
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from agent_bom import __version__
+from agent_bom.api.graph_persistence import (
+    _estimate_graph_entities as _estimate_graph_entities,
+)
+from agent_bom.api.graph_persistence import (
+    _graph_build_workspace_enabled as _graph_build_workspace_enabled,
+)
+from agent_bom.api.graph_persistence import (
+    _graph_store_backed_build_enabled as _graph_store_backed_build_enabled,
+)
+from agent_bom.api.graph_persistence import (
+    _persist_via_build_workspace as _persist_via_build_workspace,
+)
+from agent_bom.api.graph_persistence import (
+    _record_graph_persistence as _record_graph_persistence,
+)
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
 from agent_bom.api.stores import (
     _compact_terminal_job_in_place,
@@ -301,43 +314,6 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _record_graph_persistence(
-    job: ScanJob,
-    *,
-    status: str,
-    scan_id: str | None = None,
-    nodes: int | None = None,
-    edges: int | None = None,
-    lock: threading.Lock | None = None,
-) -> None:
-    """Expose graph persistence truth without leaking backend exceptions."""
-
-    def _record() -> None:
-        result = getattr(job, "result", None)
-        if not isinstance(result, dict):
-            return
-        current = result.get("graph_persistence")
-        # Delivery or post-persist bookkeeping can fail after the snapshot has
-        # committed. Never overwrite durable evidence with a false failure.
-        if status == "failed" and isinstance(current, dict) and current.get("status") == "persisted":
-            return
-        evidence: dict[str, Any] = {
-            "status": status,
-            "scan_id": scan_id or job.job_id,
-        }
-        if nodes is not None:
-            evidence["nodes"] = nodes
-        if edges is not None:
-            evidence["edges"] = edges
-        result["graph_persistence"] = evidence
-
-    if lock is None:
-        _record()
-    else:
-        with lock:
-            _record()
-
-
 def iter_pipeline_dag_event_records(
     progress_lines: Iterable[str],
     *,
@@ -438,116 +414,6 @@ def _surface_graph_derived_findings(
     surface_graph_derived_findings(report, scan_id=scan_id, tenant_id=tenant_id)
 
 
-def _graph_build_workspace_enabled() -> bool:
-    """Opt-in flag for routing persistence through the build workspace (#4075).
-
-    Default-off so the shipped persist path is byte-for-byte unchanged. When on,
-    the persist streams from the storage-backed workspace instead of the
-    materialised graph — the seam PR-2 will emit into directly.
-
-    When the store-backed producer is active, this consumer path is skipped
-    (the streamed save already pages out of the container).
-    """
-    return os.environ.get("AGENT_BOM_GRAPH_BUILD_WORKSPACE", "").strip().lower() in ("1", "true", "yes", "on")
-
-
-_DEFAULT_STORE_BACKED_MIN_ENTITIES = 5_000
-
-
-def _estimate_graph_entities(report_json: Mapping[str, Any] | dict[str, Any]) -> int:
-    """Cheap O(report) entity estimate for the store-backed auto gate.
-
-    Counts agents, nested MCP servers/packages, top-level packages, findings,
-    and blast-radius entries already resident in ``report_json``. Under-approximates
-    final graph node count (overlays mint extras) — acceptable for a heuristic.
-    """
-    total = 0
-    agents = report_json.get("agents") or []
-    if isinstance(agents, list):
-        total += len(agents)
-        for agent in agents:
-            if not isinstance(agent, dict):
-                continue
-            servers = agent.get("mcp_servers") or []
-            if not isinstance(servers, list):
-                continue
-            total += len(servers)
-            for server in servers:
-                if isinstance(server, dict):
-                    packages = server.get("packages") or []
-                    if isinstance(packages, list):
-                        total += len(packages)
-    for key in ("packages", "findings"):
-        value = report_json.get(key) or []
-        if isinstance(value, list):
-            total += len(value)
-    blast = report_json.get("blast_radius") or []
-    if isinstance(blast, list):
-        total += len(blast)
-    elif isinstance(blast, dict):
-        total += len(blast)
-    return total
-
-
-def _graph_store_backed_build_enabled(report_json: Mapping[str, Any] | dict[str, Any] | None = None) -> bool:
-    """Whether to build the graph into a store-backed container (#4055/#4075).
-
-    Tri-state:
-
-    * ``AGENT_BOM_GRAPH_STORE_BACKED_BUILD=1/true/on`` — force on
-    * ``=0/false/off`` — force off (wins over the size heuristic)
-    * unset — auto-on when ``report_json`` entity estimate is at or above
-      ``AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES`` (default 5000)
-
-    When on, ``_persist_graph_snapshot`` builds the correlated graph into a
-    per-build :class:`~agent_bom.graph.store_backed.StoreBackedUnifiedGraph` on a
-    throwaway private SQLite workspace (never the shared Postgres workspace
-    tables). Small local / below-threshold scans keep the in-RAM producer.
-    """
-    raw = os.environ.get("AGENT_BOM_GRAPH_STORE_BACKED_BUILD", "").strip().lower()
-    if raw in ("0", "false", "no", "off"):
-        return False
-    if raw in ("1", "true", "yes", "on"):
-        return True
-    if report_json is None:
-        return False
-    threshold_raw = os.environ.get("AGENT_BOM_GRAPH_STORE_BACKED_MIN_ENTITIES", "").strip()
-    try:
-        threshold = int(threshold_raw) if threshold_raw else _DEFAULT_STORE_BACKED_MIN_ENTITIES
-    except ValueError:
-        threshold = _DEFAULT_STORE_BACKED_MIN_ENTITIES
-    if threshold < 1:
-        threshold = _DEFAULT_STORE_BACKED_MIN_ENTITIES
-    return _estimate_graph_entities(report_json) >= threshold
-
-
-def _persist_via_build_workspace(graph_store: Any, graph: Any, *, write_generation: str = "") -> dict[str, int]:
-    """Stream a built graph through the bounded workspace into the store.
-
-    Produces a snapshot byte-identical to the direct streamed save; the workspace
-    holds only a bounded batch in memory while it re-emits nodes/edges. Attack
-    paths / interaction risks stay in-memory (small, bounded) — streaming those
-    is out of scope for PR-1.
-    """
-    from agent_bom.graph.build_workspace import open_graph_build_workspace
-
-    with open_graph_build_workspace(tenant_id=graph.tenant_id, workspace_id=graph.scan_id) as workspace:
-        workspace.add_nodes(graph.nodes.values())
-        workspace.add_edges(graph.edges)
-        counts: dict[str, int] = graph_store.save_graph_streaming(
-            scan_id=graph.scan_id,
-            tenant_id=graph.tenant_id,
-            nodes=workspace.iter_nodes(),
-            edges=workspace.iter_edges(),
-            attack_paths=graph.attack_paths,
-            interaction_risks=graph.interaction_risks,
-            analysis_status=graph.analysis_status,
-            created_at=graph.created_at,
-            **({"write_generation": write_generation} if write_generation else {}),
-        )
-        return counts
-
-
 def _persist_graph_snapshot(
     job: ScanJob,
     report_json: dict[str, Any],
@@ -555,168 +421,10 @@ def _persist_graph_snapshot(
     lock: threading.Lock | None = None,
     write_generation: str = "",
 ) -> None:
-    """Persist the unified graph snapshot produced by a completed scan.
+    """Persist through the graph service using the pipeline's current store factory."""
+    from agent_bom.api.graph_persistence import persist_graph_snapshot
 
-    Persistence is best-effort: graph failures should not fail the scan job.
-    This path also evaluates graph deltas against the tenant's previous
-    snapshot so current-state views, diff views, alert delivery, and OCSF
-    export all derive from the same persisted graph state.
-    """
-    import contextlib
-
-    from agent_bom.graph.builder import build_unified_graph_from_report
-    from agent_bom.graph.delta_digest import compute_delta_alerts_from_digest
-    from agent_bom.graph.webhooks import dispatch_delta_alerts
-
-    tenant_id = job.tenant_id or "default"
-    scan_id = report_json.get("scan_id") or job.job_id
-
-    # Fuse tenant LLM spend into the build so the graph cost overlay actually
-    # runs. The overlay has always existed but read report_json["llm_cost_records"],
-    # which nothing populated, so per-node cost_usd / subtree_cost_usd were never
-    # stamped. Shallow copy, never mutation: report_json is persisted elsewhere
-    # and must stay byte-identical. Best-effort, like the delta/webhook steps.
-    graph_input = report_json
-    try:
-        from agent_bom.api.cost_store import get_cost_store, graph_cost_rollup
-
-        cost_records = graph_cost_rollup(get_cost_store(), tenant_id)
-        if cost_records:
-            graph_input = {**report_json, "llm_cost_records": cost_records}
-    except Exception as exc:  # noqa: BLE001
-        _logger.debug("graph cost rollup skipped: %s", sanitize_text(exc))
-
-    # Store-backed producer (#4055/#4075): auto-on above the entity threshold
-    # (or forced via AGENT_BOM_GRAPH_STORE_BACKED_BUILD). Builds into a per-build
-    # store-backed container on a throwaway private SQLite workspace so peak RSS
-    # is bounded by the LRU working set. Forced SQLite (never shared Postgres
-    # workspace tables). Explicit off / below-threshold keeps the in-RAM producer.
-    store_backed = _graph_store_backed_build_enabled(report_json)
-    if store_backed:
-        from agent_bom.graph.store_backed import open_store_backed_unified_graph
-
-        container_cm: contextlib.AbstractContextManager[Any] = open_store_backed_unified_graph(
-            tenant_id=tenant_id, scan_id=scan_id, backend="sqlite"
-        )
-    else:
-        container_cm = contextlib.nullcontext(None)
-
-    with container_cm as container:
-        graph = build_unified_graph_from_report(graph_input, scan_id=scan_id, tenant_id=tenant_id, container=container)
-
-        # Stamp Finding.id onto vuln/misconfig nodes before persist so attack-path
-        # finding_ids (and investigation deep-links) are not CVE-label-only.
-        # The surfacing graph was intentionally thrown away earlier (#4055/#4075).
-        try:
-            from agent_bom.graph.asset_entity import link_report_findings_to_graph
-
-            link_report_findings_to_graph(report_json, graph)
-        except Exception as link_exc:  # noqa: BLE001 — never fail persist on FK stamping
-            _logger.debug("finding↔node persist linking skipped: %s", sanitize_text(link_exc))
-
-        # Annotate CWPP workload nodes with tenant-scoped runtime evidence before
-        # persist so investigation loads see it without a second enrich pass.
-        # Absence stays no_runtime_signal — never a cleanliness claim (#4158).
-        try:
-            from agent_bom.cloud.runtime_workload_evidence import (
-                RuntimeWorkloadEvidenceIndex,
-                enrich_graph_workload_runtime_evidence,
-            )
-            from agent_bom.cloud.runtime_workload_evidence_store import get_runtime_workload_evidence_store
-
-            wl_index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
-            enrich_graph_workload_runtime_evidence(graph, wl_index)
-        except Exception as runtime_exc:  # noqa: BLE001 — never fail persist on enrich
-            _logger.debug("workload runtime evidence graph enrich skipped: %s", sanitize_text(runtime_exc))
-
-        from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
-
-        tenant_token = set_current_tenant(tenant_id)
-        try:
-            prior_digest = None
-            graph_store = _get_graph_store()
-            previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan")
-            if previous_scan_id and previous_scan_id != scan_id:
-                # Bounded prior-snapshot digest instead of a second full UnifiedGraph
-                # load — keeps peak RSS decoupled from the prior graph size (#4055/#4075).
-                prior_digest = graph_store.prior_delta_digest(tenant_id=tenant_id, scan_id=previous_scan_id)
-            # Persist via the streamed write path (node/edge iterables) so the write
-            # never buffers a second copy of the graph; counts come from the store's
-            # running tally, not len(graph.*). When the store-backed build is on the
-            # iterables page straight out of the build workspace; when off they iterate
-            # the in-RAM graph. Both produce a byte-identical snapshot.
-            # Skip the older workspace re-stream when the store-backed producer is
-            # already paging out of the container (superseding path).
-            if (not store_backed) and _graph_build_workspace_enabled():
-                counts = _persist_via_build_workspace(graph_store, graph, write_generation=write_generation)
-            else:
-                counts = graph_store.save_graph_streaming(
-                    scan_id=graph.scan_id,
-                    tenant_id=graph.tenant_id,
-                    nodes=graph.nodes.values(),
-                    edges=graph.edges,
-                    attack_paths=graph.attack_paths,
-                    interaction_risks=graph.interaction_risks,
-                    analysis_status=graph.analysis_status,
-                    created_at=graph.created_at,
-                    **({"write_generation": write_generation} if write_generation else {}),
-                )
-        finally:
-            reset_current_tenant(tenant_token)
-
-        node_count = counts.get("nodes", len(graph.nodes))
-        edge_count = counts.get("edges", len(graph.edges))
-        _record_graph_persistence(
-            job,
-            status="persisted",
-            scan_id=scan_id,
-            nodes=node_count,
-            edges=edge_count,
-            lock=lock,
-        )
-        # The snapshot is committed at this point. Delta alerting is a
-        # downstream notification: a formatting or delivery defect is logged
-        # and recorded on the job, never allowed to fail (and so roll back)
-        # the graph that was just persisted.
-        alerts: list[dict[str, Any]] = []
-        delivery: dict[str, Any] | None = None
-        try:
-            alerts = compute_delta_alerts_from_digest(prior_digest, graph)
-            delivery = dispatch_delta_alerts(alerts, product_version=__version__, tenant_id=tenant_id) if alerts else None
-        except Exception as alert_exc:  # noqa: BLE001 — alerting must never fail graph persistence
-            _logger.warning(
-                "Graph delta alerting failed for scan=%s tenant=%s: %s",
-                scan_id,
-                tenant_id,
-                sanitize_text(sanitize_error(alert_exc, generic=True)),
-            )
-            if lock:
-                with lock:
-                    job.progress.append("Graph delta alerting failed; snapshot persisted without delta notifications")
-            alerts = []
-            delivery = None
-        _logger.info(
-            "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
-            scan_id,
-            tenant_id,
-            node_count,
-            edge_count,
-            len(alerts),
-            delivery["delivered"] if delivery else 0,
-        )
-        if lock:
-            with lock:
-                job.progress.append(f"Graph persisted: {node_count} nodes, {edge_count} edges")
-                if alerts:
-                    job.progress.append(f"Graph delta alerts: {len(alerts)}")
-                    if delivery and delivery["configured"]:
-                        summary = (
-                            f"Graph delta delivery: {delivery['delivered']}/{delivery['attempted']} "
-                            f"via {delivery['outbound_channels']} outbound channel(s)"
-                        )
-                        job.progress.append(summary)
-                    else:
-                        job.progress.append(f"Graph delta export ready: {delivery['ocsf_event_count'] if delivery else 0} OCSF event(s)")
+    persist_graph_snapshot(job, report_json, store_factory=_get_graph_store, lock=lock, write_generation=write_generation)
 
 
 # ─── ScanPipeline ────────────────────────────────────────────────────────────

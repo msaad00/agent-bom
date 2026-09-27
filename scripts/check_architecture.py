@@ -60,6 +60,12 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
         for module in _import_modules(path, node):
+            if path == "api/graph_persistence.py" and module in {
+                "agent_bom.api.pipeline",
+                "agent_bom.api.server",
+                "agent_bom.api.stores",
+            }:
+                errors.append(f"{path}:{node.lineno}: graph persistence must receive its store factory, not import orchestration")
             if path.startswith("graph/") and module == "agent_bom.api.credential_expiry":
                 errors.append(f"{path}:{node.lineno}: graph credential decisions must not import the API adapter")
             if path.startswith("core/") and (

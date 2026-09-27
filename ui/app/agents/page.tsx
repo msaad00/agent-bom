@@ -824,8 +824,8 @@ function AgentDetail({ agentName }: { agentName: string }) {
     unrated: summary.severity_breakdown.unrated ?? 0,
   };
   // The strip must reconcile with the Vulnerabilities tile beside it: anything
-  // the API could not band still has to be visible, and "Clean" may only show
-  // when there is genuinely nothing to report.
+  // the API could not band still has to be visible. Zero attributed findings
+  // does not establish complete assessment or a clean agent.
   const sevTotal = sev.critical + sev.high + sev.medium + sev.low + sev.unrated;
 
   const toggleServer = (name: string) => {
@@ -929,7 +929,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                 </span>
               )}
               {sevTotal === 0 && summary.total_vulnerabilities === 0 && (
-                <span className="text-emerald-400 font-medium">Clean</span>
+                <span className="text-[color:var(--text-secondary)]" title="Only identity-linked findings are counted; assessment coverage may be incomplete">No attributed findings</span>
               )}
               {sevTotal === 0 && summary.total_vulnerabilities > 0 && (
                 <span className="text-[color:var(--text-secondary)]">Unrated</span>

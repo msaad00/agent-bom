@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AgentBomHistory } from "@/components/agent-bom-history";
 import { api, type Agent, type ScanResult } from "@/lib/api";
 
 /** Only unambiguous recorded IDs are selectable. Never join by display name. */
@@ -104,6 +105,7 @@ export function ScanEvidencePanel({ jobId, result }: { jobId: string; result: Sc
           {eligible ? <p className="break-all font-mono text-ink-secondary">{selectedId}</p> : null}
           <button disabled={!eligible || busy} onClick={() => void download()} className="rounded-lg border border-outline px-3 py-2 font-medium text-foreground hover:bg-surface-elevated disabled:opacity-50">{busy ? "Exporting…" : "Download agent BOM"}</button>
           {error ? <p role="alert" className="text-red-700 dark:text-red-300">{error}</p> : null}
+          {eligible ? <AgentBomHistory key={`${jobId}:${selectedId}`} jobId={jobId} agentId={selectedId} /> : null}
           <p className="text-ink-secondary">Experimental profile · observed identity · partial composition. Grants, runtime, controls and cost are not assessed by this export.</p>
         </div>
       </div>

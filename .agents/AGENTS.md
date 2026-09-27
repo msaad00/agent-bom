@@ -30,6 +30,40 @@ Every material change should satisfy four lenses:
 Do not present roadmap work as shipped product. If a claim is user-visible, tie
 it to code, tests, screenshots, docs, or live command output.
 
+## Model selection and handoffs
+
+For Codex, prefer GPT-6 Astra with High effort for full-stack implementation;
+Extra High for identity, authorization, tenant isolation, containment, audit
+integrity and concurrency review. Sol with High is suitable for bounded UI and
+implementation work; Sol with Medium for straightforward documentation and CI
+fixes. These are workflow preferences, not measured correctness guarantees.
+Honor explicit user choices and available models. Other assistants should use
+an available model appropriate to the same risk and scope.
+
+AGENTS.md does not change runtime model settings. Select model/effort through
+the supported client control; never claim a switch unless confirmed. Do not
+change global defaults or create new tasks merely to apply this guidance.
+
+At a PR boundary, preserve a private handoff with base/head SHAs, worktree,
+completed versus remaining items, exact test results, blockers and next action.
+A new session is useful for independent review or a distinct deliverable, not
+required for every model change. Recheck main and the diff before resuming.
+Keep detailed delivery trackers outside the public repository.
+
+## Evidence preservation
+
+Do not delete or rewrite audit records, traces, chat artifacts, or failed-run
+evidence to conceal activity or make validation appear successful. Authorized
+retention, redaction and cleanup must preserve the required audit receipt and
+must not silently discard evidence needed by an active investigation.
+
+For audit/security changes, separate agent-controlled telemetry from independent
+collector and provider evidence. A hash chain detects some tampering; it is not
+proof against deletion or rewriting by an actor controlling both the records
+and their checkpoint/key. Document this boundary and test truncation, replay,
+missing events and denied evidence deletion where applicable. Treat a gap as
+missing evidence, not proof of malicious intent or a clean result.
+
 ## Project Structure
 
 ```text
@@ -171,8 +205,9 @@ Minimum verification matrix:
   HTML) → CLI → UI → tests → docs → CI guards → Helm / Docker.
 - Canonicalize platform invariants server-side; don't raise on ad-hoc input
   where Pydantic validators can normalize.
-- Non-trivial features ship as a 4-PR series: foundation → mechanical →
-  surface → lock-in.
+- Non-trivial features cover foundation → mechanical → surface → lock-in.
+  Default to four PRs; when the user requests consolidation, combine related
+  stages into fewer reviewable PRs without dropping their verification gates.
 - When Phase N supersedes a Phase N-1 component, remove the old one in the
   same PR.
 - Auth-by-default. New endpoints reject anonymous traffic unless the contract
@@ -233,6 +268,9 @@ Minimum verification matrix:
   `make preflight-fix` to regenerate the artifacts, then review and commit them.
   Skipping this is the most common cause of an approved PR going red on a stale
   generated file — regenerate locally instead of round-tripping through CI.
+- Before the first push, run the changed-domain selection from
+  `scripts/pytest_ci_plan.py targeted` plus the current CI contract smoke set.
+  UI tests and `make preflight` alone do not cover all storefront/doc contracts.
 - Run the tests for the code you touched **before** pushing (`pytest` on the
   affected `tests/test_*.py` files; test order is randomized by pytest-randomly,
   so a green local run on your files is the fastest signal). Push a PR branch

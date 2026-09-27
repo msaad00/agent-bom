@@ -137,7 +137,12 @@ def build_connection_params() -> dict:
 
 
 class SnowflakeJobStore:
-    """Snowflake-backed scan job persistence."""
+    """Snowflake-backed scan job persistence.
+
+    Job reads/deletes require an explicit tenant, matching the JobStore contract.
+    Trusted background reconciliation can opt into ``all_tenants=True``; this
+    does not bypass Snowflake row-access policies or expand a supplied tenant.
+    """
 
     retains_job_objects_in_memory = False
 
@@ -248,7 +253,8 @@ class SnowflakeJobStore:
                 raise
         return inserted
 
-    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
+    def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
+        _require_tenant_scope(tenant_id, all_tenants, "SnowflakeJobStore.get()")
         with self._connect() as conn:
             cur = conn.cursor()
             if tenant_id is None:
@@ -260,7 +266,8 @@ class SnowflakeJobStore:
                 return None
             return ScanJob.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
-    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
+        _require_tenant_scope(tenant_id, all_tenants, "SnowflakeJobStore.delete()")
         with self._connect() as conn:
             cur = conn.cursor()
             if tenant_id is None:
@@ -269,7 +276,8 @@ class SnowflakeJobStore:
                 cur.execute("DELETE FROM scan_jobs WHERE job_id = %s AND tenant_id = %s", (job_id, tenant_id))
             return (cur.rowcount or 0) > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
+    def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list[ScanJob]:
+        _require_tenant_scope(tenant_id, all_tenants, "SnowflakeJobStore.list_all()")
         with self._connect() as conn:
             cur = conn.cursor()
             if tenant_id is None:
@@ -288,6 +296,7 @@ class SnowflakeJobStore:
         query: str | None = None,
         status: object | None = None,
     ) -> list[dict]:
+        _require_tenant_scope(tenant_id, all_tenants, "SnowflakeJobStore.list_summary()")
         with self._connect() as conn:
             cur = conn.cursor()
             clauses: list[str] = []

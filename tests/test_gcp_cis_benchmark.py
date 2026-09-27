@@ -1163,3 +1163,39 @@ def test_run_benchmark_no_sdk(monkeypatch):
     with patch.dict("sys.modules", sdk_mods):
         with pytest.raises((CloudDiscoveryError, Exception)):
             run_benchmark(project_id="my-project")
+
+
+@pytest.mark.parametrize("reason", ["SERVICE_DISABLED", "BILLING_DISABLED", "PERMISSION_DENIED", "unavailable"])
+@pytest.mark.parametrize("public", [False, True])
+def test_bucket_partial_collection_never_reports_clean_or_wrong_remediation(monkeypatch, reason, public):
+    from types import SimpleNamespace
+
+    from agent_bom.cloud import gcp_cis_benchmark as module
+
+    class ReadFailureError(Exception):
+        pass
+
+    exc = ReadFailureError("redacted-provider-failure")
+    exc.reason = reason
+    exc.status_code = 403 if reason != "unavailable" else 503
+    missing = MagicMock(name="unreadable-bucket")
+    missing.name = "unreadable-bucket"
+    missing.get_iam_policy.side_effect = exc
+    known = MagicMock()
+    known.name = "inspected-bucket"
+    known.get_iam_policy.return_value = SimpleNamespace(bindings=[{"members": ["allUsers"] if public else ["group:private"]}])
+    client = MagicMock()
+    client.list_buckets.return_value = [known, missing]
+    monkeypatch.setattr(module, "_import_google_cloud_module", lambda _: SimpleNamespace(Client=lambda **kw: client))
+    result = module._check_5_1("project")
+    assert result.status == (CheckStatus.FAIL if public else CheckStatus.ERROR)
+    assert "1/2" in result.evidence
+    expected = {
+        "SERVICE_DISABLED": "service_disabled",
+        "BILLING_DISABLED": "billing_disabled",
+        "PERMISSION_DENIED": "permission denied",
+        "unavailable": "unavailable",
+    }[reason]
+    assert expected in result.evidence
+    if reason in {"SERVICE_DISABLED", "BILLING_DISABLED"}:
+        assert "Grant 'storage.buckets.getIamPolicy'" not in result.evidence

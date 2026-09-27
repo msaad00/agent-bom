@@ -52,6 +52,7 @@ format-check:  ## Fail if anything is unformatted (what CI runs)
 preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do this before pushing a PR
 	@echo "→ OpenAPI artifacts (docs/openapi/)";   python scripts/export_openapi.py --check
 	@echo "→ v1 schemas (docs/schemas/v1/)";        python scripts/generate_v1_schemas.py --check
+	@echo "→ per-agent BOM schema";                python scripts/generate_agent_bom_schema.py --check
 	@echo "→ Postgres migration contracts";         python -m pytest tests/test_postgres_migrations.py -q
 	@echo "→ agent capability manifest";             python scripts/generate_agent_capability_manifest.py --check
 	@echo "→ documented surface counts";            python scripts/check-counts.py
@@ -75,6 +76,7 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 preflight-fix:  ## Regenerate every drift artifact so you never push stale OpenAPI/schemas/patterns; then review + commit
 	python scripts/export_openapi.py
 	python scripts/generate_v1_schemas.py
+	python scripts/generate_agent_bom_schema.py
 	python scripts/generate_env_var_reference.py
 	python sdks/shared/generate-patterns.py
 	python scripts/product_metrics_snapshot.py --write

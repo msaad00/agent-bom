@@ -23,6 +23,9 @@ agent's policy or a legacy policy with a similar label.
 This change hardens identity selection; it does not add transactional intent,
 an outbox, enforcement acknowledgements, or cancellation of in-flight upstream
 work. Existing gateway modes remain: `enforce` blocks known quarantined callers,
-`warn` reports, and `off` leaves fleet state advisory. Fleet lookup errors fail closed in
-`enforce` mode with `fleet_lookup_unavailable`; `warn` reports the degraded
-decision. Do not treat an API state change as proof of fleet-wide enforcement.
+`warn` reports, and `off` leaves fleet state advisory. Fleet lookup errors fail
+closed in `enforce` mode with `fleet_lookup_unavailable`; `warn` reports the
+degraded decision. An unknown ID has no fleet quarantine decision; this check
+does not require every caller to be enrolled. Enforce caller admission through
+the gateway authentication and policy configuration. Do not treat an API state
+change as proof of fleet-wide enforcement.

@@ -633,7 +633,7 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     # Releasing an agent has to reverse containment, not just relabel it.
     # Quarantine mints an enforce-mode deny-all policy; leaving the state
     # without disabling it left the agent blocked forever on the control-plane
-    # policy path. Reuses _quarantine_policy_name so the two sides cannot drift.
+    # policy path. Reuses _quarantine_policy_id so the two sides cannot drift.
     if was_quarantined and new_state != FleetLifecycleState.QUARANTINED:
         disabled = _disable_quarantine_policy(agent.agent_id, tenant_id=tenant_id, actor=actor)
         if disabled is not None:

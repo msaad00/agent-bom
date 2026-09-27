@@ -770,7 +770,9 @@ async def enrich_vulnerabilities(
             if not enable_kev:
                 return {}
             if offline_enrichment:
-                return _cached_kev_catalog(allow_stale=True, offline=True)
+                # Use the same freshness rule as the strict KEV gate. An expired
+                # cache must not turn unknown coverage into current KEV evidence.
+                return _cached_kev_catalog(offline=True)
             return await fetch_cisa_kev_catalog(client)
 
         async def _fetch_nvd() -> tuple[dict[str, dict], int, int]:

@@ -25,10 +25,13 @@ generate_sbom(format="cyclonedx")
 agent-bom can also ingest existing SBOMs for analysis:
 
 ```bash
-agent-bom sbom existing-sbom.json
+agent-bom scan --sbom existing-sbom.json -f json -o sbom-report.json
 ```
 
-Supports CycloneDX 1.x and SPDX 2.x/3.0 JSON inputs.
+Supports CycloneDX 1.x and SPDX 2.x/3.0 JSON inputs. The scan preserves the
+packages and versions supplied by the SBOM; neighboring manifests do not add or
+replace packages. Open `sbom-report.json` to inspect the resulting findings.
+Use `agent-bom scan -p <project>` when the intended scope is the project tree.
 
 ## VEX (Vulnerability Exploitability eXchange)
 

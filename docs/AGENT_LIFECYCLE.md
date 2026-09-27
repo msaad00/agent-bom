@@ -1,5 +1,9 @@
 # Agent lifecycle and retained BOM history
 
+**Availability: unreleased source preview.** The API and client methods below
+require a source checkout containing this implementation. They are not included
+in the published 0.106.1 package.
+
 The lifecycle API retains exact per-agent scan BOMs and records operator-supplied
 logical agent → deployment → instance → run references. It is an additive
 control-plane registry: existing fleet inventory and identity tokens retain their

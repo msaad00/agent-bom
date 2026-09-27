@@ -541,6 +541,8 @@ export interface AgentBomManifestServer extends Record<string, unknown> {
   server_stable_id?: string;
   identity_basis?: "server_identity" | "observation";
   agent_names?: string[];
+  agent_ids?: string[];
+  agent_binding?: "inventory_identity" | "unbound";
   observation_ids?: string[];
   observations?: Array<Record<string, unknown>>;
 }
@@ -1273,6 +1275,8 @@ export interface FindingTriageVexResponse {
 export type AgentStatus = "configured" | "installed-not-configured";
 
 export interface Agent {
+  canonical_id?: string;
+  stable_id?: string;
   name: string;
   agent_type: string;
   /** Display class from the API: "client" | "background" | "synthetic" (additive). */

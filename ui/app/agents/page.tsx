@@ -580,14 +580,14 @@ function AgentDetailDrawer({
       footer={
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/agents?name=${encodeURIComponent(agent.name)}`}
+            href={`/agents?name=${encodeURIComponent(agent.canonical_id || agent.stable_id || agent.name)}`}
             className="agents-primary-action"
           >
             <ArrowRight className="h-3.5 w-3.5" />
             Full detail
           </Link>
           <Link
-            href={`/agents?name=${encodeURIComponent(agent.name)}&view=lifecycle`}
+            href={`/agents?name=${encodeURIComponent(agent.canonical_id || agent.stable_id || agent.name)}&view=lifecycle`}
             className="agents-toolbar-action"
           >
             <GitBranch className="h-3.5 w-3.5" />

@@ -80,12 +80,18 @@ def test_manifest_counts_shared_server_once_without_losing_memberships(tmp_path,
                 server_stable_id="shared",
                 server_name="shared-server",
                 agent_name=name,
+                agent_id=f"agent-{name}",
                 credential_env_vars=[f"{name.upper()}_KEY"],
             )
         )
     observations.put(
         MCPObservation(
-            tenant_id="tenant-a", observation_id="distinct", server_stable_id="distinct", server_name="shared-server", agent_name="alpha"
+            tenant_id="tenant-a",
+            observation_id="distinct",
+            server_stable_id="distinct",
+            server_name="shared-server",
+            agent_name="alpha",
+            agent_id="agent-alpha",
         )
     )
     monkeypatch.setattr(agent_manifest, "_get_fleet_store", lambda: fleet)

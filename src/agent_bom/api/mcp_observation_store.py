@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 import threading
 from typing import Protocol
@@ -23,6 +25,10 @@ class MCPObservation(BaseModel):
     server_fingerprint: str = ""
     server_name: str
     agent_name: str = ""
+    # Names are display labels. These IDs are set by the collecting service,
+    # not inferred from agent_name or source_agents in legacy observations.
+    agent_id: str = ""
+    agent_canonical_id: str = ""
     transport: str = ""
     url: str | None = None
     auth_mode: str = "local-stdio"
@@ -123,6 +129,10 @@ def merge_observations(existing: MCPObservation | None, incoming: MCPObservation
         return incoming
     if existing.tenant_id != incoming.tenant_id:
         raise ValueError("tenant mismatch in observation merge")
+    if (existing.agent_id, existing.agent_canonical_id) != (incoming.agent_id, incoming.agent_canonical_id):
+        raise ValueError("agent identity mismatch in observation merge")
+    if existing.server_canonical_id != incoming.server_canonical_id:
+        raise ValueError("server identity mismatch in observation merge")
     return MCPObservation(
         tenant_id=incoming.tenant_id,
         observation_id=incoming.observation_id,
@@ -131,6 +141,8 @@ def merge_observations(existing: MCPObservation | None, incoming: MCPObservation
         server_fingerprint=incoming.server_fingerprint or existing.server_fingerprint,
         server_name=incoming.server_name or existing.server_name,
         agent_name=incoming.agent_name or existing.agent_name,
+        agent_id=incoming.agent_id,
+        agent_canonical_id=incoming.agent_canonical_id,
         transport=incoming.transport or existing.transport,
         url=incoming.url or existing.url,
         auth_mode=incoming.auth_mode or existing.auth_mode,
@@ -155,6 +167,14 @@ def merge_observations(existing: MCPObservation | None, incoming: MCPObservation
         last_seen=_pick_timestamp(existing.last_seen, incoming.last_seen, prefer="max"),
         last_synced=_pick_timestamp(existing.last_synced, incoming.last_synced, prefer="max"),
     )
+
+
+def agent_observation_id(agent_identifier: str, server_identifier: str) -> str:
+    """Collision-safe membership key within the store's tenant namespace."""
+    if not agent_identifier or not server_identifier:
+        raise ValueError("observation requires explicit agent and server identity")
+    encoded = json.dumps([agent_identifier, server_identifier], separators=(",", ":"))
+    return "agent-server:" + hashlib.sha256(encoded.encode()).hexdigest()
 
 
 class MCPObservationStore(Protocol):

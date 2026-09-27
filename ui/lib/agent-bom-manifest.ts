@@ -98,15 +98,15 @@ function classifyRuntimeState(observed: Record<string, unknown>): ManifestRow["r
 }
 
 export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date = new Date()): ManifestRow[] {
-  const agentsByName = new Map<string, Record<string, unknown> | null>();
+  const agentsById = new Map<string, Record<string, unknown>>();
   const agentsByServer = new Map<string, Record<string, unknown>[]>();
   for (const agent of manifest.agents) {
     const row = asRecord(agent);
     for (const serverId of asStringList(row.mcp_server_ids)) {
       agentsByServer.set(serverId, [...(agentsByServer.get(serverId) ?? []), row]);
     }
-    const name = asString(row.name);
-    if (name) agentsByName.set(name, agentsByName.has(name) ? null : row);
+    const id = asString(row.id);
+    if (id) agentsById.set(id, row);
   }
 
   return manifest.mcp_servers.map((server) => {
@@ -116,12 +116,17 @@ export function deriveManifestRows(manifest: AgentBomManifestResponse, now: Date
     const observationNames = [...new Set(asStringList(serverRow.agent_names))];
     const legacyName = asString(serverRow.agent_name);
     if (!observationNames.length && legacyName) observationNames.push(legacyName);
-    const observationName = observationNames.length === 1 ? observationNames[0] : "";
     const agentName = observationNames.join(", ") || "local discovery";
-    const members = agentsByServer.get(asString(serverRow.id)) ?? [];
-    const agent = members.length > 0
-      ? (members.length === 1 ? members[0] : undefined)
-      : observationName && serverRow.identity_basis !== "observation" ? agentsByName.get(observationName) : undefined;
+    const membersById = new Map<string, Record<string, unknown>>();
+    for (const member of agentsByServer.get(asString(serverRow.id)) ?? []) {
+      membersById.set(asString(member.id), member);
+    }
+    for (const id of asStringList(serverRow.agent_ids)) {
+      const member = agentsById.get(id);
+      if (member) membersById.set(id, member);
+    }
+    const members = [...membersById.values()];
+    const agent = members.length === 1 ? members[0] : undefined;
     const security = asRecord(serverRow.security);
     const runtimeState = classifyRuntimeState(observed);
     const lastSeen = asString(observed.last_seen, "-");

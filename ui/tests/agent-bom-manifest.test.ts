@@ -53,6 +53,7 @@ const manifest: AgentBomManifestResponse = {
       id: "srv-1",
       name: "filesystem",
       agent_name: "claude-desktop",
+      agent_ids: ["agent-1"],
       transport: "stdio",
       auth_mode: "env",
       credential_refs: [{ name: "API_KEY", kind: "env" }],
@@ -71,6 +72,7 @@ const manifest: AgentBomManifestResponse = {
       id: "srv-2",
       name: "cloud-admin",
       agent_name: "cursor",
+      agent_ids: ["agent-2"],
       transport: "stdio",
       auth_mode: "env",
       credential_refs: [{ name: "ROOT_TOKEN", kind: "env" }],
@@ -89,6 +91,7 @@ const manifest: AgentBomManifestResponse = {
       id: "srv-3",
       name: "docs",
       agent_name: "claude-desktop",
+      agent_ids: ["agent-1"],
       transport: "http",
       auth_mode: "none",
       credential_refs: [],
@@ -198,8 +201,8 @@ it("does not interpret an observation client name as another agent ID", () => {
   ];
   for (const ordered of [agents, [...agents].reverse()]) {
     const row = deriveManifestRows({ ...manifest, agents: ordered, mcp_servers: [{ id: "s", agent_name: "assistant" }] })[0];
-    expect(row?.owner).toBe("dev-team");
-    expect(row?.environment).toBe("dev");
+    expect(row?.owner).toBe("unknown");
+    expect(row?.environment).toBe("unknown");
   }
 });
 
@@ -233,4 +236,21 @@ it("does not recover an observation-scoped conflict through an agent display nam
   expect(row?.agentName).toBe("assistant");
   expect(row?.owner).toBe("unknown");
   expect(row?.environment).toBe("unknown");
+});
+
+
+it("does not attach owner or environment through a unique display name", () => {
+  const row = deriveManifestRows({ ...manifest,
+    mcp_servers: [{ id: "server", agent_name: "claude-desktop" }],
+  })[0];
+  expect(row?.owner).toBe("unknown");
+  expect(row?.environment).toBe("unknown");
+});
+
+it("uses immutable membership after a rename and with duplicate display names", () => {
+  const rows = deriveManifestRows({ ...manifest,
+    agents: [{ id: "a", name: "same", owner: "team-a" }, { id: "b", name: "same", owner: "team-b" }],
+    mcp_servers: [{ id: "server", agent_name: "old label", agent_ids: ["b"] }],
+  });
+  expect(rows[0]?.owner).toBe("team-b");
 });

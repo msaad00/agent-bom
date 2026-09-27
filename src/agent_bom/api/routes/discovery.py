@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
+from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -100,17 +100,18 @@ def _completed_jobs(tenant_id: str) -> list[Any]:
     return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
 
 
-def _iter_report_servers(report: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    rows: list[tuple[str, dict[str, Any]]] = []
+def _iter_report_servers(report: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
+    rows: list[tuple[str, str, dict[str, Any]]] = []
     for agent in report.get("agents", []):
+        agent_id = str(agent.get("canonical_id") or agent.get("stable_id") or agent.get("id") or "")
         agent_name = str(agent.get("name") or agent.get("agent_name") or "").strip()
         for server in agent.get("mcp_servers", []) or []:
             if isinstance(server, dict):
-                rows.append((agent_name, server))
+                rows.append((agent_id, agent_name, server))
         # Back-compat for older pushed reports and gateway discovery seed data.
         for server in agent.get("servers", []) or []:
             if isinstance(server, dict):
-                rows.append((agent_name, server))
+                rows.append((agent_id, agent_name, server))
     return rows
 
 
@@ -118,11 +119,11 @@ def _build_scan_history_index(tenant_id: str) -> dict[tuple[str, str], dict[str,
     index: dict[tuple[str, str], dict[str, Any]] = {}
     for job in _completed_jobs(tenant_id):
         report = job.result or {}
-        for report_agent_name, report_server in _iter_report_servers(report):
-            server_name = str(report_server.get("name") or "").strip()
-            if not report_agent_name or not server_name:
+        for report_agent_id, _label, report_server in _iter_report_servers(report):
+            server_id = str(report_server.get("canonical_id") or report_server.get("stable_id") or report_server.get("id") or "")
+            if not report_agent_id or not server_id:
                 continue
-            key = (report_agent_name, server_name)
+            key = (report_agent_id, server_id)
             record = index.setdefault(
                 key,
                 {
@@ -155,13 +156,13 @@ def _build_scan_history_index(tenant_id: str) -> dict[tuple[str, str], dict[str,
 def _build_gateway_index(tenant_id: str) -> dict[tuple[str, str], dict[str, Any]]:
     index: dict[tuple[str, str], dict[str, Any]] = {}
     for job in _completed_jobs(tenant_id):
-        for agent_name, report_server in _iter_report_servers(job.result or {}):
-            server_name = str(report_server.get("name") or "").strip()
+        for agent_id, agent_name, report_server in _iter_report_servers(job.result or {}):
+            server_id = str(report_server.get("canonical_id") or report_server.get("stable_id") or report_server.get("id") or "")
             server_url = str(report_server.get("url") or "").strip()
-            if not server_name or not server_url.startswith(("http://", "https://")):
+            if not agent_id or not server_id or not server_url.startswith(("http://", "https://")):
                 continue
             record = index.setdefault(
-                (server_name, server_url),
+                (agent_id, server_id),
                 {
                     "gateway_registered": True,
                     "source_agents": set(),
@@ -178,15 +179,11 @@ def _build_gateway_index(tenant_id: str) -> dict[tuple[str, str], dict[str, Any]
     }
 
 
-def _observation_ids(agent: Any, server: Any) -> tuple[str, str | None]:
-    current = f"{agent.name}:{getattr(server, 'stable_id', server.name)}"
-    legacy = None
-    command = getattr(server, "command", "") or ""
-    if command:
-        legacy = f"{agent.name}:{server.name}:{command}"
-        if legacy == current:
-            legacy = None
-    return current, legacy
+def _observation_ids(agent: Any, server: Any, fleet_agent: dict[str, Any] | None = None) -> tuple[str, None]:
+    # A legacy name-derived record cannot establish membership, even when the
+    # name happens to be unique today. Keep it unbound until recollected.
+    subject = str((fleet_agent or {}).get("agent_id") or agent.canonical_id)
+    return agent_observation_id(subject, server.canonical_id), None
 
 
 def _agent_count_by_class(agents: Iterable[Agent]) -> dict[str, int]:
@@ -214,6 +211,8 @@ def _serialize_agent(
     observation_index: dict[str, MCPObservation] | None = None,
 ) -> dict:
     payload = asdict(agent)
+    payload["canonical_id"] = agent.canonical_id
+    payload["stable_id"] = agent.stable_id
     # Display-only class (AI client/host vs background/framework agent). Additive
     # field; never renames agent_type or any existing key.
     from agent_bom.models import classify_agent_kind
@@ -261,16 +260,16 @@ def _serialize_agent(
                     package,
                     inherited=agent_provenance,
                 )
-        observation_id, legacy_observation_id = _observation_ids(agent, server)
+        observation_id, legacy_observation_id = _observation_ids(agent, server, fleet_agent)
         stored_observation = (observation_index or {}).get(observation_id)
         if stored_observation is None and legacy_observation_id:
             stored_observation = (observation_index or {}).get(legacy_observation_id)
         scan_history = (scan_history_index or {}).get(
-            (agent.name, server.name),
+            (agent.canonical_id, server.canonical_id),
             {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
         )
         gateway_state = (gateway_index or {}).get(
-            (server.name, sanitize_url(server_url) or ""),
+            (agent.canonical_id, server.canonical_id),
             {"gateway_registered": False, "source_agents": []},
         )
         observed_via = ["local_discovery"]
@@ -349,11 +348,11 @@ def _persist_agent_observations(
     for server in agent.mcp_servers:
         server_url = getattr(server, "url", None)
         scan_history = scan_history_index.get(
-            (agent.name, server.name),
+            (agent.canonical_id, server.canonical_id),
             {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
         )
         gateway_state = gateway_index.get(
-            (server.name, server_url or ""),
+            (agent.canonical_id, server.canonical_id),
             {"gateway_registered": False, "source_agents": []},
         )
         observed_via = ["local_discovery"]
@@ -377,7 +376,7 @@ def _persist_agent_observations(
                 auth_mode = "network-no-auth-observed"
             else:
                 auth_mode = "local-stdio"
-        observation_id, legacy_observation_id = _observation_ids(agent, server)
+        observation_id, legacy_observation_id = _observation_ids(agent, server, fleet_agent)
         candidate = MCPObservation(
             tenant_id=tenant_id,
             observation_id=observation_id,
@@ -385,6 +384,8 @@ def _persist_agent_observations(
             server_fingerprint=getattr(server, "fingerprint", ""),
             server_name=server.name,
             agent_name=agent.name,
+            agent_id=str((fleet_agent or {}).get("agent_id") or ""),
+            agent_canonical_id=agent.canonical_id,
             transport=getattr(getattr(server, "transport", ""), "value", getattr(server, "transport", "")) or "",
             url=sanitize_url(server_url),
             auth_mode=auth_mode,
@@ -417,6 +418,14 @@ def _persist_agent_observations(
         store.put(merge_observations(existing, candidate))
 
 
+def _fleet_identity_index(tenant_id: str) -> dict[str, dict[str, Any]]:
+    fleet_groups: dict[str, list[Any]] = {}
+    for item in _get_fleet_store().list_by_tenant(tenant_id):
+        if item.canonical_id:
+            fleet_groups.setdefault(item.canonical_id, []).append(item)
+    return {key: rows[0].model_dump() for key, rows in fleet_groups.items() if len(rows) == 1}
+
+
 def _build_agents_response(tenant_id: str) -> dict[str, Any]:
     from agent_bom.parsers import extract_packages
 
@@ -427,15 +436,14 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
                 server.packages = extract_packages(server)
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
-    # Key by canonical_id so distinct FleetAgents that share a bare name
-    # (different source_ids) stay distinct; fall back to name only for legacy
-    # records that predate canonical-id backfill.
-    fleet_index = {(item.canonical_id or item.name): item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+    # Only unique canonical identities bind discovery to fleet state. Names
+    # remain labels, including for legacy rows lacking identity evidence.
+    fleet_index = _fleet_identity_index(tenant_id)
     for agent in agents:
         _persist_agent_observations(
             tenant_id,
             agent,
-            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "") or agent.name),
+            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "")),
             scan_history_index=scan_history_index,
             gateway_index=gateway_index,
         )
@@ -455,7 +463,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
         "agents": [
             _serialize_agent(
                 a,
-                fleet_agent=fleet_index.get(getattr(a, "canonical_id", "") or a.name),
+                fleet_agent=fleet_index.get(getattr(a, "canonical_id", "")),
                 scan_history_index=scan_history_index,
                 gateway_index=gateway_index,
                 observation_index=observation_index,
@@ -539,12 +547,12 @@ def _get_agent_mesh_impl(request: Request) -> dict:
     tenant_id = _tenant_id(request)
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
-    fleet_index = {(item.canonical_id or item.name): item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+    fleet_index = _fleet_identity_index(tenant_id)
     for agent in agents:
         _persist_agent_observations(
             tenant_id,
             agent,
-            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "") or agent.name),
+            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "")),
             scan_history_index=scan_history_index,
             gateway_index=gateway_index,
         )
@@ -552,7 +560,7 @@ def _get_agent_mesh_impl(request: Request) -> dict:
     agents_data = [
         _serialize_agent(
             a,
-            fleet_agent=fleet_index.get(getattr(a, "canonical_id", "") or a.name),
+            fleet_agent=fleet_index.get(getattr(a, "canonical_id", "")),
             scan_history_index=scan_history_index,
             gateway_index=gateway_index,
             observation_index=observation_index,
@@ -589,14 +597,16 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
     from agent_bom.parsers import extract_packages
 
     agents = _discover_agents_with_demo_fallback()
-    agent = None
-    for a in agents:
-        if a.name == agent_name:
-            agent = a
-            break
-
-    if agent is None:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    matches = [a for a in agents if a.canonical_id == agent_name]
+    if not matches:
+        # Compatibility for display-name URLs: resolve the selection only;
+        # evidence joins below still require the selected object's identity.
+        matches = [a for a in agents if a.name == agent_name]
+    if len(matches) > 1:
+        raise HTTPException(status_code=409, detail="Ambiguous agent label; select its canonical ID")
+    if not matches:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent = matches[0]
 
     for server in agent.mcp_servers:
         if not server.packages:
@@ -608,7 +618,7 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
         if job.status != JobStatus.DONE or not job.result:
             continue
         for br in job.result.get("blast_radius", []):
-            if agent_name in br.get("affected_agents", []):
+            if agent.canonical_id in br.get("affected_agent_ids", []):
                 agent_blast.append(br)
 
     total_packages = sum(len(s.packages) for s in agent.mcp_servers)
@@ -626,12 +636,8 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
         sev = normalize_severity(br.get("severity"))
         severity_counts[sev if sev in severity_counts else "unrated"] += 1
 
-    fleet_agent = None
     tenant_id = _tenant_id(request)
-    for candidate in _get_fleet_store().list_by_tenant(tenant_id):
-        if candidate.name == agent_name:
-            fleet_agent = candidate.model_dump()
-            break
+    fleet_agent = _fleet_identity_index(tenant_id).get(agent.canonical_id)
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
     _persist_agent_observations(

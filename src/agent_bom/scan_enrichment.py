@@ -33,8 +33,20 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 _logger = logging.getLogger(__name__)
 
 
-def collect_cloud_inventory() -> list[dict[str, Any]]:
+def collect_cloud_inventory(
+    *,
+    aws_region: str | None = None,
+    aws_profile: str | None = None,
+    azure_subscription: str | None = None,
+    gcp_project: str | None = None,
+) -> list[dict[str, Any]]:
     """Run opt-in estate-wide cloud inventory for every enabled provider.
+
+    The optional scope arguments carry the operator's requested boundary
+    (``--aws-region`` / ``--aws-profile`` / ``--azure-subscription`` /
+    ``--gcp-project``) so inventory reads the same account and region the CIS
+    benchmark and discovery collectors read. ``None`` keeps each SDK's default
+    resolution.
 
     Returns a list of per-provider inventory payloads (the exact shape the graph
     builder's ``_iter_cloud_inventories`` consumes). Providers whose flag is off
@@ -53,9 +65,9 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
 
         if aws_inventory.inventory_enabled():
             if aws_organizations.org_fanout_enabled():
-                payloads.extend(aws_inventory.discover_all_account_inventories())
+                payloads.extend(aws_inventory.discover_all_account_inventories(profile=aws_profile))
             else:
-                payloads.append(aws_inventory.discover_inventory())
+                payloads.append(aws_inventory.discover_inventory(region=aws_region, profile=aws_profile))
     except Exception:  # noqa: BLE001 — a connector failure must never break a scan
         _logger.warning("AWS estate inventory enrichment failed", exc_info=True)
 
@@ -69,7 +81,7 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
             if azure_inventory.all_subscriptions_enabled():
                 payloads.extend(azure_inventory.discover_all_subscription_inventories())
             else:
-                payloads.append(azure_inventory.discover_inventory())
+                payloads.append(azure_inventory.discover_inventory(subscription_id=azure_subscription))
     except Exception:  # noqa: BLE001
         _logger.warning("Azure estate inventory enrichment failed", exc_info=True)
 
@@ -83,7 +95,7 @@ def collect_cloud_inventory() -> list[dict[str, Any]]:
             if gcp_inventory.all_projects_enabled():
                 gcp_payloads = gcp_inventory.discover_all_project_inventories()
             else:
-                gcp_payloads = [gcp_inventory.discover_inventory()]
+                gcp_payloads = [gcp_inventory.discover_inventory(project_id=gcp_project)]
             # Attach the org → folder → project hierarchy to the first GCP payload
             # so the graph builder can promote the CONTAINS roll-up backbone. Only
             # attached when the project is actually in an organization.
@@ -175,7 +187,14 @@ def collect_identity_discovery() -> dict[str, Any] | None:
     return merge_discovery_results(results)
 
 
-def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
+def enrich_report_with_estate_discovery(
+    report: AIBOMReport,
+    *,
+    aws_region: str | None = None,
+    aws_profile: str | None = None,
+    azure_subscription: str | None = None,
+    gcp_project: str | None = None,
+) -> None:
     """Attach gated cloud-inventory + NHI-discovery blocks to a scan report.
 
     Mutates ``report`` in place: when the relevant env flags are on, populates
@@ -184,7 +203,12 @@ def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
     nodes. A no-op (and no network I/O) when every flag is off. Never raises.
     """
     try:
-        inventories = collect_cloud_inventory()
+        inventories = collect_cloud_inventory(
+            aws_region=aws_region,
+            aws_profile=aws_profile,
+            azure_subscription=azure_subscription,
+            gcp_project=gcp_project,
+        )
         if inventories:
             report.cloud_inventory_data = inventories
     except Exception:  # noqa: BLE001
@@ -216,7 +240,7 @@ def enrich_report_with_estate_discovery(report: AIBOMReport) -> None:
         from agent_bom.cloud import aws_inventory, aws_organizations
 
         if aws_inventory.inventory_enabled():
-            org = aws_organizations.discover_organization(force=True)
+            org = aws_organizations.discover_organization(profile=aws_profile, force=True)
             if isinstance(org, dict) and org.get("status") == "ok":
                 # When the multi-account fan-out ran, fold a scanned/skipped/errored
                 # summary onto the org block so the report surfaces per-account

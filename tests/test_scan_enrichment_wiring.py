@@ -48,7 +48,7 @@ def _entity_types(report: AIBOMReport) -> dict[str, int]:
 def test_flags_off_leaves_report_unenriched(monkeypatch):
     _clear_flags(monkeypatch)
     called = []
-    monkeypatch.setattr(enrich, "collect_cloud_inventory", lambda: called.append("inv") or [])
+    monkeypatch.setattr(enrich, "collect_cloud_inventory", lambda **_k: called.append("inv") or [])
     monkeypatch.setattr(enrich, "collect_identity_discovery", lambda: called.append("nhi") or None)
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="s1")
@@ -241,7 +241,7 @@ def test_enrich_helper_assigns_both_blocks(monkeypatch):
     _clear_flags(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_CLOUD_INVENTORY", "1")
     monkeypatch.setenv("AGENT_BOM_OKTA_DISCOVERY", "1")
-    monkeypatch.setattr(enrich, "collect_cloud_inventory", lambda: [{"provider": "aws", "status": "ok"}])
+    monkeypatch.setattr(enrich, "collect_cloud_inventory", lambda **_k: [{"provider": "aws", "status": "ok"}])
     monkeypatch.setattr(enrich, "collect_identity_discovery", lambda: {"status": "ok", "identities": []})
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="s1")
@@ -254,7 +254,7 @@ def test_enrich_helper_assigns_both_blocks(monkeypatch):
 def test_connector_crash_does_not_break_enrichment(monkeypatch):
     """A connector raising must be swallowed; the report stays usable."""
     _clear_flags(monkeypatch)
-    monkeypatch.setattr(enrich, "collect_cloud_inventory", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(enrich, "collect_cloud_inventory", lambda **_k: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(enrich, "collect_identity_discovery", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
 
     report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id="s1")

@@ -22,6 +22,17 @@ k6 run deploy/loadtest/k6-graph-api.js
 k6 run deploy/loadtest/k6-proxy-audit.js
 ```
 
+For end-to-end CLI scan cost (wall, CPU, peak RSS, JSON size) and
+`agent-bom --help` cold start, using a synthetic npm lockfile built from
+package names in the local vulnerability DB (run `agent-bom db update` first):
+
+```bash
+python scripts/bench/scan_throughput_bench.py --sizes 200,1000,2000 --runs 3 --cold-start-runs 5
+```
+
+CPU time is the primary metric; the script records the load average with
+each run because wall time is unreliable on a shared host.
+
 Release-quality scale evidence for 1k / 5k / 10k estate claims is tracked
 under [`docs/perf/`](perf/). Those pages carry the exact commands,
 environment fields, raw-result locations, and gaps used for enterprise

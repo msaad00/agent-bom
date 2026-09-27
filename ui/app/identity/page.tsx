@@ -12,6 +12,7 @@ import {
   CalendarCheck,
   Radar,
   AlertCircle,
+  Network,
   RefreshCw,
 } from "lucide-react";
 import { api, invalidateApiCache } from "@/lib/api";
@@ -99,7 +100,7 @@ function StatCard({
 }: {
   icon: React.ElementType;
   label: string;
-  value: number | null;
+  value: number | null | undefined;
   color: string;
   /** What population this number counts.
    *
@@ -116,7 +117,7 @@ function StatCard({
         <span className="text-xs text-ink-tertiary">{label}</span>
       </div>
       <p className="text-2xl font-bold text-foreground">
-        {value === null ? "Unavailable" : value.toLocaleString()}
+        {value === undefined ? "…" : value === null ? "Unavailable" : value.toLocaleString()}
       </p>
       {scope ? <p className="mt-0.5 text-[11px] text-ink-tertiary">{scope}</p> : null}
     </div>
@@ -427,6 +428,7 @@ export default function IdentityPage() {
   const [loaded, setLoaded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [failures, setFailures] = useState<Record<string, string>>({});
+  const [graphIdentities, setGraphIdentities] = useState<number | null | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -505,12 +507,14 @@ export default function IdentityPage() {
     (credExpiry?.evaluated ?? 0) > 0 ||
     campaigns.length > 0 ||
     (discovery?.count ?? 0) > 0;
+  const hasGraphIdentities = (graphIdentities ?? 0) > 0;
   const isEmpty =
     Object.keys(failures).length === 0 &&
     identities.length === 0 &&
     grants.length === 0 &&
     policies.length === 0 &&
-    !hasGovernanceData;
+    !hasGovernanceData &&
+    !hasGraphIdentities;
 
   return (
     <div className="space-y-6">
@@ -530,7 +534,7 @@ export default function IdentityPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
         <StatCard
           icon={Fingerprint}
           label="Active identities"
@@ -549,6 +553,13 @@ export default function IdentityPage() {
           label="Conditional policies"
           value={failures.policies ? null : activePolicies}
           color="text-blue-400"
+        />
+        <StatCard
+          icon={Network}
+          label="Discovered identities"
+          value={graphIdentities}
+          color="text-indigo-400"
+          scope="IAM roles, service accounts, managed identities · latest graph snapshot"
         />
         <StatCard
           icon={Ban}
@@ -571,6 +582,18 @@ export default function IdentityPage() {
           icon={Fingerprint}
         />
       )}
+
+      {!failures.identities && identities.length === 0 && hasGraphIdentities ? (
+        <div data-testid="identity-basis" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline bg-surface-muted px-4 py-3 text-sm text-ink-secondary">
+          <p>
+            No identities issued here yet. {(graphIdentities ?? 0).toLocaleString()} discovered identit{graphIdentities === 1 ? "y" : "ies"} (IAM roles, service accounts, managed identities) {graphIdentities === 1 ? "is" : "are"} in the latest graph snapshot.
+          </p>
+          <button type="button" onClick={() => setView("discovered")}
+            className="inline-flex min-h-8 items-center rounded-lg border border-outline bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-outline-strong">
+            View discovered identities
+          </button>
+        </div>
+      ) : null}
 
       <DetailTabs ariaLabel="Identity view" value={view} onChange={setView} tabs={[
         { key: "managed", label: "Managed identities" },
@@ -637,7 +660,7 @@ export default function IdentityPage() {
       </details>
       </div>
       <div hidden={view !== "discovered"} className="space-y-4">
-      <NhiGovernancePanel refreshKey={refreshKey} />
+      <NhiGovernancePanel refreshKey={refreshKey} onEvaluatedChange={setGraphIdentities} />
 
       {failures.reviews ? <UnavailableSection title="Access reviews unavailable" detail={failures.reviews} /> : <AccessReviewPanel campaigns={campaigns} />}
 

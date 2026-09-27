@@ -309,11 +309,6 @@ export default function Dashboard() {
   const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
   const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
 
-  // Unique CVE count
-  const uniqueCVEs = useMemo(() => {
-    const ids = new Set(allBlast?.map((b) => b.vulnerability_id));
-    return ids.size;
-  }, [allBlast]);
   const topRisk = useMemo(
     () =>
       [...allBlast].sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))[0] ?? null,
@@ -361,9 +356,6 @@ export default function Dashboard() {
 
   const criticalCount = canonicalSeverity.critical;
   const highCount = canonicalSeverity.high;
-  const displayedUniqueCVEs = importedReport
-    ? uniqueCVEs
-    : (overview?.domains.vuln.metric ?? 0);
   const displayedKevCount = importedReport
     ? kevCount
     : (overview?.finding_counts?.kev ?? counts?.kev ?? overview?.headline.kev ?? 0);
@@ -456,7 +448,6 @@ export default function Dashboard() {
         kev={summaryReady ? displayedKevCount : null}
         credentials={summaryReady ? displayedCredentialExposure : null}
         agents={displayedAgentCount}
-        cves={summaryReady ? displayedUniqueCVEs : null}
         scans={importedReport ? 1 : overviewSnapshot ? overviewSnapshot.headline.scans : summaryReady ? (counts?.scan_count ?? effectiveRecentJobs.length) : null}
         latestScan={overviewSnapshot || !jobsLoading ? latestScanShort : null}
         mode={importedReport ? "Imported report" : deploymentModeLabel(counts?.deployment_mode)}

@@ -104,6 +104,27 @@ describe("Identity evidence source states", () => {
     expect(apiMock.listJitGrants).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(apiMock.getNhiGovernance).toHaveBeenCalledTimes(2));
   });
+  it("reflects graph identities instead of claiming no identities", async () => {
+    apiMock.getNhiGovernance.mockResolvedValue({ scan_id: "snap-1", evaluated: 3, counts: { dormant: 1 }, identities: [
+      { node_id: "role:a", label: "ReadOnlyRole", risk_score: 10 },
+      { node_id: "role:b", label: "DeployRole", risk_score: 40 },
+      { node_id: "sa:c", label: "ci-bot", risk_score: 5 },
+    ] });
+    render(<IdentityPage />);
+    await waitFor(() => expect(tile("Discovered identities").getByText("3")).toBeVisible());
+    expect(screen.queryByText("No managed identities yet")).not.toBeInTheDocument();
+    const basis = screen.getByTestId("identity-basis");
+    expect(basis).toHaveTextContent("No identities issued here yet. 3 discovered identities (IAM roles, service accounts, managed identities) are in the latest graph snapshot.");
+    fireEvent.click(within(basis).getByRole("button", { name: "View discovered identities" }));
+    expect(screen.getByRole("tab", { name: "Discovered identity risk" })).toHaveAttribute("aria-selected", "true");
+  });
+  it("keeps the empty state when neither issued nor graph identities exist", async () => {
+    render(<IdentityPage />);
+    await waitFor(() => expect(apiMock.getNhiGovernance).toHaveBeenCalled());
+    expect(await screen.findByText("No managed identities yet")).toBeVisible();
+    await waitFor(() => expect(tile("Discovered identities").getByText("0")).toBeVisible());
+    expect(screen.queryByTestId("identity-basis")).not.toBeInTheDocument();
+  });
   it("links graph identities by canonical node and returned snapshot", async () => {
     apiMock.getNhiGovernance.mockResolvedValue({ scan_id: "snapshot-evidence", counts: { total: 1 }, identities: [{ node_id: "identity:billing", label: "Billing service identity", risk_score: 4 }] });
     render(<IdentityPage />);

@@ -135,43 +135,38 @@ function formatPostureScore(
 
 /**
  * Honest, self-consistent posture blurb. Never asserts "no vulnerabilities"
- * while the open-CVE / severity counts on the same screen are > 0: those counts
- * are the estate-wide rollup, whereas a backend `summary` is derived from only
- * the latest single scan's scorecard (see #3940 — 78 open CVEs vs a clean
- * latest-scan "no vulnerabilities" summary). When anything is open we derive the
- * blurb from the visible counts and ignore a contradicting summary.
+ * while the severity tiles on the same screen are > 0: a backend `summary` is
+ * derived from only the latest single scan's scorecard (#3940). The headline
+ * number is the tiles' own total (open issue groups, every issue type), so the
+ * two can never count different things; issues without a severity are named
+ * because they have no tile.
  */
 function derivePostureBlurb({
   summary,
   critical,
   high,
-  cves,
+  severity,
   graded,
 }: {
   summary?: string | undefined;
   critical: number;
   high: number;
-  cves: number | null;
+  severity: SeverityCounts;
   graded: boolean;
 }): string {
   if (!graded) return "Connect a surface or run a scan to grade posture.";
-  const openCves = cves ?? 0;
-  const hasOpen = critical > 0 || high > 0 || openCves > 0;
+  const rated = severity.critical + severity.high + severity.medium + severity.low;
+  const openIssues = Math.max(severity.total, rated);
+  const unrated = openIssues - rated;
 
-  if (hasOpen) {
-    const sevBits = [
-      critical > 0
-        ? `${critical.toLocaleString("en-US")} critical finding${critical === 1 ? "" : "s"}`
-        : null,
-      high > 0
-        ? `${high.toLocaleString("en-US")} high finding${high === 1 ? "" : "s"}`
-        : null,
+  if (openIssues > 0 || critical > 0 || high > 0) {
+    const bits = [
+      critical > 0 ? `${critical.toLocaleString("en-US")} critical` : null,
+      high > 0 ? `${high.toLocaleString("en-US")} high` : null,
     ].filter(Boolean);
-    const sev = sevBits.join(" · ");
-    if (openCves > 0) {
-      return `${openCves.toLocaleString("en-US")} unique open CVE${openCves === 1 ? "" : "s"}${sev ? ` · ${sev}` : ""} across connected surfaces.`;
-    }
-    return `${sev} in the current snapshot.`;
+    const count = Math.max(openIssues, critical + high);
+    const unratedNote = unrated > 0 ? ` (${unrated.toLocaleString("en-US")} without a severity)` : "";
+    return `${count.toLocaleString("en-US")} open issue${count === 1 ? "" : "s"}${unratedNote}${bits.length ? ` · ${bits.join(" · ")}` : ""} across connected surfaces · same basis as the severity tiles.`;
   }
 
   // Nothing open: a backend summary can only be trusted here (it can't now
@@ -215,7 +210,6 @@ export interface OverviewCockpitProps {
   kev: number | null;
   credentials: number | null;
   agents: number | null;
-  cves: number | null;
   scans: number | null;
   latestScan: string | null;
   mode: string;
@@ -264,7 +258,6 @@ export function OverviewCockpit({
   kev,
   credentials,
   agents,
-  cves,
   scans,
   latestScan,
   summaryReady,
@@ -276,6 +269,7 @@ export function OverviewCockpit({
   topPath,
   exposurePaths,
   compliance = null,
+  services = null,
 }: OverviewCockpitProps) {
   const [riskTab, setRiskTab] = useState<"risks" | "posture" | "assets">("posture");
   const hasScanEvidence = Boolean(summaryReady && scans && scans > 0);
@@ -320,7 +314,7 @@ export function OverviewCockpit({
                 trend={postureTrend}
                 critical={critical}
                 high={high}
-                cves={cves}
+                severity={severity}
               />
               <SeverityIssueStrip
                 localReport={localReport}
@@ -355,7 +349,7 @@ export function OverviewCockpit({
               <p role="status" className="mt-3 text-sm text-ink-secondary">Loading coverage…</p>
             ) : overviewUnavailable && !domains ? (
               <p role="status" className="mt-3 text-sm text-ink-secondary">Coverage unavailable.</p>
-            ) : <SecurityCoverageLanes coverage={coverage} />}
+            ) : <SecurityCoverageLanes coverage={coverage} services={services} scans={scans} />}
           </Collapsible>
         </section>
       </div>
@@ -437,7 +431,50 @@ const SECURITY_DISCIPLINES: Record<string, { label: string; icon: ElementType; o
   aispm: { label: "AI security (AISPM)", icon: Bot, order: 4, accent: "text-teal-700 dark:text-teal-300", tile: "border-teal-600/35 bg-teal-500/5 dark:border-teal-400/35" },
 };
 
-function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[] | null | undefined }) {
+type LaneSource = { label: string; href: string };
+
+const CONNECT_CLOUD: LaneSource = { label: "Connect cloud account", href: "/connections?tab=connect" };
+const CONNECT_DATA: LaneSource = { label: "Connect a data source", href: "/connections?tab=connect" };
+const RUN_SCAN: LaneSource = { label: "Run a scan", href: "/scan" };
+
+function serviceActive(services: OverviewCockpitProps["services"], id: ServiceId): boolean {
+  const state = services?.[id]?.state;
+  return state === "connected" || state === "live";
+}
+
+/** The action that would feed an empty area, or null when its source is
+ *  connected (or unknown — an unloaded registry is never read as "not
+ *  connected"). CSPM needs a cloud account; DSPM a cloud account or data
+ *  source; the scan-fed areas need one completed scan. */
+function missingLaneSource(
+  domain: string,
+  services: OverviewCockpitProps["services"],
+  scans: number | null | undefined,
+): LaneSource | null {
+  if (domain === "cspm") {
+    if (!services) return null;
+    return serviceActive(services, "cloud_accounts") ? null : CONNECT_CLOUD;
+  }
+  if (domain === "dspm") {
+    if (!services) return null;
+    return serviceActive(services, "cloud_accounts") || serviceActive(services, "data_sources") ? null : CONNECT_DATA;
+  }
+  if (scans !== 0) return null;
+  if (domain === "aispm" && (["local_agents", "fleet", "runtime_proxy", "runtime_gateway"] as const).some((id) => serviceActive(services, id))) {
+    return null;
+  }
+  return RUN_SCAN;
+}
+
+function SecurityCoverageLanes({
+  coverage,
+  services = null,
+  scans = null,
+}: {
+  coverage?: OverviewCoverageLane[] | null | undefined;
+  services?: OverviewCockpitProps["services"];
+  scans?: number | null | undefined;
+}) {
   const [showSeverity, setShowSeverity] = useState(false);
   const [showCoverageHelp, setShowCoverageHelp] = useState(false);
   const coverageHelpId = useId();
@@ -478,6 +515,22 @@ function SecurityCoverageLanes({ coverage }: { coverage?: OverviewCoverageLane[]
           const statusLabel = lane.evidence_status === "partial" ? "Partial count" : "Count unavailable";
           const total = COVERAGE_SEVERITY_BANDS.reduce((sum, band) => sum + (lane.severity[band.key] || 0), 0);
           const bands = COVERAGE_SEVERITY_BANDS.filter((band) => (lane.severity[band.key] || 0) > 0);
+          const missing = exact && total === 0 ? missingLaneSource(lane.domain, services, scans) : null;
+          if (missing) {
+            return (
+              <div key={lane.domain} data-testid={`coverage-lane-${lane.domain}`}
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-outline px-2 py-3">
+                <div className="min-w-0">
+                  <span className="flex items-start gap-2 text-sm font-semibold text-foreground"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${discipline?.accent ?? "text-ink-secondary"}`} aria-hidden="true" /><span>{discipline?.label ?? lane.label}</span></span>
+                  <p className="ml-6 mt-1 text-xs text-ink-secondary">Not connected</p>
+                </div>
+                <Link href={missing.href}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md border border-outline bg-surface-muted px-2.5 py-1 text-xs font-medium text-foreground transition hover:border-outline-strong focus-visible:outline-2 focus-visible:outline-offset-2">
+                  {missing.label}<ArrowRight className="h-3 w-3" aria-hidden="true" />
+                </Link>
+              </div>
+            );
+          }
           return (
             <Link
               key={lane.domain}
@@ -584,7 +637,11 @@ function ComplianceSnapshotPanel({
           </dl>
           <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-ink-secondary">
             <p>{passed}/{compliance.evaluatedControls} evaluated controls pass</p>
-            <p className="font-medium">{Math.round(compliance.overallScore)}% pass rate</p>
+            <p data-testid="overview-compliance-pass-context">
+              <span className="font-medium text-foreground">{Math.round(compliance.overallScore)}% pass rate</span>
+              {assessmentCoverage != null ? ` · ${compliance.evaluatedControls} of ${compliance.totalControls} controls assessed (${assessmentCoverage}%)` : ""}
+              {` · ${scored.length - unassessed} of ${scored.length} framework${scored.length === 1 ? "" : "s"} evaluated`}
+            </p>
           </div>
 
         </>
@@ -933,7 +990,7 @@ function PostureHero({
   trend,
   critical,
   high,
-  cves,
+  severity,
 }: {
   localReport?: boolean | undefined;
   loading: boolean;
@@ -945,7 +1002,7 @@ function PostureHero({
   trend?: OverviewCockpitProps["postureTrend"];
   critical: number;
   high: number;
-  cves: number | null;
+  severity: SeverityCounts;
 }) {
   const ungraded = grade === "N/A" || grade === "—";
   const graded = !loading && typeof score === "number" && !ungraded;
@@ -957,7 +1014,7 @@ function PostureHero({
       : "border-outline-strong bg-surface-muted text-foreground";
   const blurb = loading
     ? "Refreshing the current posture and evidence summary."
-    : localReport ? "Tenant posture cannot be assessed from an imported report. Review its findings below." : derivePostureBlurb({ summary, critical, high, cves, graded });
+    : localReport ? "Tenant posture cannot be assessed from an imported report. Review its findings below." : derivePostureBlurb({ summary, critical, high, severity, graded });
 
   return (
     <div className="flex items-center gap-4">

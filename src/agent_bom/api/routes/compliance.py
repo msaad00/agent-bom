@@ -2518,9 +2518,11 @@ def _get_posture_counts_impl(request: Request) -> dict:
 
     counts.update(_derive_deployment_context(request, tenant_jobs))
     tenant_id = require_request_tenant_id(request)
+    from agent_bom.api.cloud_scan_scopes import scanned_cloud_scopes
     from agent_bom.api.service_registry import derive_service_registry
 
-    counts["services"] = derive_service_registry(tenant_id, dict(counts))["services"]
+    cloud_scopes = _cached_posture_block(request, tenant_jobs, "cloud_scopes", lambda: scanned_cloud_scopes(tenant_jobs))
+    counts["services"] = derive_service_registry(tenant_id, dict(counts), scanned_cloud_scopes=cloud_scopes)["services"]
     return counts
 
 

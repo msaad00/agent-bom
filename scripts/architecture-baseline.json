@@ -3078,19 +3078,6 @@
     "trust_score.py": {
       "file_lines": 660
     },
-    "version_utils.py": {
-      "file_lines": 1421
-    },
-    "version_utils.py::_compare_rpm_like": {
-      "complexity": 19
-    },
-    "version_utils.py::_resolve_version_range": {
-      "complexity": 21
-    },
-    "version_utils.py::compare_version_order": {
-      "complexity": 22,
-      "function_lines": 100
-    },
     "vex.py": {
       "file_lines": 682
     },

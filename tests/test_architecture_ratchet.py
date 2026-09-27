@@ -2,7 +2,7 @@
 
 import ast
 
-from scripts.check_architecture import baseline_growth, boundary_errors, debt, function_spans, regressions
+from scripts.check_architecture import baseline_growth, boundary_errors, debt, function_spans, measure, regressions
 
 
 def test_new_and_growing_debt_fails_but_reductions_pass():
@@ -36,3 +36,14 @@ def test_editing_baseline_cannot_approve_new_or_larger_exceptions():
     assert baseline_growth({"old.py": {"file_lines": 701}}, previous)
     assert baseline_growth({"new.py": {"file_lines": 650}}, previous)
     assert not baseline_growth({"old.py": {"file_lines": 690}}, previous)
+
+
+def test_complexity_cannot_be_hidden_with_noqa(tmp_path):
+    root = tmp_path / "src" / "agent_bom"
+    root.mkdir(parents=True)
+    body = "def hidden(value):  # noqa: C901\n" + "".join(f"    if value == {i}:\n        return {i}\n" for i in range(16))
+    (root / "sample.py").write_text(body)
+    metrics, errors = measure(tmp_path)
+    assert not errors
+    assert metrics["sample.py::hidden"]["complexity"] == 17
+    assert regressions(metrics, {})

@@ -9,7 +9,11 @@ missing/invalid CVSS is unknown, while a validated zero score is none.
 
 Existing imports through `models.Severity`, `graph.severity` and scanner risk
 helpers remain compatibility exports of the same implementations. Package
-identity/version normalization remains in `package_utils`/`version_utils`.
+identity and ecosystem version decisions live in `core/packages.py` and the
+bounded `core/versions/` modules. `package_utils` and `version_utils` preserve
+existing imports; registry requests and per-scan warning delivery remain in the
+outer adapter. Cached range decisions retain dropped-bound evidence so later
+scans still report comparison gaps.
 
 Run `python scripts/check_architecture.py` before a PR, or run `make preflight`.
 The gate checks semantic ownership and kernel imports and prevents growth in
@@ -32,3 +36,8 @@ scope, normalized for case and trailing slashes; names alone cannot identify a
 group across subscriptions. Rescans build these scoped keys; retained historical
 snapshots are not rewritten. Authoritative authorization evidence still takes
 precedence, and partial evidence does not fall back to legacy role-name edges.
+
+Composer/Packagist recognizes `patch` as a patch-level alias, consistent with
+[Composer's version parser](https://github.com/composer/semver/blob/main/src/VersionParser.php).
+Native PHP retains its own qualifier ordering. The architecture gate measures
+complexity even when a function carries a `noqa` annotation.

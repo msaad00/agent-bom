@@ -270,6 +270,32 @@ def test_npx_package_detection():
     assert packages[0].ecosystem == "npm"
 
 
+@pytest.mark.parametrize(
+    ("arg", "version", "declared", "purl"),
+    [
+        ("server-x@1.2.3", "1.2.3", "1.2.3", "pkg:npm/server-x@1.2.3"),
+        ("@scope/server-x@=1.2.3", "1.2.3", "=1.2.3", "pkg:npm/%40scope/server-x@1.2.3"),
+        ("server-x@^1.2.0", "unknown", "^1.2.0", None),
+        ("server-x@1.x || 2", "unknown", "1.x || 2", None),
+        ("server-x@next", "unknown", "next", None),
+        ("server-x@*", "unknown", "*", None),
+    ],
+)
+def test_npx_range_argument_is_never_a_version(monkeypatch, arg, version, declared, purl):
+    from agent_bom.parsers import detect_npx_package, node_parsers
+
+    monkeypatch.setattr(node_parsers, "_resolve_npx_cached_version", lambda name: None)
+    (pkg,) = detect_npx_package(MCPServer(name="x", command="npx", args=["-y", arg]))
+    assert pkg.version == version
+    assert pkg.declared_version == declared
+    assert pkg.purl == purl
+    if version == "unknown":
+        assert pkg.floating_reference is True
+        assert pkg.version_confidence != "exact"
+    else:
+        assert pkg.version_confidence == "exact"
+
+
 def test_npx_package_detection_uses_local_npx_cache(monkeypatch, tmp_path):
     pkg_json = tmp_path / "_npx" / "abc123" / "node_modules" / "@modelcontextprotocol" / "server-filesystem" / "package.json"
     pkg_json.parent.mkdir(parents=True)
@@ -2035,9 +2061,45 @@ terraform {
 """)
     providers = _extract_providers([(tf, tf.read_text())])
     assert "hashicorp/aws" in providers
-    assert providers["hashicorp/aws"] == "5.30"
+    # The raw constraint is kept; flooring "~> 5.30" to 5.30 matched CVEs
+    # against a version the constraint may never install.
+    assert providers["hashicorp/aws"] == "~> 5.30"
     assert "hashicorp/google" in providers
     assert providers["hashicorp/google"] == "6.0.0"
+
+
+def test_terraform_provider_constraint_is_unresolved_not_floored(tmp_path):
+    from agent_bom.terraform import scan_terraform_dir
+
+    (tmp_path / "main.tf").write_text("""
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.30"
+    }
+    google = {
+      source  = "hashicorp/google"
+      version = "= 6.0.0"
+    }
+  }
+}
+
+resource "aws_bedrockagent_agent" "analyst" {
+  agent_name       = "analyst"
+  foundation_model = "anthropic.claude-v2"
+}
+""")
+    agents, _warnings = scan_terraform_dir(str(tmp_path))
+    pkgs = {p.name: p for a in agents for s in a.mcp_servers for p in s.packages if p.ecosystem == "go"}
+    aws = next(p for name, p in pkgs.items() if "terraform-provider-aws" in name)
+    assert aws.version == "unknown"
+    assert aws.declared_version == "~> 5.30"
+    assert aws.floating_reference is True
+    assert aws.purl is None
+    google = next(p for name, p in pkgs.items() if "terraform-provider-google" in name)
+    assert google.version == "6.0.0"
+    assert google.purl == "pkg:golang/github.com/hashicorp/terraform-provider-google@6.0.0"
 
 
 def test_terraform_ai_resource_detection(tmp_path):

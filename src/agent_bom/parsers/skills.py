@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.models import MCPServer, Package, TransportType
+from agent_bom.npm_semver import npm_exact_version
 from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
@@ -287,8 +288,7 @@ def parse_skill_file(path: Path) -> SkillScanResult:
             key = (name.lower(), "pypi")
             if key not in seen_packages:
                 seen_packages.add(key)
-                version = spec[len(name) :].lstrip("><=!~") if len(spec) > len(name) else "latest"
-                packages.append(Package(name=name, version=version or "latest", ecosystem="pypi"))
+                packages.append(_pip_install_package(name, spec[len(name) :]))
 
     # npm install packages
     for match in _NPM_INSTALL_RE.finditer(code_text):
@@ -307,7 +307,7 @@ def parse_skill_file(path: Path) -> SkillScanResult:
             key = (name.lower(), "npm")
             if key not in seen_packages:
                 seen_packages.add(key)
-                packages.append(Package(name=name, version=version or "latest", ecosystem="npm"))
+                packages.append(_npm_install_package(name, version))
 
     # MCP server JSON blocks
     for match in _MCP_JSON_RE.finditer(content):
@@ -422,6 +422,40 @@ def _server_transport(config: dict, *, url: str | None) -> TransportType:
     if url:
         return TransportType.SSE if "/sse" in url.lower() else TransportType.STREAMABLE_HTTP
     return TransportType.STDIO
+
+
+def _unresolved_install_package(name: str, ecosystem: str, declared: str) -> Package:
+    return Package(
+        name=name,
+        version="unknown",
+        ecosystem=ecosystem,
+        declared_version=declared,
+        floating_reference=True,
+        floating_reference_reason=f"install command declared a version range ({declared}), not an exact pin",
+        version_confidence="low",
+    )
+
+
+def _pip_install_package(name: str, raw_spec: str) -> Package:
+    """``pip install name<spec>``: only an exact ``==`` pin names a version."""
+    spec = re.sub(r"^\[[^\]]*\]", "", raw_spec).strip()
+    if not spec:
+        return Package(name=name, version="latest", ecosystem="pypi")
+    exact = re.fullmatch(r"===?\s*([A-Za-z0-9.+!_-]+)", spec)
+    if exact and "*" not in exact.group(1):
+        version = exact.group(1)
+        return Package(name=name, version=version, ecosystem="pypi", purl=f"pkg:pypi/{name}@{version}")
+    return _unresolved_install_package(name, "pypi", spec)
+
+
+def _npm_install_package(name: str, declared: str) -> Package:
+    """``npm install name@<spec>``: only an exact version is a version."""
+    if not declared or declared == "latest":
+        return Package(name=name, version="latest", ecosystem="npm")
+    exact = npm_exact_version(declared)
+    if exact is not None:
+        return Package(name=name, version=exact, ecosystem="npm")
+    return _unresolved_install_package(name, "npm", declared)
 
 
 def _parse_pkg_spec(spec: str, version_sep: str) -> tuple[str, str]:

@@ -302,6 +302,78 @@ class TestResolveNpmDependencies:
         assert by_name["react"].reachability_evidence == "declaration_only"
 
     @pytest.mark.asyncio
+    async def test_ranges_resolve_to_a_real_version_never_the_floor(self):
+        """``^4.0.0`` must not become form-data@4.0.0 (false CVE-2025-7783)."""
+        pkg = Package(name="host", version="1.0.0", ecosystem="npm")
+        mock_metadata = {
+            "dependencies": {
+                "form-data": "^4.0.0",
+                "minipass": "5.0.0 || ^6.0.2 || ^7.0.0",
+                "@types/node": "*",
+                "left-pad": "1.3.0",
+                "gone": "^9.0.0",
+                "forked": "github:org/forked",
+            }
+        }
+        packuments = {
+            "form-data": {"dist-tags": {"latest": "4.0.6"}, "versions": {"4.0.0": {}, "4.0.4": {}, "4.0.6": {}}},
+            "minipass": {"dist-tags": {"latest": "7.1.2"}, "versions": {"5.0.0": {}, "6.0.2": {}, "7.1.2": {}}},
+            "@types/node": {"dist-tags": {"latest": "22.1.0"}, "versions": {"20.0.0": {}, "22.1.0": {}}},
+            "gone": {"dist-tags": {"latest": "1.0.0"}, "versions": {"1.0.0": {}}},
+        }
+
+        async def fake_packument(name, client):
+            return packuments.get(name)
+
+        client = AsyncMock()
+        with (
+            patch("agent_bom.transitive.fetch_npm_metadata", return_value=mock_metadata),
+            patch("agent_bom.transitive.fetch_npm_packument", side_effect=fake_packument),
+        ):
+            result = await resolve_npm_dependencies(pkg, client, max_depth=1)
+
+        by_name = {p.name: p for p in result}
+        assert by_name["form-data"].version == "4.0.6"
+        assert by_name["form-data"].declared_version == "^4.0.0"
+        assert by_name["form-data"].resolved_version == "4.0.6"
+        assert by_name["form-data"].purl == "pkg:npm/form-data@4.0.6"
+        assert by_name["minipass"].version == "7.1.2"
+        assert by_name["minipass"].declared_version == "5.0.0 || ^6.0.2 || ^7.0.0"
+        assert by_name["@types/node"].version == "22.1.0"
+        assert by_name["@types/node"].purl == "pkg:npm/%40types/node@22.1.0"
+        assert by_name["left-pad"].version == "1.3.0"
+        assert by_name["left-pad"].purl == "pkg:npm/left-pad@1.3.0"
+        for unresolved in ("gone", "forked"):
+            assert by_name[unresolved].version == "unknown"
+            assert by_name[unresolved].purl is None
+            assert by_name[unresolved].version_confidence == "low"
+            assert by_name[unresolved].floating_reference is True
+        assert by_name["gone"].declared_version == "^9.0.0"
+        for p in result:
+            assert p.purl is None or not any(tok in p.purl for tok in ("^", "~", "||", "*", " ", ">", "<"))
+            assert not any(tok in p.version for tok in ("^", "~", "||", "*", " ", ">", "<"))
+
+    @pytest.mark.asyncio
+    async def test_unresolved_range_is_not_recursed(self):
+        pkg = Package(name="host", version="1.0.0", ecosystem="npm")
+        calls: list[tuple[str, str]] = []
+
+        async def fake_metadata(name, version, client):
+            calls.append((name, version))
+            return {"dependencies": {"gone": "^9.0.0"}} if name == "host" else {"dependencies": {}}
+
+        async def fake_packument(name, client):
+            return None
+
+        with (
+            patch("agent_bom.transitive.fetch_npm_metadata", side_effect=fake_metadata),
+            patch("agent_bom.transitive.fetch_npm_packument", side_effect=fake_packument),
+        ):
+            result = await resolve_npm_dependencies(pkg, AsyncMock(), max_depth=3)
+        assert [p.version for p in result] == ["unknown"]
+        assert calls == [("host", "1.0.0")]
+
+    @pytest.mark.asyncio
     async def test_max_depth_stops_recursion(self):
         pkg = Package(name="express", version="4.18.2", ecosystem="npm")
         client = AsyncMock()
@@ -340,6 +412,50 @@ class TestResolvePypiDependencies:
             names = [p.name for p in result]
             assert "urllib3" in names
             assert "certifi" in names
+
+    @pytest.mark.asyncio
+    async def test_specifiers_resolve_inside_the_bound_never_the_floor(self):
+        pkg = Package(name="requests", version="2.31.0", ecosystem="pypi")
+        mock_metadata = {
+            "info": {
+                "requires_dist": [
+                    "urllib3>=1.21.1,<3",
+                    "idna (<4,>=2.5)",
+                    "charset-normalizer==3.3.2",
+                    "certifi",
+                    "gone>=99",
+                ]
+            }
+        }
+        releases = {
+            "urllib3": {"1.21.1": [], "1.26.20": [], "2.2.3": [], "3.0.0": []},
+            "idna": {"2.5": [], "3.10": [], "4.0": []},
+            "gone": {"1.0": []},
+        }
+
+        async def fake_releases(name, client):
+            return releases.get(name)
+
+        with (
+            patch("agent_bom.transitive.fetch_pypi_metadata", return_value=mock_metadata),
+            patch("agent_bom.transitive.fetch_pypi_releases", side_effect=fake_releases),
+        ):
+            result = await resolve_pypi_dependencies(pkg, AsyncMock(), max_depth=1)
+
+        by_name = {p.name: p for p in result}
+        assert by_name["urllib3"].version == "2.2.3"
+        assert set(by_name["urllib3"].declared_version.split(",")) == {">=1.21.1", "<3"}
+        assert by_name["urllib3"].purl == "pkg:pypi/urllib3@2.2.3"
+        assert by_name["idna"].version == "3.10"
+        assert by_name["charset-normalizer"].version == "3.3.2"
+        assert by_name["charset-normalizer"].purl == "pkg:pypi/charset-normalizer@3.3.2"
+        assert by_name["certifi"].version == "latest"
+        assert by_name["certifi"].purl is None
+        assert by_name["gone"].version == "unknown"
+        assert by_name["gone"].declared_version == ">=99"
+        assert by_name["gone"].purl is None
+        for p in result:
+            assert p.purl is None or not any(tok in p.purl for tok in (">", "<", "=", ",", " "))
 
     @pytest.mark.asyncio
     async def test_marks_extras_as_declaration_only(self):

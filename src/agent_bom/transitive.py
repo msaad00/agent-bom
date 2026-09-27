@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Optional
 
 import httpx
+from packaging.requirements import InvalidRequirement, Requirement
 from rich.console import Console
 
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
+from agent_bom.npm_semver import classify_npm_spec, npm_exact_version, resolve_npm_spec
+from agent_bom.package_utils import synthesize_purl
 
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ GO_PROXY = "https://proxy.golang.org"
 # Cache to avoid re-fetching the same package metadata (bounded)
 _MAX_TRANSITIVE_CACHE = 5_000
 _npm_cache: dict[str, dict] = {}
+_npm_packument_cache: dict[str, dict] = {}
 _pypi_cache: dict[str, dict] = {}
 _go_cache: dict[str, str] = {}
 
@@ -33,6 +36,52 @@ def _cache_put(cache: dict[str, dict], key: str, value: dict) -> None:
     if len(cache) > _MAX_TRANSITIVE_CACHE:
         for k in list(cache.keys())[: len(cache) - _MAX_TRANSITIVE_CACHE]:
             del cache[k]
+
+
+def _declared_dependency_package(*, name: str, ecosystem: str, declared: str, resolved: Optional[str], exact: bool) -> Package:
+    """Build a registry-declared dependency without ever reporting a range bound as its version.
+
+    An exact pin is the version. A range/tag resolved against the registry
+    reports the version a fresh install selects and keeps the declared spec. A
+    spec the registry cannot satisfy stays ``unknown`` with no purl, so no
+    advisory is matched against a version nobody installed.
+    """
+    if resolved:
+        pkg = Package(
+            name=name,
+            version=resolved,
+            ecosystem=ecosystem,
+            purl=synthesize_purl(name, resolved, ecosystem),
+            declared_version=declared,
+            resolved_version=resolved,
+            resolved_from_registry=True,
+        )
+        if not exact:
+            pkg.floating_reference = True
+            pkg.floating_reference_reason = (
+                f"declared as a version range ({declared}); resolved to the version a fresh install selects from the registry"
+            )
+            pkg.version_confidence = "low"
+        return pkg
+    return Package(
+        name=name,
+        version="unknown",
+        ecosystem=ecosystem,
+        declared_version=declared,
+        resolved_from_registry=True,
+        floating_reference=True,
+        floating_reference_reason=(
+            f"declared as {declared or 'an empty spec'} — no published registry version satisfies it or it is not a registry reference"
+        ),
+        version_confidence="low",
+    )
+
+
+def _pypi_exact_pin(requirement: Requirement) -> Optional[str]:
+    specs = list(requirement.specifier)
+    if len(specs) == 1 and specs[0].operator in ("==", "===") and "*" not in specs[0].version:
+        return specs[0].version
+    return None
 
 
 def _is_prerelease(version_str: str) -> bool:
@@ -102,80 +151,98 @@ def _npm_caret_tilde_bounds(version_range: str) -> tuple[tuple[int, int, int], t
 
 
 def _resolve_npm_version(version_range: str, pkg_data: dict) -> str:
-    """Pick the best npm version satisfying a semver range.
+    """Pick the npm version a fresh install of *version_range* would select.
 
-    Resolves ``^X.Y.Z`` / ``~X.Y.Z`` / ``>=X`` ranges to the highest stable
-    version inside the range's real semver bounds (caret/tilde 0.x semantics
-    included). Excludes pre-releases unless no stable match exists. Falls back
-    to ``dist-tags.latest`` when nothing matches.
+    Follows node-semver range semantics and npm-pick-manifest's selection
+    (``latest`` when it satisfies, else the highest satisfying version).
+    Returns ``""`` when nothing satisfies — never a version the range excludes.
     """
-    latest = pkg_data.get("dist-tags", {}).get("latest", "")
-
-    if version_range in ("latest", "", "*"):
-        return latest
-
-    available = list(pkg_data.get("versions", {}).keys())
-    if not available:
-        return latest
-
-    bounds = _npm_caret_tilde_bounds(version_range)
-    if bounds is not None:
-        lo, hi = bounds
-        candidates = []
-        for v in available:
-            if _is_prerelease(v):
-                continue
-            parts = _semver_tuple(v)
-            if parts is not None and lo <= parts < hi:
-                candidates.append((parts, v))
-        return max(candidates)[1] if candidates else latest
-
-    if ">=" in version_range:
-        stripped = version_range.lstrip("^~>=< ").split(" ")[0]
-        floor = _semver_tuple(stripped)
-        if floor is None:
-            return latest
-        candidates = []
-        for v in available:
-            if _is_prerelease(v):
-                continue
-            parts = _semver_tuple(v)
-            if parts is not None and parts >= floor:
-                candidates.append((parts, v))
-        return max(candidates)[1] if candidates else latest
-
-    return latest
+    return resolve_npm_spec(version_range, pkg_data) or ""
 
 
 def _resolve_pip_version(version_spec: str, releases: dict) -> str:
     """Pick the best PyPI version satisfying a PEP 440 specifier.
 
-    Uses the `packaging` library when available, else strips operators.
+    Returns ``"unknown"`` when the specifier is unparseable or no published
+    release satisfies it — a bound is never reported as the installed version.
     """
     if not version_spec or version_spec in ("latest", "unknown"):
         return max(releases.keys(), default="unknown") if releases else "unknown"
 
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+    from packaging.version import InvalidVersion, Version
+
     try:
-        from packaging.specifiers import SpecifierSet
-        from packaging.version import Version
-
         spec = SpecifierSet(version_spec, prereleases=False)
-        candidates = []
-        for v in releases:
-            try:
-                pv = Version(v)
-                if not pv.is_prerelease and spec.contains(pv):
-                    candidates.append(pv)
-            except Exception as exc:  # noqa: BLE001
-                _logger.debug("Skipping unparseable version %r for transitive dep: %s", v, exc)
-                continue
-        if candidates:
-            return str(max(candidates))
-    except ImportError:
-        pass
+    except InvalidSpecifier:
+        return "unknown"
+    candidates = []
+    for v in releases:
+        try:
+            pv = Version(v)
+        except InvalidVersion as exc:
+            _logger.debug("Skipping unparseable version %r for transitive dep: %s", v, exc)
+            continue
+        if not pv.is_prerelease and spec.contains(pv):
+            candidates.append(pv)
+    return str(max(candidates)) if candidates else "unknown"
 
-    # Fallback: strip operators, use the bare version
-    return re.sub(r"[^0-9.]", "", version_spec.split(",")[0]) or "unknown"
+
+async def fetch_npm_packument(package_name: str, client: httpx.AsyncClient) -> Optional[dict]:
+    """Return ``{"dist-tags", "versions"}`` for an npm package (cached, version bodies dropped)."""
+    if package_name in _npm_packument_cache:
+        return _npm_packument_cache[package_name]
+    encoded_name = package_name.replace("/", "%2F")
+    response = await request_with_retry(client, "GET", f"{NPM_REGISTRY}/{encoded_name}")
+    if not response or response.status_code != 200:
+        return None
+    try:
+        data = response.json()
+    except ValueError as exc:
+        _logger.warning("Failed to parse npm packument for %s: %s", package_name, exc)
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw_tags = data.get("dist-tags")
+    raw_versions = data.get("versions")
+    dist_tags: dict = raw_tags if isinstance(raw_tags, dict) else {}
+    versions: dict = raw_versions if isinstance(raw_versions, dict) else {}
+    slim = {"dist-tags": dict(dist_tags), "versions": {v: {} for v in versions}}
+    _cache_put(_npm_packument_cache, package_name, slim)
+    return slim
+
+
+async def resolve_npm_range_version(package_name: str, spec: str, client: httpx.AsyncClient) -> Optional[str]:
+    """Resolve a registry range/tag *spec* to the version a fresh install selects, or ``None``."""
+    if classify_npm_spec(spec) not in ("range", "tag"):
+        return npm_exact_version(spec)
+    packument = await fetch_npm_packument(package_name, client)
+    if not packument:
+        return None
+    return resolve_npm_spec(spec, packument)
+
+
+async def fetch_pypi_releases(package_name: str, client: httpx.AsyncClient) -> Optional[dict]:
+    """Return the PyPI ``releases`` map for a package, or ``None`` when unavailable."""
+    response = await request_with_retry(client, "GET", f"{PYPI_API}/{package_name}/json")
+    if not response or response.status_code != 200:
+        return None
+    try:
+        data = response.json()
+    except ValueError as exc:
+        _logger.warning("Failed to parse PyPI metadata for %s: %s", package_name, exc)
+        return None
+    releases = data.get("releases") if isinstance(data, dict) else None
+    return releases if isinstance(releases, dict) else None
+
+
+async def resolve_pypi_spec_version(package_name: str, spec: str, client: httpx.AsyncClient) -> Optional[str]:
+    """Resolve a PEP 440 specifier to the highest satisfying release, or ``None``."""
+    releases = await fetch_pypi_releases(package_name, client)
+    if not releases:
+        return None
+    resolved = _resolve_pip_version(spec, releases)
+    return None if resolved == "unknown" else resolved
 
 
 async def fetch_npm_metadata(package_name: str, version: str, client: httpx.AsyncClient) -> Optional[dict]:
@@ -185,7 +252,7 @@ async def fetch_npm_metadata(package_name: str, version: str, client: httpx.Asyn
         return _npm_cache[cache_key]
 
     encoded_name = package_name.replace("/", "%2F")
-    is_range = version in ("latest", "") or any(c in version for c in "^~>=<*")
+    is_range = classify_npm_spec(version) != "exact"
 
     if is_range:
         response = await request_with_retry(
@@ -197,17 +264,17 @@ async def fetch_npm_metadata(package_name: str, version: str, client: httpx.Asyn
             try:
                 pkg_data = response.json()
                 resolved = _resolve_npm_version(version, pkg_data)
-                metadata = pkg_data.get("versions", {}).get(resolved)
+                metadata = pkg_data.get("versions", {}).get(resolved) if resolved else None
                 if metadata:
                     _cache_put(_npm_cache, cache_key, metadata)
                     return metadata
-            except (ValueError, KeyError) as exc:
+            except (ValueError, KeyError, AttributeError) as exc:
                 _logger.warning("Failed to parse npm metadata for %s@%s: %s", package_name, version, exc)
     else:
         response = await request_with_retry(
             client,
             "GET",
-            f"{NPM_REGISTRY}/{encoded_name}/{version}",
+            f"{NPM_REGISTRY}/{encoded_name}/{npm_exact_version(version) or version}",
         )
         if response and response.status_code == 200:
             try:
@@ -304,24 +371,23 @@ async def resolve_npm_dependencies(
     for section, dependency_scope, reachability_evidence, recurse in dependency_sections:
         dep_dict = metadata.get(section, {}) or {}
         for dep_name, dep_version in dep_dict.items():
-            # Clean version spec (remove ^, ~, etc.)
-            clean_version = dep_version.lstrip("^~>=<")
-
-            transitive_pkg = Package(
+            declared = str(dep_version or "").strip()
+            resolved = await resolve_npm_range_version(dep_name, declared, client)
+            transitive_pkg = _declared_dependency_package(
                 name=dep_name,
-                version=clean_version,
                 ecosystem="npm",
-                purl=f"pkg:npm/{dep_name}@{clean_version}",
-                is_direct=False,
-                parent_package=package.name,
-                dependency_depth=current_depth + 1,
-                dependency_scope=dependency_scope,
-                reachability_evidence=reachability_evidence,
-                resolved_from_registry=True,
+                declared=declared,
+                resolved=resolved,
+                exact=classify_npm_spec(declared) == "exact",
             )
+            transitive_pkg.is_direct = False
+            transitive_pkg.parent_package = package.name
+            transitive_pkg.dependency_depth = current_depth + 1
+            transitive_pkg.dependency_scope = dependency_scope
+            transitive_pkg.reachability_evidence = reachability_evidence
             dependencies.append(transitive_pkg)
 
-            if not recurse:
+            if not recurse or not resolved:
                 continue
 
             # Recursively resolve this package's runtime dependencies. Optional
@@ -395,29 +461,35 @@ async def resolve_pypi_dependencies(
         dep_spec, marker = _split_requires_dist_marker(dep_spec)
         dependency_scope, reachability_evidence = _scope_for_pypi_marker(marker)
 
-        # Extract package name and version
-        match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([<>=!~]+)?\s*([a-zA-Z0-9_.*+-]+)?", dep_spec)
-        if not match:
+        try:
+            requirement = Requirement(dep_spec)
+        except InvalidRequirement:
+            _logger.debug("Skipping unparseable requirement %r of %s", dep_spec, package.name)
             continue
 
-        dep_name = match.group(1)
-        version_spec = match.group(3) if match.group(3) else "latest"
-
-        transitive_pkg = Package(
-            name=dep_name,
-            version=version_spec,
-            ecosystem="pypi",
-            purl=f"pkg:pypi/{dep_name}@{version_spec}",
-            is_direct=False,
-            parent_package=package.name,
-            dependency_depth=current_depth + 1,
-            dependency_scope=dependency_scope,
-            reachability_evidence=reachability_evidence,
-            resolved_from_registry=True,
-        )
+        dep_name = requirement.name
+        specifier = str(requirement.specifier)
+        exact = _pypi_exact_pin(requirement)
+        if not specifier:
+            transitive_pkg = Package(name=dep_name, version="latest", ecosystem="pypi", resolved_from_registry=True)
+            resolved: Optional[str] = "latest"
+        else:
+            resolved = exact or await resolve_pypi_spec_version(dep_name, specifier, client)
+            transitive_pkg = _declared_dependency_package(
+                name=dep_name,
+                ecosystem="pypi",
+                declared=specifier,
+                resolved=resolved,
+                exact=exact is not None,
+            )
+        transitive_pkg.is_direct = False
+        transitive_pkg.parent_package = package.name
+        transitive_pkg.dependency_depth = current_depth + 1
+        transitive_pkg.dependency_scope = dependency_scope
+        transitive_pkg.reachability_evidence = reachability_evidence
         dependencies.append(transitive_pkg)
 
-        if reachability_evidence == "declaration_only":
+        if reachability_evidence == "declaration_only" or not resolved:
             continue
 
         # Recursively resolve this package's dependencies

@@ -192,11 +192,19 @@ def _extract_providers(tf_contents: list[tuple[Path, str]]) -> dict[str, str]:
                 ver_m = _PROV_VER_RE.search(inner_block)
                 if src_m:
                     source = src_m.group(1)
-                    version = ver_m.group(1).lstrip("~>=<^! ") if ver_m else "unknown"
-                    version = re.sub(r"[,\s].*", "", version)
+                    version = ver_m.group(1).strip() if ver_m else "unknown"
                     if source:
                         providers[source] = version
     return providers
+
+
+_EXACT_PROVIDER_VERSION_RE = re.compile(r"^=?\s*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$")
+
+
+def _exact_provider_version(constraint: str) -> str | None:
+    """Return the version an exact ``= X.Y.Z`` / ``X.Y.Z`` provider constraint pins."""
+    match = _EXACT_PROVIDER_VERSION_RE.match(constraint.strip())
+    return match.group(1) if match else None
 
 
 def _extract_ai_resources(tf_contents: list[tuple[Path, str]]) -> list[tuple[str, str, str]]:
@@ -310,15 +318,34 @@ def scan_terraform_dir(tf_dir: str) -> tuple[list[Agent], list[str]]:
     provider_packages: list[Package] = []
     for source, version in providers.items():
         go_module = _PROVIDER_GO_MODULES.get(source)
-        if go_module and version != "unknown":
+        if not go_module or version == "unknown":
+            continue
+        exact = _exact_provider_version(version)
+        if exact is not None:
             provider_packages.append(
                 Package(
                     name=go_module,
-                    version=version,
+                    version=exact,
                     ecosystem="go",
-                    purl=f"pkg:golang/{go_module}@{version}",
+                    purl=f"pkg:golang/{go_module}@{exact}",
+                    declared_version=version,
                 )
             )
+            continue
+        # ``~> 5.30`` / ``>= 5.0, < 6`` constrain the provider; the version
+        # terraform init selects is unknown without .terraform.lock.hcl, so no
+        # advisory is matched against the constraint's lower bound.
+        provider_packages.append(
+            Package(
+                name=go_module,
+                version="unknown",
+                ecosystem="go",
+                declared_version=version,
+                floating_reference=True,
+                floating_reference_reason=f"declared as a provider version constraint ({version}), not an exact pin",
+                version_confidence="low",
+            )
+        )
 
     agents: list[Agent] = []
 

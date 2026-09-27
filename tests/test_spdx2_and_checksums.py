@@ -62,6 +62,80 @@ def _report_with_checksummed_pkg() -> tuple[AIBOMReport, str]:
     return report, expected_hex
 
 
+# ── npm manifest ranges never leak into versions or purls ────────────────────
+
+_RANGE_TOKENS = ("^", "~", "||", "*", " ", ">", "<")
+
+
+def _report_for_packages(packages: list[Package]) -> AIBOMReport:
+    server = MCPServer(name="srv", command="node", args=["srv"], transport=TransportType.STDIO, packages=packages)
+    agent = Agent(
+        name="claude",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/x.json",
+        mcp_servers=[server],
+        status=AgentStatus.CONFIGURED,
+    )
+    return AIBOMReport(agents=[agent], blast_radii=[], generated_at=datetime(2026, 1, 1, 12, 0, 0), tool_version="0.90.1")
+
+
+def test_package_json_ranges_are_unresolved_not_floored(tmp_path: Path):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "dependencies": {
+                    "form-data": "^4.0.0",
+                    "minipass": "5.0.0 || ^6.0.2 || ^7.0.0",
+                    "@types/node": "*",
+                    "left-pad": "1.3.0",
+                    "pinned-eq": "=2.0.1",
+                    "floating": "latest",
+                    "forked": "git+https://github.com/org/forked.git#v1.0.0",
+                    "empty": "",
+                },
+                "devDependencies": {"old": ">=1.2.3 <2"},
+            }
+        )
+    )
+    pkgs = {p.name: p for p in parse_npm_packages(tmp_path)}
+
+    assert pkgs["left-pad"].version == "1.3.0"
+    assert pkgs["left-pad"].purl == "pkg:npm/left-pad@1.3.0"
+    assert pkgs["pinned-eq"].version == "2.0.1"
+    assert pkgs["pinned-eq"].purl == "pkg:npm/pinned-eq@2.0.1"
+    assert pkgs["floating"].version == "latest"
+    for name, declared in (
+        ("form-data", "^4.0.0"),
+        ("minipass", "5.0.0 || ^6.0.2 || ^7.0.0"),
+        ("@types/node", "*"),
+        ("forked", "git+https://github.com/org/forked.git#v1.0.0"),
+        ("empty", ""),
+        ("old", ">=1.2.3 <2"),
+    ):
+        pkg = pkgs[name]
+        assert pkg.version == "unknown", name
+        assert pkg.declared_version == declared, name
+        assert pkg.purl is None, name
+        assert pkg.floating_reference is True, name
+        assert pkg.version_confidence == "low", name
+
+    report = _report_for_packages(list(pkgs.values()))
+    cdx = to_cyclonedx(report)
+    libs = {comp["name"]: comp for comp in cdx["components"] if comp.get("type") == "library"}
+    assert libs["form-data"]["version"] == "unknown"
+    assert "purl" not in libs["form-data"]
+    assert libs["left-pad"]["purl"] == "pkg:npm/left-pad@1.3.0"
+    spdx3 = to_spdx(report)
+    spdx2 = to_spdx2(report, version="2.3")
+    for doc in (cdx, spdx3, spdx2):
+        text = json.dumps(doc)
+        for purl in [tok for tok in text.split('"') if tok.startswith("pkg:npm/")]:
+            assert not any(t in purl for t in _RANGE_TOKENS), purl
+    spdx2_versions = {p["name"]: p["versionInfo"] for p in spdx2["packages"] if p.get("primaryPackagePurpose") == "LIBRARY"}
+    assert spdx2_versions["minipass"] == "unknown"
+    assert spdx2_versions["left-pad"] == "1.3.0"
+
+
 # ── checksum normalization helpers ────────────────────────────────────────────
 
 

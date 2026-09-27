@@ -47,3 +47,21 @@ def test_complexity_cannot_be_hidden_with_noqa(tmp_path):
     assert not errors
     assert metrics["sample.py::hidden"]["complexity"] == 17
     assert regressions(metrics, {})
+
+
+def test_graph_cannot_restore_credential_api_dependency():
+    for source in (
+        "from agent_bom.api.credential_expiry import classify_credential",
+        "from ..api.credential_expiry import classify_credential",
+        "from agent_bom.api import credential_expiry",
+        "def f():\n import agent_bom.api.credential_expiry",
+    ):
+        assert boundary_errors("graph/nhi_governance.py", ast.parse(source))
+    assert not boundary_errors("graph/nhi_governance.py", ast.parse("from agent_bom.identity.credential_policy import classify_credential"))
+
+
+def test_credential_decisions_have_one_domain_owner():
+    for function in ("classify_credential_record", "credential_governance_summary"):
+        tree = ast.parse(f"def {function}(value):\n return value\n")
+        assert boundary_errors("api/credential_expiry.py", tree)
+        assert not boundary_errors("core/credential_policy.py", tree)

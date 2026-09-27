@@ -24,6 +24,8 @@ OWNED_FUNCTIONS = {
     "canonical_package_key": "core/packages.py",
     "normalize_version": "core/versions/validation.py",
     "compare_version_order": "core/versions/ordering.py",
+    "classify_credential_record": "core/credential_policy.py",
+    "credential_governance_summary": "core/credential_policy.py",
 }
 
 
@@ -38,6 +40,18 @@ def function_spans(tree: ast.AST, prefix: str = "") -> list[tuple[str, int, int]
     return result
 
 
+def _import_modules(path: str, node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    if not isinstance(node, ast.ImportFrom):
+        return []
+    module = node.module or ""
+    if node.level:
+        package = ["agent_bom", *Path(path).parts[:-1]]
+        module = ".".join([*package[: len(package) - node.level + 1], module]).rstrip(".")
+    return [module, *(f"{module}.{alias.name}" for alias in node.names)]
+
+
 def boundary_errors(path: str, tree: ast.AST) -> list[str]:
     errors = []
     for node in ast.walk(tree):
@@ -45,20 +59,12 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
             owner = OWNED_FUNCTIONS.get(node.name)
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
-        if not path.startswith("core/"):
-            continue
-        modules = []
-        if isinstance(node, ast.Import):
-            modules = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if node.level:
-                package = ["agent_bom", *Path(path).parts[:-1]]
-                module = ".".join([*package[: len(package) - node.level + 1], module]).rstrip(".")
-            modules = [module]
-        for module in modules:
-            if module == "agent_bom" or (
-                module.startswith("agent_bom.") and module != "agent_bom.core" and not module.startswith("agent_bom.core.")
+        for module in _import_modules(path, node):
+            if path.startswith("graph/") and module == "agent_bom.api.credential_expiry":
+                errors.append(f"{path}:{node.lineno}: graph credential decisions must not import the API adapter")
+            if path.startswith("core/") and (
+                module == "agent_bom"
+                or (module.startswith("agent_bom.") and module != "agent_bom.core" and not module.startswith("agent_bom.core."))
             ):
                 errors.append(f"{path}:{node.lineno}: core must not depend on {module}")
     return errors

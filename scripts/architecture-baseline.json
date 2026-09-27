@@ -96,9 +96,6 @@
     "api/cost_store.py::SQLiteCostStore._init_db": {
       "function_lines": 82
     },
-    "api/credential_expiry.py::classify_credential": {
-      "function_lines": 92
-    },
     "api/credential_rotation.py::build_credential_rotation_governance": {
       "function_lines": 107
     },

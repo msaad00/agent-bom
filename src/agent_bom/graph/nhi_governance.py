@@ -21,7 +21,7 @@ the three core NHI governance analytics that close the 2026-06-19 audit gap:
 
 3. **Per-identity risk score (0-100).** A single sortable score aggregating
    privilege level (admin / escalation), internet-exposure reachability,
-   credential staleness (reusing :mod:`agent_bom.api.credential_expiry`), and
+   credential staleness (reusing :mod:`agent_bom.identity.credential_policy`), and
    dormancy. The score is written back onto the ``managed_identity`` node so the
    graph, API, and findings all rank the same way.
 
@@ -45,12 +45,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.api.credential_expiry import classify_credential
 from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
+from agent_bom.identity.credential_policy import classify_credential
 
 _OVERLAY_SOURCE = "nhi-governance"
 

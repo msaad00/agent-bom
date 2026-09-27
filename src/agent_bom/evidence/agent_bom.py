@@ -21,6 +21,7 @@ Label = Annotated[str, Field(min_length=1, max_length=200)]
 Area = Literal["composition", "models", "data", "identity", "authority", "runtime", "vulnerabilities", "controls", "cost"]
 Relationship = Literal["configured_with", "provides_tool", "contains_package", "uses_model", "uses_data", "delegates_to"]
 AREAS: tuple[Area, ...] = ("composition", "models", "data", "identity", "authority", "runtime", "vulnerabilities", "controls", "cost")
+MAX_AGENT_BOM_BYTES = 8 * 1024 * 1024
 
 
 class _Record(BaseModel):
@@ -141,6 +142,30 @@ class AgentBomDocument(_Record):
 def _key(*parts: str) -> str:
     raw = json.dumps(parts, separators=(",", ":"), ensure_ascii=False)
     return "component:" + hashlib.sha256(raw.encode()).hexdigest()
+
+
+def validate_agent_bom_json(payload: bytes | str) -> AgentBomDocument:
+    """Bound input and reject ambiguous JSON before semantic validation."""
+    raw = payload.encode("utf-8") if isinstance(payload, str) else payload
+    if len(raw) > MAX_AGENT_BOM_BYTES:
+        raise ValueError("agent BOM exceeds 8 MiB")
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise ValueError("non-finite JSON number")
+
+    try:
+        data = json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant)
+    except (RecursionError, UnicodeError) as exc:
+        raise ValueError("invalid JSON encoding or nesting") from exc
+    return AgentBomDocument.model_validate(data)
 
 
 def build_agent_bom(agent: Agent, *, tenant_id: str = "local", generated_at: datetime | None = None) -> AgentBomDocument:

@@ -69,6 +69,10 @@ class AgentBomClient:
     def __exit__(self, *_exc: object) -> None:
         self.close()
 
+    def get_scan_agent_bom(self, job_id: str, agent_id: str) -> JsonObject:
+        """Export one recorded agent's composition; display names are not selectors."""
+        return self._request("GET", f"/v1/scan/{quote(job_id, safe='')}/agent-bom", params={"agent_id": agent_id})
+
     def runtime_profiles(self) -> JsonObject:
         """List tenant-scoped assignments, including lifecycle status and revisions."""
         return self._request("GET", "/v1/mcp-config/assignments")

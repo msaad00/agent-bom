@@ -33,6 +33,7 @@ from agent_bom.api.browser_session import (
     verify_browser_session_token,
     verify_csrf,
 )
+from agent_bom.api.route_policy import ROLE_RULES, SCOPE_RULES, required_role, required_scope, scope_catalog
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -1196,224 +1197,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # real pages nor allowlist a route the SPA does not serve.
         return first_segment in dashboard_routes
 
-    # Ordered route rules so narrower enterprise paths win over broad prefixes.
-    # Narrower posture sub-paths come before the `/v1/posture` viewer rule for
-    # readability — they would inherit `viewer` via the broad prefix anyway,
-    # but listing them explicitly makes the role intent of each subroute easy
-    # to grep and audit.
-    _ROLE_RULES: tuple[tuple[str, str, str], ...] = (
-        ("GET", "/v1/observability/adoption", "admin"),
-        ("POST", "/v1/observability/adoption/events", "analyst"),
-        ("GET", "/v1/compliance", "viewer"),
-        ("GET", "/v1/posture/backpressure", "viewer"),
-        ("GET", "/v1/posture/webhooks/", "analyst"),
-        ("GET", "/v1/posture", "viewer"),
-        ("GET", "/v1/auth/debug", "viewer"),
-        ("GET", "/v1/auth/me", "viewer"),
-        ("GET", "/v1/auth/policy", "admin"),
-        ("GET", "/v1/auth/scopes", "admin"),
-        ("GET", "/v1/auth/secrets/lifecycle", "admin"),
-        ("GET", "/v1/auth/secrets/rotation-plan", "admin"),
-        ("GET", "/v1/auth/secrets/credential-expiry", "admin"),
-        ("GET", "/v1/auth/scim/config", "admin"),
-        ("GET", "/v1/entitlements", "admin"),
-        ("GET", "/v1/credentials", "viewer"),
-        ("GET", "/v1/evaluations", "viewer"),
-        ("POST", "/v1/intel/match", "viewer"),
-        ("POST", "/v1/intel/daily-brief", "viewer"),
-        # Read-shaped POSTs (bounded query / decision / verify-only). These
-        # return no key material and were viewer-reachable before the mutating
-        # admin fallback below; keep them explicitly viewer so the fallback
-        # doesn't silently lock viewers/analysts out of read-only surfaces.
-        ("POST", "/v1/runtime/profiles/evaluate", "viewer"),
-        ("POST", "/v1/graph/query", "viewer"),
-        ("POST", "/v1/graph/should-i-deploy", "viewer"),
-        ("GET", "/v1/graph/scenarios", "viewer"),
-        ("POST", "/v1/graph/scenarios", "analyst"),
-        ("PUT", "/v1/graph/scenarios/", "analyst"),
-        ("DELETE", "/v1/graph/scenarios/", "admin"),
-        ("POST", "/v1/audit/export/verify", "viewer"),
-        # Per-span attack-path correlation is a read-only join over a submitted
-        # trace (returns no key material, stores nothing) — keep it viewer even
-        # though the /v1/traces ingest prefix below is analyst.
-        ("POST", "/v1/traces/attack-paths", "viewer"),
-        ("GET", "/v1/audit", "analyst"),
-        ("GET", "/v1/audit/", "analyst"),
-        ("GET", "/scim/v2", "admin"),
-        ("POST", "/scim/v2", "admin"),
-        ("PATCH", "/scim/v2", "admin"),
-        ("PUT", "/scim/v2", "admin"),
-        ("DELETE", "/scim/v2", "admin"),
-        ("GET", "/v1/auth/quota", "admin"),
-        ("GET", "/v1/auth/trial-tenants/", "admin"),
-        ("GET", "/v1/auth/keys", "admin"),
-        ("GET", "/v1/tenant/", "admin"),
-        ("PUT", "/v1/auth/quota", "admin"),
-        ("POST", "/v1/auth/invitations", "admin"),
-        ("POST", "/v1/auth/trial-invitations", "admin"),
-        ("POST", "/v1/auth/trial-tenants/", "admin"),
-        ("POST", "/v1/auth/keys", "admin"),
-        ("POST", "/v1/auth/keys/", "admin"),
-        ("DELETE", "/v1/auth/quota", "admin"),
-        ("DELETE", "/v1/auth/keys/", "admin"),
-        ("DELETE", "/v1/credentials/", "admin"),
-        ("DELETE", "/v1/tenant/", "admin"),
-        ("POST", "/v1/gateway/policies", "admin"),
-        ("POST", "/v1/posture/webhooks/", "admin"),
-        ("PUT", "/v1/gateway/policies/", "admin"),
-        ("DELETE", "/v1/gateway/policies/", "admin"),
-        ("POST", "/v1/fleet/sync", "admin"),
-        ("DELETE", "/v1/sources/", "admin"),
-        ("PUT", "/v1/fleet/", "admin"),
-        ("PUT", "/v1/exceptions/", "admin"),
-        ("DELETE", "/v1/exceptions/", "admin"),
-        ("POST", "/v1/siem/test", "admin"),
-        ("POST", "/v1/shield/start", "admin"),
-        ("POST", "/v1/shield/unblock", "admin"),
-        ("POST", "/v1/shield/break-glass", "admin"),
-        ("DELETE", "/v1/scan/", "admin"),
-        ("POST", "/v1/exceptions", "analyst"),
-        ("POST", "/v1/findings/bulk", "analyst"),
-        ("POST", "/v1/reports", "analyst"),
-        ("GET", "/v1/reports/", "analyst"),
-        ("POST", "/v1/findings/false-positive", "analyst"),
-        ("POST", "/v1/findings/feedback", "analyst"),
-        ("DELETE", "/v1/findings/false-positive/", "analyst"),
-        ("DELETE", "/v1/findings/feedback/", "analyst"),
-        ("POST", "/v1/scan", "analyst"),
-        ("POST", "/v1/credentials", "analyst"),
-        ("POST", "/v1/credentials/", "analyst"),
-        ("POST", "/v1/datasets/", "analyst"),
-        ("POST", "/v1/evaluations", "analyst"),
-        ("POST", "/v1/gateway/evaluate", "analyst"),
-        ("POST", "/v1/firewall/check", "analyst"),
-        ("POST", "/v1/proxy/audit", "analyst"),
-        ("POST", "/v1/traces", "analyst"),
-        ("POST", "/v1/ocsf/ingest", "analyst"),
-        ("POST", "/v1/results/push", "analyst"),
-        ("POST", "/v1/schedules", "analyst"),
-        ("POST", "/v1/sources", "analyst"),
-        ("POST", "/v1/sources/", "analyst"),
-        ("POST", "/v1/baseline/compare", "analyst"),
-        ("POST", "/v1/graph/presets", "analyst"),
-        ("POST", "/v1/graph/correlations", "analyst"),
-        # Model-key broker: registering / deleting a REAL provider credential is a
-        # root-credential write (admin, via the unmatched-mutating fallback below).
-        # Minting a scoped short-lived virtual key, authorizing it, and revoking it
-        # are operational and stay analyst — otherwise the admin fallback would
-        # silently over-gate the documented scan-tier surface. These prefixes match
-        # only the sub-paths (mint = providers/{id}/virtual-keys, revoke =
-        # virtual-keys/{id}/revoke); the exact register path /v1/model-keys/providers
-        # has no trailing slash and correctly falls through to the admin fallback.
-        ("POST", "/v1/model-keys/providers/", "analyst"),
-        ("POST", "/v1/model-keys/virtual-keys/", "analyst"),
-        ("POST", "/v1/model-keys/authorize", "analyst"),
-        ("DELETE", "/v1/schedules/", "analyst"),
-        ("DELETE", "/v1/graph/presets/", "analyst"),
-        ("PUT", "/v1/schedules/", "analyst"),
-        ("PUT", "/v1/credentials/", "analyst"),
-        ("PUT", "/v1/sources/", "analyst"),
-    )
+    _ROLE_RULES = ROLE_RULES
 
-    _SCOPE_RULES: tuple[tuple[str, str, str], ...] = (
-        ("GET", "/v1/observability/adoption", "audit:read"),
-        ("POST", "/v1/observability/adoption/events", "scan:write"),
-        ("GET", "/v1/cloud/connections", "cloud.connection:read"),
-        ("POST", "/v1/cloud/connections", "cloud.connection:write"),
-        ("PATCH", "/v1/cloud/connections/", "cloud.connection:write"),
-        ("DELETE", "/v1/cloud/connections/", "cloud.connection:write"),
-        ("GET", "/v1/findings", "finding:read"),
-        ("GET", "/v1/graph", "graph:read"),
-        ("POST", "/v1/graph/correlations", "scan:write"),
-        ("GET", "/v1/graph/scenarios", "graph:read"),
-        ("POST", "/v1/graph/scenarios", "scan:write"),
-        ("PUT", "/v1/graph/scenarios/", "scan:write"),
-        ("DELETE", "/v1/graph/scenarios/", "config:write"),
-        ("POST", "/v1/graph/query", "graph:read"),
-        ("POST", "/v1/graph/should-i-deploy", "graph:read"),
-        ("GET", "/v1/auth/keys", "auth.keys:read"),
-        ("GET", "/v1/auth/secrets/lifecycle", "auth.secrets:read"),
-        ("GET", "/v1/auth/secrets/rotation-plan", "auth.secrets:read"),
-        ("GET", "/v1/auth/secrets/credential-expiry", "auth.secrets:read"),
-        ("GET", "/v1/auth/scim/config", "auth.scim:read"),
-        ("GET", "/v1/credentials", "source:read"),
-        ("GET", "/v1/evaluations", "eval:read"),
-        ("GET", "/v1/intel", "intel:read"),
-        ("POST", "/v1/intel/match", "intel:read"),
-        ("POST", "/v1/intel/daily-brief", "intel:read"),
-        ("GET", "/scim/v2", "auth.scim:read"),
-        ("POST", "/scim/v2", "auth.scim:write"),
-        ("PATCH", "/scim/v2", "auth.scim:write"),
-        ("PUT", "/scim/v2", "auth.scim:write"),
-        ("DELETE", "/scim/v2", "auth.scim:write"),
-        ("GET", "/v1/auth/quota", "auth.quota:read"),
-        ("GET", "/v1/auth/trial-tenants/", "auth.invitations:read"),
-        ("GET", "/v1/tenant/", "privacy.data:read"),
-        ("POST", "/v1/auth/invitations", "auth.keys:write"),
-        ("POST", "/v1/auth/trial-invitations", "auth.invitations:write"),
-        ("POST", "/v1/auth/trial-tenants/", "auth.invitations:write"),
-        ("POST", "/v1/auth/keys", "auth.keys:write"),
-        ("POST", "/v1/auth/keys/", "auth.keys:write"),
-        ("POST", "/v1/credentials", "source:write"),
-        ("POST", "/v1/credentials/", "source:write"),
-        ("POST", "/v1/evaluations", "eval:write"),
-        ("PUT", "/v1/auth/quota", "auth.quota:write"),
-        ("DELETE", "/v1/auth/quota", "auth.quota:write"),
-        ("DELETE", "/v1/auth/keys/", "auth.keys:write"),
-        ("DELETE", "/v1/credentials/", "source:write"),
-        ("DELETE", "/v1/tenant/", "privacy.data:delete"),
-        ("GET", "/v1/gateway/policies", "gateway.policy:read"),
-        ("POST", "/v1/gateway/policies", "gateway.policy:write"),
-        ("PUT", "/v1/gateway/policies/", "gateway.policy:write"),
-        ("DELETE", "/v1/gateway/policies/", "gateway.policy:write"),
-        ("POST", "/v1/firewall/check", "gateway.firewall:write"),
-        ("GET", "/v1/gateway/audit", "audit:read"),
-        ("POST", "/v1/fleet/sync", "fleet:write"),
-        ("POST", "/v1/shield/start", "shield:write"),
-        ("POST", "/v1/shield/unblock", "shield:write"),
-        ("POST", "/v1/shield/break-glass", "shield:write"),
-        ("POST", "/v1/sources/run-cohort", "scan:write"),
-        ("POST", "/v1/scan", "scan:write"),
-        ("DELETE", "/v1/scan/", "scan:delete"),
-        ("POST", "/v1/schedules", "schedule:write"),
-        ("PUT", "/v1/credentials/", "source:write"),
-        ("DELETE", "/v1/schedules/", "schedule:write"),
-        ("PUT", "/v1/schedules/", "schedule:write"),
-        ("POST", "/v1/graph/presets", "graph.preset:write"),
-        ("DELETE", "/v1/graph/presets/", "graph.preset:write"),
-        ("POST", "/v1/exceptions", "exception:write"),
-        ("PUT", "/v1/exceptions/", "exception:write"),
-        ("DELETE", "/v1/exceptions/", "exception:write"),
-    )
-    _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-    _PROTECTED_API_EXACT_PATHS = {"/v1", "/scim"}
-    _PROTECTED_API_PREFIXES = ("/v1/", "/scim/")
+    _SCOPE_RULES = SCOPE_RULES
 
     @classmethod
     def scope_catalog(cls) -> list[dict[str, str]]:
-        """Return the enforced API scope catalog for operator discovery."""
-        catalog: list[dict[str, str]] = []
-        for method, path_prefix, scope in cls._SCOPE_RULES:
-            required_role = "viewer"
-            for role_method, role_path_prefix, role in cls._ROLE_RULES:
-                if method == role_method and path_prefix.startswith(role_path_prefix):
-                    required_role = role
-                    break
-            if ":" in scope:
-                family, action = scope.rsplit(":", 1)
-            else:
-                family, action = scope, "access"
-            catalog.append(
-                {
-                    "scope": scope,
-                    "family": family,
-                    "action": action,
-                    "method": method,
-                    "path_prefix": path_prefix,
-                    "required_role": required_role,
-                }
-            )
-        return sorted(catalog, key=lambda item: (item["scope"], item["method"], item["path_prefix"]))
+        return scope_catalog()
 
     def __init__(self, app: ASGIApp, api_key: str, allow_unauthenticated: bool = False) -> None:
         super().__init__(app)
@@ -1451,30 +1241,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             raise RuntimeError("APIKeyMiddleware exempt-paths overlap with role-rule paths: " + ", ".join(overlap))
 
     def _required_role(self, method: str, path: str) -> str:
-        """Determine the minimum role required for a request."""
-        method = method.upper()
-        # A HEAD reaches the same handler as GET (it returns the GET headers with
-        # no body), so it must inherit the GET route's required role. Keying on
-        # the literal "HEAD" would miss every GET rule and silently fall through
-        # to the viewer default — letting an anonymous HEAD reach an admin GET
-        # handler when ALLOW_UNAUTHENTICATED_API is on.
-        if method == "HEAD":
-            method = "GET"
-        for m, p, role in self._ROLE_RULES:
-            if method == m and path.startswith(p):
-                return role
-        if method in self._MUTATING_METHODS and (path in self._PROTECTED_API_EXACT_PATHS or path.startswith(self._PROTECTED_API_PREFIXES)):
-            return "admin"
-        return "viewer"
+        return required_role(method, path)
 
     def _required_scope(self, method: str, path: str) -> str | None:
-        """Determine the optional scope required for a request."""
-        if method.upper() == "HEAD":
-            method = "GET"
-        for m, p, scope in self._SCOPE_RULES:
-            if method == m and path.startswith(p):
-                return scope
-        return None
+        return required_scope(method, path)
 
     @staticmethod
     def _role_allows(actual: Role, required: Role) -> bool:

@@ -157,3 +157,17 @@ by hand.
 - Auth mechanisms and the browser SSO route: [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md#authentication)
 - Claim mapping and tenant enforcement: `src/agent_bom/api/oidc.py`
 - Compose secrets layout: [`../deploy/secrets/README.md`](../deploy/secrets/README.md)
+
+## Inspect effective route permissions
+
+Use an authenticated administrator session to request `GET /v1/auth/scopes`.
+The response lists method, resource prefix, scope action and minimum role for
+scoped API operations; use it when assigning narrowly scoped service keys.
+
+The catalog and middleware share `api/route_policy.py`. Rules match path
+segments, with the most specific subpath winning; `HEAD` inherits `GET`.
+Unclassified `/v1` and `/scim` mutations require admin. Authentication remains
+required unless the deployment explicitly enables the documented local/demo
+mode; missing or invalid credentials do not gain access through these rules.
+Route dependencies may impose additional resource or tenant checks.
+The catalog covers scoped rules, not a complete list of every API operation.

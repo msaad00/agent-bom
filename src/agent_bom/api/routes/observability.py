@@ -1219,6 +1219,9 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         # ours to delete. Unknown (backend cannot answer) is treated as
         # pre-existing so a failure can never destroy someone else's graph.
         graph_snapshot_preexisted = _graph_snapshot_exists(tenant_id, graph_scan_id)
+        # This server-generated token is committed with the graph. A stale
+        # absence check cannot authorize deleting another writer's generation.
+        graph_write_generation = uuid.uuid4().hex
         # Keep quota admission and all three durable projections in one
         # compensating transaction. Graph persistence is last and atomic within
         # its backend; a failure restores the prior endpoint and removes the job,
@@ -1230,7 +1233,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                 if endpoint is not None:
                     fleet_store.put_endpoint(endpoint)
                     endpoint_persisted = True
-                _persist_graph_snapshot(job, job_result)
+                _persist_graph_snapshot(job, job_result, write_generation=graph_write_generation)
                 # SQLite/Postgres job stores serialize on put, while graph
                 # persistence adds its receipt to job.result. Persist once more
                 # before exposing the completed idempotency receipt.
@@ -1244,7 +1247,9 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
                     )
                 else:
                     try:
-                        _get_graph_store().delete_snapshot(tenant_id=tenant_id, scan_id=graph_scan_id)
+                        _get_graph_store().delete_snapshot(
+                            tenant_id=tenant_id, scan_id=graph_scan_id, expected_generation=graph_write_generation
+                        )
                     except Exception as rollback_exc:  # noqa: BLE001
                         _logger.error("Graph rollback failed: %s", sanitize_text(sanitize_error(rollback_exc, generic=True)))
                 if endpoint_persisted and body.source_id:

@@ -842,6 +842,7 @@ def save_graph_streaming(
     snapshot_kind: str = "scan",
     correlation_id: str = "",
     evidence_manifest_sha256: str = "",
+    write_generation: str = "",
     correlation_result_manifest: Mapping[str, Any] | None = None,
     correlation_completed_at: str = "",
     correlation_execution_owner: str = "",
@@ -1147,7 +1148,7 @@ def save_graph_streaming(
             snapshot_kind,
             correlation_id or None,
             evidence_manifest_sha256,
-            uuid.uuid4().hex,
+            write_generation or uuid.uuid4().hex,
         ),
     )
 

@@ -521,7 +521,7 @@ def _graph_store_backed_build_enabled(report_json: Mapping[str, Any] | dict[str,
     return _estimate_graph_entities(report_json) >= threshold
 
 
-def _persist_via_build_workspace(graph_store: Any, graph: Any) -> dict[str, int]:
+def _persist_via_build_workspace(graph_store: Any, graph: Any, *, write_generation: str = "") -> dict[str, int]:
     """Stream a built graph through the bounded workspace into the store.
 
     Produces a snapshot byte-identical to the direct streamed save; the workspace
@@ -543,6 +543,7 @@ def _persist_via_build_workspace(graph_store: Any, graph: Any) -> dict[str, int]
             interaction_risks=graph.interaction_risks,
             analysis_status=graph.analysis_status,
             created_at=graph.created_at,
+            **({"write_generation": write_generation} if write_generation else {}),
         )
         return counts
 
@@ -552,6 +553,7 @@ def _persist_graph_snapshot(
     report_json: dict[str, Any],
     *,
     lock: threading.Lock | None = None,
+    write_generation: str = "",
 ) -> None:
     """Persist the unified graph snapshot produced by a completed scan.
 
@@ -646,7 +648,7 @@ def _persist_graph_snapshot(
             # Skip the older workspace re-stream when the store-backed producer is
             # already paging out of the container (superseding path).
             if (not store_backed) and _graph_build_workspace_enabled():
-                counts = _persist_via_build_workspace(graph_store, graph)
+                counts = _persist_via_build_workspace(graph_store, graph, write_generation=write_generation)
             else:
                 counts = graph_store.save_graph_streaming(
                     scan_id=graph.scan_id,
@@ -657,6 +659,7 @@ def _persist_graph_snapshot(
                     interaction_risks=graph.interaction_risks,
                     analysis_status=graph.analysis_status,
                     created_at=graph.created_at,
+                    **({"write_generation": write_generation} if write_generation else {}),
                 )
         finally:
             reset_current_tenant(tenant_token)

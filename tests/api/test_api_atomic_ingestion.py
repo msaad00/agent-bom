@@ -50,7 +50,7 @@ def _isolated_stores(monkeypatch: pytest.MonkeyPatch):
     set_idempotency_store(InMemoryIdempotencyStore())
     stores._jobs.clear()
     monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda _job: None)
-    monkeypatch.setattr("agent_bom.api.routes.observability._persist_graph_snapshot", lambda _job, _report: None)
+    monkeypatch.setattr("agent_bom.api.routes.observability._persist_graph_snapshot", lambda _job, _report, **_kwargs: None)
     yield
     stores._jobs.clear()
     set_job_store(original_job)
@@ -95,7 +95,7 @@ def test_push_concurrent_same_key_commits_one_job_endpoint_and_graph(monkeypatch
     graph_calls: list[str] = []
     monkeypatch.setattr(
         "agent_bom.api.routes.observability._persist_graph_snapshot",
-        lambda job, _report: graph_calls.append(job.job_id),
+        lambda job, _report, **_kwargs: graph_calls.append(job.job_id),
     )
 
     payload = {
@@ -313,7 +313,7 @@ def test_push_retry_reclaims_expired_crash_reservation_without_duplicate_evidenc
     graph_calls: list[str] = []
     monkeypatch.setattr(
         "agent_bom.api.routes.observability._persist_graph_snapshot",
-        lambda job, _report: graph_calls.append(job.job_id),
+        lambda job, _report, **_kwargs: graph_calls.append(job.job_id),
     )
     payload = {
         "source_id": "endpoint-a",
@@ -346,7 +346,7 @@ def test_push_retry_reconciles_committed_job_before_receipt_without_duplicate_ev
     graph_calls: list[str] = []
     monkeypatch.setattr(
         "agent_bom.api.routes.observability._persist_graph_snapshot",
-        lambda job, _report: (
+        lambda job, _report, **_kwargs: (
             (
                 job.result.__setitem__("graph_persistence", {"status": "persisted", "scan_id": job.job_id})
                 if isinstance(job.result, dict)
@@ -429,14 +429,14 @@ def test_push_graph_failure_rolls_back_job_endpoint_and_quota(monkeypatch: pytes
         def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
             return scan_id, ""
 
-        def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int:
             graph_rollbacks.append((tenant_id, scan_id))
             return 0
 
     monkeypatch.setattr("agent_bom.api.routes.observability._get_graph_store", lambda: _GraphStore())
     monkeypatch.setattr(
         "agent_bom.api.routes.observability._persist_graph_snapshot",
-        lambda _job, _report: (_ for _ in ()).throw(RuntimeError("postgresql://user:secret@db/private")),
+        lambda _job, _report, **_kwargs: (_ for _ in ()).throw(RuntimeError("postgresql://user:secret@db/private")),
     )
 
     response = TestClient(app, raise_server_exceptions=False).post(
@@ -493,7 +493,7 @@ def test_push_final_job_receipt_failure_rolls_back_all_projections(monkeypatch: 
         def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
             return scan_id, ""
 
-        def delete_snapshot(self, *, tenant_id: str, scan_id: str) -> int:
+        def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int:
             graph_rollbacks.append((tenant_id, scan_id))
             return 1
 

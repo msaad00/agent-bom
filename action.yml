@@ -64,7 +64,7 @@ inputs:
     required: false
     default: '3.11'
   agent-bom-version:
-    description: 'agent-bom package version to install (for example 0.106.1). Empty = the release this action ref ships (pinning msaad00/agent-bom@vX installs agent-bom==X; a ref whose version is not on PyPI yet falls back to the newest release with a warning). Use latest for the newest PyPI release.'
+    description: 'agent-bom package version to install (for example 0.106.1). Empty = the release this action ref ships; installation fails if that version cannot be installed. Use latest to explicitly install the newest PyPI release, or install-from-source for an unpublished ref.'
     required: false
     default: ''
   install-from-source:
@@ -237,12 +237,12 @@ runs:
               REF_VERSION=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ACTION_PATH/pyproject.toml" | head -n 1)
             fi
             if [ -z "$REF_VERSION" ]; then
-              echo "::warning::Could not read the agent-bom version from this action ref; installing the newest release."
-              pip install "agent-bom${EXTRAS}" packaging
-            elif ! pip install "agent-bom${EXTRAS}==$REF_VERSION" packaging; then
-              echo "::warning::agent-bom $REF_VERSION (this action ref's version) is not installable from PyPI yet; installing the newest release. Pin a release tag or set agent-bom-version."
-              pip install "agent-bom${EXTRAS}" packaging
+              echo "::error::Could not read the agent-bom version from this action ref. Set agent-bom-version or install-from-source explicitly."
+              exit 1
             fi
+            # Preserve the selected version on all installation failures,
+            # including index, TLS and dependency-resolution errors.
+            pip install "agent-bom${EXTRAS}==$REF_VERSION" packaging
           fi
         fi
 

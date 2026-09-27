@@ -277,8 +277,10 @@ release flow does not do that. Instead:
 
 The GitHub Action follows the same rule without an override: with
 `agent-bom-version` empty, `msaad00/agent-bom@vX` installs `agent-bom==X` (the
-version in the action ref's `pyproject.toml`), and falls back to the newest
-release with a warning only when that version is not on PyPI yet.
+version in the action ref's `pyproject.toml`). Installation fails if that version
+cannot be installed; network, index or dependency-resolution errors never select
+a different release. For an unpublished ref, use `install-from-source: 'true'` or
+select a published `agent-bom-version` explicitly.
 
 ### Pre-tag release smoke
 

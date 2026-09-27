@@ -858,6 +858,14 @@ MCP_MAX_RESPONSE_CHARS = _int("AGENT_BOM_MCP_MAX_RESPONSE", 500_000)
 MCP_MAX_CONCURRENT_TOOLS = _int("AGENT_BOM_MCP_MAX_CONCURRENT_TOOLS", 8)
 MCP_TOOL_TIMEOUT_SECONDS = _float("AGENT_BOM_MCP_TOOL_TIMEOUT_SECONDS", 30.0)
 MCP_MAX_TOOL_METRICS = _int("AGENT_BOM_MCP_MAX_TOOL_METRICS", 128)
+# Full scan results kept per process so `scan(result_id=..., section=...)` can
+# page a report that is too large for one response. Bounded by count and age.
+MCP_SCAN_RESULT_CACHE_SIZE = _int("AGENT_BOM_MCP_SCAN_RESULT_CACHE_SIZE", 4)
+MCP_SCAN_RESULT_TTL_SECONDS = _float("AGENT_BOM_MCP_SCAN_RESULT_TTL_SECONDS", 1800.0)
+# Extra directories (os.pathsep-separated absolute paths) that MCP path
+# arguments may resolve into, in addition to HOME — e.g. /workspaces in a
+# devcontainer. Filesystem roots are ignored; read at call time.
+MCP_WORKSPACE_ROOTS = _str("AGENT_BOM_MCP_WORKSPACE_ROOTS", "")
 MCP_CALLER_RATE_LIMIT = _int("AGENT_BOM_MCP_CALLER_RATE_LIMIT", 120)
 MCP_CALLER_WINDOW_SECONDS = _float("AGENT_BOM_MCP_CALLER_WINDOW_SECONDS", 60.0)
 MCP_MAX_CALLER_STATES = _int("AGENT_BOM_MCP_MAX_CALLER_STATES", 256)

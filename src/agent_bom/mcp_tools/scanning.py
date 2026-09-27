@@ -9,6 +9,16 @@ import re
 from mcp.server.fastmcp.exceptions import ToolError
 
 from agent_bom.graph.severity import normalize_severity, severity_at_or_above
+from agent_bom.mcp_tools.scan_response import (
+    MAX_PAGE_LIMIT,
+    SCAN_DETAIL_LEVELS,
+    SCAN_RESULTS,
+    IncompleteScanPayload,
+    ScanResultStore,
+    build_scan_summary,
+    resolve_offline,
+    section_page,
+)
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -88,7 +98,7 @@ async def scan_impl(
     package: str | None = None,
     ecosystem: str | None = None,
     enrich: bool = False,
-    offline: bool = True,
+    offline: bool | None = None,
     scorecard: bool = False,
     transitive: bool = False,
     verify_integrity: bool = False,
@@ -98,8 +108,16 @@ async def scan_impl(
     db_sources: str | None = None,
     output_format: str = "json",
     policy: dict | None = None,
+    detail: str = "summary",
+    result_id: str | None = None,
+    section: str | None = None,
+    offset: int = 0,
+    limit: int = 25,
     _run_scan_pipeline,
     _truncate_response,
+    _result_owner: str = "local",
+    _result_store: ScanResultStore | None = None,
+    _max_response_chars: int | None = None,
 ) -> str:
     """Implementation of the scan tool.
 
@@ -107,8 +125,36 @@ async def scan_impl(
     a bounded temp directory, scanned statically (no repo code is executed),
     and the temp directory is always removed afterwards. ``repo_url`` and
     ``config_path`` are mutually exclusive.
+
+    JSON results are summary-first (``detail="summary"``); the full redacted
+    report is kept under a ``result_id`` whose sections are paged with
+    ``result_id`` + ``section`` + ``offset``/``limit`` follow-ups, which do not
+    re-run the scan.
     """
     from contextlib import AsyncExitStack
+
+    from agent_bom.config import MCP_MAX_RESPONSE_CHARS
+
+    store = _result_store if _result_store is not None else SCAN_RESULTS
+    max_chars = _max_response_chars if _max_response_chars is not None else MCP_MAX_RESPONSE_CHARS
+    if detail not in SCAN_DETAIL_LEVELS:
+        raise ToolError(f"Invalid detail: {detail!r}. Use one of: {', '.join(SCAN_DETAIL_LEVELS)}")
+    if result_id is not None and str(result_id).strip():
+        import asyncio
+
+        return await asyncio.to_thread(
+            _stored_result_view,
+            store,
+            owner=_result_owner,
+            result_id=str(result_id).strip(),
+            section=section,
+            offset=offset,
+            limit=limit,
+            max_chars=max_chars,
+            _truncate_response=_truncate_response,
+        )
+    if section is not None and str(section).strip():
+        raise ToolError("section requires result_id from a previous scan response")
 
     async with AsyncExitStack() as _repo_cleanup:
         if repo_url is not None and str(repo_url).strip():
@@ -147,10 +193,53 @@ async def scan_impl(
             db_sources=db_sources,
             output_format=output_format,
             policy=policy,
+            detail=detail,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,
+            _result_owner=_result_owner,
+            _result_store=store,
         )
     raise ToolError("scan failed before producing a result")
+
+
+def _stored_result_view(
+    store: ScanResultStore,
+    *,
+    owner: str,
+    result_id: str,
+    section: str | None,
+    offset: int,
+    limit: int,
+    max_chars: int,
+    _truncate_response,
+) -> str:
+    """Serve a follow-up view of a stored scan result without re-scanning."""
+    stored = store.get(owner, result_id)
+    if stored is None or not isinstance(stored.get("report"), dict):
+        raise ToolError(
+            "Unknown or expired result_id. Results are kept for a limited time per server process "
+            "and per caller; run scan again to get a fresh result_id."
+        )
+    report: dict = stored["report"]
+    if section is None or not str(section).strip():
+        summary = build_scan_summary(
+            report,
+            result_id=result_id,
+            ttl_seconds=store.ttl_seconds,
+            offline=bool(stored.get("offline")),
+        )
+        return _truncate_response(json.dumps(summary, indent=2, default=str))
+    name = str(section).strip()
+    if offset < 0:
+        raise ToolError("offset must be >= 0")
+    if limit < 1 or limit > MAX_PAGE_LIMIT:
+        raise ToolError(f"limit must be between 1 and {MAX_PAGE_LIMIT}")
+    try:
+        page = section_page(report, result_id=result_id, section=name, offset=offset, limit=limit, max_chars=max_chars)
+    except KeyError:
+        available = ", ".join(sorted(k for k, v in report.items() if isinstance(v, list | dict) and v))
+        raise ToolError(f"Unknown section {name!r}. Available sections: {available}") from None
+    return _truncate_response(json.dumps(page, separators=(",", ":"), default=str))
 
 
 async def _scan_impl_inner(
@@ -162,7 +251,7 @@ async def _scan_impl_inner(
     package: str | None = None,
     ecosystem: str | None = None,
     enrich: bool = False,
-    offline: bool = True,
+    offline: bool | None = None,
     scorecard: bool = False,
     transitive: bool = False,
     verify_integrity: bool = False,
@@ -172,10 +261,15 @@ async def _scan_impl_inner(
     db_sources: str | None = None,
     output_format: str = "json",
     policy: dict | None = None,
+    detail: str = "summary",
     _run_scan_pipeline,
     _truncate_response,
+    _result_owner: str = "local",
+    _result_store: ScanResultStore | None = None,
 ) -> str:
     """Run the scan pipeline against an already-resolved local target."""
+    offline = resolve_offline(offline)
+    store = _result_store if _result_store is not None else SCAN_RESULTS
     try:
         from agent_bom.models import AIBOMReport
         from agent_bom.output import to_json
@@ -306,19 +400,21 @@ async def _scan_impl_inner(
             # Fail closed ahead of format selection: an empty SARIF/CycloneDX/SPDX
             # document reads as an audited clean result, so the structured
             # incomplete envelope is returned for every requested format.
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "status": "incomplete_scan",
-                        "requested_package": package,
-                        "requested_ecosystem": ecosystem,
-                        "agents": [],
-                        "vulnerabilities": [],
-                        "blast_radius": [],
-                        "blast_radii": [],
-                        "warnings": scan_warnings,
-                    },
-                    indent=2,
+            return IncompleteScanPayload(
+                _truncate_response(
+                    json.dumps(
+                        {
+                            "status": "incomplete_scan",
+                            "requested_package": package,
+                            "requested_ecosystem": ecosystem,
+                            "agents": [],
+                            "vulnerabilities": [],
+                            "blast_radius": [],
+                            "blast_radii": [],
+                            "warnings": scan_warnings,
+                        },
+                        indent=2,
+                    )
                 )
             )
 
@@ -396,21 +492,36 @@ async def _scan_impl_inner(
             result["warnings"] = scan_warnings
         from agent_bom.output.json_fmt import redact_json_payload
 
-        return _truncate_response(json.dumps(redact_json_payload(result), indent=2, default=str))
+        def _render_json_result() -> str:
+            redacted = redact_json_payload(result)
+            result_id = store.put(_result_owner, {"report": redacted, "offline": offline})
+            if detail == "full":
+                full = {"result_id": result_id, **redacted}
+                return _truncate_response(json.dumps(full, indent=2, default=str))
+            summary = build_scan_summary(redacted, result_id=result_id, ttl_seconds=store.ttl_seconds, offline=offline)
+            return _truncate_response(json.dumps(summary, indent=2, default=str))
+
+        # Multi-MB reports: serialize, store, and bound off the event loop.
+        import asyncio
+
+        return await asyncio.to_thread(_render_json_result)
     except Exception as exc:
         from agent_bom.scanners import IncompleteScanError
 
         if isinstance(exc, IncompleteScanError):
-            return _truncate_response(
-                json.dumps(
-                    {
-                        "status": "incomplete_scan",
-                        "agents": [],
-                        "vulnerabilities": [],
-                        "blast_radius": [],
-                        "blast_radii": [],
-                        "warnings": [sanitize_error(exc)],
-                    }
+            return IncompleteScanPayload(
+                _truncate_response(
+                    json.dumps(
+                        {
+                            "status": "incomplete_scan",
+                            "vulnerability_lookup": "offline" if offline else "online",
+                            "agents": [],
+                            "vulnerabilities": [],
+                            "blast_radius": [],
+                            "blast_radii": [],
+                            "warnings": [sanitize_error(exc)],
+                        }
+                    )
                 )
             )
         logger.exception("MCP tool error")

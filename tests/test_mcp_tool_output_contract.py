@@ -223,8 +223,13 @@ def test_tool_output_contract(tool_name: str, mcp_server: Any, workdir: Path) ->
 
 
 def _extract_text(raw: Any) -> str:
+    from mcp.types import CallToolResult
+
     if isinstance(raw, str):
         return raw
+    # Tools that set isError themselves return a CallToolResult.
+    if isinstance(raw, CallToolResult):
+        return _extract_text(raw.content)
     # FastMCP content-list shape: [TextContent(type="text", text=...), ...]
     if isinstance(raw, list | tuple) and raw:
         first = raw[0]

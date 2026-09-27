@@ -10,6 +10,7 @@ import math
 import os
 import re
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
@@ -173,6 +174,7 @@ def validate_path(
     path: str | Path,
     must_exist: bool = False,
     restrict_to_home: bool = False,
+    allowed_roots: Sequence[Path] = (),
 ) -> Path:
     """
     Validate and normalize a file path.
@@ -181,6 +183,9 @@ def validate_path(
         path: Path to validate
         must_exist: If True, path must exist
         restrict_to_home: If True, path must resolve inside the user's home directory
+            or inside one of ``allowed_roots``
+        allowed_roots: Additional already-resolved directories accepted when
+            ``restrict_to_home`` is set
 
     Returns:
         Validated and normalized Path object
@@ -196,8 +201,11 @@ def validate_path(
     except (OSError, RuntimeError) as e:
         raise SecurityError(f"Invalid path '{path}': {e}")
 
-    # Restrict to home directory (used by MCP server for user-provided paths)
-    if restrict_to_home and not resolved.is_relative_to(Path.home()):
+    # Restrict to home / configured roots (MCP server user-provided paths). The
+    # check runs on the resolved path, so a symlink out of a root is rejected.
+    if restrict_to_home and not any(resolved.is_relative_to(root) for root in (Path.home().resolve(), *allowed_roots)):
+        if allowed_roots:
+            raise SecurityError(f"Path resolves outside home directory and configured workspace roots: {path}")
         raise SecurityError(f"Path resolves outside home directory: {path}")
 
     # Check for path traversal attempts (on unresolved path)

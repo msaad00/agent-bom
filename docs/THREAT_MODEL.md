@@ -39,7 +39,7 @@ agent-bom operates in six modes:
 
 | Boundary | Trust level | Rationale |
 |----------|------------|-----------|
-| Local filesystem | Trusted | User's own config files; validated with `validate_path(restrict_to_home=True)` |
+| Local filesystem | Trusted | User's own config files; MCP path arguments are validated with `validate_path(restrict_to_home=True)` after symlink resolution, and may additionally resolve into operator-configured roots (`AGENT_BOM_MCP_WORKSPACE_ROOTS` / `agent-bom mcp server --workspace-root`; filesystem roots are ignored) |
 | Public vuln APIs (OSV, NVD, GHSA, EPSS, KEV) | Untrusted input | Responses are parsed defensively; no code execution from API data |
 | Threat-intel and advisory feeds | Untrusted input | Feed data is normalized, deduplicated, and attributed; external records do not become executable code |
 | Cloud provider APIs (AWS, Azure, GCP, Snowflake) | Authenticated, semi-trusted | Read-only API calls; credentials from environment; responses parsed defensively |

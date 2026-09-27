@@ -1161,6 +1161,16 @@ def api_cmd(
     default=False,
     help="Allow unauthenticated non-loopback SSE / HTTP exposure. Unsafe outside local development.",
 )
+@click.option(
+    "--workspace-root",
+    "workspace_roots",
+    multiple=True,
+    type=click.Path(file_okay=False, resolve_path=True),
+    help=(
+        "Extra directory that path arguments may resolve into, in addition to HOME "
+        "(e.g. /workspaces in a devcontainer). Repeatable; merged with AGENT_BOM_MCP_WORKSPACE_ROOTS."
+    ),
+)
 @click.option("--log-level", "log_level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False), default="INFO")
 @click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
 def mcp_server_cmd(
@@ -1170,6 +1180,7 @@ def mcp_server_cmd(
     profile: str,
     bearer_token: str | None,
     allow_insecure_no_auth: bool,
+    workspace_roots: tuple[str, ...],
     log_level: str,
     log_json: bool,
 ):
@@ -1206,6 +1217,10 @@ def mcp_server_cmd(
     from agent_bom.logging_config import setup_logging
 
     setup_logging(level=log_level, json_output=log_json)
+
+    if workspace_roots:
+        existing = [entry for entry in os.environ.get("AGENT_BOM_MCP_WORKSPACE_ROOTS", "").split(os.pathsep) if entry.strip()]
+        os.environ["AGENT_BOM_MCP_WORKSPACE_ROOTS"] = os.pathsep.join([*existing, *workspace_roots])
 
     _require_optional_dependencies(
         "agent-bom mcp server",

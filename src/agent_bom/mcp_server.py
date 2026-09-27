@@ -113,10 +113,10 @@ import time
 from collections import OrderedDict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
+from typing import Annotated, Any, Awaitable, Callable, Literal, Optional, TypeVar
 
 from mcp.server.lowlevel.server import request_ctx as _mcp_request_ctx
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
 from agent_bom import mcp_server_runtime as _mcp_runtime
@@ -284,6 +284,19 @@ def _validate_cve_id(cve_id: str) -> str:
 def _truncate_response(response_str: str) -> str:
     """Truncate response if it exceeds _MAX_RESPONSE_CHARS."""
     return _mcp_runtime.truncate_response(response_str, _MAX_RESPONSE_CHARS)
+
+
+def _json_tool_result(text: str) -> CallToolResult:
+    """Wrap a JSON tool payload, flagging failed/incomplete calls with ``isError``.
+
+    The body stays the same JSON text (and ``{"result": text}`` structured
+    content, matching the tool's ``str`` output schema) either way.
+    """
+    return CallToolResult(
+        content=[TextContent(type="text", text=str(text))],
+        structuredContent={"result": str(text)},
+        isError=isinstance(text, _mcp_runtime.ToolErrorPayload),
+    )
 
 
 def _safe_path(path_str: str) -> Path:
@@ -644,9 +657,16 @@ def create_mcp_server(
         ] = None,
         enrich: Annotated[bool, Field(description="Enable NVD CVSS, EPSS probability, and CISA KEV enrichment.")] = False,
         offline: Annotated[
-            bool,
-            Field(description="Use the local vulnerability DB only and skip registry, OSV, GHSA, and NVIDIA network lookups."),
-        ] = True,
+            bool | None,
+            Field(
+                description=(
+                    "true: use the local vulnerability DB only and skip registry, OSV, GHSA, and NVIDIA "
+                    "network lookups (requires a populated DB from `agent-bom db update`). false: query "
+                    "those sources online. Omitted: online unless the server operator set "
+                    "AGENT_BOM_OFFLINE or AGENT_BOM_VULN_DB_OFFLINE."
+                )
+            ),
+        ] = None,
         scorecard: Annotated[
             bool, Field(description="Enrich packages with OpenSSF Scorecard scores (requires resolvable GitHub repos).")
         ] = False,
@@ -687,7 +707,32 @@ def create_mcp_server(
                 )
             ),
         ] = None,
-    ) -> str:
+        detail: Annotated[
+            Literal["summary", "full"],
+            Field(
+                description=(
+                    "JSON output only. 'summary' (default): counts, top findings, affected paths, and a "
+                    "result_id for paged follow-ups. 'full': the whole AI-BOM document, shortened "
+                    "structurally (still valid JSON, with _truncation metadata) if it exceeds the response budget."
+                )
+            ),
+        ] = "summary",
+        result_id: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "result_id from a previous scan response. With it, no new scan runs: returns that "
+                    "result's summary, or one page of `section`."
+                )
+            ),
+        ] = None,
+        section: Annotated[
+            str | None,
+            Field(description="Section of a stored result to page, e.g. 'findings', 'blast_radius', 'packages', 'exposure_paths'."),
+        ] = None,
+        offset: Annotated[int, Field(ge=0, description="Zero-based item offset into `section`.")] = 0,
+        limit: Annotated[int, Field(ge=1, le=200, description="Maximum items per page of `section` (1-200).")] = 25,
+    ) -> Annotated[CallToolResult, str]:
         """Run a full AI supply chain security scan and return an AI-BOM.
 
         Point it at a target with one of:
@@ -700,16 +745,21 @@ def create_mcp_server(
         With none of these, it auto-discovers local MCP clients (Claude Desktop,
         Cursor, Windsurf, VS Code Copilot, OpenClaw, etc.).
 
-        It extracts package dependencies, queries OSV.dev for CVEs, assesses
-        config security (credential exposure, tool access), computes blast
-        radius, and returns structured results. Scanning is fully static and
-        read-only — repository and image contents are parsed, never executed.
+        It extracts package dependencies, looks up CVEs (online via OSV.dev and
+        advisory sources unless offline mode is requested or configured),
+        assesses config security (credential exposure, tool access), computes
+        blast radius, and returns structured results. Scanning is fully static
+        and read-only — repository and image contents are parsed, never executed.
 
         Returns:
-            JSON with the complete AI-BOM report including agents, packages,
-            vulnerabilities, blast radius, and remediation guidance.
+            JSON. By default a bounded summary: counts (packages, agents,
+            findings by severity/category), top findings, affected paths, and a
+            result_id. Page any full-fidelity section with
+            scan(result_id=..., section='findings', offset=0, limit=25).
+            An incomplete scan (e.g. vulnerability source unavailable) is
+            returned as an error result whose body is still JSON.
         """
-        return await _execute_tool_async(
+        text = await _execute_tool_async(
             "scan",
             scan_impl,
             config_path=config_path,
@@ -730,9 +780,17 @@ def create_mcp_server(
             db_sources=db_sources,
             output_format=output_format,
             policy=policy,
+            detail=detail,
+            result_id=result_id,
+            section=section,
+            offset=offset,
+            limit=limit,
             _run_scan_pipeline=_run_scan_pipeline,
             _truncate_response=_truncate_response,
+            _result_owner=_current_tool_request()["caller"] or "local",
+            _max_response_chars=_MAX_RESPONSE_CHARS,
         )
+        return _json_tool_result(text)
 
     # ── Tool 2: check ────────────────────────────────────────────────
 

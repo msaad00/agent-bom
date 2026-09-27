@@ -1522,9 +1522,10 @@ def _fix_first_graph_view_payload(graph: UnifiedGraph, *, cve: str, package: str
     }
 
 
-def _derived_attack_path_page(graph: UnifiedGraph, *, offset: int, limit: int) -> tuple[str, str, list[AttackPath], int]:
-    derived_paths = _derived_attack_paths(graph)
-    return graph.scan_id, graph.created_at, derived_paths[offset : offset + limit], len(derived_paths)
+def _derived_attack_path_page(graph: UnifiedGraph, *, offset: int, limit: int, filters: Any = None) -> Any:
+    from agent_bom.api.attack_path_queue import ranked_derived_path_page
+
+    return ranked_derived_path_page(graph, _derived_attack_paths(graph), offset=offset, limit=limit, filters=filters)
 
 
 def _serialize_attack_path_queue(
@@ -1542,7 +1543,12 @@ def _serialize_attack_path_queue(
     path_source: str,
     materialized_paths: int,
     derived_paths: int,
+    ranked: Any = None,
+    filters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from agent_bom.graph.attack_path_queue_rank import with_rank_fields
+
+    snapshot_total = ranked.snapshot_total if ranked is not None else total
     nodes_by_id = {node.id: node for node in nodes}
     # `edges_for_node_ids` intentionally returns every incident edge for its
     # general graph-page callers.  A ranked path page has a tighter evidence
@@ -1552,7 +1558,7 @@ def _serialize_attack_path_queue(
     # nodes only inflate transfer/render cost and visually imply extra proof.
     path_pairs = {pair for path in paths for pair in zip(path.hops, path.hops[1:], strict=False)}
     path_edges = [edge for edge in path_edges if (edge.source, edge.target) in path_pairs]
-    stats = _sync_attack_path_stats(stats, total=total, paths=paths)
+    stats = _sync_attack_path_stats(stats, total=snapshot_total, paths=paths)
     completeness = graph_completeness(
         returned=len(paths),
         total=total,
@@ -1565,12 +1571,10 @@ def _serialize_attack_path_queue(
         "created_at": created_at,
         "nodes": [node.to_dict() for node in nodes],
         "edges": [edge.to_dict() for edge in path_edges],
-        "attack_paths": _serialize_attack_path_batch(
+        "attack_paths": with_rank_fields(
             paths,
-            path_edges,
-            nodes_by_id=nodes_by_id,
-            scan_id=scan_id,
-            rank_offset=offset,
+            _serialize_attack_path_batch(paths, path_edges, nodes_by_id=nodes_by_id, scan_id=scan_id, rank_offset=offset),
+            nodes_by_id,
         ),
         "interaction_risks": [],
         "stats": stats,
@@ -1581,17 +1585,18 @@ def _serialize_attack_path_queue(
             "source": path_source,
             "scope": "tenant graph snapshot",
             "window": {"snapshot_created_at": created_at},
-            "filters": {"scan_id": scan_id, "offset": offset, "limit": limit},
+            "filters": {"scan_id": scan_id, "offset": offset, "limit": limit, **(filters or {})},
             "returned": len(paths),
             "total": total,
             # Additive, explicitly named counts let clients distinguish the
             # snapshot's source rows from the page transferred over HTTP and
             # from the smaller subset they may choose to render.
-            "snapshot_total": total,
+            "snapshot_total": snapshot_total,
             "materialized_paths": materialized_paths,
             "derived_paths": derived_paths,
             "returned_rows": len(paths),
             "completeness": completeness,
+            **({"ranking": ranked.ranking} if ranked is not None and ranked.ranking else {}),
         },
     }
 
@@ -2289,41 +2294,34 @@ async def get_graph_attack_paths(
     scan_id: Optional[str] = Query(None, description="Scan ID"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=1000, description="Max attack paths"),
+    min_severity: Optional[Literal["critical", "high", "medium", "low"]] = Query(
+        None, description="Only paths whose worst on-path finding is at least this severity"
+    ),
+    has_credential: Optional[bool] = Query(None, description="Only paths that do (true) or do not (false) expose a credential"),
+    source_type: Optional[str] = Query(None, max_length=64, description="Only paths whose entrypoint node has this entity type"),
 ) -> dict:
     """Return the global attack-path queue independent of node pagination.
 
     `/v1/graph` intentionally windows nodes and therefore cannot be the source
-    of truth for fix-first triage. This endpoint ranks persisted paths across
-    the whole snapshot and hydrates only the hop nodes needed to render the
-    selected queue page.
+    of truth for fix-first triage. This endpoint ranks paths across the whole
+    snapshot by on-path exploitability evidence, then stored composite risk
+    (see ``graph.attack_path_queue_rank``), and hydrates only the hop nodes
+    needed to render the selected queue page.
     """
+    from agent_bom.api.attack_path_queue import AttackPathFilters, ranked_persisted_path_page
+
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
-    effective_scan_id, created_at, paths, total = await _graph_store_call(
-        graph_store.attack_paths,
-        scan_id=scan_id or "",
-        tenant_id=tenant,
-        offset=offset,
-        limit=limit,
-    )
-    materialized_paths = total
-    derived_paths = 0
-    path_source = "persisted_graph_paths"
-    if total == 0:
-        graph = await _load_graph_for_investigation(
-            graph_store,
-            scan_id=effective_scan_id,
-            tenant_id=tenant,
-        )
-        effective_scan_id, created_at, paths, total = await _graph_compute_call(
-            _derived_attack_path_page,
-            graph,
-            offset=offset,
-            limit=limit,
-        )
-        derived_paths = total
-        path_source = "derived_graph_paths"
-    hop_ids = {hop for path in paths for hop in path.hops}
+    filters = AttackPathFilters(min_severity=min_severity, has_credential=has_credential, source_type=source_type)
+    page_args = {"offset": offset, "limit": limit, "filters": filters}
+    ranked = await _graph_store_call(ranked_persisted_path_page, graph_store, scan_id=scan_id or "", tenant_id=tenant, **page_args)
+    materialized_paths, derived_paths, path_source = ranked.snapshot_total, 0, "persisted_graph_paths"
+    if ranked.snapshot_total == 0:
+        graph = await _load_graph_for_investigation(graph_store, scan_id=ranked.scan_id, tenant_id=tenant)
+        ranked = await _graph_compute_call(_derived_attack_path_page, graph, **page_args)
+        derived_paths, path_source = ranked.snapshot_total, "derived_graph_paths"
+    effective_scan_id = ranked.scan_id
+    hop_ids = {hop for path in ranked.paths for hop in path.hops}
     nodes = await _graph_store_call(
         graph_store.nodes_by_ids,
         scan_id=effective_scan_id,
@@ -2345,17 +2343,19 @@ async def get_graph_attack_paths(
         _serialize_attack_path_queue,
         scan_id=effective_scan_id,
         tenant=tenant,
-        created_at=created_at,
+        created_at=ranked.created_at,
         nodes=nodes,
         path_edges=path_edges,
-        paths=paths,
-        total=total,
+        paths=ranked.paths,
+        total=ranked.total,
         offset=offset,
         limit=limit,
         stats=stats,
         path_source=path_source,
         materialized_paths=materialized_paths,
         derived_paths=derived_paths,
+        ranked=ranked,
+        filters=filters.active(),
     )
 
 

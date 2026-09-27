@@ -195,6 +195,18 @@ components:
       additionalProperties: true
       description: Identified server entity with preserved observation membership.
       properties:
+        agent_binding:
+          default: unbound
+          enum:
+          - inventory_identity
+          - unbound
+          title: Agent Binding
+          type: string
+        agent_ids:
+          items:
+            type: string
+          title: Agent Ids
+          type: array
         agent_name:
           default: ''
           title: Agent Name
@@ -14919,12 +14931,13 @@ paths:
         \ the fleet agent to the ``QUARANTINED`` lifecycle state.\n2. Creates (or\
         \ re-enables) an ``enforce``-mode gateway policy bound to the\n   agent's\
         \ identity whose single rule denies every tool call\n   (``block_tools=[\"\
-        *\"]``).\n\nThe deny policy is scoped via ``bound_agents`` so only the quarantined\n\
-        agent's traffic is blocked at the proxy / gateway relay \u2014 other agents\
-        \ are\nunaffected. The operation is idempotent (a second call re-enables the\
-        \ same\npolicy rather than stacking duplicates) and both actions are audit-logged.\n\
-        Requires the ``policy_write`` permission because it mints a gateway\nenforcement\
-        \ policy."
+        *\"]``).\n\nThe deny policy binds the exact fleet ``agent_id`` through ``bound_agents``.\n\
+        The caller must authenticate as this ID; names and canonical aliases are\n\
+        never resolved for containment. Only the quarantined\nagent's traffic is blocked\
+        \ at the proxy / gateway relay \u2014 other agents are\nunaffected. The operation\
+        \ is idempotent (a second call re-enables the same\npolicy rather than stacking\
+        \ duplicates) and both actions are audit-logged.\nRequires the ``policy_write``\
+        \ permission because it mints a gateway\nenforcement policy."
       operationId: quarantine_fleet_agent_v1_fleet__agent_id__quarantine_post
       parameters:
       - in: path

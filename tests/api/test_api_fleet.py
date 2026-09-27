@@ -276,6 +276,7 @@ def test_sync_accepts_endpoint_push_payload():
             "agents": [
                 {
                     "name": "cursor",
+                    "canonical_id": "fixture-cursor-installation",
                     "agent_type": "cursor",
                     "trust_score": 82.5,
                     "trust_factors": {"registry": 20},
@@ -313,6 +314,7 @@ def test_sync_persists_endpoint_identity_metadata():
             "agents": [
                 {
                     "name": "cursor",
+                    "canonical_id": "fixture-cursor-installation",
                     "agent_type": "cursor",
                     "source_id": "device-acme-001",
                     "enrollment_name": "corp-laptop-rollout",
@@ -346,6 +348,7 @@ def test_sync_keeps_same_agent_name_separate_per_endpoint():
                 "agents": [
                     {
                         "name": "claude-desktop",
+                        "canonical_id": f"fixture-installation:{source_id}",
                         "agent_type": "claude_desktop",
                         "source_id": source_id,
                         "owner": owner,
@@ -372,6 +375,7 @@ def test_sync_endpoint_push_is_idempotent():
         "agents": [
             {
                 "name": "cursor",
+                "canonical_id": "fixture-cursor-installation",
                 "agent_type": "cursor",
                 "trust_score": 82.5,
                 "mcp_servers": [],
@@ -394,6 +398,7 @@ def test_sync_endpoint_rejects_idempotency_key_payload_mismatch():
         "agents": [
             {
                 "name": "cursor",
+                "canonical_id": "fixture-cursor-installation",
                 "agent_type": "cursor",
                 "trust_score": 82.5,
                 "mcp_servers": [],
@@ -426,6 +431,7 @@ def test_sync_endpoint_push_enforces_fleet_quota(monkeypatch):
             "agents": [
                 {
                     "name": "cursor",
+                    "canonical_id": "fixture-cursor-installation",
                     "agent_type": "cursor",
                     "trust_score": 82.5,
                     "mcp_servers": [],

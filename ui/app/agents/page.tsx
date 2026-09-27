@@ -580,14 +580,14 @@ function AgentDetailDrawer({
       footer={
         <div className="flex flex-wrap gap-2">
           <Link
-            href={`/agents?name=${encodeURIComponent(agent.name)}`}
+            href={`/agents?name=${encodeURIComponent(agent.canonical_id || agent.stable_id || agent.name)}`}
             className="agents-primary-action"
           >
             <ArrowRight className="h-3.5 w-3.5" />
             Full detail
           </Link>
           <Link
-            href={`/agents?name=${encodeURIComponent(agent.name)}&view=lifecycle`}
+            href={`/agents?name=${encodeURIComponent(agent.canonical_id || agent.stable_id || agent.name)}&view=lifecycle`}
             className="agents-toolbar-action"
           >
             <GitBranch className="h-3.5 w-3.5" />
@@ -824,8 +824,8 @@ function AgentDetail({ agentName }: { agentName: string }) {
     unrated: summary.severity_breakdown.unrated ?? 0,
   };
   // The strip must reconcile with the Vulnerabilities tile beside it: anything
-  // the API could not band still has to be visible, and "Clean" may only show
-  // when there is genuinely nothing to report.
+  // the API could not band still has to be visible. Zero attributed findings
+  // does not establish complete assessment or a clean agent.
   const sevTotal = sev.critical + sev.high + sev.medium + sev.low + sev.unrated;
 
   const toggleServer = (name: string) => {
@@ -904,7 +904,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
         <div className="agents-inventory-panel">
           <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first view</p>
           <p className="mt-1 text-sm leading-6 text-[color:var(--text-secondary)]">
-            This detail page is valuable before runtime proxy rollout. It shows the granted MCP surface area for
+            This detail page is valuable before runtime proxy rollout. It shows the configured MCP surface area for
             <span className="mx-1 font-semibold text-[color:var(--foreground)]">{agent.name}</span>
             using discovery and scan data alone: server transport, exposed tools, env-backed credentials, and attached package risk.
           </p>
@@ -929,7 +929,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                 </span>
               )}
               {sevTotal === 0 && summary.total_vulnerabilities === 0 && (
-                <span className="text-emerald-400 font-medium">Clean</span>
+                <span className="text-[color:var(--text-secondary)]" title="Only identity-linked findings are counted; assessment coverage may be incomplete">No attributed findings</span>
               )}
               {sevTotal === 0 && summary.total_vulnerabilities > 0 && (
                 <span className="text-[color:var(--text-secondary)]">Unrated</span>

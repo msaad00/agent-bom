@@ -45,9 +45,9 @@ class _SlowFleetStore(InMemoryFleetStore):
         time.sleep(STORE_LATENCY)
         return super().list_by_tenant(tenant_id)
 
-    def find_by_identifier(self, tenant_id: str, identifier: str):
+    def get(self, agent_id: str, *, tenant_id: str):
         time.sleep(STORE_LATENCY)
-        return super().find_by_identifier(tenant_id, identifier)
+        return super().get(agent_id, tenant_id=tenant_id)
 
 
 def _slow_identity_store():

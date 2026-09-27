@@ -962,6 +962,7 @@ def _blast_radius_json_entry(
         "scorecard_repo": br.package.scorecard_repo,
         "scorecard_lookup_state": br.package.scorecard_lookup_state,
         "affected_agents": [a.name for a in br.affected_agents],
+        "affected_agent_ids": [a.canonical_id for a in br.affected_agents],
         "affected_servers": [s.name for s in br.affected_servers],
         "exposed_credentials": br.exposed_credentials,
         "exposed_tools": [t.name for t in br.exposed_tools],

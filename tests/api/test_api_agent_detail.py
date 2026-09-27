@@ -7,7 +7,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
-from agent_bom.api.mcp_observation_store import InMemoryMCPObservationStore, MCPObservation
+from agent_bom.api.mcp_observation_store import InMemoryMCPObservationStore, MCPObservation, agent_observation_id
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
@@ -46,6 +46,7 @@ def _mock_fleet_store() -> InMemoryFleetStore:
     store.put(
         FleetAgent(
             agent_id="fleet-1",
+            canonical_id=_mock_agents()[0].canonical_id,
             name="test-agent",
             agent_type="claude_desktop",
             config_path="/tmp/test-config.json",
@@ -77,9 +78,11 @@ def _mock_job_store() -> InMemoryJobStore:
         "agents": [
             {
                 "name": "test-agent",
+                "canonical_id": _mock_agents()[0].canonical_id,
                 "servers": [
                     {
                         "name": "test-server",
+                        "canonical_id": _mock_agents()[0].mcp_servers[0].canonical_id,
                         "url": "https://mcp.example.internal/sse",
                         "transport": "sse",
                     }
@@ -96,8 +99,10 @@ def _mock_observation_store() -> InMemoryMCPObservationStore:
     store.put(
         MCPObservation(
             tenant_id="default",
-            observation_id="test-agent:test-server:npx",
-            server_stable_id="test-server:npx",
+            observation_id=agent_observation_id("fleet-1", _mock_agents()[0].mcp_servers[0].canonical_id),
+            agent_id="fleet-1",
+            agent_canonical_id=_mock_agents()[0].canonical_id,
+            server_stable_id=_mock_agents()[0].mcp_servers[0].canonical_id,
             server_fingerprint="fp-1",
             server_name="test-server",
             agent_name="test-agent",

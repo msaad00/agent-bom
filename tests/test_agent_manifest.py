@@ -81,6 +81,7 @@ def test_agent_bom_manifest_api_is_tenant_scoped_and_redacted() -> None:
             server_stable_id="srv-1",
             server_name="filesystem",
             agent_name="prod-agent",
+            agent_id="agent-1",
             transport="stdio",
             command="npx",
             args=["-y", "server", "--token", "sk-hidden"],

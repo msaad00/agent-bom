@@ -1318,6 +1318,8 @@ class AgentBomManifestServerResponse(BaseModel):
     canonical_id: str
     agent_name: str = ""
     agent_names: list[str] = Field(default_factory=list)
+    agent_ids: list[str] = Field(default_factory=list)
+    agent_binding: Literal["inventory_identity", "unbound"] = "unbound"
     server_stable_id: str = ""
     identity_basis: Literal["server_identity", "observation"] = "observation"
     observation_ids: list[str] = Field(default_factory=list)

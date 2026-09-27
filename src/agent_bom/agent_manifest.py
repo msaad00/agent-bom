@@ -159,6 +159,9 @@ def _observed_server(observation: MCPObservation) -> dict[str, object]:
         "fingerprint": observation.server_fingerprint,
         "name": sanitize_text(observation.server_name, max_len=160),
         "agent_name": sanitize_text(observation.agent_name, max_len=160),
+        "agent_id": observation.agent_id,
+        "agent_canonical_id": observation.agent_canonical_id,
+        "agent_binding": "inventory_identity" if observation.agent_id or observation.agent_canonical_id else "unbound",
         "transport": sanitize_text(observation.transport, max_len=80),
         "url": observation.url,
         "command": observation.command,
@@ -359,12 +362,10 @@ def _graph(agents: list[dict[str, object]], servers: list[dict[str, object]]) ->
                 provenance="agent_manifest",
             )
 
-    agents_by_name: dict[str, set[str]] = {}
     agents_by_server: dict[str, set[str]] = {}
+    known_agent_ids = {str(agent["id"]) for agent in agents if agent.get("id")}
     for agent in agents:
         agent_id = str(agent.get("id") or agent.get("canonical_id") or agent.get("name"))
-        if name := agent.get("name"):
-            agents_by_name.setdefault(str(name), set()).add(agent_id)
         server_ids = agent.get("mcp_server_ids")
         if isinstance(server_ids, list):
             for server_id in server_ids:
@@ -382,19 +383,8 @@ def _graph(agents: list[dict[str, object]], servers: list[dict[str, object]]) ->
             auth_mode=server.get("auth_mode"),
         )
 
-        agent_names = _string_list(server.get("agent_names"))
-        if not agent_names and server.get("agent_name"):
-            agent_names = [str(server["agent_name"])]
-        linked_agent_ids = agents_by_server.get(server_id, set())
-        # Explicit membership is authoritative. Legacy observation names are
-        # only a fallback when they identify one agent in this tenant; repeated
-        # names across environments must not invent a traversal edge.
-        if not linked_agent_ids and server.get("identity_basis") != "observation":
-            linked_agent_ids = set()
-            for agent_name in agent_names:
-                candidates = agents_by_name.get(agent_name, set())
-                if len(candidates) == 1:
-                    linked_agent_ids.update(candidates)
+        linked_agent_ids = set(agents_by_server.get(server_id, set()))
+        linked_agent_ids.update(set(_string_list(server.get("agent_ids"))) & known_agent_ids)
         for agent_id in sorted(linked_agent_ids):
             edges[f"{agent_id}:uses:{server_id}"] = _edge(f"{agent_id}:uses:{server_id}", agent_id, server_id, "uses")
 
@@ -604,8 +594,27 @@ def build_control_plane_agent_manifest(
     *,
     tenant_id: str,
 ) -> dict[str, object]:
-    agent_rows = sorted((_fleet_agent(agent) for agent in fleet_agents), key=lambda row: (str(row["name"]).casefold(), str(row["id"])))
-    server_rows = _observed_server_entities(observations)
+    fleet = [agent for agent in fleet_agents if agent.tenant_id == tenant_id]
+    agent_rows = sorted((_fleet_agent(agent) for agent in fleet), key=lambda row: (str(row["name"]).casefold(), str(row["id"])))
+    by_id = {agent.agent_id: agent for agent in fleet}
+    by_canonical: dict[str, list[FleetAgent]] = {}
+    for agent in fleet:
+        if agent.canonical_id:
+            by_canonical.setdefault(agent.canonical_id, []).append(agent)
+    server_rows = _observed_server_entities(obs for obs in observations if obs.tenant_id == tenant_id)
+    for server in server_rows:
+        bound_ids: set[str] = set()
+        receipts = server.get("observations", [])
+        for observation in receipts if isinstance(receipts, list) else []:
+            agent_id = str(observation.get("agent_id") or "")
+            canonical_id = str(observation.get("agent_canonical_id") or "")
+            candidates = [by_id[agent_id]] if agent_id in by_id else []
+            if not agent_id and canonical_id:
+                candidates = by_canonical.get(canonical_id, [])
+            if len(candidates) == 1 and (not canonical_id or candidates[0].canonical_id == canonical_id):
+                bound_ids.add(candidates[0].agent_id)
+        server["agent_ids"] = sorted(bound_ids)
+        server["agent_binding"] = "inventory_identity" if bound_ids else "unbound"
     return _manifest("control-plane", agent_rows, server_rows, tenant_id)
 
 

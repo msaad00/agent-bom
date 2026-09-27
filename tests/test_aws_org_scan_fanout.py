@@ -414,8 +414,8 @@ def test_scan_enrichment_routes_to_fanout_when_gate_on(monkeypatch) -> None:
 
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
     monkeypatch.setattr(aws_orgs, "org_fanout_enabled", lambda: True)
-    monkeypatch.setattr(aws_inv, "discover_all_account_inventories", lambda: [_inv("111111111111"), _inv("222222222222")])
-    monkeypatch.setattr(aws_inv, "discover_inventory", lambda: pytest.fail("single-account path must not run when org gate is on"))
+    monkeypatch.setattr(aws_inv, "discover_all_account_inventories", lambda **_k: [_inv("111111111111"), _inv("222222222222")])
+    monkeypatch.setattr(aws_inv, "discover_inventory", lambda **_k: pytest.fail("single-account path must not run when org gate is on"))
     # Disable the other providers so only AWS contributes.
     monkeypatch.setattr("agent_bom.cloud.azure_inventory.inventory_enabled", lambda: False)
     monkeypatch.setattr("agent_bom.cloud.gcp_inventory.inventory_enabled", lambda: False)
@@ -429,11 +429,11 @@ def test_scan_enrichment_single_account_when_gate_off(monkeypatch) -> None:
 
     monkeypatch.setattr(aws_inv, "inventory_enabled", lambda: True)
     monkeypatch.setattr(aws_orgs, "org_fanout_enabled", lambda: False)
-    monkeypatch.setattr(aws_inv, "discover_inventory", lambda: _inv("solo"))
+    monkeypatch.setattr(aws_inv, "discover_inventory", lambda **_k: _inv("solo"))
     monkeypatch.setattr(
         aws_inv,
         "discover_all_account_inventories",
-        lambda: pytest.fail("fan-out must not run when org gate is off"),
+        lambda **_k: pytest.fail("fan-out must not run when org gate is off"),
     )
     monkeypatch.setattr("agent_bom.cloud.azure_inventory.inventory_enabled", lambda: False)
     monkeypatch.setattr("agent_bom.cloud.gcp_inventory.inventory_enabled", lambda: False)
@@ -451,7 +451,7 @@ def test_enrich_report_attaches_account_scan_summary(monkeypatch) -> None:
     monkeypatch.setattr(
         aws_inv,
         "discover_all_account_inventories",
-        lambda: [_inv("111111111111"), _inv("222222222222", status="access_denied")],
+        lambda **_k: [_inv("111111111111"), _inv("222222222222", status="access_denied")],
     )
     monkeypatch.setattr(
         aws_orgs,

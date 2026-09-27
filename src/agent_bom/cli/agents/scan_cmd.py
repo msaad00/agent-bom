@@ -266,6 +266,113 @@ def _reproducible_generated_at(enabled: bool):
         raise click.ClickException("SOURCE_DATE_EPOCH must be an integer Unix timestamp.") from exc
 
 
+_SCAN_ID_NAMESPACE = "7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7"
+
+
+def _cloud_scan_scope(
+    *,
+    providers: list[str],
+    aws_region: str | None,
+    aws_profile: str | None,
+    azure_subscription: str | None,
+    gcp_project: str | None,
+) -> dict[str, dict[str, str]]:
+    """Return the requested cloud boundary for each provider this scan touched.
+
+    Explicit CLI values win; otherwise the same environment fallbacks the
+    collectors use are recorded, so two scans of different accounts never share
+    an identity.
+    """
+    import os
+
+    candidates: dict[str, dict[str, str]] = {
+        "aws": {
+            "region": aws_region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "",
+            "profile": aws_profile or os.environ.get("AWS_PROFILE") or "",
+        },
+        "azure": {"subscription": azure_subscription or os.environ.get("AZURE_SUBSCRIPTION_ID") or ""},
+        "gcp": {"project": gcp_project or os.environ.get("GOOGLE_CLOUD_PROJECT") or ""},
+    }
+    scope: dict[str, dict[str, str]] = {}
+    for provider in sorted(set(providers)):
+        fields = {key: value for key, value in candidates.get(provider, {}).items() if value}
+        scope[provider] = dict(sorted(fields.items()))
+    return scope
+
+
+def _compute_scan_id(
+    *,
+    pkg_fingerprints: list[str],
+    endpoint_fingerprint: str,
+    cloud_scope: dict[str, dict[str, str]],
+    reproducible: bool,
+) -> str:
+    """Derive the scan identity.
+
+    Reproducible runs hash only the inputs (packages, endpoint inventory, cloud
+    boundary) so identical inputs yield an identical id. Every other run adds a
+    random nonce: a scan id keys the persisted graph snapshot, so two ordinary
+    runs must never collide — a cloud-only scan has no packages and would
+    otherwise share one id with every other cloud-only scan.
+    """
+    import uuid as _uuid
+
+    parts = [
+        "|".join(sorted(pkg_fingerprints)) or "empty",
+        endpoint_fingerprint,
+        json.dumps(cloud_scope, sort_keys=True, separators=(",", ":")),
+    ]
+    if not reproducible:
+        parts.append(_uuid.uuid4().hex)
+    return str(_uuid.uuid5(_uuid.UUID(_SCAN_ID_NAMESPACE), "scan:" + "|".join(parts)))
+
+
+_CLOUD_BENCHMARK_REPORTS = (
+    ("aws", "cis_benchmark_report"),
+    ("azure", "azure_cis_benchmark_report"),
+    ("gcp", "gcp_cis_benchmark_report"),
+    ("snowflake", "sf_cis_benchmark_report"),
+)
+
+
+def _benchmark_scan_issues(ctx: Any) -> list:
+    """Project errored CIS checks and benchmark warnings onto scan-run issues.
+
+    A benchmark that could not evaluate some controls produced incomplete
+    evidence; the scan outcome must say ``partial`` and name why, rather than
+    reporting ``complete`` beside errored checks.
+    """
+    from agent_bom.evidence.scan_run import ScanIssue
+
+    issues: list = []
+    for provider, attr in _CLOUD_BENCHMARK_REPORTS:
+        report = getattr(ctx, attr, None)
+        if report is None:
+            continue
+        errored = int(getattr(report, "errored", 0) or 0)
+        if errored:
+            issues.append(
+                ScanIssue(
+                    code="benchmark_checks_errored",
+                    stage="cis_benchmark",
+                    source=provider,
+                    message=f"{errored} CIS check(s) could not be evaluated; see the benchmark evidence for each.",
+                    affects_coverage=True,
+                )
+            )
+        for warning in list(getattr(report, "warnings", []) or [])[:20]:
+            issues.append(
+                ScanIssue(
+                    code="benchmark_warning",
+                    stage="cis_benchmark",
+                    source=provider,
+                    message=str(warning),
+                    affects_coverage=True,
+                )
+            )
+    return issues
+
+
 @click.command(cls=TieredCommand)
 @click.argument(
     "path",
@@ -1977,20 +2084,37 @@ def scan(
         if "endpoint_inventory" not in _scan_sources:
             _scan_sources.append("endpoint_inventory")
 
-    # Generate deterministic scan ID from content fingerprint (same inputs → same ID)
-    import uuid as _uuid
-
-    _scan_ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-    _pkg_fingerprints = sorted(f"{p.ecosystem}:{p.name}@{p.version}" for a in agents for s in a.mcp_servers for p in s.packages)
+    _generated_at = _reproducible_generated_at(reproducible)
+    _pkg_fingerprints = [f"{p.ecosystem}:{p.name}@{p.version}" for a in agents for s in a.mcp_servers for p in s.packages]
     _endpoint_fingerprint = (
         json.dumps(_endpoint_inventory_data, sort_keys=True, separators=(",", ":"), default=str)
         if _endpoint_inventory_data is not None
         else ""
     )
-    _scan_fingerprint = "|".join(["|".join(_pkg_fingerprints) or "empty", _endpoint_fingerprint])
-    _scan_id = str(_uuid.uuid5(_scan_ns, f"scan:{_scan_fingerprint}"))
-
-    _generated_at = _reproducible_generated_at(reproducible)
+    _scope_providers = [
+        str(record.get("provider") or "cloud")
+        for record in [*ctx.cloud_provider_successes, *ctx.cloud_provider_warnings, *ctx.cloud_provider_failures]
+    ]
+    for _requested, _provider_name in (
+        (aws or aws_cis_benchmark, "aws"),
+        (azure_flag or azure_cis_benchmark, "azure"),
+        (gcp_flag or gcp_cis_benchmark, "gcp"),
+    ):
+        if _requested:
+            _scope_providers.append(_provider_name)
+    _cloud_scope = _cloud_scan_scope(
+        providers=_scope_providers,
+        aws_region=aws_region,
+        aws_profile=aws_profile,
+        azure_subscription=azure_subscription,
+        gcp_project=gcp_project,
+    )
+    _scan_id = _compute_scan_id(
+        pkg_fingerprints=_pkg_fingerprints,
+        endpoint_fingerprint=_endpoint_fingerprint,
+        cloud_scope=_cloud_scope,
+        reproducible=_generated_at is not None,
+    )
     _report_kwargs = {"generated_at": _generated_at} if _generated_at is not None else {}
     if _generated_at is not None:
         # Reproducible/attestable output: entity discovery timestamps are
@@ -2035,6 +2159,7 @@ def scan(
         )
         for _failure in ctx.cloud_provider_failures
     )
+    _scan_issues.extend(_benchmark_scan_issues(ctx))
     _scan_outcome = (
         ScanOutcome.FAILED if ctx.cloud_provider_failures and not ctx.cloud_provider_successes and not agents else ScanOutcome.COMPLETE
     )
@@ -2210,7 +2335,13 @@ def scan(
     # *_DISCOVERY flags are set. The graph builder consumes the attached blocks.
     from agent_bom.scan_enrichment import enrich_report_with_estate_discovery
 
-    enrich_report_with_estate_discovery(report)
+    enrich_report_with_estate_discovery(
+        report,
+        aws_region=aws_region,
+        aws_profile=aws_profile,
+        azure_subscription=azure_subscription,
+        gcp_project=gcp_project,
+    )
 
     # Attach introspection / health check results so they're in JSON/BOM exports
     if _intro_report is not None:

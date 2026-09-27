@@ -305,7 +305,10 @@ def output_options(fn):
                 "--reproducible",
                 is_flag=True,
                 default=False,
-                help="Use a stable generated_at timestamp for reproducible artifacts. SOURCE_DATE_EPOCH overrides the timestamp.",
+                help=(
+                    "Use a stable generated_at timestamp and an input-derived scan_id for reproducible artifacts "
+                    "(otherwise every run gets a unique scan_id). SOURCE_DATE_EPOCH overrides the timestamp."
+                ),
             ),
             click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results (for scripting)"),
             click.option(

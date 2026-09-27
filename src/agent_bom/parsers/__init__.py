@@ -14,7 +14,7 @@ from urllib.parse import quote
 from rich.console import Console
 
 from agent_bom.extensions import ExtensionCapabilities, iter_entry_point_registrations
-from agent_bom.models import MCPServer, Package
+from agent_bom.models import MCPServer, Package, ServerSurface
 from agent_bom.parsers.base import InventoryParserRegistration
 from agent_bom.parsers.beam_parsers import parse_hex_packages, parse_pub_packages  # noqa: F401
 
@@ -540,6 +540,12 @@ def extract_packages(
         smithery_token: Optional Smithery API key for live registry fallback
         mcp_registry: If True, query the Official MCP Registry as a fallback
     """
+    # An SBOM is an explicit inventory, including when it contains no packages.
+    # Its path identifies the document, not a directory to expand via manifests
+    # or registries. Preserve package versions and occurrence evidence verbatim.
+    if server.surface == ServerSurface.SBOM:
+        return list(server.packages)
+
     packages = []
 
     # Try direct command extraction first

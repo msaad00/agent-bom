@@ -43,6 +43,8 @@ class NormalizedSarifResult:
     location: SarifLocation | None = None
     fingerprints: dict[str, str] = field(default_factory=dict)
     partial_fingerprints: dict[str, str] = field(default_factory=dict)
+    result_properties: dict[str, Any] = field(default_factory=dict)
+    logical_locations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -149,6 +151,24 @@ def _location(result: dict[str, Any]) -> SarifLocation | None:
     )
 
 
+def _logical_locations(result: dict[str, Any]) -> tuple[str, ...]:
+    names: list[str] = []
+    raw_locations = result.get("locations")
+    if not isinstance(raw_locations, list):
+        return ()
+    for location in raw_locations:
+        if not isinstance(location, dict):
+            continue
+        for logical in location.get("logicalLocations") or []:
+            if not isinstance(logical, dict):
+                continue
+            for key in ("fullyQualifiedName", "name"):
+                value = logical.get(key)
+                if isinstance(value, str) and value and value not in names:
+                    names.append(value)
+    return tuple(names)
+
+
 def _description(rule: dict[str, Any], name: str) -> str:
     value = rule.get(name)
     return _text(value) if value is not None else ""
@@ -229,6 +249,8 @@ def normalize_sarif_document(payload: object) -> NormalizedSarifDocument:
                     location=location,
                     fingerprints=_string_map(result.get("fingerprints"), "result.fingerprints"),
                     partial_fingerprints=_string_map(result.get("partialFingerprints"), "result.partialFingerprints"),
+                    result_properties=_properties(result.get("properties"), "result.properties"),
+                    logical_locations=_logical_locations(result),
                 )
             )
 

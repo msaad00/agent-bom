@@ -1064,9 +1064,29 @@ def scan(
                 "provided, so there is nothing to scan."
             )
 
-    _explicit_target_scan = bool(inventory or sbom_file or images or image_tars or filesystem_paths or k8s or external_scan_path)
+    # An imported external report adds evidence to the project scan; it never
+    # replaces the project's own auto-detected surfaces.
+    _explicit_target_flags = {
+        "--inventory": inventory,
+        "--sbom": sbom_file,
+        "--image": images,
+        "--image-tar": image_tars,
+        "--filesystem": filesystem_paths,
+        "--k8s": k8s,
+    }
+    _explicit_targets = [flag for flag, value in _explicit_target_flags.items() if value]
+    # --demo/--self-scan synthesize their own project + inventory pair; only a
+    # user-supplied project combined with an explicit target deserves a notice.
+    if project and not skill_only and _explicit_targets and not (demo or self_scan):
+        _skip_notice = (
+            f"Project surface auto-detection (IaC, code, notebooks, prompts, workflows) was skipped for {project} "
+            f"because an explicit target was given ({', '.join(_explicit_targets)}); pass --iac/--code/--tf-dir to include them."
+        )
+        ctx.scan_notices.append({"code": "project_auto_detect_skipped", "source": "project", "message": _skip_notice})
+        if not quiet:
+            con.print(f"[yellow]![/yellow] {_skip_notice}")
     # Named project expansion is bounded to the requested root, not ambient discovery.
-    if project and not skill_only and not _explicit_target_scan:
+    if project and not skill_only and not _explicit_targets:
         from agent_bom.repo_auto_detect import expand_project_scan_targets
 
         auto_targets = expand_project_scan_targets(
@@ -1286,6 +1306,11 @@ def scan(
                         con.print(f"    [yellow]⚠ {server.name}: blocked — {warnings}[/yellow]")
                     continue
                 pre_populated = list(server.packages)
+                if server.command == "external-scan":
+                    # An imported report is its own inventory; its path argument
+                    # is not a server directory whose manifests should be parsed.
+                    total_packages += len(server.packages)
+                    continue
                 if (self_scan or demo) and pre_populated:
                     server.packages = pre_populated
                     total_packages += len(server.packages)
@@ -1495,6 +1520,17 @@ def scan(
             status = "[green]PASS[/green]" if enforce_result.passed else "[red]FAIL[/red]"
             con.print(f"\n  Enforcement: {status} ({enforce_result.critical_count} critical, {enforce_result.high_count} high)")
             ctx.enforcement_data = _enforcement_data
+
+        if external_scan_path:
+            # After extraction so native packages exist to fold external evidence onto.
+            from agent_bom.external_import import fold_external_packages
+
+            _pkg_count_before_fold = sum(len(s.packages) for a in agents for s in a.mcp_servers)
+            for _notice in fold_external_packages(agents, findings=ctx.external_findings):
+                ctx.scan_notices.append({"code": "external_package_unresolved", "source": "external-scan", "message": _notice})
+                if not quiet:
+                    con.print(f"  [yellow]![/yellow] {_notice}")
+            total_packages -= _pkg_count_before_fold - sum(len(s.packages) for a in agents for s in a.mcp_servers)
 
         # Step 3: Resolve unknown versions (skip in offline mode AND --no-scan)
         all_packages = [p for a in agents for s in a.mcp_servers for p in s.packages]
@@ -2049,6 +2085,16 @@ def scan(
         )
         for _failure in ctx.cloud_provider_failures
     )
+    _scan_issues.extend(
+        ScanIssue(
+            code=str(_notice.get("code") or "discovery_notice"),
+            stage="discovery",
+            source=str(_notice.get("source") or "discovery"),
+            message=str(_notice.get("message") or ""),
+            affects_coverage=False,
+        )
+        for _notice in ctx.scan_notices
+    )
     _scan_outcome = (
         ScanOutcome.FAILED if ctx.cloud_provider_failures and not ctx.cloud_provider_successes and not agents else ScanOutcome.COMPLETE
     )
@@ -2177,6 +2223,9 @@ def scan(
         from agent_bom.parsers.prompt_scanner import prompt_scan_data_to_findings
 
         report.findings.extend(prompt_scan_data_to_findings(ctx.prompt_scan_data))
+    if ctx.external_findings:
+        _known_ids = {f.id for f in report.findings}
+        report.findings.extend(f for f in ctx.external_findings if f.id not in _known_ids)
     if ctx.enforcement_data:
         report.enforcement_data = ctx.enforcement_data
     if ctx.sast_data:

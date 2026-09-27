@@ -266,6 +266,39 @@ def test_api_pipeline_ingests_external_scan(monkeypatch, tmp_path):
     assert "requests" in pkg_names
 
 
+def test_api_pipeline_external_sarif_keeps_sast_type_and_never_invents_packages(monkeypatch, tmp_path):
+    from tests.test_external_scanners import SARIF_MIXED
+
+    class _DummyStore:
+        def put(self, job: ScanJob) -> None:
+            pass
+
+    # A manifest beside the report must not be re-parsed as external inventory.
+    (tmp_path / "requirements.txt").write_text("django==1.0\n", encoding="utf-8")
+    external_path = tmp_path / "scan.sarif"
+    external_path.write_text(json.dumps(SARIF_MIXED), encoding="utf-8")
+    job = ScanJob(
+        job_id="external-sarif-parity",
+        created_at="2026-07-06T00:00:00Z",
+        request=ScanRequest(external_scan=str(external_path), enrich=False, no_scan=True),
+    )
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: _DummyStore())
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    ext_agent = next(agent for agent in job.result["agents"] if agent["name"].startswith("external-scan:"))
+    coords = {(pkg["name"], pkg["version"]) for server in ext_agent["mcp_servers"] for pkg in server.get("packages", [])}
+    assert coords == {("requests", "2.25.0"), ("pyyaml", "5.3")}
+    findings = job.result["findings"]
+    sast = [f for f in findings if f["finding_type"] == "SAST"]
+    assert [(f["source"], f["sources"], f["cve_id"]) for f in sast] == [("EXTERNAL", ["external:CodeScanner"], None)]
+    unresolved = sorted(f["cve_id"] for f in findings if f["evidence"].get("package_resolution") == "unresolved")
+    assert unresolved == ["GHSA-j8r2-6x86-q33q", "PYSEC-2099-1"]
+
+
 def test_api_pipeline_applies_vex_and_rebuilds_findings(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
     monkeypatch.setenv("AGENT_BOM_API_HOST_DISCOVERY_TENANT", "default")

@@ -946,14 +946,16 @@ def to_sarif(
 
     # Unified non-CVE findings, including MCP intelligence/blocklist matches.
     for finding in apply_workload_runtime_evidence_for_export(list(report.to_findings())):
-        if finding.finding_type == FindingType.CVE:
+        evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
+        # Package CVEs are emitted by the blast-radius loop above; an imported
+        # advisory with no resolvable package has no blast radius, so it flows here.
+        if finding.finding_type == FindingType.CVE and evidence.get("package_resolution") != "unresolved":
             continue
         # Cloud CIS benchmark failures for the dedicated-loop providers are
         # emitted once below with richer per-check rule IDs + structured
         # remediation. Skip them here so a failed check is not double-counted in
         # the GitHub Security tab. databricks CIS + snowflake governance have no
         # dedicated loop, so they still flow through this unified path.
-        evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
         if (
             finding.finding_type == FindingType.CIS_FAIL
             and evidence.get("benchmark") == "CIS"

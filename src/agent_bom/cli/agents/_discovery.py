@@ -291,31 +291,22 @@ def run_local_discovery(
     if not skill_only and external_scan_path:
         import json as _json
 
-        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
-        from agent_bom.parsers.external_scanners import detect_and_parse
+        from agent_bom.external_import import build_external_agent
+        from agent_bom.parsers.external_scanners import ingest_external_report
 
         try:
             with open(external_scan_path) as _ext_f:
                 _ext_data = _json.load(_ext_f)
-            _ext_packages = detect_and_parse(_ext_data)
-            _ext_resource_name = Path(external_scan_path).stem
-            con.print(f"\n  [green]✓[/green] Ingested {len(_ext_packages)} packages from external scan report\n")
-            _ext_server = MCPServer(
-                name=_ext_resource_name,
-                command="external-scan",
-                args=[external_scan_path],
-                transport=TransportType.STDIO,
-                packages=_ext_packages,
-                surface=ServerSurface.EXTERNAL_SCAN,
+            _ext_import = ingest_external_report(_ext_data)
+            con.print(
+                f"\n  [green]✓[/green] Ingested external {_ext_import.format} report: "
+                f"{len(_ext_import.packages)} package(s), {len(_ext_import.findings)} code/unresolved finding(s)\n"
             )
-            _ext_agent = Agent(
-                name=f"external-scan:{_ext_resource_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=external_scan_path,
-                source="external-scan",
-                mcp_servers=[_ext_server],
-            )
-            ctx.agents.append(_ext_agent)
+            for _notice in _ext_import.notices:
+                con.print(f"  [yellow]![/yellow] {_notice}")
+                ctx.scan_notices.append({"code": "external_scan_routed", "source": "external-scan", "message": _notice})
+            ctx.agents.append(build_external_agent(_ext_import, external_scan_path))
+            ctx.external_findings.extend(_ext_import.findings)
         except (FileNotFoundError, ValueError, _json.JSONDecodeError) as e:
             con.print(f"\n  [red]External scan error: {e}[/red]")
             sys.exit(1)

@@ -1009,6 +1009,45 @@ def deduplicate_packages(packages: list) -> list:
     return result
 
 
+def _is_external_only(vuln: Vulnerability) -> bool:
+    sources = list(vuln.advisory_sources or [])
+    return bool(sources) and all(str(source).startswith("external") for source in sources)
+
+
+def merge_scanner_vulnerabilities(pkg: Package, new_vulns: list[Vulnerability]) -> list[Vulnerability]:
+    """Merge advisory-database records into ``pkg`` and return the new ones.
+
+    A record already present stays (no duplicate). When the present record came
+    only from an imported external report, the advisory-database record replaces
+    it — it carries the richer CVSS/fix/alias data — and inherits the external
+    provenance labels so the finding still shows both producers.
+    """
+    from agent_bom.advisory_sources import merge_advisory_sources
+
+    added: list[Vulnerability] = []
+    for vuln in new_vulns:
+        keys = {vuln.id, *vuln.aliases}
+        index = next((i for i, existing in enumerate(pkg.vulnerabilities) if existing.id == vuln.id), None)
+        if index is None:
+            index = next(
+                (
+                    i
+                    for i, existing in enumerate(pkg.vulnerabilities)
+                    if _is_external_only(existing) and keys & {existing.id, *existing.aliases}
+                ),
+                None,
+            )
+        if index is None:
+            pkg.vulnerabilities.append(vuln)
+            added.append(vuln)
+            continue
+        existing = pkg.vulnerabilities[index]
+        if _is_external_only(existing):
+            vuln.advisory_sources = merge_advisory_sources(*vuln.advisory_sources, *existing.advisory_sources)
+            pkg.vulnerabilities[index] = vuln
+    return added
+
+
 def merge_local_vulns(pkg: "Any", local_vulns: "list[Any]") -> "list[Vulnerability]":
     """Merge local-DB advisories into ``pkg``, collapsing alias clusters.
 
@@ -1045,6 +1084,17 @@ def merge_local_vulns(pkg: "Any", local_vulns: "list[Any]") -> "list[Vulnerabili
             added.append(candidate)
             for key in cluster_keys:
                 by_id[key] = candidate
+            continue
+
+        if _is_external_only(prior):
+            # An imported report saw it first; the advisory-database record is
+            # richer, so it takes over and keeps the external provenance label.
+            from agent_bom.advisory_sources import merge_advisory_sources
+
+            candidate.advisory_sources = merge_advisory_sources(*candidate.advisory_sources, *prior.advisory_sources)
+            pkg.vulnerabilities[next(i for i, v in enumerate(pkg.vulnerabilities) if v is prior)] = candidate
+            for key in {*cluster_keys, prior.id, *prior.aliases}:
+                by_id[str(key)] = candidate
             continue
 
         # Same underlying vulnerability: reconcile rather than drop.
@@ -1722,14 +1772,15 @@ async def scan_packages(
         vuln_data = results.get(key, [])
         if vuln_data:
             new_vulns = _scanners_patchable("build_vulnerabilities")(vuln_data, pkg)
-            # Merge: don't duplicate what the local DB already found
-            existing_ids = {v.id for v in pkg.vulnerabilities}
-            merged = [v for v in new_vulns if v.id not in existing_ids]
-            pkg.vulnerabilities.extend(merged)
+            # Merge: don't duplicate what the local DB (or an imported report) already found
+            merged = merge_scanner_vulnerabilities(pkg, new_vulns)
             total_vulns += len(merged)
-            # Tag each CVE with compliance framework codes (pre-enrichment)
-            for v in merged:
-                v.compliance_tags = _tag_vuln(v, pkg)
+            # Tag each CVE with compliance framework codes (pre-enrichment),
+            # including records that replaced an imported external one.
+            merged_ids = {id(v) for v in merged}
+            for v in pkg.vulnerabilities:
+                if id(v) in merged_ids or not v.compliance_tags:
+                    v.compliance_tags = _tag_vuln(v, pkg)
             # Flag packages with MAL- prefixed vulnerability IDs as malicious
             flag_malicious_from_vulns(pkg)
 

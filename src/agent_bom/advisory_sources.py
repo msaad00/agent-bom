@@ -17,7 +17,12 @@ def normalize_advisory_source(source: str | None) -> str | None:
     """Normalize advisory source names to stable public contract values."""
     if not source:
         return None
-    value = source.strip().lower().replace("-", "_")
+    stripped = source.strip()
+    if stripped.lower().startswith("external:"):
+        # Imported-report provenance keeps the producing tool's own name.
+        tool = stripped.split(":", 1)[1].strip()
+        return f"external:{tool}" if tool else "external"
+    value = stripped.lower().replace("-", "_")
     aliases = {
         "github": "ghsa",
         "github_advisory": "ghsa",

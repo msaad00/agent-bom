@@ -1,14 +1,18 @@
-"""Ingest Trivy, Grype, Syft, and SARIF reports into agent-bom models."""
+"""Ingest external scanner reports (SARIF, SBOM, scanner JSON) into agent-bom models."""
 
 from __future__ import annotations
 
 import logging
+import re
+from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from agent_bom.models import Package, Severity, Vulnerability, compute_confidence
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
+    from agent_bom.parsers.sarif import NormalizedSarifResult
 
 logger = logging.getLogger(__name__)
 
@@ -410,31 +414,379 @@ def parse_sarif_json(data: dict[str, Any]) -> list[Package]:
     return _sarif_hub_findings_to_packages(findings)
 
 
-def detect_and_parse(data: dict[str, Any]) -> list[Package]:
-    """Auto-detect the scanner JSON format and parse into Package objects.
+# ── Structured import (scan path) ─────────────────────────────────────────
 
-    Detection rules (checked in order):
-    - ``runs`` + SARIF ``version`` / ``$schema`` → SARIF (Semgrep, CodeQL, Bandit, …)
-    - ``Results`` key present → Trivy
-    - ``matches`` key present → Grype
-    - ``artifacts`` key present and ``schema`` key present → Syft
+SUPPORTED_FORMATS_HINT = "SARIF 2.x, CycloneDX JSON, SPDX JSON, Trivy JSON, Grype JSON, or Syft JSON"
+
+# Advisory identifiers that mark a SARIF result as a dependency (SCA) result
+# rather than a code-level rule hit.
+_ADVISORY_ID_RE = re.compile(
+    r"\b(CVE-\d{4}-\d{4,}|GHSA(?:-[0-9a-z]{4}){3}|PYSEC-\d{4}-\d+|RUSTSEC-\d{4}-\d{4}|GO-\d{4}-\d{4,}"
+    r"|OSV-\d{4}-\d+|GMS-\d{4}-\d+|MAL-\d{4}-\d+)\b",
+    re.IGNORECASE,
+)
+_PURL_RE = re.compile(r"pkg:[A-Za-z0-9.+-]+/[^\s\"'<>]+@[^\s\"'<>?#]+")
+_MESSAGE_PACKAGE_RE = re.compile(r"(?im)^\s*(?:package|package name|pkgname)\s*:\s*(\S+)\s*$")
+_MESSAGE_VERSION_RE = re.compile(r"(?im)^\s*(?:installed version|current version|version)\s*:\s*(\S+)\s*$")
+_MESSAGE_FIXED_RE = re.compile(r"(?im)^\s*fixed version\s*:\s*(\S+)\s*$")
+_NAME_AT_VERSION_RE = re.compile(r"^(@?[A-Za-z0-9][\w.\-/]*)@(v?\d[\w.\-+]*)$")
+_CWE_RE = re.compile(r"\bCWE-(\d+)\b", re.IGNORECASE)
+
+_PACKAGE_NAME_KEYS = ("packageName", "package_name", "pkgName", "package", "componentName", "dependency")
+_PACKAGE_VERSION_KEYS = ("packageVersion", "package_version", "installedVersion", "installed_version", "pkgVersion", "version")
+_PURL_KEYS = ("purl", "packageUrl", "package_url", "purls")
+_FIXED_VERSION_KEYS = ("fixedVersion", "fixed_version", "fixVersion")
+
+_MANIFEST_ECOSYSTEMS: dict[str, str] = {
+    "requirements.txt": "pypi",
+    "pyproject.toml": "pypi",
+    "poetry.lock": "pypi",
+    "pipfile": "pypi",
+    "pipfile.lock": "pypi",
+    "uv.lock": "pypi",
+    "setup.py": "pypi",
+    "setup.cfg": "pypi",
+    "package.json": "npm",
+    "package-lock.json": "npm",
+    "npm-shrinkwrap.json": "npm",
+    "yarn.lock": "npm",
+    "pnpm-lock.yaml": "npm",
+    "go.mod": "go",
+    "go.sum": "go",
+    "cargo.toml": "cargo",
+    "cargo.lock": "cargo",
+    "pom.xml": "maven",
+    "build.gradle": "maven",
+    "build.gradle.kts": "maven",
+    "gradle.lockfile": "maven",
+    "gemfile": "rubygems",
+    "gemfile.lock": "rubygems",
+    "composer.json": "composer",
+    "composer.lock": "composer",
+    "packages.lock.json": "nuget",
+}
+
+
+def external_source_label(tool_name: str | None) -> str:
+    """Return the provenance label for evidence produced by an external tool."""
+    from agent_bom.finding import EXTERNAL_SOURCE_PREFIX
+    from agent_bom.security import sanitize_text
+
+    tool = sanitize_text(tool_name or "", max_len=80).strip()
+    return f"{EXTERNAL_SOURCE_PREFIX}{tool}" if tool else "external"
+
+
+@dataclass
+class ExternalScanImport:
+    """Everything one external report contributes to a scan.
+
+    ``packages`` carry real package identities (dependency evidence);
+    ``findings`` carry code-level results and dependency results whose package
+    could not be resolved. Neither side invents package coordinates.
+    """
+
+    format: str
+    packages: list[Package] = field(default_factory=list)
+    findings: list["Finding"] = field(default_factory=list)
+    tool_names: list[str] = field(default_factory=list)
+    is_sbom: bool = False
+    notices: list[str] = field(default_factory=list)
+
+
+def manifest_ecosystem(uri: str | None) -> str:
+    """Return the package ecosystem implied by a manifest/lockfile path, or ``""``."""
+    if not uri:
+        return ""
+    return _MANIFEST_ECOSYSTEMS.get(PurePosixPath(uri.replace("\\", "/")).name.lower(), "")
+
+
+def _purl_coordinates(purl: str) -> tuple[str, str, str] | None:
+    from agent_bom.intel_lookup import parse_purl
+    from agent_bom.sbom import _ecosystem_from_purl
+
+    try:
+        parsed = parse_purl(purl)
+    except ValueError:
+        return None
+    if not parsed.get("name"):
+        return None
+    return parsed["name"], parsed.get("version", ""), _ecosystem_from_purl(purl)
+
+
+def _first_string(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, list):
+            value = next((item for item in value if isinstance(item, str) and item), None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _sarif_package_identity(result: "NormalizedSarifResult") -> tuple[str, str, str, str]:
+    """Return ``(name, version, ecosystem, fixed_version)`` for a dependency result.
+
+    Sources, strongest first: an explicit purl (result properties, logical
+    locations, message), explicit package properties, ``name@version`` logical
+    locations, then ``Package:`` / ``Installed Version:`` message lines.
+    """
+    props = result.result_properties or {}
+    message = result.message or ""
+    fixed = _first_string(props, _FIXED_VERSION_KEYS)
+    fixed_match = _MESSAGE_FIXED_RE.search(message)
+    if not fixed and fixed_match:
+        fixed = fixed_match.group(1)
+    location_eco = manifest_ecosystem(result.location.uri if result.location else None)
+
+    purl_candidates = [_first_string(props, _PURL_KEYS), *result.logical_locations, *_PURL_RE.findall(message)]
+    for candidate in purl_candidates:
+        if candidate.startswith("pkg:"):
+            coords = _purl_coordinates(candidate)
+            if coords:
+                name, version, eco = coords
+                return name, version, eco or location_eco, fixed
+
+    name = _first_string(props, _PACKAGE_NAME_KEYS)
+    version = _first_string(props, _PACKAGE_VERSION_KEYS)
+    if not name:
+        for logical in result.logical_locations:
+            match = _NAME_AT_VERSION_RE.match(logical.strip())
+            if match:
+                name, version = match.group(1), version or match.group(2)
+                break
+    if not name:
+        name_match = _MESSAGE_PACKAGE_RE.search(message)
+        if name_match:
+            name = name_match.group(1)
+    if name and not version:
+        version_match = _MESSAGE_VERSION_RE.search(message)
+        if version_match:
+            version = version_match.group(1)
+    return name, version, location_eco if name else "", fixed
+
+
+def _sarif_advisory_id(result: "NormalizedSarifResult") -> str | None:
+    match = _ADVISORY_ID_RE.fullmatch(result.rule_id.strip()) if result.rule_id else None
+    if match is None:
+        return None
+    advisory_id = match.group(1)
+    return advisory_id if advisory_id.upper().startswith("GHSA") else advisory_id.upper()
+
+
+def normalized_cwe_ids(tags: tuple[str, ...] | list[str]) -> list[str]:
+    """Extract ``CWE-<n>`` identifiers from free-form rule tags (``"CWE-78: OS …"``)."""
+    cwes: list[str] = []
+    for tag in tags:
+        for number in _CWE_RE.findall(str(tag)):
+            cwe = f"CWE-{int(number)}"
+            if cwe not in cwes:
+                cwes.append(cwe)
+    return cwes
+
+
+def _sarif_dependency_vulnerability(result: "NormalizedSarifResult", advisory_id: str, fixed: str) -> Vulnerability:
+    from agent_bom.compliance_hub_ingest import _coerce_severity
+
+    summary = result.rule_short_description or result.message or advisory_id
+    aliases = [alias for alias in dict.fromkeys(m.upper() for m in _ADVISORY_ID_RE.findall(result.message or "")) if alias != advisory_id]
+    vuln = Vulnerability(
+        id=advisory_id,
+        summary=summary[:500],
+        severity=_severity_from_label(_coerce_severity(result.level, result.security_severity)),
+        cvss_score=result.security_severity,
+        fixed_version=fixed or None,
+        references=[result.rule_url] if result.rule_url else [],
+        aliases=aliases,
+        cwe_ids=normalized_cwe_ids(result.rule_tags),
+        advisory_sources=[external_source_label(result.tool_name)],
+    )
+    vuln.confidence = compute_confidence(vuln)
+    return vuln
+
+
+def _sarif_result_finding(result: "NormalizedSarifResult", *, dependency_id: str | None) -> "Finding":
+    """Build an EXTERNAL finding for a code result or an unresolved dependency result."""
+    from agent_bom.compliance_hub import apply_hub_classification
+    from agent_bom.compliance_hub_ingest import _coerce_severity
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
+
+    location = result.location
+    file_path = location.uri if location else None
+    line = location.start_line if location and location.start_line else None
+    evidence: dict[str, Any] = {
+        "external_tool": result.tool_name,
+        "rule_id": result.rule_id,
+        "rule_tags": list(result.rule_tags),
+        "sarif_level": result.level,
+        "file": file_path,
+        "line": line,
+    }
+    if result.security_severity is not None:
+        evidence["sarif_security_severity"] = result.security_severity
+    if result.partial_fingerprints:
+        evidence["sarif_partial_fingerprints"] = dict(result.partial_fingerprints)
+    location_label = f"{file_path}:{line}" if file_path and line else (file_path or "unknown location")
+    if dependency_id:
+        finding_type = FindingType.CVE
+        evidence["package_resolution"] = "unresolved"
+        title = f"{dependency_id}: unresolved package in {location_label}"
+        asset_type = "manifest_file" if manifest_ecosystem(file_path) else "file"
+    else:
+        finding_type = FindingType.SAST
+        title = result.rule_short_description or result.rule_id or (result.message or "External finding")[:100]
+        asset_type = "source_file"
+    finding = Finding(
+        finding_type=finding_type,
+        source=FindingSource.EXTERNAL,
+        asset=Asset(
+            name=location_label,
+            asset_type=asset_type if file_path else "external",
+            identifier=file_path or result.rule_id or None,
+            location=file_path,
+        ),
+        severity=_coerce_severity(result.level, result.security_severity),
+        title=title,
+        description=result.message or result.rule_full_description or result.rule_short_description or result.rule_id,
+        cve_id=dependency_id,
+        cwe_ids=normalized_cwe_ids(result.rule_tags),
+        cvss_score=result.security_severity,
+        evidence=evidence,
+        sources=[external_source_label(result.tool_name)],
+        id=stable_id("sarif", result.tool_name, result.rule_id, file_path or "", str(line or ""), result.message),
+    )
+    return apply_hub_classification(finding)
+
+
+def _ingest_sarif(data: dict[str, Any]) -> ExternalScanImport:
+    from agent_bom.package_utils import canonical_package_key
+    from agent_bom.parsers.sarif import SarifValidationError, normalize_sarif_document
+
+    try:
+        document = normalize_sarif_document(data)
+    except SarifValidationError as exc:
+        raise ValueError(f"invalid SARIF document: {exc}") from exc
+
+    imported = ExternalScanImport(format="sarif", tool_names=list(document.tool_names))
+    packages: dict[tuple[str, str], Package] = {}
+    for result in document.results:
+        advisory_id = _sarif_advisory_id(result)
+        if advisory_id is None:
+            imported.findings.append(_sarif_result_finding(result, dependency_id=None))
+            continue
+        name, version, ecosystem, fixed = _sarif_package_identity(result)
+        if not name or not ecosystem:
+            imported.findings.append(_sarif_result_finding(result, dependency_id=advisory_id))
+            continue
+        manifest = result.location.uri if result.location and manifest_ecosystem(result.location.uri) else ""
+        key = (canonical_package_key(name, version, ecosystem), "" if version else manifest)
+        pkg = packages.get(key)
+        if pkg is None:
+            pkg = Package(name=name, version=version, ecosystem=ecosystem, version_source="external_report")
+            if manifest:
+                pkg.version_evidence.append(
+                    {
+                        "type": "external_report",
+                        "source_file": manifest,
+                        "line": result.location.start_line if result.location else 0,
+                        "tool": result.tool_name,
+                    }
+                )
+            packages[key] = pkg
+        if any(existing.id == advisory_id for existing in pkg.vulnerabilities):
+            continue
+        pkg.vulnerabilities.append(_sarif_dependency_vulnerability(result, advisory_id, fixed))
+    imported.packages = list(packages.values())
+    unresolved = [f.cve_id for f in imported.findings if f.cve_id]
+    if unresolved:
+        imported.notices.append(
+            f"{len(unresolved)} SARIF dependency result(s) named no package identity ({', '.join(unresolved[:5])}"
+            f"{', …' if len(unresolved) > 5 else ''}); kept as unresolved external findings, not attached to any package."
+        )
+    return imported
+
+
+def _sbom_tool_names(data: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    metadata = data.get("metadata")
+    tools: Any = metadata.get("tools") if isinstance(metadata, dict) else None
+    if isinstance(tools, dict):
+        tools = tools.get("components")
+    for tool in tools if isinstance(tools, list) else []:
+        if isinstance(tool, dict) and isinstance(tool.get("name"), str):
+            names.append(tool["name"].strip())
+    creation = data.get("creationInfo")
+    creators = creation.get("creators") if isinstance(creation, dict) else None
+    for creator in creators if isinstance(creators, list) else []:
+        if isinstance(creator, str) and creator.startswith("Tool:"):
+            names.append(creator.split(":", 1)[1].strip())
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def _label_packages(packages: list[Package], label: str) -> list[Package]:
+    for pkg in packages:
+        for vuln in pkg.vulnerabilities:
+            if label not in vuln.advisory_sources:
+                vuln.advisory_sources = [*vuln.advisory_sources, label]
+    return packages
+
+
+def _ingest_sbom(data: dict[str, Any]) -> ExternalScanImport:
+    from agent_bom.sbom import parse_sbom_document
+
+    packages, _format_name, _resource = parse_sbom_document(data, source_name="external scan report")
+    fmt = "cyclonedx" if data.get("bomFormat") == "CycloneDX" else "spdx"
+    tool_names = _sbom_tool_names(data)
+    _label_packages(packages, external_source_label(tool_names[0] if tool_names else fmt))
+    has_vulns = any(pkg.vulnerabilities for pkg in packages)
+    imported = ExternalScanImport(format=fmt, packages=packages, tool_names=tool_names, is_sbom=not has_vulns)
+    if not has_vulns:
+        display = "CycloneDX" if fmt == "cyclonedx" else "SPDX"
+        imported.notices.append(
+            f"--external-scan input is a {display} SBOM without vulnerability data; ingested it as an SBOM "
+            "inventory (same as --sbom <file>) and scanned its packages for vulnerabilities."
+        )
+    return imported
+
+
+def ingest_external_report(data: dict[str, Any]) -> ExternalScanImport:
+    """Parse any supported external report into packages plus findings.
+
+    SARIF results are routed by rule type: advisory-id rules (CVE/GHSA/…)
+    become dependency evidence on the real ``package@version`` the result
+    names; every other rule stays a code-level finding with file + line.
+    CycloneDX/SPDX documents go through the canonical SBOM parser.
 
     Raises:
         ValueError: if the format cannot be identified.
     """
+    if not isinstance(data, dict):
+        raise ValueError(f"Unrecognized scanner JSON format; expected {SUPPORTED_FORMATS_HINT}")
     if is_sarif_document(data):
-        return parse_sarif_json(data)
-
-    if "Results" in data:
-        results = data["Results"]
-        if isinstance(results, list):
-            # Trivy format: Results may be empty; presence of the key is enough
-            return parse_trivy_json(data)
-
+        return _ingest_sarif(data)
+    if data.get("bomFormat") == "CycloneDX" or str(data.get("spdxVersion") or "").startswith("SPDX-"):
+        return _ingest_sbom(data)
+    # Trivy format: Results may be empty; presence of the list is enough.
+    if isinstance(data.get("Results"), list):
+        return ExternalScanImport(format="trivy", packages=_label_packages(parse_trivy_json(data), external_source_label("trivy")))
     if "matches" in data:
-        return parse_grype_json(data)
-
+        return ExternalScanImport(format="grype", packages=_label_packages(parse_grype_json(data), external_source_label("grype")))
     if "artifacts" in data and "schema" in data:
-        return parse_syft_json(data)
+        return ExternalScanImport(format="syft", packages=parse_syft_json(data), is_sbom=True)
+    raise ValueError(f"Unrecognized scanner JSON format; expected {SUPPORTED_FORMATS_HINT}")
 
-    raise ValueError("Unrecognized scanner JSON format")
+
+def detect_and_parse(data: dict[str, Any]) -> list[Package]:
+    """Auto-detect the scanner JSON format and parse into Package objects.
+
+    Package-only view of :func:`ingest_external_report` for callers that do
+    not carry findings. SARIF dependency results resolve to real packages;
+    code results and unresolvable dependency results keep the per-file
+    ``sast`` projection so no result is silently dropped.
+
+    Raises:
+        ValueError: if the format cannot be identified.
+    """
+    imported = ingest_external_report(data)
+    if imported.format != "sarif":
+        return imported.packages
+    return [*imported.packages, *_sarif_hub_findings_to_packages(imported.findings)]

@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from agent_bom.remediation import Remediation
 
 FINDING_SCHEMA_VERSION = "1"
+# Provenance label prefix for evidence imported from an external scanner report.
+EXTERNAL_SOURCE_PREFIX = "external:"
 
 
 def _stable_id(*parts: str) -> str:
@@ -432,6 +434,9 @@ class Finding:
     # Graph / correlation
     related_findings: list[str] = field(default_factory=list)  # IDs of related findings
     evidence: dict = field(default_factory=dict)  # raw evidence payload
+    # Provenance labels when more than one producer observed this finding, e.g.
+    # ["native", "external:<tool>"]. Empty for single-producer native findings.
+    sources: list[str] = field(default_factory=list)
     # First-class graph FKs (optional, additive). ``node_id`` is the estate /
     # asset UnifiedNode this finding attaches to; ``finding_node_id`` is the
     # vulnerability/misconfiguration node (e.g. ``vuln:CVE-…``) when materialised.
@@ -792,6 +797,7 @@ class Finding:
             "pci_dss_tags": self.pci_dss_tags,
             "related_findings": self.related_findings,
             "evidence": self.evidence,
+            **({"sources": list(self.sources)} if self.sources else {}),
             "node_id": self.node_id,
             "finding_node_id": self.finding_node_id,
             "entity_type": self.entity_type,
@@ -942,13 +948,37 @@ def _source_for_blast_radius(br: object) -> FindingSource:
         return FindingSource.CONTAINER
     if "filesystem" in surface_values:
         return FindingSource.FILESYSTEM
-    if "external-scan" in surface_values:
+    native_surfaces = surface_values - {"external-scan"}
+    if "external-scan" in surface_values and not native_surfaces:
         return FindingSource.EXTERNAL
     if "sast" in surface_values:
         return FindingSource.SAST
     if {"sbom", "os-packages"} & surface_values:
         return FindingSource.SBOM
     return FindingSource.SBOM
+
+
+def _provenance_labels_for_blast_radius(br: object) -> list[str]:
+    """Return producer labels when external evidence contributed to a finding.
+
+    Native-only findings return an empty list so their payload shape is
+    unchanged; any external contribution keeps both the native label and the
+    external tool label instead of relabelling the finding as external.
+    """
+    surfaces = {
+        str(getattr(getattr(server, "surface", None), "value", getattr(server, "surface", "")) or "")
+        for server in getattr(br, "affected_servers", []) or []
+    }
+    vuln = getattr(br, "vulnerability", None)
+    external_labels = [str(label) for label in getattr(vuln, "advisory_sources", []) or [] if str(label).startswith(EXTERNAL_SOURCE_PREFIX)]
+    has_external_surface = "external-scan" in surfaces
+    if not external_labels and not has_external_surface:
+        return []
+    labels: list[str] = []
+    if surfaces - {"external-scan", ""}:
+        labels.append("native")
+    labels.extend(external_labels or ["external"])
+    return labels
 
 
 def _remediation_guidance_for_vulnerability(vuln: object, pkg: object) -> str:
@@ -1781,6 +1811,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         affected_agents=[entity_name(a) for a in br.affected_agents],
         exposed_credentials=list(br.exposed_credentials),
         exposed_tools=[entity_name(t) for t in br.exposed_tools],
+        sources=_provenance_labels_for_blast_radius(br),
     )
     return apply_hub_classification(finding)
 

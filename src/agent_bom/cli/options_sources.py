@@ -535,7 +535,10 @@ def policy_options(fn):
             click.option(
                 "--fail-on-kev",
                 is_flag=True,
-                help="Exit 1 if any finding appears in CISA KEV (works offline from the local DB; --enrich not required)",
+                help=(
+                    "Exit 1 if any finding appears in CISA KEV. --enrich is not required: online the KEV catalog is "
+                    "fetched automatically; offline a fresh local DB or KEV cache is used, else the gate fails closed with a hint"
+                ),
             ),
             click.option("--fail-on-malicious", is_flag=True, help="Exit 1 if any package is flagged as known malicious"),
             click.option("--fail-if-ai-risk", is_flag=True, help="Exit 1 if an AI framework package with credentials has vulnerabilities"),

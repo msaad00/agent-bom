@@ -675,6 +675,46 @@ def calculate_exploitability(epss_score: Optional[float]) -> Optional[str]:
         return "LOW"
 
 
+def _vuln_cve_ids(vuln: Vulnerability) -> list[str]:
+    ids = [vuln.id] if vuln.id.startswith("CVE-") else []
+    ids.extend(alias for alias in vuln.aliases if alias.startswith("CVE-"))
+    return ids
+
+
+def _apply_kev_entry(vuln: Vulnerability, cve_ids: list[str], kev_data: dict) -> bool:
+    for cve in cve_ids:
+        if cve in kev_data:
+            kev = kev_data[cve]
+            vuln.is_kev = True
+            vuln.kev_date_added = kev.get("date_added")
+            vuln.kev_due_date = kev.get("due_date")
+            return True
+    return False
+
+
+async def join_kev_catalog(vulnerabilities: list[Vulnerability], *, offline: bool = False) -> int:
+    """Join only the CISA KEV catalog onto *vulnerabilities*; return the KEV hit count.
+
+    ``--fail-on-kev`` needs KEV evidence without the rest of ``--enrich``
+    (NVD, EPSS). Online this is one catalog request (served from the 24h cache
+    when fresh); offline it reads only a within-TTL local cache or the air-gap
+    bundle and never touches the network. Either way the catalog source is
+    recorded in the enrichment posture the gate reads.
+    """
+    if offline or _offline_enrichment_enabled():
+        kev_data = _cached_kev_catalog(offline=True)
+    else:
+        async with create_client(timeout=30.0) as client:
+            kev_data = await fetch_cisa_kev_catalog(client)
+    if not kev_data:
+        return 0
+    return sum(1 for vuln in vulnerabilities if _apply_kev_entry(vuln, _vuln_cve_ids(vuln), kev_data))
+
+
+def join_kev_catalog_sync(vulnerabilities: list[Vulnerability], *, offline: bool = False) -> int:
+    return asyncio.run(join_kev_catalog(vulnerabilities, offline=offline))
+
+
 async def enrich_vulnerabilities(
     vulnerabilities: list[Vulnerability],
     nvd_api_key: Optional[str] = None,
@@ -832,14 +872,8 @@ async def enrich_vulnerabilities(
                     break
 
             # Apply CISA KEV data
-            for cve in vuln_cve_ids:
-                if cve in kev_data:
-                    kev = kev_data[cve]
-                    vuln.is_kev = True
-                    vuln.kev_date_added = kev["date_added"]
-                    vuln.kev_due_date = kev["due_date"]
-                    vuln_was_enriched = True
-                    break
+            if _apply_kev_entry(vuln, vuln_cve_ids, kev_data):
+                vuln_was_enriched = True
 
             # Apply NVD data
             if enable_nvd:

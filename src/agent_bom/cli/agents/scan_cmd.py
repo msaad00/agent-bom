@@ -1691,6 +1691,20 @@ def scan(
             _scan_warnings = consume_scan_warnings()
             if _scan_warnings:
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(_scan_warnings)} warning(s); results may be incomplete.")
+            if fail_on_kev and not enrich and blast_radii:
+                # The KEV gate needs catalog evidence; fetch just that rather
+                # than failing closed on a lookup nobody asked to run.
+                from agent_bom.enrichment import join_kev_catalog_sync
+
+                _kev_vulns = list({id(br.vulnerability): br.vulnerability for br in blast_radii}.values())
+                try:
+                    _kev_hits = join_kev_catalog_sync(_kev_vulns, offline=offline)
+                    if _kev_hits:
+                        con.print(f"  [red]⚠[/red] CISA KEV: {_kev_hits} actively exploited vulnerabilit{'y' if _kev_hits == 1 else 'ies'}")
+                except Exception as _kev_exc:  # noqa: BLE001
+                    from agent_bom.security import sanitize_error
+
+                    logger.debug("KEV catalog join unavailable: %s", sanitize_error(_kev_exc, generic=True))
             if blast_radii:
                 # Don't repeat the bare finding count — the scanner already
                 # printed "Found N vulnerabilities across N finding(s)" above.

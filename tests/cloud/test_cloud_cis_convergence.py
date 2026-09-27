@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -202,14 +203,16 @@ async def test_findings_endpoint_filters_cloud_cis_by_scan_id() -> None:
     target.scan_id = "scan-cloud"
     other = AIBOMReport(scan_id="scan-other")
     other.cis_benchmark_data = {"checks": [{"check_id": "1.1", "title": "Other", "status": "PASS", "severity": "high"}]}
+    # Inside the default findings window regardless of when the suite runs.
+    created = datetime.now(timezone.utc) - timedelta(hours=1)
     for report in (target, other):
         store.put(
             ScanJob(
                 job_id=report.scan_id,
                 tenant_id="tenant-cis",
                 status=JobStatus.DONE,
-                created_at="2026-06-29T00:00:00Z",
-                completed_at="2026-06-29T00:00:01Z",
+                created_at=created.isoformat(),
+                completed_at=(created + timedelta(seconds=1)).isoformat(),
                 request=ScanRequest(),
                 result=to_json(report),
             )

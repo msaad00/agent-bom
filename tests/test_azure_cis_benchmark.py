@@ -20,9 +20,9 @@ from agent_bom.cloud.azure_cis_benchmark import (
     _check_2_3,
     _check_2_4,
     _check_3_1,
-    _check_3_2,
     _check_3_3,
     _check_3_7,
+    _check_3_8,
     _check_3_10,
     _check_3_12,
     _check_4_1_1,
@@ -446,11 +446,11 @@ def test_check_2_3_exception():
 
 
 # ---------------------------------------------------------------------------
-# _check_3_2 — Default network access rule = Deny
+# _check_3_8 — Default network access rule = Deny
 # ---------------------------------------------------------------------------
 
 
-def test_check_3_2_all_deny():
+def test_check_3_8_all_deny():
     acct = MagicMock()
     acct.name = "secure-storage"
     network_rule_set = MagicMock()
@@ -460,11 +460,11 @@ def test_check_3_2_all_deny():
     storage_client = MagicMock()
     storage_client.storage_accounts.list.return_value = [acct]
 
-    result = _check_3_2(storage_client)
+    result = _check_3_8(storage_client)
     assert result.status == CheckStatus.PASS
 
 
-def test_check_3_2_allow_default():
+def test_check_3_8_allow_default():
     acct = MagicMock()
     acct.name = "open-storage"
     network_rule_set = MagicMock()
@@ -474,16 +474,16 @@ def test_check_3_2_allow_default():
     storage_client = MagicMock()
     storage_client.storage_accounts.list.return_value = [acct]
 
-    result = _check_3_2(storage_client)
+    result = _check_3_8(storage_client)
     assert result.status == CheckStatus.FAIL
     assert "open-storage" in result.evidence
 
 
-def test_check_3_2_exception():
+def test_check_3_8_exception():
     storage_client = MagicMock()
     storage_client.storage_accounts.list.side_effect = Exception("API error")
 
-    result = _check_3_2(storage_client)
+    result = _check_3_8(storage_client)
     assert result.status == CheckStatus.ERROR
 
 

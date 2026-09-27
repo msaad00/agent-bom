@@ -2729,41 +2729,6 @@ def _check_5_5(ec2_client: Any) -> CISCheckResult:
     return result
 
 
-def _check_5_6(ec2_client: Any) -> CISCheckResult:
-    """CIS 5.6 — VPC flow logging enabled in all VPCs."""
-    result = CISCheckResult(
-        check_id="5.6",
-        title="VPC flow logging enabled in all VPCs",
-        status=CheckStatus.PASS,
-        severity="medium",
-        cis_section=_NETWORKING_SECTION,
-        recommendation="Enable VPC Flow Logs for all VPCs (reject or all traffic).",
-    )
-    vpcs = ec2_client.describe_vpcs().get("Vpcs", [])
-    if not vpcs:
-        result.status = CheckStatus.NOT_APPLICABLE
-        result.evidence = "No VPCs found."
-        return result
-
-    vpc_ids = {v["VpcId"] for v in vpcs}
-
-    # Get all flow logs and find which VPCs are covered
-    flow_logs = ec2_client.describe_flow_logs(Filters=[{"Name": "resource-type", "Values": ["VPC"]}]).get("FlowLogs", [])
-    covered_vpcs = {fl["ResourceId"] for fl in flow_logs if fl.get("FlowLogStatus") == "ACTIVE"}
-
-    missing = vpc_ids - covered_vpcs
-    if missing:
-        result.status = CheckStatus.FAIL
-        missing_list = sorted(missing)
-        result.evidence = f"{len(missing)} VPC(s) without flow logging: {', '.join(missing_list[:5])}"
-        if len(missing_list) > 5:
-            result.evidence += f" (+{len(missing_list) - 5} more)"
-        result.resource_ids = missing_list[:20]
-    else:
-        result.evidence = f"All {len(vpcs)} VPC(s) have flow logging enabled."
-    return result
-
-
 def _check_5_1(ec2_client: Any) -> CISCheckResult:
     """CIS 5.1 — No NACL allows unrestricted ingress to admin ports."""
     result = CISCheckResult(
@@ -2918,7 +2883,6 @@ _CHECKS: list[tuple[str, Callable]] = [
     ("ec2", _check_5_3),
     ("ec2", _check_5_4),
     ("ec2", _check_5_5),
-    ("ec2", _check_5_6),
 ]
 
 _MONITORING_ALARM_CHECKS = {check_fn for service, check_fn in _CHECKS if service == "logs"}
@@ -3150,7 +3114,6 @@ _REGIONAL_CIS_CHECK_IDS: frozenset[str] = frozenset(
         "5.3",
         "5.4",
         "5.5",
-        "5.6",
     }
 )
 

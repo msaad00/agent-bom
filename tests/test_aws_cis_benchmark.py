@@ -70,7 +70,6 @@ from agent_bom.cloud.aws_cis_benchmark import (
     _check_5_3,
     _check_5_4,
     _check_5_5,
-    _check_5_6,
     finalize_read_coverage,
     run_benchmark,
 )
@@ -629,34 +628,6 @@ class TestCheck53:
         client.get_paginator.return_value = paginator
         result = _check_5_3(client)
         assert result.status == CheckStatus.FAIL
-
-
-# ---------------------------------------------------------------------------
-# 5.6 — VPC flow logs
-# ---------------------------------------------------------------------------
-
-
-class TestCheck56:
-    def test_pass_all_vpcs_covered(self):
-        client = MagicMock()
-        client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-1"}]}
-        client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-1", "FlowLogStatus": "ACTIVE"}]}
-        result = _check_5_6(client)
-        assert result.status == CheckStatus.PASS
-
-    def test_fail_missing_flow_log(self):
-        client = MagicMock()
-        client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-1"}, {"VpcId": "vpc-2"}]}
-        client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-1", "FlowLogStatus": "ACTIVE"}]}
-        result = _check_5_6(client)
-        assert result.status == CheckStatus.FAIL
-        assert "vpc-2" in result.evidence
-
-    def test_not_applicable_no_vpcs(self):
-        client = MagicMock()
-        client.describe_vpcs.return_value = {"Vpcs": []}
-        result = _check_5_6(client)
-        assert result.status == CheckStatus.NOT_APPLICABLE
 
 
 # ---------------------------------------------------------------------------
@@ -2608,7 +2579,7 @@ class TestRunBenchmark:
 
             report = run_benchmark()
             assert report.account_id == "111222333444"
-            assert report.total == 60
+            assert report.total == 59
 
     def test_filter_checks(self):
         modules_patch, mock_boto3 = _mock_boto3_modules()
@@ -2695,7 +2666,7 @@ class TestRunBenchmark:
 
             report = run_benchmark()
 
-        assert report.total == 60
+        assert report.total == 59
         # The forced failures must actually exercise the error path.
         assert sum(1 for c in report.checks if c.status == CheckStatus.ERROR) >= 50
         offenders = [c.title for c in report.checks if c.title.lower().startswith("ensure ")]

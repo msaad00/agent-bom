@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sys
 import types
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,6 +24,50 @@ from agent_bom.cloud import benchmark_provenance as bp
 from agent_bom.cloud.benchmark_manifests import benchmark_manifest
 
 PROVIDERS = tuple(bp.REGISTRY_SPECS)
+
+
+@pytest.mark.parametrize("passes", [True, False])
+def test_aws_flow_logging_is_evaluated_and_counted_once(passes: bool) -> None:
+    from agent_bom.cloud.aws_cis_benchmark import run_benchmark
+
+    client = MagicMock()
+    client.get_caller_identity.return_value = {"Account": "123456789012"}
+    client.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-one"}]}
+    client.describe_flow_logs.return_value = {"FlowLogs": [{"ResourceId": "vpc-one", "FlowLogStatus": "ACTIVE"}] if passes else []}
+    session = MagicMock(region_name="us-east-1")
+    session.client.return_value = client
+    report = run_benchmark(session=session, checks=["3.9", "5.6"], region_scope_complete=True)
+
+    assert [check.check_id for check in report.checks] == ["3.9"]
+    assert report.total == 1
+    assert report.passed == int(passes)
+    assert report.failed == int(not passes)
+    assert len(report.to_dict()["checks"]) == 1
+    client.describe_flow_logs.assert_called_once()
+    assert "5.6" not in bp.build_control_inventory("aws").control_ids
+
+
+@pytest.mark.parametrize("passes", [True, False])
+def test_azure_storage_network_rule_is_evaluated_and_counted_once(passes: bool) -> None:
+    from agent_bom.cloud.azure_cis_benchmark import run_benchmark
+
+    client = MagicMock()
+    account = types.SimpleNamespace(
+        name="storage-one", network_rule_set=types.SimpleNamespace(default_action="Deny" if passes else "Allow")
+    )
+    client.storage_accounts.list.return_value = [account]
+    storage = types.ModuleType("azure.mgmt.storage")
+    storage.StorageManagementClient = MagicMock(return_value=client)
+    with patch.dict(sys.modules, {"azure.mgmt.storage": storage}):
+        report = run_benchmark(subscription_id="sub-one", credential=object(), checks=["3.2", "3.8"])
+
+    assert [check.check_id for check in report.checks] == ["3.8"]
+    assert report.total == 1
+    assert report.passed == int(passes)
+    assert report.failed == int(not passes)
+    assert len(report.to_dict()["checks"]) == 1
+    client.storage_accounts.list.assert_called_once()
+    assert "3.2" not in bp.build_control_inventory("azure").control_ids
 
 
 # ── manifest ↔ inventory ↔ honesty reconciliation (all providers) ───────────

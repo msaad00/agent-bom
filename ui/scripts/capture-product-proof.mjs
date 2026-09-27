@@ -1760,6 +1760,7 @@ async function installRoutes(page) {
     }],
     count: 1,
   }));
+  await page.route("**/v1/endpoint-connectors", (route) => fulfill(route, { connections: [] }));
   await page.route("**/v1/connectors", (route) => fulfill(route, { connectors: [] }));
   await page.route("**/v1/schedules", (route) => fulfill(route, []));
   await page.route("**/v1/ticketing/tickets", (route) => fulfill(route, {

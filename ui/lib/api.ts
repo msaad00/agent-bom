@@ -1,3 +1,4 @@
+import type { EndpointConnection, EndpointConnectionCreate, EndpointConnections, EndpointInventory, EndpointSync } from "./endpoint-connectors";
 import type { McpClientConfigAssignment, McpConfigAssignmentResponse } from "./api-types";
 /**
  * agent-bom API client
@@ -587,13 +588,13 @@ async function get<T>(path: string, options: GetOptions = {}): Promise<T> {
   return signal ? fetcher() : cachedGet<T>(key, fetcher, cacheOptions);
 }
 
-async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
+async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS): Promise<T> {
   const res = await _doFetch(path, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getSessionAuthHeaders(), ...headers },
     body: JSON.stringify(body),
-    signal: signal ? AbortSignal.any([signal, withTimeout()]) : withTimeout(),
+    signal: signal ? AbortSignal.any([signal, withTimeout(timeoutMs)]) : withTimeout(timeoutMs),
   }, "POST");
   _runInvalidations(path);
   return res.json() as Promise<T>;
@@ -1540,6 +1541,12 @@ export const api = {
   },
 
   // ── Connectors / sources ──
+  bindEndpointAgent: (deviceId: string, agentId: string, active = true) => put<{agent_id: string; active: boolean; assurance: string}>(`/v1/endpoint-connectors/devices/${encodeURIComponent(deviceId)}/agent-binding`, {agent_id: agentId, active}),
+  endpointConnections: () => get<EndpointConnections>("/v1/endpoint-connectors"),
+  createEndpointConnection: (body: EndpointConnectionCreate) => post<EndpointConnection>("/v1/endpoint-connectors", body),
+  updateEndpointConnection: (id: string, body: {enabled?: boolean; client_secret?: string}) => patch<EndpointConnection>(`/v1/endpoint-connectors/${encodeURIComponent(id)}`, body),
+  syncEndpointConnection: (id: string, restart = false) => post<EndpointSync>(`/v1/endpoint-connectors/${encodeURIComponent(id)}/sync`, {restart, max_pages: 5}, {}, undefined, 180_000),
+  endpointDevices: (id: string, offset = 0) => get<EndpointInventory>(`/v1/endpoint-connectors/${encodeURIComponent(id)}/devices?limit=25&offset=${offset}`),
   listConnectors: () => get<ConnectorsResponse>("/v1/connectors"),
   getConnectorHealth: (name: string) => get<ConnectorHealthResponse>(`/v1/connectors/${encodeURIComponent(name)}/health`),
   listDiscoveryProviders: () => get<DiscoveryProvidersResponse>("/v1/discovery/providers"),

@@ -95,6 +95,7 @@ import {
 import { serviceEntry } from "@/lib/service-registry";
 import { vendorLogo } from "@/lib/vendor-logos";
 import { FirstRunJourney } from "@/components/first-run-journey";
+import { EndpointConnectionsPanel } from "@/components/endpoint-connections";
 import { PermissionDeniedNotice } from "@/components/role-access";
 
 // ── Hub tabs ────────────────────────────────────────────────────────────────
@@ -1523,6 +1524,8 @@ function ConnectionsHub() {
           action="connect a cloud account, run a scan, or delete a connection"
         />
       ) : null}
+
+      <EndpointConnectionsPanel canManage={session?.role === "admin" && !managedTrialSession} demo={isDemoMode} />
 
       {tab === "connect" ? (
         <ConnectSegment

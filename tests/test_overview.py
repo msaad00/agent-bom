@@ -9,6 +9,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.server import JobStatus, _get_store, app, configure_api
 from agent_bom.api.store import InMemoryJobStore
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _AUTH_HEADERS = proxy_headers(tenant="default")
@@ -867,7 +868,7 @@ def test_overview_uses_newest_current_snapshot_independent_of_store_order(
 
     old = _job(
         "old-critical",
-        "2026-08-20T00:00:00Z",
+        recent("2026-08-20T00:00:00Z"),
         {
             "id": "same-finding",
             "severity": "critical",
@@ -877,7 +878,7 @@ def test_overview_uses_newest_current_snapshot_independent_of_store_order(
     )
     new = _job(
         "new-low",
-        "2026-08-21T00:00:00Z",
+        recent("2026-08-21T00:00:00Z"),
         {
             "id": "same-finding",
             "severity": "low",
@@ -926,8 +927,8 @@ def test_estate_latest_scan_normalizes_offsets_before_comparison() -> None:
     later = ScanJob(
         job_id="later-utc",
         tenant_id="default",
-        created_at="2026-08-21T00:00:00+00:00",
-        completed_at="2026-08-21T00:00:00+00:00",
+        created_at=recent("2026-08-21T00:00:00+00:00"),
+        completed_at=recent("2026-08-21T00:00:00+00:00"),
         status=JobStatus.DONE,
         request=ScanRequest(repo_url="https://example.test/acme/later.git"),
         result={"findings": []},
@@ -935,8 +936,8 @@ def test_estate_latest_scan_normalizes_offsets_before_comparison() -> None:
     earlier = ScanJob(
         job_id="earlier-offset",
         tenant_id="default",
-        created_at="2026-08-21T01:00:00+02:00",
-        completed_at="2026-08-21T01:00:00+02:00",
+        created_at=recent("2026-08-21T01:00:00+02:00"),
+        completed_at=recent("2026-08-21T01:00:00+02:00"),
         status=JobStatus.DONE,
         request=ScanRequest(repo_url="https://example.test/acme/earlier.git"),
         result={"findings": []},
@@ -944,7 +945,7 @@ def test_estate_latest_scan_normalizes_offsets_before_comparison() -> None:
 
     estate = _estate_rollup([later, earlier])
 
-    assert estate["latest_scan_at"] == "2026-08-21T00:00:00+00:00"
+    assert estate["latest_scan_at"] == recent("2026-08-21T00:00:00+00:00")
 
 
 def test_overview_excludes_skipped_pushed_findings_from_current_evidence() -> None:
@@ -954,8 +955,8 @@ def test_overview_excludes_skipped_pushed_findings_from_current_evidence() -> No
     skipped = ScanJob(
         job_id="skipped-push",
         tenant_id="default",
-        created_at="2026-08-27T01:00:00Z",
-        completed_at="2026-08-27T01:00:00Z",
+        created_at=recent("2026-08-27T01:00:00Z"),
+        completed_at=recent("2026-08-27T01:00:00Z"),
         status=JobStatus.DONE,
         request=ScanRequest(repo_url="https://example.test/acme/repo.git", dry_run=True),
         result={

@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, set_compliance_hub_store
 from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
 from agent_bom.api.server import app
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 
@@ -62,7 +63,7 @@ def test_findings_list_returns_gzip_when_accepted() -> None:
     store.upsert_current_batch(
         tenant,
         findings,
-        observed_at="2026-07-04T00:00:00Z",
+        observed_at=recent("2026-07-04T00:00:00Z"),
         batch_id="batch-gzip",
         source="bulk_ingest",
     )

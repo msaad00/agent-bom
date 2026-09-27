@@ -24,6 +24,7 @@ from agent_bom.api.compliance_hub_store import (
     set_compliance_hub_store,
 )
 from agent_bom.api.server import app
+from tests._clock_helpers import recent
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 
@@ -51,7 +52,9 @@ def _seed_sqlite(tmp_path, *, bulk: int = 400, other: int = 100) -> SQLiteCompli
     bulk_rows = _findings(bulk, batch_id="b1", origin="bulk_ingest")
     other_rows = _findings(other, batch_id="b2", origin="scan")
     store.add(tenant, bulk_rows + other_rows)
-    store.upsert_current_batch(tenant, bulk_rows + other_rows, observed_at="2026-07-06T00:00:00Z", batch_id="b1", source="test_3641")
+    store.upsert_current_batch(
+        tenant, bulk_rows + other_rows, observed_at=recent("2026-07-06T00:00:00Z"), batch_id="b1", source="test_3641"
+    )
     return store
 
 
@@ -187,7 +190,7 @@ def test_approximate_total_offset0_warm_cache_reuses_cached_total() -> None:
     set_compliance_hub_store(store)
     findings = _findings(300, batch_id=batch_id)
     store.add(tenant_id, findings)
-    store.upsert_current_batch(tenant_id, findings, observed_at="2026-07-06T00:00:00Z", batch_id=batch_id, source="test_3641")
+    store.upsert_current_batch(tenant_id, findings, observed_at=recent("2026-07-06T00:00:00Z"), batch_id=batch_id, source="test_3641")
 
     # Count how many times the store is asked for an exact total.
     real_list = store.list_current_page
@@ -234,7 +237,7 @@ def test_count_cache_expiring_during_page_read_keeps_request_total(monkeypatch, 
     set_compliance_hub_store(store)
     rows = _findings(8, batch_id="expiry")
     store.add(tenant, rows)
-    store.upsert_current_batch(tenant, rows, observed_at="2026-07-06T00:00:00Z", batch_id="expiry", source="test")
+    store.upsert_current_batch(tenant, rows, observed_at=recent("2026-07-06T00:00:00Z"), batch_id="expiry", source="test")
     scan_rows = _findings(1, batch_id="scan", origin="scan") if merged else []
     monkeypatch.setattr(findings_current, "current_scan_findings", lambda *args, **kwargs: scan_rows)
     monkeypatch.setattr(findings_current, "scan_only_findings", lambda rows, *args, **kwargs: rows)

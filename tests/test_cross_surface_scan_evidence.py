@@ -13,6 +13,7 @@ from agent_bom.api.routes.scan import _job_summary_payload, _redact_scan_result_
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, set_job_store
 from agent_bom.finding_scope import safe_finding_response_payload
+from tests._clock_helpers import recent
 
 
 def _finding() -> dict[str, object]:
@@ -41,8 +42,8 @@ def _finding() -> dict[str, object]:
         ],
         "owasp_tags": ["LLM01"],
         "soc2_tags": ["CC6.1"],
-        "first_seen": "2026-08-17T12:00:00Z",
-        "last_observed": "2026-08-17T12:05:00Z",
+        "first_seen": recent("2026-08-17T12:00:00Z"),
+        "last_observed": recent("2026-08-17T12:05:00Z"),
         "status": "open",
         "fixed_version": "1.2.4",
     }
@@ -95,7 +96,7 @@ def test_unified_finding_drives_compliance_narrative_without_placeholder_entitie
         [_finding()],
         total_agents=1,
         total_packages=1,
-        generated_at="2026-08-17T12:05:00Z",
+        generated_at=recent("2026-08-17T12:05:00Z"),
         framework="owasp-llm",
     )
 
@@ -152,8 +153,8 @@ def test_scan_job_model_keeps_the_same_result_summary_contract() -> None:
         job_id="scan-1",
         tenant_id="tenant-a",
         status=JobStatus.DONE,
-        created_at="2026-08-17T12:00:00Z",
-        completed_at="2026-08-17T12:05:00Z",
+        created_at=recent("2026-08-17T12:00:00Z"),
+        completed_at=recent("2026-08-17T12:05:00Z"),
         request=ScanRequest(),
         result={"scan_id": "scan-1", "summary": {"total_findings": 1}, "findings": [_finding()]},
     )
@@ -194,8 +195,8 @@ def test_scan_status_summary_redacts_warning_and_summary_payloads() -> None:
         job_id="scan-1",
         tenant_id="tenant-a",
         status=JobStatus.DONE,
-        created_at="2026-08-17T12:00:00Z",
-        completed_at="2026-08-17T12:05:00Z",
+        created_at=recent("2026-08-17T12:00:00Z"),
+        completed_at=recent("2026-08-17T12:05:00Z"),
         request=ScanRequest(),
         error=f"provider returned {secret}",
         result={
@@ -222,12 +223,12 @@ def test_compliance_endpoint_reads_the_current_persisted_finding_queue() -> None
         job_id="scan-persisted",
         tenant_id="tenant-parity",
         status=JobStatus.DONE,
-        created_at="2026-08-17T12:00:00Z",
-        completed_at="2026-08-17T12:05:00Z",
+        created_at=recent("2026-08-17T12:00:00Z"),
+        completed_at=recent("2026-08-17T12:05:00Z"),
         request=ScanRequest(),
         result={
             "scan_id": "scan-persisted",
-            "generated_at": "2026-08-17T12:05:00Z",
+            "generated_at": recent("2026-08-17T12:05:00Z"),
             "summary": {"total_agents": 0, "total_packages": 0, "total_findings": 1},
             "findings": [finding],
             "blast_radius": [],
@@ -244,7 +245,8 @@ def test_compliance_endpoint_reads_the_current_persisted_finding_queue() -> None
     assert payload["evidence_snapshot"]["returned"] == 1
     assert payload["evidence_snapshot"]["total"] == 1
     assert payload["evidence_snapshot"]["scan_ids"] == ["scan-persisted"]
-    assert "covers 1 AI agent and 1 package represented in current evidence through 2026-08-17" in payload["executive_summary"]
+    through = recent("2026-08-17T12:05:00Z")[:10]
+    assert f"covers 1 AI agent and 1 package represented in current evidence through {through}" in payload["executive_summary"]
     assert "Current evidence identified 1 security finding across 1 agent" in payload["risk_narrative"]
     framework = next(item for item in payload["framework_narratives"] if item["slug"] == "owasp-llm")
     llm01 = next(item for item in framework["failing_controls"] if item["control_id"] == "LLM01")
@@ -264,12 +266,12 @@ def test_completed_empty_scan_is_not_reported_as_no_scan() -> None:
             job_id="scan-empty",
             tenant_id="tenant-empty-scan",
             status=JobStatus.DONE,
-            created_at="2026-08-17T12:00:00Z",
-            completed_at="2026-08-17T12:05:00Z",
+            created_at=recent("2026-08-17T12:00:00Z"),
+            completed_at=recent("2026-08-17T12:05:00Z"),
             request=ScanRequest(),
             result={
                 "scan_id": "scan-empty",
-                "generated_at": "2026-08-17T12:05:00Z",
+                "generated_at": recent("2026-08-17T12:05:00Z"),
                 "summary": {"total_agents": 1, "total_packages": 1, "total_findings": 0},
                 "findings": [],
                 "blast_radius": [],

@@ -34,6 +34,7 @@ from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_graph_store, set_job_store
 from agent_bom.api.time_window import normalize_window_days
 from agent_bom.backpressure import _controller_for, reset_backpressure_for_tests
+from tests._clock_helpers import recent
 
 TENANT = "default"
 
@@ -62,8 +63,8 @@ def _seed_repeated_scans(store: InMemoryJobStore, *, scans: int, findings: list[
                 job_id=job_id,
                 tenant_id=TENANT,
                 status=JobStatus.DONE,
-                created_at=f"2026-07-{n + 1:02d}T00:00:00Z",
-                completed_at=f"2026-07-{n + 1:02d}T00:01:00Z",
+                created_at=recent(f"2026-07-{n + 1:02d}T00:00:00Z"),
+                completed_at=recent(f"2026-07-{n + 1:02d}T00:01:00Z"),
                 request=ScanRequest(agent_projects=["/tmp/proj"], offline=True),
                 result={"findings": [dict(f) for f in findings]},
             )
@@ -135,7 +136,7 @@ def test_findings_fixture_ignores_and_restores_unrelated_bulk_state() -> None:
     unrelated_store.upsert_current_batch(
         TENANT,
         unrelated,
-        observed_at="2026-07-17T00:00:00Z",
+        observed_at=recent("2026-07-17T00:00:00Z"),
         batch_id="unrelated-batch",
         source="test_api_surface_0943",
     )

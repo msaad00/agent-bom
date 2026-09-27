@@ -6,21 +6,20 @@ The default scan profile exposes 8 tools. This reference covers the explicit
 agent-bom exposes MCP tools for scanning, blast radius, trust, compliance,
 runtime, and remediation. The tools are read-only by default: agent consumers
 can request evidence and deploy guidance without mutating repos, cloud
-resources, or runtime targets. 20 write-annotated tools cover scan-history
+resources, or runtime targets. 21 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
 review, snapshot correlation, finding triage and exception approval,
-remediation campaigns, and ticket workflows. 1 process-execution tool can
+remediation campaigns, endpoint collection, and ticket workflows. 1 process-execution tool can
 launch a discovered local MCP server only with explicit authorization.
 They fail closed unless a remote caller uses the operator token and supplies an
 admin role, the tool-specific write scope, and an audit reason; stdio cannot
 invoke them.
 
-`agent-bom mcp server` and the programmatic server both expose the complete
-86-tool catalog by default. Use `--profile guided` only when a client needs the
-smaller workflow-oriented context envelope.
+`agent-bom mcp server` and the programmatic server default to eight focused
+scan tools. Use `--profile full` for the complete 88-tool catalog.
 
 <details>
-<summary>Explicit full-profile catalog (86 tools)</summary>
+<summary>Explicit full-profile catalog (88 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `graph_correlate`,
@@ -43,7 +42,8 @@ smaller workflow-oriented context envelope.
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
 `cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
 `findings_triage`, `list_exceptions`, `request_exception`,
-`approve_exception`, `risk_campaign_workflow`, `cloud_side_scan`.
+`approve_exception`, `risk_campaign_workflow`, `cloud_side_scan`,
+`endpoint_inventory`, `endpoint_sync`.
 
 </details>
 

@@ -1438,6 +1438,8 @@ jobs:
       - name: Run real Postgres storage contract
         env:
           AGENT_BOM_ADJACENCY_TEST_POSTGRES_URL: ${{ env.AGENT_BOM_POSTGRES_ADMIN_URL }}
+          ENDPOINT_TEST_POSTGRES_URL: ${{ env.AGENT_BOM_POSTGRES_ADMIN_URL }}
+          ENDPOINT_TEST_POSTGRES_APP_URL: postgresql://agent_bom_app:apppass@127.0.0.1:5432/agentbom_test
         # Every suite here SKIPS without AGENT_BOM_POSTGRES_URL, so this job is
         # the only place they ever execute. Two files used to be listed, which
         # left the audit chain, fleet tenancy, hub ingest, partitioning and the
@@ -1469,6 +1471,7 @@ jobs:
             tests/test_postgres_gateway_activity.py \
             tests/test_postgres_agent_lifecycle.py \
             tests/test_postgres_mcp_results.py \
+            tests/test_endpoint_connector_postgres.py \
             tests/test_postgres_schema.py \
             tests/test_postgres_migrations.py \
             tests/test_postgres_governance_audit.py \

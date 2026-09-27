@@ -2,12 +2,12 @@
 
 agent-bom starts with 8 scan-profile tools and 3 workflow prompts. Select `--profile graph`,
 `cloud`, `runtime`, or `audit` for specialized tasks. Read `profiles://catalog` for startup commands.
-The explicit `--profile full` catalog exposes 86 tools, 7 resources and 8 workflow prompts so agents can
+The explicit `--profile full` catalog exposes 88 tools, 7 resources and 8 workflow prompts so agents can
 choose structured playbooks instead of guessing tool order.
-Most tools are read-only. 20 write-annotated tools cover scan-history
+Most tools are read-only. 21 write-annotated tools cover scan-history
 diff, Shield, identity, external ingest, CWPP runtime-evidence ingest, access
 review, snapshot correlation, finding triage and exception approval,
-remediation campaigns, and ticket workflows. 1 process-execution tool can
+remediation campaigns, endpoint collection, and ticket workflows. 1 process-execution tool can
 launch a discovered local MCP server only with explicit authorization.
 Each requires `operator_role=admin`, its tool-specific write scope, and an audit
 reason. The registered scope families are `cloud:write`, `findings:write`,

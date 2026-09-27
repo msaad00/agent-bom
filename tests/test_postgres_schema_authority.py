@@ -295,6 +295,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
     runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "mcp_tools" / "result_store.py")
+    runtime_paths.append(ROOT / "src" / "agent_bom" / "connectors" / "endpoints" / "store.py")
     runtime_source = "\n".join(path.read_text() for path in runtime_paths)
     migration_sql = (ROOT / "deploy" / "supabase" / "postgres" / "runtime-schema.sql").read_text()
     authority_sql = _schema_authority_sql()

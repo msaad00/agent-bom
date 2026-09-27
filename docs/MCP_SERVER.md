@@ -1,7 +1,7 @@
 # MCP Server — Connect agent-bom to AI Assistants
 
 agent-bom starts with 8 focused MCP tools. Select a task profile for graph, cloud, runtime or audit work;
-`--profile full` explicitly exposes the complete compatibility catalog of 86 MCP tools. Clients that negotiate the
+`--profile full` explicitly exposes the complete compatibility catalog of 88 MCP tools. Clients that negotiate the
 locked MCP SDK's session-era `2025-11-25` handshake can connect over stdio or
 Streamable HTTP and use vulnerability scanning, blast radius analysis,
 compliance checks, runtime posture, and supply-chain verification. SSE remains
@@ -203,7 +203,7 @@ agent-bom proxy-bootstrap \
 
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
-## Tool Categories (86 tools)
+## Tool Categories (88 tools)
 
 These categories describe `--profile full`, not the default startup catalog.
 The [profile guide](MCP_WORKFLOWS.md) lists the smaller task surfaces.
@@ -223,7 +223,7 @@ The [profile guide](MCP_WORKFLOWS.md) lists the smaller task surfaces.
 | **AI supply chain** | `dataset_card_scan`, `training_pipeline_scan`, `browser_extension_scan`, `model_provenance_scan`, `prompt_scan`, `model_file_scan`, `ingest_external_scan`, `runtime_evidence_ingest` | Scan AI artifacts, prompts, model files, and browser extensions; import tool-agnostic SARIF/SBOM/scanner evidence without executing its producer; merge CWPP runtime signals |
 
 <details>
-<summary>Complete current catalog (86 tools)</summary>
+<summary>Complete current catalog (88 tools)</summary>
 
 `scan`, `check`, `intel_lookup`, `intel_match`, `intel_sources`,
 `intel_daily_brief`, `youcom_search`, `blast_radius`, `exposure_paths`, `graph_correlate`,
@@ -246,7 +246,8 @@ The [profile guide](MCP_WORKFLOWS.md) lists the smaller task surfaces.
 `cost_forecast`, `cost_allocation`, `credential_expiry`, `nhi_discover`,
 `cloud_inventory`, `access_review`, `create_ticket`, `sync_ticket_status`,
 `findings_triage`, `list_exceptions`, `request_exception`,
-`approve_exception`, `risk_campaign_workflow`, `cloud_side_scan`.
+`approve_exception`, `risk_campaign_workflow`, `cloud_side_scan`,
+`endpoint_inventory`, `endpoint_sync`.
 
 </details>
 
@@ -310,14 +311,14 @@ uses dashed lines where traversal is not established.
 ## Security Model
 
 - **Read-mostly**: scanner, graph, audit, and posture tools are read-only.
-  The 20 write-annotated tools cover scan-history diff, Shield, identity,
+  The 21 write-annotated tools cover scan-history diff, Shield, identity,
   external ingest, CWPP runtime-evidence ingest, access review, finding
   triage and exception approval, snapshot correlation, remediation campaigns,
-  and ticket workflows. One process-execution tool can launch a discovered
+  endpoint collection, and ticket workflows. One process-execution tool can launch a discovered
   local MCP server only with explicit authorization. These tools require an
   authenticated MCP operator token plus admin role, their specific write
   scope (`cloud:write`, `findings:write`, `identity:write`, `scan:write`, `shield:write`,
-  or `ticketing:write`), and an audit reason; stdio cannot invoke them.
+  `connectors:write`, or `ticketing:write`), and an audit reason; stdio cannot invoke them.
 - **No credential storage**: Never stores, logs, or transmits your credentials.
 - **No network exfiltration**: Scans local configs, queries public CVE databases.
 - **Agentless**: No agents installed on targets.

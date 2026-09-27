@@ -13,14 +13,11 @@ signals reach the decision point. This module is that bridge:
 
 **Vendor-neutral by design.** The canonical unit is :class:`DeviceSignal`.
 Concrete adapters normalize a specific source's payload shape into that unit;
-they are pure field-mappers over an *already-fetched* JSON payload (read-only,
-agentless — no live vendor API client and no stored vendor credentials ship
-here). Two adapters are provided as concrete shapes — one EDR (CrowdStrike host
-API) and one MDM (Microsoft Intune ``managedDevices``) — alongside a ``generic``
-adapter that accepts the canonical shape directly, which is the documented
-generic **POST** ingest contract. This is deliberately honest: agent-bom ships a
-generic device-posture ingest plus two documented vendor field-mappings, not a
-fleet of live vendor integrations.
+they map *already-fetched* JSON without storing credentials. Authenticated
+Jamf and Falcon collectors live in ``connectors.endpoints`` and persist the
+same signals with tenant/account scope, collection receipts and freshness.
+Intune and generic payload ingest remain available here. Sensor health,
+management, encryption and policy compliance are distinct evidence fields.
 
 The signals carry no secret material — device id, posture booleans, OS version,
 and last-seen only.
@@ -227,8 +224,8 @@ class CrowdStrikeConnector:
     """Normalize a CrowdStrike Falcon host-details payload (EDR).
 
     Field mapping (``/devices/entities/devices/v2`` ``resources[]``):
-    a reporting sensor ⇒ ``managed``; ``status == "normal"`` and *not* in
-    ``reduced_functionality_mode`` ⇒ ``compliant``.
+    a reporting sensor ⇒ ``managed``; health is separate from organizational
+    policy compliance, which this API does not establish.
     """
 
     source = "crowdstrike"
@@ -243,16 +240,9 @@ class CrowdStrikeConnector:
             rfm = _as_bool(host.get("reduced_functionality_mode"))
             last_seen = str(host.get("last_seen") or "")
             agent_version = str(host.get("agent_version") or "")
-            # Tri-state compliance — a missing/empty status is UNKNOWN, not
-            # compliant. Only assert compliant on an explicit "normal" that is
-            # not in reduced-functionality mode; RFM is a known-bad signal.
-            compliant: bool | None
-            if rfm is True:
-                compliant = False
-            elif status:
-                compliant = status == "normal"
-            else:
-                compliant = None
+            # Sensor operation is not an assessment of organizational compliance.
+            compliant = None
+            sensor_healthy = False if rfm is True else (True if status == "normal" and rfm is False else None)
             # Only assert managed when the payload actually evidences a reporting
             # / enrolled sensor (status, a last-seen, or an agent version). A
             # sparse device_id-only entry leaves managed unknown so a
@@ -270,7 +260,12 @@ class CrowdStrikeConnector:
                     hostname=str(host.get("hostname") or ""),
                     risk_level=str(host.get("risk_level") or ""),
                     last_seen=last_seen,
-                    attributes={"platform": str(host.get("platform_name") or "")},
+                    attributes={
+                        "platform": str(host.get("platform_name") or ""),
+                        "sensor_healthy": sensor_healthy,
+                        "sensor_status": status,
+                        "agent_version": agent_version,
+                    },
                 )
             )
         return out
@@ -343,6 +338,18 @@ def apply_device_posture(store: DevicePostureStore, ctx: "AccessContext", *, ten
     Mutates and returns ``ctx``.
     """
     if not ctx.device_id:
+        return ctx
+    if ctx.device_id.startswith("endpoint-"):
+        from agent_bom.connectors.endpoints.service import fresh_device
+        from agent_bom.connectors.endpoints.store import EndpointStore
+
+        # Live connectors use shared durable evidence, never the node-local ingest cache.
+        signal = EndpointStore().current_device(tenant_id, ctx.device_id)
+        if signal is not None:
+            signal = fresh_device(signal)
+        ctx.device_managed = signal.managed if signal else None
+        ctx.device_compliant = signal.compliant if signal else None
+        ctx.device_disk_encrypted = signal.disk_encrypted if signal else None
         return ctx
     signal = store.get(ctx.device_id, tenant_id=tenant_id)
     if signal is None:

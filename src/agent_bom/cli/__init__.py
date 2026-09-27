@@ -221,10 +221,9 @@ main.commands["api"].hidden = True
 # connect → scan → graph → report (and `up` to run the platform locally).
 # `scan`/`graph`/`report` already exist; `connect` + `up` are additive.
 # ---------------------------------------------------------------------------
-from agent_bom.cli._entry_points import connect_group, make_up_command  # noqa: E402
+from agent_bom.cli._frontdoor import register_frontdoor  # noqa: E402
 
-main.add_command(connect_group, "connect")
-main.add_command(make_up_command(serve_cmd), "up")
+register_frontdoor(main, serve_cmd)
 
 from agent_bom.cli._gateway import gateway_group  # noqa: E402
 

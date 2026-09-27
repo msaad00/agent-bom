@@ -8,6 +8,8 @@ from urllib.parse import quote
 
 import httpx
 
+from agent_bom.connectors.endpoints.client import EndpointClientMixin
+
 JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject: TypeAlias = dict[str, JsonValue]
 QueryValue: TypeAlias = str | int | float | bool | None
@@ -22,12 +24,10 @@ class AgentBomApiError(RuntimeError):
         self.body = body
 
 
-class AgentBomClient:
+class AgentBomClient(EndpointClientMixin):
     """Synchronous control-plane client for agent-bom.
 
-    The client is intentionally small and hand-written so the Python package can
-    cover the stable API primitives without adding code generation to the
-    release path.
+    Covers stable API primitives without a code-generation dependency.
     """
 
     def __init__(

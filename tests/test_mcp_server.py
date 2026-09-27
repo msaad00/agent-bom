@@ -215,6 +215,7 @@ def test_static_bearer_verifier_keeps_read_and_operator_tokens_separate():
         "scan:write",
         "shield:write",
         "ticketing:write",
+        "connectors:write",
     }
 
 
@@ -232,11 +233,19 @@ def test_static_operator_token_authorizes_every_registered_write_family():
     server_root = Path(__file__).resolve().parents[1] / "src" / "agent_bom"
     required_scopes = {
         match
-        for path in server_root.glob("mcp_server_*.py")
+        for path in [*server_root.glob("mcp_server_*.py"), *server_root.joinpath("mcp_tools").rglob("*.py")]
         for match in re.findall(r'required_scope="([^"]+)"', path.read_text())
         if match.endswith(":write")
     }
-    assert required_scopes == {"cloud:write", "findings:write", "identity:write", "scan:write", "shield:write", "ticketing:write"}
+    assert required_scopes == {
+        "cloud:write",
+        "findings:write",
+        "identity:write",
+        "scan:write",
+        "shield:write",
+        "ticketing:write",
+        "connectors:write",
+    }
     for required_scope in required_scopes:
         denial = authorize_destructive_tool(
             "write-tool",
@@ -1937,3 +1946,24 @@ def test_ingest_external_scan_sends_typed_file_findings(monkeypatch):
     assert captured[0]["finding_type"] == "SAST"
     assert captured[0]["asset"]["asset_type"] == "source_file"
     assert "package" not in captured[0]
+
+
+@patch("agent_bom.mcp_tools.endpoint_connectors.endpoint_sync_impl")
+def test_endpoint_sync_rejects_self_asserted_admin_without_authenticated_scope(mock_sync):
+    from agent_bom import mcp_server
+
+    server = mcp_server.create_mcp_server(profile="full")
+    for scopes in ("", "read", "admin", "connectors:write"):
+        with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta(scopes)):
+            result = _call_tool(
+                server,
+                "endpoint_sync",
+                {
+                    "connection_id": "fixture",
+                    "operator_role": "admin",
+                    "operator_scopes": "connectors:write",
+                    "reason": "fixture collection",
+                },
+            )
+        assert result["status"] == "blocked"
+    mock_sync.assert_not_called()

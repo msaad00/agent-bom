@@ -52,7 +52,8 @@ def test_crowdstrike_edr_payload_normalizes():
     assert sig.source == "crowdstrike"
     assert sig.device_id == "cs-abc"
     assert sig.managed is True  # a reporting CrowdStrike sensor = managed
-    assert sig.compliant is True  # normal + not reduced-functionality
+    assert sig.compliant is None  # sensor health is not policy compliance
+    assert sig.attributes["sensor_healthy"] is True
     assert sig.os_version == "14.5"
 
 
@@ -61,7 +62,8 @@ def test_crowdstrike_reduced_functionality_is_not_compliant():
     payload = {"resources": [{"device_id": "cs-x", "status": "normal", "reduced_functionality_mode": "yes"}]}
     sig = conn.normalize(payload, tenant_id="t")[0]
     assert sig.managed is True
-    assert sig.compliant is False
+    assert sig.compliant is None
+    assert sig.attributes["sensor_healthy"] is False
 
 
 def test_crowdstrike_sparse_host_is_unknown_not_compliant():

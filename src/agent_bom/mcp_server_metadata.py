@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import ast
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
+
+from agent_bom.mcp_tools.catalog import registered_mcp_tool_decorator_names as registered_mcp_tool_decorator_names
 
 # Immutable release metadata: older releases without this field expose the full catalog.
 _DEFAULT_PROFILE_TOOL_NAMES = [
@@ -20,6 +20,12 @@ _DEFAULT_PROFILE_TOOL_NAMES = [
 ]
 
 _SERVER_CARD_TOOLS = [
+    {"name": "endpoint_inventory", "description": "Read scoped endpoint inventory and freshness", "annotations": {"readOnlyHint": True}},
+    {
+        "name": "endpoint_sync",
+        "description": "Collect read-only endpoint inventory into durable evidence",
+        "annotations": {"readOnlyHint": False, "destructiveHint": True},
+    },
     {"name": "scan", "description": "Full discovery → scan → output pipeline", "annotations": {"readOnlyHint": True}},
     {"name": "check", "description": "Check a specific package for CVEs before installing", "annotations": {"readOnlyHint": True}},
     {
@@ -461,6 +467,8 @@ _SERVER_CARD_TOOLS = [
 ]
 
 _TOOL_CAPABILITY_CLASSES = {
+    "endpoint_inventory": ["READ", "INTEGRATION"],
+    "endpoint_sync": ["WRITE", "NETWORK", "INTEGRATION", "AUDIT"],
     "scan": ["READ", "NETWORK", "LOCAL_FILE_READ"],
     "check": ["READ", "NETWORK"],
     "intel_lookup": ["READ", "THREAT_INTEL"],
@@ -557,25 +565,6 @@ for _tool in _SERVER_CARD_TOOLS:
 def server_card_tool_names() -> frozenset[str]:
     """Return the MCP server-card tool names advertised to clients."""
     return frozenset(str(tool["name"]) for tool in _SERVER_CARD_TOOLS)
-
-
-def _is_mcp_tool_decorator(node: ast.expr) -> bool:
-    target = node.func if isinstance(node, ast.Call) else node
-    return isinstance(target, ast.Attribute) and target.attr == "tool" and isinstance(target.value, ast.Name) and target.value.id == "mcp"
-
-
-def registered_mcp_tool_decorator_names() -> frozenset[str]:
-    """Return MCP tool function names across server registration modules."""
-    package_root = Path(__file__).resolve().parent
-    names: set[str] = set()
-    for path in sorted(package_root.glob("mcp_server*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if any(_is_mcp_tool_decorator(decorator) for decorator in node.decorator_list):
-                names.add(node.name)
-    return frozenset(names)
 
 
 _SERVER_CARD_PROMPTS = [

@@ -19,7 +19,10 @@ from pathlib import Path as _Path
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException
 
+from agent_bom.api.routes.endpoint_connectors import router as endpoint_router
+
 router = APIRouter()
+router.include_router(endpoint_router)
 _logger = logging.getLogger(__name__)
 
 

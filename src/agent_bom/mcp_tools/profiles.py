@@ -77,7 +77,7 @@ PROFILES = {
     ),
     "cloud": ToolProfile(
         "Inspect cloud inventory, connection scope and CIS posture.",
-        frozenset({"cloud_inventory", "cis_benchmark", "graph_export", "inventory_summary", "inventory_asset"}),
+        frozenset({"cloud_inventory", "cis_benchmark", "graph_export", "inventory_summary", "inventory_asset", "endpoint_inventory"}),
         frozenset({"cloud-connection-review"}),
         _COMMON_RESOURCES | {"schema://inventory-v1", "bestpractices://mcp-hardening"},
     ),

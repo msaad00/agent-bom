@@ -50,6 +50,8 @@ def _job_store_with_unrated_blast() -> InMemoryJobStore:
     blast += [{"severity": "unknown", "affected_agents": ["unrated-agent"]} for _ in range(3)]
     blast += [{"severity": "none", "affected_agents": ["unrated-agent"]}]
     blast += [{"severity": "", "affected_agents": ["unrated-agent"]}]
+    for row in blast:
+        row["affected_agent_ids"] = [_agent_with_unrated_blast()[0].canonical_id]
     job.result = {"scan_id": "scan-unrated", "blast_radius": blast}
     store.put(job)
     return store

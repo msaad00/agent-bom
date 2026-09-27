@@ -194,7 +194,12 @@ VERSION_SWEEP: list[tuple[str, re.Pattern[str], str]] = [
     # the engine two ways to consume the same character and backtracking becomes
     # exponential (CodeQL ReDoS, HIGH). We ship a scanner that flags this shape.
     ("sdks/*/package.json", re.compile(r'\A\{[^{}]*?"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "SDK package version"),
-    ("deploy/docker-compose*.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)"), "compose image tag"),
+    # `(?:\$\{VAR:-)?` also reads the default of a checkout override, `:${AGENT_BOM_IMAGE_TAG:-X}`.
+    (
+        "deploy/docker-compose*.yml",
+        re.compile(r"agentbom/agent-bom(?:-ui)?:(?:\$\{[A-Z_]+:-)?([0-9]+\.[0-9]+\.[0-9]+)"),
+        "compose image tag",
+    ),
     ("deploy/k8s/*.yaml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)"), "k8s image tag"),
     ("deploy/docker/Dockerfile*", re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M), "Dockerfile ARG VERSION"),
     ("integrations/*/server.json", re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "integration manifest version"),

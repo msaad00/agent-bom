@@ -9,6 +9,7 @@ drift away from the canonical pyproject version.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -337,7 +338,7 @@ def test_rewrite_moves_each_class_to_its_own_version(tmp_path, monkeypatch) -> N
     deploy = tmp_path / "deploy"
     deploy.mkdir()
     pilot = deploy / "docker-compose.pilot.yml"
-    pilot.write_text("image: agentbom/agent-bom:0.90.0\n")
+    pilot.write_text("image: agentbom/agent-bom:${AGENT_BOM_IMAGE_TAG:-0.90.0}\n")
     built = deploy / "docker-compose.fullstack.yml"
     built.write_text("image: agentbom/agent-bom:0.90.0\n")
     guide = tmp_path / "guide.md"
@@ -347,7 +348,7 @@ def test_rewrite_moves_each_class_to_its_own_version(tmp_path, monkeypatch) -> N
     monkeypatch.setattr(cva, "ROOT", tmp_path)
     monkeypatch.setattr(cva, "_release_tags", lambda: set())
     cva.rewrite("0.106.0", published="0.105.0")
-    assert "0.105.0" in pilot.read_text()
+    assert "${AGENT_BOM_IMAGE_TAG:-0.105.0}" in pilot.read_text()
     assert "0.106.0" in built.read_text()
     assert "@v0.105.0" in guide.read_text()
     assert cva.find_drift("0.106.0", published="0.105.0") == []
@@ -367,3 +368,55 @@ def test_source_built_list_matches_compose_reality() -> None:
             continue
         all_built = all("build" in svc for svc in pinned)
         assert (rel in cva.SOURCE_BUILT) == all_built, f"{rel}: source-built={all_built} but SOURCE_BUILT={rel in cva.SOURCE_BUILT}"
+
+
+def test_checkout_override_image_pin_is_managed_and_tracks_published() -> None:
+    cva = _load_script("check_version_alignment.py")
+    pin = "    image: agentbom/agent-bom:${AGENT_BOM_IMAGE_TAG:-0.105.0}\n"
+    assert cva.scan_text("deploy/docker-compose.pilot.yml", pin, "0.106.0", published="0.105.0") == []
+    stale = pin.replace("0.105.0", "0.104.0")
+    drift = cva.scan_text("deploy/docker-compose.pilot.yml", stale, "0.106.0", published="0.105.0")
+    assert len(drift) == 1 and "0.105.0" in drift[0], drift
+
+
+def test_release_checkout_instructions_are_managed_and_track_published() -> None:
+    cva = _load_script("check_version_alignment.py")
+    clone = "git clone --depth 1 --branch v0.104.0 https://github.com/msaad00/agent-bom.git\n"
+    text = clone + "AGENT_BOM_IMAGE_TAG=0.104.0 docker compose up -d\n"
+    assert len(cva.scan_text("README.md", text, "0.106.0", published="0.105.0")) == 2
+    assert cva.scan_text("README.md", text.replace("0.104.0", "0.105.0"), "0.106.0", published="0.105.0") == []
+
+
+def test_pilot_compose_images_follow_the_checkout_override() -> None:
+    """A tag checkout runs that tag's images when the documented override is set.
+
+    Pins on main track PUBLISHED_VERSION (never an unpublished image), so at tag
+    vX they still name the previous release. Every pilot image must therefore
+    honor AGENT_BOM_IMAGE_TAG, which the release-checkout instructions set to X.
+    """
+    cva = _load_script("check_version_alignment.py")
+    assert cva.find_override_drift() == []
+    assert "deploy/docker-compose.pilot.yml" in cva.CHECKOUT_OVERRIDE
+    for rel, variable in cva.CHECKOUT_OVERRIDE.items():
+        images = re.findall(r"image:\s*(agentbom/agent-bom[^\s]*)", (ROOT / rel).read_text(encoding="utf-8"))
+        assert images, rel
+        for image in images:
+            assert re.fullmatch(r"agentbom/agent-bom(?:-ui)?:\$\{" + variable + r":-\d+\.\d+\.\d+\}", image), image
+
+
+def test_override_drift_flags_a_hardcoded_pilot_pin(tmp_path, monkeypatch) -> None:
+    cva = _load_script("check_version_alignment.py")
+    (tmp_path / "pilot.yml").write_text("services:\n  api:\n    image: agentbom/agent-bom:0.105.0\n")
+    monkeypatch.setattr(cva, "ROOT", tmp_path)
+    monkeypatch.setattr(cva, "CHECKOUT_OVERRIDE", {"pilot.yml": "AGENT_BOM_IMAGE_TAG"})
+    drift = cva.find_override_drift()
+    assert len(drift) == 1 and "AGENT_BOM_IMAGE_TAG" in drift[0], drift
+
+
+def test_release_checkout_docs_set_the_image_tag_for_the_tag_they_clone() -> None:
+    published = (ROOT / "PUBLISHED_VERSION").read_text(encoding="utf-8").strip()
+    for rel in ("README.md", "docs/DEPLOY_QUICKSTART.md"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        branches = set(re.findall(r"--branch v(\d+\.\d+\.\d+)", text))
+        tags = set(re.findall(r"AGENT_BOM_IMAGE_TAG=(\d+\.\d+\.\d+)", text))
+        assert branches == tags == {published}, (rel, branches, tags)

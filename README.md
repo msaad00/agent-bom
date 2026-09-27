@@ -37,11 +37,11 @@ Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted
 **Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
 
 ```bash
-docker compose up -d
+git clone --depth 1 --branch v0.106.1 https://github.com/msaad00/agent-bom.git && cd agent-bom
+AGENT_BOM_IMAGE_TAG=0.106.1 docker compose up -d
 ```
 
-Open **http://localhost:3000**, then **Connections** or **New Scan**.
-For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
+Open **http://localhost:3000**, then **Connections** or **New Scan**. For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
 The pilot binds to loopback and retains state in a Docker volume. Use the authenticated deployment guide for a shared instance.
 
 ### Deployment models
@@ -73,27 +73,27 @@ agent-bom scan .
 <details>
 <summary>No project handy? Scan the bundled sample estate offline</summary>
 
-`agent-bom scan --demo --offline` lists agents, MCP servers and what they can reach first, then the CVEs behind them (excerpt):
+`agent-bom scan --demo --offline` lists the agents it found, then each CVE with the agent, MCP server and credentials it can reach, then agent and MCP policy findings (excerpt of real output):
 
 ```text
-  Security posture:   CRIT  2   HIGH  16   MED   5 · all finding categories
+  Security posture:   CRIT  7   HIGH  11   MED   5 · all finding categories
   5 agents · 10 servers · 23 packages
 DISCOVER | Agents
   Agent                Type              Servers    Pkgs    Creds    Vulns
   langchain-service    custom                  2       4        4        4
   claude-desktop       claude-desktop          2       6        3        5
-ANALYZE | Graph & Policy Findings
-   HIGH  PROMPT_SECURITY Agent calls MCP server without verified identity
-   HIGH  COMBINATION AI agent can reach a credential or privileged tool: langchain-service
-   MED   PROMPT_SECURITY Long-lived static credential on MCP server
 ANALYZE | Critical Details
   CVE-2023-36258 · langchain@0.0.150 · CRITICAL
   Fix: upgrade to ≥ 0.0.247
-  Blast: langchain-service → llm-orchestrator-server → ANTHROPIC_API_KEY, OPENAI_API_KEY
+  Blast: langchain-service → llm-orchestrator-server → OPENAI_API_KEY, ANTHROPIC_API_KEY
+ANALYZE | Graph & Policy Findings (8 occurrences)
+   CRIT  COMBINATION AI agent can reach a credential or privileged tool: langchain-service
+   HIGH  PROMPT_SECURITY Agent calls MCP server without verified identity
+   MED   PROMPT_SECURITY Long-lived static credential on MCP server
 ```
 
 The sample deliberately triggers a security gate (exit `1`). Save CI evidence with
-`agent-bom scan . -f sarif -o findings.sarif`; check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md)
+`agent-bom scan . -f sarif -o findings.sarif`; check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md) · [GitHub Action](docs/FIRST_RUN.md#5-gate-ci-on-the-result)
 
 <p align="center">
   <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />

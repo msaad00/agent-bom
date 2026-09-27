@@ -1119,15 +1119,21 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
 
     Canonicalizes ID to CVE when available (prefer CVE-xxxx over GHSA/PYSEC).
     """
-    severity = severity_from_label(getattr(lv, "severity", None))
-    severity_source = None
+    # Same basis precedence as ``osv_severity_basis`` (online): a CVSS score
+    # decides the band; the stored advisory label only applies without one.
     cvss_score = getattr(lv, "cvss_score", None)
     cvss_vector = getattr(lv, "cvss_vector", None)
     if cvss_score is None and isinstance(cvss_vector, str) and cvss_vector:
         cvss_score = parse_cvss_vector(cvss_vector)
-    if severity == Severity.UNKNOWN and cvss_score is not None:
+    severity_source: Optional[str] = None
+    if cvss_score is not None:
         severity = cvss_to_severity(cvss_score)
         severity_source = "cvss"
+    else:
+        severity = severity_from_label(getattr(lv, "severity", None))
+        if severity != Severity.UNKNOWN:
+            label_origin = str(getattr(lv, "source", "") or "osv").lower()
+            severity_source = "osv_database" if label_origin == "osv" else f"{label_origin}_advisory"
 
     from agent_bom.advisory_ids import canonical_vulnerability_id, match_confidence_tier
 

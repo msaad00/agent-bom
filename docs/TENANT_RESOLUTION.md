@@ -29,6 +29,19 @@ A missing OIDC tenant claim or SAML tenant attribute **fails closed by default**
 `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` and
 `AGENT_BOM_SAML_ALLOW_DEFAULT_TENANT=1` are explicit single-tenant opt-ins.
 
+After authentication establishes the tenant, middleware and RBAC dependencies
+require a non-empty string. Missing, blank or non-string context returns HTTP 500
+with `Authenticated tenant context is unavailable` before the request handler
+or database read runs. Check the identity provider or stored key's tenant binding;
+this error does not grant access to the `default` tenant. An explicitly resolved
+`default` remains supported for single-tenant deployments and configured no-auth
+mode.
+
+Tenant-bound worker helpers apply the same validation before executing work or
+submitting it to a pool. Invalid context raises `ValueError`; successful and failed
+work restore the previous tenant context. Job producers must supply the tenant
+established by their authentication or operator configuration boundary.
+
 ## CLI
 
 The CLI runs out-of-band; there is no authenticated request to derive

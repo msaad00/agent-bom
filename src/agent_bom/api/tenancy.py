@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import HTTPException, Request
+import os
 
+from fastapi import HTTPException, Request
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import JSONResponse, Response
+
+from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.platform_invariants import normalize_tenant_id
 
 
@@ -14,9 +19,29 @@ def require_request_tenant_id(request: Request) -> str:
     middleware owns that fallback so a missing request tenant fails closed
     instead of crossing into the single-tenant bucket by accident.
     """
-    if not hasattr(request.state, "tenant_id"):
-        raise HTTPException(status_code=500, detail="Authenticated tenant context is unavailable")
-    return normalize_tenant_id(str(request.state.tenant_id))
+    try:
+        return require_explicit_tenant_id(getattr(request.state, "tenant_id", None))
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="Authenticated tenant context is unavailable") from exc
+
+
+async def call_with_request_tenant(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """Reject incomplete identity before dispatch and restore database context."""
+    try:
+        tenant_id = require_request_tenant_id(request)
+    except HTTPException:
+        return JSONResponse(status_code=500, content={"detail": "Authenticated tenant context is unavailable"})
+    request.state.tenant_id = tenant_id
+    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        return await call_next(request)
+
+    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+
+    token = set_current_tenant(tenant_id)
+    try:
+        return await call_next(request)
+    finally:
+        reset_current_tenant(token)
 
 
 # Legacy SDK bodies carry the schema default rather than a real tenant. Treat it

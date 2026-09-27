@@ -1846,18 +1846,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         return await self._call_with_tenant_context(request, call_next)
 
     async def _call_with_tenant_context(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
-        tenant_token = None
-        try:
-            if os.environ.get("AGENT_BOM_POSTGRES_URL"):
-                from agent_bom.api.postgres_store import set_current_tenant
+        from agent_bom.api.tenancy import call_with_request_tenant
 
-                tenant_token = set_current_tenant(getattr(request.state, "tenant_id", "default"))
-            return await call_next(request)
-        finally:
-            if tenant_token is not None:
-                from agent_bom.api.postgres_store import reset_current_tenant
-
-                reset_current_tenant(tenant_token)
+        return await call_with_request_tenant(request, call_next)
 
 
 DEFAULT_SCAN_RATE_LIMIT_RPM = 600

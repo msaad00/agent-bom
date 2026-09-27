@@ -7,6 +7,7 @@ from concurrent.futures import Executor, Future
 from typing import ParamSpec, TypeVar
 
 from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -21,7 +22,7 @@ def run_tenant_bound(
 ) -> R:
     """Run one callable under ``tenant_id`` and always restore prior context."""
 
-    token = set_current_tenant(tenant_id)
+    token = set_current_tenant(require_explicit_tenant_id(tenant_id))
     try:
         return function(*args, **kwargs)
     finally:
@@ -38,7 +39,7 @@ def submit_tenant_bound(
 ) -> Future[R]:
     """Submit work whose worker thread is explicitly tenant-bound."""
 
-    return executor.submit(run_tenant_bound, tenant_id, function, *args, **kwargs)
+    return executor.submit(run_tenant_bound, require_explicit_tenant_id(tenant_id), function, *args, **kwargs)
 
 
 __all__ = ["run_tenant_bound", "submit_tenant_bound"]

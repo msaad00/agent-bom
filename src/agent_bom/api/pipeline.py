@@ -1404,6 +1404,21 @@ def _run_scan_sync(job: ScanJob) -> None:
                 warnings_all.append(message)
                 coverage_warning_messages.add(message)
 
+        if not repo_url:
+            from pathlib import Path as _SecretRootPath
+
+            secret_roots = [path for path in (*effective_agent_projects, *req.filesystem_paths) if path and _SecretRootPath(path).is_dir()]
+            if secret_roots:
+                pipeline.update_step("discovery", "Scanning for hardcoded secrets and credentials")
+                from agent_bom.api.repo_tree_scan import scan_path_secrets
+
+                secrets_block, secret_issues = scan_path_secrets(secret_roots, offline=req.offline)
+                repo_ai_inventory_data = repo_ai_inventory_data or {}
+                repo_ai_inventory_data["secrets"] = secrets_block
+                repo_scan_issues = [*repo_scan_issues, *secret_issues]
+                if secrets_block["total"] > 0:
+                    warnings_all.append(f"{secrets_block['total']} hardcoded secret(s) or credential pattern(s) found in project files")
+
         pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
 
         # ── Scope filtering (pre-extraction) ──

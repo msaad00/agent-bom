@@ -83,3 +83,15 @@ def test_explicit_tenant_validation_has_one_domain_owner():
     tree = ast.parse("def require_explicit_tenant_id(value):\n return value\n")
     assert boundary_errors("api/tenancy.py", tree)
     assert not boundary_errors("core/tenancy.py", tree)
+
+
+def test_gateway_relay_cannot_import_http_app_or_api_adapters():
+    for source in (
+        "import agent_bom.gateway_server",
+        "from agent_bom import gateway_server",
+        "from agent_bom.api.auth import get_key_store",
+        "from ..api import auth",
+        "from .. import gateway_server",
+    ):
+        assert boundary_errors("runtime/gateway_relay.py", ast.parse(source))
+    assert not boundary_errors("runtime/gateway_relay.py", ast.parse("from .gateway_relay_contract import RelayForwardRequest"))

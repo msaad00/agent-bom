@@ -61,6 +61,10 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
         for module in _import_modules(path, node):
+            if path == "runtime/gateway_relay.py" and (
+                module == "agent_bom.gateway_server" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
+            ):
+                errors.append(f"{path}:{node.lineno}: upstream relay must not import HTTP application or API adapters")
             if path == "api/graph_persistence.py" and module in {
                 "agent_bom.api.pipeline",
                 "agent_bom.api.server",

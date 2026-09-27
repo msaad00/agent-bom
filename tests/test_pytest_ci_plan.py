@@ -76,3 +76,26 @@ def test_mcp_registration_edits_select_tool_contracts(tmp_path: Path) -> None:
     ):
         assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
     assert select_targeted_tests(changed_files=[Path("src/agent_bom/cloud/aws.py")], root=tmp_path) == []
+
+
+def test_gateway_modules_select_cross_surface_enforcement_contracts(tmp_path: Path) -> None:
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_gateway_server.py",
+            "test_gateway_firewall.py",
+            "test_gateway_relay_lifecycle.py",
+            "test_gateway_audit_delivery.py",
+            "api/test_api_gateway.py",
+            "api/test_gateway_runtime_acceptance.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    _write(tmp_path / "tests/test_other.py", 1)
+    for source in (
+        "src/agent_bom/gateway_server.py",
+        "src/agent_bom/runtime/gateway_relay.py",
+        "src/agent_bom/runtime/gateway_settings.py",
+    ):
+        assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

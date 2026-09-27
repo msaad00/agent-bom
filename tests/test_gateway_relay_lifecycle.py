@@ -9,6 +9,7 @@ import pytest
 
 import agent_bom.gateway_server as gateway
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
+from agent_bom.runtime import gateway_relay
 
 
 @pytest.mark.asyncio
@@ -54,7 +55,7 @@ async def test_relay_failure_isolated_by_tenant_and_success_resets_circuit(monke
     from agent_bom.runtime import gateway_relay_contract
 
     now = [100.0]
-    monkeypatch.setattr(gateway, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(gateway_relay, "time", SimpleNamespace(monotonic=lambda: now[0]))
     attempts = []
     failing = True
 
@@ -67,7 +68,7 @@ async def test_relay_failure_isolated_by_tenant_and_success_resets_circuit(monke
                 message={"jsonrpc": "2.0", "id": 7, "result": {"ok": True}}, upstream_name=request.upstream.name, bytes_read=0
             )
 
-    monkeypatch.setattr(gateway, "build_gateway_relay_transport", lambda *_args, **_kwargs: Transport())
+    monkeypatch.setattr(gateway_relay, "build_gateway_relay_transport", lambda *_args, **_kwargs: Transport())
     relay = gateway.GatewayUpstreamRelay(
         gateway.GatewaySettings(
             registry=UpstreamRegistry([]),

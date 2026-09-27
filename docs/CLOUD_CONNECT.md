@@ -363,7 +363,7 @@ agent-bom agents --preset enterprise --aws --aws-cis-benchmark
 roles/users/policies and the permission edges between them, RDS, DynamoDB,
 Lambda, EKS, ELB/ALB/NLB, VPCs, KMS, Secrets Manager (metadata only), CloudFront,
 ECR, Redshift, SNS/SQS — plus AWS **Organizations** (OU tree → accounts → SCPs)
-for multi-account estates, and **60 CIS checks**.
+for multi-account estates, and **59 CIS checks**.
 
 **Org scale (cross-account fan-out):** with `AGENT_BOM_AWS_ORG_INVENTORY=1` the
 connector enumerates every member account of the organization, assumes a
@@ -446,7 +446,7 @@ agent-bom agents --preset enterprise --azure
 managed identities + **RBAC role assignments** (CIEM edges), Key Vaults,
 container registries, Cosmos/SQL/PostgreSQL/MySQL, VNets/public-IPs/load
 balancers/Front Door/API Management, Event Hubs/Service Bus/Redis,
-**management groups** for hierarchy, and **96 CIS checks**.
+**management groups** for hierarchy, and **94 CIS checks**.
 
 **Tenant scale (zero trust at scale):** with `AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS=1`
 the connector walks the management-group tree, enumerates every subscription,
@@ -941,3 +941,19 @@ silently.
     `removed_count`, `at_risk_count`, `gated`, `warnings`) nested under
     `cloud_sdk_freshness`; `doctor --agent-mode` emits a
     `cloud_api_deprecations` section in its envelope.
+
+### Duplicate control identifiers in earlier reports
+
+New AWS benchmark runs evaluate VPC flow logging once, as check `3.9`; the
+duplicate implementation under `5.6` has been removed. New Azure benchmark
+runs evaluate storage account default network denial once, as check `3.8`;
+the duplicate implementation under `3.2` has been removed. Update check-ID
+filters from AWS `5.6` to `3.9` and Azure `3.2` to `3.8`. These are corrections
+to agent-bom's implemented catalog, not a claim of complete benchmark coverage.
+
+Each condition now contributes one result to pass/fail totals, the evaluated
+denominator, findings and remediation. Previously saved reports retain their
+original identifiers and totals; run a fresh assessment for corrected counts.
+The generated benchmark inventory records the implemented checks. An official
+coverage percentage remains unavailable without a repository-provenanced
+authoritative catalog.

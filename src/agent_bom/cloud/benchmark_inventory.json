@@ -60,8 +60,7 @@
         "5.2",
         "5.3",
         "5.4",
-        "5.5",
-        "5.6"
+        "5.5"
       ],
       "control_ids": [
         "1.4",
@@ -111,7 +110,6 @@
         "5.3",
         "5.4",
         "5.5",
-        "5.6",
         "1.1",
         "1.2",
         "1.3",
@@ -126,8 +124,8 @@
         "4.16"
       ],
       "coverage_percentage": null,
-      "implemented_control_count": 60,
-      "inventory_digest": "8a3d7c5b525329f0aca21d9495821fd08994d14ffcde4abc04fa5958c3e857e9",
+      "implemented_control_count": 59,
+      "inventory_digest": "15b393fddfd59130e2491398e073f81086bc79390bb3c9ea94bcbe00f2adf266",
       "manual_control_ids": [
         "1.3"
       ],
@@ -183,7 +181,6 @@
         "3.10",
         "3.11",
         "3.12",
-        "3.2",
         "3.3",
         "3.4",
         "3.5",
@@ -277,7 +274,6 @@
         "2.12",
         "2.13",
         "3.1",
-        "3.2",
         "3.3",
         "3.4",
         "3.5",
@@ -338,8 +334,8 @@
         "9.6"
       ],
       "coverage_percentage": null,
-      "implemented_control_count": 95,
-      "inventory_digest": "d796c9380b36d815e4db3df13e09d6e33e8aa0ba7f9175905b2fc231376ff3b1",
+      "implemented_control_count": 94,
+      "inventory_digest": "5b56b93ee3d4cd4e2541594b6841d1c527d2bb63c88f2700a8dd9bc14d0fa47a",
       "manual_control_ids": [
         "1.10",
         "1.16",

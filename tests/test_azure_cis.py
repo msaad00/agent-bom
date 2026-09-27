@@ -14,8 +14,8 @@ from agent_bom.cloud.azure_cis_benchmark import (
     _check_2_2,
     _check_2_3,
     _check_3_1,
-    _check_3_2,
     _check_3_7,
+    _check_3_8,
     _check_3_10,
     _check_4_1_1,
     _check_4_2_1,
@@ -258,21 +258,21 @@ def test_check_3_7_fail():
     assert r.status == CheckStatus.FAIL
 
 
-def test_check_3_2_pass():
+def test_check_3_8_pass():
     st = MagicMock()
     nr = SimpleNamespace(default_action="Deny")
     acct = SimpleNamespace(name="acct1", network_rule_set=nr)
     st.storage_accounts.list.return_value = [acct]
-    r = _check_3_2(st)
+    r = _check_3_8(st)
     assert r.status == CheckStatus.PASS
 
 
-def test_check_3_2_fail():
+def test_check_3_8_fail():
     st = MagicMock()
     nr = SimpleNamespace(default_action="Allow")
     acct = SimpleNamespace(name="acct1", network_rule_set=nr)
     st.storage_accounts.list.return_value = [acct]
-    r = _check_3_2(st)
+    r = _check_3_8(st)
     assert r.status == CheckStatus.FAIL
 
 

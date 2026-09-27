@@ -1360,42 +1360,6 @@ def _check_3_7(storage_client: Any) -> CISCheckResult:
     return result
 
 
-def _check_3_2(storage_client: Any) -> CISCheckResult:
-    """CIS 3.2 — Ensure default network access rule for Storage Accounts is Deny."""
-    result = CISCheckResult(
-        check_id="3.2",
-        title="Storage account default network rule set to Deny",
-        status=CheckStatus.ERROR,
-        severity="high",
-        recommendation=(
-            "Set the default network access rule to 'Deny' on all storage accounts and add explicit network rules for allowed traffic."
-        ),
-        cis_section=_STORAGE_SECTION,
-    )
-    try:
-        accounts = list(storage_client.storage_accounts.list())
-        failing = []
-        for acct in accounts:
-            network_rule_set = getattr(acct, "network_rule_set", None)
-            default_action = getattr(network_rule_set, "default_action", None) if network_rule_set else None
-            default_action_str = _enum_text(default_action)
-            if default_action_str.lower() != "deny":
-                failing.append(acct.name)
-
-        if failing:
-            result.status = CheckStatus.FAIL
-            result.evidence = f"Storage accounts with default network access set to Allow: {', '.join(failing)}"
-            result.resource_ids = failing
-        else:
-            _pass_or_no_data(
-                result, len(accounts), "storage account", f"All {len(accounts)} storage account(s) have default network access set to Deny."
-            )
-    except Exception as exc:
-        result.status = CheckStatus.ERROR
-        result.evidence = f"Could not check storage account network rules: {exc}"
-    return result
-
-
 def _check_3_10(storage_client: Any) -> CISCheckResult:
     """CIS 3.10 — Ensure soft delete is enabled for Azure Storage."""
     result = CISCheckResult(
@@ -3956,7 +3920,6 @@ def run_benchmark(
         ("2.13", lambda: _check_2_13(_security_client(), resolved_sub)),
         # Section 3 — Storage Accounts
         ("3.1", lambda: _check_3_1(_storage_client())),
-        ("3.2", lambda: _check_3_2(_storage_client())),
         ("3.3", lambda: _check_3_3(_storage_client())),
         ("3.4", lambda: _check_3_4(_storage_client())),
         ("3.5", lambda: _check_3_5(_storage_client())),

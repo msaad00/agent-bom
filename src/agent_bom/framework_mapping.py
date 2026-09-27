@@ -591,7 +591,6 @@ CIS_FOUNDATIONS_TO_NIST_800_53: dict[tuple[str, str], tuple[str, ...]] = {
     ("aws", "5.2"): ("SC-7",),  # security groups restrict admin-port ingress
     ("aws", "5.3"): ("SC-7",),  # default security group restricts all traffic
     ("aws", "5.5"): ("SC-7",),  # no unrestricted 0.0.0.0/0 ingress to all ports
-    ("aws", "5.6"): ("AU-2",),  # VPC flow logging
 }
 
 

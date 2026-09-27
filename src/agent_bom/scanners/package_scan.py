@@ -874,7 +874,6 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
     within OSV affected ranges.  Deduplicates by canonical CVE ID.
     """
     vulns = []
-    seen_ids: set[str] = set()
 
     for raw_vuln_data in vuln_data_list:
         vuln_data = _scope_advisory_to_package_release(raw_vuln_data, package)
@@ -903,15 +902,6 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
 
         aliases = vuln_data.get("aliases", [])
         canonical_id, all_aliases = canonical_vulnerability_id(vuln_id, aliases)
-
-        # Deduplicate by canonical ID AND raw ID — prevents PYSEC/GHSA duplicates
-        if canonical_id in seen_ids or vuln_id in seen_ids:
-            continue
-        seen_ids.add(canonical_id)
-        seen_ids.add(vuln_id)
-        # Also mark all aliases as seen to prevent future duplicates
-        for alias in aliases:
-            seen_ids.add(alias)
 
         severity, cvss_score, sev_source = parse_osv_severity(vuln_data)
         cvss_vector = osv_cvss_vector(vuln_data) if cvss_score is not None else None
@@ -969,6 +959,9 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             )
         )
 
+    from agent_bom.scanners.advisory_merge import merge_advisory_clusters
+
+    vulns = merge_advisory_clusters(vulns)
     _apply_distro_release_ambiguity(package, vulns)
     return vulns
 
@@ -1009,107 +1002,18 @@ def deduplicate_packages(packages: list) -> list:
     return result
 
 
-def _is_external_only(vuln: Vulnerability) -> bool:
-    sources = list(vuln.advisory_sources or [])
-    return bool(sources) and all(str(source).startswith("external") for source in sources)
-
-
 def merge_scanner_vulnerabilities(pkg: Package, new_vulns: list[Vulnerability]) -> list[Vulnerability]:
-    """Merge advisory-database records into ``pkg`` and return the new ones.
+    """Merge alias clusters once, returning only clusters absent from the package."""
+    from agent_bom.scanners.advisory_merge import advisory_keys, merge_advisory_clusters
 
-    A record already present stays (no duplicate). When the present record came
-    only from an imported external report, the advisory-database record replaces
-    it — it carries the richer CVSS/fix/alias data — and inherits the external
-    provenance labels so the finding still shows both producers.
-    """
-    from agent_bom.advisory_sources import merge_advisory_sources
-
-    added: list[Vulnerability] = []
-    for vuln in new_vulns:
-        keys = {vuln.id, *vuln.aliases}
-        index = next((i for i, existing in enumerate(pkg.vulnerabilities) if existing.id == vuln.id), None)
-        if index is None:
-            index = next(
-                (
-                    i
-                    for i, existing in enumerate(pkg.vulnerabilities)
-                    if _is_external_only(existing) and keys & {existing.id, *existing.aliases}
-                ),
-                None,
-            )
-        if index is None:
-            pkg.vulnerabilities.append(vuln)
-            added.append(vuln)
-            continue
-        existing = pkg.vulnerabilities[index]
-        if _is_external_only(existing):
-            vuln.advisory_sources = merge_advisory_sources(*vuln.advisory_sources, *existing.advisory_sources)
-            pkg.vulnerabilities[index] = vuln
-    return added
+    previous_keys = {key for record in pkg.vulnerabilities for key in advisory_keys(record)}
+    pkg.vulnerabilities = merge_advisory_clusters([*pkg.vulnerabilities, *new_vulns])
+    return [record for record in pkg.vulnerabilities if not advisory_keys(record) & previous_keys]
 
 
 def merge_local_vulns(pkg: "Any", local_vulns: "list[Any]") -> "list[Vulnerability]":
-    """Merge local-DB advisories into ``pkg``, collapsing alias clusters.
-
-    One CVE can arrive as several advisories (GHSA, PYSEC, CVE) carrying
-    *different* severity labels — GitHub rates several Jinja2 sandbox escapes
-    "Moderate" where PySec rates the same CVE "high". This previously skipped
-    any advisory whose id or alias had already been seen, so whichever row the
-    query returned first won and the rest were discarded silently.
-
-    That let a lower band win by sort order, producing findings like
-    ``severity: medium`` beside ``cvss_score: 8.8`` and letting
-    ``--fail-on-severity high`` exit 0 on a high-rated CVE. For a security
-    scanner, resolving a disagreement downward under-blocks, so the cluster now
-    keeps the MOST severe band any of its advisories assert and records which
-    advisory set it.
-
-    Returns only the genuinely NEW vulnerabilities appended, so callers keep
-    counting findings rather than advisory rows — an advisory that merely
-    escalated an existing cluster is not a new finding.
-    """
-    added: list[Vulnerability] = []
-    by_id: dict[str, Vulnerability] = {}
-    for existing in pkg.vulnerabilities:
-        for key in {existing.id, *existing.aliases}:
-            by_id[str(key)] = existing
-
-    for lv in local_vulns:
-        candidate = _local_vuln_to_vulnerability(lv)
-        cluster_keys = {str(candidate.id), *(str(a) for a in candidate.aliases)}
-        prior = next((by_id[k] for k in cluster_keys if k in by_id), None)
-
-        if prior is None:
-            pkg.vulnerabilities.append(candidate)
-            added.append(candidate)
-            for key in cluster_keys:
-                by_id[key] = candidate
-            continue
-
-        if _is_external_only(prior):
-            # An imported report saw it first; the advisory-database record is
-            # richer, so it takes over and keeps the external provenance label.
-            from agent_bom.advisory_sources import merge_advisory_sources
-
-            candidate.advisory_sources = merge_advisory_sources(*candidate.advisory_sources, *prior.advisory_sources)
-            pkg.vulnerabilities[next(i for i, v in enumerate(pkg.vulnerabilities) if v is prior)] = candidate
-            for key in {*cluster_keys, prior.id, *prior.aliases}:
-                by_id[str(key)] = candidate
-            continue
-
-        # Same underlying vulnerability: reconcile rather than drop.
-        from agent_bom.graph.severity import severity_rank
-
-        if severity_rank(candidate.severity) > severity_rank(prior.severity):
-            prior.severity = candidate.severity
-            # Name the ADVISORY that asserted the higher band, not the canonical
-            # CVE — the whole point is to show which source disagreed.
-            prior.severity_source = f"advisory:{getattr(lv, 'id', candidate.id)}"
-        for key in cluster_keys:
-            by_id.setdefault(key, prior)
-
-    # A blindly-fanned-out distro release is a property of the PACKAGE, so it
-    # applies to every advisory on it regardless of which feed produced it.
+    """Use the same alias/severity reconciliation as online advisory scanning."""
+    added = merge_scanner_vulnerabilities(pkg, [_local_vuln_to_vulnerability(record) for record in local_vulns])
     _apply_distro_release_ambiguity(pkg, pkg.vulnerabilities)
     return added
 

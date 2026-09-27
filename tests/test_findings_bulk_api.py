@@ -319,3 +319,27 @@ def test_bulk_ingest_reports_no_duplicates_when_every_payload_is_distinct() -> N
     assert body["distinct_findings"] == 2
     assert body["duplicate_payloads"] == 0
     assert body["warnings"] == []
+
+
+def test_typed_external_push_preserves_file_evidence_without_fake_package():
+    from agent_bom.findings_push import load_push_findings
+    from tests.test_external_scanners import SARIF_BASIC
+
+    client = _client(tenant=f"typed-external-{uuid4().hex}")
+    rows = load_push_findings(SARIF_BASIC, source="bandit-ci")
+    response = client.post("/v1/findings/bulk", json={"source": "bandit-ci", "findings": rows})
+    assert response.status_code == 201, response.text
+    findings = client.get("/v1/findings").json()["findings"]
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding["finding_type"] == "SAST"
+    assert finding["asset"]["asset_type"] == "source_file"
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    stored, _, _ = get_compliance_hub_store().list_current_page(client.headers["X-Agent-Bom-Tenant-ID"], limit=10)
+    assert stored[0]["id"] == rows[0]["id"]
+    assert stored[0]["evidence"]["rule_id"] == "B105"
+    # The existing persistence policy removes raw paths; identity still correlates.
+    assert "file" not in stored[0]["evidence"]
+    assert finding.get("package") in (None, "")
+    assert any(tag["framework"] == "nist_csf" and tag["control"] == "PR.PS-06" for tag in finding["controls"])

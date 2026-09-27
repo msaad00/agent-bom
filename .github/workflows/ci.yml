@@ -1460,6 +1460,7 @@ jobs:
             tests/test_graph_adjacency_page.py \
             tests/test_postgres_gateway_activity.py \
             tests/test_postgres_agent_lifecycle.py \
+            tests/test_postgres_mcp_results.py \
             tests/test_postgres_schema.py \
             tests/test_postgres_migrations.py \
             tests/test_postgres_governance_audit.py \

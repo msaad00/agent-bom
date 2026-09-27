@@ -106,6 +106,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("schedules", "sqlite/postgres", ("scan_schedules",)),
     StorageSchemaComponent("exceptions", "sqlite/postgres", ("vuln_exceptions",)),
     StorageSchemaComponent("idempotency", "sqlite/postgres", ("idempotency_keys",), version=2),
+    StorageSchemaComponent("mcp_scan_results", "sqlite/postgres", ("mcp_scan_results",)),
     StorageSchemaComponent("mcp_observations", "sqlite", ("mcp_observations",)),
     StorageSchemaComponent("proxy_replay_log", "sqlite/postgres", ("proxy_replay_log",)),
     StorageSchemaComponent("scan_cache", "sqlite/postgres", ("osv_cache",), tenant_scoped=False),

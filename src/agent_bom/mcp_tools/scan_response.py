@@ -3,7 +3,7 @@
 A full AI-BOM for a small project is megabytes of JSON, far over the MCP
 response budget. The scan tool therefore answers with a summary (counts, top
 findings, affected paths) and a ``result_id``; the full, redacted report stays
-in a small per-process store so callers can page any section with follow-up
+in a bounded tenant/caller-scoped durable store so callers can page any section with follow-up
 calls instead of receiving a sliced document.
 """
 
@@ -11,14 +11,12 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
-import threading
-import time
-from collections import Counter, OrderedDict
-from typing import Any, Callable
+from collections import Counter
+from typing import Any
 
 from agent_bom.graph.severity import normalize_severity
 from agent_bom.mcp_server_runtime import ToolErrorPayload
+from agent_bom.mcp_tools.result_store import DurableScanResultStore
 
 SCAN_DETAIL_LEVELS = ("summary", "full")
 DEFAULT_TOP_N = 10
@@ -93,58 +91,10 @@ def resolve_offline(offline: bool | None) -> bool:
     return offline_env() or bool(http_client._OFFLINE)
 
 
-class ScanResultStore:
-    """Bounded, TTL-limited, caller-bound store of full scan results.
-
-    Result ids are unguessable, and a lookup also requires the same caller
-    identity that produced the result. Results are held as compact JSON text
-    (a fraction of the live object graph's memory). The store is per process:
-    a follow-up that lands on a different worker gets a clean "not found" and
-    must re-scan.
-    """
-
-    def __init__(self, *, max_entries: int, ttl_seconds: float, clock: Callable[[], float] = time.monotonic) -> None:
-        self._max_entries = max(1, int(max_entries))
-        self._ttl = float(ttl_seconds)
-        self._clock = clock
-        self._entries: OrderedDict[str, tuple[str, float, str]] = OrderedDict()
-        self._lock = threading.Lock()
-
-    @property
-    def ttl_seconds(self) -> float:
-        return self._ttl
-
-    def _evict_expired(self, now: float) -> None:
-        expired = [rid for rid, (_owner, created, _result) in self._entries.items() if now - created > self._ttl]
-        for rid in expired:
-            del self._entries[rid]
-
-    def put(self, owner: str, result: dict[str, Any]) -> str:
-        result_id = secrets.token_urlsafe(18)
-        serialized = json.dumps(result, separators=(",", ":"), default=str)
-        now = self._clock()
-        with self._lock:
-            self._evict_expired(now)
-            self._entries[result_id] = (owner, now, serialized)
-            while len(self._entries) > self._max_entries:
-                self._entries.popitem(last=False)
-        return result_id
-
-    def get(self, owner: str, result_id: str) -> dict[str, Any] | None:
-        with self._lock:
-            self._evict_expired(self._clock())
-            entry = self._entries.get(result_id)
-            if entry is None or not secrets.compare_digest(entry[0].encode(), owner.encode()):
-                return None
-            serialized = entry[2]
-        loaded = json.loads(serialized)
-        return loaded if isinstance(loaded, dict) else None
-
-
-def _default_store() -> ScanResultStore:
+def _default_store() -> DurableScanResultStore:
     from agent_bom.config import MCP_SCAN_RESULT_CACHE_SIZE, MCP_SCAN_RESULT_TTL_SECONDS
 
-    return ScanResultStore(max_entries=MCP_SCAN_RESULT_CACHE_SIZE, ttl_seconds=MCP_SCAN_RESULT_TTL_SECONDS)
+    return DurableScanResultStore(max_entries=MCP_SCAN_RESULT_CACHE_SIZE, ttl_seconds=MCP_SCAN_RESULT_TTL_SECONDS)
 
 
 SCAN_RESULTS = _default_store()

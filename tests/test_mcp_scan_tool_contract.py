@@ -368,10 +368,10 @@ def test_full_detail_is_bounded_valid_json_with_truncation_metadata(huge_scan) -
     assert body["result_id"], "full-detail responses still offer paged follow-up"
 
 
-def test_result_store_is_bound_to_the_caller() -> None:
-    from agent_bom.mcp_tools.scan_response import ScanResultStore
+def test_result_store_is_bound_to_the_caller(tmp_path) -> None:
+    from agent_bom.mcp_tools.result_store import DurableScanResultStore
 
-    store = ScanResultStore(max_entries=2, ttl_seconds=60)
+    store = DurableScanResultStore(path=tmp_path / "results.db", max_entries=2, ttl_seconds=60)
     rid = store.put("caller-a", {"findings": [1, 2, 3]})
     assert store.get("caller-a", rid) == {"findings": [1, 2, 3]}
     assert store.get("caller-b", rid) is None
@@ -380,11 +380,11 @@ def test_result_store_is_bound_to_the_caller() -> None:
     assert store.get("caller-a", rid) is None, "bounded store evicts the oldest result"
 
 
-def test_result_store_expires_entries() -> None:
-    from agent_bom.mcp_tools.scan_response import ScanResultStore
+def test_result_store_expires_entries(tmp_path) -> None:
+    from agent_bom.mcp_tools.result_store import DurableScanResultStore
 
     now = [1000.0]
-    store = ScanResultStore(max_entries=4, ttl_seconds=10, clock=lambda: now[0])
+    store = DurableScanResultStore(path=tmp_path / "results.db", max_entries=4, ttl_seconds=10, clock=lambda: now[0])
     rid = store.put("c", {"a": 1})
     now[0] += 11
     assert store.get("c", rid) is None

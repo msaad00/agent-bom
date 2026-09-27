@@ -50,7 +50,7 @@ def _br(
 
 
 def test_catalog_has_14_controls():
-    assert len(NIST_CSF) == 14
+    assert len(NIST_CSF) == 15
 
 
 def test_always_applied_tags():

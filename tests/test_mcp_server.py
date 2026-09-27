@@ -630,7 +630,7 @@ def test_directory_tools_use_safe_path_before_impl(tool_name, impl_target):
     assert result["directory"] == str(safe_path)
 
 
-@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+@patch("agent_bom.findings_push.parse_push_report")
 def test_ingest_external_scan_sanitizes_errors(mock_detect):
     """External scan ingestion should not leak raw paths or URLs in errors."""
     from agent_bom.mcp_server import create_mcp_server
@@ -739,7 +739,7 @@ def test_access_review_write_accepts_operator_identity_scope(mock_access_review)
     mock_access_review.assert_called_once()
 
 
-@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+@patch("agent_bom.findings_push.parse_push_report")
 def test_ingest_external_scan_write_denied_for_read_scope(mock_detect):
     """A read-scope/unauthenticated caller cannot write (parse_only=False)."""
     from agent_bom import mcp_server
@@ -760,7 +760,7 @@ def test_ingest_external_scan_write_denied_for_read_scope(mock_detect):
     mock_detect.assert_not_called()
 
 
-@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+@patch("agent_bom.findings_push.parse_push_report")
 def test_ingest_external_scan_write_denied_without_findings_write_scope(mock_detect):
     """Admin baseline without findings:write is still blocked (defense in depth)."""
     from agent_bom import mcp_server
@@ -779,13 +779,13 @@ def test_ingest_external_scan_write_denied_without_findings_write_scope(mock_det
     mock_detect.assert_not_called()
 
 
-@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+@patch("agent_bom.findings_push.parse_push_report")
 def test_ingest_external_scan_write_allowed_with_findings_write_scope(mock_detect):
     """A caller with findings:write is allowed through to the handler."""
     from agent_bom import mcp_server
     from agent_bom.mcp_server import create_mcp_server
 
-    mock_detect.return_value = []  # no packages -> no network, deterministic
+    mock_detect.return_value = ([], [])  # no findings -> no network, deterministic
     server = create_mcp_server(profile="full")
     with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write")):
         result = _call_tool(
@@ -799,13 +799,13 @@ def test_ingest_external_scan_write_allowed_with_findings_write_scope(mock_detec
     mock_detect.assert_called_once()
 
 
-@patch("agent_bom.parsers.external_scanners.detect_and_parse")
+@patch("agent_bom.findings_push.parse_push_report")
 def test_ingest_external_scan_parse_only_allowed_without_scope(mock_detect):
     """parse_only stays a read: no control-plane mutation, no scope required."""
     from agent_bom import mcp_server
     from agent_bom.mcp_server import create_mcp_server
 
-    mock_detect.return_value = []
+    mock_detect.return_value = ([], [])
     server = create_mcp_server(profile="full")
     with patch.object(mcp_server, "_current_tool_request", _fixed_request_meta("")):
         result = _call_tool(
@@ -1895,3 +1895,45 @@ def test_sdk_check_still_reports_a_genuinely_missing_sdk():
     with patch.dict(sys.modules, {"mcp": None}):
         with pytest.raises(ImportError, match="mcp SDK is required"):
             check_mcp_sdk()
+
+
+def test_ingest_external_scan_keeps_code_findings_out_of_package_inventory(monkeypatch):
+    from agent_bom.mcp_server import create_mcp_server
+    from tests.test_external_scanners import SARIF_BASIC
+
+    monkeypatch.delenv("AGENT_BOM_API_URL", raising=False)
+    server = create_mcp_server(profile="full")
+    result = _call_tool(server, "ingest_external_scan", {"scan_json": json.dumps(SARIF_BASIC), "parse_only": True})
+    assert result["packages"] == 0
+    assert result["findings"] == 1
+    assert result["ingested"] == []
+
+
+def test_ingest_external_scan_sends_typed_file_findings(monkeypatch):
+    from agent_bom import mcp_server
+    from tests.test_external_scanners import SARIF_BASIC
+
+    captured = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def ingest_findings(self, findings, **kwargs):
+            captured.extend(findings)
+            return {"ingested": len(findings)}
+
+        def close(self):
+            pass
+
+    monkeypatch.setenv("AGENT_BOM_API_URL", "https://control.example.test")
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "test-only-token")
+    monkeypatch.setattr("agent_bom.client.AgentBomClient", Client)
+    monkeypatch.setattr(mcp_server, "_current_tool_request", _fixed_request_meta("admin,findings:write"))
+    server = mcp_server.create_mcp_server(profile="full")
+    result = _call_tool(server, "ingest_external_scan", {"scan_json": json.dumps(SARIF_BASIC)})
+    assert result["control_plane"]["ingested"] == 1
+    assert result["packages"] == 0
+    assert captured[0]["finding_type"] == "SAST"
+    assert captured[0]["asset"]["asset_type"] == "source_file"
+    assert "package" not in captured[0]

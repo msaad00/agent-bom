@@ -41,8 +41,11 @@ def test_load_push_findings_accepts_sarif_json() -> None:
 
     rows = load_push_findings(SARIF_BASIC, source="bandit")
     assert len(rows) == 1
-    assert rows[0]["package"] == "src/app.py"
-    assert rows[0]["vulnerability_id"] == "B105"
+    assert "package" not in rows[0]
+    assert rows[0]["finding_type"] == "SAST"
+    assert rows[0]["asset"]["asset_type"] == "source_file"
+    assert rows[0]["evidence"]["rule_id"] == "B105"
+    assert rows[0]["evidence"]["file"] == "src/app.py"
     assert rows[0]["source"] == "bandit"
 
 
@@ -56,3 +59,28 @@ def test_load_push_findings_file(tmp_path: Path) -> None:
 def test_load_push_findings_rejects_empty_scanner_payload() -> None:
     with pytest.raises(ValueError, match="zero vulnerability findings"):
         load_push_findings({"Results": []})
+
+
+def test_push_unresolved_advisory_retains_file_without_package():
+    from copy import deepcopy
+
+    from tests.test_external_scanners import SARIF_BASIC
+
+    payload = deepcopy(SARIF_BASIC)
+    payload["runs"][0]["results"][0]["ruleId"] = "CVE-2026-1234"
+    row = load_push_findings(payload)[0]
+    assert "package" not in row
+    assert row["cve_id"] == "CVE-2026-1234"
+    assert row["evidence"]["package_resolution"] == "unresolved"
+    assert row["asset"]["identifier"] == "src/app.py"
+
+
+def test_push_named_dependency_without_version_stays_unresolved():
+    from copy import deepcopy
+
+    payload = deepcopy(TRIVY_BASIC)
+    payload["Results"][0]["Vulnerabilities"][0]["InstalledVersion"] = ""
+    row = load_push_findings(payload)[0]
+    assert "package" not in row
+    assert row["evidence"]["package_name"] == "requests"
+    assert row["evidence"]["package_resolution"] == "unresolved"

@@ -50,6 +50,29 @@ def packages_to_bulk_findings(
     return findings
 
 
+def parse_push_report(payload: dict[str, Any], *, source: str = "external_scan") -> tuple[list[Package], list[dict[str, Any]]]:
+    """Keep dependency inventory and typed file findings separate during push.
+
+    There is no native inventory in a push request against which to resolve a
+    name-only dependency. Preserve it as unresolved evidence, never fabricate
+    a package version or turn a source file into a package.
+    """
+    from agent_bom.parsers.external_import import build_external_agent, fold_external_packages
+    from agent_bom.parsers.external_scanners import ingest_external_report
+
+    imported = ingest_external_report(payload)
+    agent = build_external_agent(imported, "external-report")
+    typed_findings = list(imported.findings)
+    fold_external_packages([agent], findings=typed_findings)
+    packages = [pkg for server in agent.mcp_servers for pkg in server.packages]
+    rows = packages_to_bulk_findings(packages, source=source)
+    for finding in typed_findings:
+        row = finding.to_dict()
+        row.update(source=source, origin="bulk_ingest")
+        rows.append(row)
+    return packages, rows
+
+
 def load_push_findings(payload: object, *, source: str = "external_scan") -> list[dict[str, Any]]:
     """Normalize a JSON payload into bulk-ingest finding rows."""
 
@@ -68,10 +91,7 @@ def load_push_findings(payload: object, *, source: str = "external_scan") -> lis
         if rows:
             return rows
 
-    from agent_bom.parsers.external_scanners import detect_and_parse
-
-    packages = detect_and_parse(payload)
-    findings = packages_to_bulk_findings(packages, source=source)
+    _, findings = parse_push_report(payload, source=source)
     if not findings:
         raise ValueError("scanner JSON parsed successfully but produced zero vulnerability findings")
     return findings

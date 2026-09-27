@@ -9,12 +9,12 @@ import re
 from mcp.server.fastmcp.exceptions import ToolError
 
 from agent_bom.graph.severity import normalize_severity, severity_at_or_above
+from agent_bom.mcp_tools.result_store import ResultStore
 from agent_bom.mcp_tools.scan_response import (
     MAX_PAGE_LIMIT,
     SCAN_DETAIL_LEVELS,
     SCAN_RESULTS,
     IncompleteScanPayload,
-    ScanResultStore,
     build_scan_summary,
     resolve_offline,
     section_page,
@@ -116,7 +116,7 @@ async def scan_impl(
     _run_scan_pipeline,
     _truncate_response,
     _result_owner: str = "local",
-    _result_store: ScanResultStore | None = None,
+    _result_store: ResultStore | None = None,
     _max_response_chars: int | None = None,
 ) -> str:
     """Implementation of the scan tool.
@@ -203,7 +203,7 @@ async def scan_impl(
 
 
 def _stored_result_view(
-    store: ScanResultStore,
+    store: ResultStore,
     *,
     owner: str,
     result_id: str,
@@ -214,10 +214,13 @@ def _stored_result_view(
     _truncate_response,
 ) -> str:
     """Serve a follow-up view of a stored scan result without re-scanning."""
-    stored = store.get(owner, result_id)
+    try:
+        stored = store.get(owner, result_id)
+    except Exception as exc:
+        raise ToolError("MCP result storage unavailable; retry after storage recovery") from exc
     if stored is None or not isinstance(stored.get("report"), dict):
         raise ToolError(
-            "Unknown or expired result_id. Results are kept for a limited time per server process "
+            "Unknown or expired result_id. Results are kept for a limited time per tenant "
             "and per caller; run scan again to get a fresh result_id."
         )
     report: dict = stored["report"]
@@ -265,7 +268,7 @@ async def _scan_impl_inner(
     _run_scan_pipeline,
     _truncate_response,
     _result_owner: str = "local",
-    _result_store: ScanResultStore | None = None,
+    _result_store: ResultStore | None = None,
 ) -> str:
     """Run the scan pipeline against an already-resolved local target."""
     offline = resolve_offline(offline)
@@ -494,7 +497,10 @@ async def _scan_impl_inner(
 
         def _render_json_result() -> str:
             redacted = redact_json_payload(result)
-            result_id = store.put(_result_owner, {"report": redacted, "offline": offline})
+            try:
+                result_id = store.put(_result_owner, {"report": redacted, "offline": offline})
+            except Exception as exc:
+                raise ToolError("MCP result storage unavailable; retry after storage recovery") from exc
             if detail == "full":
                 full = {"result_id": result_id, **redacted}
                 return _truncate_response(json.dumps(full, indent=2, default=str))
@@ -505,6 +511,8 @@ async def _scan_impl_inner(
         import asyncio
 
         return await asyncio.to_thread(_render_json_result)
+    except ToolError:
+        raise
     except Exception as exc:
         from agent_bom.scanners import IncompleteScanError
 

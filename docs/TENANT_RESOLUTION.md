@@ -77,8 +77,21 @@ return 403 rather than becoming unrestricted. The backing-key read runs under
 the signed session tenant, including PostgreSQL RLS, and restores prior context.
 Downstream handlers receive the effective role and intersected scopes, so key
 delegation cannot use stale cookie privileges. Sign in again after an intentional
-grant expansion. WebSocket scope checks apply at connection authentication;
-continuous reauthorization of an already-open stream is a separate boundary.
+grant expansion.
+
+Scan-progress and gateway-activity SSE streams, and proxy metrics/alerts
+WebSockets, recheck their credentials every five seconds while active or idle.
+The HTTP streams rerun the existing authentication and route policy against
+fresh request state. A changed tenant, identity or role, revoked/expired key,
+removed required scope, or failed revalidation terminates the stream. SSE emits
+a `reconnect` event with reason `reauthenticate`; WebSockets close with code
+4001. Clients must authenticate again before receiving further data. The
+gateway's existing 30-second reconnect limit remains in place.
+
+Authorization checks have a five-second timeout and fail closed on errors.
+The five-second lease bounds cached authority; it does not retract previously
+sent frames or cancel provider work already executing. Static deployment
+configuration changes still require the owning server's normal reload/restart.
 
 For upgrades, inspect the catalog and update narrowly scoped integration keys
 before switching traffic. Rolling back restores the earlier scope gaps; prefer

@@ -15,12 +15,13 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter, OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path as _Path
 from threading import Lock
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
@@ -34,6 +35,7 @@ from agent_bom.api.gateway_activity_store import (
 )
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance, canonicalize_proxy_submission
+from agent_bom.api.stream_authorization import StreamAuthorization
 from agent_bom.api.tenancy import require_request_tenant_id
 
 if TYPE_CHECKING:
@@ -1055,6 +1057,22 @@ class _WebSocketAuthContext:
     tenant_id: str = "default"
     role: str = "viewer"
     auth_method: str = "no_auth"
+    key_id: str = ""
+    authorization: StreamAuthorization | None = dataclass_field(default=None, repr=False, compare=False)
+
+
+def _ws_bind_authorization(context: _WebSocketAuthContext, validate: Callable[[], _WebSocketAuthContext | None]) -> _WebSocketAuthContext:
+    async def check() -> bool:
+        return await anyio.to_thread.run_sync(validate) == context
+
+    return replace(context, authorization=StreamAuthorization(check))
+
+
+async def _ws_stream_authorized(websocket: WebSocket, context: _WebSocketAuthContext) -> bool:
+    if context.authorization is not None and await context.authorization.allowed():
+        return True
+    await websocket.close(code=4001)
+    return False
 
 
 def _get_ws_handshake_rate_limit_store() -> Any:
@@ -1217,7 +1235,8 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
         subjects = (api_key.name.removeprefix("saml:"), api_key.name, api_key.scim_subject_id)
         role = _ws_runtime_role(api_key.tenant_id, api_key.role.value, *subjects)
         if role is not None and _role_allows(role, "viewer"):
-            return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=role, auth_method="api_key")
+            return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=role, auth_method="api_key", key_id=api_key.key_id)
+        return None
 
     # Direct ASGI imports may configure env keys after module import. A denied
     # stored-key scope above is terminal and cannot fall back to this identity.
@@ -1276,7 +1295,8 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
 
         await websocket.accept()
         credentials_configured = bool(resolve_secret("AGENT_BOM_API_KEY") or get_key_store().has_keys())
-        return _WebSocketAuthContext(role=effective_no_auth_role(credentials_configured=credentials_configured).value)
+        context = _WebSocketAuthContext(role=effective_no_auth_role(credentials_configured=credentials_configured).value)
+        return _ws_bind_authorization(context, lambda: context if not _ws_auth_required() else None)
 
     if websocket.query_params.get("token"):
         await websocket.close(code=4001)
@@ -1285,7 +1305,7 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
     proxy_context = _ws_auth_from_trusted_proxy(websocket)
     if proxy_context is not None:
         await websocket.accept()
-        return proxy_context
+        return _ws_bind_authorization(proxy_context, partial(_ws_auth_from_trusted_proxy, websocket))
 
     token = _ws_header_token(websocket)
     # ``_ws_auth_from_token`` runs a scrypt derivation (or a blocking store
@@ -1294,7 +1314,7 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
     header_context = await anyio.to_thread.run_sync(partial(_ws_auth_from_token, token, bearer=True))
     if header_context is not None:
         await websocket.accept()
-        return header_context
+        return _ws_bind_authorization(header_context, partial(_ws_auth_from_token, token, bearer=True))
 
     await websocket.accept()
     try:
@@ -1308,7 +1328,7 @@ async def _ws_accept_and_check_auth(websocket: WebSocket) -> _WebSocketAuthConte
         message_context = await anyio.to_thread.run_sync(partial(_ws_auth_from_token, token, bearer=False))
         if message_context is not None:
             await websocket.send_json({"type": "auth", "status": "ok"})
-            return message_context
+            return _ws_bind_authorization(message_context, partial(_ws_auth_from_token, token, bearer=False))
 
     await websocket.close(code=4001)
     return None
@@ -1356,7 +1376,7 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     tenant_id = auth_context.tenant_id
 
     try:
-        while True:
+        while await _ws_stream_authorized(websocket, auth_context):
             now = _time.time()
             # Build snapshot from in-process metrics buffer
             metrics_snapshot = _runtime_metrics_for_tenant(tenant_id) or {}
@@ -1368,6 +1388,8 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
             cutoff = now - 60
             recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff and _alert_visible_to_tenant(a, tenant_id)]
 
+            if not await _ws_stream_authorized(websocket, auth_context):
+                return
             await websocket.send_json(
                 {
                     "ts": now,
@@ -1419,13 +1441,15 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
 
     seen = _proxy_alerts_total  # monotonic — tracks absolute count, not deque position
     try:
-        while True:
+        while await _ws_stream_authorized(websocket, auth_context):
             current = _proxy_alerts_total
             if current > seen:
                 new_count = min(current - seen, len(_proxy_alerts))
                 for alert in list(_proxy_alerts)[-new_count:]:
                     if not _alert_visible_to_tenant(alert, tenant_id):
                         continue
+                    if not await _ws_stream_authorized(websocket, auth_context):
+                        return
                     await websocket.send_json(alert)
                 seen = current
             await asyncio.sleep(0.25)

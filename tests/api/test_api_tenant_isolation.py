@@ -163,7 +163,15 @@ async def test_fleet_sync_audit_logs_request_tenant(isolated_audit_log):
 
     payload = PushPayload(
         source_id="collector-1",
-        agents=[{"name": "alpha", "agent_type": "claude-desktop", "trust_score": 70.0, "trust_factors": {}}],
+        agents=[
+            {
+                "name": "alpha",
+                "canonical_id": "collector-1:alpha-id",
+                "agent_type": "claude-desktop",
+                "trust_score": 70.0,
+                "trust_factors": {},
+            }
+        ],
     )
 
     resp = await fleet_routes.sync_fleet(req, payload)
@@ -910,6 +918,7 @@ async def test_discovery_and_traces_are_tenant_scoped():
                     "severity": "critical",
                     "package": "langchain",
                     "affected_agents": ["alpha"],
+                    "affected_agent_ids": ["agent-alpha-id"],
                     "affected_servers": ["sqlite-mcp"],
                 }
             ]
@@ -929,6 +938,7 @@ async def test_discovery_and_traces_are_tenant_scoped():
                     "severity": "high",
                     "package": "requests",
                     "affected_agents": ["beta"],
+                    "affected_agent_ids": ["agent-beta-id"],
                     "affected_servers": ["beta-mcp"],
                 }
             ]
@@ -941,6 +951,7 @@ async def test_discovery_and_traces_are_tenant_scoped():
 
     @dataclass
     class _Server:
+        canonical_id: str = "server-sqlite-id"
         name: str = "sqlite-mcp"
         packages: list = field(default_factory=list)
         tools: list = field(default_factory=list)
@@ -950,6 +961,8 @@ async def test_discovery_and_traces_are_tenant_scoped():
 
     @dataclass
     class _Agent:
+        canonical_id: str = "agent-alpha-id"
+        stable_id: str = "agent-alpha-id"
         name: str = "alpha"
         agent_type: str = "claude-desktop"
         mcp_servers: list[_Server] = field(default_factory=lambda: [_Server()])

@@ -193,22 +193,7 @@ class PostgresFleetStore:
             return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None:
-        from .fleet_store import FleetAgent
-
-        key = (identifier or "").strip().lower()
-        if not key:
-            return None
-        with _tenant_connection(self._pool) as conn:
-            for column in ("name", "agent_id", "canonical_id"):
-                row = conn.execute(
-                    # nosec B608 - ``column`` comes from the fixed literal tuple
-                    # in the loop above; the values are bound.
-                    f"SELECT data FROM fleet_agents WHERE lower({column}) = %s AND tenant_id = %s LIMIT 1",  # nosec B608
-                    (key, tenant_id),
-                ).fetchone()
-                if row is not None:
-                    return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
-        return None
+        return self.get(identifier, tenant_id=tenant_id)
 
     def query_by_tenant(
         self,

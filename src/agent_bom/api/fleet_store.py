@@ -250,29 +250,15 @@ def match_discovered_fleet_agent(
     return legacy[0] if len(legacy) == 1 else None
 
 
-def _fleet_agent_identifiers(agent: Any) -> tuple[str, ...]:
-    """The names a relay caller may legitimately be known by, case-folded."""
-    return tuple((getattr(agent, field_name, "") or "").strip().lower() for field_name in ("name", "agent_id", "canonical_id"))
-
-
 def find_fleet_agent(store: Any, tenant_id: str, identifier: str) -> Any | None:
-    """Resolve one relay caller to its fleet row without paging the roster.
+    """Resolve an authenticated fleet ID exactly inside its tenant.
 
-    Quarantine is enforced in the relay's hot path, so this must cost a bounded
-    indexed read rather than materializing every agent in the tenant. A store
-    that predates ``find_by_identifier`` keeps working through the roster scan.
+    Labels and derived canonical aliases are not workload identities. The
+    tenant/agent primary-key lookup is bounded and does not scan the roster.
     """
-    finder = getattr(store, "find_by_identifier", None)
-    if finder is not None:
-        agent: Any | None = finder(tenant_id, identifier)
-        return agent
-    key = (identifier or "").strip().lower()
-    if not key:
+    if not identifier:
         return None
-    for candidate in store.list_by_tenant(tenant_id):
-        if key in _fleet_agent_identifiers(candidate):
-            return candidate
-    return None
+    return store.get(identifier, tenant_id=tenant_id)
 
 
 # ─── Protocol ────────────────────────────────────────────────────────────────
@@ -392,16 +378,7 @@ class InMemoryFleetStore:
             return [a for a in self._agents.values() if a.tenant_id == tenant_id]
 
     def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None:
-        key = (identifier or "").strip().lower()
-        if not key:
-            return None
-        with self._lock:
-            for agent in self._agents.values():
-                if agent.tenant_id != tenant_id:
-                    continue
-                if key in _fleet_agent_identifiers(agent):
-                    return agent
-            return None
+        return self.get(identifier, tenant_id=tenant_id)
 
     def query_by_tenant(
         self,
@@ -740,20 +717,7 @@ class SQLiteFleetStore:
         return [FleetAgent.model_validate_json(r[0]) for r in rows]
 
     def find_by_identifier(self, tenant_id: str, identifier: str) -> FleetAgent | None:
-        key = (identifier or "").strip().lower()
-        if not key:
-            return None
-        for column in ("name", "agent_id", "canonical_id"):
-            row = self._conn.execute(
-                # nosec B608 - ``column`` comes from the fixed literal tuple in
-                # the loop above; the values are bound.
-                f"SELECT data FROM fleet_agents WHERE lower({column}) = ? AND tenant_id = ? LIMIT 1",  # nosec B608
-                (key, tenant_id),
-            ).fetchone()
-            if row is not None:
-                agent: FleetAgent = FleetAgent.model_validate_json(row[0])
-                return agent
-        return None
+        return self.get(identifier, tenant_id=tenant_id)
 
     def query_by_tenant(
         self,

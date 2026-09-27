@@ -4,7 +4,7 @@ The fleet roster's QUARANTINED lifecycle state was advisory-only — an operator
 could quarantine a compromised or under-review agent but it kept relaying. These
 tests cover the opt-in enforcement: `enforce` blocks every call from a
 quarantined agent, `warn` audits it, `off` stays advisory, and a fleet-store
-failure fails open.
+failure blocks in enforce mode.
 """
 
 from __future__ import annotations
@@ -116,15 +116,19 @@ def test_off_is_advisory_no_block():
     assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
 
 
-def test_fleet_store_failure_fails_open():
+def test_fleet_store_failure_fails_closed():
     class _Boom:
-        def list_by_tenant(self, *a, **k):
+        def get(self, *a, **k):
             raise RuntimeError("store down")
+
+        def list_by_tenant(self, *a, **k):
+            return []
 
     set_fleet_store(_Boom())
     client = TestClient(create_gateway_app(_settings("enforce")))
     resp = client.post("/mcp/filesystem", json=_call("token-a"))
-    assert resp.status_code == 200 and resp.json().get("result") == {"ok": True}
+    assert _is_blocked(resp)
+    assert resp.json()["error"]["data"]["policy_source"] == "fleet_lookup_unavailable"
 
 
 # ── Identity revocation for non-managed callers (JWT / opaque tokens) ──────────
@@ -537,23 +541,21 @@ def test_quarantine_does_not_leak_across_tenants_sharing_an_agent_name(store_kin
         )
     )
 
-    found_a = find_fleet_agent(store, "tenant-a", "shared-name")
-    found_b = find_fleet_agent(store, "tenant-b", "shared-name")
+    found_a = find_fleet_agent(store, "tenant-a", "agent-a-1")
+    found_b = find_fleet_agent(store, "tenant-b", "agent-b-1")
 
     assert found_a is not None and found_a.tenant_id == "tenant-a"
     assert found_a.lifecycle_state == FleetLifecycleState.QUARANTINED
     assert found_b is not None and found_b.tenant_id == "tenant-b"
     assert found_b.lifecycle_state == FleetLifecycleState.APPROVED
     assert find_fleet_agent(store, "tenant-c", "shared-name") is None
+    assert find_fleet_agent(store, "tenant-a", "shared-name") is None
+    assert find_fleet_agent(store, "tenant-b", "agent-a-1") is None
 
 
 @pytest.mark.parametrize("store_kind", ["memory", "sqlite"])
-def test_quarantine_lookup_stays_case_insensitive(store_kind, tmp_path):
-    """The roster scan matched case-insensitively; the indexed lookup must too.
-
-    An exact-match index would have quietly turned a case mismatch into a
-    missed quarantine — a fail-open regression hidden inside a perf fix.
-    """
+def test_quarantine_lookup_is_case_sensitive(store_kind, tmp_path):
+    """Opaque workload IDs must not collapse case variants or label aliases."""
     from agent_bom.api.fleet_store import SQLiteFleetStore, find_fleet_agent
 
     store = InMemoryFleetStore() if store_kind == "memory" else SQLiteFleetStore(db_path=str(tmp_path / "fleet.db"))
@@ -567,7 +569,6 @@ def test_quarantine_lookup_stays_case_insensitive(store_kind, tmp_path):
         )
     )
 
-    for identifier in ("agent-mixed-case", "AGENT-MIXED-CASE", "Agent-Mixed-Case", "  agent-mixed-case  "):
-        found = find_fleet_agent(store, "default", identifier)
-        assert found is not None, f"{identifier!r} did not resolve"
-        assert found.lifecycle_state == FleetLifecycleState.QUARANTINED
+    assert find_fleet_agent(store, "default", "Agent-Mixed-Case") is not None
+    for identifier in ("agent-mixed-case", "AGENT-MIXED-CASE", "  agent-mixed-case  "):
+        assert find_fleet_agent(store, "default", identifier) is None

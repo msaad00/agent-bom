@@ -310,7 +310,7 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
     for agent in agents:
         target = agent.tags.get("uses_server", "")
         if target in server_ids:
-            agents_by_server.setdefault(target, []).append(agent.display_name)
+            agents_by_server.setdefault(target, []).append(agent.asset_id)
     for index, asset in enumerate(agents):
         # Deterministic spread so the fleet reads like a managed estate rather
         # than one uniform block. A real fleet is mostly approved with a tail of
@@ -346,35 +346,38 @@ def seed_showcase_fleet_and_runtime(tenant_id: str = SHOWCASE_TENANT) -> dict[st
 
     for index, asset in enumerate(servers):
         tools = tools_by_server.get(asset.asset_id, [])
-        source_agents = sorted(agents_by_server.get(asset.asset_id, []))
-        observation_store.put(
-            MCPObservation(
-                tenant_id=tenant_id,
-                observation_id=f"demo-obs-{asset.asset_id}",
-                server_stable_id=asset.asset_id,
-                server_name=asset.display_name,
-                agent_name=source_agents[0] if source_agents else "",
-                transport=str(asset.tags.get("transport") or "streamable-http"),
-                url=asset.native_id if str(asset.native_id).startswith("http") else None,
-                auth_mode=str(asset.tags.get("auth_mode") or "bearer"),
-                credential_env_vars=[],
-                observed_via=["demo-estate"],
-                scan_sources=["demo-estate"],
-                source_agents=source_agents,
-                configured_locally=False,
-                fleet_present=True,
-                gateway_registered=index % 3 != 0,
-                runtime_observed=index % 4 != 0,
-                observed_scopes=sorted({str(t.tags.get("scope") or "read") for t in tools}) or ["read"],
-                first_seen=now,
-                last_seen=now,
+        source_ids = sorted(agents_by_server.get(asset.asset_id, []))
+        source_agents = sorted(agent.display_name for agent in agents if agent.asset_id in source_ids)
+        for subject_id in source_ids or [""]:
+            observation_store.put(
+                MCPObservation(
+                    tenant_id=tenant_id,
+                    observation_id=f"demo-obs-{asset.asset_id}:{subject_id}",
+                    agent_id=f"demo-fleet-{subject_id}" if subject_id else "",
+                    server_stable_id=asset.asset_id,
+                    server_name=asset.display_name,
+                    agent_name=source_agents[0] if source_agents else "",
+                    transport=str(asset.tags.get("transport") or "streamable-http"),
+                    url=asset.native_id if str(asset.native_id).startswith("http") else None,
+                    auth_mode=str(asset.tags.get("auth_mode") or "bearer"),
+                    credential_env_vars=[],
+                    observed_via=["demo-estate"],
+                    scan_sources=["demo-estate"],
+                    source_agents=source_agents,
+                    configured_locally=False,
+                    fleet_present=True,
+                    gateway_registered=index % 3 != 0,
+                    runtime_observed=index % 4 != 0,
+                    observed_scopes=sorted({str(t.tags.get("scope") or "read") for t in tools}) or ["read"],
+                    first_seen=now,
+                    last_seen=now,
+                )
             )
-        )
 
     return {
         "seeded": True,
         "fleet_agents": len(agents),
-        "mcp_observations": len(servers),
+        "mcp_observations": sum(max(1, len(agents_by_server.get(server.asset_id, []))) for server in servers),
         "tools": sum(len(v) for v in tools_by_server.values()),
     }
 

@@ -389,17 +389,17 @@ def _message_tool_label(message: dict[str, Any]) -> str:
     return method if isinstance(method, str) else ""
 
 
-def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
-    """Return True when ``source_agent`` is quarantined in this tenant's fleet.
+def _fleet_containment_reason(tenant_id: str, source_agent: str) -> str | None:
+    """Return a containment reason for an exact fleet ID or failed lookup.
 
     Resolves one agent through an indexed lookup rather than paging the roster:
     this runs on every relay call, so its cost must not scale with fleet size.
-    Fail-open: fleet-store errors are logged and never block the relay.
+    Lookup failures block in enforce mode and remain visible in warn mode.
 
     Blocking I/O — call it off the event loop.
     """
     if not source_agent:
-        return False
+        return None
     try:
         from agent_bom.api.fleet_store import FleetLifecycleState, find_fleet_agent
         from agent_bom.api.stores import _get_fleet_store
@@ -407,10 +407,10 @@ def _agent_is_quarantined(tenant_id: str, source_agent: str) -> bool:
         agent = find_fleet_agent(_get_fleet_store(), tenant_id, source_agent)
     except Exception as exc:  # noqa: BLE001
         logger.warning("gateway fleet check failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        return False
+        return "fleet_lookup_unavailable"
     if agent is None:
-        return False
-    return bool(getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED)
+        return None
+    return "fleet_quarantine" if getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED else None
 
 
 def _agent_identity_revoked(tenant_id: str, source_agent: str) -> tuple[bool, bool, bool]:
@@ -3323,10 +3323,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         # Fleet-state enforcement: a quarantined agent is isolated — every call
         # blocked/flagged regardless of tool — before the upstream is touched.
-        # Off by default; fails open on a fleet-store error.
-        if settings.fleet_enforcement_mode in ("warn", "enforce") and await asyncio.to_thread(
-            _agent_is_quarantined, tenant_id, source_agent
-        ):
+        # A store failure is an unknown decision, never an allow in enforce mode.
+        fleet_reason = None
+        if settings.fleet_enforcement_mode in ("warn", "enforce"):
+            fleet_reason = await asyncio.to_thread(_fleet_containment_reason, tenant_id, source_agent)
+        if fleet_reason:
+            fleet_detail = (
+                "agent quarantined in fleet roster" if fleet_reason == "fleet_quarantine" else "fleet identity lookup unavailable"
+            )
             if settings.fleet_enforcement_mode == "enforce":
                 record_gateway_relay(upstream.name, "blocked")
                 if settings.audit_sink is not None:
@@ -3336,14 +3340,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                             "upstream": upstream.name,
                             "tenant_id": tenant_id,
                             "source_agent": source_agent,
-                            "reason": "agent quarantined in fleet roster",
+                            "reason": fleet_detail,
                         }
                     )
                 _emit_gateway_governance_event(
                     "fleet.blocked",
                     tenant_id=tenant_id,
                     subject_id=source_agent,
-                    payload={"source_agent": source_agent, "reason": "agent quarantined in fleet roster"},
+                    payload={"source_agent": source_agent, "reason": fleet_detail},
                 )
                 return JSONResponse(
                     {
@@ -3351,10 +3355,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "id": message.get("id"),
                         "error": {
                             "code": -32001,
-                            "message": "Blocked by agent-bom gateway: agent quarantined",
+                            "message": "Blocked by agent-bom gateway: fleet containment",
                             "data": {
-                                "reason": _public_gateway_block_reason("fleet_quarantine"),
-                                "policy_source": "fleet_quarantine",
+                                "reason": _public_gateway_block_reason(fleet_reason),
+                                "policy_source": fleet_reason,
                             },
                         },
                     },
@@ -3368,7 +3372,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         "upstream": upstream.name,
                         "tenant_id": tenant_id,
                         "source_agent": source_agent,
-                        "reason": "agent quarantined in fleet roster",
+                        "reason": fleet_detail,
                     }
                 )
 

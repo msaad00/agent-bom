@@ -42,7 +42,7 @@ def test_quarantine_creates_bound_deny_policy(client_with_agent):
     body = resp.json()
     assert body["lifecycle_state"] == "quarantined"
     assert body["gateway_policy"]["created"] is True
-    assert body["gateway_policy"]["bound_agents"] == ["rogue-agent"]
+    assert body["gateway_policy"]["bound_agents"] == ["agent-123"]
 
     # Fleet agent is quarantined.
     stored = fleet_store.get("agent-123", tenant_id="default")
@@ -55,7 +55,7 @@ def test_quarantine_creates_bound_deny_policy(client_with_agent):
     policy = policies[0]
     assert policy.enabled is True
     assert policy.mode.value == "enforce"
-    assert policy.bound_agents == ["rogue-agent"]
+    assert policy.bound_agents == ["agent-123"]
     assert len(policy.rules) == 1
     assert policy.rules[0].block_tools == ["*"]
 
@@ -82,6 +82,37 @@ def test_quarantine_unknown_agent_is_404(client_with_agent):
     assert resp.status_code == 404
     # No policy created for a missing agent.
     assert policy_store.list_policies(tenant_id="default") == []
+
+
+def test_same_name_agents_have_independent_containment_and_release(client_with_agent):
+    from agent_bom.gateway import evaluate_gateway_policy_bundle
+
+    client, fleet, policies = client_with_agent
+    fleet.put(FleetAgent(agent_id="other-id", name="rogue-agent", agent_type="custom", tenant_id="default"))
+    first = client.post("/v1/fleet/agent-123/quarantine")
+    assert first.status_code == 200
+    bundle = policies.list_policies(tenant_id="default")
+    assert evaluate_gateway_policy_bundle(bundle, "agent-123", "read", {})[0] is False
+    assert evaluate_gateway_policy_bundle(bundle, "other-id", "read", {})[0] is True
+    # A display name does not impersonate a bound fleet ID.
+    assert evaluate_gateway_policy_bundle(bundle, "rogue-agent", "read", {})[0] is True
+    second = client.post("/v1/fleet/other-id/quarantine")
+    assert second.status_code == 200
+    assert first.json()["gateway_policy"]["policy_id"] != second.json()["gateway_policy"]["policy_id"]
+    agent = fleet.get("agent-123", tenant_id="default")
+    agent.name = "renamed"
+    fleet.put(agent)
+    assert client.put("/v1/fleet/agent-123/state", json={"state": "approved"}).status_code == 200
+    bundle = policies.list_policies(tenant_id="default")
+    assert evaluate_gateway_policy_bundle(bundle, "agent-123", "read", {})[0] is True
+    assert evaluate_gateway_policy_bundle(bundle, "other-id", "read", {})[0] is False
+
+
+def test_policy_identity_includes_tenant_and_ignores_display_name():
+    from agent_bom.api.routes.fleet import _quarantine_policy_id
+
+    assert _quarantine_policy_id("tenant-a", "same-id") != _quarantine_policy_id("tenant-b", "same-id")
+    assert _quarantine_policy_id("a:b", "c") != _quarantine_policy_id("a", "b:c")
 
 
 def test_leaving_quarantine_disables_the_deny_policy(client_with_agent):

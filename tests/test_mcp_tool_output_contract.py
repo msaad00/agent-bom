@@ -132,6 +132,7 @@ def _minimal_args(name: str, workdir: Path) -> dict[str, Any]:
         "cis_benchmark": {"provider": "aws"},
         "code_scan": {"path": p},
         "dataset_card_scan": {"directory": p},
+        "endpoint_sync": {"connection_id": "connection-does-not-exist"},
         "firewall_check": {"source_agent": "a", "target_agent": "b"},
         "fleet_scan": {"servers": "[]"},
         "graph_correlate": {
@@ -187,6 +188,14 @@ def _tool_names() -> list[str]:
 
 def test_output_contract_fixture_isolated_from_real_home(workdir: Path) -> None:
     assert not workdir.resolve().is_relative_to(_REAL_HOME)
+
+
+@pytest.mark.parametrize("tool_name", _tool_names())
+def test_output_contract_arguments_match_tool_schema(tool_name: str, mcp_server: Any, workdir: Path) -> None:
+    """Check fixture validity independently of tool execution or installed binaries."""
+    tool = mcp_server._tool_manager.get_tool(tool_name)
+    assert tool is not None, f"{tool_name} is advertised but not registered"
+    tool.fn_metadata.arg_model.model_validate(_minimal_args(tool_name, workdir))
 
 
 @pytest.mark.parametrize("tool_name", _tool_names())

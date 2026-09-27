@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+            changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
           else
             before="${{ github.event.before }}"
             if [ -n "$before" ] && ! printf '%s' "$before" | grep -qE '^0+$'; then
@@ -996,7 +996,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            mapfile -t CHANGED < <(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+            mapfile -t CHANGED < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")
           elif [ -n "${{ github.event.before }}" ] && ! printf '%s' "${{ github.event.before }}" | grep -qE '^0+$'; then
             mapfile -t CHANGED < <(git diff --name-only "${{ github.event.before }}" "$GITHUB_SHA")
           else

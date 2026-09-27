@@ -326,6 +326,22 @@ def test_ci_runs_nightly_with_full_musl_suite() -> None:
     assert "github.event_name == 'schedule'" in run_step["env"]["ALPINE_FULL"]
 
 
+def test_pull_request_classifiers_diff_from_the_merge_base() -> None:
+    """A two-dot diff against a newer base pulls main's own commits into the PR.
+
+    ``base.sha`` is main's tip when the PR event fired, not the branch point.
+    ``git diff base head`` then lists every file main changed since the branch
+    point, so unrelated lanes run and the changed-domain selector over-selects.
+    """
+    two_dot = 'git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"'
+    three_dot = 'git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"'
+    for name in ("ci.yml", "pr-security-gate.yml"):
+        text = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        assert two_dot not in text, name
+        assert three_dot in text, name
+    assert CI_WORKFLOW.read_text(encoding="utf-8").count(three_dot) == 2
+
+
 def test_pull_request_runs_cancel_superseded_but_main_runs_do_not() -> None:
     concurrency = _ci()["concurrency"]
     assert "github.event.pull_request.number" in concurrency["group"]

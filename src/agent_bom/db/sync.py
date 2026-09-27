@@ -1286,6 +1286,15 @@ def _ingest_ghsa_advisory(
     if not vuln_id:
         return False
 
+    # The REST listing includes withdrawn advisories (``withdrawn_at`` set).
+    # Retract a copy this source ingested earlier, as the OSV path does, but
+    # leave a record another source owns under the same id.
+    if advisory.get("withdrawn_at"):
+        if conn.execute("SELECT 1 FROM vulns WHERE id = ? AND source = 'ghsa'", (vuln_id,)).fetchone():
+            conn.execute("DELETE FROM affected WHERE vuln_id = ?", (vuln_id,))
+            conn.execute("DELETE FROM vulns WHERE id = ?", (vuln_id,))
+        return False
+
     summary = (advisory.get("summary") or "")[:500]
     severity_raw = (advisory.get("severity") or "unknown").lower()
     severity = severity_raw if severity_raw in ("critical", "high", "medium", "low") else "unknown"

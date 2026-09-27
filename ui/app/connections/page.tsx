@@ -99,16 +99,16 @@ import { EndpointConnectionsPanel } from "@/components/endpoint-connections";
 import { PermissionDeniedNotice } from "@/components/role-access";
 
 // ── Hub tabs ────────────────────────────────────────────────────────────────
-// One Connections hub with two URL-synced segments: Connect (add any source —
+// One Connections hub with URL-synced segments: Connect (add any source —
 // cloud account, repo, image, IaC, MCP, warehouse, or a coding agent) and
 // Sources (one dense, filterable table of everything registered — cloud
 // connections + registered sources merged and deduped). Retires the separate
 // `/sources` route (kept as a redirect).
 
-type HubTab = "connect" | "sources";
+type HubTab = "connect" | "sources" | "endpoints";
 
 function parseTab(value: string | null, established: boolean): HubTab {
-  if (value === "sources" || value === "connect") return value;
+  if (value === "sources" || value === "connect" || value === "endpoints") return value;
   return established ? "sources" : "connect";
 }
 
@@ -1459,13 +1459,13 @@ function ConnectionsHub() {
       <PageLaneHeader
         lane="cloud-data"
         title="Connections"
-        subtitle="Connect cloud, code, AI, and data, then verify access and run a scan."
+        subtitle="Connect cloud, code, AI, data and endpoints, then inspect scoped evidence."
         scopeChip={
           <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-200">
             {deploymentModeLabel(counts?.deployment_mode)} · brokered read-only
           </span>
         }
-        actions={
+        actions={tab === "endpoints" ? undefined :
           <>
             <button
               onClick={refreshAll}
@@ -1484,7 +1484,7 @@ function ConnectionsHub() {
             </button>
           </>
         }
-        banner={
+        banner={tab === "endpoints" ? undefined :
           <dl aria-label="Source status" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <div className="flex gap-2"><dt className="text-ink-secondary">Cloud accounts</dt><dd className="font-semibold tabular-nums">{loading ? "…" : error ? "Unavailable" : cloudAccountCount}</dd></div>
             <div className="flex gap-2"><dt className="text-ink-secondary">Registered sources</dt><dd className="font-semibold tabular-nums">{sourcesLoading ? "…" : sourcesUnavailable ? "Unavailable" : sources.length}</dd></div>
@@ -1496,6 +1496,7 @@ function ConnectionsHub() {
       <HubTabs tab={tab} onChange={setTab} connectCount={CONNECTOR_CATALOG.length} sourceCount={unifiedRows.length} />
 
       {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
+      {tab !== "endpoints" && <div className="grid gap-3 lg:grid-cols-2">
       {!connectionsSchedulerEnabled &&
       connections.some(
         (connection) => connection.scan_interval_minutes || isContinuousMode(connection),
@@ -1525,9 +1526,11 @@ function ConnectionsHub() {
         />
       ) : null}
 
-      <EndpointConnectionsPanel canManage={session?.role === "admin" && !managedTrialSession} demo={isDemoMode} />
+      </div>}
 
-      {tab === "connect" ? (
+      {tab === "endpoints" ? (
+        <EndpointConnectionsPanel key={session?.tenant_id ?? "unauthenticated"} canManage={session?.role === "admin" && !managedTrialSession} demo={isDemoMode} />
+      ) : tab === "connect" ? (
         <ConnectSegment
           session={session}
           counts={counts}
@@ -1661,9 +1664,10 @@ function HubTabs({
   connectCount: number;
   sourceCount: number;
 }) {
-  const tabs: { key: HubTab; label: string; count: number; icon: typeof Plug }[] = [
+  const tabs: { key: HubTab; label: string; count?: number; icon: typeof Plug }[] = [
     { key: "connect", label: "Add source", count: connectCount, icon: Plug },
     { key: "sources", label: "Sources", count: sourceCount, icon: Boxes },
+    { key: "endpoints", label: "Endpoints", icon: Shield },
   ];
   return (
     <div
@@ -1684,10 +1688,11 @@ function HubTabs({
             onKeyDown={(event) => {
               if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
               event.preventDefault();
-              const next = event.key === "Home" ? "connect" : event.key === "End" ? "sources" : item.key === "connect" ? "sources" : "connect";
-              onChange(next);
+              const index = tabs.findIndex(candidate => candidate.key === item.key);
+              const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+              onChange(tabs[nextIndex]!.key);
               const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]");
-              buttons?.[next === "connect" ? 0 : 1]?.focus();
+              buttons?.[nextIndex]?.focus();
             }}
             onClick={() => onChange(item.key)}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
@@ -1698,9 +1703,9 @@ function HubTabs({
           >
             <Icon className="h-4 w-4" />
             {item.label}
-            <span className="rounded-full border border-outline bg-surface-elevated px-1.5 py-0.5 text-[10px] font-mono text-ink-tertiary">
+            {item.count !== undefined && <span className="rounded-full border border-outline bg-surface-elevated px-1.5 py-0.5 text-[10px] font-mono text-ink-tertiary">
               {item.count}
-            </span>
+            </span>}
           </button>
         );
       })}
@@ -2903,7 +2908,7 @@ function CodingAgentDrawer({ open, onClose }: { open: boolean; onClose: () => vo
       }
       headerAside={
         <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 dark:border-emerald-900/60 bg-emerald-500/10 dark:bg-emerald-950/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-          <Bot className="h-3 w-3" /> 86 MCP tools
+          <Bot className="h-3 w-3" /> 88 MCP tools
         </span>
       }
     >

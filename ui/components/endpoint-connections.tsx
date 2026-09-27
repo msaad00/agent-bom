@@ -6,7 +6,7 @@ import {
   type EndpointConnections,
   type EndpointInventory,
 } from "@/lib/endpoint-connectors";
-import { Card } from "@/components/card";
+import { Drawer } from "@/components/drawer";
 
 import { button } from "./endpoint-connections/styles";
 import { EndpointConnectionForm } from "./endpoint-connections/connection-form";
@@ -26,6 +26,7 @@ export function EndpointConnectionsPanel({
   const [selected, setSelected] = useState("");
   const [inventory, setInventory] = useState<EndpointInventory | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [page, setPage] = useState(0);
   const generation = useRef(0);
   const refresh = useCallback(async () => {
     if (demo) return;
@@ -89,7 +90,7 @@ export function EndpointConnectionsPanel({
   }
 
   return (
-    <Card className="space-y-4" aria-label="Endpoint inventory connections">
+    <section className="space-y-4" aria-label="Endpoint inventory connections">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold">Endpoint inventory</h2>
@@ -98,11 +99,25 @@ export function EndpointConnectionsPanel({
             separate from policy compliance.
           </p>
         </div>
-        {canManage && !demo && (
-          <button className={button} onClick={() => setShowForm(!showForm)}>
-            Connect endpoint provider
-          </button>
-        )}
+        <div className="flex gap-2">
+          {!demo && (
+            <button className={button} onClick={() => void refresh()}>
+              Refresh endpoints
+            </button>
+          )}
+          {canManage && !demo && (
+            <button
+              className={button}
+              onClick={() => {
+                setSelected("");
+                setError("");
+                setShowForm(true);
+              }}
+            >
+              Connect endpoint provider
+            </button>
+          )}
+        </div>
       </div>
       {demo && (
         <p className="text-sm text-[var(--text-secondary)]">
@@ -110,7 +125,7 @@ export function EndpointConnectionsPanel({
           endpoint evidence.
         </p>
       )}
-      {error && (
+      {error && !showForm && !selected && (
         <div role="alert" className="text-sm text-red-500">
           {error}{" "}
           <button className={button} onClick={() => void refresh()}>
@@ -118,7 +133,18 @@ export function EndpointConnectionsPanel({
           </button>
         </div>
       )}
-      {showForm && (
+      <Drawer
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="Connect endpoint provider"
+        size="2xl"
+        ariaLabel="Connect endpoint provider"
+      >
+        {error && (
+          <p role="alert" className="text-sm text-red-500 mb-3">
+            {error}
+          </p>
+        )}
         <EndpointConnectionForm
           setError={setError}
           onCreated={async (id) => {
@@ -127,27 +153,68 @@ export function EndpointConnectionsPanel({
             await inspect(id);
           }}
         />
-      )}
+      </Drawer>
       {!demo && rows.length === 0 && !error && (
         <p className="text-sm text-[var(--text-secondary)]">
           No endpoint connections configured.
         </p>
       )}
-      <div className="grid gap-3 lg:grid-cols-2">
-        {rows.map(({ connection, sync: state }) => (
-          <EndpointConnectionCard
-            key={connection.id}
-            connection={connection}
-            state={state}
-            canManage={canManage}
-            busy={busy}
-            inspect={inspect}
-            sync={sync}
-            update={update}
-          />
-        ))}
+      <div className="grid max-h-[55vh] overflow-y-auto gap-3 lg:grid-cols-2">
+        {rows
+          .slice(page * 4, page * 4 + 4)
+          .map(({ connection, sync: state }) => (
+            <EndpointConnectionCard
+              key={connection.id}
+              connection={connection}
+              state={state}
+              canManage={canManage}
+              busy={busy}
+              inspect={inspect}
+              sync={sync}
+              update={update}
+            />
+          ))}
       </div>
-      {selected && (
+      {rows.length > 4 && (
+        <div className="flex items-center gap-3 text-sm">
+          <button
+            className={button}
+            disabled={page === 0}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous connections
+          </button>
+          <span>
+            {page + 1} / {Math.ceil(rows.length / 4)}
+          </span>
+          <button
+            className={button}
+            disabled={(page + 1) * 4 >= rows.length}
+            onClick={() => setPage(page + 1)}
+          >
+            Next connections
+          </button>
+        </div>
+      )}
+      <Drawer
+        open={Boolean(selected)}
+        onClose={() => {
+          generation.current++;
+          setSelected("");
+          setInventory(null);
+        }}
+        title="Device evidence"
+        subtitle={
+          rows.find((row) => row.connection.id === selected)?.connection.name
+        }
+        size="5xl"
+        ariaLabel="Endpoint device evidence"
+      >
+        {error && (
+          <p role="alert" className="text-sm text-red-500 mb-3">
+            {error}
+          </p>
+        )}
         <EndpointDeviceEvidence
           selected={selected}
           inventory={inventory}
@@ -157,7 +224,7 @@ export function EndpointConnectionsPanel({
           setBusy={setBusy}
           setError={setError}
         />
-      )}
-    </Card>
+      </Drawer>
+    </section>
   );
 }

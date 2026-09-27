@@ -5,6 +5,7 @@ import ConnectionsPage from "@/app/connections/page";
 
 const { apiMock, navState, replaceMock, authState } = vi.hoisted(() => ({
   apiMock: {
+    endpointConnections: vi.fn(),
     health: vi.fn(),
     listCloudConnections: vi.fn(),
     getCloudConnection: vi.fn(),
@@ -152,6 +153,7 @@ const SOURCE_RECORD = {
 };
 
 function primeSourceApis() {
+  apiMock.endpointConnections.mockResolvedValue({connections: []});
   apiMock.health.mockResolvedValue({
     status: "ok",
     version: "0.0.0-test",
@@ -961,7 +963,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     const drawer = await screen.findByRole("dialog", { name: /Connect a coding agent/ });
     expect(within(drawer).getByText("agent-bom mcp-server")).toBeInTheDocument();
-    expect(within(drawer).getByText(/86 MCP tools/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/88 MCP tools/)).toBeInTheDocument();
     expect(within(drawer).getByText(/Collection uses read-only source access/)).toHaveTextContent(
       /Scan evidence and connection settings are stored in the control plane/,
     );
@@ -1705,4 +1707,24 @@ it.each([
   await waitFor(() => expect(apiMock.createCloudConnection).toHaveBeenCalledWith(expect.objectContaining({
     provider, role_ref: role, external_id: "", auth_params: { ...scope, auth_mode: mode, credential_binding: "readonly-prod" },
   })));
+});
+
+
+it("keeps endpoint inventory in its own tab without stacking it above other sources", async () => {
+  render(<ConnectionsPage />);
+  expect(await screen.findByRole("tab", { name: "Endpoints" })).toBeInTheDocument();
+  expect(screen.queryByLabelText("Endpoint inventory connections")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Endpoints" }));
+  expect(replaceMock).toHaveBeenCalledWith("/connections?tab=endpoints");
+});
+
+
+it("opens the endpoint deep link without cloud setup banners or stacked source sections", async () => {
+  navState.search = "tab=endpoints";
+  render(<ConnectionsPage />);
+  expect(await screen.findByLabelText("Endpoint inventory connections")).toBeInTheDocument();
+  expect(screen.getByRole("tab", {name: "Endpoints"})).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("button", {name: "Add cloud account"})).not.toBeInTheDocument();
+  expect(screen.queryByTestId("connections-scheduler-disabled-banner")).not.toBeInTheDocument();
+  expect(screen.queryByText("Access verification pending")).not.toBeInTheDocument();
 });

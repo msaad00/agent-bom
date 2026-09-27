@@ -64,6 +64,16 @@ export function EndpointConnectionCard({
                 ? "Resume sync"
                 : "Sync inventory"}
             </button>
+          </>
+        )}
+      </div>
+      {canManage && (
+        <details>
+          <summary className="text-xs cursor-pointer">
+            Connection settings
+          </summary>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {" "}
             <button
               className={button}
               disabled={busy || !connection.enabled}
@@ -80,14 +90,7 @@ export function EndpointConnectionCard({
             >
               {connection.enabled ? "Disable" : "Enable"}
             </button>
-          </>
-        )}
-      </div>
-      {canManage && (
-        <details>
-          <summary className="text-xs cursor-pointer">
-            Rotate credential
-          </summary>
+          </div>
           <form
             className="flex gap-2 mt-2"
             onSubmit={(event) => {

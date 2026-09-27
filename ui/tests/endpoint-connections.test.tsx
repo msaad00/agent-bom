@@ -67,6 +67,15 @@ describe("Endpoint connections", () => {
       await screen.findByRole("button", { name: "Inspect evidence" }),
     );
     expect(await screen.findByText("Laptop")).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Endpoint device evidence" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Agent associations · Laptop"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Associations" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Unknown")).toHaveLength(2);
     expect(
       screen.getByRole("columnheader", { name: "Sensor healthy" }),

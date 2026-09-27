@@ -1546,7 +1546,7 @@ export const api = {
   createEndpointConnection: (body: EndpointConnectionCreate) => post<EndpointConnection>("/v1/endpoint-connectors", body),
   updateEndpointConnection: (id: string, body: {enabled?: boolean; client_secret?: string}) => patch<EndpointConnection>(`/v1/endpoint-connectors/${encodeURIComponent(id)}`, body),
   syncEndpointConnection: (id: string, restart = false) => post<EndpointSync>(`/v1/endpoint-connectors/${encodeURIComponent(id)}/sync`, {restart, max_pages: 5}, {}, undefined, 180_000),
-  endpointDevices: (id: string, offset = 0) => get<EndpointInventory>(`/v1/endpoint-connectors/${encodeURIComponent(id)}/devices?limit=25&offset=${offset}`),
+  endpointDevices: (id: string, offset = 0) => get<EndpointInventory>(`/v1/endpoint-connectors/${encodeURIComponent(id)}/devices?limit=10&offset=${offset}`),
   listConnectors: () => get<ConnectorsResponse>("/v1/connectors"),
   getConnectorHealth: (name: string) => get<ConnectorHealthResponse>(`/v1/connectors/${encodeURIComponent(name)}/health`),
   listDiscoveryProviders: () => get<DiscoveryProvidersResponse>("/v1/discovery/providers"),

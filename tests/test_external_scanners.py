@@ -758,8 +758,8 @@ def test_fold_external_packages_moves_vulns_onto_native_package_and_drops_duplic
 
 
 def test_fold_keeps_external_only_package_and_reports_unresolvable_name_only_result():
-    from agent_bom.parsers.external_import import build_external_agent, fold_external_packages
     from agent_bom.finding import FindingType
+    from agent_bom.parsers.external_import import build_external_agent, fold_external_packages
     from agent_bom.parsers.external_scanners import ingest_external_report
 
     native = _native_agent([_manifest_pkg("requests", "2.25.0")])

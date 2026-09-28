@@ -73,10 +73,10 @@ def apply_dependency_reachability_to_blast_radii(
             # Scan surfaces that already projected the unified graph pass the
             # precomputed report to avoid repeated serialization and building.
             from agent_bom.models import AIBOMReport
-            from agent_bom.output import to_json
+            from agent_bom.output.graph_evidence import graph_evidence_sections
 
             report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_id="reachability-scratch")
-            graph = build_unified_graph_from_report(to_json(report))
+            graph = build_unified_graph_from_report(graph_evidence_sections(report))
             reach = compute_dependency_reach(graph)
         else:
             reach = reachability_report

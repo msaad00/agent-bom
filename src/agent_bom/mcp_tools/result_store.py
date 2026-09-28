@@ -47,15 +47,15 @@ def scan_result_owner(request_ctx_getter: Callable[[], Any]) -> str:
     Token rotation intentionally loses access to prior cached results. Stdio
     processes share their OS user's state; HTTP without a verified token is denied.
     """
-    from mcp.server.auth.middleware.auth_context import get_access_token
+    from agent_bom.mcp_tools.request_identity import verified_access_token
 
-    token = get_access_token()
-    if token is not None and isinstance(token.token, str) and token.token:
-        return "token:" + hashlib.sha256(token.token.encode()).hexdigest()
     try:
         context = request_ctx_getter()
     except LookupError:
         return "local"
+    token = verified_access_token(context)
+    if token is not None and token.token:
+        return "token:" + hashlib.sha256(token.token.encode()).hexdigest()
     if getattr(context, "request", None) is not None:
         raise ValueError("MCP scan results require an authenticated HTTP caller")
     return "local"

@@ -325,13 +325,17 @@ class TestToolMetrics:
         """
         from types import SimpleNamespace
 
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
+        from starlette.requests import Request
+
         from agent_bom import mcp_server_runtime as runtime
 
-        token_a = SimpleNamespace(client_id="oauth-client-9", scopes=["read"])
-        token_b = SimpleNamespace(client_id="oauth-client-9", scopes=["read"])
+        token_a = AccessToken(token="token-a", client_id="oauth-client-9", scopes=["read"])
+        token_b = AccessToken(token="token-b", client_id="oauth-client-9", scopes=["read"])
         # Two distinct connections (distinct session objects), same verified token.
-        req1 = SimpleNamespace(access_token=token_a, session=object(), meta=None, request_id="r1")
-        req2 = SimpleNamespace(access_token=token_b, session=object(), meta=None, request_id="r2")
+        req1 = SimpleNamespace(request=Request({"type": "http", "user": AuthenticatedUser(token_a)}), session=object(), meta=None)
+        req2 = SimpleNamespace(request=Request({"type": "http", "user": AuthenticatedUser(token_b)}), session=object(), meta=None)
 
         caller1 = runtime.current_tool_request(lambda: req1)["caller"]
         caller2 = runtime.current_tool_request(lambda: req2)["caller"]
@@ -340,10 +344,15 @@ class TestToolMetrics:
     def test_caller_falls_back_to_token_hash_without_client_id(self):
         from types import SimpleNamespace
 
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
+        from starlette.requests import Request
+
         from agent_bom import mcp_server_runtime as runtime
 
-        req1 = SimpleNamespace(access_token=SimpleNamespace(token="bearer-secret-xyz"), session=object(), meta=None)
-        req2 = SimpleNamespace(access_token=SimpleNamespace(token="bearer-secret-xyz"), session=object(), meta=None)
+        token = AccessToken(token="bearer-secret-xyz", client_id="", scopes=["read"])
+        req1 = SimpleNamespace(request=Request({"type": "http", "user": AuthenticatedUser(token)}), session=object(), meta=None)
+        req2 = SimpleNamespace(request=Request({"type": "http", "user": AuthenticatedUser(token)}), session=object(), meta=None)
         caller1 = runtime.current_tool_request(lambda: req1)["caller"]
         caller2 = runtime.current_tool_request(lambda: req2)["caller"]
         assert caller1 == caller2

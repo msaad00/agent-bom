@@ -14,6 +14,34 @@ import argparse
 from pathlib import Path
 from typing import Iterable
 
+AUTHORIZATION_SOURCES = frozenset(
+    {
+        "src/agent_bom/rbac.py",
+        "src/agent_bom/api/auth.py",
+        "src/agent_bom/api/middleware.py",
+        "src/agent_bom/api/route_policy.py",
+        "src/agent_bom/api/session_authorization.py",
+        "src/agent_bom/api/stream_authorization.py",
+        "src/agent_bom/api/sse_authorization.py",
+        "src/agent_bom/api/websocket_auth.py",
+        "src/agent_bom/api/tenancy.py",
+        "src/agent_bom/api/routes/proxy.py",
+    }
+)
+AUTHORIZATION_CONTRACTS = (
+    "tests/test_api_route_policy.py",
+    "tests/api/test_operation_scope_coverage.py",
+    "tests/api/test_session_authorization_backends.py",
+    "tests/api/test_auth_scope_boundaries.py",
+    "tests/api/test_auth_contract_matrix.py",
+    "tests/api/test_stream_authorization.py",
+    "tests/test_websocket_auth_fails_closed.py",
+)
+MCP_TOOL_CONTRACTS = (
+    "tests/test_mcp_tool_output_contract.py",
+    "tests/test_mcp_strict_args.py",
+)
+
 
 def discover_test_files(root: Path) -> list[Path]:
     """Return every pytest module below *root* in stable path order."""
@@ -44,6 +72,14 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
 
     for changed in changed_files:
         normalized = Path(changed.as_posix().lstrip("./"))
+        if (
+            normalized.as_posix().startswith("src/agent_bom/mcp_tools/")
+            or normalized.as_posix().startswith("src/agent_bom/mcp_server")
+            or normalized.as_posix() == "src/agent_bom/mcp_strict_args.py"
+        ):
+            selected.update(root / path for path in MCP_TOOL_CONTRACTS if root / path in available)
+        if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
+            selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
         direct = root / normalized
         if normalized.parts and normalized.parts[0] == "tests" and direct in available:
             selected.add(direct)

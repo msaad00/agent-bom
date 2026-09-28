@@ -592,6 +592,23 @@ def main(argv: list[str] | None = None) -> int:
                 api_error = exc
 
             public_schema_result = False
+            if api_result is not None and api_result[0] == 0 and expected_tool_contract is not None and schema_page:
+                # Glama's directory API can return an empty inventory for a build
+                # that its own Schema page already describes. Accept that only when
+                # the embedded schema state proves the exact release-bound contract.
+                try:
+                    indexed_result = _api_inventory_result(
+                        _extract_schema_tool_contract(schema_page, args.url),
+                        tool_count=tool_count,
+                        expected_tool_names=expected_tool_names,
+                        expected_tool_contract=expected_tool_contract,
+                    )
+                except ValueError:
+                    indexed_result = None
+                if indexed_result is not None and not indexed_result[1] and indexed_result[3] is True:
+                    api_result = indexed_result
+                    public_schema_result = True
+                    print("Glama public API returned no tools; verified the exact contract from the public Schema page", file=sys.stderr)
             if api_result is None and schema_page:
                 try:
                     indexed_tools = _extract_schema_tool_contract(schema_page, args.url)

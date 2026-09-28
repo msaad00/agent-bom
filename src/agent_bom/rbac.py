@@ -121,15 +121,21 @@ _ROLE_UI_NAMES: dict[Role, str] = {
 _ROLE_DESCRIPTIONS: dict[Role, str] = {
     Role.ADMIN: "Full control-plane administration, protected writes, and tenant-scoped key/policy/fleet management.",
     Role.ANALYST: "Contributor-level operator access for scans, source management, runtime ingest, and exception workflows.",
-    Role.VIEWER: "Read-only operator access to inventory, findings, graph, remediation, audit, and posture surfaces.",
+    Role.VIEWER: "Read-only operator access to inventory, findings, graph, remediation, and posture surfaces.",
 }
 
 _CAPABILITY_DEFINITIONS: tuple[CapabilityDefinition, ...] = (
     CapabilityDefinition(
         id="inventory.read",
-        label="View inventory, findings, graph, and audit",
-        description="See agents, fleet, findings, posture, compliance, graph, governance, and audit state.",
+        label="View inventory, findings, and graph",
+        description="See agents, fleet, findings, posture, compliance, graph, and governance state.",
         minimum_role=Role.VIEWER,
+    ),
+    CapabilityDefinition(
+        id="audit.read",
+        label="View audit evidence",
+        description="Read tenant audit records, integrity checks, and audit exports.",
+        minimum_role=Role.ANALYST,
     ),
     CapabilityDefinition(
         id="scan.run",
@@ -203,7 +209,7 @@ _ROLE_ACCESS_SUMMARY: dict[Role, dict[str, list[str]]] = {
     },
     Role.VIEWER: {
         "can_see": [
-            "Read-only inventory, findings, fleet, graph, remediation, governance, posture, and audit surfaces",
+            "Read-only inventory, findings, fleet, graph, remediation, governance, and posture surfaces",
         ],
         "can_do": [],
         "cannot_do": [

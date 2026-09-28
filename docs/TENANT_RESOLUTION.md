@@ -42,6 +42,63 @@ submitting it to a pool. Invalid context raises `ValueError`; successful and fai
 work restore the previous tenant context. Job producers must supply the tenant
 established by their authentication or operator configuration boundary.
 
+### API-key operation scopes and browser sessions
+
+Use an administrative key with `auth:read` to inspect the enforced scope catalog:
+
+```bash
+curl --fail -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  "$AGENT_BOM_API_URL/v1/auth/scopes"
+```
+
+The JSON catalog lists each method, resource prefix, minimum role and required
+scope. Grant the resource scopes needed by the integration, then verify its
+first read or write with that key. For example, `scan:write` submits scans and
+`scan:read` reads their results or SSE stream; `source:read` lists sources,
+`source:write` manages them, and `runtime:read` opens proxy WebSocket streams.
+The existing role and tenant checks also apply: a viewer with `fleet:write`
+cannot perform an administrative fleet mutation.
+
+Non-empty scope lists now fail closed with HTTP 403 on unrelated operations,
+including operations that previously had only a role check. An unclassified
+operation also returns 403 to a scoped key. Existing scoped integrations may
+need additional explicit grants from the catalog. Empty scope lists retain the
+legacy unrestricted-within-role contract, as does `*`; neither overrides role
+or tenant restrictions. `GET /v1/auth/me` (and HEAD) is the exact self-identity
+exception, available to authenticated callers without a resource scope.
+HEAD uses GET policy. Only CORS preflight OPTIONS requests bypass authentication;
+ordinary OPTIONS requests go through the credential and scope checks.
+
+Key-backed browser cookies use the intersection of their signed grants and the
+current key record. Downgrades and scope reductions take effect on the next
+request; broadening a key does not broaden an existing cookie. Revoked, expired,
+missing or foreign-tenant backing keys return 401. Disjoint session/key grants
+return 403 rather than becoming unrestricted. The backing-key read runs under
+the signed session tenant, including PostgreSQL RLS, and restores prior context.
+Downstream handlers receive the effective role and intersected scopes, so key
+delegation cannot use stale cookie privileges. Sign in again after an intentional
+grant expansion.
+
+Scan-progress and gateway-activity SSE streams, and proxy metrics/alerts
+WebSockets, recheck their credentials every five seconds while active or idle.
+The HTTP streams rerun the existing authentication and route policy against
+fresh request state. A changed tenant, identity or role, revoked/expired key,
+removed required scope, or failed revalidation terminates the stream. SSE emits
+a `reconnect` event with reason `reauthenticate`; WebSockets close with code
+4001. Clients must authenticate again before receiving further data. The
+gateway's existing 30-second reconnect limit remains in place.
+
+Authorization checks have a five-second timeout and fail closed on errors.
+Data sends also time out after five seconds; stalled WebSocket consumers close
+with code 1013 and SSE responses cancel their pending source read.
+The five-second lease bounds cached authority; it does not retract previously
+sent frames or cancel provider work already executing. Static deployment
+configuration changes still require the owning server's normal reload/restart.
+
+For upgrades, inspect the catalog and update narrowly scoped integration keys
+before switching traffic. Rolling back restores the earlier scope gaps; prefer
+correcting a missing explicit grant over reverting enforcement.
+
 ## CLI
 
 The CLI runs out-of-band; there is no authenticated request to derive
@@ -85,6 +142,21 @@ When step 3 fires under multi-tenant signals, `resolve_mcp_tenant_id`
 logs a warning. The same static guardrail in
 `tests/test_cli_mcp_tenant_resolution.py` covers `src/agent_bom/mcp_*.py`
 and `src/agent_bom/mcp_tools/`.
+
+Remote MCP caller identity is separate from this process-bound tenant. Tool
+dispatch reads the SDK-verified token on the current HTTP request for scopes,
+rate-limit identity and the audit actor. Client metadata and tool arguments
+cannot supply authority or override that actor. Transports without an HTTP
+request use the SDK authentication context. Missing or expired verified grants
+fail closed for write tools; local stdio reads retain the operator's OS boundary.
+
+Saved scan results use the same current-request identity and a digest of the
+token, rather than a client-provided name or a transport task's earlier token.
+Unauthenticated HTTP callers cannot read saved results. Token rotation changes
+result ownership, so clients must retain an unexpired original credential or
+run a new scan. The server-bound tenant remains authoritative in both cases.
+These changes require no storage migration. Reverting them restores the earlier
+identity-resolution defects and is not an authorization rollback strategy.
 
 ## Why not push tenant context through MCP request headers?
 

@@ -33,7 +33,7 @@ from agent_bom.api.browser_session import (
     verify_browser_session_token,
     verify_csrf,
 )
-from agent_bom.api.route_policy import ROLE_RULES, SCOPE_RULES, required_role, required_scope, scope_catalog
+from agent_bom.api.route_policy import ROLE_RULES, SCOPE_RULES, request_scopes_allow, required_role, required_scope, scope_catalog
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -1258,7 +1258,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.scim_user_id = user_id
         request.state.scim_user_name = user_name
 
-    def _resolve_runtime_role(
+    async def _resolve_runtime_role(
         self,
         request: StarletteRequest,
         *,
@@ -1268,7 +1268,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     ) -> tuple[Role | None, JSONResponse | None]:
         from agent_bom.api.auth import resolve_scim_user_role
 
-        resolution = resolve_scim_user_role(tenant_id, *subjects)
+        resolution = await anyio.to_thread.run_sync(resolve_scim_user_role, tenant_id, *subjects)
         if not resolution.matched:
             return upstream_role, None
         if not resolution.active:
@@ -1353,7 +1353,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # the actual request never fires because the preflight failed.
         # CORSMiddleware will reply with the right Access-Control-Allow-*
         # headers for the configured origin set.
-        if request.method == "OPTIONS":
+        if request.method == "OPTIONS" and "origin" in request.headers and "access-control-request-method" in request.headers:
             return await call_next(request)
         from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_route_allowed
 
@@ -1492,7 +1492,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             tenant_id = oidc_cfg.resolve_tenant(_claims)
             subject = _claims.get("email") or _claims.get("preferred_username") or _claims.get("sub", "oidc-user")
             upstream_role = Role(oidc_role)
-            effective_role, scim_error = self._resolve_runtime_role(
+            effective_role, scim_error = await self._resolve_runtime_role(
                 request,
                 tenant_id=tenant_id,
                 upstream_role=upstream_role,
@@ -1569,7 +1569,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             subjects = [api_key.name.removeprefix("saml:"), api_key.name]
             if api_key.scim_subject_id:
                 subjects.append(api_key.scim_subject_id)
-            resolved_role, scim_error = self._resolve_runtime_role(
+            resolved_role, scim_error = await self._resolve_runtime_role(
                 request,
                 tenant_id=api_key.tenant_id,
                 upstream_role=api_key.role,
@@ -1586,11 +1586,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 )
             )
         required_scope = self._required_scope(request.method, request.url.path)
-        if not api_key.has_scope(required_scope):
+        if not request_scopes_allow(api_key.scopes, request.method, request.url.path):
             return Invalid(
                 JSONResponse(
                     status_code=403,
-                    content={"detail": f"Forbidden — requires scope {required_scope}"},
+                    content={
+                        "detail": f"Forbidden — requires scope {required_scope}"
+                        if required_scope
+                        else "Forbidden — operation has no scope grant"
+                    },
                 )
             )
         request.state.api_key_name = api_key.name
@@ -1678,11 +1682,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         return await self._call_with_tenant_context(request, call_next)
 
     async def _try_browser_session_auth(self, request: StarletteRequest, call_next: RequestResponseEndpoint, token: str) -> Response:
-        from agent_bom.api.auth import Role, get_key_store
+        from agent_bom.api.auth import Role
         from agent_bom.api.shared_auth_state import AuthStateUnavailable
 
         try:
-            payload = verify_browser_session_token(token)
+            payload = await anyio.to_thread.run_sync(verify_browser_session_token, token)
             session_role = Role(str(payload.get("role", "")).lower())
         except AuthStateUnavailable:
             return JSONResponse(status_code=503, content={"detail": "Authentication state unavailable"})
@@ -1704,7 +1708,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if get_dev_api_key() is None or session_role != get_dev_api_role():
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized — loopback session is no longer active"})
         if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):
-            resolved_role, scim_error = self._resolve_runtime_role(
+            resolved_role, scim_error = await self._resolve_runtime_role(
                 request,
                 tenant_id=tenant_id,
                 upstream_role=session_role,
@@ -1714,39 +1718,35 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 return scim_error
             effective_role = resolved_role or session_role
 
-        required = Role(self._required_role(request.method, request.url.path))
-        if not self._role_allows(effective_role, required):
-            return JSONResponse(
-                status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, browser session has {effective_role.value}"},
-            )
-
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
             csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
             if not verify_csrf(payload, csrf_cookie, csrf_header):
                 return JSONResponse(status_code=403, content={"detail": "Forbidden — missing or invalid CSRF token"})
 
-        store = get_key_store()
+        from fastapi import HTTPException
+
+        from agent_bom.api.session_authorization import authorize_browser_session_async as authorize_browser_session
+
         key_id = str(payload.get("key_id") or "")
-        if key_id:
-            stored = store.get(key_id)
-            if stored is None or stored.tenant_id != tenant_id or not stored.is_usable():
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized — browser session key is no longer active"})
-            required_scope = self._required_scope(request.method, request.url.path)
-            if not stored.has_scope(required_scope):
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
-        elif auth_method == "managed_trial_oidc":
-            required_scope = self._required_scope(request.method, request.url.path)
-            session_scopes = {str(scope) for scope in (payload.get("scopes") or [])}
-            if required_scope and required_scope not in session_scopes:
-                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
+        try:
+            effective_role, session_scopes = await authorize_browser_session(
+                role=effective_role,
+                scopes=list(payload.get("scopes") or []),
+                tenant_id=tenant_id,
+                key_id=key_id,
+                auth_method=auth_method,
+                method=request.method,
+                path=request.url.path,
+            )
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
         request.state.api_key_name = subject
         request.state.api_key_role = effective_role.value
         request.state.tenant_id = tenant_id
         request.state.api_key_id = key_id or None
-        request.state.api_key_scopes = list(payload.get("scopes") or [])
+        request.state.api_key_scopes = session_scopes
         request.state.auth_method = auth_method
         return await self._call_with_tenant_context(request, call_next)
 
@@ -1806,7 +1806,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 return JSONResponse(status_code=403, content={"detail": f"Invalid proxy role '{role_header}'"})
 
-        effective_role, scim_error = self._resolve_runtime_role(
+        effective_role, scim_error = await self._resolve_runtime_role(
             request,
             tenant_id=tenant_id,
             upstream_role=proxy_role,
@@ -1848,7 +1848,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def _call_with_tenant_context(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         from agent_bom.api.tenancy import call_with_request_tenant
 
-        return await call_with_request_tenant(request, call_next)
+        return await call_with_request_tenant(request, call_next, authenticate=self.dispatch)
 
 
 DEFAULT_SCAN_RATE_LIMIT_RPM = 600

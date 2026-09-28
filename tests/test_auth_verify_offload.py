@@ -66,7 +66,7 @@ async def test_browser_session_verify_keeps_the_loop_responsive() -> None:
 @pytest.mark.asyncio
 async def test_websocket_handshake_verifies_off_the_loop_thread() -> None:
     """The pre-auth WebSocket handshake offloads verification too."""
-    from agent_bom.api.routes import proxy
+    from agent_bom.api import websocket_auth as proxy
 
     loop_thread = threading.get_ident()
     seen: dict[str, Any] = {}

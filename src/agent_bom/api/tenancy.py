@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
 
 from fastapi import HTTPException, Request
 from starlette.middleware.base import RequestResponseEndpoint
@@ -25,13 +26,19 @@ def require_request_tenant_id(request: Request) -> str:
         raise HTTPException(status_code=500, detail="Authenticated tenant context is unavailable") from exc
 
 
-async def call_with_request_tenant(request: Request, call_next: RequestResponseEndpoint) -> Response:
+async def call_with_request_tenant(
+    request: Request, call_next: RequestResponseEndpoint, *, authenticate: Callable[..., Awaitable[Response]] | None = None
+) -> Response:
     """Reject incomplete identity before dispatch and restore database context."""
     try:
         tenant_id = require_request_tenant_id(request)
     except HTTPException:
         return JSONResponse(status_code=500, content={"detail": "Authenticated tenant context is unavailable"})
     request.state.tenant_id = tenant_id
+    if authenticate is not None:
+        from agent_bom.api.stream_authorization import bind_http_stream_authorization
+
+        bind_http_stream_authorization(request, authenticate)
     if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         return await call_next(request)
 

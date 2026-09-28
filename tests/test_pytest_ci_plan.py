@@ -40,3 +40,30 @@ def test_targeted_tests_include_changed_tests_and_source_name_matches(tmp_path: 
     )
 
     assert selected == [matching, direct]
+
+
+def test_route_and_shared_auth_edits_always_select_mounted_operation_matrix(tmp_path: Path) -> None:
+    from scripts.pytest_ci_plan import AUTHORIZATION_CONTRACTS, AUTHORIZATION_SOURCES
+
+    expected = sorted(tmp_path / path for path in AUTHORIZATION_CONTRACTS)
+    for path in expected:
+        _write(path, 1)
+    for source in [*AUTHORIZATION_SOURCES, "src/agent_bom/api/routes/new_surface.py"]:
+        assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+def test_mcp_registration_edits_select_tool_contracts(tmp_path: Path) -> None:
+    expected = sorted(tmp_path / "tests" / name for name in ("test_mcp_tool_output_contract.py", "test_mcp_strict_args.py"))
+    for path in expected:
+        _write(path, 1)
+    for source in (
+        "src/agent_bom/mcp_tools/endpoint_connectors.py",
+        "src/agent_bom/mcp_tools/new_tools.py",
+        "src/agent_bom/mcp_tools/__init__.py",
+        "src/agent_bom/mcp_server.py",
+        "src/agent_bom/mcp_server_metadata.py",
+        "src/agent_bom/mcp_server_specialized.py",
+        "src/agent_bom/mcp_strict_args.py",
+    ):
+        assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+    assert select_targeted_tests(changed_files=[Path("src/agent_bom/cloud/aws.py")], root=tmp_path) == []

@@ -2443,7 +2443,7 @@ async def stream_scan(request: Request, job_id: str) -> Response:
         es.onmessage = e => console.log(JSON.parse(e.data));
     """
     try:
-        from sse_starlette.sse import EventSourceResponse
+        from agent_bom.api.sse_authorization import AuthorizedEventSourceResponse as EventSourceResponse
     except ImportError as exc:
         raise HTTPException(
             status_code=501,

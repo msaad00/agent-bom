@@ -48,6 +48,7 @@ OWNED_FUNCTIONS = {
     "_agent_node_id": "graph/projection_support.py",
     "evaluate_risk_conditions": "runtime/risk_conditions.py",
     "authorized_context_headers": "api/gateway_context.py",
+    "forward_authorized_request": "api/gateway_forward.py",
 }
 
 TENANT_DISPATCH_ADAPTERS = frozenset(

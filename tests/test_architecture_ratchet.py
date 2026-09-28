@@ -183,3 +183,9 @@ def test_gateway_policy_reload_cannot_import_adapters():
     for source in ("from agent_bom.api import gateway_policy", "import agent_bom.gateway_server"):
         assert boundary_errors("runtime/gateway_policy_reload.py", ast.parse(source))
     assert not boundary_errors("runtime/gateway_policy_reload.py", ast.parse("from agent_bom.security import sanitize_error"))
+
+
+def test_gateway_forwarding_has_one_owner_and_no_composition_import():
+    assert boundary_errors("gateway_server.py", ast.parse("async def forward_authorized_request(context): pass"))
+    assert boundary_errors("api/gateway_forward.py", ast.parse("from agent_bom.gateway_server import GatewaySettings"))
+    assert not boundary_errors("api/gateway_forward.py", ast.parse("from agent_bom.runtime.gateway_contracts import AuditSink"))

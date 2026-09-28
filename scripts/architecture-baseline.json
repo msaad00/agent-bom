@@ -338,11 +338,11 @@
       "file_lines": 3035
     },
     "api/routes/compliance.py::_build_compliance": {
-      "complexity": 23,
-      "function_lines": 322
+      "complexity": 22,
+      "function_lines": 321
     },
     "api/routes/compliance.py::_build_compliance._build_controls": {
-      "function_lines": 95
+      "function_lines": 94
     },
     "api/routes/compliance.py::_cis_benchmark_trends_impl": {
       "function_lines": 115
@@ -556,7 +556,7 @@
       "function_lines": 89
     },
     "api/server.py": {
-      "file_lines": 1809
+      "file_lines": 1800
     },
     "api/server.py::_cleanup_tick": {
       "function_lines": 136
@@ -566,8 +566,8 @@
       "function_lines": 146
     },
     "api/server.py::_lifespan": {
-      "complexity": 71,
-      "function_lines": 396
+      "complexity": 69,
+      "function_lines": 389
     },
     "api/server.py::configure_api": {
       "function_lines": 88
@@ -1704,18 +1704,18 @@
       "file_lines": 681
     },
     "gateway_server.py": {
-      "file_lines": 2503
+      "file_lines": 2233
     },
     "gateway_server.py::create_gateway_app": {
-      "complexity": 221,
-      "function_lines": 2176
+      "complexity": 191,
+      "function_lines": 1906
     },
     "gateway_server.py::create_gateway_app.firewall_check": {
       "function_lines": 116
     },
     "gateway_server.py::create_gateway_app.relay": {
-      "complexity": 164,
-      "function_lines": 1734
+      "complexity": 134,
+      "function_lines": 1464
     },
     "github_actions.py::_extract_workflow_info": {
       "complexity": 16,

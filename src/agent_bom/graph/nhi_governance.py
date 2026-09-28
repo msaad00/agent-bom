@@ -46,6 +46,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.cloud.normalization import coerce_truthy
+from agent_bom.core.timestamps import parse_identity_timestamp as _parse_timestamp
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
@@ -108,23 +109,6 @@ def _env_int(name: str, default: int) -> int:
 def dormant_days() -> int:
     """Configured dormancy window in days (default 90)."""
     return _env_int("AGENT_BOM_NHI_DORMANT_DAYS", DEFAULT_DORMANT_DAYS)
-
-
-def _parse_timestamp(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    text = raw.strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def _days_since(ts: datetime, now: datetime) -> int:

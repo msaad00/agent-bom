@@ -25,11 +25,11 @@
 </p>
 
 <p align="center">
-  <a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></a>
+  <a href="docs/images/context-map-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-light-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a>
 </p>
 
 agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account, matches packages against vulnerability advisories, and connects findings to recorded agent, tool and credential relationships.
-Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data.
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data. [Light view](docs/images/context-map-light-live.png) · [Dark view](docs/images/context-map-live.png).
 
 **Start where you work:** [scan a repository](#quick-start), [run the shared dashboard](#self-host-in-your-environment), or [connect your assistant](docs/MCP_WORKFLOWS.md). Apache-2.0; the control plane runs in your own environment.
 

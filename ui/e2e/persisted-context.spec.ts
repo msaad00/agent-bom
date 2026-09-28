@@ -43,6 +43,20 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     expect(legacyRequests).toBe(0);
     expect(fullReportRequests).toBe(0);
     await expect(inspector).toContainText("Bidirectional ↔ Recorded connection");
+    await expect(page.locator(`[data-id="${root}"] .context-map-node`)).toHaveAttribute("data-selected", "true");
+    const views = page.getByText("Other views", { exact: true });
+    await expect(views).toBeVisible();
+    const viewMenu = views.locator("..");
+    await expect(viewMenu.getByRole("button", { name: /Cloud/ })).toBeHidden();
+    await views.click();
+    await expect(viewMenu.getByRole("button", { name: /Cloud/ })).toBeVisible();
+    await views.click();
+    await expect(page.getByText("Coverage unknown", { exact: true })).toBeVisible();
+    await inspector.getByRole("button", { name: /Bidirectional.*Recorded connection.*File server/ }).click();
+    await expect(inspector).toContainText("Evidence basis: configured");
+    await expect(inspector).toContainText("Runtime outcome: unknown");
+    await inspector.getByRole("button", { name: "Close inspection", exact: true }).click();
+
     // Focusing the root changes card dimensions without changing node IDs.
     await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
     await expect(page.getByTestId("context-overview-title")).toHaveCount(0);
@@ -171,6 +185,7 @@ test("client navigation to another explicit snapshot replaces the Context worksp
   await page.evaluate(() => window.history.pushState(null, "", "/graph?lens=context&scan=second"));
   await expect(inspector.getByRole("link", { name: "Investigate reach & permissions" })).toHaveAttribute("href", /scan=second&/);
   expect(incidentScans).toEqual(["first", "second"]);
+  await page.getByText("Other views", { exact: true }).click();
   await page.getByRole("button", { name: /Cloud/ }).click();
   await expect(page).toHaveURL(/scan=second&lens=cloud/);
 });

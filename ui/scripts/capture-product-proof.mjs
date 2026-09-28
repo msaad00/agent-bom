@@ -2932,6 +2932,12 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       scope: "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
     },
     {
+      path: "context-map-light-live.png",
+      page: "/graph?lens=context&capture=1",
+      scope: "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
+      presentation: "light desktop",
+    },
+    {
       path: "inventory-live.png",
       page: "/inventory?capture=1",
       scope: "Unified asset-kind roll-up across discovered packages, MCP servers, agents, cloud, identities, containers, and code",
@@ -3563,46 +3569,42 @@ async function main() {
         assertNoHorizontalOverflow: true,
       },
     );
-    await capture(
-      page,
-      "/graph?lens=context&capture=1",
-      "context-map-live.png",
-      async (contextPage) => {
-        await contextPage.getByRole("heading", { name: "Context Map" }).waitFor({
-          state: "visible",
-          timeout: 30_000,
-        });
-        const agentScope = contextPage.getByLabel("Agent scope", { exact: true });
-        await agentScope.selectOption("agent:developer-copilot");
-        await contextPage.getByRole("button", { name: "Expand canvas", exact: true }).click();
-        const inspector = contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" });
-        await contextPage.locator('[data-id="server:github"]').click();
-        await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
-        await contextPage.locator('[data-id="pkg:next"]').click();
-        await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
-        await contextPage.locator('[data-id="cve:next"]').waitFor({ state: "visible" });
-        await contextPage.locator('[data-id="pkg:next"]').click();
-        await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
-        await expect(contextPage.locator(".react-flow__node")).toHaveCount(3);
-        await contextPage.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
-        await expect(contextPage.locator(".react-flow__node")).toHaveCount(9);
-        await contextPage.locator('[data-id="agent:developer-copilot"]').click();
-        await contextPage.waitForTimeout(500);
-        for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
-        await scrollTo(contextPage, 0);
-      },
-      {
-        awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
-        expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
-        expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
-        minGraphNodes: 9,
-        maxGraphNodes: 9,
-        minGraphEdges: 8,
-        maxGraphEdges: 8,
-        minGraphNodeFontPx: 12,
-        assertEdgeLabelsClearOfNodes: true,
-      },
-    );
+    const prepareContextNeighborhood = async (contextPage) => {
+      await contextPage.getByRole("heading", { name: "Context Map" }).waitFor({
+        state: "visible",
+        timeout: 30_000,
+      });
+      const agentScope = contextPage.getByLabel("Agent scope", { exact: true });
+      await agentScope.selectOption("agent:developer-copilot");
+      await contextPage.getByRole("button", { name: "Expand canvas", exact: true }).click();
+      const inspector = contextPage.getByRole("complementary", { name: "Agent neighborhood inspector" });
+      await contextPage.locator('[data-id="server:github"]').click();
+      await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
+      await contextPage.locator('[data-id="pkg:next"]').click();
+      await inspector.getByRole("button", { name: "Expand connections", exact: true }).click();
+      await contextPage.locator('[data-id="cve:next"]').waitFor({ state: "visible" });
+      await contextPage.locator('[data-id="pkg:next"]').click();
+      await inspector.getByRole("button", { name: "Focus here", exact: true }).click();
+      await expect(contextPage.locator(".react-flow__node")).toHaveCount(3);
+      await contextPage.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
+      await expect(contextPage.locator(".react-flow__node")).toHaveCount(9);
+      await contextPage.locator('[data-id="agent:developer-copilot"]').click();
+      await contextPage.waitForTimeout(500);
+      for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
+      await scrollTo(contextPage, 0);
+    };
+    const contextNeighborhoodAssertions = {
+      awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
+      expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
+      expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
+      minGraphNodes: 9,
+      maxGraphNodes: 9,
+      minGraphEdges: 8,
+      maxGraphEdges: 8,
+      minGraphNodeFontPx: 14,
+      assertEdgeLabelsClearOfNodes: true,
+    };
+    await capture(page, "/graph?lens=context&capture=1", "context-map-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/inventory?capture=1", "inventory-live.png", async (inventoryPage) => {
       await inventoryPage.getByRole("heading", { name: "Asset inventory" }).waitFor({
@@ -3712,6 +3714,7 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
+    await capture(lightPage, "/graph?lens=context&capture=1", "context-map-light-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],

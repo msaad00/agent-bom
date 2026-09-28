@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-28T22:36:36.794Z",
-  "source_commit": "93b60dbd97bdf5ea08fd38b7e65f85a70473fee2",
+  "captured_at": "2026-09-28T23:16:36.061Z",
+  "source_commit": "44275558a3a435ceabce1dc2559fe007640ab718",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:2b569d2810e1592f01eac988c07daf1e27ed5e8608cdea370ddefb25327b2d7c",
+  "capture_inputs_sha256": "sha256:ab22e33a8615bdcfb238c40c3a87ddfc6cf8dfa6c680a515e3558cca33a06e9b",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -108,7 +108,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.106.1",
-      "sha256": "sha256:4bcc9b4c3497177f4626cfd60bcf0495ad99346f9cb9ff272f5dacf60b58e2b5"
+      "sha256": "sha256:6a4fe5d9a7a4c273df50213f8e9387361cdfa612f13b2a3cefdb7d30882b0d5a"
     },
     {
       "presentation": "dark desktop",
@@ -124,7 +124,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.1",
-      "sha256": "sha256:470e020461a4717c3a30fc9da63d121e7d1ff39c69b12faccfb774c6b9f64542"
+      "sha256": "sha256:0aaf04cd742d6c8fa0abddfc15fa4f851423a6dceda21902e57e4bbbf4eef64f"
     },
     {
       "presentation": "dark desktop",
@@ -249,7 +249,15 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.106.1",
-      "sha256": "sha256:b49e4efe2186545bd404b8c474c4b7333058b35194b4fb7a8b8dc02ba0236313"
+      "sha256": "sha256:65be0e6193beda7a86d080d2ca9575ec0b02e2f8f7ca002f453da584f5082dda"
+    },
+    {
+      "presentation": "light desktop",
+      "path": "context-map-light-live.png",
+      "page": "/graph?lens=context&capture=1",
+      "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
+      "visible_version": "0.106.1",
+      "sha256": "sha256:b680a53fb53d00dc331e2c6f090502a58d38b0f5a1a74f8e172690ca7a7924d1"
     },
     {
       "presentation": "dark desktop",

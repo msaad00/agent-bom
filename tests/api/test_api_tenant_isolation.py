@@ -835,7 +835,12 @@ async def test_compliance_routes_are_tenant_scoped():
     assert llm01["affected_agents"] == ["alpha-agent"]
 
     scorecard = await compliance_routes.get_posture_scorecard(req)
-    assert scorecard["score"] == 97
+    from agent_bom.api.routes.overview import _build_overview
+
+    assert scorecard["scan_scorecard"]["score"] == 97
+    assert scorecard["basis"] == "exec_posture"
+    assert scorecard["score"] == _build_overview(req)["posture"]["score"]
+    assert scorecard["score"] != _build_overview(_request("tenant-beta"))["posture"]["score"]
 
     counts = await compliance_routes.get_posture_counts(req)
     assert counts["critical"] == 1

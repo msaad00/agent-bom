@@ -16,7 +16,7 @@ from pathlib import PurePath
 from typing import Any
 
 from agent_bom.api.tracing import get_tracer
-from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
+from agent_bom.asset_provenance import sanitize_discovery_provenance
 from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
 from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
@@ -28,18 +28,97 @@ from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.identity_nodes import identity_node_id as _identity_node_id
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
+from agent_bom.graph.package_projection import (
+    _add_exploitable_via_edges as _add_exploitable_via_edges,
+)
+from agent_bom.graph.package_projection import (
+    _add_vuln_node as _add_vuln_node,
+)
+from agent_bom.graph.package_projection import (
+    _blast_radius_package_evidence as _blast_radius_package_evidence,
+)
+from agent_bom.graph.package_projection import (
+    _collect_compliance_tags as _collect_compliance_tags,
+)
+from agent_bom.graph.package_projection import (
+    _has_mappable_package_version as _has_mappable_package_version,
+)
+from agent_bom.graph.package_projection import (
+    _normalize_server_name as _normalize_server_name,
+)
+from agent_bom.graph.package_projection import (
+    _normalize_tool_capability as _normalize_tool_capability,
+)
+from agent_bom.graph.package_projection import (
+    _package_evidence as _package_evidence,
+)
+from agent_bom.graph.package_projection import (
+    _package_graph_key as _package_graph_key,
+)
+from agent_bom.graph.package_projection import (
+    _package_node_id as _package_node_id,
+)
+from agent_bom.graph.package_projection import (
+    _package_node_id_from_parts as _package_node_id_from_parts,
+)
+from agent_bom.graph.package_projection import (
+    _package_version_provenance_from_dict as _package_version_provenance_from_dict,
+)
+from agent_bom.graph.package_projection import (
+    _resolve_affected_package_ids as _resolve_affected_package_ids,
+)
+from agent_bom.graph.package_projection import (
+    _resolve_affected_server_ids as _resolve_affected_server_ids,
+)
+from agent_bom.graph.package_projection import (
+    _tool_capabilities as _tool_capabilities,
+)
+from agent_bom.graph.projection_support import (
+    _add_rel_edge as _add_rel_edge,
+)
+from agent_bom.graph.projection_support import (
+    _agent_identity_scope as _agent_identity_scope,
+)
+from agent_bom.graph.projection_support import (
+    _agent_node_id as _agent_node_id,
+)
+from agent_bom.graph.projection_support import (
+    _mapping_list as _mapping_list,
+)
+from agent_bom.graph.runtime_projection import (
+    _add_agentic_identity_graph_projections as _add_agentic_identity_graph_projections,
+)
+from agent_bom.graph.runtime_projection import (
+    _add_runtime_incident_feedback as _add_runtime_incident_feedback,
+)
+from agent_bom.graph.runtime_projection import (
+    _iter_agentic_identity_graph_projections as _iter_agentic_identity_graph_projections,
+)
+from agent_bom.graph.runtime_projection import (
+    _iter_runtime_incident_records as _iter_runtime_incident_records,
+)
+from agent_bom.graph.runtime_projection import (
+    _project_agent_feedback as _project_agent_feedback,
+)
+from agent_bom.graph.runtime_projection import (
+    _resolve_feedback_agent_ids as _resolve_feedback_agent_ids,
+)
+from agent_bom.graph.runtime_projection import (
+    _runtime_identity_entity_type as _runtime_identity_entity_type,
+)
+from agent_bom.graph.runtime_projection import (
+    _runtime_identity_evidence as _runtime_identity_evidence,
+)
+from agent_bom.graph.runtime_projection import (
+    _runtime_identity_node_attributes as _runtime_identity_node_attributes,
+)
+from agent_bom.graph.runtime_projection import (
+    _runtime_identity_relationship as _runtime_identity_relationship,
+)
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.graph.util import clean_graph_part as _clean_graph_part
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.package_utils import canonical_package_key, normalize_package_name
-from agent_bom.risk_analyzer import ToolCapability, classify_tool
-from agent_bom.runtime.incident_feedback import (
-    RuntimeIncidentRecord,
-    incident_attribute,
-    iter_observed_targets,
-    load_incident_records,
-    merge_records,
-)
+from agent_bom.package_utils import normalize_package_name
 from agent_bom.security import sanitize_security_warnings, sanitize_sensitive_payload, sanitize_text, sanitize_url
 
 _GRAPH_TRACER = get_tracer("agent_bom.graph")
@@ -1651,689 +1730,6 @@ def _apply_ci_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any])
     apply_ci_graph_overlay(graph, dict(report_json), datetime.now(timezone.utc))
 
 
-def _iter_agentic_identity_graph_projections(report_json: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    """Return runtime identity graph projections embedded in report JSON."""
-    candidates: list[Any] = [
-        report_json.get("agentic_identity_graph"),
-        report_json.get("agentic_identity_graphs"),
-    ]
-    runtime_graph = report_json.get("runtime_session_graph")
-    if isinstance(runtime_graph, Mapping):
-        candidates.extend(
-            [
-                runtime_graph.get("agentic_identity_graph"),
-                runtime_graph.get("agentic_identity_graphs"),
-            ]
-        )
-
-    for event in _mapping_list(report_json.get("audit_events")):
-        candidates.append(event.get("agentic_identity_graph"))
-        details = event.get("details")
-        if isinstance(details, Mapping):
-            candidates.extend(
-                [
-                    details.get("agentic_identity_graph"),
-                    details.get("agentic_identity_graphs"),
-                ]
-            )
-
-    projections: list[Mapping[str, Any]] = []
-    seen: set[int] = set()
-    for candidate in candidates:
-        for projection in _mapping_list(candidate):
-            if projection.get("schema_version") != "agentic_identity_graph.v1":
-                continue
-            marker = id(projection)
-            if marker in seen:
-                continue
-            seen.add(marker)
-            projections.append(projection)
-    return projections
-
-
-def _add_agentic_identity_graph_projections(
-    graph: UnifiedGraph,
-    report_json: Mapping[str, Any],
-    data_source_tag: str,
-    tenant_id: str,
-) -> None:
-    """Ingest sanitized runtime identity projections into the canonical graph."""
-    for projection in _iter_agentic_identity_graph_projections(report_json):
-        schema_version = sanitize_text(projection.get("schema_version", "agentic_identity_graph.v1"), max_len=80)
-        projection_source = sanitize_text(projection.get("source", "runtime-identity"), max_len=160)
-        node_ids: set[str] = set()
-        for node_dict in _mapping_list(projection.get("nodes")):
-            node_id = sanitize_text(node_dict.get("id", ""), max_len=260)
-            if not node_id:
-                continue
-            entity_type = _runtime_identity_entity_type(node_dict.get("entity_type"))
-            if entity_type is None:
-                continue
-            node_ids.add(node_id)
-            graph.add_node(
-                UnifiedNode(
-                    id=node_id,
-                    entity_type=entity_type,
-                    label=sanitize_text(node_dict.get("label", node_id), max_len=180) or node_id,
-                    attributes=_runtime_identity_node_attributes(node_dict, schema_version, projection_source),
-                    data_sources=[data_source_tag, "runtime-identity"],
-                    dimensions=NodeDimensions(surface="runtime"),
-                )
-            )
-
-        for edge_dict in _mapping_list(projection.get("edges")):
-            source = sanitize_text(edge_dict.get("source", ""), max_len=260)
-            target = sanitize_text(edge_dict.get("target", ""), max_len=260)
-            if not source or not target:
-                continue
-            if source not in node_ids and not graph.has_node(source):
-                continue
-            if target not in node_ids and not graph.has_node(target):
-                continue
-            relationship = _runtime_identity_relationship(edge_dict.get("relationship"))
-            if relationship is None:
-                continue
-            evidence = _runtime_identity_evidence(
-                edge_dict.get("evidence"),
-                schema_version=schema_version,
-                projection_source=projection_source,
-                tenant_id=tenant_id,
-            )
-            graph.add_edge(
-                UnifiedEdge(
-                    source=source,
-                    target=target,
-                    relationship=relationship,
-                    confidence=0.9,
-                    evidence=evidence,
-                    provenance={
-                        "source": projection_source,
-                        "schema_version": schema_version,
-                    },
-                )
-            )
-
-
-# Which observed-reach relationship each incident kind projects.
-_FEEDBACK_RELATIONSHIP: dict[str, RelationshipType] = {
-    "reached_credential": RelationshipType.USED_CREDENTIAL,
-    "lateral_movement": RelationshipType.ACCESSED,
-    "kill_switch": RelationshipType.ACCESSED,
-}
-
-
-def _iter_runtime_incident_records(report_json: Mapping[str, Any]) -> list[RuntimeIncidentRecord]:
-    """Collect runtime incident-feedback records for this scan.
-
-    Two sources, both optional and default-off:
-
-    * ``runtime_incident_feedback``: an inline list of record dicts in the
-      report (e.g. carried alongside a runtime audit slice).
-    * ``runtime_incident_feedback_path``: a path to a JSONL file the runtime
-      relay appended to during the prior window.
-
-    Absent both ⇒ empty list ⇒ the graph build is byte-identical to today.
-    """
-    records: list[RuntimeIncidentRecord] = []
-    for raw in _mapping_list(report_json.get("runtime_incident_feedback")):
-        record = RuntimeIncidentRecord.from_dict(raw)
-        if record is not None:
-            records.append(record)
-    path = report_json.get("runtime_incident_feedback_path")
-    if isinstance(path, str) and path.strip():
-        records.extend(load_incident_records(path))
-    return records
-
-
-def _resolve_feedback_agent_ids(
-    agent_id: str,
-    agent_name_to_ids: Mapping[str, list[str]],
-) -> list[str]:
-    """Map a runtime incident's ``agent_id`` onto existing graph agent node ids.
-
-    Matches by agent name first (the common case). When the runtime id does not
-    name a discovered agent, falls back to the deterministic ``agent:<name>`` id
-    so the observed-reach is still recorded against a stable node.
-    """
-    name = str(agent_id or "").strip()
-    if name and name in agent_name_to_ids and agent_name_to_ids[name]:
-        return list(agent_name_to_ids[name])
-    return [_agent_node_id(name or "unknown")]
-
-
-def _add_runtime_incident_feedback(
-    graph: UnifiedGraph,
-    report_json: Mapping[str, Any],
-    agent_name_to_ids: Mapping[str, list[str]],
-    data_source_tag: str,
-) -> None:
-    """Project runtime-observed incidents onto the unified graph (feedback dir).
-
-    For each record:
-
-    * Mark the matched agent node with the ``observed_*`` attribute for the
-      incident kind (e.g. ``observed_reached_credential=True``) plus an
-      aggregate ``runtime_feedback`` summary — toxic-combo / reachability
-      evaluators then account for observed behavior, not just static reach.
-    * Draw an observed-reach edge (``USED_CREDENTIAL`` / ``ACCESSED``) from the
-      agent to each observed node id, or to a synthetic observed-tool node for
-      label-only reaches. Every node/edge is tagged ``source="runtime-feedback"``.
-    """
-    records = _iter_runtime_incident_records(report_json)
-    if not records:
-        return
-
-    for agent_id, agent_records in merge_records(records).items():
-        node_ids = _resolve_feedback_agent_ids(agent_id, agent_name_to_ids)
-        for node_id in node_ids:
-            _project_agent_feedback(graph, node_id, agent_records, data_source_tag)
-
-
-def _project_agent_feedback(
-    graph: UnifiedGraph,
-    agent_node_id: str,
-    records: list[RuntimeIncidentRecord],
-    data_source_tag: str,
-) -> None:
-    """Mark one agent node + draw observed-reach edges for its incidents."""
-    observed_attrs: dict[str, Any] = {}
-    kinds: set[str] = set()
-    severities: set[str] = set()
-    total = 0
-    for record in records:
-        attr = incident_attribute(record.kind)
-        if attr is None:
-            continue
-        observed_attrs[attr] = True
-        kinds.add(record.kind)
-        severities.add(record.severity)
-        total += max(1, record.count)
-
-    if not kinds:
-        return
-
-    observed_attrs["runtime_feedback"] = {
-        "source": "runtime-feedback",
-        "incident_kinds": sorted(kinds),
-        "incident_count": total,
-        "severities": sorted(severities),
-    }
-
-    # add_node merges attributes onto the existing agent node (if any); when the
-    # observed agent was not otherwise discovered this scan, this materializes a
-    # minimal agent node so the observed-reach is never silently dropped.
-    graph.add_node(
-        UnifiedNode(
-            id=agent_node_id,
-            entity_type=EntityType.AGENT,
-            label=agent_node_id.removeprefix("agent:"),
-            attributes=observed_attrs,
-            data_sources=[data_source_tag, "runtime-feedback"],
-        )
-    )
-
-    for record in records:
-        relationship = _FEEDBACK_RELATIONSHIP.get(record.kind, RelationshipType.ACCESSED)
-        for target, is_node_id in iter_observed_targets(record):
-            target_id = target if is_node_id else f"tool:observed:{_clean_graph_part(target) or 'unknown'}"
-            if not is_node_id:
-                graph.add_node(
-                    UnifiedNode(
-                        id=target_id,
-                        entity_type=EntityType.TOOL,
-                        label=target,
-                        attributes={"source": "runtime-feedback", "observed": True},
-                        data_sources=[data_source_tag, "runtime-feedback"],
-                    )
-                )
-            elif target_id not in graph.nodes:
-                # Reference to a node not present this scan — skip the dangling edge.
-                continue
-            _add_rel_edge(
-                graph,
-                agent_node_id,
-                target_id,
-                relationship,
-                {
-                    "source": "runtime-feedback",
-                    "incident_kind": record.kind,
-                    "severity": record.severity,
-                    "observed_at": record.observed_at,
-                    "count": max(1, record.count),
-                },
-            )
-
-
-def _mapping_list(value: Any) -> list[Mapping[str, Any]]:
-    if isinstance(value, Mapping):
-        return [value]
-    if isinstance(value, list):
-        return [item for item in value if isinstance(item, Mapping)]
-    return []
-
-
-def _runtime_identity_entity_type(value: Any) -> EntityType | None:
-    try:
-        return EntityType(str(value))
-    except ValueError:
-        return None
-
-
-def _runtime_identity_relationship(value: Any) -> RelationshipType | None:
-    try:
-        return RelationshipType(str(value))
-    except ValueError:
-        return None
-
-
-def _runtime_identity_node_attributes(
-    node_dict: Mapping[str, Any],
-    schema_version: str,
-    projection_source: str,
-) -> dict[str, Any]:
-    attributes: dict[str, Any] = {
-        "agentic_identity_graph_schema": schema_version,
-        "runtime_graph_source": projection_source,
-    }
-    raw_attrs = node_dict.get("attributes")
-    if isinstance(raw_attrs, Mapping):
-        sanitized_attrs = sanitize_sensitive_payload(dict(raw_attrs))
-        if isinstance(sanitized_attrs, dict):
-            attributes.update(sanitized_attrs)
-    source_ref = node_dict.get("source_ref")
-    if isinstance(source_ref, Mapping):
-        sanitized_ref = sanitize_sensitive_payload(dict(source_ref))
-        if isinstance(sanitized_ref, dict):
-            attributes["source_ref"] = sanitized_ref
-    return attributes
-
-
-def _runtime_identity_evidence(
-    evidence: Any,
-    *,
-    schema_version: str,
-    projection_source: str,
-    tenant_id: str,
-) -> dict[str, Any]:
-    sanitized = sanitize_sensitive_payload(dict(evidence)) if isinstance(evidence, Mapping) else {}
-    safe_evidence = sanitized if isinstance(sanitized, dict) else {}
-    safe_evidence.setdefault("source", projection_source)
-    safe_evidence["schema_version"] = schema_version
-    safe_evidence["data_source"] = "runtime-identity"
-    if tenant_id:
-        safe_evidence.setdefault("tenant_id", sanitize_text(tenant_id, max_len=200))
-    return safe_evidence
-
-
-def _tool_capabilities(tool_dict: dict[str, Any]) -> tuple[list[str], str]:
-    """Return normalized tool capability facets and their evidence source."""
-    declared_values = tool_dict.get("capabilities") or tool_dict.get("declared_capabilities") or []
-    if isinstance(declared_values, list):
-        declared = sorted(
-            {
-                capability.value
-                for raw in declared_values
-                if isinstance(raw, str) and (capability := _normalize_tool_capability(raw)) is not None
-            }
-        )
-        if declared:
-            return declared, "declared"
-
-    capabilities = {capability.value for capability in classify_tool(str(tool_dict.get("name", "")), str(tool_dict.get("description", "")))}
-    schema_findings = tool_dict.get("schema_findings", [])
-    if isinstance(schema_findings, list):
-        for finding in schema_findings:
-            low = str(finding).lower()
-            if "network-egress" in low or "url" in low:
-                capabilities.add(ToolCapability.NETWORK.value)
-            if "shell-execution" in low or "command" in low:
-                capabilities.add(ToolCapability.EXECUTE.value)
-            if "filesystem" in low or "path" in low:
-                capabilities.add(ToolCapability.READ.value)
-    return sorted(capabilities), "classified"
-
-
-def _normalize_tool_capability(value: str) -> ToolCapability | None:
-    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "readonly": "read",
-        "read_only": "read",
-        "destructive": "delete",
-        "exec": "execute",
-        "execution": "execute",
-        "network_egress": "network",
-        "egress": "network",
-        "credential": "auth",
-        "credentials": "auth",
-        "administrative": "admin",
-    }
-    normalized = aliases.get(normalized, normalized)
-    try:
-        return ToolCapability(normalized)
-    except ValueError:
-        return None
-
-
-def _resolve_affected_package_ids(
-    br_dict: dict[str, Any],
-    *,
-    server_id: str,
-    pkg_name: str,
-    pkg_version: str,
-    ecosystem: str,
-    package_id_to_servers: dict[str, list[str]],
-) -> list[str]:
-    """Return package nodes on a specific server that can safely drive capability-impact edges."""
-    if not pkg_name:
-        return []
-    pkg_id = _package_node_id_from_parts(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
-    if server_id not in package_id_to_servers.get(pkg_id, []):
-        return []
-    evidence = _blast_radius_package_evidence(br_dict, "")
-    if not _has_mappable_package_version(evidence):
-        return []
-    return [pkg_id]
-
-
-def _add_exploitable_via_edges(
-    graph: UnifiedGraph,
-    *,
-    server_to_tool_ids: dict[str, list[str]],
-    vuln_node_id: str,
-    server_id: str,
-    package_id: str,
-    evidence: dict[str, Any],
-    severity: str,
-    data_source: str,
-) -> None:
-    """Link a vulnerability to impacted tool capabilities with conservative evidence.
-
-    The graph usually knows that an MCP server depends on a vulnerable package
-    and exposes tools, but not the exact function-level package-to-tool call
-    stack. These edges therefore carry a conservative mapping method instead
-    of pretending to prove exact exploit reachability.
-    """
-    if not _has_mappable_package_version(evidence):
-        return
-    for tool_id in server_to_tool_ids.get(server_id, []):
-        tool = graph.get_node(tool_id)
-        if tool is None:
-            continue
-        capabilities = [str(cap) for cap in tool.attributes.get("capabilities", []) if str(cap)]
-        if not capabilities:
-            continue
-        graph.add_edge(
-            UnifiedEdge(
-                source=vuln_node_id,
-                target=tool_id,
-                relationship=RelationshipType.EXPLOITABLE_VIA,
-                weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
-                evidence={
-                    "source": data_source,
-                    "server": server_id,
-                    "package_node": package_id,
-                    "package": evidence.get("package") or evidence.get("package_name", ""),
-                    "version": evidence.get("version") or evidence.get("package_version", ""),
-                    "ecosystem": evidence.get("ecosystem", ""),
-                    "purl": evidence.get("purl", ""),
-                    "mapping_method": "server_scope_conservative",
-                    "confidence": "medium",
-                    "capabilities": capabilities,
-                    "capability_source": tool.attributes.get("capability_source", ""),
-                    "discovery_provenance": evidence.get("discovery_provenance", {}),
-                },
-            )
-        )
-
-
-def _has_mappable_package_version(evidence: dict[str, Any]) -> bool:
-    version = str(evidence.get("version") or evidence.get("package_version") or "").strip().lower()
-    return bool(version and version not in {"unknown", "latest", "*", "main", "master"})
-
-
-def _add_vuln_node(
-    graph: UnifiedGraph,
-    vuln_dict: dict[str, Any],
-    pkg_id: str,
-    data_source: str,
-    package_evidence: dict[str, Any] | None = None,
-) -> str | None:
-    """Add a vulnerability node and link it to its package."""
-    vuln_id_str = vuln_dict.get("id", "")
-    if not vuln_id_str:
-        return None
-    severity = vuln_dict.get("severity", "").lower()
-    vuln_node_id = f"vuln:{vuln_id_str}"
-
-    graph.add_node(
-        UnifiedNode(
-            id=vuln_node_id,
-            entity_type=EntityType.VULNERABILITY,
-            label=vuln_id_str,
-            severity=severity,
-            attributes={
-                "canonical_id": canonical_graph_node_id(EntityType.VULNERABILITY.value, vuln_node_id),
-                "source_ids": source_ids(vulnerability_id=vuln_id_str),
-                "vulnerability_id": vuln_id_str,
-                **(
-                    {"finding_id": str(vuln_dict["finding_id"]).strip()}
-                    if isinstance(vuln_dict.get("finding_id"), str) and str(vuln_dict.get("finding_id") or "").strip()
-                    else {}
-                ),
-                "summary": sanitize_text(str(vuln_dict.get("summary") or ""), max_len=2_000),
-                "cvss_score": vuln_dict.get("cvss_score"),
-                "cvss_vector": vuln_dict.get("cvss_vector"),
-                "attack_vector": vuln_dict.get("attack_vector"),
-                "attack_complexity": vuln_dict.get("attack_complexity"),
-                "privileges_required": vuln_dict.get("privileges_required"),
-                "user_interaction": vuln_dict.get("user_interaction"),
-                "network_exploitable": vuln_dict.get("network_exploitable", False),
-                "epss_score": vuln_dict.get("epss_score"),
-                "is_kev": vuln_dict.get("is_kev", False),
-                "fixed_version": vuln_dict.get("fixed_version"),
-                "cwe_ids": vuln_dict.get("cwe_ids", []),
-            },
-            data_sources=[data_source],
-        )
-    )
-    graph.add_edge(
-        UnifiedEdge(
-            source=pkg_id,
-            target=vuln_node_id,
-            relationship=RelationshipType.VULNERABLE_TO,
-            weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
-            evidence=package_evidence or {"source": data_source},
-        )
-    )
-    return vuln_node_id
-
-
-def _normalize_server_name(raw: Any) -> str:
-    """Return a comparable server name from string or object payloads."""
-    if isinstance(raw, dict):
-        return str(raw.get("name", "")).strip()
-    name = getattr(raw, "name", raw)
-    return str(name).strip()
-
-
-def _resolve_affected_server_ids(
-    br_dict: dict[str, Any],
-    *,
-    pkg_name: str,
-    pkg_version: str,
-    ecosystem: str,
-    pkg_key_to_servers: dict[str, list[str]],
-    server_name_to_agent_servers: dict[str, dict[str, str]],
-    agent_to_server_ids: dict[str, set[str]],
-) -> list[str]:
-    """Resolve the concrete server node IDs touched by a blast-radius finding.
-
-    Preference order:
-    1. package-host servers from the inventory graph
-    2. explicit affected server names
-    3. explicit affected agent names
-
-    Each additional hint narrows the candidate set instead of creating a
-    synthetic agent×server cross-product.
-    """
-    candidate_ids: set[str] = set()
-    if pkg_name:
-        pkg_key = _package_graph_key(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
-        candidate_ids.update(pkg_key_to_servers.get(pkg_key, []))
-
-    constrained = bool(candidate_ids)
-    server_names = {name for name in (_normalize_server_name(server) for server in br_dict.get("affected_servers", [])) if name}
-    if server_names:
-        named_ids: set[str] = set()
-        for server_name in server_names:
-            named_ids.update(server_name_to_agent_servers.get(server_name, {}).values())
-        narrowed = (candidate_ids & named_ids) if constrained else named_ids
-        candidate_ids = narrowed
-        constrained = True
-
-    agent_names = {str(agent).strip() for agent in br_dict.get("affected_agents", []) if str(agent).strip()}
-    if agent_names:
-        agent_ids: set[str] = set()
-        for agent_name in agent_names:
-            agent_ids.update(agent_to_server_ids.get(agent_name, set()))
-        narrowed = (candidate_ids & agent_ids) if constrained else agent_ids
-        candidate_ids = narrowed
-
-    return sorted(candidate_ids)
-
-
-def _package_graph_key(name: str, version: str, ecosystem: str, purl: str | None = None) -> str:
-    return canonical_package_key(name, version, ecosystem, purl)
-
-
-def _package_node_id(pkg_dict: dict[str, Any]) -> str:
-    return _package_node_id_from_parts(
-        str(pkg_dict.get("name", "unknown") or "unknown"),
-        str(pkg_dict.get("version", "") or ""),
-        str(pkg_dict.get("ecosystem", "") or ""),
-        pkg_dict.get("purl"),
-    )
-
-
-def _package_node_id_from_parts(name: str, version: str, ecosystem: str, purl: str | None = None) -> str:
-    return f"pkg:{_package_graph_key(name, version, ecosystem, purl)}"
-
-
-def _package_evidence(pkg_dict: dict[str, Any], data_source_tag: str) -> dict[str, Any]:
-    """Build bounded provenance evidence for package graph edges."""
-    occurrences = pkg_dict.get("occurrences", [])
-    if not isinstance(occurrences, list):
-        occurrences = []
-    normalized_occurrences: list[dict[str, Any]] = []
-    for occurrence in occurrences[:10]:
-        if not isinstance(occurrence, dict):
-            continue
-        item = {
-            key: occurrence.get(key)
-            for key in (
-                "layer_index",
-                "layer_id",
-                "layer_path",
-                "package_path",
-                "created_by",
-                "dockerfile_instruction",
-                "source_file",
-                "line",
-                "parser",
-            )
-            if occurrence.get(key) not in (None, "")
-        }
-        if item:
-            normalized_occurrences.append(item)
-
-    evidence = {
-        "source": data_source_tag,
-        "package": pkg_dict.get("name", ""),
-        "version": pkg_dict.get("version", ""),
-        "ecosystem": pkg_dict.get("ecosystem", ""),
-        "purl": pkg_dict.get("purl", ""),
-        "stable_id": pkg_dict.get("stable_id", ""),
-        "source_package": pkg_dict.get("source_package", ""),
-        "version_source": pkg_dict.get("version_source", ""),
-        "discovery_provenance": sanitize_discovery_provenance(pkg_dict.get("discovery_provenance")),
-        "version_provenance": _package_version_provenance_from_dict(pkg_dict),
-        "occurrence_count": pkg_dict.get("occurrence_count", len(occurrences)),
-        "occurrences": normalized_occurrences,
-    }
-    introduced = pkg_dict.get("introduced_in_layer")
-    if isinstance(introduced, dict):
-        evidence["introduced_in_layer"] = {
-            key: introduced.get(key)
-            for key in ("layer_index", "layer_id", "layer_path", "package_path", "created_by", "dockerfile_instruction")
-            if introduced.get(key) not in (None, "")
-        }
-    return {key: value for key, value in evidence.items() if value not in (None, "", [])}
-
-
-def _package_version_provenance_from_dict(pkg_dict: dict[str, Any]) -> dict[str, Any]:
-    explicit = pkg_dict.get("version_provenance")
-    if isinstance(explicit, dict):
-        return package_version_provenance(
-            {
-                "name": pkg_dict.get("name"),
-                "version": pkg_dict.get("version"),
-                "version_source": pkg_dict.get("version_source"),
-                "resolved_from_registry": pkg_dict.get("resolved_from_registry", False),
-                "discovery_provenance": {"version_provenance": explicit},
-            }
-        )
-    return package_version_provenance(
-        {
-            "name": pkg_dict.get("name"),
-            "version": pkg_dict.get("version"),
-            "version_source": pkg_dict.get("version_source"),
-            "resolved_from_registry": pkg_dict.get("resolved_from_registry", False),
-            "declared_version": pkg_dict.get("declared_version"),
-            "resolved_version": pkg_dict.get("resolved_version"),
-            "version_confidence": pkg_dict.get("version_confidence"),
-            "version_resolved_at": pkg_dict.get("version_resolved_at"),
-            "version_evidence": pkg_dict.get("version_evidence") or pkg_dict.get("occurrences") or [],
-            "version_conflicts": pkg_dict.get("version_conflicts") or [],
-            "floating_reference": pkg_dict.get("floating_reference", False),
-            "floating_reference_reason": pkg_dict.get("floating_reference_reason"),
-            "registry_version": pkg_dict.get("registry_version"),
-        }
-    )
-
-
-def _blast_radius_package_evidence(br_dict: dict[str, Any], data_source_tag: str) -> dict[str, Any]:
-    evidence = {
-        "source": data_source_tag,
-        "package": br_dict.get("package", ""),
-        "package_name": br_dict.get("package_name", ""),
-        "package_version": br_dict.get("package_version", ""),
-        "package_stable_id": br_dict.get("package_stable_id", ""),
-        "purl": br_dict.get("package_purl") or br_dict.get("purl", ""),
-        "reachability": br_dict.get("reachability", ""),
-    }
-    return {key: value for key, value in evidence.items() if value not in (None, "", [])}
-
-
-def _collect_compliance_tags(br_dict: dict[str, Any]) -> list[str]:
-    """Collect all compliance tags from a blast radius dict."""
-    tags: list[str] = []
-    for key in (
-        "owasp_tags",
-        "atlas_tags",
-        "attack_tags",
-        "nist_ai_rmf_tags",
-        "owasp_mcp_tags",
-        "owasp_agentic_tags",
-        "eu_ai_act_tags",
-        "nist_csf_tags",
-        "iso_27001_tags",
-        "soc2_tags",
-        "cis_tags",
-    ):
-        tags.extend(br_dict.get(key, []))
-    return sorted(set(tags))
-
-
 _PRINCIPAL_TYPE_TO_ENTITY: dict[str, EntityType] = {
     "account": EntityType.ACCOUNT,
     "aws-account": EntityType.ACCOUNT,
@@ -2488,28 +1884,6 @@ def _add_identity_node(
         )
     )
     return node_id
-
-
-def _add_rel_edge(
-    graph: UnifiedGraph,
-    source_id: str,
-    target_id: str,
-    relationship: RelationshipType,
-    evidence: dict[str, Any] | None = None,
-) -> None:
-    """Add a relationship edge; thin wrapper over ``graph.add_edge(UnifiedEdge(...))``.
-
-    ``evidence=None`` is normalized to ``{}`` to match the ``UnifiedEdge``
-    default, so routed call sites stay byte-identical.
-    """
-    graph.add_edge(
-        UnifiedEdge(
-            source=source_id,
-            target=target_id,
-            relationship=relationship,
-            evidence=evidence if evidence is not None else {},
-        )
-    )
 
 
 def _normalized_environment(*candidates: object) -> str:
@@ -7132,30 +6506,6 @@ def _resolve_cloud_resource_node_id(
         if len(unique) > 1:
             return None
     return None
-
-
-def _agent_identity_scope(agent_dict: dict[str, Any]) -> str:
-    """Return the endpoint/source scope that disambiguates fleet agents."""
-    for key in ("source_id", "endpoint_id", "device_id"):
-        value = str(agent_dict.get(key) or "").strip()
-        if value:
-            return value
-    metadata = agent_dict.get("metadata")
-    if isinstance(metadata, dict):
-        for key in ("source_id", "endpoint_id", "device_id"):
-            value = str(metadata.get(key) or "").strip()
-            if value:
-                return value
-    return ""
-
-
-def _agent_node_id(agent_name: Any, source_id: str = "") -> str:
-    """Build an agent graph ID without collapsing same-name fleet endpoints."""
-    name = str(agent_name or "unknown").strip() or "unknown"
-    source = _clean_graph_part(source_id).replace(":", "%3A")
-    if source:
-        return f"agent:{source}:{name}"
-    return f"agent:{name}"
 
 
 def _flatten_compliance_tags(raw: Any) -> list[str]:

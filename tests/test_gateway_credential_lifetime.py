@@ -22,7 +22,7 @@ class Clock(datetime):
 @pytest.fixture(autouse=True)
 def fixed_clock(monkeypatch):
     Clock.moment = NOW
-    monkeypatch.setattr(gateway, "datetime", Clock)
+    monkeypatch.setattr("agent_bom.api.gateway_auth.datetime", Clock)
 
 
 def settings(expiry=None):

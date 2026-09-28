@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-import agent_bom.gateway_server as gateway_server
 from agent_bom.api.auth import Role
 from agent_bom.gateway_server import (
     GatewayAuditDeliveryUnavailableError,
@@ -91,7 +90,7 @@ def test_control_plane_audit_routes_each_authenticated_api_key_to_its_tenant(
         upstream_tenants.append(str(getattr(upstream_config, "tenant_id", "")))
         return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
 
-    monkeypatch.setattr(gateway_server, "get_key_store", lambda: _TenantKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _TenantKeyStore())
     registry = UpstreamRegistry(
         [
             UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.invalid/mcp"),
@@ -989,7 +988,7 @@ def test_relay_builds_local_durable_audit_when_remote_sink_is_not_configured(
                 has_scope=lambda required: required == "gateway:relay",
             )
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _TenantKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _TenantKeyStore())
 
     async def upstream_caller(_upstream: object, message: dict[str, Any], _headers: dict[str, str]) -> dict[str, Any]:
         nonlocal upstream_calls

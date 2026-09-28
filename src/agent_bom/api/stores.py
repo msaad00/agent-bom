@@ -17,7 +17,6 @@ from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 if TYPE_CHECKING:
     from agent_bom.api.credential_store import CredentialRefStore
     from agent_bom.api.graph_scenario_store import GraphScenarioStore
-    from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.api.issue_mapping_store import IssueMappingStore
     from agent_bom.api.mcp_observation_store import MCPObservationStore
     from agent_bom.api.models import ScanJob
@@ -27,6 +26,7 @@ if TYPE_CHECKING:
     from agent_bom.api.tenant_graph_retention_store import TenantGraphRetentionStore
     from agent_bom.api.tenant_quota_store import TenantQuotaStore
     from agent_bom.api.tenant_score_config_store import TenantScoreConfigStore
+    from agent_bom.graph.ports import GraphStoreProtocol
 
 # ── Shared lock (protects lazy init of all stores) ───────────────────────────
 _store_lock = threading.Lock()

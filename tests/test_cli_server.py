@@ -606,7 +606,7 @@ def test_gateway_serve_allows_non_loopback_bind_with_api_key_store(tmp_path):
 
     with (
         patch("agent_bom.api.auth.get_key_store", return_value=_KeyStore()),
-        patch("agent_bom.gateway_server.get_key_store", return_value=_KeyStore()),
+        patch("agent_bom.api.gateway_auth.get_key_store", return_value=_KeyStore()),
         patch("uvicorn.run") as mock_run,
     ):
         result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams)])

@@ -45,6 +45,15 @@ MCP_TOOL_CONTRACTS = (
     "tests/test_mcp_tool_output_contract.py",
     "tests/test_mcp_strict_args.py",
 )
+GRAPH_PROJECTION_SOURCES = frozenset(
+    {
+        "src/agent_bom/graph/builder.py",
+        "src/agent_bom/graph/package_projection.py",
+        "src/agent_bom/graph/runtime_projection.py",
+        "src/agent_bom/graph/projection_support.py",
+        "src/agent_bom/graph/ports.py",
+    }
+)
 
 
 def discover_test_files(root: Path) -> list[Path]:
@@ -76,6 +85,10 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
 
     for changed in changed_files:
         normalized = Path(changed.as_posix().lstrip("./"))
+        if normalized.as_posix() in GRAPH_PROJECTION_SOURCES:
+            selected.update(
+                candidate for candidate in available if "graph" in candidate.stem or candidate.stem == "test_runtime_incident_feedback"
+            )
         if (
             normalized.as_posix().startswith("src/agent_bom/mcp_tools/")
             or normalized.as_posix().startswith("src/agent_bom/mcp_server")
@@ -85,7 +98,7 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
         if (
-            normalized.as_posix().startswith(("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_"))
+            normalized.as_posix().startswith(("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_", "src/agent_bom/api/gateway_"))
             or normalized.as_posix() == "src/agent_bom/runtime/trace_metadata.py"
         ):
             selected.update(candidate for candidate in available if candidate.stem.startswith(("test_gateway", "test_api_gateway")))

@@ -433,7 +433,7 @@ def findings_client(monkeypatch):
         ]
     }
     store.put(job)
-    _jobs[job.job_id] = job
+    _jobs[(job.tenant_id, job.job_id)] = job
 
     try:
         yield TestClient(app, raise_server_exceptions=False)

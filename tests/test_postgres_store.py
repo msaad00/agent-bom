@@ -124,7 +124,7 @@ class MockConnection:
                     table = "interaction_risks"
                 if table not in self._store:
                     self._store[table] = {}
-                if table == "scan_jobs" and "on conflict (job_id) do nothing" in sql_lower and params[0] in self._store[table]:
+                if table == "scan_jobs" and "on conflict (team_id, job_id) do nothing" in sql_lower and params[0] in self._store[table]:
                     cursor.rowcount = 0
                     self._cursors.append(cursor)
                     return cursor

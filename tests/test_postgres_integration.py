@@ -362,7 +362,7 @@ def test_postgres_app_cannot_self_authorize_maintenance_and_dispatch_claim_is_te
         assert claimed is not None
         assert claimed.job_id == queued.job_id
         assert claimed.tenant_id == tenant_id
-        store.complete_dispatch(queued.job_id, claim_owner=claimed._dispatch_claim_owner)
+        store.complete_dispatch(queued.job_id, tenant_id=tenant_id, claim_owner=claimed._dispatch_claim_owner)
     finally:
         cleanup_token = set_current_tenant(tenant_id)
         try:
@@ -415,15 +415,15 @@ def test_postgres_dispatch_stale_claim_cannot_mutate_successor(reuse_worker_id):
 
         def stale_heartbeat():
             barrier.wait(timeout=5)
-            store.renew_leases({job.job_id: old_owner}, 900)
+            store.renew_leases({(tenant_id, job.job_id): old_owner}, 900)
 
         def stale_completion():
             barrier.wait(timeout=5)
-            store.complete_dispatch(job.job_id, claim_owner=old_owner)
+            store.complete_dispatch(job.job_id, tenant_id=tenant_id, claim_owner=old_owner)
 
         def current_heartbeat():
             barrier.wait(timeout=5)
-            store.renew_leases({job.job_id: current_owner}, 120)
+            store.renew_leases({(tenant_id, job.job_id): current_owner}, 120)
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(action) for action in (stale_heartbeat, stale_completion, current_heartbeat)]
@@ -437,7 +437,7 @@ def test_postgres_dispatch_stale_claim_cannot_mutate_successor(reuse_worker_id):
                     (job.job_id,),
                 ).fetchone()
         assert row == (current_owner, True)
-        store.complete_dispatch(job.job_id, claim_owner=current_owner)
+        store.complete_dispatch(job.job_id, tenant_id=tenant_id, claim_owner=current_owner)
         with bypass_tenant_rls(audit=False):
             with _maintenance_connection() as conn:
                 row = conn.execute("SELECT job_id FROM scan_dispatch_queue WHERE job_id = %s", (job.job_id,)).fetchone()
@@ -1133,8 +1133,6 @@ _AUDITED_GLOBAL_TENANT_INDEXES = {
     ("model_virtual_keys", "model_virtual_keys_pkey"),
     ("policy_results", "policy_results_pkey"),
     ("proxy_replay_log", "proxy_replay_log_pkey"),
-    ("scan_dispatch_queue", "scan_dispatch_queue_pkey"),
-    ("scan_jobs", "scan_jobs_pkey"),
     ("scan_schedules", "scan_schedules_pkey"),
     ("ticket_links", "ticket_links_pkey"),
     ("ticketing_connections", "ticketing_connections_pkey"),

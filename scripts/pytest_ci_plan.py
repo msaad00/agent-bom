@@ -156,6 +156,22 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                     ("test_hub_", "test_compliance_hub", "test_storage_sql", "test_tenant_quota_store", "test_tenant_graph_retention_store")
                 )
             )
+        if normalized.as_posix() in {
+            "src/agent_bom/api/store.py",
+            "src/agent_bom/api/stores.py",
+            "src/agent_bom/api/postgres_job_store.py",
+            "src/agent_bom/api/scan_queue.py",
+            "src/agent_bom/api/storage/jobs.py",
+            "src/agent_bom/api/storage/jobs_schema.py",
+        }:
+            selected.update(
+                candidate
+                for candidate in available
+                if any(
+                    word in candidate.stem
+                    for word in ("job", "scan", "overview", "posture", "batch", "store", "distributed", "ingest", "reconcil", "hardening")
+                )
+            )
         if normalized.as_posix() in GRAPH_PROJECTION_SOURCES:
             selected.update(
                 candidate for candidate in available if "graph" in candidate.stem or candidate.stem == "test_runtime_incident_feedback"

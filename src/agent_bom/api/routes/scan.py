@@ -1301,7 +1301,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
 
 def _job_for_request(request: Request, job_id: str) -> ScanJob:
     tenant_id = _tenant_id(request)
-    in_mem = _jobs_get(job_id)
+    in_mem = _jobs_get(job_id, tenant_id=tenant_id)
     if in_mem is not None and _visible_to_tenant(in_mem, tenant_id):
         if _jobs_is_compacted(in_mem):
             persisted = _get_store().get(job_id, tenant_id=tenant_id)
@@ -2082,7 +2082,7 @@ async def _wait_for_idempotent_job(
         if receipt is None or receipt.get("committed") is not True:
             await asyncio.sleep(0.01)
             continue
-        existing = _jobs_get(job_id)
+        existing = _jobs_get(job_id, tenant_id=tenant_id)
         if existing is None:
             existing = await asyncio.to_thread(_get_store().get, job_id, tenant_id)
         if existing is not None:
@@ -2428,7 +2428,7 @@ async def delete_scan(request: Request, job_id: str) -> None:
     job = await _load_job_for_request(request, job_id)
     if job.status in {JobStatus.PENDING, JobStatus.RUNNING}:
         await anyio.to_thread.run_sync(partial(request_scan_cancellation, job))
-    in_memory = _jobs_pop(job_id) if _visible_to_tenant(job, _tenant_id(request)) else None
+    in_memory = _jobs_pop(job_id, tenant_id=job.tenant_id) if _visible_to_tenant(job, _tenant_id(request)) else None
     in_store = await anyio.to_thread.run_sync(partial(_get_store().delete, job_id, tenant_id=_tenant_id(request)))
     if not in_memory and not in_store:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -2460,7 +2460,7 @@ async def stream_scan(request: Request, job_id: str) -> Response:
         lock = _job_lock(job_id)
         start = time.monotonic()
         while time.monotonic() - start < 2100:  # 35 min max (exceeds stuck-job timeout)
-            current = _jobs_get(job_id)
+            current = _jobs_get(job_id, tenant_id=tenant_id)
             if current is None:
                 break
             if not _visible_to_tenant(current, tenant_id):
@@ -2581,7 +2581,7 @@ def _list_jobs_impl(
         status_counts = {}
     enriched: list[dict[str, Any]] = []
     for item in summary:
-        in_mem = _jobs_get(item["job_id"])
+        in_mem = _jobs_get(item["job_id"], tenant_id=tenant_id)
         if isinstance(in_mem, ScanJob) and _visible_to_tenant(in_mem, tenant_id):
             enriched.append(_job_summary_payload(in_mem))
             continue

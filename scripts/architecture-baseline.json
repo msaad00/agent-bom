@@ -402,11 +402,11 @@
       "function_lines": 157
     },
     "api/postgres_job_store.py": {
-      "deferred_imports": 3,
-      "file_lines": 820
+      "deferred_imports": 2,
+      "file_lines": 777
     },
     "api/postgres_job_store.py::PostgresJobStore._init_tables": {
-      "function_lines": 134
+      "function_lines": 133
     },
     "api/postgres_policy.py": {
       "deferred_imports": 5
@@ -864,12 +864,17 @@
     "api/storage/finding_payloads.py": {
       "deferred_imports": 1
     },
+    "api/storage/job_cache.py": {
+      "deferred_imports": 1
+    },
+    "api/storage/jobs.py": {
+      "deferred_imports": 1
+    },
     "api/store.py": {
-      "file_lines": 703
+      "file_lines": 678
     },
     "api/stores.py": {
-      "deferred_imports": 38,
-      "file_lines": 613
+      "deferred_imports": 37
     },
     "api/tenancy.py": {
       "deferred_imports": 2

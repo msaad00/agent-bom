@@ -12,6 +12,18 @@ import os
 import threading
 from typing import TYPE_CHECKING, Any
 
+from agent_bom.api.storage.job_cache import (
+    _COMPACTED_RESULT_MARKER as _COMPACTED_RESULT_MARKER,
+)
+from agent_bom.api.storage.job_cache import (
+    _compact_terminal_job as _compact_terminal_job,
+)
+from agent_bom.api.storage.job_cache import (
+    _compact_terminal_job_in_place as _compact_terminal_job_in_place,
+)
+from agent_bom.api.storage.job_cache import (
+    _jobs_is_compacted as _jobs_is_compacted,
+)
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
@@ -54,10 +66,9 @@ def set_job_store(store: Any) -> None:
 
 
 # ─── In-memory job refs (bounded, thread-safe) ──────────────────────────────
-_jobs: dict[str, ScanJob] = {}
+_jobs: dict[tuple[str, str], ScanJob] = {}
 _jobs_lock = threading.Lock()
 _job_locks: dict[str, threading.Lock] = {}
-_COMPACTED_RESULT_MARKER = "_agent_bom_hot_cache_compacted"
 
 
 def _job_lock(job_id: str) -> threading.Lock:
@@ -68,51 +79,13 @@ def _job_lock(job_id: str) -> threading.Lock:
         return _job_locks[job_id]
 
 
-def _compact_terminal_job(job: ScanJob) -> ScanJob:
-    """Return a hot-cache copy that keeps status/progress but drops full results."""
-    from agent_bom.api.models import JobStatus
-
-    if job.status not in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
-        return job
-
-    compact_result: dict[str, Any] = {_COMPACTED_RESULT_MARKER: True}
-    if isinstance(job.result, dict):
-        for key in ("summary", "scan_timestamp", "generated_at", "scan_run", "pushed", "auto_correlation"):
-            if key in job.result:
-                compact_result[key] = job.result[key]
-        if "scan_timestamp" not in compact_result and "generated_at" in compact_result:
-            compact_result["scan_timestamp"] = compact_result["generated_at"]
-        scorecard = job.result.get("posture_scorecard")
-        if isinstance(scorecard, dict):
-            compact_result["posture_scorecard"] = {key: scorecard[key] for key in ("grade", "score", "summary") if key in scorecard}
-        scan_sources = job.result.get("scan_sources")
-        if isinstance(scan_sources, list):
-            compact_result["scan_sources"] = scan_sources
-        warnings = job.result.get("warnings")
-        if isinstance(warnings, list):
-            compact_result["warnings"] = [str(item) for item in warnings[:3]]
-    return job.model_copy(update={"result": compact_result})
-
-
-def _compact_terminal_job_in_place(job: ScanJob) -> None:
-    """Drop heavy terminal results from an already-persisted in-process job."""
-    compact = _compact_terminal_job(job)
-    if compact is not job:
-        job.result = compact.result
-
-
-def _jobs_is_compacted(job: ScanJob) -> bool:
-    """Return True when a hot-cache job has only compact terminal metadata."""
-    return isinstance(job.result, dict) and bool(job.result.get(_COMPACTED_RESULT_MARKER))
-
-
 def _jobs_put(job_id: str, job: ScanJob, *, compact_terminal: bool = False) -> None:
     """Add a job to _jobs with bounded eviction."""
     from agent_bom.api.models import JobStatus
 
     cached_job = _compact_terminal_job(job) if compact_terminal else job
     with _jobs_lock:
-        _jobs[job_id] = cached_job
+        _jobs[(job.tenant_id, job_id)] = cached_job
         if len(_jobs) > _MAX_IN_MEMORY_JOBS:
             completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
             # Evict the oldest completed jobs first. Jobs missing a completion
@@ -121,20 +94,28 @@ def _jobs_put(job_id: str, job: ScanJob, *, compact_terminal: bool = False) -> N
             completed.sort(key=lambda x: (x[1].completed_at is None, x[1].completed_at or ""))
             for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
                 _jobs.pop(jid, None)
-                _job_locks.pop(jid, None)
+                _job_locks.pop(jid[1], None)
 
 
-def _jobs_get(job_id: str) -> ScanJob | None:
-    """Thread-safe get from _jobs."""
+def _jobs_get(job_id: str, *, tenant_id: str | None = None) -> ScanJob | None:
+    """Read one tenant's hot row; an ambiguous legacy lookup is a cache miss."""
     with _jobs_lock:
-        return _jobs.get(job_id)
+        if tenant_id is not None:
+            return _jobs.get((tenant_id, job_id))
+        matches = [job for job in _jobs.values() if job.job_id == job_id]
+        return matches[0] if len(matches) == 1 else None
 
 
-def _jobs_pop(job_id: str) -> ScanJob | None:
-    """Thread-safe pop from _jobs."""
+def _jobs_pop(job_id: str, *, tenant_id: str | None = None) -> ScanJob | None:
+    """Remove only the scoped hot row, preserving equal IDs in other tenants."""
     with _jobs_lock:
+        if tenant_id is None:
+            matches = [job for job in _jobs.values() if job.job_id == job_id]
+            if len(matches) != 1:
+                return None
+            tenant_id = matches[0].tenant_id
         _job_locks.pop(job_id, None)
-        return _jobs.pop(job_id, None)
+        return _jobs.pop((tenant_id, job_id), None)
 
 
 # ─── Fleet store (pluggable) ────────────────────────────────────────────────

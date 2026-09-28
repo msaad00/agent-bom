@@ -39,11 +39,19 @@ def wait_for_demo_estate_boot_seed(timeout: float | None = None) -> bool:
     return _boot_seed_done.wait(timeout)
 
 
+_POSTURE_PRECOMPUTE_READY_TIMEOUT_SECONDS = 120.0
+
+
 def _run_boot_seed() -> None:
+    from agent_bom.api.posture_counts_cache import wait_for_posture_precompute
     from agent_bom.demo_estate import bootstrap
 
     try:
         bootstrap.maybe_bootstrap_demo_estate()
+        # The seed's scan writes schedule the posture-count precompute; stay
+        # not-ready until it lands so the first read does not repeat it.
+        if not wait_for_posture_precompute(_POSTURE_PRECOMPUTE_READY_TIMEOUT_SECONDS):
+            _logger.warning("demo estate posture precompute still running at readiness")
     finally:
         _boot_seed_done.set()
 

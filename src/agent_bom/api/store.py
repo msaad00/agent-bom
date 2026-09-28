@@ -13,6 +13,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Protocol, cast
 
+from agent_bom.api.posture_counts_cache import announce_scan_evidence
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
@@ -148,6 +149,7 @@ class InMemoryJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
             self._evict_completed_locked()
+        announce_scan_evidence([job])
 
     def put_many_atomic(self, jobs: list[ScanJob]) -> None:
         """Publish a related parent/child set under one process-local lock."""
@@ -159,6 +161,7 @@ class InMemoryJobStore:
         with self._lock:
             self._jobs.update({job.job_id: job for job in jobs})
             self._evict_completed_locked()
+        announce_scan_evidence(jobs)
 
     def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
         if not jobs:
@@ -390,22 +393,11 @@ class SQLiteJobStore:
                 )
             """)
             columns = {row[1] for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()}
-            if "schedule_id" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN schedule_id TEXT")
-            if "triggered_by" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN triggered_by TEXT")
-            if "batch_id" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN batch_id TEXT")
-            if "parent_job_id" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN parent_job_id TEXT")
-            if "child_job_ids" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN child_job_ids TEXT")
-            if "target" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN target TEXT")
-            if "target_index" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN target_index INTEGER")
-            if "target_count" not in columns:
-                self._conn.execute("ALTER TABLE jobs ADD COLUMN target_count INTEGER")
+            text_columns = ("schedule_id", "triggered_by", "batch_id", "parent_job_id", "child_job_ids", "target")
+            added = [(name, "TEXT") for name in text_columns] + [("target_index", "INTEGER"), ("target_count", "INTEGER")]
+            for name, sql_type in added:
+                if name not in columns:
+                    self._conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {sql_type}")  # nosec B608 - static literals
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
@@ -507,6 +499,7 @@ class SQLiteJobStore:
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()
+        announce_scan_evidence([job])
 
     def put_many_atomic(self, jobs: list[ScanJob]) -> None:
         """Commit a same-tenant parent/child set in one SQLite transaction."""
@@ -525,6 +518,7 @@ class SQLiteJobStore:
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()
+        announce_scan_evidence(jobs)
 
     def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
         """Insert repair rows once; concurrent replicas dispatch only winners."""

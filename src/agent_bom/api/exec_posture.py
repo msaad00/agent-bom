@@ -10,7 +10,7 @@ with its per-dimension breakdown, so no surface reports a second grade.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException, Request
 
@@ -106,6 +106,62 @@ def tenant_exec_posture(
     return score
 
 
+def compound_issue_count(tenant_jobs: list[Any]) -> int:
+    """Count high-priority compound issues from blast-radius correlation.
+
+    A compound issue is a KEV vuln that is also reachable or exposes a
+    credential, or a high-CVSS + high-EPSS vuln — the reachability/exposure
+    correlation that lives in ``blast_radius`` (not a raw severity count).
+    Deduped by vulnerability id across scans.
+    """
+    from agent_bom.api.findings_current import current_scan_jobs
+
+    seen_ids: set[str] = set()
+    compound = 0
+    for job in current_scan_jobs(
+        tenant_jobs,
+        since=None,
+        scan_id=None,
+        require_authoritative_evidence=True,
+    ):
+        result = cast(dict[str, Any], job.result)
+        for b in result.get("blast_radius", []):
+            vid = b.get("vulnerability_id", "")
+            if vid in seen_ids:
+                continue
+            seen_ids.add(vid)
+            is_kev = bool(b.get("cisa_kev") or b.get("is_kev"))
+            if is_kev and (b.get("reachable_tools") or b.get("exposed_credentials")):
+                compound += 1
+            elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
+                compound += 1
+    return compound
+
+
+def posture_evidence_blocks(request: Request, tenant_jobs: list[Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Exec severity, compound issues and issue groups for the current evidence fingerprint."""
+    from agent_bom.api.posture_counts_cache import cached_posture_block
+    from agent_bom.api.routes import overview
+    from agent_bom.api.routes.compliance import _cached_issue_severity_counts
+
+    reconciled = cached_posture_block(request, tenant_jobs, "exec_severity", lambda: overview.exec_severity_counts(request, tenant_jobs))
+    compound = cached_posture_block(request, tenant_jobs, "compound_issues", lambda: {"count": compound_issue_count(tenant_jobs)})
+    return reconciled, compound, _cached_issue_severity_counts(request, tenant_jobs)
+
+
+def precompute_posture_evidence(tenant_id: str) -> None:
+    """Fill the evidence blocks for the tenant's current fingerprint after a write.
+
+    Uses the read path's own functions and cache keys, so a later read with the
+    same fingerprint gets exactly the value it would have computed.
+    """
+    from agent_bom.api.stores import _get_store
+
+    request = Request({"type": "http", "method": "GET", "path": "/v1/posture/counts", "headers": [], "query_string": b"", "state": {}})
+    request.state.tenant_id = tenant_id
+    posture_evidence_blocks(request, _get_store().list_all(tenant_id=tenant_id))
+
+
 def canonical_posture_payload(request: Request, scorecard: dict[str, Any]) -> dict[str, Any]:
     from agent_bom.api.routes.overview import _build_overview
 
@@ -122,8 +178,11 @@ def canonical_posture_payload(request: Request, scorecard: dict[str, Any]) -> di
 
 __all__ = [
     "canonical_posture_payload",
+    "compound_issue_count",
     "issue_counts_payload",
     "issue_severity_buckets",
     "issue_severity_counts",
+    "posture_evidence_blocks",
+    "precompute_posture_evidence",
     "tenant_exec_posture",
 ]

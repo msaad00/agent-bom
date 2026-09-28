@@ -157,12 +157,19 @@ def set_cached_failing_frameworks(
 
 
 def invalidate_tenant(tenant_id: str) -> None:
-    """Drop the cached histogram for a tenant after any hub-ledger mutation."""
+    """Drop the cached histogram for a tenant after any hub-ledger mutation.
+
+    Every hub write path calls this, so it also schedules the tenant's
+    posture-count precompute for the new evidence revision.
+    """
+    from agent_bom.api.posture_counts_cache import schedule_posture_precompute
+
     with _lock:
         _entries.pop(tenant_id, None)
         _kev_entries.pop(tenant_id, None)
         _framework_entries.pop(tenant_id, None)
         _coverage_entries.pop(tenant_id, None)
+    schedule_posture_precompute(tenant_id)
 
 
 def reset_hub_overview_cache() -> None:

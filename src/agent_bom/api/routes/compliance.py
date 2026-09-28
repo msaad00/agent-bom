@@ -2340,38 +2340,6 @@ def get_backpressure_posture() -> dict:
     return describe_backpressure_posture()
 
 
-def _compound_issue_count(tenant_jobs: list[Any]) -> int:
-    """Count high-priority compound issues from blast-radius correlation.
-
-    A compound issue is a KEV vuln that is also reachable or exposes a
-    credential, or a high-CVSS + high-EPSS vuln — the reachability/exposure
-    correlation that lives in ``blast_radius`` (not a raw severity count).
-    Deduped by vulnerability id across scans.
-    """
-    from agent_bom.api.findings_current import current_scan_jobs
-
-    seen_ids: set[str] = set()
-    compound = 0
-    for job in current_scan_jobs(
-        tenant_jobs,
-        since=None,
-        scan_id=None,
-        require_authoritative_evidence=True,
-    ):
-        result = cast(dict[str, Any], job.result)
-        for b in result.get("blast_radius", []):
-            vid = b.get("vulnerability_id", "")
-            if vid in seen_ids:
-                continue
-            seen_ids.add(vid)
-            is_kev = bool(b.get("cisa_kev") or b.get("is_kev"))
-            if is_kev and (b.get("reachable_tools") or b.get("exposed_credentials")):
-                compound += 1
-            elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
-                compound += 1
-    return compound
-
-
 @router.get("/posture/counts", tags=["compliance"])
 async def get_posture_counts(request: Request) -> dict:
     """Aggregate open-finding severity counts across all completed scans.
@@ -2454,11 +2422,10 @@ def _cached_estate_agent_count(request: Request, tenant_jobs: list[Any]) -> dict
 
 def _get_posture_counts_impl(request: Request) -> dict:
     """Synchronous posture-count composition, executed in a worker thread."""
-    from agent_bom.api.routes.overview import exec_severity_counts
+    from agent_bom.api.exec_posture import posture_evidence_blocks
 
     tenant_jobs = _tenant_jobs(request)
-    reconciled = _cached_posture_block(request, tenant_jobs, "exec_severity", lambda: exec_severity_counts(request, tenant_jobs))
-    compound = _cached_posture_block(request, tenant_jobs, "compound_issues", lambda: {"count": _compound_issue_count(tenant_jobs)})
+    reconciled, compound, issues = posture_evidence_blocks(request, tenant_jobs)
     counts: dict[str, Any] = {
         "critical": reconciled["critical"],
         "high": reconciled["high"],
@@ -2469,7 +2436,7 @@ def _get_posture_counts_impl(request: Request) -> dict:
         "kev": reconciled["kev"],
         "compound_issues": compound["count"],
     }
-    counts["issues"] = _cached_issue_severity_counts(request, tenant_jobs)
+    counts["issues"] = issues
     counts["agents"] = _cached_estate_agent_count(request, tenant_jobs)
 
     counts.update(_derive_deployment_context(request, tenant_jobs))

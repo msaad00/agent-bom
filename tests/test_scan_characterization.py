@@ -107,11 +107,11 @@ CASES: dict[str, dict[str, Any]] = {
 }
 
 
-def _case_root(name: str) -> Path:
-    # Output redaction treats high-entropy path segments (such as macOS
-    # /var/folders temp directories) as secrets, so the fixture lives under a
-    # low-entropy root that renders the same on every machine.
-    root = Path("/tmp").resolve() / f"abom-scan-{os.getpid()}-{name}"
+def _case_root() -> Path:
+    # Output redaction treats long high-entropy path segments (such as macOS
+    # /var/folders temp directories) as secrets. Keep every segment short so
+    # the fixture path renders the same on every machine and every run.
+    root = Path("/tmp").resolve() / "abom" / str(os.getpid())
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
     return root
@@ -119,7 +119,7 @@ def _case_root(name: str) -> Path:
 
 def run_case(name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr("agent_bom.db.local_analytics.record_scan_report_best_effort", lambda *_a, **_k: None)
-    root = _case_root(name)
+    root = _case_root()
     try:
         project = _project_fixture(root)
         out = root / f"{name}{_EXTENSIONS[CASES[name]['fmt']]}"

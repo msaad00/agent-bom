@@ -27,6 +27,8 @@ OWNED_FUNCTIONS = {
     "compare_version_order": "core/versions/ordering.py",
     "classify_credential_record": "core/credential_policy.py",
     "credential_governance_summary": "core/credential_policy.py",
+    "build_control_plane_audit_sink": "runtime/gateway_audit.py",
+    "build_local_gateway_audit_sink": "runtime/gateway_audit_local.py",
 }
 
 
@@ -61,6 +63,8 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
         for module in _import_modules(path, node):
+            if path.startswith("runtime/gateway_") and module == "agent_bom.gateway_server":
+                errors.append(f"{path}:{node.lineno}: gateway services must not import their HTTP composition root")
             if path == "runtime/gateway_relay.py" and (
                 module == "agent_bom.gateway_server" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):

@@ -159,9 +159,6 @@
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
       "function_lines": 84
     },
-    "api/middleware.py::APIKeyMiddleware._try_browser_session_auth": {
-      "complexity": 17
-    },
     "api/middleware.py::APIKeyMiddleware._try_proxy_header_auth": {
       "function_lines": 94
     },
@@ -338,7 +335,7 @@
       "function_lines": 103
     },
     "api/routes/compliance.py": {
-      "file_lines": 3079
+      "file_lines": 3035
     },
     "api/routes/compliance.py::_build_compliance": {
       "complexity": 23,
@@ -369,7 +366,7 @@
       "function_lines": 136
     },
     "api/routes/discovery.py": {
-      "file_lines": 960
+      "file_lines": 955
     },
     "api/routes/discovery.py::_serialize_agent": {
       "function_lines": 128
@@ -460,13 +457,13 @@
       "function_lines": 83
     },
     "api/routes/overview.py": {
-      "file_lines": 1927
+      "file_lines": 1894
     },
     "api/routes/overview.py::_build_overview": {
       "function_lines": 81
     },
     "api/routes/overview.py::_compose_overview": {
-      "function_lines": 215
+      "function_lines": 200
     },
     "api/routes/overview.py::_estate_rollup": {
       "function_lines": 146
@@ -475,7 +472,7 @@
       "function_lines": 87
     },
     "api/routes/proxy.py": {
-      "file_lines": 1618
+      "file_lines": 1334
     },
     "api/routes/proxy.py::_gateway_activity_record_from_alert": {
       "function_lines": 89
@@ -1718,7 +1715,7 @@
       "file_lines": 681
     },
     "gateway_server.py": {
-      "file_lines": 4265
+      "file_lines": 3254
     },
     "gateway_server.py::create_gateway_app": {
       "complexity": 235,
@@ -2180,13 +2177,13 @@
       "function_lines": 1528
     },
     "mcp_server_runtime.py": {
-      "file_lines": 899
+      "file_lines": 865
     },
     "mcp_server_runtime.py::execute_tool_async": {
-      "function_lines": 143
+      "function_lines": 132
     },
     "mcp_server_runtime.py::execute_tool_sync_async": {
-      "function_lines": 140
+      "function_lines": 131
     },
     "mcp_server_runtime_catalog.py::register_runtime_catalog_tools": {
       "function_lines": 116
@@ -2506,7 +2503,7 @@
       "complexity": 16
     },
     "output/json_fmt.py": {
-      "file_lines": 1563
+      "file_lines": 1562
     },
     "output/json_fmt.py::_blast_radius_json_entry": {
       "function_lines": 130
@@ -3041,7 +3038,7 @@
       "function_lines": 104
     },
     "security.py": {
-      "file_lines": 1336
+      "file_lines": 1316
     },
     "security.py::validate_url": {
       "complexity": 19,

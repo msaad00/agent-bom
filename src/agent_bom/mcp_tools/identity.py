@@ -10,10 +10,13 @@ so MCP-driven lifecycle changes are provenance-tracked identically to API calls.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from types import SimpleNamespace
 from typing import Any, cast
+
+from starlette.concurrency import run_in_threadpool
 
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 from agent_bom.security import sanitize_error
@@ -147,7 +150,11 @@ async def _run_write(
 
         request = _request(tenant_id, context["actor"])
         try:
-            payload = await handler(request)
+            if inspect.iscoroutinefunction(handler):
+                result = handler(request)
+            else:
+                result = await run_in_threadpool(handler, request)
+            payload = await result if inspect.isawaitable(result) else result
         except HTTPException as exc:
             return json.dumps({"error": sanitize_error(exc.detail), "action": action, "status": "rejected"})
         if isinstance(payload, dict):

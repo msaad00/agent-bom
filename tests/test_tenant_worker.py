@@ -73,3 +73,57 @@ def test_background_export_submit_sites_use_tenant_wrapper() -> None:
         source = (repo_root / relative_path).read_text(encoding="utf-8")
         assert "submit_tenant_bound(" in source
         assert "get_executor().submit(" not in source
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_tenant_work_drops_inherited_maintenance_authority_and_restores_outer_context(fail):
+    from agent_bom.api.postgres_common import bypass_tenant_rls, is_tenant_rls_bypassed
+
+    def task():
+        assert _current_tenant.get() == "worker-tenant"
+        assert not is_tenant_rls_bypassed()
+        if fail:
+            raise RuntimeError("worker failed")
+
+    token = _current_tenant.set("outer-tenant")
+    try:
+        with bypass_tenant_rls(audit=False, warn=False):
+            if fail:
+                with pytest.raises(RuntimeError, match="worker failed"):
+                    run_tenant_bound("worker-tenant", task)
+            else:
+                run_tenant_bound("worker-tenant", task)
+            assert is_tenant_rls_bypassed()
+            assert _current_tenant.get() == "outer-tenant"
+        assert not is_tenant_rls_bypassed()
+    finally:
+        _current_tenant.reset(token)
+
+
+def test_tenant_worker_cannot_open_inherited_maintenance_pool():
+    from unittest.mock import MagicMock
+
+    from agent_bom.api.postgres_common import MaintenanceRoleConfigurationError, _maintenance_connection, bypass_tenant_rls
+
+    pool = MagicMock()
+
+    def task():
+        with _maintenance_connection(pool):
+            pytest.fail("Tenant task reached the maintenance connection")
+
+    with bypass_tenant_rls(audit=False, warn=False):
+        with pytest.raises(MaintenanceRoleConfigurationError):
+            run_tenant_bound("worker-tenant", task)
+    pool.connection.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_async_handoff_copies_context_but_not_maintenance_authority():
+    import asyncio
+
+    from agent_bom.api.postgres_common import bypass_tenant_rls, is_tenant_rls_bypassed
+
+    with bypass_tenant_rls(audit=False, warn=False):
+        observed = await asyncio.to_thread(run_tenant_bound, "worker-tenant", is_tenant_rls_bypassed)
+        assert observed is False
+        assert is_tenant_rls_bypassed()

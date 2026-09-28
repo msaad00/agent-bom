@@ -342,6 +342,7 @@ def test_preset_ci_sets_warn_on_high():
             and node.test.comparators[0].value == "ci"
         ):
             for child in ast.walk(node):
-                if isinstance(child, ast.Assign) and any(isinstance(t, ast.Attribute) and t.attr == "warn_on_severity" for t in child.targets):
+                targets = child.targets if isinstance(child, ast.Assign) else []
+                if any(isinstance(t, ast.Attribute) and t.attr == "warn_on_severity" for t in targets):
                     found = True
     assert found, "preset=='ci' block must assign warn_on_severity"

@@ -90,11 +90,11 @@ _EXTENSIONS = {"json": ".json", "sarif": ".sarif", "cyclonedx": ".cdx.json"}
 _BASE = ["scan", "--offline", "--no-auto-update-db", "--quiet"]
 
 CASES: dict[str, dict[str, Any]] = {
-    "demo_json": {"args": ["--demo", "--format", "json"], "fmt": "json"},
+    "demo_json": {"args": ["--demo", "--format", "json"], "fmt": "json", "digest": True},
     "demo_json_exit_zero": {"args": ["--demo", "--format", "json", "--exit-zero"], "fmt": "json", "digest": True},
     "demo_fail_on_high": {"args": ["--demo", "--format", "json", "--fail-on-severity", "high"], "fmt": "json", "digest": True},
-    "demo_sarif": {"args": ["--demo", "--format", "sarif"], "fmt": "sarif"},
-    "demo_cyclonedx": {"args": ["--demo", "--format", "cyclonedx"], "fmt": "cyclonedx"},
+    "demo_sarif": {"args": ["--demo", "--format", "sarif"], "fmt": "sarif", "digest": True},
+    "demo_cyclonedx": {"args": ["--demo", "--format", "cyclonedx"], "fmt": "cyclonedx", "digest": True},
     "project_json": {"args": ["--project", "{project}", "--format", "json"], "fmt": "json"},
     "project_fail_on_low": {
         "args": ["--project", "{project}", "--format", "json", "--fail-on-severity", "low"],
@@ -115,8 +115,8 @@ def run_case(name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict
     document = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
     normalized = normalize(document, str(tmp_path.resolve()))
     if CASES[name].get("digest") and normalized is not None:
-        # Gate variants share the base case's document; pin its digest and the
-        # verdict rather than duplicating the full golden.
+        # Large demo documents and gate variants pin a digest plus the summary;
+        # the small project documents keep full goldens for readable diffs.
         canonical = json.dumps(normalized, sort_keys=True).encode("utf-8")
         normalized = {"sha256": hashlib.sha256(canonical).hexdigest(), "summary": normalized.get("summary")}
     return {"exit_code": result.exit_code, "document": normalized, "_output": result.output}

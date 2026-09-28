@@ -480,3 +480,57 @@ def test_refresh_mode_uses_live_sync(tmp_path, monkeypatch):
 
     assert catalog["source"] == "synced"
     assert catalog["attack_version"] == "16.1"
+
+
+# ─── parsed-catalog cache ─────────────────────────────────────────────────────
+
+
+def _isolated_catalog(tmp_path, monkeypatch, version: str = "bundled-v1"):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog(version, source="bundled")))
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setattr("agent_bom.mitre_fetch._DEFAULT_SYNC_PATH", tmp_path / "missing-synced.json")
+    monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_PATH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_MODE", raising=False)
+    return bundled_file
+
+
+def test_catalog_file_is_parsed_once_per_path_and_mtime(tmp_path, monkeypatch):
+    _isolated_catalog(tmp_path, monkeypatch)
+    real_loads = json.loads
+    calls: list[int] = []
+
+    def counting_loads(*args, **kwargs):
+        calls.append(1)
+        return real_loads(*args, **kwargs)
+
+    monkeypatch.setattr("agent_bom.mitre_fetch.json.loads", counting_loads)
+
+    first = build_catalog()
+    for _ in range(50):
+        get_techniques()
+        get_cwe_to_attack()
+
+    assert len(calls) == 1
+    assert first["attack_version"] == "bundled-v1"
+
+
+def test_catalog_cache_reloads_when_file_changes(tmp_path, monkeypatch):
+    import os
+
+    bundled_file = _isolated_catalog(tmp_path, monkeypatch)
+    assert build_catalog()["attack_version"] == "bundled-v1"
+
+    bundled_file.write_text(json.dumps(_catalog("bundled-v2-longer", source="bundled")))
+    stat = bundled_file.stat()
+    os.utime(bundled_file, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+
+    assert build_catalog()["attack_version"] == "bundled-v2-longer"
+
+
+def test_catalog_cache_hands_out_isolated_top_level_dicts(tmp_path, monkeypatch):
+    _isolated_catalog(tmp_path, monkeypatch)
+    first = build_catalog()
+    first["attack_version"] = "mutated-by-caller"
+
+    assert build_catalog()["attack_version"] == "bundled-v1"

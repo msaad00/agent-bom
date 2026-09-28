@@ -23,6 +23,10 @@ class ReadinessStatus:
 
 def evaluate_control_plane_readiness() -> ReadinessStatus:
     """Return whether the API can safely accept routed traffic."""
+    from agent_bom.demo_estate.boot_seed import demo_estate_seeding
+
+    if demo_estate_seeding():
+        return ReadinessStatus(ready=False, reason="demo_estate_seeding")
     if clustered_control_plane_required() and not postgres_configured():
         return ReadinessStatus(
             ready=False,

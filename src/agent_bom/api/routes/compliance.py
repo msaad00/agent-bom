@@ -477,13 +477,13 @@ async def get_compliance(
     Returns scored control posture plus applicability-only risk/technique
     catalogs and an overall score derived only from the scored frameworks.
     """
-    return _build_compliance(_tenant_jobs(request), scan_id=scan_id)
+    return await anyio.to_thread.run_sync(lambda: _build_compliance(_tenant_jobs(request), scan_id=scan_id))
 
 
 def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> dict[str, Any]:
     """Build compliance truth from one caller-owned job-store snapshot."""
     from agent_bom.api.findings_current import current_scan_jobs, scan_evidence_authority_key
-    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, control_key_for_tag
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS, rows_by_control_key
 
     tenant_jobs = list(
         current_scan_jobs(
@@ -550,6 +550,7 @@ def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> 
           ``applicable`` / ``not_applicable`` and never touch the score.
         """
         detective_ids = DETECTIVE_CONTROLS.get(tag_field, frozenset())
+        rows_by_code = rows_by_control_key(all_blast, catalog, tag_field)
         controls = []
         for code, name in sorted(catalog.items()):
             sev_breakdown = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -557,18 +558,16 @@ def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> 
             affected_agents: set[str] = set()
             findings = 0
 
-            for br in all_blast:
-                tags = br.get(tag_field, [])
-                if any(control_key_for_tag(str(tag), catalog) == code for tag in tags):
-                    findings += 1
-                    sev = (br.get("severity") or "").lower()
-                    if sev in sev_breakdown:
-                        sev_breakdown[sev] += 1
-                    pkg = br.get("package")
-                    if pkg:
-                        affected_pkgs.add(pkg)
-                    for agent in br.get("affected_agents", []):
-                        affected_agents.add(agent)
+            for br in rows_by_code.get(code, ()):
+                findings += 1
+                sev = (br.get("severity") or "").lower()
+                if sev in sev_breakdown:
+                    sev_breakdown[sev] += 1
+                pkg = br.get("package")
+                if pkg:
+                    affected_pkgs.add(pkg)
+                for agent in br.get("affected_agents", []):
+                    affected_agents.add(agent)
 
             if not scored:
                 # Applicability overlay (MITRE ATT&CK): a technique is made
@@ -2458,7 +2457,8 @@ def _get_posture_counts_impl(request: Request) -> dict:
     from agent_bom.api.routes.overview import exec_severity_counts
 
     tenant_jobs = _tenant_jobs(request)
-    reconciled = exec_severity_counts(request, tenant_jobs)
+    reconciled = _cached_posture_block(request, tenant_jobs, "exec_severity", lambda: exec_severity_counts(request, tenant_jobs))
+    compound = _cached_posture_block(request, tenant_jobs, "compound_issues", lambda: {"count": _compound_issue_count(tenant_jobs)})
     counts: dict[str, Any] = {
         "critical": reconciled["critical"],
         "high": reconciled["high"],
@@ -2467,7 +2467,7 @@ def _get_posture_counts_impl(request: Request) -> dict:
         "unrated": reconciled["unrated"],
         "total": reconciled["total"],
         "kev": reconciled["kev"],
-        "compound_issues": _compound_issue_count(tenant_jobs),
+        "compound_issues": compound["count"],
     }
     counts["issues"] = _cached_issue_severity_counts(request, tenant_jobs)
     counts["agents"] = _cached_estate_agent_count(request, tenant_jobs)

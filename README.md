@@ -28,9 +28,10 @@
   <a href="docs/images/context-map-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></a>
 </p>
 
-agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account,
-matches them against vulnerability advisories, and shows which agent can reach which vulnerable package, tool or secret.
-Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. The map above uses labeled sample data.
+agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account, matches packages against vulnerability advisories, and connects findings to recorded agent, tool and credential relationships.
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data.
+
+**Start where you work:** [scan a repository](#quick-start), [run the shared dashboard](#self-host-in-your-environment), or [connect your assistant](docs/MCP_WORKFLOWS.md). Apache-2.0; the control plane runs in your own environment.
 
 ## Self-host in your environment
 
@@ -63,17 +64,19 @@ Cloud connectors and fleet sync collect inventory; proxy and gateway deployments
 
 ## Quick start
 
-**Scan a repository in about a minute:**
+**Scan a repository and keep the evidence:**
 
 ```bash
 pip install agent-bom
-agent-bom scan .
+agent-bom scan . -f json -o scan.json
 ```
+
+Open `scan.json` for findings and assessment coverage. For pull requests, use `agent-bom scan . -f sarif -o findings.sarif` and [upload the artifact in CI](docs/FIRST_RUN.md#5-gate-ci-on-the-result).
 
 <details>
 <summary>No project handy? Scan the bundled sample estate offline</summary>
 
-`agent-bom scan --demo --offline` lists the agents it found, then each CVE with the agent, MCP server and credentials it can reach, then agent and MCP policy findings (excerpt of real output):
+`agent-bom scan --demo --offline` lists sample agents, CVEs with recorded agent, MCP server and credential associations, and policy findings (excerpt of real output):
 
 ```text
   Security posture:   CRIT  7   HIGH  10   MED   6 · all finding categories
@@ -92,8 +95,7 @@ ANALYZE | Graph & Policy Findings (8 occurrences)
    MED   PROMPT_SECURITY Long-lived static credential on MCP server
 ```
 
-The sample deliberately triggers a security gate (exit `1`). Save CI evidence with
-`agent-bom scan . -f sarif -o findings.sarif`; check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md) · [GitHub Action](docs/FIRST_RUN.md#5-gate-ci-on-the-result)
+The sample deliberately triggers a security gate (exit `1`). Save CI evidence with `agent-bom scan . -f sarif -o findings.sarif`; check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md) · [GitHub Action](docs/FIRST_RUN.md#5-gate-ci-on-the-result)
 
 <p align="center">
   <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />
@@ -111,8 +113,7 @@ profile. The full catalog has 88 MCP tools, 7 resources, and 8 workflow prompts.
 
 Use `uvx agent-bom scan .` without a global install, or
 `uvx agent-bom check requests@2.33.0 --ecosystem pypi` before adding a package.
-For automatic dependency and secret gates, see
-[pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
+For automatic dependency and secret gates, see [pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
 
 `agent-bom db update --osv-ecosystem PyPI` covers only the selected ecosystem;
 add the ecosystems you need before running `agent-bom scan . --offline`.
@@ -162,8 +163,7 @@ Inspect each hop’s source evidence, permissions and remediation. This referenc
 
 Choose a scope in **Summary**, then **Inspect** an entity. Filter by type or severity, set direction and hop limits, and expand bounded pages; incomplete views are labeled.
 In **Context**, use **Focus here**, **Back**, or an exact identifier. Select a node or arrow to inspect its evidence, freshness and unknowns. **Investigate reach & permissions**
-opens permission receipts, CVE prerequisites and related activity; missing exploitability
-stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
+opens permission receipts, CVE prerequisites and related activity; missing exploitability stays **not assessed**. [Investigation workflow](site-docs/architecture/security-graph-model.md#investigate-an-agent-from-context).
 
 **Connect data locations to security evidence.** Explore recorded stores and datasets alongside identities and findings.
 Distinguish storage, access evidence and collection sources; derived classifications do not prove contents or successful reads. [Data and evidence model](site-docs/architecture/security-graph-model.md#data-locations-access-and-evidence-sources).

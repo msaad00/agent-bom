@@ -10,6 +10,7 @@ import logging
 from functools import lru_cache
 from urllib.parse import quote as _url_quote
 
+from agent_bom.core.packages import encode_go_module_path as _go_encode_module
 from agent_bom.core.versions.distro import (
     _APK_POST_SUFFIXES as _APK_POST_SUFFIXES,
 )
@@ -285,23 +286,6 @@ def version_in_range(
     for bound in dropped:
         _warn_unparseable_bound(bound, ecosystem)
     return affected
-
-
-def _go_encode_module(module: str) -> str:
-    """Encode a Go module path for proxy.golang.org.
-
-    The Go module proxy uses case-encoding: uppercase letters become
-    ``!`` + lowercase (e.g., ``GitHub.com`` → ``!github.com``).
-    Forward slashes are literal path separators in the URL.
-    """
-    parts: list[str] = []
-    for ch in module:
-        if ch.isupper():
-            parts.append("!")
-            parts.append(ch.lower())
-        else:
-            parts.append(ch)
-    return "".join(parts)
 
 
 async def resolve_go_metadata(

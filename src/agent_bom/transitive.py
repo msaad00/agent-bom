@@ -10,6 +10,7 @@ import httpx
 from packaging.requirements import InvalidRequirement, Requirement
 from rich.console import Console
 
+from agent_bom.core.packages import encode_go_module_path as _go_encode_module
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
 from agent_bom.package_utils import synthesize_purl
@@ -503,23 +504,6 @@ async def resolve_pypi_dependencies(
         dependencies.extend(nested_deps)
 
     return dependencies
-
-
-def _go_encode_module(module: str) -> str:
-    """Encode a Go module path for proxy.golang.org.
-
-    The Go module proxy uses case-encoding: uppercase letters become
-    ``!`` + lowercase (e.g., ``GitHub.com`` → ``!github.com``).
-    Forward slashes are kept as literal path separators in the URL.
-    """
-    parts: list[str] = []
-    for ch in module:
-        if ch.isupper():
-            parts.append("!")
-            parts.append(ch.lower())
-        else:
-            parts.append(ch)
-    return "".join(parts)
 
 
 def _parse_go_mod_requires(go_mod_text: str) -> list[tuple[str, str]]:

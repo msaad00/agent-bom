@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+from agent_bom.core.severity import evaluated_control_status as _control_status
+
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
 
@@ -168,21 +170,6 @@ def _severity_order(sev: str) -> int:
     from agent_bom.core.severity import severity_worst_first_rank
 
     return severity_worst_first_rank(sev)
-
-
-def _control_status(sev_breakdown: dict[str, int]) -> str:
-    """Status of a control that HAS mapped findings, by worst severity.
-
-    Mirror of ``routes/compliance._evaluated_control_status``. Callers only reach
-    this with findings > 0, so an all-zero breakdown means every mapped finding
-    is unrated-severity — evidence exists but severity is ungraded, which is
-    ``not_evaluated``, never a silent pass. Keep in sync with that function.
-    """
-    if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
-        return "fail"
-    if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
-        return "warning"
-    return "not_evaluated"
 
 
 def _control_narrative(

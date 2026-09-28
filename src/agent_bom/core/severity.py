@@ -199,3 +199,12 @@ def severity_from_label(raw: Any) -> Severity:
     """Normalize vendor labels into the scanner's supported severity enum."""
     label = normalize_severity(str(raw) if raw is not None else None)
     return Severity(label) if label != "info" else Severity.UNKNOWN
+
+
+def evaluated_control_status(sev_breakdown: dict[str, int]) -> str:
+    """Classify mapped findings by severity; unrated evidence never implies pass."""
+    if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
+        return "fail"
+    if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
+        return "warning"
+    return "not_evaluated"

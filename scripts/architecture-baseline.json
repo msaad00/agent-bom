@@ -1918,7 +1918,7 @@
       "complexity": 18
     },
     "graph/nhi_governance.py": {
-      "file_lines": 811
+      "file_lines": 795
     },
     "graph/nhi_governance.py::build_nhi_governance_findings": {
       "function_lines": 87
@@ -2362,7 +2362,7 @@
       "function_lines": 140
     },
     "output/compliance_narrative.py": {
-      "file_lines": 1075
+      "file_lines": 1062
     },
     "output/compliance_narrative.py::_build_framework_narrative": {
       "complexity": 21,
@@ -3060,7 +3060,7 @@
       "function_lines": 146
     },
     "transitive.py": {
-      "file_lines": 681
+      "file_lines": 665
     },
     "traversal.py::iter_discovery_files": {
       "complexity": 21,

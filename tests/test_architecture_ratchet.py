@@ -149,3 +149,15 @@ def test_graph_ports_and_services_cannot_import_concrete_storage():
     contract = ast.parse("class GraphStoreProtocol: pass")
     assert boundary_errors("api/graph_store.py", contract)
     assert not boundary_errors("graph/ports.py", contract)
+
+
+def test_shared_semantic_aliases_cannot_restore_duplicate_implementations():
+    for path, name in (
+        ("transitive.py", "_go_encode_module"),
+        ("version_utils.py", "_go_encode_module"),
+        ("compliance_nist_catalog.py", "evaluated_control_status"),
+        ("output/compliance_narrative.py", "_control_status"),
+        ("core/credential_policy.py", "_parse_timestamp"),
+        ("graph/nhi_governance.py", "_parse_timestamp"),
+    ):
+        assert boundary_errors(path, ast.parse(f"def {name}(): pass"))

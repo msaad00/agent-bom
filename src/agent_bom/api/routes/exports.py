@@ -131,7 +131,7 @@ def create_export_destination(request: Request, body: ExportDestinationCreate, _
         created_at=now,
         updated_at=now,
     )
-    get_export_destination_store().put(record)
+    get_export_destination_store().put(record, tenant_id=tenant_id)
     log_action(
         "export_destination.create", actor=_actor(request), resource=f"export-destination/{record.id}", tenant_id=tenant_id, kind=kind
     )
@@ -214,7 +214,7 @@ def _run_export_sync(tenant_id: str, destination_id: str, run_id: str) -> None:
         record.last_run_status = "success"
         record.status_detail = ""
     record.last_run_at = datetime.now(timezone.utc).isoformat()
-    store.put(record)
+    store.put(record, tenant_id=tenant_id)
 
 
 # ── Schedules ─────────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ def create_export_schedule(request: Request, body: ExportScheduleCreate, _role: 
         created_at=now.isoformat(),
         updated_at=now.isoformat(),
     )
-    get_export_schedule_store().put(schedule)
+    get_export_schedule_store().put(schedule, tenant_id=tenant_id)
     log_action(
         "export_schedule.create",
         actor=_actor(request),
@@ -278,7 +278,7 @@ def toggle_export_schedule(request: Request, schedule_id: str, _role: Any = _WRI
         raise HTTPException(status_code=404, detail=f"Export schedule {schedule_id} not found")
     schedule.enabled = not schedule.enabled
     schedule.updated_at = _now()
-    store.put(schedule)
+    store.put(schedule, tenant_id=tenant_id)
     log_action(
         "export_schedule.toggle",
         actor=_actor(request),

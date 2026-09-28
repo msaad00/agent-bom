@@ -98,16 +98,16 @@ def execute_export(
     except ExportPublicationIndeterminateError:
         detail = "Publication status is indeterminate; verify the destination marker before retrying"
         logger.warning("Scheduled export publication is indeterminate for schedule %s", schedule.schedule_id)
-        _mark_destination(destination_store, record, "indeterminate", detail)
+        _mark_destination(destination_store, schedule.tenant_id, record, "indeterminate", detail)
         _persist_run(store, schedule, now_iso, status="indeterminate", row_count=None)
         return False
     except Exception as exc:  # noqa: BLE001 - destination / stream / crypto failure
         logger.warning("Scheduled export failed for schedule %s", schedule.schedule_id)
-        _mark_destination(destination_store, record, "error", sanitize_error(exc))
+        _mark_destination(destination_store, schedule.tenant_id, record, "error", sanitize_error(exc))
         _persist_run(store, schedule, now_iso, status="error", row_count=None)
         return False
 
-    _mark_destination(destination_store, record, "active", "")
+    _mark_destination(destination_store, schedule.tenant_id, record, "active", "")
     _persist_run(store, schedule, now_iso, status="success", row_count=result.row_count)
     return True
 
@@ -120,12 +120,12 @@ def _decrypt_secret(secret_encrypted: str) -> str | None:
     return decrypt_secret(secret_encrypted)
 
 
-def _mark_destination(store: ExportDestinationStore, record: ExportDestinationRecord, status: str, detail: str) -> None:
+def _mark_destination(store: ExportDestinationStore, tenant_id: str, record: ExportDestinationRecord, status: str, detail: str) -> None:
     record.status = status
     record.status_detail = detail
     record.last_run_at = _now().isoformat()
     record.last_run_status = status
-    store.put(record)
+    store.put(record, tenant_id=tenant_id)
 
 
 def _persist_run(store: ExportScheduleStore, schedule: ExportSchedule, now_iso: str, *, status: str, row_count: int | None) -> None:
@@ -136,7 +136,7 @@ def _persist_run(store: ExportScheduleStore, schedule: ExportSchedule, now_iso: 
     latest.last_run_status = status
     latest.last_row_count = row_count
     latest.updated_at = now_iso
-    store.put(latest)
+    store.put(latest, tenant_id=schedule.tenant_id)
 
 
 def claim_due_schedules(store: ExportScheduleStore, now: datetime) -> list[ExportSchedule]:
@@ -148,7 +148,7 @@ def claim_due_schedules(store: ExportScheduleStore, now: datetime) -> list[Expor
             continue
         next_run = parse_cron_next(schedule.cron_expression, now)
         next_run_iso = next_run.isoformat() if next_run else None
-        if store.claim_due(schedule, next_run_iso):
+        if store.claim_due(schedule, next_run_iso, tenant_id=schedule.tenant_id):
             won.append(schedule)
     return won
 

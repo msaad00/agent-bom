@@ -67,7 +67,7 @@ def test_destination_public_dict_never_leaks_the_secret():
 
 def test_destination_store_is_tenant_scoped():
     store = InMemoryExportDestinationStore()
-    store.put(_destination())
+    store.put(_destination(), tenant_id="tenant-a")
     assert store.get("tenant-a", "dest-1") is not None
     assert store.get("tenant-b", "dest-1") is None  # cross-tenant read blocked
     assert store.delete("tenant-b", "dest-1") is False
@@ -79,7 +79,7 @@ def test_destination_store_is_tenant_scoped():
 # --------------------------------------------------------------------------
 def test_claim_due_advances_next_run_and_is_won_once():
     store = InMemoryExportScheduleStore()
-    store.put(_schedule())
+    store.put(_schedule(), tenant_id="tenant-a")
     due_before = store.list_due(_now().isoformat())
     assert len(due_before) == 1
 
@@ -92,17 +92,17 @@ def test_claim_due_advances_next_run_and_is_won_once():
 
 def test_claim_due_cross_replica_only_one_winner():
     store = InMemoryExportScheduleStore()
-    store.put(_schedule())
+    store.put(_schedule(), tenant_id="tenant-a")
     observed = store.get("sched-1", "tenant-a")
     assert observed is not None
     # Two replicas observed the same next_run; only the first CAS wins.
-    assert store.claim_due(observed, "2026-07-17T03:00:00+00:00") is True
-    assert store.claim_due(observed, "2026-07-17T03:00:00+00:00") is False
+    assert store.claim_due(observed, "2026-07-17T03:00:00+00:00", tenant_id="tenant-a") is True
+    assert store.claim_due(observed, "2026-07-17T03:00:00+00:00", tenant_id="tenant-a") is False
 
 
 def test_disabled_schedule_is_not_claimed():
     store = InMemoryExportScheduleStore()
-    store.put(_schedule(enabled=False))
+    store.put(_schedule(enabled=False), tenant_id="tenant-a")
     assert claim_due_schedules(store, _now()) == []
 
 
@@ -127,9 +127,9 @@ def test_run_due_exports_streams_to_destination_using_stored_secret(monkeypatch)
     monkeypatch.setattr("agent_bom.api.export_scheduler.run_findings_export", fake_run)
 
     sched_store = InMemoryExportScheduleStore()
-    sched_store.put(_schedule())
+    sched_store.put(_schedule(), tenant_id="tenant-a")
     dest_store = InMemoryExportDestinationStore()
-    dest_store.put(_destination(secret_encrypted="enc-token"))
+    dest_store.put(_destination(secret_encrypted="enc-token"), tenant_id="tenant-a")
 
     count = asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
 
@@ -152,7 +152,7 @@ def test_run_due_exports_streams_to_destination_using_stored_secret(monkeypatch)
 
 def test_run_due_exports_missing_destination_marks_error(monkeypatch):
     sched_store = InMemoryExportScheduleStore()
-    sched_store.put(_schedule(destination_id="ghost"))
+    sched_store.put(_schedule(destination_id="ghost"), tenant_id="tenant-a")
     dest_store = InMemoryExportDestinationStore()
 
     count = asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
@@ -167,9 +167,9 @@ def test_run_due_exports_preserves_indeterminate_publication_status(monkeypatch)
 
     monkeypatch.setattr("agent_bom.api.export_scheduler.run_findings_export", ambiguous_run)
     sched_store = InMemoryExportScheduleStore()
-    sched_store.put(_schedule())
+    sched_store.put(_schedule(), tenant_id="tenant-a")
     dest_store = InMemoryExportDestinationStore()
-    dest_store.put(_destination(secret_encrypted=""))
+    dest_store.put(_destination(secret_encrypted=""), tenant_id="tenant-a")
 
     count = asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
 
@@ -190,9 +190,9 @@ def test_run_due_exports_failure_log_does_not_emit_exception_text_or_traceback(m
 
     monkeypatch.setattr("agent_bom.api.export_scheduler.run_findings_export", failed_run)
     sched_store = InMemoryExportScheduleStore()
-    sched_store.put(_schedule())
+    sched_store.put(_schedule(), tenant_id="tenant-a")
     dest_store = InMemoryExportDestinationStore()
-    dest_store.put(_destination(secret_encrypted=""))
+    dest_store.put(_destination(secret_encrypted=""), tenant_id="tenant-a")
 
     asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
 

@@ -131,6 +131,44 @@ def test_postgres_idempotency_commit_uses_db_fence_outside_saturated_app_pool(mo
             pool.close()
 
 
+def test_postgres_export_destination_write_cannot_change_tenant_owner():
+    """The real RLS store preserves export ownership under a non-bypass role."""
+    from agent_bom.api.export_destination_store import ExportDestinationRecord, PostgresExportDestinationStore
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+
+    tenant_a = f"export-owner-a-{uuid4().hex}"
+    tenant_b = f"export-owner-b-{uuid4().hex}"
+    record = ExportDestinationRecord(
+        id=uuid4().hex,
+        tenant_id=tenant_a,
+        kind="s3",
+        display_name="tenant-a destination",
+        config={"bucket": "test-only"},
+        created_at="2026-09-28T00:00:00Z",
+        updated_at="2026-09-28T00:00:00Z",
+    )
+    store = PostgresExportDestinationStore()
+    token = set_current_tenant(tenant_a)
+    try:
+        store.put(record, tenant_id=tenant_a)
+        with pytest.raises(ValueError, match="authorized tenant"):
+            store.put(replace(record, tenant_id=tenant_b), tenant_id=tenant_a)
+        assert store.get(tenant_a, record.id) == record
+
+        reset_current_tenant(token)
+        token = set_current_tenant(tenant_b)
+        assert store.get(tenant_a, record.id) is None
+        assert store.list_for_tenant(tenant_a) == []
+        assert not store.delete(tenant_a, record.id)
+    finally:
+        reset_current_tenant(token)
+        token = set_current_tenant(tenant_a)
+        try:
+            store.delete(tenant_a, record.id)
+        finally:
+            reset_current_tenant(token)
+
+
 def test_postgres_idempotency_waiter_cannot_starve_same_replica_callback(monkeypatch):
     """A contended claim waits on fence capacity, never the callback pool."""
 

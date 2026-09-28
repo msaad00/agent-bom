@@ -82,11 +82,11 @@ def test_postgres_destinations_survive_reconnect_and_enforce_rls(monkeypatch):
         try:
             with ConnectionPool(dsn, configure=configure) as first_pool:
                 first = stores.PostgresExportDestinationStore(pool=first_pool)
-                first.put(record)
+                first.put(record, tenant_id="tenant-a")
             with ConnectionPool(dsn, configure=configure) as second_pool:
                 second = stores.PostgresExportDestinationStore(pool=second_pool)
                 assert second.get("tenant-a", record.id) == record
-                second.put(replace(record, status="active", last_run_status="success"))
+                second.put(replace(record, status="active", last_run_status="success"), tenant_id="tenant-a")
                 assert second.list_for_tenant("tenant-a")[0].last_run_status == "success"
                 assert "secret_encrypted" not in second.get("tenant-a", record.id).to_public_dict()
                 reset_current_tenant(token)
@@ -95,8 +95,8 @@ def test_postgres_destinations_survive_reconnect_and_enforce_rls(monkeypatch):
                 assert second.list_for_tenant("tenant-a") == []
                 assert not second.delete("tenant-a", record.id)
                 with pytest.raises(InsufficientPrivilege, match="row-level security"):
-                    second.put(record)
-                second.put(replace(record, tenant_id="tenant-b", display_name="other tenant"))
+                    second.put(record, tenant_id="tenant-a")
+                second.put(replace(record, tenant_id="tenant-b", display_name="other tenant"), tenant_id="tenant-b")
                 assert second.get("tenant-b", record.id).display_name == "other tenant"
                 assert second.delete("tenant-b", record.id)
                 reset_current_tenant(token)

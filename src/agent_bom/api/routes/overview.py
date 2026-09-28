@@ -1188,7 +1188,11 @@ def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
 
 
 def _fold_current_coverage(lanes: dict[str, dict[str, int]], row: dict[str, Any]) -> None:
+    from agent_bom.api.overview_cve_counts import add_cve_finding
     from agent_bom.finding_scope import lenses_for_row
+
+    if "_cves" in lanes:
+        add_cve_finding(lanes["_cves"], row)
 
     # Match the domain drill exactly; an unclassified row is not invented as a CVE.
     for domain in lenses_for_row(row):
@@ -1215,7 +1219,10 @@ def _hub_coverage_snapshot(
         cached = hub_overview_cache.get_cached_coverage(tenant_id, revision)
         if cached is not None:
             return cached
+    from agent_bom.api.overview_cve_counts import empty_cve_counts
+
     lanes = {domain: _empty_severity() for domain in _COVERAGE_DOMAINS}
+    lanes["_cves"] = empty_cve_counts()
     pager = getattr(hub_store, "list_current_page", None)
     if not callable(pager):
         return lanes, "unavailable"
@@ -1258,9 +1265,13 @@ def _hub_coverage_snapshot(
 def _current_coverage(
     jobs: list[Any],
     hub_coverage: tuple[dict[str, dict[str, int]], str],
+    *,
+    cve_counts: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     hub_lanes, status = hub_coverage
     lanes = {domain: dict(hub_lanes[domain]) for domain in _COVERAGE_DOMAINS}
+    if cve_counts is not None:
+        lanes["_cves"] = cve_counts
     for row in _current_open_scan_findings(jobs):
         _fold_current_coverage(lanes, row)
     return [
@@ -1617,6 +1628,8 @@ def _compose_overview(
 ) -> dict[str, Any]:
     """Fold scan evidence once per durable revision; refresh live overlays."""
     from agent_bom.api.cloud_scan_scopes import scanned_cloud_scopes
+    from agent_bom.api.overview_cve_counts import compose_cve_domain, empty_cve_counts
+    from agent_bom.api.stores import _jobs_is_compacted
 
     if scan_inputs is None:
         estate = _estate_rollup(jobs)
@@ -1636,10 +1649,13 @@ def _compose_overview(
                 }
             )
         empty_hub = ({domain: _empty_severity() for domain in _COVERAGE_DOMAINS}, "complete")
+        cves = empty_cve_counts()
         scan_inputs = {
+            "cves": cves,
+            "cves_complete": not any(_jobs_is_compacted(job) for job in jobs),
             "estate": estate,
             "exec_estate": _exec_estate(estate, jobs),
-            "coverage": _current_coverage(jobs, empty_hub),
+            "coverage": _current_coverage(jobs, empty_hub, cve_counts=cves),
             "posture": _posture_snapshot(jobs),
             "repo_scans": _repo_scan_count(jobs),
             "runtime_results": runtime_results,
@@ -1696,13 +1712,14 @@ def _compose_overview(
         cloud_scopes = scanned_cloud_scopes(jobs)
     cloud_accounts = _cloud_account_count(request, cloud_scopes)
     repo_scans = scan_inputs["repo_scans"]
-    # Fold hub-ingested (pushed) findings into the Vuln/SCA tile so a push-only
-    # estate (findings pushed, no scan job) can't show "0 open CVEs · ok" while
-    # /findings?domain=vuln returns real highs (#3962). Derived from the same hub
-    # spine the drill reads, so the tile reconciles with its own drill-down.
-    vuln_severity = _combined_severity(estate["vuln_severity"], hub_severity)
-    vuln_metric = int(estate["unique_cves"]) + hub_findings
-    vuln_kev = exec_counts["kev"]
+    vuln_domain = compose_cve_domain(
+        scan_inputs.get("cves", empty_cve_counts()),
+        hub_coverage[0].get("_cves", empty_cve_counts()),
+        scan_complete=scan_inputs.get("cves_complete", False),
+        hub_status=hub_coverage[1] if "_cves" in hub_coverage[0] else "unavailable",
+        packages=estate["unique_packages"],
+        graph_href=_cloud_graph_href,
+    )
 
     # Fold hub-ingested findings into the exec top-risk strip so a
     # connector/bulk-ingested estate (scan jobs alone) no longer renders an empty
@@ -1724,27 +1741,7 @@ def _compose_overview(
                 "sources": estate["sources"],
             },
         },
-        "vuln": {
-            "label": "Vuln / SCA",
-            "href": "/findings?issue=vulnerability",
-            "graph_href": _cloud_graph_href(vuln_severity),
-            "metric": vuln_metric,
-            "metric_label": "open CVEs",
-            # No vuln data at all → "idle" (mirrors the sibling scan-scoped tiles),
-            # never a green "ok" on a brand-new zero-finding estate while the
-            # posture headline reads N/A. Only rate the tile once real CVE evidence
-            # exists (metric > 0); the critical/high gate then decides ok/warn/critical.
-            "status": (_status_for(vuln_severity["critical"], vuln_severity["high"]) if vuln_metric > 0 else "idle"),
-            "detail": {
-                "critical": vuln_severity["critical"],
-                "high": vuln_severity["high"],
-                "kev": vuln_kev,
-                "packages": estate["unique_packages"],
-                # Full histogram (incl. ``unrated``) so the UI never renders a
-                # metric that contradicts its severity strip.
-                "severity": vuln_severity,
-            },
-        },
+        "vuln": vuln_domain,
         "code": {
             "label": "Code / repo",
             "href": "/scan",

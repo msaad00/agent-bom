@@ -101,3 +101,17 @@ def all_cve_identifiers(advisory_id: str, aliases: Iterable[str] = ()) -> list[s
     for alias in remaining:
         _add(derive_cve_from_advisory_id(alias) or (alias if alias.upper().startswith("CVE-") else None))
     return cves
+
+
+def cve_alias_metadata(values: object) -> dict[str, list[str]]:
+    """Retain bounded, validated public CVE aliases without arbitrary metadata."""
+    if not isinstance(values, list):
+        return {}
+    aliases = list(
+        dict.fromkeys(
+            cve
+            for value in values[:100]
+            if isinstance(value, str) and len(value) <= 64 and value.isascii() and (cve := derive_cve_from_advisory_id(value)) is not None
+        )
+    )
+    return {"aliases": aliases} if aliases else {}

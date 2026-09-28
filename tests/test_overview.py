@@ -219,7 +219,9 @@ def test_overview_reads_compacted_scan_summary() -> None:
     assert data["posture"]["score"] <= 42.0
     assert data["headline"]["critical"] == 0
     assert data["headline"]["high"] == 0
-    assert data["domains"]["vuln"]["metric"] == 87
+    assert data["domains"]["vuln"]["metric"] == 0
+    assert data["domains"]["vuln"]["count_exact"] is False
+    assert data["domains"]["vuln"]["status"] == "unknown"
 
 
 def _ingest_hub_findings(findings: list[dict], *, tenant_id: str = "default") -> None:
@@ -555,7 +557,7 @@ def test_overview_vuln_tile_ok_when_only_low_severity() -> None:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     get_compliance_hub_store().clear("default")
-    _ingest_hub_findings([{"finding_id": "L-1", "severity": "low", "title": "cve", "vulnerability_id": "CVE-2025-low"}])
+    _ingest_hub_findings([{"finding_id": "L-1", "severity": "low", "title": "cve", "vulnerability_id": "CVE-2025-1234"}])
     data = client_get_overview()
     vuln = data["domains"]["vuln"]
     assert vuln["metric"] > 0
@@ -596,9 +598,9 @@ def test_overview_severity_sum_equals_unique_cves_with_unknown_severity() -> Non
     _clear_jobs()
     _add_done_job(
         [
-            {"vulnerability_id": "CVE-A", "severity": "critical", "risk_score": 9},
-            {"vulnerability_id": "CVE-B", "severity": "unknown", "risk_score": 5},
-            {"vulnerability_id": "CVE-C", "severity": "", "risk_score": 4},
+            {"vulnerability_id": "CVE-2026-1111", "severity": "critical", "risk_score": 9},
+            {"vulnerability_id": "CVE-2026-2222", "severity": "unknown", "risk_score": 5},
+            {"vulnerability_id": "CVE-2026-3333", "severity": "", "risk_score": 4},
         ]
     )
     data = client_get_overview()
@@ -871,6 +873,8 @@ def test_overview_uses_newest_current_snapshot_independent_of_store_order(
         recent("2026-08-20T00:00:00Z"),
         {
             "id": "same-finding",
+            "finding_type": "CVE",
+            "cve_id": "CVE-2026-1234",
             "severity": "critical",
             "is_kev": True,
             "applicable_frameworks": ["soc2"],
@@ -881,6 +885,8 @@ def test_overview_uses_newest_current_snapshot_independent_of_store_order(
         recent("2026-08-21T00:00:00Z"),
         {
             "id": "same-finding",
+            "finding_type": "CVE",
+            "cve_id": "CVE-2026-1234",
             "severity": "low",
             "is_kev": False,
             "applicable_frameworks": [],
@@ -1607,3 +1613,49 @@ def test_scan_aggregate_expires_at_next_window_boundary(monkeypatch):
     expires = overview._scan_aggregate_cache["boundary"][0]
     assert 0 < expires - before <= 2
     overview._reset_overview_cache()
+
+
+def test_overview_cve_metric_excludes_non_cve_findings():
+    _clear_jobs()
+    _ingest_hub_findings(
+        [
+            {"id": "config", "severity": "critical", "finding_type": "CIS_FAIL", "cve_id": "CIS-1", "is_kev": True},
+            {"id": "code", "severity": "critical", "finding_type": "SAST", "cve_id": "B105"},
+            {"id": "advisory", "severity": "high", "finding_type": "CVE", "cve_id": "CVE-2026-1234", "is_kev": True},
+            {"id": "ghsa", "severity": "high", "finding_type": "CVE", "cve_id": "GHSA-aaaa-bbbb-cccc"},
+            {
+                "id": "alias",
+                "severity": "low",
+                "finding_type": "CVE",
+                "cve_id": "GHSA-dddd-eeee-ffff",
+                "aliases": ["CVE-2026-5678"],
+            },
+        ]
+    )
+    data = client_get_overview()
+    vuln = data["domains"]["vuln"]
+    assert vuln["metric"] == 2
+    assert vuln["detail"]["critical"] == 0
+    assert vuln["detail"]["high"] == 1
+    assert vuln["detail"]["kev"] == 1
+    assert data["finding_counts"]["critical"] == 2
+    assert data["finding_counts"]["high"] == 2
+    assert client_get_overview()["domains"]["vuln"] == vuln
+
+
+def test_overview_cve_zero_is_unknown_when_hub_budget_is_exhausted(monkeypatch):
+    from agent_bom.api import compliance_hub_store
+
+    _clear_jobs()
+    _ingest_hub_findings(
+        [
+            {"id": "config-first", "severity": "high", "finding_type": "CIS_FAIL"},
+            {"id": "later-cve", "severity": "high", "finding_type": "CVE", "cve_id": "CVE-2026-1234"},
+        ]
+    )
+    monkeypatch.setattr(compliance_hub_store, "scope_filter_scan_budget", lambda: 1)
+    vuln = client_get_overview()["domains"]["vuln"]
+    assert vuln["metric"] == 0
+    assert vuln["count_exact"] is False
+    assert vuln["evidence_status"] == "partial"
+    assert vuln["status"] == "unknown"

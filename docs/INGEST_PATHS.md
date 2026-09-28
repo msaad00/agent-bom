@@ -50,6 +50,18 @@ SAST findings map to the secure-development outcome PR.PS-06 in
 [NIST CSF 2.0, Appendix A](https://nvlpubs.nist.gov/nistpubs/CSWP/NIST.CSWP.29.pdf).
 This is a finding-to-control association, not a compliance certification.
 
+After ingestion, `GET /v1/overview` reports the vulnerability metric as **open
+CVE findings**: current, open occurrences with a CVE identifier or validated
+CVE alias. The same CVE on two assets is two findings. SAST, misconfigurations
+and advisories with no retained CVE identity still contribute to overall
+posture, but do not inflate this metric. Validated CVE aliases survive hub
+persistence; arbitrary alias strings are not retained.
+
+The metric's severity histogram and KEV count use the same selected rows.
+`count_exact: false` marks a lower bound when the bounded hub read is incomplete
+or scan rows have been compacted; `evidence_status` explains the missing
+coverage. An incomplete zero has status `unknown`, not a clean verdict.
+
 ## Trivy / Grype / Syft JSON
 
 Both lanes accept Trivy, Grype, and Syft output via format auto-detection.

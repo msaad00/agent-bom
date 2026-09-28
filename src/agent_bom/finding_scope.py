@@ -639,18 +639,18 @@ def _safe_control_projection(value: Any) -> list[dict[str, Any]]:
 
 
 def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    """Return the canonical public finding projection without replay-only data.
+    """Project validated public lifecycle/advisory fields over Tier-A redaction.
 
-    Tier-A redaction remains the default-deny base. A narrow set of validated
-    structural fields is restored explicitly so list and export surfaces expose
-    authoritative lifecycle/advisory metadata without leaking descriptions,
-    local paths, raw evidence, or private resource identifiers.
+    Descriptions, local paths, raw evidence and private resource identifiers
+    remain excluded; only validated structural metadata is restored.
     """
+    from agent_bom.advisory_ids import cve_alias_metadata
     from agent_bom.evidence import EvidenceTier, redact_for_persistence
     from agent_bom.security import mask_email
 
     redacted = redact_for_persistence(dict(row), EvidenceTier.SAFE_TO_STORE)
     payload = dict(redacted) if isinstance(redacted, dict) else {}
+    payload.update(cve_alias_metadata(row.get("aliases")))
 
     asset = _safe_asset_projection(row.get("asset"))
     if asset is not None:

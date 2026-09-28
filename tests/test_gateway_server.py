@@ -1668,14 +1668,14 @@ def test_visual_leak_detection_clean_response_passes_through() -> None:
         gw._visual_detector_singleton = None
 
 
-def test_visual_leak_detection_timeout_fails_open_without_blocking_response(monkeypatch) -> None:
+def test_visual_leak_detection_real_timeout_withholds_completed_result(monkeypatch) -> None:
     import agent_bom.gateway_server as gw
 
     class _SlowDetector:
         enabled = True
 
         def check(self, tool_name, content_blocks):
-            time.sleep(0.05)
+            time.sleep(0.2)
             return []
 
         def redact(self, content_blocks):
@@ -1683,7 +1683,7 @@ def test_visual_leak_detection_timeout_fails_open_without_blocking_response(monk
 
     detector = _SlowDetector()
     gw._visual_detector_singleton = detector
-    monkeypatch.setenv("AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS", "0.001")
+    monkeypatch.setenv("AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS", "0.1")
 
     async def fake_caller(upstream, message, extra_headers):
         return {
@@ -1705,7 +1705,9 @@ def test_visual_leak_detection_timeout_fails_open_without_blocking_response(monk
             json=_json_rpc("tools/call", name="take_screenshot", arguments={}),
         )
         assert resp.status_code == 200
-        assert resp.json()["result"]["content"][0]["data"] == "CLEAN"
+        assert resp.json()["error"]["data"]["scan_status"] == "incomplete"
+        assert resp.json()["error"]["data"]["execution_status"] == "upstream_completed"
+        assert "CLEAN" not in resp.text
     finally:
         gw._visual_detector_singleton = None
 

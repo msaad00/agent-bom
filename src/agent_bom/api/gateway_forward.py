@@ -16,7 +16,7 @@ from typing import Any, Callable, Protocol
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-from agent_bom.api.gateway_request import _sanitize_for_log, _strip_gateway_identity_metadata
+from agent_bom.api.gateway_request import _strip_gateway_identity_metadata
 from agent_bom.api.metrics import record_gateway_relay
 from agent_bom.api.tracing import inject_trace_headers
 from agent_bom.gateway_upstreams import UpstreamConfig
@@ -243,58 +243,90 @@ async def _call_upstream(context: GatewayForwardContext, audit: CompletionAudit)
     return upstream_response
 
 
-async def _apply_visual_policy(context: GatewayForwardContext, audit: CompletionAudit, upstream_response: dict[str, Any]) -> None:
-    if context.visual_enabled and isinstance(upstream_response, dict):
-        result = upstream_response.get("result")
-        if isinstance(result, dict):
-            content = result.get("content")
-            if isinstance(content, list) and content:
-                detector = context.visual_detector()
-                tool_name_for_scan = (
-                    context.message.get("params", {}).get("name", "")
-                    if is_tools_call(context.message)
-                    else context.message.get("method", "")
-                )
-                safe_tool_name_for_log = _sanitize_for_log(tool_name_for_scan)
-                from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
+async def _visual_result_unavailable(context: GatewayForwardContext, audit: CompletionAudit, tool: str, reason: str) -> JSONResponse:
+    record_gateway_relay(context.upstream.name, "visual_scan_unavailable")
+    logger.warning("Gateway visual result withheld (reason=%s)", reason)
+    await audit.emit(
+        {
+            "action": "gateway.visual_scan_unavailable",
+            "upstream": context.upstream.name,
+            "tenant_id": context.tenant_id,
+            "reason": reason,
+            "scan_status": "incomplete",
+            "execution_status": "upstream_completed",
+            **context.runtime_event(
+                GatewayRuntimeEventType.DLP_RESULT_BLOCKED,
+                decision="deny",
+                policy_source="visual_dlp",
+                tool=tool,
+                data_action="unverified_result_withheld",
+            ),
+        }
+    )
+    return JSONResponse(
+        {
+            "jsonrpc": "2.0",
+            "id": context.message.get("id"),
+            "error": {
+                "code": -32001,
+                "message": (
+                    "Tool result withheld because visual screening could not complete; do not automatically retry the completed tool call"
+                ),
+                "data": {
+                    "policy_source": "visual_dlp",
+                    "reason": reason,
+                    "scan_status": "incomplete",
+                    "execution_status": "upstream_completed",
+                    "retryable": False,
+                },
+            },
+        },
+        headers=audit.headers(dict(context.rate_limit_headers)) or None,
+    )
 
-                try:
-                    alerts = await run_visual_leak_check(detector, tool_name_for_scan, content)
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "gateway visual leak scan timed out for upstream=%s tool=%s",
-                        context.upstream.name,
-                        safe_tool_name_for_log,
-                    )
-                    alerts = []
-                if alerts:
-                    record_gateway_relay(context.upstream.name, "visual_leak_redacted")
-                    if context.audit_sink is not None:
-                        await audit.emit(
-                            {
-                                "action": "gateway.visual_leak_blocked",
-                                "upstream": context.upstream.name,
-                                "tenant_id": context.tenant_id,
-                                "tool": tool_name_for_scan,
-                                "alert_count": len(alerts),
-                                "leak_types": sorted({a.details.get("leak_type", "") for a in alerts}),
-                                **context.runtime_event(
-                                    GatewayRuntimeEventType.VISUAL_REDACTED,
-                                    decision="allow",
-                                    policy_source="visual_dlp",
-                                    tool=str(tool_name_for_scan),
-                                    data_action="visual_redacted",
-                                ),
-                            }
-                        )
-                    try:
-                        result["content"] = await run_visual_leak_redact(detector, content)
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            "gateway visual leak redaction timed out for upstream=%s tool=%s",
-                            context.upstream.name,
-                            safe_tool_name_for_log,
-                        )
+
+async def _apply_visual_policy(
+    context: GatewayForwardContext, audit: CompletionAudit, upstream_response: dict[str, Any]
+) -> JSONResponse | None:
+    if not context.visual_enabled or not isinstance(upstream_response, dict):
+        return None
+    result = upstream_response.get("result")
+    content = result.get("content") if isinstance(result, dict) else None
+    if not isinstance(result, dict) or not isinstance(content, list) or not content:
+        return None
+    tool = str(extract_tool_name(context.message) or context.message.get("method", ""))
+    from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
+
+    try:
+        detector = context.visual_detector()
+        alerts = await run_visual_leak_check(detector, tool, content)
+        if not alerts:
+            return None
+        # Success is recorded only after the replacement content exists.
+        result["content"] = await run_visual_leak_redact(detector, content)
+    except asyncio.TimeoutError:
+        return await _visual_result_unavailable(context, audit, tool, "visual_scan_timeout")
+    except Exception:  # noqa: BLE001 - fail closed after an already completed tool call
+        return await _visual_result_unavailable(context, audit, tool, "visual_scan_failed")
+    record_gateway_relay(context.upstream.name, "visual_leak_redacted")
+    await audit.emit(
+        {
+            "action": "gateway.visual_leak_blocked",
+            "upstream": context.upstream.name,
+            "tenant_id": context.tenant_id,
+            "tool": tool,
+            "alert_count": len(alerts),
+            "leak_types": sorted({a.details.get("leak_type", "") for a in alerts}),
+            **context.runtime_event(
+                GatewayRuntimeEventType.VISUAL_REDACTED,
+                decision="allow",
+                policy_source="visual_dlp",
+                tool=tool,
+                data_action="visual_redacted",
+            ),
+        }
+    )
+    return None
 
 
 async def _apply_response_policy(
@@ -373,7 +405,9 @@ async def forward_authorized_request(context: GatewayForwardContext) -> JSONResp
     audit = CompletionAudit(context)
     upstream_response = await _call_upstream(context, audit)
     record_gateway_relay(context.upstream.name, "forwarded")
-    await _apply_visual_policy(context, audit, upstream_response)
+    visual_failure = await _apply_visual_policy(context, audit, upstream_response)
+    if visual_failure is not None:
+        return visual_failure
     response = await _apply_response_policy(context, audit, upstream_response)
     if isinstance(response, JSONResponse):
         return response

@@ -1606,12 +1606,23 @@ def test_scan_aggregate_expires_at_next_window_boundary(monkeypatch):
 
     overview._reset_overview_cache()
     monkeypatch.setattr(time_window, "default_window_days", lambda: 90)
-    now = datetime.now(timezone.utc)
+    now = datetime(2026, 9, 28, tzinfo=timezone.utc)
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    clock = [100.0]
+    monkeypatch.setattr(overview, "datetime", FixedDatetime)
+    monkeypatch.setattr(overview.time, "monotonic", lambda: clock[0])
     job = SimpleNamespace(completed_at=(now - timedelta(days=90) + timedelta(seconds=2)).isoformat())
-    before = overview.time.monotonic()
     overview._scan_aggregate_put("boundary", {"count": 1}, [job])
-    expires = overview._scan_aggregate_cache["boundary"][0]
-    assert 0 < expires - before <= 2
+    assert overview._scan_aggregate_cache["boundary"][0] == 102.0
+    clock[0] = 101.999
+    assert overview._scan_aggregate_get("boundary") == {"count": 1}
+    clock[0] = 102.0
+    assert overview._scan_aggregate_get("boundary") is None
     overview._reset_overview_cache()
 
 

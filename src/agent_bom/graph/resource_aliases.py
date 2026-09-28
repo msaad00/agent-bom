@@ -13,7 +13,7 @@ def _resource_tail(value: Any) -> str:
     normalized = _clean_graph_part(value).rstrip("/")
     if not normalized:
         return ""
-    return normalized.rsplit("/", 1)[-1].rsplit(":", 1)[-1].casefold()
+    return normalized.rsplit("/", 1)[-1].rsplit(":", 1)[-1]
 
 
 _CloudResourceAliasIndex = dict[tuple[str, str], set[str]]
@@ -22,14 +22,16 @@ _CloudResourceAliasIndex = dict[tuple[str, str], set[str]]
 def _build_cloud_resource_alias_index(graph: UnifiedGraph) -> _CloudResourceAliasIndex:
     """Index provider-native, typed, and name aliases in one graph pass."""
     index: _CloudResourceAliasIndex = defaultdict(set)
-    for node in graph.nodes_by_type(EntityType.CLOUD_RESOURCE):
+    for node in [*graph.nodes_by_type(EntityType.CLOUD_RESOURCE), *graph.nodes_by_type(EntityType.DATA_STORE)]:
         provider = _clean_graph_part(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).casefold()
         if not provider:
             continue
         identifiers = {
-            _clean_graph_part(node.attributes.get("resource_id")).rstrip("/").casefold(),
-            _clean_graph_part(node.attributes.get("resource_name")).rstrip("/").casefold(),
+            _clean_graph_part(node.attributes.get("resource_id")).rstrip("/"),
+            _clean_graph_part(node.attributes.get("resource_name")).rstrip("/"),
         }
+        if provider == "azure":
+            identifiers = {value.casefold() for value in identifiers}
         identifiers.discard("")
         kinds = {
             _clean_graph_part(node.attributes.get("resource_type")).casefold(),
@@ -55,6 +57,7 @@ def _resolve_cloud_resource_node_id(
     resource_id: Any,
     *,
     alias_index: _CloudResourceAliasIndex | None = None,
+    account_id: str = "",
 ) -> str | None:
     """Resolve a finding resource reference to one existing inventory node.
 
@@ -69,21 +72,35 @@ def _resolve_cloud_resource_node_id(
     if not raw or not provider_key:
         return None
 
-    raw_key = raw.casefold()
-    raw_tail = _resource_tail(raw)
+    raw_key = raw.casefold() if provider_key == "azure" else raw
+    raw_tail = _resource_tail(raw_key)
     path_parts = [part.casefold() for part in raw.split("/") if part]
     type_hint = path_parts[-2] if len(path_parts) >= 2 and not raw_key.startswith("arn:") else ""
 
     index = alias_index if alias_index is not None else _build_cloud_resource_alias_index(graph)
     candidate_sets = [index.get((provider_key, f"exact:{raw_key}"), set())]
-    if type_hint:
+    # A native reference must match exactly: its account/path is authority,
+    # never a hint to discard when a foreign same-named asset exists.
+    qualified = raw.startswith(("arn:", "/", "https://", "projects/", "folders/", "organizations/"))
+    if type_hint and not qualified:
         candidate_sets.append(index.get((provider_key, f"typed:{type_hint}:{raw_tail}"), set()))
-    candidate_sets.append(index.get((provider_key, f"name:{raw_tail}"), set()))
+    if not qualified:
+        candidate_sets.append(index.get((provider_key, f"name:{raw_tail}"), set()))
 
     for candidates in candidate_sets:
+        if account_id:
+            candidates = {node_id for node_id in candidates if _matches_account(graph, node_id, provider_key, account_id)}
         unique = sorted(candidates)
         if len(unique) == 1:
             return unique[0]
         if len(unique) > 1:
             return None
     return None
+
+
+def _matches_account(graph: UnifiedGraph, node_id: str, provider: str, account_id: str) -> bool:
+    recorded = str(graph.nodes[node_id].attributes.get("account_id") or "").strip()
+    requested = account_id.strip()
+    if provider == "azure":
+        return recorded.casefold() == requested.casefold()
+    return recorded == requested

@@ -106,7 +106,7 @@ def test_public_ip_exposed_to_load_balancer_edge() -> None:
     }
     g = build_unified_graph_from_report(report)
     edges = list(g.edges.values()) if isinstance(g.edges, dict) else list(g.edges)
-    pip_node = "cloud_resource:azure:public_ip:pip"
-    lb_node = "cloud_resource:azure:load_balancer:lb"
+    pip_node = next(n.id for n in g.nodes.values() if n.attributes.get("resource_id") == pip_arm)
+    lb_node = next(n.id for n in g.nodes.values() if n.attributes.get("resource_id") == "/.../lb")
     exposed = [e for e in edges if e.relationship.value == "exposed_to" and e.source == pip_node and e.target == lb_node]
     assert exposed, "no EXPOSED_TO edge from public IP to the load balancer it fronts"

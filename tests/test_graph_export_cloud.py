@@ -31,8 +31,11 @@ def _scan() -> dict:
 
 def test_cli_graph_export_includes_cloud_nodes() -> None:
     g = build_graph_from_scan_data(_scan())
-    ids = {n["id"] for n in to_json(g)["nodes"]}
-    assert "cloud_resource:aws:rds:database:prod-db" in ids  # AWS resource
+    exported = to_json(g)["nodes"]
+    ids = {node["id"] for node in exported}
+    aws_database = next(node for node in exported if node.get("attributes", {}).get("resource_name") == "prod-db")
+    assert aws_database["id"] in ids
+    assert aws_database["attributes"]["resource_id"] == "arn:rds"  # incomplete ARN remains scoped evidence
     assert "account:aws:111122223333" in ids  # cloud account
     assert "data_store:snowflake:DB.PUBLIC.ORDERS" in ids  # Snowflake object
     # local nodes still present

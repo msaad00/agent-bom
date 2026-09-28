@@ -170,7 +170,7 @@ def test_assignment_scope_matches_inventoried_resource_node() -> None:
     _, edges = _rbac_graph()
     targets = {e.target for e in edges}
     # the kv assignment lands on the SAME node id the inventory created, not a thin one
-    assert "cloud_resource:azure:secret_store:kv1" in targets
+    assert "cloud_resource:azure:secret_store:/subscriptions/sub1/resourcegroups/rg/providers/microsoft.keyvault/vaults/kv1" in targets
 
 
 def test_subscription_scope_targets_account_node_and_is_privileged() -> None:

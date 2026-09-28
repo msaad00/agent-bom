@@ -1122,35 +1122,36 @@ def test_graph_emits_estate_nodes_and_owns_edges(monkeypatch: pytest.MonkeyPatch
     from agent_bom.graph.types import EntityType, RelationshipType
 
     nodes = graph.nodes
+    estate_ids = {n.attributes.get("resource_name"): n.id for n in nodes.values() if n.id.startswith("cloud_resource:gcp:")}
     account_id = "account:gcp:proj-1"
 
     # GKE cluster → CLOUD_RESOURCE, public endpoint exposed.
-    gke_id = "cloud_resource:gcp:gke:container_cluster:c-1"
+    gke_id = estate_ids["public-gke"]
     assert gke_id in nodes
     assert nodes[gke_id].entity_type == EntityType.CLOUD_RESOURCE
     assert nodes[gke_id].attributes["internet_exposed"] is True
 
     # Cloud Run public service exposed.
-    run_id = "cloud_resource:gcp:run:function:public-api"
+    run_id = estate_ids["public-api"]
     assert run_id in nodes
     assert nodes[run_id].attributes["internet_exposed"] is True
 
     # Cloud SQL → DATA_STORE, public IP exposed (feeds CNAPP/attack-paths).
-    sql_id = "cloud_resource:gcp:cloudsql:database:public-db"
+    sql_id = estate_ids["public-db"]
     assert sql_id in nodes
     assert nodes[sql_id].entity_type == EntityType.DATA_STORE
     assert nodes[sql_id].attributes["internet_exposed"] is True
 
     # VPC, disk, Pub/Sub topic present.
-    assert "cloud_resource:gcp:compute:virtual_network:default" in nodes
-    assert "cloud_resource:gcp:compute:storage:web-disk" in nodes
-    assert "cloud_resource:gcp:pubsub:messaging:abom-demo-topic" in nodes
+    assert estate_ids["default"] in nodes
+    assert estate_ids["web-disk"] in nodes
+    assert estate_ids["abom-demo-topic"] in nodes
 
     # Every estate node is OWNS-linked from the project/account node.
     owns_targets = {e.target for e in graph.edges if e.relationship == RelationshipType.OWNS and e.source == account_id}
     assert gke_id in owns_targets
     assert sql_id in owns_targets
-    assert "cloud_resource:gcp:pubsub:messaging:abom-demo-topic" in owns_targets
+    assert estate_ids["abom-demo-topic"] in owns_targets
 
 
 # ---------------------------------------------------------------------------

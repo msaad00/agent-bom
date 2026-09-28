@@ -13,7 +13,7 @@ def _inventory() -> dict:
         "elb_load_balancers": [
             {
                 "name": "web-alb",
-                "arn": "arn:lb",
+                "arn": "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/web-alb",
                 "scheme": "internet-facing",
                 "lb_type": "application",
                 "internet_exposed": True,
@@ -30,8 +30,23 @@ def _inventory() -> dict:
                 "location": "us-east-1",
             }
         ],
-        "kms_keys": [{"name": "key-1", "arn": "arn:key", "enabled": True, "rotation_enabled": False, "location": "us-east-1"}],
-        "secrets": [{"name": "db-creds", "arn": "arn:sec", "rotation_enabled": False, "location": "us-east-1"}],
+        "kms_keys": [
+            {
+                "name": "key-1",
+                "arn": "arn:aws:kms:us-east-1:111122223333:key/key-1",
+                "enabled": True,
+                "rotation_enabled": False,
+                "location": "us-east-1",
+            }
+        ],
+        "secrets": [
+            {
+                "name": "db-creds",
+                "arn": "arn:aws:secretsmanager:us-east-1:111122223333:secret:db-creds",
+                "rotation_enabled": False,
+                "location": "us-east-1",
+            }
+        ],
     }
 
 
@@ -42,16 +57,16 @@ def _build():
 
 def test_internet_facing_elb_flagged_exposed() -> None:
     g, _ = _build()
-    lb = g.nodes["cloud_resource:aws:elbv2:load_balancer:web-alb"]
+    lb = g.nodes["cloud_resource:aws:elbv2:load_balancer:arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/web-alb"]
     assert lb.attributes["internet_exposed"] is True
 
 
 def test_vpc_kms_secret_nodes_created_and_owned() -> None:
     g, edges = _build()
     for nid in (
-        "cloud_resource:aws:ec2:virtual_network:vpc-1",
-        "cloud_resource:aws:kms:key:key-1",
-        "cloud_resource:aws:secretsmanager:secret:db-creds",
+        "cloud_resource:aws:ec2:virtual_network:scoped/111122223333/us-east-1//native/vpc-1",
+        "cloud_resource:aws:kms:key:arn:aws:kms:us-east-1:111122223333:key/key-1",
+        "cloud_resource:aws:secretsmanager:secret:arn:aws:secretsmanager:us-east-1:111122223333:secret:db-creds",
     ):
         assert nid in g.nodes
         assert ("account:aws:111122223333", nid, "owns") in edges

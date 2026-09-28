@@ -18,6 +18,7 @@ from agent_bom.api.tracing import get_tracer
 from agent_bom.canonical_ids import canonical_graph_node_id
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
 from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
+from agent_bom.core.cloud_identity import cloud_resource_node_id
 from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.agent_projection import project_agents
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
@@ -3583,7 +3584,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             name = _clean_graph_part(item.get("name"))
             if not name:
                 continue
-            node_id = f"cloud_resource:{provider}:{svc}:{rtype}:{name}"
+            node_id = cloud_resource_node_id(provider, f"{svc}:{rtype}", item, account_id, region)
             exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed", "endpoint_public")
             item_env = _resource_environment(item)
             graph.add_node(
@@ -3625,17 +3626,17 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     # ── GCP estate breadth (GKE / Cloud Run / Functions / Cloud SQL / VPC /
     # disks / Pub/Sub) → CLOUD_RESOURCE or DATA_STORE, OWNS from the project. ──
     # Mirrors the AWS service loop above. Cloud SQL is a DATA_STORE so DSPM tiers
-    # apply; a public-IP instance carries `internet_exposed` for CNAPP. The id key
-    # (id_field) keeps a stable node id per resource (full self-link / uid).
+    # apply; public-IP instances carry `internet_exposed` for CNAPP. Native IDs
+    # retain provider scope; local identifiers are bound to project and location.
     if provider == "gcp":
-        for coll_key, svc, rtype, kind, label, is_data, id_field in (
-            ("gke_clusters", "gke", "container_cluster", "gke-cluster", "gke cluster", False, "id"),
-            ("cloud_run_services", "run", "function", "cloud-run-service", "cloud run service", False, "name"),
-            ("cloud_functions", "cloudfunctions", "function", "cloud-function", "cloud function", False, "name"),
-            ("cloud_sql_instances", "cloudsql", "database", "cloud-sql-instance", "cloud sql database", True, "name"),
-            ("vpc_networks", "compute", "virtual_network", "vpc-network", "vpc network", False, "name"),
-            ("disks", "compute", "storage", "persistent-disk", "persistent disk", False, "name"),
-            ("pubsub_topics", "pubsub", "messaging", "pubsub-topic", "pubsub topic", False, "name"),
+        for coll_key, svc, rtype, kind, label, is_data in (
+            ("gke_clusters", "gke", "container_cluster", "gke-cluster", "gke cluster", False),
+            ("cloud_run_services", "run", "function", "cloud-run-service", "cloud run service", False),
+            ("cloud_functions", "cloudfunctions", "function", "cloud-function", "cloud function", False),
+            ("cloud_sql_instances", "cloudsql", "database", "cloud-sql-instance", "cloud sql database", True),
+            ("vpc_networks", "compute", "virtual_network", "vpc-network", "vpc network", False),
+            ("disks", "compute", "storage", "persistent-disk", "persistent disk", False),
+            ("pubsub_topics", "pubsub", "messaging", "pubsub-topic", "pubsub topic", False),
         ):
             for item in inventory.get(coll_key, []) or []:
                 if not isinstance(item, dict):
@@ -3643,8 +3644,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
                 name = _clean_graph_part(item.get("name"))
                 if not name:
                     continue
-                id_key = _clean_graph_part(item.get(id_field)) or name
-                node_id = f"cloud_resource:gcp:{svc}:{rtype}:{id_key}"
+                node_id = cloud_resource_node_id("gcp", f"{svc}:{rtype}", item, account_id, region)
                 exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed")
                 item_env = _resource_environment(item)
                 graph.add_node(
@@ -3909,7 +3909,7 @@ def _add_normalized_cloud_resources(
         name = _clean_graph_part(res.name)
         if not name:
             continue
-        node_id = f"cloud_resource:{provider}:{res.resource_type.value}:{name}"
+        node_id = cloud_resource_node_id(provider, res.resource_type.value, res.raw or {}, res.account or account_id, region)
         raw = res.raw or {}
         exposure = _recorded_exposure_attributes(raw, "internet_facing")
         if res.resource_type is CloudResourceType.PUBLIC_IP and raw.get("ip_address"):

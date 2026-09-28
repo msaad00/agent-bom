@@ -574,3 +574,23 @@ snapshots no longer inherit unrelated timestamps or automatically close earlier
 observations. Existing stored interval ends are not rewritten; rebuild from
 original source evidence when an earlier version inferred an end from absence.
 Verified access removal requires fresh, scoped native evidence and evaluation.
+
+### Native cloud resource identity
+
+AWS service resources (RDS, DynamoDB, Lambda, EKS, ELB, VPC, KMS and Secrets
+Manager), GCP estate resources (GKE, Cloud Run, Functions, Cloud SQL, VPC, disks
+and Pub/Sub), and normalized Azure resources use qualified provider IDs when
+available. Local IDs and name-only records include the account/project, location
+and resource group in their graph key. Native evidence stays unchanged; Azure
+ARM keys compare case-insensitively. Renaming a display label does not replace
+a node identified by a qualified native ID.
+
+Benchmark joins use the recorded account scope and preserve native database
+nodes. A missing native-ID match or ambiguous name produces an unresolved
+resource reference, never a fallback to a foreign same-named asset. Other
+inventory paths retain their existing identity contracts.
+
+These keys differ from older name-based snapshots. Rebuild a snapshot from its
+source report to adopt them; historical snapshots and their saved node links
+retain their original IDs. No implicit cross-cloud identity equivalence is
+inferred from matching names.

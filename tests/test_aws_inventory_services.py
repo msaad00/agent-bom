@@ -56,8 +56,8 @@ def _build():
 
 def test_rds_and_dynamo_are_data_stores() -> None:
     g, _ = _build()
-    rds = g.nodes["cloud_resource:aws:rds:database:prod-db"]
-    ddb = g.nodes["cloud_resource:aws:dynamodb:database:sessions"]
+    rds = g.nodes["cloud_resource:aws:rds:database:arn:aws:rds:us-east-1:111122223333:db:prod-db"]
+    ddb = g.nodes["cloud_resource:aws:dynamodb:database:arn:aws:dynamodb:us-east-1:111122223333:table/sessions"]
     assert rds.entity_type.value == "data_store" and rds.attributes["is_data_store"] is True
     assert rds.attributes["internet_exposed"] is True  # publicly_accessible
     assert rds.attributes["engine"] == "postgres"
@@ -66,18 +66,21 @@ def test_rds_and_dynamo_are_data_stores() -> None:
 
 def test_lambda_and_eks_are_cloud_resources() -> None:
     g, _ = _build()
-    assert g.nodes["cloud_resource:aws:lambda:function:ingest"].entity_type.value == "cloud_resource"
-    eks = g.nodes["cloud_resource:aws:eks:container_cluster:main"]
+    assert (
+        g.nodes["cloud_resource:aws:lambda:function:arn:aws:lambda:us-east-1:111122223333:function:ingest"].entity_type.value
+        == "cloud_resource"
+    )
+    eks = g.nodes["cloud_resource:aws:eks:container_cluster:arn:aws:eks:us-east-1:111122223333:cluster/main"]
     assert eks.attributes["internet_exposed"] is True  # public endpoint
 
 
 def test_all_new_resources_owned_by_account() -> None:
     _, edges = _build()
     for nid in (
-        "cloud_resource:aws:rds:database:prod-db",
-        "cloud_resource:aws:dynamodb:database:sessions",
-        "cloud_resource:aws:lambda:function:ingest",
-        "cloud_resource:aws:eks:container_cluster:main",
+        "cloud_resource:aws:rds:database:arn:aws:rds:us-east-1:111122223333:db:prod-db",
+        "cloud_resource:aws:dynamodb:database:arn:aws:dynamodb:us-east-1:111122223333:table/sessions",
+        "cloud_resource:aws:lambda:function:arn:aws:lambda:us-east-1:111122223333:function:ingest",
+        "cloud_resource:aws:eks:container_cluster:arn:aws:eks:us-east-1:111122223333:cluster/main",
     ):
         assert ("account:aws:111122223333", nid, "owns") in edges
 

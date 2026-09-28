@@ -936,16 +936,6 @@
       "complexity": 17,
       "function_lines": 160
     },
-    "cli/agents/scan_cmd.py": {
-      "file_lines": 3539
-    },
-    "cli/agents/scan_cmd.py::_exit_incomplete_scan_with_partial_summary": {
-      "function_lines": 103
-    },
-    "cli/agents/scan_cmd.py::scan": {
-      "complexity": 396,
-      "function_lines": 3156
-    },
     "cli/options_sources.py::input_options": {
       "function_lines": 129
     },

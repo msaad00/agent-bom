@@ -42,6 +42,38 @@ shows verbatim in the `/healthz` output. For the surface map around the
 gateway see [`RUNTIME_REFERENCE.md`](RUNTIME_REFERENCE.md); for policy-layer
 ordering inside a single tool call see `docs/POLICY_PRECEDENCE.md`.
 
+## Conditional-access header authority
+
+Gateway transport authentication does not authorize a client to assert its own
+MFA, directory groups, managed device, approved client, environment or risk score.
+By default, `x-agent-*` policy-context headers provide no trusted access evidence.
+Policies requiring those attributes deny when they are unavailable; numeric risk
+constraints require finite scores and finite numeric bounds, including a maximum.
+
+After configuring incoming gateway authentication as described in
+[`RUNTIME_REFERENCE.md`](RUNTIME_REFERENCE.md), configure the controlled
+identity/posture proxy transport-peer CIDRs explicitly:
+
+```bash
+AGENT_BOM_GATEWAY_TRUSTED_CONTEXT_PROXY_CIDRS=10.42.0.10/32 \
+  agent-bom gateway serve --upstreams upstreams.yaml --bind 0.0.0.0:8090
+```
+
+The proxy must authenticate and
+bind these assertions to the caller, remove client-supplied `x-agent-*` headers,
+and overwrite them with verified values. Restrict direct access to the gateway.
+A trusted network is an operator-controlled boundary, not proof of MFA by itself.
+The setting accepts at most 32 comma-separated IPv4/IPv6 networks, is resolved at
+startup, and rejects invalid or unrestricted `/0` networks. Programmatic
+`GatewaySettings.trusted_context_proxy_cidrs=()` overrides the environment and
+disables this trust. Restart to apply configuration changes.
+
+The gateway CLI disables Uvicorn's automatic forwarded-peer rewriting so the
+transport peer remains available for this decision. Custom ASGI launchers must
+also preserve the original peer (for Uvicorn, `--no-proxy-headers`).
+`X-Forwarded-For` cannot establish context authority; existing trusted-proxy
+settings only resolve the client IP used by separate source-CIDR conditions.
+
 ## What is *not* an isolation boundary
 
 The stdio proxy's launcher check (`agent_bom.security.require_recognized_launcher`)

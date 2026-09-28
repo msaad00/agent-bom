@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import HTTPException, Request
 
 from agent_bom.api.forwarded_identity import resolve_forwarded_client_ip
+from agent_bom.api.gateway_context import authorized_context_headers
 from agent_bom.runtime.gateway_relay_contract import MAX_GATEWAY_RELAY_MESSAGE_BYTES
 from agent_bom.security import sanitize_text
 
@@ -34,22 +36,23 @@ def _request_source_ip(request: Request) -> str:
 
 
 def _request_environment(request: Request) -> str:
-    """Resolve the caller-declared environment for conditional-access conditions."""
-    return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
+    """Resolve the trusted-proxy environment for conditional-access conditions."""
+    return (authorized_context_headers(request).get("x-agent-environment", "") or "").strip()[:60]
 
 
 def _request_risk_score(request: Request) -> float | None:
-    """Resolve a caller/proxy-asserted risk score for conditional-access gates.
+    """Resolve a trusted-proxy risk score for conditional-access gates.
 
     Read from the ``x-agent-risk-score`` header (set by an upstream risk engine
-    or trust proxy). Absent/invalid → ``None`` so a min/max-risk condition that
-    requires a score simply does not match and the call is unaffected.
+    or trust proxy). Missing/untrusted evidence is ``None``; configured risk
+    constraints deny when a finite score is unavailable.
     """
-    raw = (request.headers.get("x-agent-risk-score", "") or "").strip()
+    raw = (authorized_context_headers(request).get("x-agent-risk-score", "") or "").strip()
     if not raw:
         return None
     try:
-        return float(raw)
+        score = float(raw)
+        return score if math.isfinite(score) else None
     except ValueError:
         return None
 
@@ -62,7 +65,7 @@ def _request_context_attributes(request: Request) -> dict[str, str]:
     Bounded to keep the decision context small and deterministic.
     """
     attributes: dict[str, str] = {}
-    for header, value in request.headers.items():
+    for header, value in authorized_context_headers(request).items():
         lowered = header.lower()
         if lowered.startswith("x-agent-ctx-"):
             key = lowered[len("x-agent-ctx-") :]
@@ -80,7 +83,7 @@ def _request_device_id(request: Request) -> str:
     posture broker). Empty when unset, in which case a device condition simply
     fails closed for policies that require one.
     """
-    return (request.headers.get("x-agent-device-id", "") or "").strip()[:200]
+    return (authorized_context_headers(request).get("x-agent-device-id", "") or "").strip()[:200]
 
 
 def _request_groups(request: Request) -> list[str]:
@@ -89,7 +92,7 @@ def _request_groups(request: Request) -> list[str]:
     Groups arrive comma-separated in the ``x-agent-groups`` header (asserted by
     the IdP / trust proxy after authentication). Bounded and de-duplicated.
     """
-    raw = (request.headers.get("x-agent-groups", "") or "").strip()
+    raw = (authorized_context_headers(request).get("x-agent-groups", "") or "").strip()
     if not raw:
         return []
     seen: list[str] = []
@@ -108,7 +111,7 @@ def _request_client_id(request: Request) -> str:
     Read from the ``x-agent-client-id`` header (the client app making the call).
     Empty when unset; a client condition fails closed for policies requiring one.
     """
-    return (request.headers.get("x-agent-client-id", "") or "").strip()[:200]
+    return (authorized_context_headers(request).get("x-agent-client-id", "") or "").strip()[:200]
 
 
 def _request_cost_center(request: Request, message: dict[str, Any]) -> str:

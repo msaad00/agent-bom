@@ -99,6 +99,8 @@ def test_gateway_modules_select_cross_surface_enforcement_contracts(tmp_path: Pa
         "src/agent_bom/runtime/gateway_settings.py",
         "src/agent_bom/api/gateway_auth.py",
         "src/agent_bom/api/gateway_request.py",
+        "src/agent_bom/api/gateway_context.py",
+        "src/agent_bom/runtime/risk_conditions.py",
         "src/agent_bom/api/gateway_rate_limit.py",
         "src/agent_bom/runtime/trace_metadata.py",
     ):

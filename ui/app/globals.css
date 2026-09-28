@@ -913,6 +913,8 @@ main > div {
 .context-map-panels { @apply grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]; }
 .context-map-canvas { @apply relative min-w-0 overflow-hidden rounded-xl border border-[var(--border-subtle)]; height: 34rem; }
 .context-map-canvas .react-flow { background: var(--surface-elevated); }
+.context-map-canvas .react-flow__attribution { background: var(--surface); color: var(--text-secondary); }
+.context-map-canvas .react-flow__attribution a { color: inherit; }
 .context-map-inspector { @apply min-w-0 space-y-4 overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5; max-height: none; }
 .context-map-node { @apply h-20 w-52 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-3 text-[var(--foreground)] shadow-sm; }
 .context-map-node[data-selected] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), 0 3px 12px var(--shadow-color); }

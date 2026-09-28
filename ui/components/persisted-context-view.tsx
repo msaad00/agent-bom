@@ -114,7 +114,7 @@ function OwnedContextView({ owner }: { owner: string }) {
       {jobs.map(job => <option key={job.job_id} value={job.job_id}>{job.job_id}</option>)}
     </select></label>
     <details className="context-popover"><summary className="context-action inline-flex cursor-pointer items-center gap-2">Other views <ChevronDown size={14} aria-hidden="true" /></summary><div className="context-popover-panel"><GraphLensSwitcher variant="compact" scanId={scanId || undefined} /></div></details></div>
-    <div className="flex gap-2">{jobOffset > 0 && <button className="context-action" onClick={() => setJobOffset(offset => Math.max(0, offset - 24))}>Previous scans</button>}{jobOffset + 24 < jobTotal && <button className="context-action" onClick={() => setJobOffset(offset => offset + 24)}>Next scans</button>}</div></header>
+    {(jobOffset > 0 || jobOffset + 24 < jobTotal) && <div className="flex gap-2">{jobOffset > 0 && <button className="context-action" onClick={() => setJobOffset(offset => Math.max(0, offset - 24))}>Previous scans</button>}{jobOffset + 24 < jobTotal && <button className="context-action" onClick={() => setJobOffset(offset => offset + 24)}>Next scans</button>}</div>}</header>
     {error && <p role="alert">{error}</p>}
     {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId])} scanId={scanId} owner={owner} /> : <p role="status">{jobId ? "Resolving snapshot…" : "Choose a completed scan to inspect persisted relationships."}</p>}
   </section>;

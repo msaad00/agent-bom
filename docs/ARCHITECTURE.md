@@ -25,6 +25,13 @@ tenant and generation contract; the API module retains its compatible type expor
 
 ## 1. System Overview — Product Surfaces
 
+Gateway composition remains in `gateway_server.py`. Its HTTP authentication,
+bounded request context and shared rate-limit selection are owned by
+`api/gateway_auth.py`, `api/gateway_request.py` and `api/gateway_rate_limit.py`.
+Transport pooling, audit delivery and settings live under `runtime/gateway_*`.
+Authentication-store failures deny traffic; a configured shared rate limiter
+never falls back to process-local state when initialization fails.
+
 ```
 pip install agent-bom    → shared core engine plus focused CLI entry points
 ```

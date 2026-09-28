@@ -1705,7 +1705,7 @@
       "file_lines": 681
     },
     "gateway_server.py": {
-      "file_lines": 3238
+      "file_lines": 2919
     },
     "gateway_server.py::create_gateway_app": {
       "complexity": 235,

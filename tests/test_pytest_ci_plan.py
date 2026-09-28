@@ -78,6 +78,22 @@ def test_mcp_registration_edits_select_tool_contracts(tmp_path: Path) -> None:
     assert select_targeted_tests(changed_files=[Path("src/agent_bom/cloud/aws.py")], root=tmp_path) == []
 
 
+def test_tenant_worker_edits_cover_each_dispatch_surface(tmp_path: Path) -> None:
+    expected = sorted(
+        tmp_path / path
+        for path in (
+            "tests/test_report_worker_recovery.py",
+            "tests/test_report_jobs_postgres.py",
+            "tests/test_distributed_scan_queue.py",
+            "tests/test_exports_api.py",
+            "tests/api/test_api_scan_worker_tenant_binding.py",
+        )
+    )
+    for path in [*expected, tmp_path / "tests/test_other.py"]:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path("src/agent_bom/api/tenant_worker.py")], root=tmp_path) == expected
+
+
 def test_gateway_modules_select_cross_surface_enforcement_contracts(tmp_path: Path) -> None:
     expected = sorted(
         tmp_path / "tests" / name

@@ -85,3 +85,31 @@ def test_postgres_report_claim_recovery_and_fencing(report_stores):
     assert not run_tenant_bound(tenant, first.finish, done, old)
     assert run_tenant_bound(tenant, second.finish, done, new)
     assert run_tenant_bound(tenant, first.get, job.job_id, tenant).row_count == 9
+
+
+def test_tenant_worker_uses_rls_inside_maintenance_dispatch(report_stores):
+    from agent_bom.api.postgres_common import (
+        _current_tenant,
+        _tenant_connection,
+        bypass_tenant_rls,
+        is_tenant_rls_bypassed,
+    )
+
+    first, second, tenant = report_stores
+    job = new_job(tenant)
+    assert run_tenant_bound(tenant, first.enqueue, job, 2)
+
+    def unfiltered_read():
+        with _tenant_connection(second._pool) as conn:
+            privileges = conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone()
+            assert privileges == (False, False)
+            assert conn.execute("SELECT current_setting('app.bypass_rls')").fetchone() == ("0",)
+            return conn.execute("SELECT job_id FROM report_jobs WHERE job_id = %s", (job.job_id,)).fetchall()
+
+    before = _current_tenant.get()
+    with bypass_tenant_rls(audit=False, warn=False):
+        assert run_tenant_bound(tenant, unfiltered_read) == [(job.job_id,)]
+        assert run_tenant_bound("foreign-" + tenant, unfiltered_read) == []
+        assert is_tenant_rls_bypassed()
+        assert _current_tenant.get() == before
+    assert not is_tenant_rls_bypassed()

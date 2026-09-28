@@ -6,7 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import Executor, Future
 from typing import ParamSpec, TypeVar
 
-from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+from agent_bom.api.postgres_common import _bypass_tenant_rls, reset_current_tenant, set_current_tenant
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
 P = ParamSpec("P")
@@ -20,12 +20,14 @@ def run_tenant_bound(
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> R:
-    """Run one callable under ``tenant_id`` and always restore prior context."""
+    """Run tenant work without inherited maintenance privileges; restore on exit."""
 
     token = set_current_tenant(require_explicit_tenant_id(tenant_id))
+    bypass_token = _bypass_tenant_rls.set(False)
     try:
         return function(*args, **kwargs)
     finally:
+        _bypass_tenant_rls.reset(bypass_token)
         reset_current_tenant(token)
 
 

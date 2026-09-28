@@ -198,6 +198,13 @@ answerable · outputs land in the gate, ticket, or SIEM you already run.
 The UI has no privileged data path, but that does not make HTTP middleware a
 universal seam for the CLI, MCP server, or runtime gateway.
 
+Tenant-bound worker calls validate an explicit tenant and suspend inherited
+PostgreSQL maintenance bypass for the duration of the call. Both the tenant and
+the caller's maintenance context are restored after success or failure. A tenant
+worker cannot open a maintenance connection using inherited authority;
+such attempts fail closed before pool access. Cross-tenant
+dispatch remains an explicit maintenance operation outside the tenant callback.
+
 ---
 
 ## 1e. Auth & Connections

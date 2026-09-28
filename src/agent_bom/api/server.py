@@ -76,6 +76,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import resolved_cors_origins_raw
+from agent_bom.demo_estate import boot_seed as _demo_boot_seed
 from agent_bom.output.brand_tokens import POSITIONING_META, PRODUCT_NAME, TAGLINE_CHAIN
 from agent_bom.storage import state_home as _state_home
 
@@ -447,9 +448,6 @@ def _enqueue_scheduled_scan(
     return job.job_id
 
 
-_DEMO_STORY_PREWARM_TASKS: set[asyncio.Task[None]] = set()
-
-
 async def _prewarm_demo_story() -> None:
     try:
         from agent_bom.api.routes.demo_estate import prewarm_demo_story
@@ -784,19 +782,11 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         _logger.error("Distributed scan worker failed to start; continuing single-node")
         _scan_worker = None
 
+    demo_seed_task: asyncio.Task[None] | None = None
     if os.environ.get("AGENT_BOM_DEMO_ESTATE", "").strip().lower() in {"1", "true", "yes", "on"}:
-        try:
-            from agent_bom.demo_estate.bootstrap import maybe_bootstrap_demo_estate
-
-            await asyncio.to_thread(maybe_bootstrap_demo_estate)
-        except Exception:  # noqa: BLE001
-            _logger.warning("demo estate bootstrap skipped", exc_info=False)
         from agent_bom.config import demo_story_prewarm_enabled
 
-        if demo_story_prewarm_enabled():
-            prewarm_task = asyncio.create_task(_prewarm_demo_story())
-            _DEMO_STORY_PREWARM_TASKS.add(prewarm_task)
-            prewarm_task.add_done_callback(_DEMO_STORY_PREWARM_TASKS.discard)
+        demo_seed_task = _demo_boot_seed.start_demo_estate_boot_seed(_prewarm_demo_story if demo_story_prewarm_enabled() else None)
 
     from agent_bom.api.report_queue import start_report_worker
 
@@ -810,6 +800,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     global _shutting_down
     _shutting_down = True
     await _report_worker.stop(float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25")))
+    await _demo_boot_seed.drain_demo_estate_boot_seed(demo_seed_task, float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25")))
     # Stop claiming new distributed work before draining in-flight scans.
     if _scan_worker is not None:
         try:

@@ -69,6 +69,9 @@ def demo_estate_client(monkeypatch: pytest.MonkeyPatch, tmp_path):
 
     try:
         with TestClient(api_server.app) as client:
+            from agent_bom.demo_estate.boot_seed import wait_for_demo_estate_boot_seed
+
+            assert wait_for_demo_estate_boot_seed(600), "demo estate seed did not finish"
             yield client
     finally:
         api_stores._store = original_job_store

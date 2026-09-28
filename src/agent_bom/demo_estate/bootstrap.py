@@ -12,6 +12,7 @@ from typing import Any
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _now
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY
+from agent_bom.demo_estate.boot_seed import serialized_seed
 from agent_bom.demo_estate.showcase_graph import (
     SHOWCASE_BASELINE_CREATED_AT,
     SHOWCASE_BASELINE_SCAN_ID,
@@ -392,6 +393,7 @@ def _graph_owner_scan_id(graph_store: Any, tenant_id: str) -> str:
     return ""
 
 
+@serialized_seed
 def maybe_bootstrap_demo_estate(*, tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]:
     """Seed showcase graph + curated findings when demo estate mode is enabled."""
     if not demo_estate_enabled():

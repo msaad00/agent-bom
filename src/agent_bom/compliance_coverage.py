@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from agent_bom.atlas import ATLAS_TECHNIQUES
 from agent_bom.cis_controls import CIS_CONTROLS
@@ -340,6 +341,15 @@ def control_key_for_tag(tag: str, catalog: Mapping[str, str]) -> str | None:
         if value.startswith(prefix) and value.removeprefix(prefix) in catalog:
             return value.removeprefix(prefix)
     return None
+
+
+def rows_by_control_key(rows: Iterable[Mapping[str, Any]], catalog: Mapping[str, str], tag_field: str) -> dict[str | None, list[Any]]:
+    """Group ``rows`` under each catalog key one of their ``tag_field`` tags resolves to, once per key."""
+    grouped: dict[str | None, list[Any]] = {}
+    for row in rows:
+        for key in {control_key_for_tag(str(tag), catalog) for tag in row.get(tag_field, [])}:
+            grouped.setdefault(key, []).append(row)
+    return grouped
 
 
 # Canonical hyphenated slugs (``TAG_MAPPED_FRAMEWORKS``) vs legacy ingest aliases.

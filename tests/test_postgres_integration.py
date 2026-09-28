@@ -1459,6 +1459,51 @@ def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
     )
 
 
+def test_postgres_credential_store_rejects_cross_tenant_id_takeover():
+    from agent_bom.api.models import CredentialRefRecord
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresCredentialRefStore
+
+    store = PostgresCredentialRefStore()
+    suffix = uuid4().hex
+    shared_id = f"credential-boundary-{suffix}"
+    tenant_a, tenant_b = f"credential-a-{suffix}", f"credential-b-{suffix}"
+
+    def _record(tenant_id: str) -> CredentialRefRecord:
+        return CredentialRefRecord(
+            credential_ref_id=shared_id,
+            tenant_id=tenant_id,
+            display_name=f"Credential {tenant_id}",
+            provider="aws",
+            mode="role_arn",
+            external_ref="arn:aws:iam::123456789012:role/read-only",
+            created_at="2026-09-28T00:00:00+00:00",
+            updated_at="2026-09-28T00:00:00+00:00",
+        )
+
+    token = set_current_tenant(tenant_a)
+    try:
+        store.put(_record(tenant_a), tenant_id=tenant_a)
+    finally:
+        reset_current_tenant(token)
+
+    token = set_current_tenant(tenant_b)
+    try:
+        with pytest.raises(ValueError, match="different tenant"):
+            store.put(_record(tenant_b), tenant_id=tenant_b)
+        assert store.get(shared_id, tenant_id=tenant_b) is None
+    finally:
+        reset_current_tenant(token)
+
+    token = set_current_tenant(tenant_a)
+    try:
+        stored = store.get(shared_id, tenant_id=tenant_a)
+        assert stored is not None and stored.tenant_id == tenant_a
+        assert store.delete(shared_id, tenant_id=tenant_a)
+    finally:
+        reset_current_tenant(token)
+
+
 def test_cloud_connections_rls_requires_the_scheduler_to_bind_the_record_tenant():
     """Regression cover for #4452 against a real server.
 

@@ -13,15 +13,23 @@ from typing import Protocol
 
 from agent_bom.api.models import CredentialRefRecord
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 
 class CredentialRefStore(Protocol):
     """Protocol for tenant-scoped credential reference persistence."""
 
-    def put(self, credential: CredentialRefRecord) -> None: ...
+    def put(self, credential: CredentialRefRecord, *, tenant_id: str) -> None: ...
     def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None: ...
     def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool: ...
-    def list_all(self, tenant_id: str | None = None) -> list[CredentialRefRecord]: ...
+    def list_all(self, tenant_id: str) -> list[CredentialRefRecord]: ...
+
+
+def _write_tenant(credential: CredentialRefRecord, tenant_id: str) -> str:
+    tenant = require_explicit_tenant_id(tenant_id)
+    if credential.tenant_id != tenant:
+        raise ValueError("Credential tenant does not match the authorized tenant")
+    return tenant
 
 
 class InMemoryCredentialRefStore:
@@ -29,31 +37,38 @@ class InMemoryCredentialRefStore:
 
     def __init__(self) -> None:
         self._credentials: dict[str, CredentialRefRecord] = {}
+        self._lock = threading.RLock()
 
-    def put(self, credential: CredentialRefRecord) -> None:
-        self._credentials[credential.credential_ref_id] = credential
+    def put(self, credential: CredentialRefRecord, *, tenant_id: str) -> None:
+        tenant = _write_tenant(credential, tenant_id)
+        with self._lock:
+            previous = self._credentials.get(credential.credential_ref_id)
+            if previous is not None and previous.tenant_id != tenant:
+                raise ValueError("Credential identity belongs to a different tenant")
+            self._credentials[credential.credential_ref_id] = credential.model_copy(deep=True)
 
     def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
-        credential = self._credentials.get(credential_ref_id)
-        if credential is None or credential.tenant_id != tenant_id:
-            return None
-        return credential
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            credential = self._credentials.get(credential_ref_id)
+            if credential is None or credential.tenant_id != tenant:
+                return None
+            return credential.model_copy(deep=True)
 
     def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
-        credential = self._credentials.get(credential_ref_id)
-        if credential is None or credential.tenant_id != tenant_id:
-            return False
-        del self._credentials[credential_ref_id]
-        return True
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            credential = self._credentials.get(credential_ref_id)
+            if credential is None or credential.tenant_id != tenant:
+                return False
+            del self._credentials[credential_ref_id]
+            return True
 
-    def list_all(self, tenant_id: str | None = None) -> list[CredentialRefRecord]:
-        credentials = list(self._credentials.values())
-        if tenant_id is None:
-            return sorted(credentials, key=lambda credential: credential.display_name.lower())
-        return sorted(
-            [credential for credential in credentials if credential.tenant_id == tenant_id],
-            key=lambda credential: credential.display_name.lower(),
-        )
+    def list_all(self, tenant_id: str) -> list[CredentialRefRecord]:
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            credentials = [credential.model_copy(deep=True) for credential in self._credentials.values() if credential.tenant_id == tenant]
+        return sorted(credentials, key=lambda credential: credential.display_name.lower())
 
 
 class SQLiteCredentialRefStore:
@@ -91,10 +106,14 @@ class SQLiteCredentialRefStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_credential_refs_tenant_updated ON credential_refs(tenant_id, updated_at)")
         self._conn.commit()
 
-    def put(self, credential: CredentialRefRecord) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO credential_refs (credential_ref_id, enabled, tenant_id, updated_at, data)
-               VALUES (?, ?, ?, ?, ?)""",
+    def put(self, credential: CredentialRefRecord, *, tenant_id: str) -> None:
+        _write_tenant(credential, tenant_id)
+        cursor = self._conn.execute(
+            """INSERT INTO credential_refs (credential_ref_id, enabled, tenant_id, updated_at, data)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT (credential_ref_id) DO UPDATE SET enabled = excluded.enabled,
+                 updated_at = excluded.updated_at, data = excluded.data
+               WHERE credential_refs.tenant_id = excluded.tenant_id""",
             (
                 credential.credential_ref_id,
                 int(credential.enabled),
@@ -104,11 +123,14 @@ class SQLiteCredentialRefStore:
             ),
         )
         self._conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Credential identity belongs to a different tenant")
 
     def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         row = self._conn.execute(
             "SELECT data FROM credential_refs WHERE credential_ref_id = ? AND tenant_id = ?",
-            (credential_ref_id, tenant_id),
+            (credential_ref_id, tenant),
         ).fetchone()
         if row is None:
             return None
@@ -116,19 +138,18 @@ class SQLiteCredentialRefStore:
         return record
 
     def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         cursor = self._conn.execute(
             "DELETE FROM credential_refs WHERE credential_ref_id = ? AND tenant_id = ?",
-            (credential_ref_id, tenant_id),
+            (credential_ref_id, tenant),
         )
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list[CredentialRefRecord]:
-        if tenant_id is None:
-            rows = self._conn.execute("SELECT data FROM credential_refs ORDER BY updated_at DESC, credential_ref_id").fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT data FROM credential_refs WHERE tenant_id = ? ORDER BY updated_at DESC, credential_ref_id",
-                (tenant_id,),
-            ).fetchall()
+    def list_all(self, tenant_id: str) -> list[CredentialRefRecord]:
+        tenant = require_explicit_tenant_id(tenant_id)
+        rows = self._conn.execute(
+            "SELECT data FROM credential_refs WHERE tenant_id = ? ORDER BY updated_at DESC, credential_ref_id",
+            (tenant,),
+        ).fetchall()
         return [CredentialRefRecord.model_validate_json(row[0]) for row in rows]

@@ -223,7 +223,7 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
         ),
         "gateway_policies": sum(1 for record in policies if _get_policy_store().delete_policy(record.policy_id, tenant_id=tenant_id)),
         "scan_schedules": sum(1 for record in schedules if _get_schedule_store().delete(record.schedule_id, tenant_id=tenant_id)),
-        "sources": sum(1 for record in sources if _get_source_store().delete(record.source_id)),
+        "sources": sum(1 for record in sources if _get_source_store().delete(record.source_id, tenant_id=tenant_id)),
         "exceptions": sum(1 for record in exceptions if _get_exception_store().delete(record.exception_id, tenant_id=tenant_id)),
         "cloud_connections": sum(1 for record in connections if get_connection_store().delete(tenant_id, record.id)),
         "credential_refs": sum(

@@ -5,15 +5,28 @@ CLI entry points, API/UI, MCP server mode, runtime proxy/gateway, cloud posture,
 IaC scanning, fleet, graph, reporting, and compliance workflows over shared
 finding, inventory, graph, and audit contracts.
 
-Report graph construction is composed in `graph/builder.py`. Package/advisory
-provenance and conservative tool-impact edges belong to `graph/package_projection.py`;
-runtime identity and incident observations belong to `graph/runtime_projection.py`.
-They share stable agent IDs and edge insertion through `graph/projection_support.py`
-without importing the builder or API adapters. Static package reachability and
-runtime observations keep their distinct evidence fields and relationship types.
+Report graph construction adapts serialized evidence once through
+`graph/build_input.py`, then composes named stages in `graph/builder.py`.
+`GraphBuildInput` carries only supported graph evidence sections; unrelated
+report output is excluded. Agent/server inventory, credential slots, blast-radius
+edges, cloud benchmarks, training assets and static findings have separate
+projection owners. `graph/build_indexes.py` holds indexes for one build, with no
+shared tenant state. `graph/build_analysis.py` preserves identity and topology
+ordering before final attack paths, technique mappings, application risk and cost.
+Optional overlay failures retain their existing isolation and analysis status.
+
+Package/advisory provenance belongs to `graph/package_projection.py`; runtime
+identity and incident observations belong to `graph/runtime_projection.py`.
+Shared helpers and resource aliases remain graph-owned without importing the
+builder or API adapters. Static package reachability and runtime observations
+keep distinct evidence fields and relationship types. Existing report callers
+retain `build_unified_graph_from_report`; callers with prepared graph evidence
+can use `build_unified_graph(GraphBuildInput(...))`. Both accept a caller-owned
+in-memory or store-backed container and run the same ordered stages.
+
 Graph application services consume the typed `graph/ports.py` persistence/query
-contract. SQLite and PostgreSQL adapters implement that same snapshot, paging,
-tenant and generation contract; the API module retains its compatible type export.
+contract. SQLite and PostgreSQL adapters implement the same snapshot, paging,
+tenant and generation contract; the API retains its compatible type export.
 
 > **Product overview lives in [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md)** — the
 > canonical five-stage flow (intake → scan → evidence → control → artifacts) and

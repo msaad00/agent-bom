@@ -42,6 +42,14 @@ OWNED_FUNCTIONS = {
     "_conditional_access_fail_closed": "api/gateway_policy.py",
     "_open_drift_violates_tool": "api/gateway_policy.py",
     "_package_evidence": "graph/package_projection.py",
+    "project_agents": "graph/agent_projection.py",
+    "project_credentials": "graph/credential_projection.py",
+    "project_blast_radius": "graph/blast_projection.py",
+    "project_benchmarks": "graph/benchmark_projection.py",
+    "apply_build_analysis": "graph/build_analysis.py",
+    "_resolve_cloud_resource_node_id": "graph/resource_aliases.py",
+    "_model_node_id": "graph/training_projection.py",
+    "_resolve_skill_audit_target_ids": "graph/finding_projection.py",
     "_resolve_affected_server_ids": "graph/package_projection.py",
     "_add_agentic_identity_graph_projections": "graph/runtime_projection.py",
     "_add_runtime_incident_feedback": "graph/runtime_projection.py",
@@ -125,9 +133,21 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
                 or module.startswith("agent_bom.db.")
             ):
                 errors.append(f"{path}:{node.lineno}: graph services and ports must not import storage adapters")
-            if path in {"graph/package_projection.py", "graph/runtime_projection.py", "graph/projection_support.py"} and (
-                module == "agent_bom.graph.builder" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
-            ):
+            if path in {
+                "graph/package_projection.py",
+                "graph/runtime_projection.py",
+                "graph/projection_support.py",
+                "graph/agent_projection.py",
+                "graph/credential_projection.py",
+                "graph/blast_projection.py",
+                "graph/benchmark_projection.py",
+                "graph/finding_projection.py",
+                "graph/training_projection.py",
+                "graph/resource_aliases.py",
+                "graph/build_indexes.py",
+                "graph/build_input.py",
+                "graph/build_analysis.py",
+            } and (module == "agent_bom.graph.builder" or module == "agent_bom.api" or module.startswith("agent_bom.api.")):
                 errors.append(f"{path}:{node.lineno}: report projections must not import builder orchestration or API adapters")
             if path == "api/graph_persistence.py" and module in {
                 "agent_bom.api.pipeline",

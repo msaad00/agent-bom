@@ -12,20 +12,25 @@ import json
 import logging
 from collections import defaultdict
 from collections.abc import Mapping
-from pathlib import PurePath
 from typing import Any
 
 from agent_bom.api.tracing import get_tracer
-from agent_bom.asset_provenance import sanitize_discovery_provenance
-from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
+from agent_bom.canonical_ids import canonical_graph_node_id
 from agent_bom.cloud.aws_iam_evidence import EvidenceCompleteness, normalize_iam_policy_document
 from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
-from agent_bom.constants import is_credential_key as _is_credential_key
-from agent_bom.core.severity import SEVERITY_RANK, SEVERITY_RISK_SCORE
+from agent_bom.core.severity import SEVERITY_RANK
+from agent_bom.graph.agent_projection import project_agents
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
+from agent_bom.graph.benchmark_projection import benchmark_inputs, project_benchmarks
+from agent_bom.graph.blast_projection import enrich_blast_radius, project_blast_radius, project_package_exploits, project_shared_servers
+from agent_bom.graph.build_analysis import GraphAnalysisPorts, apply_build_analysis
+from agent_bom.graph.build_indexes import BuildIndexes
+from agent_bom.graph.build_input import GraphBuildInput
 from agent_bom.graph.cloud_rbac import add_cloud_role_assignments as _add_cloud_role_assignments
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
+from agent_bom.graph.finding_projection import _resolve_skill_audit_target_ids as _resolve_skill_audit_target_ids
+from agent_bom.graph.finding_projection import project_iac, project_sast, project_skill_audit, project_toxic_combinations
 from agent_bom.graph.identity_nodes import identity_node_id as _identity_node_id
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.package_projection import (
@@ -82,8 +87,24 @@ from agent_bom.graph.projection_support import (
 from agent_bom.graph.projection_support import (
     _agent_node_id as _agent_node_id,
 )
+from agent_bom.graph.projection_support import _is_repository_inventory as _is_repository_inventory
+from agent_bom.graph.projection_support import _is_sbom_import as _is_sbom_import
 from agent_bom.graph.projection_support import (
     _mapping_list as _mapping_list,
+)
+from agent_bom.graph.projection_support import _normalized_environment as _normalized_environment
+from agent_bom.graph.projection_support import _repository_manifest_directory as _repository_manifest_directory
+from agent_bom.graph.resource_aliases import (
+    _build_cloud_resource_alias_index as _build_cloud_resource_alias_index,
+)
+from agent_bom.graph.resource_aliases import (
+    _CloudResourceAliasIndex as _CloudResourceAliasIndex,
+)
+from agent_bom.graph.resource_aliases import (
+    _resolve_cloud_resource_node_id as _resolve_cloud_resource_node_id,
+)
+from agent_bom.graph.resource_aliases import (
+    _resource_tail as _resource_tail,
 )
 from agent_bom.graph.runtime_projection import (
     _add_agentic_identity_graph_projections as _add_agentic_identity_graph_projections,
@@ -115,51 +136,26 @@ from agent_bom.graph.runtime_projection import (
 from agent_bom.graph.runtime_projection import (
     _runtime_identity_relationship as _runtime_identity_relationship,
 )
+from agent_bom.graph.runtime_projection import project_runtime_session
+from agent_bom.graph.training_projection import (
+    _flatten_compliance_tags as _flatten_compliance_tags,
+)
+from agent_bom.graph.training_projection import (
+    _model_node_id as _model_node_id,
+)
+from agent_bom.graph.training_projection import (
+    _normalize_model_ref as _normalize_model_ref,
+)
+from agent_bom.graph.training_projection import (
+    _resolve_model_id as _resolve_model_id,
+)
+from agent_bom.graph.training_projection import project_dataset_cards, project_model_provenance, project_serving_configs
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.graph.util import clean_graph_part as _clean_graph_part
-from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.package_utils import normalize_package_name
-from agent_bom.security import sanitize_security_warnings, sanitize_sensitive_payload, sanitize_text, sanitize_url
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 _GRAPH_TRACER = get_tracer("agent_bom.graph")
 _logger = logging.getLogger(__name__)
-
-
-def _is_sbom_import(agent: Mapping[str, Any]) -> bool:
-    servers = agent.get("mcp_servers", [])
-    return (
-        bool(servers)
-        and all(srv.get("surface") == "sbom" for srv in servers)
-        and (agent.get("source") == "sbom" or str(agent.get("name") or "").startswith("sbom:"))
-    )
-
-
-def _is_repository_inventory(agent: Mapping[str, Any]) -> bool:
-    """Recognize the explicit manifest-collector wrappers, not arbitrary agents."""
-    servers = agent.get("mcp_servers", [])
-    if not servers:
-        return False
-    if agent.get("source") == "repo-lockfiles":
-        return all(srv.get("surface") == "filesystem" and not srv.get("command") for srv in servers)
-    if agent.get("source") == "project":
-        return all(srv.get("surface") == "other" and srv.get("command") in {"project", "github-actions"} for srv in servers)
-    return False
-
-
-def _repository_manifest_directory(agent: Mapping[str, Any], server: Mapping[str, Any]) -> str:
-    if agent.get("source") == "repo-lockfiles":
-        label = str(server.get("name") or "").removeprefix("repo-deps:")
-        return "" if label == "root" else label
-    args = server.get("args") or []
-    root = str(agent.get("config_path") or "")
-    if args and root:
-        try:
-            relative = str(PurePath(str(args[0])).relative_to(PurePath(root)))
-            return "" if relative == "." else relative
-        except ValueError:
-            pass
-    label = str(server.get("name") or "")
-    return "" if label == str(agent.get("name") or "").removeprefix("project:") else label
 
 
 def build_unified_graph_from_report(
@@ -169,1264 +165,124 @@ def build_unified_graph_from_report(
     tenant_id: str = "",
     container: UnifiedGraph | None = None,
 ) -> UnifiedGraph:
-    """Build a UnifiedGraph from the persisted AIBOM report JSON contract.
+    """Adapt the serialized report to graph evidence; the caller owns container lifetime."""
+    return build_unified_graph(GraphBuildInput.from_report(report_json), scan_id=scan_id, tenant_id=tenant_id, container=container)
 
-    Args:
-        report_json: The dict produced by ``output.json_fmt.to_json(report)``.
-        scan_id: Scan identifier (defaults to report's scan_id).
-        tenant_id: Multi-tenant isolation key.
-        container: Optional pre-constructed graph container to emit into. When
-            ``None`` (the default, and every CLI/API/export caller) an in-RAM
-            :class:`UnifiedGraph` is built, byte-identical to the shipped path.
-            The persist path (:func:`agent_bom.api.pipeline._persist_graph_snapshot`)
-            passes a per-build
-            :class:`~agent_bom.graph.store_backed.StoreBackedUnifiedGraph` on a
-            throwaway SQLite workspace under the opt-in
-            ``AGENT_BOM_GRAPH_STORE_BACKED_BUILD`` flag so Phase-A emission and the
-            Phase-B overlays run against the store, bounding the producer's peak
-            RSS (#4055/#4075). The caller owns the container's lifecycle (it is a
-            context manager); this function never closes it.
 
-    Returns:
-        A fully populated :class:`UnifiedGraph` (the ``container`` when supplied).
+def build_unified_graph(
+    inputs: GraphBuildInput,
+    *,
+    scan_id: str = "",
+    tenant_id: str = "",
+    container: UnifiedGraph | None = None,
+) -> UnifiedGraph:
+    """Project inventory, findings and topology before running final graph analysis.
+
+    A supplied store-backed container retains the same stage order and bounded
+    workspace behavior as the in-memory path. This function never closes it.
     """
     span = _GRAPH_TRACER.start_span("graph.build_unified_graph_from_report") if _GRAPH_TRACER else None
-    sid = scan_id or report_json.get("scan_id", "")
+    sid = scan_id or inputs.scan_id
     graph = container if container is not None else UnifiedGraph(scan_id=sid, tenant_id=tenant_id)
-
-    agents_data = report_json.get("agents", [])
-    blast_data = report_json.get("blast_radius", report_json.get("blast_radii", []))
-    scan_sources = report_json.get("scan_sources", [])
-    inferred_source = "sbom" if agents_data and all(_is_sbom_import(agent) for agent in agents_data) else "mcp-scan"
-    if agents_data and all(_is_repository_inventory(agent) for agent in agents_data):
-        inferred_source = str(agents_data[0]["source"])
-    data_source_tag = scan_sources[0] if scan_sources else inferred_source
-
-    report_data_source = data_source_tag
-
-    # Track shared resources for lateral movement edges
-    server_to_agents: dict[str, list[str]] = defaultdict(list)
-    # Track server/package indexes for vuln edges
-    pkg_key_to_servers: dict[str, list[str]] = defaultdict(list)
-    package_name_to_ids: dict[str, list[str]] = defaultdict(list)
-    server_name_to_ids: dict[str, list[str]] = defaultdict(list)
-    agent_name_to_ids: dict[str, list[str]] = defaultdict(list)
-    server_name_to_agent_servers: dict[str, dict[str, str]] = defaultdict(dict)
-    agent_to_server_ids: dict[str, set[str]] = defaultdict(set)
-    agent_config_path_to_id: dict[str, str] = {}
-    server_to_tool_ids: dict[str, list[str]] = defaultdict(list)
-    package_id_to_servers: dict[str, list[str]] = defaultdict(list)
-    pending_exploitable_edges: list[tuple[str, str, str, dict[str, Any], str]] = []
-
-    # ── Agents → Servers → Packages → Tools → Credentials ───────────
-    for agent_dict in agents_data:
-        agent_name = agent_dict.get("name", "unknown")
-        agent_scope = _agent_identity_scope(agent_dict)
-        sbom_import = _is_sbom_import(agent_dict)
-        repository_inventory = _is_repository_inventory(agent_dict)
-        static_inventory = sbom_import or repository_inventory
-        data_source_tag = str(agent_dict["source"]) if repository_inventory else report_data_source
-        inventory_type = EntityType.DIRECTORY if repository_inventory else EntityType.SOURCE_FILE
-        agent_id = _agent_node_id(agent_name, agent_scope)
-        if sbom_import:
-            agent_id = f"source_file:sbom:{agent_id.removeprefix('agent:')}"
-        if repository_inventory:
-            agent_id = f"directory:repository:{agent_id.removeprefix('agent:')}"
-        agent_node_key = agent_id.removeprefix("agent:")
-        agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
-        provider_name = str(agent_dict.get("source") or "local").strip() or "local"
-        # Import wrappers share the legacy Agent/MCPServer serialization shape.
-        # Static imports document packages; they do not establish running agents.
-        if sbom_import:
-            provider_name = "sbom"
-        provider_id = f"provider:{provider_name}"
-        agent_metadata = agent_dict.get("metadata", {})
-        if not isinstance(agent_metadata, dict):
-            agent_metadata = {}
-        agent_discovery_provenance = sanitize_discovery_provenance(agent_dict.get("discovery_provenance"))
-
-        if not static_inventory:
-            graph.add_node(
-                UnifiedNode(
-                    id=provider_id,
-                    entity_type=EntityType.PROVIDER,
-                    label=provider_name,
-                    attributes={
-                        "provider": provider_name,
-                        "canonical_id": canonical_graph_node_id(EntityType.PROVIDER.value, provider_id),
-                    },
-                    data_sources=[data_source_tag],
-                )
-            )
-
-        agent_env = _normalized_environment(agent_dict.get("environment"))
-        graph.add_node(
-            UnifiedNode(
-                id=agent_id,
-                entity_type=inventory_type if static_inventory else EntityType.AGENT,
-                label=agent_name.removeprefix("sbom:").removeprefix("project:").removeprefix("repo-deps:")
-                if static_inventory
-                else agent_name,
-                first_seen=str(agent_dict.get("discovered_at") or ""),
-                last_seen=str(agent_dict.get("last_seen") or agent_dict.get("discovered_at") or ""),
-                attributes={
-                    "agent_type": agent_type,
-                    "canonical_id": (canonical_graph_node_id(inventory_type.value, agent_id) if static_inventory else None)
-                    or agent_dict.get("canonical_id")
-                    or (
-                        canonical_agent_id(agent_type, agent_name, source_id=agent_scope)
-                        if agent_scope
-                        else agent_dict.get("stable_id") or canonical_agent_id(agent_type, agent_name)
-                    ),
-                    "source_ids": source_ids(source_id=agent_scope, stable_id=agent_dict.get("stable_id")),
-                    "status": agent_dict.get("status", ""),
-                    "stable_id": agent_dict.get("stable_id", ""),
-                    "config_path": agent_dict.get("config_path", ""),
-                    "source": provider_name,
-                    "source_id": agent_scope,
-                    "enrollment_name": agent_dict.get("enrollment_name", ""),
-                    "owner": agent_dict.get("owner", ""),
-                    "environment": agent_env,
-                    "mdm_provider": agent_dict.get("mdm_provider", ""),
-                    "tags": agent_dict.get("tags", []),
-                    "discovered_at": agent_dict.get("discovered_at"),
-                    "last_seen": agent_dict.get("last_seen"),
-                    "server_count": len(agent_dict.get("mcp_servers", [])),
-                    "discovery_provenance": agent_discovery_provenance,
-                    "cloud_origin": agent_metadata.get("cloud_origin"),
-                    "cloud_state": agent_metadata.get("cloud_state"),
-                    "cloud_scope": agent_metadata.get("cloud_scope"),
-                    "cloud_principal": agent_metadata.get("cloud_principal"),
-                },
-                dimensions=NodeDimensions(
-                    agent_type="" if static_inventory else agent_type,
-                    surface="code" if repository_inventory else "sbom" if sbom_import else "",
-                    environment=agent_env,
-                ),
-                data_sources=[data_source_tag],
-            )
-        )
-        agent_name_to_ids[agent_name].append(agent_id)
-        config_path = str(agent_dict.get("config_path", "") or "").strip()
-        if config_path:
-            agent_config_path_to_id[config_path] = agent_id
-        if not static_inventory:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=provider_id,
-                    target=agent_id,
-                    relationship=RelationshipType.HOSTS,
-                )
-            )
-        _add_agent_cloud_lineage(
-            graph,
-            agent_id=agent_id,
-            agent_dict=agent_dict,
-            agent_metadata=agent_metadata,
-            data_source=data_source_tag,
-        )
-
-        for srv_dict in agent_dict.get("mcp_servers", []):
-            srv_name = srv_dict.get("name", "unknown")
-            srv_id = agent_id if sbom_import else f"server:{agent_node_key}:{srv_name}"
-            surface = srv_dict.get("surface", "mcp-server")
-            if repository_inventory:
-                srv_id = f"directory:manifest:{agent_node_key}:{srv_name}"
-                graph.add_node(
-                    UnifiedNode(
-                        id=srv_id,
-                        entity_type=EntityType.DIRECTORY,
-                        label=srv_name,
-                        attributes={
-                            "source": data_source_tag,
-                            "inventory_role": "manifest_dependencies",
-                            "manifest_directory": _repository_manifest_directory(agent_dict, srv_dict),
-                            "canonical_id": canonical_graph_node_id(EntityType.DIRECTORY.value, srv_id),
-                            "environment": agent_env,
-                        },
-                        dimensions=NodeDimensions(surface="code", environment=agent_env),
-                        data_sources=[data_source_tag],
-                    )
-                )
-                graph.add_edge(UnifiedEdge(source=agent_id, target=srv_id, relationship=RelationshipType.CONTAINS))
-
-            if not static_inventory:
-                graph.add_node(
-                    UnifiedNode(
-                        id=srv_id,
-                        entity_type=EntityType.SERVER,
-                        label=srv_name,
-                        attributes={
-                            "command": sanitize_text(srv_dict.get("command", "")),
-                            "transport": srv_dict.get("transport", ""),
-                            "url": sanitize_url(str(srv_dict.get("url") or "")) or "",
-                            "auth_mode": srv_dict.get("auth_mode", ""),
-                            "mcp_version": srv_dict.get("mcp_version", ""),
-                            "has_credentials": srv_dict.get("has_credentials", False),
-                            "security_blocked": srv_dict.get("security_blocked", False),
-                            "security_warnings": sanitize_security_warnings(list(srv_dict.get("security_warnings", []) or [])),
-                            "security_intelligence": [
-                                sanitize_security_intelligence_entry(item)
-                                for item in (srv_dict.get("security_intelligence", []) or [])
-                                if isinstance(item, dict)
-                            ],
-                            "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
-                            "agent": agent_name,
-                            "environment": agent_env,
-                            "canonical_id": srv_dict.get("canonical_id")
-                            or srv_dict.get("stable_id")
-                            or canonical_graph_node_id(EntityType.SERVER.value, srv_id),
-                            "source_ids": source_ids(stable_id=srv_dict.get("stable_id"), registry_id=srv_dict.get("registry_id")),
-                            "stable_id": srv_dict.get("stable_id", ""),
-                            "fingerprint": srv_dict.get("fingerprint", ""),
-                        },
-                        dimensions=NodeDimensions(surface=surface, environment=agent_env),
-                        data_sources=[data_source_tag],
-                    )
-                )
-            server_name_to_ids[srv_name].append(srv_id)
-            if not static_inventory:
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=agent_id,
-                        target=srv_id,
-                        relationship=RelationshipType.USES,
-                    )
-                )
-                server_to_agents[srv_name].append(agent_id)
-            server_name_to_agent_servers[srv_name][agent_id] = srv_id
-            agent_to_server_ids[agent_name].add(srv_id)
-            if agent_scope:
-                agent_to_server_ids[agent_scope].add(srv_id)
-                agent_to_server_ids[f"{agent_scope}:{agent_name}"].add(srv_id)
-
-            # ── Packages ──
-            for pkg_dict in srv_dict.get("packages", []):
-                pkg_name = pkg_dict.get("name", "unknown")
-                pkg_version = pkg_dict.get("version", "")
-                ecosystem = pkg_dict.get("ecosystem", "")
-                pkg_id = _package_node_id(pkg_dict)
-                package_evidence = _package_evidence(pkg_dict, data_source_tag)
-                package_discovery_provenance = sanitize_discovery_provenance(pkg_dict.get("discovery_provenance"))
-                package_version_provenance = _package_version_provenance_from_dict(pkg_dict)
-
-                graph.add_node(
-                    UnifiedNode(
-                        id=pkg_id,
-                        entity_type=EntityType.PACKAGE,
-                        label=f"{pkg_name}@{pkg_version}" if pkg_version else pkg_name,
-                        attributes={
-                            "version": pkg_version,
-                            "ecosystem": ecosystem,
-                            "purl": pkg_dict.get("purl", ""),
-                            "canonical_id": pkg_dict.get("canonical_id")
-                            or pkg_dict.get("stable_id")
-                            or canonical_graph_node_id(EntityType.PACKAGE.value, pkg_id),
-                            "source_ids": source_ids(stable_id=pkg_dict.get("stable_id"), purl=pkg_dict.get("purl")),
-                            "is_direct": pkg_dict.get("is_direct", True),
-                            "parent_package": pkg_dict.get("parent_package", ""),
-                            "dependency_depth": pkg_dict.get("dependency_depth", 0),
-                            "license": pkg_dict.get("license", ""),
-                            "scorecard_score": pkg_dict.get("scorecard_score"),
-                            "is_malicious": pkg_dict.get("is_malicious", False),
-                            "stable_id": pkg_dict.get("stable_id", ""),
-                            "environment": agent_env,
-                            "discovery_provenance": package_discovery_provenance,
-                            "version_provenance": package_version_provenance,
-                        },
-                        dimensions=NodeDimensions(ecosystem=ecosystem, environment=agent_env),
-                        data_sources=[data_source_tag],
-                    )
-                )
-                package_name_to_ids[pkg_name].append(pkg_id)
-                normalized_pkg_name = normalize_package_name(pkg_name, ecosystem)
-                if normalized_pkg_name != pkg_name:
-                    package_name_to_ids[normalized_pkg_name].append(pkg_id)
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=srv_id,
-                        target=pkg_id,
-                        relationship=RelationshipType.CONTAINS if sbom_import else RelationshipType.DEPENDS_ON,
-                        evidence=package_evidence,
-                    )
-                )
-                package_id_to_servers[pkg_id].append(srv_id)
-                pkg_key = _package_graph_key(pkg_name, pkg_version, ecosystem, pkg_dict.get("purl"))
-                pkg_key_to_servers[pkg_key].append(srv_id)
-
-                # ── Package-level vulnerabilities ──
-                for vuln_dict in pkg_dict.get("vulnerabilities", []):
-                    vuln_node_id = _add_vuln_node(graph, vuln_dict, pkg_id, data_source_tag, package_evidence)
-                    if vuln_node_id:
-                        pending_exploitable_edges.append(
-                            (
-                                vuln_node_id,
-                                srv_id,
-                                pkg_id,
-                                package_evidence,
-                                str(vuln_dict.get("severity", "") or "").lower(),
-                            )
-                        )
-
-            if static_inventory:
-                # Runtime capability/credential assertions require runtime sources.
-                continue
-
-            # ── Tools ──
-            tool_ids: list[str] = []
-            for tool_dict in srv_dict.get("tools", []):
-                tool_name = tool_dict.get("name", "unknown")
-                tool_id = f"tool:{srv_id}:{tool_name}"
-                tool_ids.append(tool_id)
-                capabilities, capability_source = _tool_capabilities(tool_dict)
-                graph.add_node(
-                    UnifiedNode(
-                        id=tool_id,
-                        entity_type=EntityType.TOOL,
-                        label=tool_name,
-                        attributes={
-                            "description": tool_dict.get("description", ""),
-                            "canonical_id": tool_dict.get("canonical_id")
-                            or tool_dict.get("stable_id")
-                            or canonical_graph_node_id(EntityType.TOOL.value, tool_id),
-                            "source_ids": source_ids(stable_id=tool_dict.get("stable_id")),
-                            "stable_id": tool_dict.get("stable_id", ""),
-                            "fingerprint": tool_dict.get("fingerprint", ""),
-                            "risk_score": tool_dict.get("risk_score", 0),
-                            "schema_findings": tool_dict.get("schema_findings", []),
-                            "schema_rule_findings": tool_dict.get("schema_rule_findings", []),
-                            "declared_capabilities": tool_dict.get("declared_capabilities", []),
-                            "capabilities": capabilities,
-                            "capability_source": capability_source,
-                            "server": srv_id,
-                            "agent": agent_name,
-                        },
-                        data_sources=[data_source_tag],
-                    )
-                )
-                server_to_tool_ids[srv_id].append(tool_id)
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=srv_id,
-                        target=tool_id,
-                        relationship=RelationshipType.PROVIDES_TOOL,
-                    )
-                )
-
-            # ── Credentials (from env keys) ──
-            env_keys = srv_dict.get("credential_env_vars", [])
-            if not env_keys:
-                env_dict = srv_dict.get("env", {})
-                if isinstance(env_dict, dict):
-                    env_keys = [k for k in env_dict if _is_credential_key(k)]
-            for env_key in env_keys:
-                # An env-var name identifies a credential slot on this server,
-                # not the underlying secret.  Scoping the node prevents common
-                # names such as GITHUB_TOKEN from merging unrelated credentials
-                # and fabricating cross-agent blast radius.
-                cred_id = f"cred:{srv_id}:{env_key}"
-                graph.add_node(
-                    UnifiedNode(
-                        id=cred_id,
-                        entity_type=EntityType.CREDENTIAL,
-                        label=env_key,
-                        attributes={
-                            "canonical_id": canonical_graph_node_id(EntityType.CREDENTIAL.value, cred_id),
-                            "source_ids": source_ids(env_key=env_key, server_id=srv_id),
-                            "server": srv_id,
-                            "servers": [srv_id],
-                        },
-                        data_sources=[data_source_tag],
-                    )
-                )
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=srv_id,
-                        target=cred_id,
-                        relationship=RelationshipType.EXPOSES_CRED,
-                        weight=2.0,
-                    )
-                )
-                for tool_id in tool_ids:
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=cred_id,
-                            target=tool_id,
-                            relationship=RelationshipType.REACHES_TOOL,
-                            evidence={
-                                "source": data_source_tag,
-                                "server": srv_id,
-                                "credential_env_var": env_key,
-                                "mapping_method": "server_scope_conservative",
-                                "confidence": "medium",
-                            },
-                        )
-                    )
-                for binding in srv_dict.get("identity_bindings", []):
-                    if not isinstance(binding, Mapping) or binding.get("credential_ref") != env_key:
-                        continue
-                    identity_id = sanitize_text(str(binding.get("identity_canonical_id") or "").strip())
-                    evidence_source = sanitize_text(str(binding.get("evidence_source") or "").strip())
-                    if not identity_id or not evidence_source:
-                        continue
-                    provider = sanitize_text(str(binding.get("provider") or "").strip().lower())
-                    graph.add_node(
-                        UnifiedNode(
-                            id=identity_id,
-                            entity_type=EntityType.MANAGED_IDENTITY,
-                            label=identity_id.rsplit(":", 1)[-1],
-                            attributes={
-                                "canonical_id": identity_id,
-                                "provider": provider,
-                                "evidence_source": evidence_source,
-                                "credential_ref": env_key,
-                            },
-                            data_sources=[data_source_tag, evidence_source],
-                            dimensions=NodeDimensions(cloud_provider=provider),
-                        )
-                    )
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=cred_id,
-                            target=identity_id,
-                            relationship=RelationshipType.AUTHENTICATES_AS,
-                            evidence={
-                                "source": evidence_source,
-                                "credential_ref": env_key,
-                                "mapping_method": "explicit_identity_binding",
-                                "confidence": "high",
-                            },
-                            confidence=1.0,
-                        )
-                    )
-
-    data_source_tag = report_data_source
-    for vuln_node_id, srv_id, pkg_id, package_evidence, severity in pending_exploitable_edges:
-        _add_exploitable_via_edges(
-            graph,
-            server_to_tool_ids=server_to_tool_ids,
-            vuln_node_id=vuln_node_id,
-            server_id=srv_id,
-            package_id=pkg_id,
-            evidence=package_evidence,
-            severity=severity,
-            data_source=data_source_tag,
-        )
-
-    # ── Blast radius vulnerabilities ─────────────────────────────────
-    for br_dict in blast_data:
-        vuln_id_str = br_dict.get("vulnerability_id", "")
-        if not vuln_id_str:
-            continue
-        severity = br_dict.get("severity", "").lower()
-        pkg_name = br_dict.get("package_name", br_dict.get("package", "").split("@")[0])
-        pkg_version = br_dict.get("package_version", "")
-        ecosystem = br_dict.get("ecosystem", "")
-
-        # Add/merge vuln node (add_node unions compliance_tags if node exists)
-        vuln_node_id = f"vuln:{vuln_id_str}"
-        graph.add_node(
-            UnifiedNode(
-                id=vuln_node_id,
-                entity_type=EntityType.VULNERABILITY,
-                label=vuln_id_str,
-                severity=severity,
-                risk_score=br_dict.get("risk_score", 0),
-                attributes={
-                    "canonical_id": canonical_graph_node_id(EntityType.VULNERABILITY.value, vuln_node_id),
-                    "source_ids": source_ids(vulnerability_id=vuln_id_str),
-                    "vulnerability_id": vuln_id_str,
-                    **(
-                        {"finding_id": str(br_dict["finding_id"]).strip()}
-                        if isinstance(br_dict.get("finding_id"), str) and str(br_dict.get("finding_id") or "").strip()
-                        else {}
-                    ),
-                    "cvss_score": br_dict.get("cvss_score"),
-                    "cvss_vector": br_dict.get("cvss_vector"),
-                    "attack_vector": br_dict.get("attack_vector"),
-                    "attack_complexity": br_dict.get("attack_complexity"),
-                    "privileges_required": br_dict.get("privileges_required"),
-                    "user_interaction": br_dict.get("user_interaction"),
-                    "network_exploitable": br_dict.get("network_exploitable", False),
-                    "epss_score": br_dict.get("epss_score"),
-                    "is_kev": br_dict.get("is_kev", False),
-                    "fixed_version": br_dict.get("fixed_version"),
-                    "impact_category": br_dict.get("impact_category", ""),
-                    "reachability": br_dict.get("reachability", ""),
-                    "reachability_basis": list(br_dict.get("reachability_basis") or []),
-                    "graph_reachable": br_dict.get("graph_reachable"),
-                    "symbol_reachability": br_dict.get("symbol_reachability"),
-                    "symbol_reachability_reason": br_dict.get("symbol_reachability_reason"),
-                    "runtime_dependency_chain": list(br_dict.get("runtime_dependency_chain") or []),
-                    "dependency_reachable": br_dict.get("dependency_reachable"),
-                },
-                compliance_tags=_collect_compliance_tags(br_dict),
-                data_sources=[data_source_tag],
-            )
-        )
-
-        # Link package → vulnerability
-        if pkg_name:
-            pkg_id = _package_node_id_from_parts(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
-            if graph.has_node(pkg_id):
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=pkg_id,
-                        target=vuln_node_id,
-                        relationship=RelationshipType.VULNERABLE_TO,
-                        weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
-                        evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
-                    )
-                )
-
-        # Link affected servers → vulnerability using indexed lookups instead
-        # of an agent×server cross-product scan.
-        affected_server_ids = _resolve_affected_server_ids(
-            br_dict,
-            pkg_name=pkg_name,
-            pkg_version=pkg_version,
-            ecosystem=ecosystem,
-            pkg_key_to_servers=pkg_key_to_servers,
-            server_name_to_agent_servers=server_name_to_agent_servers,
-            agent_to_server_ids=agent_to_server_ids,
-        )
-        for srv_id in affected_server_ids:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=srv_id,
-                    target=vuln_node_id,
-                    relationship=RelationshipType.VULNERABLE_TO,
-                    weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
-                    evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
-                )
-            )
-
-        for srv_id in affected_server_ids:
-            pkg_ids = _resolve_affected_package_ids(
-                br_dict,
-                server_id=srv_id,
-                pkg_name=pkg_name,
-                pkg_version=pkg_version,
-                ecosystem=ecosystem,
-                package_id_to_servers=package_id_to_servers,
-            )
-            for pkg_id in pkg_ids:
-                _add_exploitable_via_edges(
-                    graph,
-                    server_to_tool_ids=server_to_tool_ids,
-                    vuln_node_id=vuln_node_id,
-                    server_id=srv_id,
-                    package_id=pkg_id,
-                    evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
-                    severity=severity,
-                    data_source=data_source_tag,
-                )
-
-    # ── Shared server edges (agent ↔ agent) ──────────────────────────
-    for srv_name, agent_names in server_to_agents.items():
-        unique = sorted(set(agent_names))
-        if len(unique) >= 2:
-            for i, a1 in enumerate(unique):
-                for a2 in unique[i + 1 :]:
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=a1,
-                            target=a2,
-                            relationship=RelationshipType.SHARES_SERVER,
-                            direction="bidirectional",
-                            weight=3.0,
-                            evidence={"server": srv_name},
-                        )
-                    )
-
-    # ── Model provenance ─────────────────────────────────────────────
-    for model_dict in report_json.get("model_provenance", []):
-        model_name = model_dict.get("model_name", model_dict.get("name", "unknown"))
-        model_id = _model_node_id(model_name)
-        graph.add_node(
-            UnifiedNode(
-                id=model_id,
-                entity_type=EntityType.MODEL,
-                label=model_name,
-                attributes={
-                    "framework": model_dict.get("framework", ""),
-                    "source": model_dict.get("source", ""),
-                    "hash": model_dict.get("hash", ""),
-                    "verified": model_dict.get("verified", False),
-                },
-                data_sources=["model-provenance"],
-            )
-        )
-
-    # ── Dataset cards ────────────────────────────────────────────────
-    dataset_cards = report_json.get("dataset_cards")
-    if isinstance(dataset_cards, dict):
-        for dataset_dict in dataset_cards.get("datasets", []):
-            dataset_name = dataset_dict.get("name") or dataset_dict.get("source_file") or "unknown-dataset"
-            graph.add_node(
-                UnifiedNode(
-                    id=f"dataset:{dataset_name}",
-                    entity_type=EntityType.DATASET,
-                    label=dataset_name,
-                    attributes={
-                        "description": dataset_dict.get("description", ""),
-                        "license": dataset_dict.get("license", ""),
-                        "source_url": dataset_dict.get("source_url", ""),
-                        "version": dataset_dict.get("version", ""),
-                        "features": dataset_dict.get("features", []),
-                        "splits": dataset_dict.get("splits", {}),
-                        "size_bytes": dataset_dict.get("size_bytes", 0),
-                        "source_file": dataset_dict.get("source_file", ""),
-                        "languages": dataset_dict.get("languages", []),
-                        "task_categories": dataset_dict.get("task_categories", []),
-                        "security_flags": dataset_dict.get("security_flags", []),
-                    },
-                    compliance_tags=_flatten_compliance_tags(dataset_dict.get("compliance_tags")),
-                    data_sources=["dataset-cards"],
-                )
-            )
-
-    # ── Serving configs / containers ────────────────────────────────
-    for serving_dict in report_json.get("serving_configs", []):
-        container_image = serving_dict.get("container_image", "")
-        if not container_image:
-            continue
-        container_id = f"container:{container_image}"
-        graph.add_node(
-            UnifiedNode(
-                id=container_id,
-                entity_type=EntityType.CONTAINER,
-                label=serving_dict.get("name") or container_image,
-                attributes={
-                    "container_image": container_image,
-                    "framework": serving_dict.get("framework", ""),
-                    "source_file": serving_dict.get("source_file", ""),
-                    "model_uri": serving_dict.get("model_uri", ""),
-                    "endpoint_url": serving_dict.get("endpoint_url", ""),
-                    "security_flags": serving_dict.get("security_flags", []),
-                },
-                dimensions=NodeDimensions(surface="container"),
-                data_sources=["training-pipeline"],
-            )
-        )
-        model_id = _resolve_model_id(graph, serving_dict.get("model_uri", ""))
-        if model_id:
-            graph.add_edge(
-                UnifiedEdge(
-                    source=container_id,
-                    target=model_id,
-                    relationship=RelationshipType.SERVES_MODEL,
-                )
-            )
-
-    # Materialize cloud assets before projecting CIS findings so every
-    # finding can resolve onto the same provider/resource node used by account
-    # hierarchy, identity, CNAPP, and DSPM overlays.  The remaining inventory
-    # enrichment (roles, authorization, organization hierarchy) stays in its
-    # original phase below.
-    cloud_inventory_payloads = list(_iter_cloud_inventories(report_json.get("cloud_inventory")))
-    for inventory_payload in cloud_inventory_payloads:
-        _add_cloud_inventory(graph, inventory_payload, data_source_tag)
-    cloud_resource_alias_index = _build_cloud_resource_alias_index(graph)
-
-    # ── CIS benchmark misconfigurations ──────────────────────────────
-    for section_key, legacy_key, default_cloud_provider in (
-        ("cis_benchmark", "cis_benchmark_data", "aws"),
-        ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data", "snowflake"),
-        ("azure_cis_benchmark", "azure_cis_benchmark_data", "azure"),
-        ("gcp_cis_benchmark", "gcp_cis_benchmark_data", "gcp"),
-        # Databricks has no official CIS benchmark: read the canonical
-        # ``databricks_security`` key, falling back to the deprecated alias.
-        ("databricks_security", "databricks_cis_benchmark", "databricks"),
-    ):
-        cis_data = report_json.get(section_key) or report_json.get(legacy_key)
-        if not cis_data:
-            continue
-        cloud_provider = (
-            _clean_graph_part(cis_data.get("provider")) or _clean_graph_part(cis_data.get("cloud_provider")) or default_cloud_provider
-        )
-        checks = cis_data.get("checks", [])
-        cloud_account_id = _clean_graph_part(
-            cis_data.get("subscription_id") or cis_data.get("account_id") or cis_data.get("aws_account_id") or cis_data.get("project_id")
-        )
-        for check in checks:
-            if str(check.get("status", "")).upper() != "FAIL":
-                continue
-            check_id = check.get("check_id", "unknown")
-            misconfig_id = f"misconfig:{section_key}:{check_id}"
-            resource_ids = list(check.get("resource_ids", []))
-            graph.add_node(
-                UnifiedNode(
-                    id=misconfig_id,
-                    entity_type=EntityType.MISCONFIGURATION,
-                    label=check.get("title", check_id),
-                    severity=check.get("severity", "medium").lower(),
-                    attributes={
-                        "check_id": check_id,
-                        "cis_section": check.get("cis_section", ""),
-                        "evidence": check.get("evidence", ""),
-                        "recommendation": check.get("recommendation", ""),
-                        "resource_ids": resource_ids,
-                        "cloud_provider": cloud_provider,
-                        "network_exposure": list(check.get("network_exposure", [])),
-                    },
-                    compliance_tags=[] if cloud_provider == "databricks" else [f"CIS-{check_id}"],
-                    data_sources=[section_key],
-                    dimensions=NodeDimensions(cloud_provider=cloud_provider),
-                )
-            )
-            for resource_id in sorted(set(resource_ids)):
-                resource_node_id = _resolve_cloud_resource_node_id(
-                    graph,
-                    cloud_provider,
-                    resource_id,
-                    alias_index=cloud_resource_alias_index,
-                )
-                canonical_resource = graph.get_node(resource_node_id) if resource_node_id else None
-                resource_node_id = resource_node_id or f"cloud_resource:{cloud_provider or 'generic'}:{resource_id}"
-                attributes = {
-                    "resource_id": resource_id,
-                    "cloud_provider": cloud_provider,
-                    "source_section": section_key,
-                }
-                if canonical_resource is not None:
-                    # Preserve the inventory's provider-native resource_id
-                    # (ARN/ARM/GCP name). The CIS spelling is an evidence alias,
-                    # not a replacement identity.
-                    attributes = {
-                        "finding_resource_ids": sorted(
-                            {
-                                *canonical_resource.attributes.get("finding_resource_ids", []),
-                                resource_id,
-                            }
-                        ),
-                        "finding_source_sections": sorted(
-                            {
-                                *canonical_resource.attributes.get("finding_source_sections", []),
-                                section_key,
-                            }
-                        ),
-                    }
-                graph.add_node(
-                    UnifiedNode(
-                        id=resource_node_id,
-                        entity_type=EntityType.CLOUD_RESOURCE,
-                        label=canonical_resource.label if canonical_resource is not None else resource_id,
-                        attributes=attributes,
-                        data_sources=[section_key],
-                        dimensions=NodeDimensions(cloud_provider=cloud_provider),
-                    )
-                )
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=misconfig_id,
-                        target=resource_node_id,
-                        relationship=RelationshipType.AFFECTS,
-                    )
-                )
-
-            # Subscription/tenant-scoped controls (Defender plans, Activity
-            # Log alerts, Network Watcher, security contacts) carry no
-            # ``resource_ids``. Anchor them to the cloud account node so they
-            # are reachable by blast-radius / attack-path analysis instead of
-            # floating as orphan nodes that never surface to the user.
-            if not resource_ids and cloud_provider and cloud_account_id:
-                account_node_id = _identity_node_id(EntityType.ACCOUNT, cloud_provider, cloud_account_id)
-                graph.add_node(
-                    UnifiedNode(
-                        id=account_node_id,
-                        entity_type=EntityType.ACCOUNT,
-                        label=cloud_account_id,
-                        attributes={"account_id": cloud_account_id, "cloud_provider": cloud_provider},
-                        data_sources=[section_key],
-                        dimensions=NodeDimensions(cloud_provider=cloud_provider),
-                    )
-                )
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=misconfig_id,
-                        target=account_node_id,
-                        relationship=RelationshipType.AFFECTS,
-                    )
-                )
-
-    # ── SAST findings as misconfiguration nodes ──────────────────────
-    sast_data = report_json.get("sast") or report_json.get("sast_data")
-    if sast_data:
-        for finding in sast_data.get("findings", []):
-            rule_id = finding.get("rule_id", "unknown")
-            finding_path = finding.get("file_path") or finding.get("path", "")
-            finding_line = finding.get("start_line") or finding.get("line", 0)
-            cwe_ids = list(finding.get("cwe_ids", []))
-            owasp_ids = list(finding.get("owasp_ids", []))
-            sast_id = f"misconfig:sast:{rule_id}:{finding_path}:{finding_line}"
-            graph.add_node(
-                UnifiedNode(
-                    id=sast_id,
-                    entity_type=EntityType.MISCONFIGURATION,
-                    label=finding.get("message", rule_id or "SAST finding"),
-                    severity=finding.get("severity", "medium").lower(),
-                    attributes={
-                        "rule_id": rule_id,
-                        "path": finding_path,
-                        "file_path": finding_path,
-                        "line": finding_line,
-                        "start_line": finding.get("start_line", finding_line),
-                        "end_line": finding.get("end_line", finding_line),
-                        "cwe_ids": cwe_ids,
-                        "owasp_ids": owasp_ids,
-                        "rule_url": finding.get("rule_url", ""),
-                    },
-                    compliance_tags=sorted(set(cwe_ids + owasp_ids)),
-                    data_sources=["sast"],
-                )
-            )
-
-    # ── IaC findings as misconfiguration nodes ───────────────────────
-    iac_data = report_json.get("iac_findings") or report_json.get("iac_findings_data")
-    if iac_data:
-        for finding in iac_data.get("findings", []):
-            rule_id = finding.get("rule_id", "unknown")
-            finding_path = finding.get("file_path", "") or "unknown"
-            finding_line = finding.get("line_number", 0) or 0
-            category = str(finding.get("category", "iac") or "iac").lower()
-            compliance = list(finding.get("compliance", []))
-            attack_techniques = list(finding.get("attack_techniques", []))
-            remediation = finding.get("remediation", "")
-            iac_id = f"misconfig:iac:{rule_id}:{finding_path}:{finding_line}"
-            target_id = f"iac_target:{category}:{finding_path}"
-
-            graph.add_node(
-                UnifiedNode(
-                    id=iac_id,
-                    entity_type=EntityType.MISCONFIGURATION,
-                    label=finding.get("title", rule_id or "IaC finding"),
-                    severity=finding.get("severity", "medium").lower(),
-                    attributes={
-                        "rule_id": rule_id,
-                        "file_path": finding_path,
-                        "line_number": finding_line,
-                        "category": category,
-                        "message": finding.get("message", ""),
-                        "remediation": remediation,
-                    },
-                    compliance_tags=sorted(set(compliance + attack_techniques)),
-                    data_sources=sorted(set(["iac", category])),
-                )
-            )
-            graph.add_node(
-                UnifiedNode(
-                    id=target_id,
-                    entity_type=EntityType.CLOUD_RESOURCE,
-                    label=finding_path,
-                    attributes={
-                        "file_path": finding_path,
-                        "category": category,
-                        "target_type": "iac_file",
-                    },
-                    data_sources=sorted(set(["iac", category])),
-                )
-            )
-            graph.add_edge(
-                UnifiedEdge(
-                    source=iac_id,
-                    target=target_id,
-                    relationship=RelationshipType.AFFECTS,
-                )
-            )
-
-    # ── Skill-audit findings as misconfiguration nodes ──────────────
-    skill_audit = report_json.get("skill_audit")
-    if skill_audit:
-        for index, finding in enumerate(skill_audit.get("findings", []), start=1):
-            category = str(finding.get("category", "skill_audit") or "skill_audit").lower()
-            package_name = str(finding.get("package", "") or "").strip()
-            server_name = str(finding.get("server", "") or "").strip()
-            source_file = str(finding.get("source_file", "") or "").strip()
-            finding_id = f"misconfig:skill_audit:{category}:{index}"
-            graph.add_node(
-                UnifiedNode(
-                    id=finding_id,
-                    entity_type=EntityType.MISCONFIGURATION,
-                    label=str(finding.get("title", "") or category or "Skill audit finding"),
-                    severity=str(finding.get("severity", "medium") or "medium").lower(),
-                    attributes={
-                        "category": category,
-                        "detail": finding.get("detail", ""),
-                        "source_file": source_file,
-                        "package": package_name,
-                        "server": server_name,
-                        "recommendation": finding.get("recommendation", ""),
-                        "context": finding.get("context", ""),
-                        "ai_analysis": finding.get("ai_analysis"),
-                        "ai_adjusted_severity": finding.get("ai_adjusted_severity"),
-                    },
-                    compliance_tags=[f"skill_audit:{category}"],
-                    data_sources=["skill-audit"],
-                )
-            )
-            for target_id in _resolve_skill_audit_target_ids(
-                finding,
-                package_name_to_ids=package_name_to_ids,
-                server_name_to_ids=server_name_to_ids,
-                agent_name_to_ids=agent_name_to_ids,
-                agent_config_path_to_id=agent_config_path_to_id,
-            ):
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=finding_id,
-                        target=target_id,
-                        relationship=RelationshipType.AFFECTS,
-                    )
-                )
-
-    # ── Framework-native static topology (CrewAI / LangGraph / AutoGen) ──
-    ai_inventory = report_json.get("ai_inventory", {})
-    if isinstance(ai_inventory, dict):
-        _add_framework_topology(
-            graph,
-            ai_inventory.get("framework_agents", []),
-            data_source_tag,
-            host_agent_id=_project_host_agent_id(graph, agents_data),
-        )
-        _add_ai_stack_frameworks(graph, ai_inventory, data_source_tag)
-
-    # ── Cross-environment correlation (#1892 Phase 1: AWS Bedrock) ──
-    _add_cross_env_correlation(graph, agents_data, data_source_tag)
-
-    # ── Runtime session graph (dynamic edges) ──────────────────────
-    runtime_graph = report_json.get("runtime_session_graph")
-    if runtime_graph:
-        for edge_dict in runtime_graph.get("edges", []):
-            rel_str = edge_dict.get("interaction_type", edge_dict.get("relation", ""))
-            rel_map = {
-                "tool_call": RelationshipType.INVOKED,
-                "invoked": RelationshipType.INVOKED,
-                "resource_access": RelationshipType.ACCESSED,
-                "accessed": RelationshipType.ACCESSED,
-                "delegation": RelationshipType.DELEGATED_TO,
-                "delegated_to": RelationshipType.DELEGATED_TO,
-            }
-            rel = rel_map.get(rel_str.lower())
-            if not rel:
-                continue
-            src = edge_dict.get("source_node_id", edge_dict.get("source", ""))
-            tgt = edge_dict.get("target_node_id", edge_dict.get("target", ""))
-            if src and tgt:
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=src,
-                        target=tgt,
-                        relationship=rel,
-                        evidence={
-                            "timestamp": edge_dict.get("timestamp", ""),
-                            "tool_capability": edge_dict.get("tool_capability", ""),
-                            "risk_score": edge_dict.get("risk_score", 0),
-                            "data_source": "runtime-proxy",
-                        },
-                    )
-                )
-
-    # ── Agentic identity graph projections (runtime audit slices) ─────
-    _add_agentic_identity_graph_projections(graph, report_json, data_source_tag, tenant_id)
-
-    # ── Runtime → graph feedback (observed-reach from the runtime relay) ──
-    # The feedback direction of the agentic moat: incidents the runtime engine
-    # observed (credential reach, lateral movement, kill-switch) are projected
-    # onto agent nodes so this scan reflects OBSERVED behavior, not just static
-    # reachability. Default-off — absent records is a pure no-op.
-    _add_runtime_incident_feedback(graph, report_json, agent_name_to_ids, data_source_tag)
-
-    # ── Toxic combinations as TRIGGERS edges ─────────────────────────
-    toxic_data = report_json.get("toxic_combinations")
-    if toxic_data:
-        for combo in toxic_data if isinstance(toxic_data, list) else toxic_data.get("combinations", []):
-            components = combo.get("components", []) if isinstance(combo.get("components", []), list) else []
-            component_vulns = [
-                str(component.get("id", "")).strip()
-                for component in components
-                if str(component.get("type", "")).lower() in {"cve", "vulnerability"} and str(component.get("id", "")).strip()
-            ]
-            combo_vulns = combo.get("vulnerability_ids", combo.get("vulns", component_vulns))
-            if not isinstance(combo_vulns, list):
-                combo_vulns = [combo_vulns]
-            combo_vulns = [str(vuln_id).strip() for vuln_id in combo_vulns if str(vuln_id).strip()]
-            combo_label = combo.get("label") or combo.get("title") or combo.get("name") or combo.get("pattern") or "toxic_combo"
-            combo_key = combo.get("id") or combo.get("name") or combo.get("label")
-            if not combo_key:
-                combo_key = stable_node_id("toxic-combination", str(combo.get("pattern", "")), str(combo_label))[:12]
-            toxic_node_id = f"toxic:{combo_key}"
-            graph.add_node(
-                UnifiedNode(
-                    id=toxic_node_id,
-                    entity_type=EntityType.MISCONFIGURATION,
-                    label=combo_label,
-                    severity=str(combo.get("severity", "") or ""),
-                    risk_score=float(combo.get("risk_score", 0) or 0),
-                    attributes={
-                        "combo": combo_key,
-                        "pattern": combo.get("pattern", ""),
-                        "title": combo.get("title", combo_label),
-                        "description": combo.get("description", ""),
-                        "components": components,
-                        "remediation": combo.get("remediation", ""),
-                        "risk_score": combo.get("risk_score", 0),
-                        "vulnerability_ids": combo_vulns,
-                    },
-                    data_sources=["toxic-combinations"],
-                )
-            )
-            for vuln_id in combo_vulns:
-                vuln_node_id = f"vuln:{vuln_id}"
-                if graph.has_node(vuln_node_id):
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=vuln_node_id,
-                            target=toxic_node_id,
-                            relationship=RelationshipType.TRIGGERS,
-                            evidence={
-                                "combo": combo_key,
-                                "pattern": combo.get("pattern", ""),
-                                "title": combo.get("title", combo_label),
-                                "risk": combo.get("risk_score", 0),
-                                "remediation": combo.get("remediation", ""),
-                            },
-                        )
-                    )
-
-    # ── Enrich vulnerability nodes with blast radius stats ───────────
-    for br_dict in blast_data:
-        vuln_id_str = br_dict.get("vulnerability_id", "")
-        vuln_node = graph.get_node(f"vuln:{vuln_id_str}") if vuln_id_str else None
-        if vuln_node:
-            vuln_node.attributes["affected_agent_count"] = len(br_dict.get("affected_agents", []))
-            vuln_node.attributes["affected_server_count"] = len(br_dict.get("affected_servers", []))
-            vuln_node.attributes["exposed_credential_count"] = len(br_dict.get("exposed_credentials", []))
-            vuln_node.attributes["exposed_tool_count"] = len(br_dict.get("exposed_tools", []))
-            vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
-            vuln_node.attributes["reachability_basis"] = list(br_dict.get("reachability_basis") or [])
-            vuln_node.attributes["graph_reachable"] = br_dict.get("graph_reachable")
-            vuln_node.attributes["symbol_reachability"] = br_dict.get("symbol_reachability")
-            vuln_node.attributes["symbol_reachability_reason"] = br_dict.get("symbol_reachability_reason")
-            vuln_node.attributes["runtime_dependency_chain"] = list(br_dict.get("runtime_dependency_chain") or [])
-            vuln_node.attributes["dependency_reachable"] = br_dict.get("dependency_reachable")
-            vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
-
-    # ── General cloud-asset inventory (estate-wide, opt-in) ──────────
-    # Promote estate-wide cloud assets (AWS S3/EC2/IAM, Azure storage/VM/NSG/
-    # managed-identity, GCP GCS/compute/firewall/service-account) into the graph
-    # so a resource with no CIS/IaC finding still becomes a node the CNAPP /
-    # effective-permissions overlays below can consume. Runs before those
-    # overlays so they see the inventory. Accepts one payload or a list of
-    # per-provider payloads.
-    for inventory_payload in cloud_inventory_payloads:
-        _add_cloud_role_assignments(graph, inventory_payload, data_source_tag)
-        apply_authorization_evidence(graph, inventory_payload)
-        # GCP estate roll-up backbone (org → folders → projects), carried on the
-        # GCP inventory payload. Promoted after the inventory so project nodes the
-        # CONTAINS tree references already exist to stitch onto.
-        _add_gcp_organization(
-            graph,
-            inventory_payload.get("gcp_organization"),
-            data_source_tag,
-            allow_heuristic_authorization=not has_authoritative_authorization_evidence(inventory_payload),
-        )
-
-    _add_aws_organization(graph, report_json.get("aws_organization"), data_source_tag)
-    _add_cloud_org_architecture_findings(graph, report_json, data_source_tag)
-    _add_snowflake_source_lanes(graph, report_json, data_source_tag)
-
-    # ── Cloud audit-trail behavioral edges (opt-in, read-only) ───────────
-    # Observed-reach edges derived from each cloud's native audit trail
-    # (CloudTrail / Activity Log / Cloud Audit Logs). The reader already
-    # aggregated raw events into (principal, resource, action) descriptors;
-    # no raw log lines are present in the report. Accepts one payload or a
-    # per-provider list. A no-op unless an operator opted in to ingestion.
-    _audit_payload = report_json.get("cloud_audit_trail")
-    if isinstance(_audit_payload, list):
-        for _provider_audit in _audit_payload:
-            _add_cloud_audit_behavioral(graph, _provider_audit, data_source_tag)
-    else:
-        _add_cloud_audit_behavioral(graph, _audit_payload, data_source_tag)
-
-    # ── Discovered non-human identities (IdP service accounts, gated) ────
-    # Project NHIs enumerated by the identity connectors (Okta service apps /
-    # API tokens, Entra service principals / app registrations) into the graph
-    # as managed_identity nodes. Runs before the effective-permissions overlay
-    # so those principals feed assume/permission resolution. Gated upstream:
-    # the report only carries an "identity_discovery" block when an operator ran
-    # discovery, so this is a no-op on ordinary scans.
-    try:
-        from agent_bom.graph.nhi_overlay import apply_nhi_overlay_from_report
-
-        apply_nhi_overlay_from_report(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("NHI discovery overlay failed", exc_info=True)
-
-    # Cloud-CNAPP enrichment: derive internet exposure, data stores, and toxic
-    # (exposed + vulnerable) chains from the CIS/IaC findings now in the graph.
-    try:
-        from agent_bom.graph.cnapp_overlay import apply_cnapp_overlay
-
-        apply_cnapp_overlay(graph)
-    except Exception:  # noqa: BLE001
-        _logger.warning("CNAPP overlay failed", exc_info=True)
-
-    # Effective permissions: resolve assume/trust chains into HAS_PERMISSION
-    # edges and flag privilege-escalation paths. Runs after CNAPP so escalation
-    # to internet-exposed resources is scored higher.
-    try:
-        from agent_bom.graph.effective_permissions import apply_effective_permissions
-
-        apply_effective_permissions(graph)
-    except Exception:  # noqa: BLE001
-        _logger.warning("effective-permissions overlay failed", exc_info=True)
-
-    # NHI governance: usage-based right-sizing, dormant/orphaned detection, and a
-    # 0-100 per-identity risk score, written back onto the managed_identity nodes.
-    # Runs after effective-permissions + CNAPP so it sees HAS_PERMISSION edges,
-    # escalation flags, and internet-exposure markers. No-op when no NHIs exist.
-    try:
-        from agent_bom.graph.nhi_governance import apply_nhi_governance_with_findings
-
-        _nhi_summary, _nhi_findings = apply_nhi_governance_with_findings(graph)
-        # Stash the materialized findings on the graph so the shared scan callers
-        # (CLI scan_cmd + API pipeline) can route them into the unified finding
-        # stream. The node-annotation side effects are identical to the previous
-        # apply_nhi_governance(graph) call; only the findings are new.
-        graph.nhi_governance_findings = _nhi_findings
-    except Exception:  # noqa: BLE001
-        _logger.warning("NHI governance overlay failed", exc_info=True)
-
-    # A2A auth posture: flag agent/identity nodes named by weak inter-agent
-    # auth findings (shared tokens, missing mutual auth, over-broad delegation,
-    # unverified actor tokens). Reference-only; no-op when no A2A findings exist.
-    try:
-        from agent_bom.a2a_auth_posture import annotate_graph_a2a_auth_from_report
-
-        annotate_graph_a2a_auth_from_report(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("A2A auth posture overlay failed", exc_info=True)
-
-    # MCP server + agent→MCP auth posture: flag MCP-server nodes named by weak
-    # MCP-auth findings (unauthenticated network server, weak transport, static
-    # credentials, agent→MCP gap). Reference-only; no-op when no MCP-auth
-    # findings exist.
-    try:
-        from agent_bom.mcp_auth_posture import annotate_graph_mcp_auth_from_report
-
-        annotate_graph_mcp_auth_from_report(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("MCP auth posture overlay failed", exc_info=True)
-
-    try:
-        _apply_runtime_evidence_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("runtime evidence overlay failed", exc_info=True)
-
-    # Repository folder/file structure: materialise the directory tree, manifest
-    # files, file → dependency → vuln paths, and file → finding paths from the
-    # project inventory + file-scoped findings already in the report, so a code
-    # / repo scan visualises its folder layout the way the cloud graph
-    # visualises the cloud hierarchy. Runs after core inventory so the project
-    # servers, packages, and misconfiguration nodes it stitches onto
-    # already exist. No-op (graph byte-identical) when no project inventory and
-    # no file-scoped findings are present.
-    try:
-        _apply_repo_structure_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("repo-structure overlay failed", exc_info=True)
-
-    # Native AST tool signatures are source-level tool entrypoints, not merely
-    # a JSON side block. Materialise them after the repo files exist so the
-    # graph preserves file -> tool provenance and flow findings can drill into
-    # the exact code surface.
-    try:
-        _apply_ast_tool_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("AST tool overlay failed", exc_info=True)
-
-    # CODE_MODULE from SOURCE_FILE evidence (after repo-structure places files).
-    try:
-        _apply_code_graph_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("code-graph overlay failed", exc_info=True)
-
-    # Repo trust card (stars/contributors/license/…) from --repo / repo_url scans.
-    try:
-        _apply_repo_trust_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("repo-trust overlay failed", exc_info=True)
-
-    # CI_JOB / RUNS / CONFIGURES from github-actions agents already in the report.
-    try:
-        _apply_ci_graph_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("ci-graph overlay failed", exc_info=True)
-
-    try:
-        from agent_bom.graph.endpoint_overlay import apply_endpoint_inventory_overlay
-
-        apply_endpoint_inventory_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("endpoint-inventory overlay failed", exc_info=True)
-
-    # Final path fusion runs only after every topology-producing overlay. This
-    # prevents repository, AST/code, CI, endpoint, runtime, CNAPP, identity,
-    # permission, and data relationships from arriving too late to participate
-    # in the end-to-end chain.
-    try:
-        from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
-
-        apply_attack_path_fusion(graph)
-    except Exception:  # noqa: BLE001
-        from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
-
-        graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(
-            status=GraphAnalysisState.FAILED,
-            reason_codes=("analysis_error",),
-            observed={"node_count": len(graph.nodes), "result_count": 0},
-        )
-        _logger.warning("attack-path fusion failed: analysis_error")
-
-    # Technique mappings must follow final fusion so every materialized path is
-    # enriched from its actual hop evidence, never from a partial topology.
-    try:
-        from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
-
-        apply_attack_path_technique_mappings(graph)
-    except Exception:  # noqa: BLE001
-        _logger.warning("attack-path technique mapping failed: analysis_error")
-
-    try:
-        _apply_agent_reach_risk(graph)
-    except Exception:  # noqa: BLE001
-        _logger.warning("agent reach risk failed: analysis_error")
-
-    # ASPM consumes the final attack-path set when marking reachable findings;
-    # running it before fusion silently omitted paths contributed by late
-    # topology overlays.
-    try:
-        _apply_aspm_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("ASPM overlay failed", exc_info=True)
-
-    # FinOps risk fusion is a projection over the fully analyzed graph and does
-    # not contribute topology, so it remains last.
-    try:
-        _apply_cost_overlay(graph, report_json)
-    except Exception:  # noqa: BLE001
-        _logger.warning("cost overlay failed", exc_info=True)
-
+    indexes = project_agents(graph, inputs.agents, inputs.data_source, _add_agent_cloud_lineage)
+    project_package_exploits(graph, indexes, inputs.data_source)
+    project_blast_radius(graph, inputs.blast_radius, indexes, inputs.data_source)
+    project_shared_servers(graph, indexes)
+    report = inputs.report_sections()
+    inventories = _project_inventory_findings(graph, inputs, indexes, report)
+    _project_runtime_topology(graph, inputs, indexes, report, tenant_id)
+    project_toxic_combinations(graph, report.get("toxic_combinations"))
+    enrich_blast_radius(graph, inputs.blast_radius)
+    _project_cloud_authority(graph, inventories, report, inputs.data_source)
+    apply_build_analysis(graph, report, _analysis_ports())
     if span is not None:
         span.set_attribute("agent_bom.graph.scan_id", sid)
         span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
-        span.set_attribute("agent_bom.graph.agent_count", len(agents_data))
-        span.set_attribute("agent_bom.graph.blast_radius_count", len(blast_data))
+        span.set_attribute("agent_bom.graph.agent_count", len(inputs.agents))
+        span.set_attribute("agent_bom.graph.blast_radius_count", len(inputs.blast_radius))
         span.set_attribute("agent_bom.graph.node_count", len(graph.nodes))
         span.set_attribute("agent_bom.graph.edge_count", len(graph.edges))
         span.end()
     return graph
+
+
+def _project_inventory_findings(
+    graph: UnifiedGraph,
+    inputs: GraphBuildInput,
+    indexes: BuildIndexes,
+    report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    project_model_provenance(graph, report.get("model_provenance", []))
+    project_dataset_cards(graph, report.get("dataset_cards"))
+    project_serving_configs(graph, report.get("serving_configs", []))
+    # Native cloud assets precede benchmark references to avoid duplicate nodes.
+    inventories = list(_iter_cloud_inventories(report.get("cloud_inventory")))
+    for inventory in inventories:
+        _add_cloud_inventory(graph, inventory, inputs.data_source)
+    project_benchmarks(graph, benchmark_inputs(report))
+    project_sast(graph, report.get("sast") or report.get("sast_data"))
+    project_iac(graph, report.get("iac_findings") or report.get("iac_findings_data"))
+    project_skill_audit(graph, report.get("skill_audit"), indexes)
+    return inventories
+
+
+def _project_runtime_topology(
+    graph: UnifiedGraph,
+    inputs: GraphBuildInput,
+    indexes: BuildIndexes,
+    report: dict[str, Any],
+    tenant_id: str,
+) -> None:
+    ai_inventory = report.get("ai_inventory", {})
+    if isinstance(ai_inventory, dict):
+        _add_framework_topology(
+            graph, ai_inventory.get("framework_agents", []), inputs.data_source, host_agent_id=_project_host_agent_id(graph, inputs.agents)
+        )
+        _add_ai_stack_frameworks(graph, ai_inventory, inputs.data_source)
+    _add_cross_env_correlation(graph, inputs.agents, inputs.data_source)
+    project_runtime_session(graph, report.get("runtime_session_graph"))
+    _add_agentic_identity_graph_projections(graph, report, inputs.data_source, tenant_id)
+    _add_runtime_incident_feedback(graph, report, indexes.agent_name_to_ids, inputs.data_source)
+
+
+def _project_cloud_authority(
+    graph: UnifiedGraph,
+    inventories: list[dict[str, Any]],
+    report: dict[str, Any],
+    data_source: str,
+) -> None:
+    for inventory in inventories:
+        _add_cloud_role_assignments(graph, inventory, data_source)
+        apply_authorization_evidence(graph, inventory)
+        _add_gcp_organization(
+            graph,
+            inventory.get("gcp_organization"),
+            data_source,
+            allow_heuristic_authorization=not has_authoritative_authorization_evidence(inventory),
+        )
+    _add_aws_organization(graph, report.get("aws_organization"), data_source)
+    _add_cloud_org_architecture_findings(graph, report, data_source)
+    _add_snowflake_source_lanes(graph, report, data_source)
+    audit = report.get("cloud_audit_trail")
+    if isinstance(audit, list):
+        for provider_audit in audit:
+            _add_cloud_audit_behavioral(graph, provider_audit, data_source)
+    else:
+        _add_cloud_audit_behavioral(graph, audit, data_source)
+
+
+def _analysis_ports() -> GraphAnalysisPorts:
+    return GraphAnalysisPorts(
+        runtime_evidence=_apply_runtime_evidence_overlay,
+        repo_structure=_apply_repo_structure_overlay,
+        ast_tool=_apply_ast_tool_overlay,
+        code_graph=_apply_code_graph_overlay,
+        repo_trust=_apply_repo_trust_overlay,
+        ci_graph=_apply_ci_graph_overlay,
+        agent_reach_risk=_apply_agent_reach_risk,
+        aspm=_apply_aspm_overlay,
+        cost=_apply_cost_overlay,
+    )
 
 
 def _apply_cost_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
@@ -1884,17 +740,6 @@ def _add_identity_node(
         )
     )
     return node_id
-
-
-def _normalized_environment(*candidates: object) -> str:
-    """Return the first non-empty environment label among candidates."""
-    for raw in candidates:
-        if raw is None:
-            continue
-        text = str(raw).strip()
-        if text:
-            return text
-    return ""
 
 
 def _environment_from_tags(tags: object) -> str:
@@ -6427,219 +5272,5 @@ def _add_ai_stack_frameworks(graph: UnifiedGraph, ai_inventory: Any, data_source
                 )
 
 
-def _resource_tail(value: Any) -> str:
-    """Return the provider-resource name at the end of an ARN/path-like ID."""
-    normalized = _clean_graph_part(value).rstrip("/")
-    if not normalized:
-        return ""
-    return normalized.rsplit("/", 1)[-1].rsplit(":", 1)[-1].casefold()
-
-
-_CloudResourceAliasIndex = dict[tuple[str, str], set[str]]
-
-
-def _build_cloud_resource_alias_index(graph: UnifiedGraph) -> _CloudResourceAliasIndex:
-    """Index provider-native, typed, and name aliases in one graph pass."""
-    index: _CloudResourceAliasIndex = defaultdict(set)
-    for node in graph.nodes_by_type(EntityType.CLOUD_RESOURCE):
-        provider = _clean_graph_part(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).casefold()
-        if not provider:
-            continue
-        identifiers = {
-            _clean_graph_part(node.attributes.get("resource_id")).rstrip("/").casefold(),
-            _clean_graph_part(node.attributes.get("resource_name")).rstrip("/").casefold(),
-        }
-        identifiers.discard("")
-        kinds = {
-            _clean_graph_part(node.attributes.get("resource_type")).casefold(),
-            _clean_graph_part(node.attributes.get("resource_kind")).casefold(),
-            _clean_graph_part(node.attributes.get("cloud_service")).casefold(),
-        }
-        kinds.update(part.casefold() for part in node.id.split(":"))
-        kinds.discard("")
-        for identifier in identifiers:
-            index[(provider, f"exact:{identifier}")].add(node.id)
-            tail = _resource_tail(identifier)
-            if not tail:
-                continue
-            index[(provider, f"name:{tail}")].add(node.id)
-            for kind in kinds:
-                index[(provider, f"typed:{kind}:{tail}")].add(node.id)
-    return dict(index)
-
-
-def _resolve_cloud_resource_node_id(
-    graph: UnifiedGraph,
-    provider: str,
-    resource_id: Any,
-    *,
-    alias_index: _CloudResourceAliasIndex | None = None,
-) -> str | None:
-    """Resolve a finding resource reference to one existing inventory node.
-
-    CIS providers commonly report ``bucket/name`` or a provider-native ARN,
-    while inventory uses a typed graph ID.  Match exact provider-native IDs
-    first, then a typed ``kind/name`` alias, and finally a unique provider/name
-    alias. Ambiguity deliberately returns ``None`` so unrelated same-named
-    resources are never collapsed.
-    """
-    raw = _clean_graph_part(resource_id).rstrip("/")
-    provider_key = _clean_graph_part(provider).casefold()
-    if not raw or not provider_key:
-        return None
-
-    raw_key = raw.casefold()
-    raw_tail = _resource_tail(raw)
-    path_parts = [part.casefold() for part in raw.split("/") if part]
-    type_hint = path_parts[-2] if len(path_parts) >= 2 and not raw_key.startswith("arn:") else ""
-
-    index = alias_index if alias_index is not None else _build_cloud_resource_alias_index(graph)
-    candidate_sets = [index.get((provider_key, f"exact:{raw_key}"), set())]
-    if type_hint:
-        candidate_sets.append(index.get((provider_key, f"typed:{type_hint}:{raw_tail}"), set()))
-    candidate_sets.append(index.get((provider_key, f"name:{raw_tail}"), set()))
-
-    for candidates in candidate_sets:
-        unique = sorted(candidates)
-        if len(unique) == 1:
-            return unique[0]
-        if len(unique) > 1:
-            return None
-    return None
-
-
-def _flatten_compliance_tags(raw: Any) -> list[str]:
-    """Normalize arbitrary compliance-tag payloads into a simple list."""
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return sorted({str(tag) for tag in raw if tag})
-    if isinstance(raw, dict):
-        tags: set[str] = set()
-        for value in raw.values():
-            if isinstance(value, list):
-                tags.update(str(tag) for tag in value if tag)
-            elif value:
-                tags.add(str(value))
-        return sorted(tags)
-    return [str(raw)]
-
-
 # Provider prefixes stripped when fingerprinting a model reference so that
 # ``openai:gpt-4o``, ``openai/gpt-4o`` and ``gpt-4o`` collapse to one node.
-_MODEL_PROVIDER_PREFIXES = frozenset(
-    {
-        "openai",
-        "azure",
-        "azure_openai",
-        "anthropic",
-        "google",
-        "gemini",
-        "vertex",
-        "vertex_ai",
-        "vertexai",
-        "bedrock",
-        "aws",
-        "cohere",
-        "mistral",
-        "mistralai",
-        "meta",
-        "llama",
-        "huggingface",
-        "hf",
-        "ollama",
-        "together",
-        "groq",
-        "fireworks",
-        "replicate",
-        "xai",
-        "deepseek",
-        "perplexity",
-        "watsonx",
-        "databricks",
-    }
-)
-
-
-def _normalize_model_ref(ref: str) -> str:
-    """Fold a model reference to a canonical fingerprint.
-
-    Lower-cases and strips leading provider-prefix segments
-    (``openai:gpt-4o``, ``openai/gpt-4o``, ``azure/openai/gpt-4o``) so refs
-    naming the same model from different producers collapse to one identity.
-    """
-    label = str(ref or "").strip().lower()
-    if not label:
-        return ""
-    parts = [p for p in label.replace("://", "/").replace(":", "/").split("/") if p]
-    if not parts:
-        return label
-    while len(parts) > 1 and parts[0] in _MODEL_PROVIDER_PREFIXES:
-        parts.pop(0)
-    return "/".join(parts)
-
-
-def _model_node_id(ref: str) -> str:
-    """Canonical graph node id for a model, shared by every model producer.
-
-    Model provenance, framework ``model_refs``, ``unique_models`` and
-    serving-config URI resolution all route through here so a given model
-    yields exactly ONE node regardless of which source discovered it — the
-    node the ``serves_model`` edges point at also carries the provenance
-    hash/verified attributes.
-    """
-    return f"model:{_normalize_model_ref(ref)}"
-
-
-def _resolve_model_id(graph: UnifiedGraph, model_uri: str) -> str:
-    """Best-effort link from a serving config model URI to a known model node."""
-    if not model_uri:
-        return ""
-    candidates = [part for part in model_uri.replace("://", "/").replace(":", "/").split("/") if part]
-    for candidate in reversed(candidates):
-        model_id = _model_node_id(candidate)
-        if graph.has_node(model_id):
-            return model_id
-    return ""
-
-
-def _resolve_skill_audit_target_ids(
-    finding: dict[str, Any],
-    *,
-    package_name_to_ids: dict[str, list[str]],
-    server_name_to_ids: dict[str, list[str]],
-    agent_name_to_ids: dict[str, list[str]],
-    agent_config_path_to_id: dict[str, str],
-) -> list[str]:
-    """Resolve graph target IDs for a serialized skill-audit finding."""
-    target_ids: set[str] = set()
-
-    package_name = str(finding.get("package", "") or "").strip()
-    if package_name:
-        target_ids.update(package_name_to_ids.get(package_name, []))
-
-    server_name = str(finding.get("server", "") or "").strip()
-    if server_name:
-        target_ids.update(server_name_to_ids.get(server_name, []))
-
-    source_file = str(finding.get("source_file", "") or "").strip()
-    if source_file:
-        if source_file in agent_config_path_to_id:
-            target_ids.add(agent_config_path_to_id[source_file])
-        elif source_file == PurePath(source_file).name:
-            # Legacy basename-only evidence may identify an owner only when the
-            # name has one match. A qualified source must never cross scopes by
-            # dropping its directory, even when its exact path is unknown.
-            candidates = {
-                agent_id for config_path, agent_id in agent_config_path_to_id.items() if source_file == PurePath(config_path).name
-            }
-            if len(candidates) == 1:
-                target_ids.update(candidates)
-
-    if not target_ids and not source_file:
-        # One display-name bucket can still contain distinct agent occurrences.
-        candidates = {agent_id for agent_ids in agent_name_to_ids.values() for agent_id in agent_ids}
-        if len(candidates) == 1:
-            target_ids.update(candidates)
-
-    return sorted(target_ids)

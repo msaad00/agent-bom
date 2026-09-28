@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -793,6 +794,38 @@ async def test_mcp_identity_write_emits_lifecycle_audit_chain(store):
         assert any(e.actor == _AUTHENTICATED_OPERATOR for e in audit.list_entries(limit=100))
     finally:
         set_audit_log(InMemoryAuditLog())
+
+
+@pytest.mark.asyncio
+async def test_mcp_identity_write_supports_sync_handlers_without_blocking_event_loop() -> None:
+    from agent_bom.mcp_tools.identity import _run_write
+
+    caller_thread = threading.get_ident()
+    handler_threads: list[int] = []
+
+    async def _async_handler(_request):
+        return {"result": "async"}
+
+    def _sync_handler(_request):
+        handler_threads.append(threading.get_ident())
+        return {"result": "sync"}
+
+    common = {
+        "action": "agent_identity.issued",
+        "operator_role": "admin",
+        "operator_scopes": "identity:write",
+        "reason": "provision test identity",
+        "tenant_id": "tenant-a",
+        "resource": "identity/agent-a",
+        "_truncate_response": _passthrough,
+        "_authenticated_actor": _AUTHENTICATED_OPERATOR,
+    }
+    sync_result = json.loads(await _run_write(**common, handler=_sync_handler))
+    async_result = json.loads(await _run_write(**common, handler=_async_handler))
+
+    assert sync_result["result"] == "sync"
+    assert async_result["result"] == "async"
+    assert handler_threads and handler_threads[0] != caller_thread
 
 
 def test_upgrading_a_pre_agent_id_database_backfills_the_revocation_lookup(tmp_path) -> None:

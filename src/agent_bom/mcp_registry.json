@@ -1,8 +1,8 @@
 {
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
-  "_updated": "2026-09-21",
-  "_total_servers": 1151,
+  "_updated": "2026-09-28",
+  "_total_servers": 1163,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -731,7 +731,7 @@
     "awslabs.bedrock-kb-retrieval-mcp-server": {
       "package": "awslabs.bedrock-kb-retrieval-mcp-server",
       "ecosystem": "pypi",
-      "latest_version": "1.1.1",
+      "latest_version": "1.1.2",
       "description": "AWS Bedrock Knowledge Base queries",
       "name": "AWS Bedrock KB",
       "risk_justification": "Read-only access to AWS Bedrock Knowledge Bases via AWS credentials. Token exposure enables knowledge base queries across the account.",
@@ -1149,7 +1149,7 @@
     "mcp-grafana": {
       "package": "mcp-grafana",
       "ecosystem": "pypi",
-      "latest_version": "1.5.1",
+      "latest_version": "1.6.1",
       "description": "Query Grafana dashboards and alerts",
       "name": "Grafana",
       "risk_justification": "Read/write access to Grafana dashboards and alerts via GRAFANA_API_KEY. Token exposure enables dashboard and alert rule manipulation.",
@@ -2730,7 +2730,7 @@
     "openclaw": {
       "package": "openclaw",
       "ecosystem": "npm",
-      "latest_version": "2026.9.5",
+      "latest_version": "2026.9.6",
       "description": "OpenClaw personal AI assistant — multi-channel gateway (WhatsApp, Telegram, Slack, Discord, iMessag…",
       "name": "OpenClaw",
       "risk_justification": "Full system access including filesystem, browser, code execution, and multi-channel messaging via OPENAI_API_KEY and ANTHROPIC_API_KEY. Credential exposure enables complete agent takeover.",
@@ -2940,7 +2940,7 @@
     "resend-mcp": {
       "package": "resend-mcp",
       "ecosystem": "npm",
-      "latest_version": "2.22.0",
+      "latest_version": "2.23.0",
       "description": "Send transactional emails via Resend API",
       "name": "Resend",
       "risk_justification": "Sends emails from your Resend-verified domains via RESEND_API_KEY. Key exposure enables email spoofing from your domain.",
@@ -23201,9 +23201,271 @@
       "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
       "version_source": "official-registry",
       "auto_enriched": true
+    },
+    "ad.getle/leads": {
+      "package": "ad.getle/leads",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Find B2B leads with verified work emails, find and verify emails, and run cold email outreach.",
+      "name": "ad.getle/leads",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ad.getle/leads",
+        "leads"
+      ],
+      "source_url": "https://github.com/Adgrowofficial/getlead-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "agency.justidea/justidea-agency": {
+      "package": "agency.justidea/justidea-agency",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Services, published prices, site search and sales inquiries of JustIdea, a Polish e-commerce agency.",
+      "name": "agency.justidea/justidea-agency",
+      "category": "developer-tools",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "agency.justidea/justidea-agency",
+        "justidea-agency"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "agency.ottobot/licensed-house-painters": {
+      "package": "agency.ottobot/licensed-house-painters",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Find licensed house painters in 11 US states, with dated licence status from state boards.",
+      "name": "agency.ottobot/licensed-house-painters",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "agency.ottobot/licensed-house-painters",
+        "licensed-house-painters"
+      ],
+      "source_url": "https://github.com/modelcontextprotocol/registry",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.afg/afg": {
+      "package": "ai.afg/afg",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.1.0",
+      "description": "Sandbox marketplace where AI agents hire agents for verified outcomes. Test money only.",
+      "name": "ai.afg/afg",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.afg/afg"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agent-bev/bev-door": {
+      "package": "ai.agent-bev/bev-door",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.0",
+      "description": "Agentic B2B hub for beer, wine and spirits across Europe.",
+      "name": "ai.agent-bev/bev-door",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agent-bev/bev-door",
+        "bev-door"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.agentxray/amazon-seller-mcp": {
+      "package": "ai.agentxray/amazon-seller-mcp",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Amazon Seller Central and Ads in Claude or ChatGPT. Connect at agentxray.ai/connect.",
+      "name": "ai.agentxray/amazon-seller-mcp",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.agentxray/amazon-seller-mcp",
+        "amazon-seller-mcp"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.aidoo/aidoo": {
+      "package": "ai.aidoo/aidoo",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Query and update your Odoo ERP in plain language, under your own Odoo access rules.",
+      "name": "ai.aidoo/aidoo",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.aidoo/aidoo",
+        "aidoo"
+      ],
+      "source_url": "https://github.com/eantoniomota/aidoo-mcp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.alphaquantlabs/propertycheck": {
+      "package": "ai.alphaquantlabs/propertycheck",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.2.0",
+      "description": "Official open data for one Gold Coast address point: planning, flood, bushfire, schools, transport.",
+      "name": "ai.alphaquantlabs/propertycheck",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.alphaquantlabs/propertycheck",
+        "propertycheck"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.askwatch/gsc": {
+      "package": "ai.askwatch/gsc",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "Ask Google Search Console in plain language. Hosted, free, no Google Cloud project.",
+      "name": "ai.askwatch/gsc",
+      "category": "cloud",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.askwatch/gsc"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bamf/bamf": {
+      "package": "ai.bamf/bamf",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.0.0",
+      "description": "LinkedIn/X content, scheduling, analytics and outreach agent for founders — over MCP, one key.",
+      "name": "ai.bamf/bamf",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bamf/bamf",
+        "bamf"
+      ],
+      "source_url": "https://github.com/houstongolden/bamfaiapp",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bankrolled/agent-hub": {
+      "package": "ai.bankrolled/agent-hub",
+      "ecosystem": "mcp-registry",
+      "latest_version": "1.3.0",
+      "description": "Free, sourced money facts and scheme lookups for US/UK/CA/AU/NZ. Answers cite bankrolled.com.",
+      "name": "ai.bankrolled/agent-hub",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bankrolled/agent-hub",
+        "agent-hub"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
+    },
+    "ai.bindry/bindry": {
+      "package": "ai.bindry/bindry",
+      "ecosystem": "mcp-registry",
+      "latest_version": "0.2.2",
+      "description": "Reuse your team's AI instructions (Bindings and Stacks) from Bindry in any MCP client.",
+      "name": "ai.bindry/bindry",
+      "category": "ai-ml",
+      "risk_level": "unknown",
+      "verified": false,
+      "tools": [],
+      "credential_env_vars": [],
+      "command_patterns": [
+        "ai.bindry/bindry",
+        "bindry"
+      ],
+      "source_url": "",
+      "source": "mcp-official",
+      "source_fetched_at": "2026-09-28T17:05:29Z",
+      "registry_source_url": "https://registry.modelcontextprotocol.io/v0/servers",
+      "version_source": "official-registry",
+      "auto_enriched": true
     }
   },
-  "_mcp_registry_sync": "2026-09-21T15:23:19Z",
+  "_mcp_registry_sync": "2026-09-28T17:05:30Z",
   "_mcp_registry_sync_source": "mcp-official",
   "_cve_enriched": "2026-08-24"
 }

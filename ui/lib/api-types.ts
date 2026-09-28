@@ -3342,7 +3342,7 @@ export interface TrendsResponse {
 
 // ─── Cross-domain overview (landing page) ────────────────────────────────────
 
-export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle" | "unavailable";
+export type OverviewDomainStatus = "ok" | "warn" | "critical" | "idle" | "unavailable" | "unknown";
 
 export interface OverviewDomain {
   label: string;
@@ -3350,6 +3350,9 @@ export interface OverviewDomain {
   graph_href?: string | undefined;
   metric: number | null;
   metric_label: string;
+  /** False when the metric is a lower bound over retained findings. */
+  count_exact?: boolean;
+  evidence_status?: "complete" | "partial" | "unavailable";
   status: OverviewDomainStatus;
   detail: Record<string, unknown>;
 }

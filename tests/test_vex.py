@@ -885,3 +885,11 @@ def test_generate_vex_preserves_product_assessments_independent_of_order():
     }
     assert forward == assessments(report.blast_radii * 2)
     assert all("Impact: unknown" in impact for _, _, impact in forward)
+
+
+def test_untrusted_log_values_stay_on_one_line():
+    from agent_bom.redaction.log_values import sanitize_log_value
+
+    rendered = sanitize_log_value("bogus\r\nFORGED log line")
+    assert "\n" not in rendered and "\r" not in rendered
+    assert "FORGED log line" in rendered

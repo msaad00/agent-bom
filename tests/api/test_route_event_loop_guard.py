@@ -441,3 +441,23 @@ async def test_sync_store_route_runs_off_the_event_loop_and_rejects_unbounded_li
         for bad in ("-1", "0", "1001"):
             assert (await client.get(f"/assets?limit={bad}")).status_code == 422, bad
     assert seen_limits == [500], "rejected limits must never reach the store"
+
+
+def test_call_route_awaits_async_handlers_and_offloads_sync_ones():
+    import asyncio
+    import threading
+
+    from agent_bom.api.route_offload import call_route
+
+    loop_thread = threading.get_ident()
+
+    def sync_handler(request):
+        return ("sync", request, threading.get_ident() != loop_thread)
+
+    async def async_handler(request):
+        return ("async", request)
+
+    async def run():
+        return await call_route(sync_handler, "r1"), await call_route(async_handler, "r2")
+
+    assert asyncio.run(run()) == (("sync", "r1", True), ("async", "r2"))

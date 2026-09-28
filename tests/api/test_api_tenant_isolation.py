@@ -829,7 +829,7 @@ async def test_compliance_routes_are_tenant_scoped():
 
     req = _request("tenant-alpha")
 
-    compliance = compliance_routes.get_compliance(req)
+    compliance = await compliance_routes.get_compliance(req)
     assert compliance["scan_count"] == 1
     llm01 = next(control for control in compliance["owasp_llm_top10"] if control["code"] == "LLM01")
     assert llm01["affected_agents"] == ["alpha-agent"]

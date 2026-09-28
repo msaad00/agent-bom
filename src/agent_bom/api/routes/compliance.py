@@ -467,7 +467,7 @@ def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/compliance", tags=["compliance"])
-def get_compliance(
+async def get_compliance(
     request: Request,
     scan_id: Annotated[str | None, Query(max_length=200)] = None,
 ) -> dict:
@@ -1319,13 +1319,13 @@ def get_aisvs_compliance(request: Request) -> dict:
 
 
 @router.get("/compliance/summary", tags=["compliance"])
-def get_compliance_summary(request: Request) -> dict:
+async def get_compliance_summary(request: Request) -> dict:
     """Return aggregate compliance score and per-framework status counts.
 
     Keep this literal route above /v1/compliance/{framework}; otherwise FastAPI
     correctly treats "summary" as a framework slug.
     """
-    full = get_compliance(request)
+    full = await get_compliance(request)
     summary_keys = {
         "overall_score",
         "overall_status",
@@ -1404,7 +1404,7 @@ def get_compliance_summary(request: Request) -> dict:
 
 
 @router.get("/compliance/nist-800-53", tags=["compliance"])
-def get_compliance_nist_800_53(
+async def get_compliance_nist_800_53(
     request: Request,
     status: str | None = None,
     include_not_evaluated: bool = False,
@@ -1426,7 +1426,7 @@ def get_compliance_nist_800_53(
     counts. Declared before ``/compliance/{framework}`` so FastAPI does not treat
     ``nist-800-53`` as a tag-mapped framework slug.
     """
-    full = get_compliance(request)
+    full = await get_compliance(request)
     return build_nist_800_53_drill(
         full["nist_800_53_catalog"],
         status=status,
@@ -1435,7 +1435,7 @@ def get_compliance_nist_800_53(
 
 
 @router.get("/compliance/{framework}", tags=["compliance"])
-def get_compliance_by_framework(request: Request, framework: str) -> dict:
+async def get_compliance_by_framework(request: Request, framework: str) -> dict:
     """Get compliance posture for a single framework.
 
     Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
@@ -1444,7 +1444,7 @@ def get_compliance_by_framework(request: Request, framework: str) -> dict:
     if framework.lower() == "aisvs":
         return get_aisvs_compliance(request)
 
-    full = get_compliance(request)
+    full = await get_compliance(request)
 
     from agent_bom.compliance_coverage import framework_output_key_by_slug, normalize_framework_slug
 

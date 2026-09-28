@@ -378,7 +378,7 @@ def test_real_compliance_export_wires_control_tags_and_non_empty_evidence() -> N
     req = _request("tenant-alpha")
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        posture = compliance_routes.get_compliance(req)
+        posture = asyncio.run(compliance_routes.get_compliance(req))
         resp = compliance_routes.export_compliance_report(req, "owasp-llm")
 
     controls = posture["owasp_llm_top10"]

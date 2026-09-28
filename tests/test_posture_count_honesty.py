@@ -51,7 +51,9 @@ def _job_store_with_unrated_blast() -> InMemoryJobStore:
     blast += [{"severity": "unknown", "affected_agents": ["unrated-agent"]} for _ in range(3)]
     blast += [{"severity": "none", "affected_agents": ["unrated-agent"]}]
     blast += [{"severity": "", "affected_agents": ["unrated-agent"]}]
-    for row in blast:
+    for index, row in enumerate(blast, start=1000):
+        row["vulnerability_id"] = f"CVE-2026-{index}"
+        row["package"] = "fixture@1.0.0"
         row["affected_agent_ids"] = [_agent_with_unrated_blast()[0].canonical_id]
     job.result = {"scan_id": "scan-unrated", "blast_radius": blast}
     store.put(job)

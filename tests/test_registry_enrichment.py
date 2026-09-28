@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import pytest
 
 from agent_bom.registry_enrichment import _flag_risks, enrich_registry
 
@@ -74,7 +77,7 @@ def test_enrich_registry_merges_existing_entries_and_adds_new_ones(tmp_path: Pat
         lambda max_results=1000: {
             "acme/fs-server": {
                 "github_stars": 99,
-                "github_last_push": "2026-03-31T00:00:00Z",
+                "github_last_push": datetime.now(timezone.utc).isoformat(),
                 "github_archived": False,
             }
         },
@@ -93,3 +96,10 @@ def test_enrich_registry_merges_existing_entries_and_adds_new_ones(tmp_path: Pat
     assert "low-adoption" in servers["community/new-server"]["risk_flags"]
     assert data["_total_servers"] == 2
     assert data["_enrichment_sources"] == ["smithery", "docker_hub", "github"]
+
+
+@pytest.mark.parametrize("age_days,abandoned", [(0, False), (180, False), (181, True)])
+def test_abandonment_threshold_is_relative_to_evaluation_time(age_days, abandoned):
+    pushed_at = datetime.now(timezone.utc) - timedelta(days=age_days)
+    flags = _flag_risks({"github_last_push": pushed_at.isoformat(), "github_stars": 99})
+    assert any(flag.startswith("abandoned (") for flag in flags) is abandoned

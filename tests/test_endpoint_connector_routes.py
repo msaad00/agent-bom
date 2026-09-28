@@ -32,6 +32,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY)
     monkeypatch.setenv("AGENT_BOM_CONNECTIONS_KEY", Fernet.generate_key().decode())
     monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_FILE", raising=False)
     connection_crypto.reset_key_cache()
     store = EndpointStore(str(tmp_path / "endpoints.db"))
     monkeypatch.setattr("agent_bom.api.routes.endpoint_connectors.EndpointStore", lambda: store)
@@ -79,6 +80,7 @@ def test_validation_never_echoes_credentials(client, extra):
 def test_no_plaintext_fallback_without_encryption(client, monkeypatch):
     monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY")
     connection_crypto.reset_key_cache()
+    assert not connection_crypto.connections_key_configured()
     response = client.post("/v1/endpoint-connectors", json=BODY, headers=headers())
     assert response.status_code == 503
     assert client.get("/v1/endpoint-connectors", headers=headers()).json()["connections"] == []

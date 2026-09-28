@@ -60,3 +60,16 @@ def test_scope_catalog_matches_enforcement_for_every_row():
         assert row["scope"] == policy._required_scope(row["method"], row["path_prefix"])
         if row["method"] == "GET":
             assert row["scope"] == policy._required_scope("HEAD", row["path_prefix"])
+
+
+def test_source_bound_ingest_admission_does_not_require_cloud_write():
+    from agent_bom.api.route_policy import request_scopes_allow, required_scope
+
+    path = "/v1/cloud/runtime-evidence/ingest"
+    assert required_scope("POST", path) == "runtime:ingest:*"
+    assert request_scopes_allow(["runtime:ingest:edr-1"], "POST", path)
+    for scopes in (["cloud:write"], ["scan:write"], ["runtime:ingest:"]):
+        assert not request_scopes_allow(scopes, "POST", path)
+    for other in (path + "/child", path + "-other"):
+        assert required_scope("POST", other) == "cloud:write"
+        assert not request_scopes_allow(["runtime:ingest:edr-1"], "POST", other)

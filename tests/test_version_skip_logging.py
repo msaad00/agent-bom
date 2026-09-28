@@ -70,7 +70,7 @@ def test_validate_version_debug_log(caplog: pytest.LogCaptureFixture) -> None:
     """validate_version should emit debug log for unknown/latest."""
     from agent_bom.version_utils import validate_version
 
-    with caplog.at_level(logging.DEBUG, logger="agent_bom.version_utils"):
+    with caplog.at_level(logging.DEBUG, logger="agent_bom.core.versions.validation"):
         result = validate_version("unknown", "pypi")
 
     assert result is False

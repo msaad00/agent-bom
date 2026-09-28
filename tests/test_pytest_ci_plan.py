@@ -53,7 +53,16 @@ def test_route_and_shared_auth_edits_always_select_mounted_operation_matrix(tmp_
 
 
 def test_mcp_registration_edits_select_tool_contracts(tmp_path: Path) -> None:
-    expected = sorted(tmp_path / "tests" / name for name in ("test_mcp_tool_output_contract.py", "test_mcp_strict_args.py"))
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_mcp_tool_output_contract.py",
+            "test_mcp_strict_args.py",
+            "test_deployment.py",
+            "test_stats_alignment.py",
+            "test_fleet_scan.py",
+        )
+    )
     for path in expected:
         _write(path, 1)
     for source in (

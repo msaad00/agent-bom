@@ -69,6 +69,15 @@ exception, available to authenticated callers without a resource scope.
 HEAD uses GET policy. Only CORS preflight OPTIONS requests bypass authentication;
 ordinary OPTIONS requests go through the credential and scope checks.
 
+The runtime evidence ingestion operation, `POST /v1/cloud/runtime-evidence/ingest`,
+requires an administrative credential with the exact `runtime:ingest:<source_id>`
+grant for a registered source. The catalog displays `runtime:ingest:*` as the
+source-scope family; that wildcard is not sufficient to ingest. The handler
+verifies the exact source, tenant, provider, account, revocation and maximum
+one-hour credential lifetime before storage. Broad `cloud:write`, wildcard or
+unbound credentials fail closed. The source grant does not authorize other
+cloud operations.
+
 Key-backed browser cookies use the intersection of their signed grants and the
 current key record. Downgrades and scope reductions take effect on the next
 request; broadening a key does not broaden an existing cookie. Revoked, expired,

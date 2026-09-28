@@ -396,7 +396,9 @@ def test_queue_only_legacy_upgrade_does_not_require_or_advertise_graph(monkeypat
                 """)
             monkeypatch.setenv("ALEMBIC_DATABASE_URL", url.replace("postgresql://", "postgresql+psycopg://", 1))
             command.stamp(cfg, "20260728_02")
-            command.upgrade(cfg, "head")
+            # Exercise the graph migration rollback without crossing later
+            # endpoint migrations whose evidence retention forbids downgrade.
+            command.upgrade(cfg, "20260923_02")
             with psycopg.connect(url) as conn:
                 assert conn.execute("SELECT job_id FROM scan_dispatch_queue").fetchone()[0] == "legacy-queued-job"
                 assert conn.execute("SELECT to_regclass('public.graph_snapshots')").fetchone()[0] is None

@@ -306,26 +306,8 @@ class TestFleetScanResult:
 
 
 def test_server_card_tools_count_matches_mcp_tools():
-    """Ensure _SERVER_CARD_TOOLS stays in sync with split MCP tool surfaces."""
-    import inspect
-    import re
-
-    from agent_bom import (
-        mcp_server,
-        mcp_server_operator_tools,
-        mcp_server_runtime_catalog,
-        mcp_server_specialized,
-        mcp_server_ticketing_tools,
-    )
+    """Ensure the server card covers every registered MCP tool surface."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
+    from agent_bom.mcp_tools.catalog import registered_mcp_tool_decorator_names
 
-    source = (
-        inspect.getsource(mcp_server)
-        + inspect.getsource(mcp_server_operator_tools)
-        + inspect.getsource(mcp_server_runtime_catalog)
-        + inspect.getsource(mcp_server_specialized)
-        + inspect.getsource(mcp_server_ticketing_tools)
-    )
-    tool_count = len(re.findall(r"@mcp\.tool\(", source))
-    card_count = len(_SERVER_CARD_TOOLS)
-    assert card_count == tool_count, f"_SERVER_CARD_TOOLS has {card_count} entries but found {tool_count} @mcp.tool decorators"
+    assert {tool["name"] for tool in _SERVER_CARD_TOOLS} == registered_mcp_tool_decorator_names()

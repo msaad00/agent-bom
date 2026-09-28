@@ -40,7 +40,7 @@ from agent_bom.api.postgres_policy import (  # noqa: F401
     PostgresScheduleStore,
     PostgresSourceStore,
 )
-from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore  # noqa: F401
+from agent_bom.api.tenant_quota_store import PostgresTenantQuotaStore  # noqa: F401
 
 __all__ = [
     "_apply_tenant_session",

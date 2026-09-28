@@ -285,17 +285,13 @@ def _get_tenant_quota_store() -> TenantQuotaStore:
     if _tenant_quota_store is None:
         with _store_lock:
             if _tenant_quota_store is None:
+                from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore, SqlTenantQuotaStore
+
                 if os.environ.get("AGENT_BOM_POSTGRES_URL"):
-                    from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore
-
-                    _tenant_quota_store = PostgresTenantQuotaStore()
+                    _tenant_quota_store = SqlTenantQuotaStore.postgres()
                 elif os.environ.get("AGENT_BOM_DB"):
-                    from agent_bom.api.tenant_quota_store import SQLiteTenantQuotaStore
-
-                    _tenant_quota_store = SQLiteTenantQuotaStore(os.environ["AGENT_BOM_DB"])
+                    _tenant_quota_store = SqlTenantQuotaStore.sqlite(os.environ["AGENT_BOM_DB"])
                 else:
-                    from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
-
                     _tenant_quota_store = InMemoryTenantQuotaStore()
     return _tenant_quota_store
 

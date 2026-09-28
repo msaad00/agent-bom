@@ -291,6 +291,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
             "export_destination_store.py",
             "lifecycle_store.py",
             "shared_auth_state.py",
+            "tenant_quota_store.py",
         )
     )
     runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
@@ -305,7 +306,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
     migrated_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS\s+([a-z_]+)", authority_sql, re.IGNORECASE))
     assert runtime_tables - migrated_tables == set()
 
-    components = set(re.findall(r'ensure_postgres_schema_version\(\w+,\s*"([^"]+)"', runtime_source))
+    components = set(re.findall(r'(?:ensure_postgres_schema_version\(\w+,\s*|\.bootstrap\()"([^"]+)"', runtime_source))
     components.add("proxy_replay_log")
     # Additive revisions own new components; replaying or modifying the old
     # baseline must not be required just to make this guard recognize them.

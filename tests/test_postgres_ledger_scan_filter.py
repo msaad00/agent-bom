@@ -11,8 +11,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 
-from agent_bom.api import postgres_compliance_hub as hub_module
 from agent_bom.api.postgres_compliance_hub import PostgresComplianceHubStore
+from agent_bom.api.storage import sql as storage_sql
 
 ROOT = Path(__file__).parent.parent
 MIGRATION = ROOT / "deploy/supabase/postgres/alembic/versions/20260818_01_hub_ledger_scan_id.py"
@@ -34,6 +34,9 @@ class _ReadConnection:
     def __init__(self) -> None:
         self.executed: list[tuple[str, tuple[object, ...] | None]] = []
 
+    def rollback(self) -> None:
+        pass
+
     def execute(self, sql: str, params: tuple[object, ...] | None = None) -> _Rows:
         self.executed.append((sql, params))
         return _Rows([(0,)] if "COUNT(*)" in sql else [])
@@ -43,11 +46,11 @@ def test_postgres_ledger_filters_use_materialized_partial_indexes(monkeypatch) -
     conn = _ReadConnection()
 
     @contextmanager
-    def _connection(_pool):
+    def _connection(_pool, *, repeatable_read=False):
+        assert repeatable_read
         yield conn
 
-    monkeypatch.setattr(hub_module, "_tenant_connection", _connection)
-    monkeypatch.setattr(hub_module, "hydrate_finding_payloads_postgres", lambda _conn, _tenant, payloads: payloads)
+    monkeypatch.setattr(storage_sql, "_tenant_connection", _connection)
     store = object.__new__(PostgresComplianceHubStore)
     store._pool = object()
 
@@ -59,7 +62,7 @@ def test_postgres_ledger_filters_use_materialized_partial_indexes(monkeypatch) -
     )
 
     assert rows == [] and total == 0
-    normalized = [" ".join(sql.split()) for sql, _params in conn.executed]
+    normalized = [" ".join(sql.split()).replace("!=", "<>") for sql, _params in conn.executed]
     assert normalized
     for sql in normalized:
         assert "severity <> '' AND LOWER(severity) = %s" in sql
@@ -81,9 +84,10 @@ def test_postgres_ledger_scan_id_is_forward_migrated_and_bootstrapped() -> None:
 
 
 def test_postgres_ledger_write_materializes_batch_or_scan_id() -> None:
-    source = (ROOT / "src/agent_bom/api/postgres_compliance_hub.py").read_text()
-    insert_start = source.index("INSERT INTO compliance_hub_findings")
-    insert = source[insert_start : source.index("ON CONFLICT", insert_start)]
+    from agent_bom.api.storage.finding_ledger_writes import ledger_upsert
+
+    source = (ROOT / "src/agent_bom/api/storage/finding_ledger_writes.py").read_text()
+    insert = ledger_upsert("postgres").split("ON CONFLICT", 1)[0]
 
     assert "scan_id" in insert
     assert 'payload.get("batch_id") or payload.get("scan_id")' in source

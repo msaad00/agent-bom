@@ -139,6 +139,7 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                     "test_ingest_idempotency",
                     "test_finding_sla_lifecycle",
                     "test_postgres_integration",
+                    "test_postgres_ledger_scan_filter",
                     "test_api_surface_0943",
                     "test_read_path_compliance_hub",
                     "test_delta_stream",

@@ -212,6 +212,7 @@ def test_shared_sql_changes_select_finding_and_storage_contracts(tmp_path):
         "test_findings_sql_read_contract.py",
         "test_finding_lifecycle.py",
         "test_finding_sla_lifecycle.py",
+        "test_postgres_ledger_scan_filter.py",
         "test_overview.py",
         "test_findings_sql_backfill.py",
         "test_hub_ingest_atomic.py",

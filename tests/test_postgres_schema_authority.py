@@ -279,6 +279,7 @@ def test_postgres_baseline_strips_demotable_owner_and_skips_bootstrap_role() -> 
 def test_migration_schema_covers_every_runtime_postgres_table_and_component() -> None:
     api_root = ROOT / "src" / "agent_bom" / "api"
     runtime_paths = list(api_root.glob("postgres*.py"))
+    runtime_paths.append(api_root / "source_postgres.py")
     runtime_paths.extend(
         api_root / name
         for name in (

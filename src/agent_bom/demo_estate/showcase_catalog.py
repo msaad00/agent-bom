@@ -138,7 +138,7 @@ def seed_showcase_catalog_if_empty(*, tenant_id: str = SHOWCASE_TENANT) -> dict[
         ):
             existing_source_ids = {record.source_id for record in source_store.list_all(tenant_id=tenant_id)}
             if source.source_id not in existing_source_ids:
-                source_store.put(source)
+                source_store.put(source, tenant_id=tenant_id)
                 sources_seeded += 1
 
     cost_store = get_cost_store()

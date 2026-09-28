@@ -89,7 +89,8 @@ def test_data_sources_live_after_run():
             last_job_id="job-1",
             created_at="2026-07-09T10:00:00Z",
             updated_at="2026-07-09T12:00:00Z",
-        )
+        ),
+        tenant_id="tenant-a",
     )
     registry = derive_service_registry("tenant-a", {"scan_count": 0})
     assert registry["services"]["data_sources"]["state"] == "live"

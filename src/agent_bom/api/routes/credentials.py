@@ -128,7 +128,7 @@ def create_credential_ref(request: Request, body: CredentialRefCreate) -> dict:
         updated_at=now,
     )
     with tenant_quota_guard(tenant_id):
-        _get_credential_ref_store().put(credential)
+        _get_credential_ref_store().put(credential, tenant_id=tenant_id)
     log_action(
         "credential_ref.create",
         actor=_actor(request),
@@ -187,7 +187,7 @@ def update_credential_ref(request: Request, credential_ref_id: str, body: Creden
         if current.status == CredentialRefStatus.RETIRED:
             raise HTTPException(status_code=409, detail="Retired credential references are immutable")
         credential = _apply_update(current, body)
-        _get_credential_ref_store().put(credential)
+        _get_credential_ref_store().put(credential, tenant_id=tenant_id)
     log_action(
         "credential_ref.update",
         actor=_actor(request),
@@ -212,7 +212,7 @@ def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
         credential.last_validation_message = message
         credential.status = status
         credential.updated_at = _now()
-        _get_credential_ref_store().put(credential)
+        _get_credential_ref_store().put(credential, tenant_id=tenant_id)
     log_action(
         "credential_ref.test",
         actor=_actor(request),
@@ -240,7 +240,7 @@ def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
             if value_looks_like_secret(credential.external_ref):
                 credential.external_ref = None
                 credential.updated_at = _now()
-                _get_credential_ref_store().put(credential)
+                _get_credential_ref_store().put(credential, tenant_id=tenant_id)
                 retired_legacy_secret_purged = True
         else:
             attached_sources = [
@@ -264,7 +264,7 @@ def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
             if value_looks_like_secret(credential.external_ref):
                 credential.external_ref = None
             credential.updated_at = _now()
-            _get_credential_ref_store().put(credential)
+            _get_credential_ref_store().put(credential, tenant_id=tenant_id)
     if already_retired:
         if retired_legacy_secret_purged:
             log_action(

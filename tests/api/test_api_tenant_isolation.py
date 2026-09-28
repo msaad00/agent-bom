@@ -345,7 +345,8 @@ async def test_schedule_create_accepts_enabled_runnable_source(isolated_audit_lo
             display_name="Repository",
             kind=SourceKind.SCAN_REPO,
             config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
 
     created = schedule_routes.create_schedule(

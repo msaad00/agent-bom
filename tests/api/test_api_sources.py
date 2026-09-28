@@ -254,7 +254,7 @@ def test_source_cohort_same_key_dispatches_each_child_once(
     assert results[0][1] == results[1][1]
     assert sorted(dispatched) == sorted(results[0][1]["child_job_ids"])
     for source_id in source_ids:
-        source = _stores._get_source_store().get(source_id)
+        source = _stores._get_source_store().get(source_id, tenant_id="tenant-alpha")
         assert source is not None
         child = _stores._get_store().get(source.last_job_id or "", tenant_id="tenant-alpha")
         assert child is not None and child.source_id == source_id
@@ -493,7 +493,7 @@ def test_legacy_empty_runnable_source_cannot_test_or_enqueue(
         display_name="Legacy empty repo",
         kind=SourceKind.SCAN_REPO,
     )
-    _stores._source_store.put(source)
+    _stores._source_store.put(source, tenant_id=source.tenant_id)
 
     def _must_not_enqueue(**kwargs):
         raise AssertionError("an empty source must not enqueue an all-default scan")
@@ -938,7 +938,7 @@ def test_credential_update_explicit_null_purges_legacy_secret_reference(source_c
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    _stores._credential_ref_store.put(legacy)
+    _stores._credential_ref_store.put(legacy, tenant_id="tenant-alpha")
 
     cleared = source_client.put(
         "/v1/credentials/legacy-secret-reference",
@@ -964,7 +964,7 @@ def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_cli
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    _stores._credential_ref_store.put(legacy)
+    _stores._credential_ref_store.put(legacy, tenant_id="tenant-alpha")
 
     retired = source_client.delete(
         "/v1/credentials/legacy-secret-retire",
@@ -1012,7 +1012,7 @@ def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest_a
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    credential_store.put(legacy)
+    credential_store.put(legacy, tenant_id="tenant-alpha")
 
     try:
         retired = source_client.delete(
@@ -1071,7 +1071,8 @@ def test_credential_retirement_purges_nested_encoded_legacy_secret_at_rest(
             external_ref=external_ref,
             created_at="2026-08-27T00:00:00+00:00",
             updated_at="2026-08-27T00:00:00+00:00",
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
 
     retired = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
@@ -1268,11 +1269,11 @@ def test_credential_retire_serializes_with_source_attachment(source_client: Test
     release_retirement = Event()
 
     class BlockingCredentialStore:
-        def put(self, credential):
+        def put(self, credential, *, tenant_id):
             if credential.status.value == "retired":
                 retirement_reached_put.set()
                 assert release_retirement.wait(timeout=5)
-            return base_store.put(credential)
+            return base_store.put(credential, tenant_id=tenant_id)
 
         def get(self, credential_ref_id, *, tenant_id):
             credential = base_store.get(credential_ref_id, tenant_id=tenant_id)
@@ -1281,7 +1282,7 @@ def test_credential_retire_serializes_with_source_attachment(source_client: Test
         def delete(self, credential_ref_id, *, tenant_id):
             return base_store.delete(credential_ref_id, tenant_id=tenant_id)
 
-        def list_all(self, tenant_id=None):
+        def list_all(self, tenant_id):
             return base_store.list_all(tenant_id=tenant_id)
 
     _stores.set_credential_ref_store(BlockingCredentialStore())
@@ -1345,7 +1346,7 @@ def test_legacy_runnable_source_can_clear_reference_before_test_and_run(
         credential_mode="credential_ref",
         credential_ref=credential_ref_id,
     )
-    _stores._source_store.put(legacy)
+    _stores._source_store.put(legacy, tenant_id=legacy.tenant_id)
 
     blocked_test = source_client.post(f"/v1/sources/{legacy.source_id}/test", headers=ANALYST_HEADERS)
     blocked_run = source_client.post(f"/v1/sources/{legacy.source_id}/run", headers=ANALYST_HEADERS)
@@ -1529,7 +1530,7 @@ def test_source_test_cannot_resurrect_source_deleted_during_health_probe(
     test_thread.join(timeout=5)
 
     assert outcomes["test_error"].status_code == 404
-    assert _stores._source_store.get(source_id) is None
+    assert _stores._source_store.get(source_id, tenant_id="tenant-alpha") is None
 
 
 def test_source_run_cannot_enqueue_or_resurrect_after_concurrent_delete(
@@ -1593,7 +1594,7 @@ def test_source_run_cannot_enqueue_or_resurrect_after_concurrent_delete(
 
     assert outcomes["run_error"].status_code == 404
     assert enqueued == []
-    assert _stores._source_store.get(source_id) is None
+    assert _stores._source_store.get(source_id, tenant_id="tenant-alpha") is None
 
 
 def test_source_delete_removes_linked_schedules_for_same_tenant_only(source_client: TestClient) -> None:

@@ -6,7 +6,9 @@ import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from agent_bom.api.source_postgres import PostgresSourceStore as PostgresSourceStore
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 from .postgres_common import (
     _ensure_tenant_rls,
@@ -19,7 +21,7 @@ from .postgres_common import (
 if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
 
-    from .models import CredentialRefRecord, SourceRecord
+    from .models import CredentialRefRecord
     from .policy_store import GatewayPolicy, PolicyAuditEntry
     from .schedule_store import ScanSchedule
 
@@ -441,97 +443,6 @@ class PostgresScheduleStore:
                 return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
 
-class PostgresSourceStore:
-    """PostgreSQL-backed hosted product source registry."""
-
-    def __init__(self, pool: ConnectionPool | None = None) -> None:
-        self._pool = pool or _get_pool()
-        self._init_tables()
-
-    def _init_tables(self) -> None:
-        with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "sources"):
-                return
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS control_plane_sources (
-                    source_id TEXT PRIMARY KEY,
-                    enabled INTEGER DEFAULT 1,
-                    tenant_id TEXT NOT NULL DEFAULT 'default',
-                    updated_at TEXT NOT NULL,
-                    data JSONB NOT NULL
-                )
-            """)
-            conn.execute("""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name = 'control_plane_sources' AND column_name = 'tenant_id'
-                    ) THEN
-                        ALTER TABLE control_plane_sources ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default';
-                    END IF;
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name = 'control_plane_sources' AND column_name = 'updated_at'
-                    ) THEN
-                        ALTER TABLE control_plane_sources ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
-                    END IF;
-                END
-                $$;
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_control_plane_sources_tenant_updated ON control_plane_sources(tenant_id, updated_at DESC)"
-            )
-            _ensure_tenant_rls(conn, "control_plane_sources", "tenant_id")
-            conn.commit()
-
-    def put(self, source: SourceRecord) -> None:
-        data = source.model_dump_json()
-        with _tenant_connection(self._pool) as conn:
-            conn.execute(
-                """INSERT INTO control_plane_sources (source_id, enabled, tenant_id, updated_at, data)
-                   VALUES (%s, %s, %s, %s, %s)
-                   ON CONFLICT (source_id) DO UPDATE SET
-                     enabled = EXCLUDED.enabled,
-                     tenant_id = EXCLUDED.tenant_id,
-                     updated_at = EXCLUDED.updated_at,
-                     data = EXCLUDED.data""",
-                (source.source_id, int(source.enabled), source.tenant_id, source.updated_at, data),
-            )
-            conn.commit()
-
-    def get(self, source_id: str) -> SourceRecord | None:
-        from .models import SourceRecord
-
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM control_plane_sources WHERE source_id = %s", (source_id,)).fetchone()
-            if row is None:
-                return None
-            raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            return SourceRecord.model_validate_json(raw)
-
-    def delete(self, source_id: str) -> bool:
-        with _tenant_connection(self._pool) as conn:
-            cursor = conn.execute("DELETE FROM control_plane_sources WHERE source_id = %s", (source_id,))
-            conn.commit()
-            return int(cursor.rowcount) > 0
-
-    def list_all(self, tenant_id: str | None = None) -> list:
-        from .models import SourceRecord
-
-        with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                rows = conn.execute("SELECT data FROM control_plane_sources ORDER BY updated_at DESC, source_id").fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT data FROM control_plane_sources
-                       WHERE tenant_id = %s
-                       ORDER BY updated_at DESC, source_id""",
-                    (tenant_id,),
-                ).fetchall()
-            return [SourceRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]
-
-
 class PostgresCredentialRefStore:
     """PostgreSQL-backed credential reference registry."""
 
@@ -574,17 +485,18 @@ class PostgresCredentialRefStore:
             _ensure_tenant_rls(conn, "credential_refs", "tenant_id")
             conn.commit()
 
-    def put(self, credential: CredentialRefRecord) -> None:
+    def put(self, credential: CredentialRefRecord, *, tenant_id: str) -> None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        if credential.tenant_id != tenant:
+            raise ValueError("Credential tenant does not match the authorized tenant")
         data = credential.model_dump_json()
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO credential_refs (credential_ref_id, enabled, tenant_id, updated_at, data)
                    VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (credential_ref_id) DO UPDATE SET
-                     enabled = EXCLUDED.enabled,
-                     tenant_id = EXCLUDED.tenant_id,
-                     updated_at = EXCLUDED.updated_at,
-                     data = EXCLUDED.data""",
+                     enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at, data = EXCLUDED.data
+                   WHERE credential_refs.tenant_id = EXCLUDED.tenant_id""",
                 (
                     credential.credential_ref_id,
                     int(credential.enabled),
@@ -594,14 +506,17 @@ class PostgresCredentialRefStore:
                 ),
             )
             conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError("Credential identity belongs to a different tenant")
 
     def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
         from .models import CredentialRefRecord
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 "SELECT data FROM credential_refs WHERE credential_ref_id = %s AND tenant_id = %s",
-                (credential_ref_id, tenant_id),
+                (credential_ref_id, tenant),
             ).fetchone()
             if row is None:
                 return None
@@ -609,25 +524,24 @@ class PostgresCredentialRefStore:
             return CredentialRefRecord.model_validate_json(raw)
 
     def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 "DELETE FROM credential_refs WHERE credential_ref_id = %s AND tenant_id = %s",
-                (credential_ref_id, tenant_id),
+                (credential_ref_id, tenant),
             )
             conn.commit()
             return int(cursor.rowcount) > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list:
+    def list_all(self, tenant_id: str) -> list:
         from .models import CredentialRefRecord
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                rows = conn.execute("SELECT data FROM credential_refs ORDER BY updated_at DESC, credential_ref_id").fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT data FROM credential_refs
-                       WHERE tenant_id = %s
-                       ORDER BY updated_at DESC, credential_ref_id""",
-                    (tenant_id,),
-                ).fetchall()
+            rows = conn.execute(
+                """SELECT data FROM credential_refs
+                   WHERE tenant_id = %s
+                   ORDER BY updated_at DESC, credential_ref_id""",
+                (tenant,),
+            ).fetchall()
             return [CredentialRefRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]

@@ -1590,7 +1590,7 @@ def test_source_store_put_get_list_delete(mock_pool):
         created_at="2026-04-20T00:00:00+00:00",
         updated_at="2026-04-20T00:00:00+00:00",
     )
-    store.put(source)
+    store.put(source, tenant_id=source.tenant_id)
 
     mock_pool._conn._store.setdefault("control_plane_sources", {})["source-1"] = (
         "source-1",
@@ -1600,14 +1600,14 @@ def test_source_store_put_get_list_delete(mock_pool):
         source.model_dump_json(),
     )
 
-    loaded = store.get("source-1")
+    loaded = store.get("source-1", tenant_id="tenant-alpha")
     assert loaded is not None
     assert loaded.source_id == "source-1"
 
     listed = store.list_all(tenant_id="tenant-alpha")
     assert isinstance(listed, list)
 
-    assert store.delete("source-1") is True
+    assert store.delete("source-1", tenant_id="tenant-alpha") is True
 
 
 def test_credential_ref_store_put_get_list_delete(mock_pool):
@@ -1625,7 +1625,7 @@ def test_credential_ref_store_put_get_list_delete(mock_pool):
         created_at="2026-04-20T00:00:00+00:00",
         updated_at="2026-04-20T00:00:00+00:00",
     )
-    store.put(credential)
+    store.put(credential, tenant_id="tenant-alpha")
 
     mock_pool._conn._store.setdefault("credential_refs", {})["cred-1"] = (
         "cred-1",
@@ -1665,7 +1665,8 @@ def test_retired_legacy_credential_purge_audits_once_with_postgres_store(mock_po
             status=CredentialRefStatus.RETIRED,
             created_at="2026-08-27T00:00:00+00:00",
             updated_at="2026-08-27T00:00:00+00:00",
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
     original_credential_store = stores._credential_ref_store
     original_audit_log = get_audit_log()

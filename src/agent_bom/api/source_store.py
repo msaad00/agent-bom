@@ -8,40 +8,61 @@ from typing import Protocol
 
 from agent_bom.api.models import SourceRecord
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 
 class SourceStore(Protocol):
     """Protocol for source registry persistence."""
 
-    def put(self, source: SourceRecord) -> None: ...
-    def get(self, source_id: str) -> SourceRecord | None: ...
-    def delete(self, source_id: str) -> bool: ...
-    def list_all(self, tenant_id: str | None = None) -> list[SourceRecord]: ...
+    def put(self, source: SourceRecord, *, tenant_id: str) -> None: ...
+    def get(self, source_id: str, *, tenant_id: str) -> SourceRecord | None: ...
+    def delete(self, source_id: str, *, tenant_id: str) -> bool: ...
+    def list_all(self, tenant_id: str) -> list[SourceRecord]: ...
+
+
+def source_write_tenant(source: SourceRecord, tenant_id: str) -> str:
+    """A supplied record cannot choose a different tenant than its caller."""
+    tenant = require_explicit_tenant_id(tenant_id)
+    if source.tenant_id != tenant:
+        raise ValueError("Source tenant does not match the authorized tenant")
+    return tenant
 
 
 class InMemorySourceStore:
-    """Dict-based source registry store."""
+    """Thread-safe source registry with copied records and explicit ownership."""
 
     def __init__(self) -> None:
         self._sources: dict[str, SourceRecord] = {}
+        self._lock = threading.RLock()
 
-    def put(self, source: SourceRecord) -> None:
-        self._sources[source.source_id] = source
+    def put(self, source: SourceRecord, *, tenant_id: str) -> None:
+        tenant = source_write_tenant(source, tenant_id)
+        with self._lock:
+            previous = self._sources.get(source.source_id)
+            if previous is not None and previous.tenant_id != tenant:
+                raise ValueError("Source identity belongs to a different tenant")
+            self._sources[source.source_id] = source.model_copy(deep=True)
 
-    def get(self, source_id: str) -> SourceRecord | None:
-        return self._sources.get(source_id)
+    def get(self, source_id: str, *, tenant_id: str) -> SourceRecord | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            source = self._sources.get(source_id)
+            return source.model_copy(deep=True) if source is not None and source.tenant_id == tenant else None
 
-    def delete(self, source_id: str) -> bool:
-        return self._sources.pop(source_id, None) is not None
+    def delete(self, source_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            source = self._sources.get(source_id)
+            if source is None or source.tenant_id != tenant:
+                return False
+            del self._sources[source_id]
+            return True
 
-    def list_all(self, tenant_id: str | None = None) -> list[SourceRecord]:
-        sources = list(self._sources.values())
-        if tenant_id is None:
-            return sorted(sources, key=lambda source: source.display_name.lower())
-        return sorted(
-            [source for source in sources if source.tenant_id == tenant_id],
-            key=lambda source: source.display_name.lower(),
-        )
+    def list_all(self, tenant_id: str) -> list[SourceRecord]:
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            sources = [source.model_copy(deep=True) for source in self._sources.values() if source.tenant_id == tenant]
+        return sorted(sources, key=lambda source: source.display_name.lower())
 
 
 class SQLiteSourceStore:
@@ -79,10 +100,14 @@ class SQLiteSourceStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sources_tenant_name ON sources(tenant_id, updated_at)")
         self._conn.commit()
 
-    def put(self, source: SourceRecord) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO sources (source_id, enabled, tenant_id, updated_at, data)
-               VALUES (?, ?, ?, ?, ?)""",
+    def put(self, source: SourceRecord, *, tenant_id: str) -> None:
+        source_write_tenant(source, tenant_id)
+        cursor = self._conn.execute(
+            """INSERT INTO sources (source_id, enabled, tenant_id, updated_at, data)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT (source_id) DO UPDATE SET enabled = excluded.enabled,
+                 updated_at = excluded.updated_at, data = excluded.data
+               WHERE sources.tenant_id = excluded.tenant_id""",
             (
                 source.source_id,
                 int(source.enabled),
@@ -92,25 +117,24 @@ class SQLiteSourceStore:
             ),
         )
         self._conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Source identity belongs to a different tenant")
 
-    def get(self, source_id: str) -> SourceRecord | None:
-        row = self._conn.execute("SELECT data FROM sources WHERE source_id = ?", (source_id,)).fetchone()
+    def get(self, source_id: str, *, tenant_id: str) -> SourceRecord | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        row = self._conn.execute("SELECT data FROM sources WHERE source_id = ? AND tenant_id = ?", (source_id, tenant)).fetchone()
         if row is None:
             return None
         record: SourceRecord = SourceRecord.model_validate_json(row[0])
         return record
 
-    def delete(self, source_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+    def delete(self, source_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
+        cursor = self._conn.execute("DELETE FROM sources WHERE source_id = ? AND tenant_id = ?", (source_id, tenant))
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list[SourceRecord]:
-        if tenant_id is None:
-            rows = self._conn.execute("SELECT data FROM sources ORDER BY updated_at DESC, source_id").fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT data FROM sources WHERE tenant_id = ? ORDER BY updated_at DESC, source_id",
-                (tenant_id,),
-            ).fetchall()
+    def list_all(self, tenant_id: str) -> list[SourceRecord]:
+        tenant = require_explicit_tenant_id(tenant_id)
+        rows = self._conn.execute("SELECT data FROM sources WHERE tenant_id = ? ORDER BY updated_at DESC, source_id", (tenant,)).fetchall()
         return [SourceRecord.model_validate_json(row[0]) for row in rows]

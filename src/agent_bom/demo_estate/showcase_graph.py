@@ -238,7 +238,7 @@ def build_demo_identity_store(tenant_id: str = SHOWCASE_TENANT) -> InMemoryAgent
     for identity in identities:
         store.put(identity)
     for grant in grants:
-        store.put_jit_grant(grant)
+        store.put_jit_grant(grant, tenant_id=grant.tenant_id)
     return store
 
 
@@ -260,7 +260,7 @@ def seed_showcase_identities(tenant_id: str = SHOWCASE_TENANT) -> dict[str, Any]
     for identity in identities:
         store.put(identity)
     for grant in grants:
-        store.put_jit_grant(grant)
+        store.put_jit_grant(grant, tenant_id=grant.tenant_id)
     return {"seeded": True, "identities": len(identities), "jit_grants": len(grants)}
 
 

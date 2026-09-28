@@ -63,7 +63,7 @@ def test_expired_active_grant_revoked_with_audit(store, audit):
     counts = cleanup_expired_grants(store, now=later, audit_log=audit)
 
     assert counts["expired"] == 1
-    refreshed = store.get_jit_grant(grant.grant_id)
+    refreshed = store.get_jit_grant(grant.grant_id, tenant_id=grant.tenant_id)
     assert refreshed.status == "revoked"
     assert refreshed.revoked_reason == "expired"
     rows = audit.list()
@@ -74,12 +74,12 @@ def test_expired_active_grant_revoked_with_audit(store, audit):
 
 def test_denied_grant_pruned(store, audit):
     g = request_jit_grant(store, identity_id="id1", agent_id="a", tenant_id="t1", tool_name="tool")
-    deny_jit_grant(store, g.grant_id, reason="not approved")
+    deny_jit_grant(store, g.grant_id, reason="not approved", tenant_id=g.tenant_id)
 
     counts = cleanup_expired_grants(store, now=T0, audit_log=audit)
 
     assert counts["pruned"] == 1
-    assert store.get_jit_grant(g.grant_id).status == "revoked"
+    assert store.get_jit_grant(g.grant_id, tenant_id=g.tenant_id).status == "revoked"
     assert audit.list()[0].action == "jit_grant_denied_pruned"
 
 
@@ -95,7 +95,7 @@ def test_cleanup_grants_idempotent_no_duplicate_audit(store, audit):
     later = datetime.fromisoformat(grant.expires_at.replace("Z", "+00:00")) + timedelta(minutes=5)
 
     first = cleanup_expired_grants(store, now=later, audit_log=audit)
-    snapshot = store.get_jit_grant(grant.grant_id)
+    snapshot = store.get_jit_grant(grant.grant_id, tenant_id=grant.tenant_id)
     head_after_first = audit.head_hash()
 
     second = cleanup_expired_grants(store, now=later + timedelta(hours=1), audit_log=audit)
@@ -105,7 +105,7 @@ def test_cleanup_grants_idempotent_no_duplicate_audit(store, audit):
     assert len(audit.list()) == 1  # no duplicate audit row
     assert audit.head_hash() == head_after_first
     # End-state identical (no double transition).
-    again = store.get_jit_grant(grant.grant_id)
+    again = store.get_jit_grant(grant.grant_id, tenant_id=grant.tenant_id)
     assert again.revoked_at == snapshot.revoked_at
 
 
@@ -329,7 +329,7 @@ def test_audit_sink_error_does_not_crash_sweep(store):
     counts = cleanup_expired_grants(store, now=later, audit_log=_BadAudit())
     # Transition still happened; the audit failure was swallowed.
     assert counts["expired"] == 1
-    assert store.get_jit_grant(grant.grant_id).status == "revoked"
+    assert store.get_jit_grant(grant.grant_id, tenant_id=grant.tenant_id).status == "revoked"
 
 
 # ── SQLite durability + idempotency across connections ───────────────────────

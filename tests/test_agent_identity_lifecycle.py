@@ -247,13 +247,13 @@ def test_jit_grant_is_time_bound_and_revocable(store):
     )
     assert store.active_jit_grant("t1", identity.identity_id, "read_file") is None
 
-    grant = approve_jit_grant(store, request.grant_id, ttl_seconds=300, approved_by="admin")
+    grant = approve_jit_grant(store, request.grant_id, ttl_seconds=300, approved_by="admin", tenant_id=request.tenant_id)
     assert grant is not None
     assert grant.status == "active"
     assert store.active_jit_grant("t1", identity.identity_id, "read_file").grant_id == grant.grant_id
 
     grant.expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
-    store.put_jit_grant(grant)
+    store.put_jit_grant(grant, tenant_id=grant.tenant_id)
     assert store.active_jit_grant("t1", identity.identity_id, "read_file") is None
 
 
@@ -266,8 +266,8 @@ def test_jit_deny_and_revoke_remove_live_access(store):
         tenant_id=identity.tenant_id,
         tool_name="run_shell",
     )
-    assert deny_jit_grant(store, denied.grant_id, reason="too broad").status == "denied"
-    assert approve_jit_grant(store, denied.grant_id, ttl_seconds=300) is None
+    assert deny_jit_grant(store, denied.grant_id, reason="too broad", tenant_id=denied.tenant_id).status == "denied"
+    assert approve_jit_grant(store, denied.grant_id, ttl_seconds=300, tenant_id=denied.tenant_id) is None
 
     grant = issue_jit_grant(
         store,
@@ -278,7 +278,7 @@ def test_jit_deny_and_revoke_remove_live_access(store):
         ttl_seconds=300,
     )
     assert store.active_jit_grant("t1", identity.identity_id, "run_shell") is not None
-    assert revoke_jit_grant(store, grant.grant_id, reason="done").status == "revoked"
+    assert revoke_jit_grant(store, grant.grant_id, reason="done", tenant_id=grant.tenant_id).status == "revoked"
     assert store.active_jit_grant("t1", identity.identity_id, "run_shell") is None
 
 
@@ -416,7 +416,7 @@ def test_jit_grant_temporarily_allows_out_of_scope_tool(store):
     assert allowed.status_code == 200 and allowed.json()["result"] == {"ok": True}
     assert any(e.get("action") == "gateway.identity_jit_grant_used" and e.get("grant_id") == grant.grant_id for e in audit_events)
 
-    revoke_jit_grant(store, grant.grant_id)
+    revoke_jit_grant(store, grant.grant_id, tenant_id=grant.tenant_id)
     blocked = client.post("/mcp/filesystem", json=message)
     assert blocked.json().get("error", {}).get("code") == -32001, blocked.text
     assert blocked.json()["error"]["data"] == {"reason": "Identity scope blocked this tool", "policy_source": "identity_scope"}
@@ -469,7 +469,7 @@ def test_deny_policy_wins_over_require():
 def test_disabled_policy_is_ignored():
     store = InMemoryAgentIdentityStore()
     policy = create_conditional_policy(store, tenant_id="t1", name="prod-only", effect="require", allowed_environments=["prod"])
-    set_conditional_policy_status(store, policy.policy_id, status="disabled")
+    set_conditional_policy_status(store, policy.policy_id, tenant_id=policy.tenant_id, status="disabled")
     active = store.list_conditional_policies("t1")
     assert active == []
     allowed, _, _ = evaluate_conditional_access(store.list_conditional_policies("t1"), AccessContext(environment="dev"))

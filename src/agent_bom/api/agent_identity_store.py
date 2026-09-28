@@ -12,18 +12,64 @@ from __future__ import annotations
 
 import builtins
 import hashlib
-import ipaddress
 import json
 import logging
 import os
 import secrets
 import sqlite3
 import threading
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from agent_bom.api.identity_grants import (
+    AgentJITGrant as AgentJITGrant,
+)
+from agent_bom.api.identity_grants import (
+    approve_jit_grant as approve_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    deny_jit_grant as deny_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    identity_expiry as _ttl_to_expiry,
+)
+from agent_bom.api.identity_grants import (
+    issue_jit_grant as issue_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    request_jit_grant as request_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    require_grant_tenant,
+)
+from agent_bom.api.identity_grants import (
+    revoke_jit_grant as revoke_jit_grant,
+)
+from agent_bom.api.identity_policies import (
+    AccessContext as AccessContext,
+)
+from agent_bom.api.identity_policies import (
+    ConditionalAccessPolicy as ConditionalAccessPolicy,
+)
+from agent_bom.api.identity_policies import (
+    create_conditional_policy as create_conditional_policy,
+)
+from agent_bom.api.identity_policies import (
+    evaluate_conditional_access as evaluate_conditional_access,
+)
+from agent_bom.api.identity_policies import (
+    evaluate_conditional_access_for_request as evaluate_conditional_access_for_request,
+)
+from agent_bom.api.identity_policies import (
+    require_policy_tenant,
+)
+from agent_bom.api.identity_policies import (
+    set_conditional_policy_status as set_conditional_policy_status,
+)
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 TOKEN_PREFIX = "abi"
 
@@ -124,212 +170,6 @@ class AgentIdentity:
         return self.status in ("active", "rotating")
 
 
-@dataclass
-class AgentJITGrant:
-    """A time-bound access grant for one identity and one tool."""
-
-    grant_id: str
-    identity_id: str
-    agent_id: str
-    tenant_id: str
-    tool_name: str
-    status: str  # requested | active | denied | revoked
-    requested_at: str
-    requested_by: str = ""
-    approved_at: str = ""
-    approved_by: str = ""
-    starts_at: str = ""
-    expires_at: str = ""
-    reason: str = ""
-    ticket_id: str = ""
-    revoked_at: str = ""
-    revoked_reason: str = ""
-    denied_at: str = ""
-    denied_reason: str = ""
-
-    def is_live(self, *, at: datetime | None = None) -> bool:
-        if self.status != "active":
-            return False
-        now = at or _now()
-        try:
-            if self.starts_at and now < datetime.fromisoformat(self.starts_at):
-                return False
-            if not self.expires_at or now > datetime.fromisoformat(self.expires_at):
-                return False
-        except ValueError:
-            return False
-        return True
-
-    def to_public_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass
-class AccessContext:
-    """The request-time context a conditional-access policy is evaluated against."""
-
-    identity_id: str = ""
-    agent_id: str = ""
-    tool_name: str = ""
-    environment: str = ""
-    source_ip: str = ""
-    # Device / group / client attributes (ABAC): the calling workstation or
-    # service identity (``device_id``), the caller's directory groups
-    # (``groups``), and the MCP client application making the call
-    # (``client_id``). Empty means "not supplied" — a policy that constrains one
-    # of these fails closed when the request cannot prove it.
-    device_id: str = ""
-    groups: list[str] = field(default_factory=list)
-    client_id: str = ""
-    # Device posture (ABAC), enriched from EDR/MDM signals
-    # (:mod:`agent_bom.device_posture`). ``None`` means "not supplied / unknown"
-    # — a ``require_device_*`` policy fails closed on an unknown device rather
-    # than waving it through.
-    device_managed: bool | None = None
-    device_compliant: bool | None = None
-    device_disk_encrypted: bool | None = None
-    at: datetime | None = None
-
-
-@dataclass
-class ConditionalAccessPolicy:
-    """A context-aware access rule evaluated at the gateway decision point.
-
-    A policy *applies* to a request when its scope (identities / agents / tools)
-    matches. An applying ``require`` policy permits the call only when every
-    configured condition holds; an applying ``deny`` policy blocks the call when
-    every configured condition holds. Deny wins over require. Empty scope or
-    condition lists mean "any", so an active ``deny`` policy with no conditions
-    is an unconditional block for its scope, and a ``require`` policy with one
-    condition is a guardrail that denies whenever that condition is not met.
-    """
-
-    policy_id: str
-    tenant_id: str
-    name: str
-    effect: str  # require | deny
-    status: str  # active | disabled
-    created_at: str
-    priority: int = 100
-    # Scope: which requests this policy governs (empty list = any; "*" = all).
-    identity_ids: list[str] = field(default_factory=list)
-    agent_ids: list[str] = field(default_factory=list)
-    tools: list[str] = field(default_factory=list)
-    # Conditions: context attributes that must hold (empty list = unconstrained).
-    allowed_environments: list[str] = field(default_factory=list)
-    allowed_hours_utc: list[int] = field(default_factory=list)  # 0..23 UTC
-    allowed_weekdays: list[int] = field(default_factory=list)  # 0=Mon .. 6=Sun
-    allowed_source_cidrs: list[str] = field(default_factory=list)
-    # Device / group / client conditions (ABAC). Empty list = unconstrained; a
-    # populated list requires the request context to match (membership for
-    # groups, exact for device/client) or the condition fails closed.
-    allowed_devices: list[str] = field(default_factory=list)
-    allowed_groups: list[str] = field(default_factory=list)
-    allowed_clients: list[str] = field(default_factory=list)
-    # Device-posture conditions (ABAC), evaluated against EDR/MDM-enriched
-    # context. Each defaults off; when set, the request must prove the posture
-    # attribute is True or the condition fails closed (unknown/False → not met).
-    require_device_managed: bool = False
-    require_device_compliant: bool = False
-    require_device_disk_encrypted: bool = False
-    updated_at: str = ""
-    description: str = ""
-
-    @staticmethod
-    def _scope_match(allowed: list[str], value: str) -> bool:
-        if not allowed:
-            return True
-        return "*" in allowed or value in allowed
-
-    def applies_to(self, ctx: "AccessContext") -> bool:
-        """True when this policy governs ``ctx`` (scope match only)."""
-        return (
-            self._scope_match(self.identity_ids, ctx.identity_id)
-            and self._scope_match(self.agent_ids, ctx.agent_id)
-            and self._scope_match(self.tools, ctx.tool_name)
-        )
-
-    def conditions_met(self, ctx: "AccessContext") -> bool:
-        """True when every configured condition holds for ``ctx``.
-
-        A condition over an attribute the request did not supply fails closed —
-        an unprovable "in prod" or "from this CIDR" condition is treated as not
-        met, so a ``require`` guardrail denies rather than waving the call through.
-        """
-        now = ctx.at or _now()
-        if self.allowed_environments and ctx.environment.strip().lower() not in {e.strip().lower() for e in self.allowed_environments}:
-            return False
-        if self.allowed_hours_utc and now.hour not in set(self.allowed_hours_utc):
-            return False
-        if self.allowed_weekdays and now.weekday() not in set(self.allowed_weekdays):
-            return False
-        if self.allowed_source_cidrs and not _ip_in_any_cidr(ctx.source_ip, self.allowed_source_cidrs):
-            return False
-        # Device: exact match against an allow-list. A request that supplies no
-        # device id cannot satisfy a device condition — fail closed.
-        if self.allowed_devices and (not ctx.device_id or ctx.device_id not in set(self.allowed_devices)):
-            return False
-        # Group: membership. The caller must belong to at least one allowed
-        # group; no groups supplied fails closed.
-        if self.allowed_groups and not (set(ctx.groups) & set(self.allowed_groups)):
-            return False
-        # Client: exact match against the allowed MCP client applications.
-        if self.allowed_clients and (not ctx.client_id or ctx.client_id not in set(self.allowed_clients)):
-            return False
-        # Device posture (EDR/MDM enriched). A required posture attribute must be
-        # proven True; an unknown (None) or False posture fails closed.
-        if self.require_device_managed and ctx.device_managed is not True:
-            return False
-        if self.require_device_compliant and ctx.device_compliant is not True:
-            return False
-        if self.require_device_disk_encrypted and ctx.device_disk_encrypted is not True:
-            return False
-        return True
-
-    def to_public_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-def _ip_in_any_cidr(source_ip: str, cidrs: list[str]) -> bool:
-    if not source_ip:
-        return False
-    try:
-        addr = ipaddress.ip_address(source_ip.strip())
-    except ValueError:
-        return False
-    for cidr in cidrs:
-        try:
-            if addr in ipaddress.ip_network(cidr.strip(), strict=False):
-                return True
-        except ValueError:
-            continue
-    return False
-
-
-def evaluate_conditional_access(
-    policies: list[ConditionalAccessPolicy],
-    ctx: AccessContext,
-) -> tuple[bool, str, str]:
-    """Evaluate active conditional-access policies for ``ctx``.
-
-    Returns ``(allowed, reason, policy_id)``. Deny precedence: any applying
-    ``deny`` policy whose conditions hold blocks the call; otherwise any applying
-    ``require`` policy whose conditions are not met blocks it. An empty policy
-    list (or no applying policy) allows.
-    """
-    applicable = sorted(
-        (p for p in policies if p.status == "active" and p.applies_to(ctx)),
-        key=lambda p: (p.priority, p.policy_id),
-    )
-    for policy in applicable:
-        if policy.effect == "deny" and policy.conditions_met(ctx):
-            return False, f"blocked by conditional-access policy '{policy.name}'", policy.policy_id
-    for policy in applicable:
-        if policy.effect == "require" and not policy.conditions_met(ctx):
-            return False, f"context fails conditional-access policy '{policy.name}'", policy.policy_id
-    return True, "", ""
-
-
 class AgentIdentityStore(Protocol):
     def put(self, identity: AgentIdentity) -> None: ...
 
@@ -343,9 +183,9 @@ class AgentIdentityStore(Protocol):
 
     def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]: ...
 
-    def put_jit_grant(self, grant: AgentJITGrant) -> None: ...
+    def put_jit_grant(self, grant: AgentJITGrant, *, tenant_id: str) -> None: ...
 
-    def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None: ...
+    def get_jit_grant(self, grant_id: str, *, tenant_id: str) -> AgentJITGrant | None: ...
 
     def list_jit_grants(
         self,
@@ -369,9 +209,9 @@ class AgentIdentityStore(Protocol):
 
     def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]: ...
 
-    def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None: ...
+    def put_conditional_policy(self, policy: ConditionalAccessPolicy, *, tenant_id: str) -> None: ...
 
-    def get_conditional_policy(self, policy_id: str) -> ConditionalAccessPolicy | None: ...
+    def get_conditional_policy(self, policy_id: str, *, tenant_id: str) -> ConditionalAccessPolicy | None: ...
 
     def list_conditional_policies(
         self,
@@ -380,11 +220,6 @@ class AgentIdentityStore(Protocol):
         include_disabled: bool = False,
         limit: int = 200,
     ) -> builtins.list[ConditionalAccessPolicy]: ...
-
-
-def _ttl_to_expiry(ttl_seconds: int, *, at: datetime | None = None) -> str:
-    base = at or _now()
-    return _iso(base + timedelta(seconds=max(60, int(ttl_seconds))))
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -436,13 +271,19 @@ class InMemoryAgentIdentityStore:
             rows = [i for i in self._by_id.values() if i.tenant_id == tenant_id and (i.agent_id or "").strip() == agent_id]
             return sorted(rows, key=lambda i: i.issued_at, reverse=True)[:limit]
 
-    def put_jit_grant(self, grant: AgentJITGrant) -> None:
+    def put_jit_grant(self, grant: AgentJITGrant, *, tenant_id: str) -> None:
+        tenant = require_grant_tenant(grant, tenant_id)
         with self._lock:
-            self._jit_by_id[grant.grant_id] = grant
+            previous = self._jit_by_id.get(grant.grant_id)
+            if previous is not None and previous.tenant_id != tenant:
+                raise ValueError("JIT grant identity belongs to another tenant")
+            self._jit_by_id[grant.grant_id] = replace(grant)
 
-    def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None:
+    def get_jit_grant(self, grant_id: str, *, tenant_id: str) -> AgentJITGrant | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
-            return self._jit_by_id.get(grant_id)
+            grant = self._jit_by_id.get(grant_id)
+            return replace(grant) if grant is not None and grant.tenant_id == tenant else None
 
     def list_jit_grants(
         self,
@@ -458,7 +299,7 @@ class InMemoryAgentIdentityStore:
                 rows = [g for g in rows if g.identity_id == identity_id]
             if not include_inactive:
                 rows = [g for g in rows if g.is_live()]
-            return sorted(rows, key=lambda g: g.requested_at, reverse=True)[:limit]
+            return [replace(g) for g in sorted(rows, key=lambda g: g.requested_at, reverse=True)[:limit]]
 
     def active_jit_grant(
         self,
@@ -474,7 +315,7 @@ class InMemoryAgentIdentityStore:
                 for g in self._jit_by_id.values()
                 if g.tenant_id == tenant_id and g.identity_id == identity_id and g.tool_name == tool_name and g.is_live(at=at)
             ]
-            return sorted(candidates, key=lambda g: g.expires_at, reverse=True)[0] if candidates else None
+            return replace(sorted(candidates, key=lambda g: g.expires_at, reverse=True)[0]) if candidates else None
 
     def iter_all_identities(self, *, limit: int = 10000) -> builtins.list[AgentIdentity]:
         with self._lock:
@@ -482,15 +323,21 @@ class InMemoryAgentIdentityStore:
 
     def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]:
         with self._lock:
-            return list(self._jit_by_id.values())[:limit]
+            return [replace(g) for g in list(self._jit_by_id.values())[:limit]]
 
-    def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None:
+    def put_conditional_policy(self, policy: ConditionalAccessPolicy, *, tenant_id: str) -> None:
+        tenant = require_policy_tenant(policy, tenant_id)
         with self._lock:
-            self._cond_by_id[policy.policy_id] = policy
+            current = self._cond_by_id.get(policy.policy_id)
+            if current is not None and current.tenant_id != tenant:
+                raise ValueError("Conditional policy identity belongs to another tenant")
+            self._cond_by_id[policy.policy_id] = deepcopy(policy)
 
-    def get_conditional_policy(self, policy_id: str) -> ConditionalAccessPolicy | None:
+    def get_conditional_policy(self, policy_id: str, *, tenant_id: str) -> ConditionalAccessPolicy | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
-            return self._cond_by_id.get(policy_id)
+            policy = self._cond_by_id.get(policy_id)
+            return deepcopy(policy) if policy is not None and policy.tenant_id == tenant else None
 
     def list_conditional_policies(
         self,
@@ -499,11 +346,12 @@ class InMemoryAgentIdentityStore:
         include_disabled: bool = False,
         limit: int = 200,
     ) -> builtins.list[ConditionalAccessPolicy]:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             rows = [p for p in self._cond_by_id.values() if p.tenant_id == tenant_id]
             if not include_disabled:
                 rows = [p for p in rows if p.status == "active"]
-            return sorted(rows, key=lambda p: (p.priority, p.created_at))[:limit]
+            return deepcopy(sorted(rows, key=lambda p: (p.priority, p.created_at))[:limit])
 
 
 class SQLiteAgentIdentityStore:
@@ -647,27 +495,41 @@ class SQLiteAgentIdentityStore:
         ).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
 
-    def put_jit_grant(self, grant: AgentJITGrant) -> None:
-        self._conn.execute(
-            "INSERT OR REPLACE INTO agent_identity_jit_grants "
-            "(grant_id, tenant_id, identity_id, tool_name, status, requested_at, expires_at, data) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                grant.grant_id,
-                grant.tenant_id,
-                grant.identity_id,
-                grant.tool_name,
-                grant.status,
-                grant.requested_at,
-                grant.expires_at,
-                json.dumps(asdict(grant), sort_keys=True),
-            ),
-        )
-        self._conn.commit()
+    def put_jit_grant(self, grant: AgentJITGrant, *, tenant_id: str) -> None:
+        tenant = require_grant_tenant(grant, tenant_id)
+        with self._conn:
+            cursor = self._conn.execute(
+                "INSERT INTO agent_identity_jit_grants "
+                "(grant_id, tenant_id, identity_id, tool_name, status, requested_at, expires_at, data) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (grant_id) DO UPDATE SET "
+                "identity_id = excluded.identity_id, tool_name = excluded.tool_name, requested_at = excluded.requested_at, "
+                "status = excluded.status, expires_at = excluded.expires_at, data = excluded.data "
+                "WHERE agent_identity_jit_grants.tenant_id = excluded.tenant_id",
+                (
+                    grant.grant_id,
+                    tenant,
+                    grant.identity_id,
+                    grant.tool_name,
+                    grant.status,
+                    grant.requested_at,
+                    grant.expires_at,
+                    json.dumps(asdict(grant), sort_keys=True),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("JIT grant identity belongs to another tenant")
 
-    def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None:
-        row = self._conn.execute("SELECT data FROM agent_identity_jit_grants WHERE grant_id = ?", (grant_id,)).fetchone()
-        return AgentJITGrant(**json.loads(row[0])) if row else None
+    def get_jit_grant(self, grant_id: str, *, tenant_id: str) -> AgentJITGrant | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        row = self._conn.execute(
+            "SELECT data FROM agent_identity_jit_grants WHERE grant_id = ? AND tenant_id = ?", (grant_id, tenant)
+        ).fetchone()
+        grant = AgentJITGrant(**json.loads(row[0])) if row else None
+        if grant is not None:
+            require_grant_tenant(grant, tenant)
+            if grant.grant_id != grant_id:
+                raise ValueError("JIT grant record identity does not match")
+        return grant
 
     def list_jit_grants(
         self,
@@ -718,24 +580,38 @@ class SQLiteAgentIdentityStore:
         rows = self._conn.execute("SELECT data FROM agent_identity_jit_grants ORDER BY requested_at ASC LIMIT ?", (limit,)).fetchall()
         return [AgentJITGrant(**json.loads(r[0])) for r in rows]
 
-    def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None:
-        self._conn.execute(
-            "INSERT OR REPLACE INTO agent_conditional_access_policies "
-            "(policy_id, tenant_id, status, priority, created_at, data) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                policy.policy_id,
-                policy.tenant_id,
-                policy.status,
-                int(policy.priority),
-                policy.created_at,
-                json.dumps(asdict(policy), sort_keys=True),
-            ),
-        )
-        self._conn.commit()
+    def put_conditional_policy(self, policy: ConditionalAccessPolicy, *, tenant_id: str) -> None:
+        tenant = require_policy_tenant(policy, tenant_id)
+        with self._conn:
+            cursor = self._conn.execute(
+                "INSERT INTO agent_conditional_access_policies "
+                "(policy_id, tenant_id, status, priority, created_at, data) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (policy_id) DO UPDATE SET status = excluded.status, priority = excluded.priority, "
+                "created_at = excluded.created_at, data = excluded.data "
+                "WHERE agent_conditional_access_policies.tenant_id = excluded.tenant_id",
+                (
+                    policy.policy_id,
+                    tenant,
+                    policy.status,
+                    int(policy.priority),
+                    policy.created_at,
+                    json.dumps(asdict(policy), sort_keys=True),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Conditional policy identity belongs to another tenant")
 
-    def get_conditional_policy(self, policy_id: str) -> ConditionalAccessPolicy | None:
-        row = self._conn.execute("SELECT data FROM agent_conditional_access_policies WHERE policy_id = ?", (policy_id,)).fetchone()
-        return ConditionalAccessPolicy(**json.loads(row[0])) if row else None
+    def get_conditional_policy(self, policy_id: str, *, tenant_id: str) -> ConditionalAccessPolicy | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        row = self._conn.execute(
+            "SELECT data FROM agent_conditional_access_policies WHERE policy_id = ? AND tenant_id = ?", (policy_id, tenant)
+        ).fetchone()
+        policy = ConditionalAccessPolicy(**json.loads(row[0])) if row else None
+        if policy is not None:
+            require_policy_tenant(policy, tenant)
+            if policy.policy_id != policy_id:
+                raise ValueError("Conditional policy record identity does not match")
+        return policy
 
     def list_conditional_policies(
         self,
@@ -744,6 +620,7 @@ class SQLiteAgentIdentityStore:
         include_disabled: bool = False,
         limit: int = 200,
     ) -> builtins.list[ConditionalAccessPolicy]:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         if include_disabled:
             rows = self._conn.execute(
                 "SELECT data FROM agent_conditional_access_policies WHERE tenant_id = ? ORDER BY priority ASC, created_at ASC LIMIT ?",
@@ -921,108 +798,6 @@ def agent_identity_revoked(store: AgentIdentityStore, tenant_id: str, agent_id: 
     return not any(i.is_live() for i in identities), False
 
 
-def request_jit_grant(
-    store: AgentIdentityStore,
-    *,
-    identity_id: str,
-    agent_id: str,
-    tenant_id: str,
-    tool_name: str,
-    requested_by: str = "",
-    reason: str = "",
-    ticket_id: str = "",
-) -> AgentJITGrant:
-    """Create a pending JIT request. It does not authorize a tool call."""
-    now = _now()
-    grant = AgentJITGrant(
-        grant_id=f"jit_{secrets.token_hex(8)}",
-        identity_id=identity_id,
-        agent_id=agent_id,
-        tenant_id=tenant_id,
-        tool_name=tool_name,
-        status="requested",
-        requested_at=_iso(now),
-        requested_by=requested_by[:120],
-        reason=reason[:1000],
-        ticket_id=ticket_id[:120],
-    )
-    store.put_jit_grant(grant)
-    return grant
-
-
-def approve_jit_grant(
-    store: AgentIdentityStore,
-    grant_id: str,
-    *,
-    ttl_seconds: int,
-    approved_by: str = "",
-    starts_at: datetime | None = None,
-) -> AgentJITGrant | None:
-    """Activate a pending JIT request for a bounded TTL."""
-    grant = store.get_jit_grant(grant_id)
-    if grant is None or grant.status in {"revoked", "denied"}:
-        return None
-    now = _now()
-    start = starts_at or now
-    grant.status = "active"
-    grant.approved_at = _iso(now)
-    grant.approved_by = approved_by[:120]
-    grant.starts_at = _iso(start)
-    grant.expires_at = _ttl_to_expiry(ttl_seconds, at=start)
-    store.put_jit_grant(grant)
-    return grant
-
-
-def issue_jit_grant(
-    store: AgentIdentityStore,
-    *,
-    identity_id: str,
-    agent_id: str,
-    tenant_id: str,
-    tool_name: str,
-    ttl_seconds: int,
-    approved_by: str = "",
-    reason: str = "",
-    ticket_id: str = "",
-) -> AgentJITGrant:
-    """Create and immediately approve a time-bound JIT grant."""
-    grant = request_jit_grant(
-        store,
-        identity_id=identity_id,
-        agent_id=agent_id,
-        tenant_id=tenant_id,
-        tool_name=tool_name,
-        requested_by=approved_by,
-        reason=reason,
-        ticket_id=ticket_id,
-    )
-    approved = approve_jit_grant(store, grant.grant_id, ttl_seconds=ttl_seconds, approved_by=approved_by)
-    assert approved is not None
-    return approved
-
-
-def deny_jit_grant(store: AgentIdentityStore, grant_id: str, *, reason: str = "") -> AgentJITGrant | None:
-    grant = store.get_jit_grant(grant_id)
-    if grant is None or grant.status in {"revoked", "denied"}:
-        return None
-    grant.status = "denied"
-    grant.denied_at = _iso(_now())
-    grant.denied_reason = reason[:500]
-    store.put_jit_grant(grant)
-    return grant
-
-
-def revoke_jit_grant(store: AgentIdentityStore, grant_id: str, *, reason: str = "") -> AgentJITGrant | None:
-    grant = store.get_jit_grant(grant_id)
-    if grant is None or grant.status in {"revoked", "denied"}:
-        return None
-    grant.status = "revoked"
-    grant.revoked_at = _iso(_now())
-    grant.revoked_reason = reason[:500]
-    store.put_jit_grant(grant)
-    return grant
-
-
 def active_jit_grant_for_tool(
     store: AgentIdentityStore,
     *,
@@ -1151,11 +926,11 @@ def _put_grant_any_tenant(store: AgentIdentityStore, grant: AgentJITGrant) -> No
 
         token = set_current_tenant(grant.tenant_id)
         try:
-            store.put_jit_grant(grant)
+            store.put_jit_grant(grant, tenant_id=grant.tenant_id)
         finally:
             reset_current_tenant(token)
         return
-    store.put_jit_grant(grant)
+    store.put_jit_grant(grant, tenant_id=grant.tenant_id)
 
 
 def _export_audit_to_otlp(record: Any) -> None:
@@ -1471,87 +1246,6 @@ def run_nhi_lifecycle_cleanup(
         _lifecycle_logger.warning("rotation-due sweep failed wholesale; continuing", exc_info=False)
         result["rotation"] = {"flagged": 0, "errors": 1}
     return result
-
-
-_VALID_CONDITIONAL_EFFECTS = ("require", "deny")
-
-
-def create_conditional_policy(
-    store: AgentIdentityStore,
-    *,
-    tenant_id: str,
-    name: str,
-    effect: str = "require",
-    priority: int = 100,
-    identity_ids: list[str] | None = None,
-    agent_ids: list[str] | None = None,
-    tools: list[str] | None = None,
-    allowed_environments: list[str] | None = None,
-    allowed_hours_utc: list[int] | None = None,
-    allowed_weekdays: list[int] | None = None,
-    allowed_source_cidrs: list[str] | None = None,
-    allowed_devices: list[str] | None = None,
-    allowed_groups: list[str] | None = None,
-    allowed_clients: list[str] | None = None,
-    require_device_managed: bool = False,
-    require_device_compliant: bool = False,
-    require_device_disk_encrypted: bool = False,
-    description: str = "",
-) -> ConditionalAccessPolicy:
-    """Create an active conditional-access policy for ``tenant_id``."""
-    if effect not in _VALID_CONDITIONAL_EFFECTS:
-        raise ValueError(f"effect must be one of {_VALID_CONDITIONAL_EFFECTS}")
-    now = _iso(_now())
-    policy = ConditionalAccessPolicy(
-        policy_id=f"cap_{secrets.token_hex(8)}",
-        tenant_id=tenant_id,
-        name=name[:200],
-        effect=effect,
-        status="active",
-        created_at=now,
-        priority=int(priority),
-        identity_ids=list(identity_ids or []),
-        agent_ids=list(agent_ids or []),
-        tools=list(tools or []),
-        allowed_environments=list(allowed_environments or []),
-        allowed_hours_utc=sorted({h for h in (allowed_hours_utc or []) if 0 <= int(h) <= 23}),
-        allowed_weekdays=sorted({d for d in (allowed_weekdays or []) if 0 <= int(d) <= 6}),
-        allowed_source_cidrs=list(allowed_source_cidrs or []),
-        allowed_devices=list(allowed_devices or []),
-        allowed_groups=list(allowed_groups or []),
-        allowed_clients=list(allowed_clients or []),
-        require_device_managed=bool(require_device_managed),
-        require_device_compliant=bool(require_device_compliant),
-        require_device_disk_encrypted=bool(require_device_disk_encrypted),
-        updated_at=now,
-        description=description[:1000],
-    )
-    store.put_conditional_policy(policy)
-    return policy
-
-
-def set_conditional_policy_status(store: AgentIdentityStore, policy_id: str, *, status: str) -> ConditionalAccessPolicy | None:
-    """Enable (``active``) or disable (``disabled``) a conditional-access policy."""
-    if status not in ("active", "disabled"):
-        raise ValueError("status must be 'active' or 'disabled'")
-    policy = store.get_conditional_policy(policy_id)
-    if policy is None:
-        return None
-    policy.status = status
-    policy.updated_at = _iso(_now())
-    store.put_conditional_policy(policy)
-    return policy
-
-
-def evaluate_conditional_access_for_request(
-    store: AgentIdentityStore,
-    *,
-    tenant_id: str,
-    ctx: AccessContext,
-) -> tuple[bool, str, str]:
-    """Load active policies for ``tenant_id`` and evaluate them against ``ctx``."""
-    policies = store.list_conditional_policies(tenant_id, include_disabled=False, limit=500)
-    return evaluate_conditional_access(policies, ctx)
 
 
 def verify_token(store: AgentIdentityStore, token: str) -> tuple[str, str | None]:

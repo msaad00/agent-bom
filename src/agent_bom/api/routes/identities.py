@@ -305,10 +305,10 @@ def approve_agent_identity_jit(request: Request, grant_id: str, body: dict | Non
     payload = body or {}
     reject_unknown_fields(payload, ("ttl_seconds",))
     store = get_agent_identity_store()
-    existing = store.get_jit_grant(grant_id)
+    existing = store.get_jit_grant(grant_id, tenant_id=_tenant(request))
     if existing is None or existing.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="JIT grant not found")
-    grant = approve_jit_grant(store, grant_id, ttl_seconds=_ttl_seconds(payload), approved_by=_actor(request))
+    grant = approve_jit_grant(store, grant_id, ttl_seconds=_ttl_seconds(payload), approved_by=_actor(request), tenant_id=_tenant(request))
     if grant is None:
         raise HTTPException(status_code=409, detail="JIT grant cannot be approved")
     log_action(
@@ -329,10 +329,10 @@ def deny_agent_identity_jit(request: Request, grant_id: str, body: dict | None =
     """Deny a pending JIT request."""
     reject_unknown_fields(body or {}, ("reason",))
     store = get_agent_identity_store()
-    existing = store.get_jit_grant(grant_id)
+    existing = store.get_jit_grant(grant_id, tenant_id=_tenant(request))
     if existing is None or existing.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="JIT grant not found")
-    grant = deny_jit_grant(store, grant_id, reason=str((body or {}).get("reason", "") or ""))
+    grant = deny_jit_grant(store, grant_id, reason=str((body or {}).get("reason", "") or ""), tenant_id=_tenant(request))
     if grant is None:
         raise HTTPException(status_code=409, detail="JIT grant cannot be denied")
     log_action(
@@ -352,10 +352,10 @@ def revoke_agent_identity_jit(request: Request, grant_id: str, body: dict | None
     """Revoke an active JIT grant immediately."""
     reject_unknown_fields(body or {}, ("reason",))
     store = get_agent_identity_store()
-    existing = store.get_jit_grant(grant_id)
+    existing = store.get_jit_grant(grant_id, tenant_id=_tenant(request))
     if existing is None or existing.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="JIT grant not found")
-    grant = revoke_jit_grant(store, grant_id, reason=str((body or {}).get("reason", "") or ""))
+    grant = revoke_jit_grant(store, grant_id, reason=str((body or {}).get("reason", "") or ""), tenant_id=_tenant(request))
     if grant is None:
         raise HTTPException(status_code=409, detail="JIT grant cannot be revoked")
     log_action(
@@ -535,7 +535,7 @@ def create_conditional_access_policy(request: Request, body: dict) -> dict[str, 
 
 
 def _conditional_policy_for_tenant(request: Request, policy_id: str) -> ConditionalAccessPolicy:
-    policy = get_agent_identity_store().get_conditional_policy(policy_id)
+    policy = get_agent_identity_store().get_conditional_policy(policy_id, tenant_id=_tenant(request))
     if policy is None or policy.tenant_id != _tenant(request):
         raise HTTPException(status_code=404, detail="Conditional-access policy not found")
     return policy
@@ -545,7 +545,7 @@ def _conditional_policy_for_tenant(request: Request, policy_id: str) -> Conditio
 def disable_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
     """Disable a conditional-access policy without deleting it."""
     _conditional_policy_for_tenant(request, policy_id)
-    policy = set_conditional_policy_status(get_agent_identity_store(), policy_id, status="disabled")
+    policy = set_conditional_policy_status(get_agent_identity_store(), policy_id, tenant_id=_tenant(request), status="disabled")
     if policy is None:
         raise HTTPException(status_code=404, detail="Conditional-access policy not found")
     log_action(
@@ -562,7 +562,7 @@ def disable_conditional_access_policy(request: Request, policy_id: str) -> dict[
 def enable_conditional_access_policy(request: Request, policy_id: str) -> dict[str, object]:
     """Re-enable a previously disabled conditional-access policy."""
     _conditional_policy_for_tenant(request, policy_id)
-    policy = set_conditional_policy_status(get_agent_identity_store(), policy_id, status="active")
+    policy = set_conditional_policy_status(get_agent_identity_store(), policy_id, tenant_id=_tenant(request), status="active")
     if policy is None:
         raise HTTPException(status_code=404, detail="Conditional-access policy not found")
     log_action(

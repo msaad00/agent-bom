@@ -615,3 +615,17 @@ def test_codeql_skips_only_prose_image_pushes_and_preserves_required_pr_checks()
 def test_keycloak_image_participates_in_dependency_maintenance() -> None:
     config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
     assert any(update["package-ecosystem"] == "docker" and update.get("directory") == "/deploy/keycloak" for update in config["updates"])
+
+
+def test_postgres_contract_suites_are_arguments_to_one_pytest_invocation() -> None:
+    import shlex
+
+    steps = _ci()["jobs"]["postgres-integration"]["steps"]
+    script = next(step["run"] for step in steps if step.get("name") == "Run real Postgres storage contract")
+    commands = [line.strip() for line in script.replace("\\\n", " ").splitlines() if line.strip()]
+    assert len(commands) == 1, "A missing shell continuation runs a test file as a command"
+    arguments = shlex.split(commands[0])
+    assert arguments[:3] == ["uv", "run", "pytest"]
+    assert "tests/test_tenant_quota_store.py" in arguments
+    assert "tests/test_jit_grant_tenant_boundary.py" in arguments
+    assert "tests/test_identity_policy_tenant_boundary.py" in arguments

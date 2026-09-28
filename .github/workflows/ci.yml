@@ -1490,7 +1490,9 @@ jobs:
             tests/test_tenant_graph_retention_store.py \
             tests/test_storage_sql.py \
             tests/test_jit_grant_tenant_boundary.py \
-            tests/test_identity_policy_tenant_boundary.py
+            tests/test_identity_policy_tenant_boundary.py \
+            tests/test_findings_sql_read_contract.py \
+            tests/test_findings_sql_backfill.py
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

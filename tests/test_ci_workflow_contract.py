@@ -643,3 +643,5 @@ def test_postgres_contract_suites_are_arguments_to_one_pytest_invocation() -> No
     assert "tests/test_tenant_quota_store.py" in arguments
     assert "tests/test_jit_grant_tenant_boundary.py" in arguments
     assert "tests/test_identity_policy_tenant_boundary.py" in arguments
+    assert "tests/test_findings_sql_read_contract.py" in arguments
+    assert "tests/test_findings_sql_backfill.py" in arguments

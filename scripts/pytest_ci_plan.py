@@ -126,6 +126,18 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
 
     for changed in changed_files:
         normalized = Path(changed.as_posix().lstrip("./"))
+        if normalized.as_posix().startswith("src/agent_bom/api/storage/") or normalized.as_posix() in {
+            "src/agent_bom/api/compliance_hub_store.py",
+            "src/agent_bom/api/postgres_compliance_hub.py",
+        }:
+            selected.update(
+                candidate
+                for candidate in available
+                if "findings" in candidate.stem
+                or candidate.stem.startswith(
+                    ("test_hub_", "test_compliance_hub", "test_storage_sql", "test_tenant_quota_store", "test_tenant_graph_retention_store")
+                )
+            )
         if normalized.as_posix() in GRAPH_PROJECTION_SOURCES:
             selected.update(
                 candidate for candidate in available if "graph" in candidate.stem or candidate.stem == "test_runtime_incident_feedback"

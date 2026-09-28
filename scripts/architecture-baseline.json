@@ -70,7 +70,7 @@
     },
     "api/agent_identity_store.py": {
       "deferred_imports": 7,
-      "file_lines": 1616
+      "file_lines": 1310
     },
     "api/agent_identity_store.py::cleanup_expired_grants": {
       "function_lines": 85
@@ -119,7 +119,7 @@
     },
     "api/compliance_hub_store.py": {
       "deferred_imports": 26,
-      "file_lines": 2843
+      "file_lines": 2756
     },
     "api/compliance_hub_store.py::SQLiteComplianceHubStore.list_current_page": {
       "function_lines": 122
@@ -362,7 +362,7 @@
     },
     "api/postgres_compliance_hub.py": {
       "deferred_imports": 13,
-      "file_lines": 1621
+      "file_lines": 1559
     },
     "api/postgres_compliance_hub.py::PostgresComplianceHubStore._init_tables": {
       "function_lines": 223
@@ -425,8 +425,7 @@
       "function_lines": 134
     },
     "api/postgres_policy.py": {
-      "deferred_imports": 10,
-      "file_lines": 633
+      "deferred_imports": 5
     },
     "api/postgres_policy.py::PostgresPolicyStore._init_tables": {
       "function_lines": 147
@@ -661,7 +660,7 @@
     },
     "api/routes/identities.py": {
       "deferred_imports": 11,
-      "file_lines": 1086
+      "file_lines": 1066
     },
     "api/routes/kspm.py": {
       "deferred_imports": 2
@@ -863,21 +862,24 @@
       "deferred_imports": 1
     },
     "api/snowflake_store.py": {
-      "deferred_imports": 4,
+      "deferred_imports": 1,
       "file_lines": 1170
+    },
+    "api/source_postgres.py": {
+      "deferred_imports": 2
     },
     "api/store.py": {
       "file_lines": 703
     },
     "api/stores.py": {
-      "deferred_imports": 40,
-      "file_lines": 617
+      "deferred_imports": 38,
+      "file_lines": 613
     },
     "api/tenancy.py": {
       "deferred_imports": 2
     },
     "api/tenant_graph_retention.py": {
-      "deferred_imports": 4
+      "deferred_imports": 5
     },
     "api/tenant_lifecycle.py": {
       "deferred_imports": 7
@@ -2574,7 +2576,7 @@
     },
     "graph/builder.py::_add_cloud_inventory": {
       "complexity": 47,
-      "function_lines": 549
+      "function_lines": 548
     },
     "graph/builder.py::_add_cloud_org_architecture_findings": {
       "function_lines": 87
@@ -3535,7 +3537,7 @@
     },
     "output/json_fmt.py": {
       "deferred_imports": 23,
-      "file_lines": 1562
+      "file_lines": 1338
     },
     "output/json_fmt.py::_blast_radius_json_entry": {
       "function_lines": 130
@@ -3551,8 +3553,8 @@
       "function_lines": 97
     },
     "output/json_fmt.py::to_json": {
-      "complexity": 67,
-      "function_lines": 516
+      "complexity": 63,
+      "function_lines": 280
     },
     "output/junit.py": {
       "deferred_imports": 1
@@ -4236,7 +4238,7 @@
     },
     "security.py": {
       "deferred_imports": 5,
-      "file_lines": 1316
+      "file_lines": 1314
     },
     "security.py::validate_url": {
       "complexity": 19,

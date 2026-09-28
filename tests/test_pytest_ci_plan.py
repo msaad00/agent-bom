@@ -205,3 +205,25 @@ def test_jit_grant_changes_select_store_lifecycle_and_runtime_callers(tmp_path):
         _write(path, 1)
     for source in ("identity_grants.py", "identity_policies.py", "agent_identity_store.py", "postgres_agent_identity.py"):
         assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == expected
+
+
+def test_shared_sql_changes_select_finding_and_storage_contracts(tmp_path):
+    names = (
+        "test_findings_sql_read_contract.py",
+        "test_findings_sql_backfill.py",
+        "test_hub_ingest_atomic.py",
+        "test_storage_sql.py",
+        "test_tenant_quota_store.py",
+        "test_tenant_graph_retention_store.py",
+    )
+    expected = sorted(tmp_path / "tests" / name for name in names)
+    for path in expected:
+        _write(path, 1)
+    for source in (
+        "storage/sql.py",
+        "storage/finding_reads.py",
+        "storage/finding_payloads.py",
+        "compliance_hub_store.py",
+        "postgres_compliance_hub.py",
+    ):
+        assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == expected

@@ -30,6 +30,24 @@ no inherited exception. The Python gate excludes browser bundles and generated
 JSON/schema/TypeScript artifacts, which retain their owning generation checks.
 It sets no PR line-count limit.
 
+Finding ledger reads share `api/storage/finding_reads.py` across SQLite and
+Postgres. Listing, counts, severity summaries and evidence revisions require an
+explicit tenant. A page's count, rows and reference hydration use one read-only
+snapshot; Postgres also applies the application role's tenant RLS context. A
+SQLite read refuses an already active transaction without rolling back its
+pending writes. Lifecycle writes and current-state pagination retain their
+existing adapter transactions. No Postgres schema migration is needed for this
+read path. The SQLite legacy-column backfill uses `batch_id` before `scan_id`,
+matching new ingest and in-memory filtering.
+
+The shared SQL keyset helper supports per-column descending flags, including
+descending score with ascending tie-breaker. Its text comparisons use binary/C
+collation on SQLite/Postgres; matching indexes must use that same collation.
+Run `pytest tests/test_storage_sql.py tests/test_findings_sql_read_contract.py
+tests/test_findings_sql_backfill.py -q` for the contract. The Postgres cases need
+a migrated, isolated test database with the non-superuser application and
+maintenance URLs; without them those cases are skipped.
+
 Cloud role-assignment projection lives in `graph/cloud_rbac.py`, separate from
 the report builder. Azure resource-group graph keys include the complete ARM
 scope, normalized for case and trailing slashes; names alone cannot identify a

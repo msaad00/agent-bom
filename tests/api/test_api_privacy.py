@@ -108,7 +108,8 @@ def tenant_stores():
                 cron_expression="0 * * * *",
                 scan_config={},
                 tenant_id=tenant_id,
-            )
+            ),
+            tenant_id=tenant_id,
         )
         sources.put(
             SourceRecord(
@@ -121,7 +122,9 @@ def tenant_stores():
             ),
             tenant_id=tenant_id,
         )
-        exceptions.put(VulnException(exception_id=f"exception-{tenant_id}", vuln_id="CVE-2026-0001", tenant_id=tenant_id))
+        exceptions.put(
+            VulnException(exception_id=f"exception-{tenant_id}", vuln_id="CVE-2026-0001", tenant_id=tenant_id), tenant_id=tenant_id
+        )
         quota.put(tenant_id, {"scan_jobs": 10})
         connections.put(
             CloudConnectionRecord(

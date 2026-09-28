@@ -789,12 +789,12 @@ def test_showcase_catalog_retry_heals_partial_seed(monkeypatch: pytest.MonkeyPat
     original_put = source_store.put
     should_fail = True
 
-    def flaky_put(source) -> None:
+    def flaky_put(source, **kwargs) -> None:
         nonlocal should_fail
         if should_fail:
             should_fail = False
             raise RuntimeError("injected source failure")
-        original_put(source)
+        original_put(source, **kwargs)
 
     monkeypatch.setattr(showcase_catalog, "get_connection_store", lambda: connection_store)
     monkeypatch.setattr(showcase_catalog, "_get_source_store", lambda: source_store)

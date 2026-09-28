@@ -26,7 +26,8 @@ def test_credential_ref_store_tenant_backstop() -> None:
             display_name="A role",
             provider="aws",
             external_ref="arn:aws:iam::111122223333:role/agent-bom",
-        )
+        ),
+        tenant_id="tenant-a",
     )
 
     assert store.get("cred-1", tenant_id="tenant-b") is None

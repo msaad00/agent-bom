@@ -33,7 +33,7 @@ import logging
 import os
 import threading
 import time
-from contextlib import asynccontextmanager, nullcontext
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -62,6 +62,7 @@ from agent_bom.api.gateway_auth import _request_has_expected_token as _request_h
 from agent_bom.api.gateway_auth import _role_allows_gateway_relay as _role_allows_gateway_relay
 from agent_bom.api.gateway_auth import _validate_runtime_profile_posture as _validate_runtime_profile_posture
 from agent_bom.api.gateway_context import create_gateway_http_app
+from agent_bom.api.gateway_forward import GatewayForwardContext, forward_authorized_request
 from agent_bom.api.gateway_policy import _CONDITIONAL_ACCESS_EVAL_FAILED as _CONDITIONAL_ACCESS_EVAL_FAILED
 from agent_bom.api.gateway_policy import _DRIFT_INCIDENT_LOOKUP_CAP as _DRIFT_INCIDENT_LOOKUP_CAP
 from agent_bom.api.gateway_policy import _agent_cost_anomaly as _agent_cost_anomaly
@@ -91,7 +92,7 @@ from agent_bom.api.gateway_request import _sanitize_for_log as _sanitize_for_log
 from agent_bom.api.gateway_request import _strip_gateway_identity_metadata as _strip_gateway_identity_metadata
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.oidc_discovery_shim import build_oidc_discovery_shim_router
-from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
+from agent_bom.api.tracing import get_tracer, make_request_trace
 from agent_bom.firewall import (
     AgentFirewallPolicy,
     FirewallDecision,
@@ -99,8 +100,7 @@ from agent_bom.firewall import (
     load_firewall_policy_file,
 )
 from agent_bom.firewall import evaluate as evaluate_firewall_policy
-from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
-from agent_bom.proxy import check_policy, extract_tool_name, is_tools_call, parse_jsonrpc, policy_subject_from_message
+from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
 from agent_bom.proxy_policy import (
     DecisionContext,
     GatewayDecision,
@@ -2196,298 +2196,28 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     }
                 )
 
-        # Durably admit an authorized tool call before any upstream side effect.
-        # Readiness can remove an unhealthy pod from service, but it cannot
-        # protect an in-flight/direct request. Persisting the authorization here
-        # makes a full/unavailable audit backlog fail closed before execution.
-        _forward_is_tool_call = is_tools_call(message)
-        if _forward_is_tool_call and settings.audit_sink is None:
-            record_gateway_relay(upstream.name, "audit_unavailable")
-            return JSONResponse(
-                {
-                    "jsonrpc": "2.0",
-                    "id": message.get("id"),
-                    "error": {
-                        "code": -32003,
-                        "message": "Gateway audit persistence unavailable",
-                        "data": {
-                            "reason": "Tool call was not executed because no durable audit sink is configured",
-                            "policy_source": "audit_delivery",
-                        },
-                    },
-                },
-                status_code=503,
-                headers=rate_limit_headers or None,
+        return await forward_authorized_request(
+            GatewayForwardContext(
+                upstream=upstream,
+                message=message,
+                tenant_id=tenant_id,
+                source_agent=source_agent,
+                resolved_policy_source=resolved_policy_source,
+                rate_limit_headers=rate_limit_headers,
+                trace_meta=trace_meta,
+                audit_sink=settings.audit_sink,
+                upstream_caller=upstream_caller,
+                runtime_event=_typed_runtime_event,
+                audit_unavailable=_audit_unavailable_response,
+                public_error=_public_gateway_error,
+                block_reason=_public_gateway_block_reason,
+                visual_enabled=settings.enable_visual_leak_detection,
+                visual_detector=_get_visual_leak_detector,
+                dlp_config=dlp_config,
+                response_scanner=scan_jsonrpc_response,
+                tracer=_GATEWAY_TRACER,
             )
-        if _forward_is_tool_call and settings.audit_sink is not None:
-            try:
-                admission = getattr(settings.audit_sink, "admit_before_tool_execution", settings.audit_sink)
-                await admission(
-                    {
-                        "action": "gateway.tool_call",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "method": message.get("method"),
-                        "tool": extract_tool_name(message),
-                        "source_agent": source_agent,
-                        **_typed_runtime_event(
-                            GatewayRuntimeEventType.TOOL_CALL_ALLOWED,
-                            decision="allow",
-                            policy_source=resolved_policy_source,
-                            tool=extract_tool_name(message) or "",
-                        ),
-                    }
-                )
-            except GatewayAuditDeliveryUnavailableError:
-                record_gateway_relay(upstream.name, "audit_unavailable")
-                return _audit_unavailable_response(message.get("id"), headers=rate_limit_headers or None)
-
-        post_forward_audit_degraded = False
-
-        async def _audit_after_forward(event: dict[str, Any]) -> None:
-            """Never turn a completed upstream side effect into an ambiguous 500."""
-
-            nonlocal post_forward_audit_degraded
-            if settings.audit_sink is None:
-                return
-            try:
-                await settings.audit_sink(event)
-            except Exception as exc:  # noqa: BLE001 - outcome is already produced
-                post_forward_audit_degraded = True
-                record_gateway_relay(upstream.name, "audit_unavailable")
-                logger.error(
-                    "Gateway post-forward audit degraded (error_type=%s)",
-                    type(exc).__name__,
-                )
-
-        def _post_forward_headers(headers: dict[str, str]) -> dict[str, str]:
-            if post_forward_audit_degraded:
-                headers["X-Agent-BOM-Audit-Delivery"] = "degraded"
-            return headers
-
-        # Forward to the upstream with bounded W3C trace headers and JSON-RPC
-        # `_meta` so both HTTP-aware and JSON-RPC-aware upstreams can stitch
-        # the same end-to-end trace.
-        extra_headers = inject_trace_headers(
-            {},
-            traceparent=str(trace_meta["traceparent"]),
-            tracestate=str(trace_meta["tracestate"]) if trace_meta["tracestate"] else None,
-            baggage=str(trace_meta["baggage"]) if trace_meta["baggage"] else None,
         )
-        forwarded_message = _inject_jsonrpc_trace_meta(
-            _strip_gateway_identity_metadata(message),
-            traceparent=str(trace_meta["traceparent"]),
-            tracestate=str(trace_meta["tracestate"]) if trace_meta["tracestate"] else None,
-            baggage=str(trace_meta["baggage"]) if trace_meta["baggage"] else None,
-        )
-        span_cm = _GATEWAY_TRACER.start_as_current_span("gateway.relay_upstream") if _GATEWAY_TRACER else nullcontext()
-        try:
-            with span_cm as span:
-                if span is not None:
-                    span.set_attribute("agent_bom.gateway.upstream", upstream.name)
-                    span.set_attribute("agent_bom.gateway.tenant_id", tenant_id)
-                    span.set_attribute("agent_bom.gateway.method", str(message.get("method", "unknown")))
-                    span.set_attribute("agent_bom.gateway.trace_id", str(trace_meta["trace_id"]))
-                    span.set_attribute("agent_bom.gateway.span_id", str(trace_meta["span_id"]))
-                    span.set_attribute("agent_bom.gateway.incoming_traceparent", bool(trace_meta["incoming_traceparent"]))
-                    if trace_meta["parent_span_id"]:
-                        span.set_attribute("agent_bom.gateway.parent_span_id", str(trace_meta["parent_span_id"]))
-                    if trace_meta["tracestate"]:
-                        span.set_attribute("agent_bom.gateway.tracestate_present", True)
-                    if trace_meta["baggage"]:
-                        span.set_attribute("agent_bom.gateway.baggage_present", True)
-                    set_langfuse_runtime_attributes(
-                        span,
-                        surface="gateway",
-                        tenant_id=tenant_id,
-                        method=str(message.get("method", "unknown")),
-                        tool_name=message.get("params", {}).get("name") if is_tools_call(message) else None,
-                        decision="allowed",
-                        upstream=upstream.name,
-                        trace_id=str(trace_meta["trace_id"]),
-                    )
-                upstream_response = await upstream_caller(upstream, forwarded_message, extra_headers)
-        except GatewayCircuitOpenError as exc:
-            logger.warning("gateway upstream circuit open for %s", upstream.name)
-            record_gateway_relay(upstream.name, "circuit_open")
-            retry_after_header = str(int(exc.retry_after_seconds))
-            await _audit_after_forward(
-                {
-                    "action": "gateway.upstream_circuit_open",
-                    "upstream": upstream.name,
-                    "tenant_id": tenant_id,
-                    "reason": "circuit_open",
-                    "retry_after_seconds": int(exc.retry_after_seconds),
-                }
-            )
-            raise HTTPException(
-                status_code=503,
-                detail="upstream circuit open",
-                headers=_post_forward_headers({"Retry-After": retry_after_header}),
-            ) from exc
-        except asyncio.TimeoutError as exc:
-            logger.warning("gateway upstream call timed out for %s", upstream.name)
-            record_gateway_relay(upstream.name, "upstream_timeout")
-            await _audit_after_forward(
-                {
-                    "action": "gateway.upstream_error",
-                    "upstream": upstream.name,
-                    "tenant_id": tenant_id,
-                    "error": "timeout",
-                    "reason": "timeout",
-                }
-            )
-            raise HTTPException(
-                status_code=502,
-                detail="upstream error: timeout",
-                headers=_post_forward_headers({}),
-            ) from exc
-        except Exception as exc:  # noqa: BLE001
-            logger.error("gateway upstream call failed for %s", upstream.name)
-            record_gateway_relay(upstream.name, "upstream_error")
-            await _audit_after_forward(
-                {
-                    "action": "gateway.upstream_error",
-                    "upstream": upstream.name,
-                    "tenant_id": tenant_id,
-                    "error": _public_gateway_error(exc),
-                }
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=f"upstream error: {_public_gateway_error(exc)}",
-                headers=_post_forward_headers({}),
-            ) from exc
-
-        record_gateway_relay(upstream.name, "forwarded")
-
-        # Visual-leak detection on image tool responses. Opt-in because OCR
-        # is CPU-heavy; startup can now require the OCR runtime so pilots
-        # fail closed instead of silently skipping the screenshot channel.
-        if settings.enable_visual_leak_detection and isinstance(upstream_response, dict):
-            result = upstream_response.get("result")
-            if isinstance(result, dict):
-                content = result.get("content")
-                if isinstance(content, list) and content:
-                    detector = _get_visual_leak_detector()
-                    tool_name_for_scan = message.get("params", {}).get("name", "") if is_tools_call(message) else message.get("method", "")
-                    safe_tool_name_for_log = _sanitize_for_log(tool_name_for_scan)
-                    from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
-
-                    try:
-                        alerts = await run_visual_leak_check(detector, tool_name_for_scan, content)
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            "gateway visual leak scan timed out for upstream=%s tool=%s",
-                            upstream.name,
-                            safe_tool_name_for_log,
-                        )
-                        alerts = []
-                    if alerts:
-                        record_gateway_relay(upstream.name, "visual_leak_redacted")
-                        if settings.audit_sink is not None:
-                            await _audit_after_forward(
-                                {
-                                    "action": "gateway.visual_leak_blocked",
-                                    "upstream": upstream.name,
-                                    "tenant_id": tenant_id,
-                                    "tool": tool_name_for_scan,
-                                    "alert_count": len(alerts),
-                                    "leak_types": sorted({a.details.get("leak_type", "") for a in alerts}),
-                                    **_typed_runtime_event(
-                                        GatewayRuntimeEventType.VISUAL_REDACTED,
-                                        decision="allow",
-                                        policy_source="visual_dlp",
-                                        tool=str(tool_name_for_scan),
-                                        data_action="visual_redacted",
-                                    ),
-                                }
-                            )
-                        try:
-                            result["content"] = await run_visual_leak_redact(detector, content)
-                        except asyncio.TimeoutError:
-                            logger.warning(
-                                "gateway visual leak redaction timed out for upstream=%s tool=%s",
-                                upstream.name,
-                                safe_tool_name_for_log,
-                            )
-
-        # Shared response policy covers results, errors and notification payloads.
-        if dlp_config.enabled and isinstance(upstream_response, dict):
-            tool_name_for_dlp = message.get("params", {}).get("name", "") if is_tools_call(message) else str(message.get("method", ""))
-            safe_response, resp_findings = scan_jsonrpc_response(upstream_response, dlp_config)
-            safe_error = safe_response.get("error")
-            result_blocked = isinstance(safe_error, dict) and safe_error.get("code") == -32600 and safe_response != upstream_response
-            result_redacted = safe_response != upstream_response and not result_blocked
-            if resp_findings and settings.audit_sink is not None:
-                typed_result_event: dict[str, Any] = {}
-                if result_blocked:
-                    typed_result_event = _typed_runtime_event(
-                        GatewayRuntimeEventType.DLP_RESULT_BLOCKED,
-                        decision="deny",
-                        policy_source="dlp",
-                        tool=str(tool_name_for_dlp),
-                        data_action="sensitive_result_blocked",
-                    )
-                elif result_redacted:
-                    typed_result_event = _typed_runtime_event(
-                        GatewayRuntimeEventType.DLP_RESULT_REDACTED,
-                        decision="allow",
-                        policy_source="dlp",
-                        tool=str(tool_name_for_dlp),
-                        data_action="pii_redacted",
-                    )
-                await _audit_after_forward(
-                    {
-                        "action": "gateway.dlp_result",
-                        "upstream": upstream.name,
-                        "tenant_id": tenant_id,
-                        "source_agent": source_agent,
-                        "tool": tool_name_for_dlp,
-                        "findings": sorted({f"{f.scanner}/{f.rule_id}" for f in resp_findings}),
-                        "blocked": result_blocked,
-                        **typed_result_event,
-                    }
-                )
-            if result_blocked:
-                record_gateway_relay(upstream.name, "blocked")
-                first = next((f for f in resp_findings if f.blocked), resp_findings[0])
-                return JSONResponse(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": message.get("id"),
-                        "error": {
-                            "code": -32001,
-                            "message": "Blocked by agent-bom gateway DLP: sensitive data in tool result",
-                            "data": {
-                                "reason": _public_gateway_block_reason("dlp"),
-                                "policy_source": "dlp",
-                                "rule": f"{first.scanner}/{first.rule_id}",
-                            },
-                        },
-                    },
-                    status_code=200,
-                    headers=_post_forward_headers(dict(rate_limit_headers)) or None,
-                )
-            upstream_response = safe_response
-
-        if settings.audit_sink is not None and not _forward_is_tool_call:
-            forward_audit_event: dict[str, Any] = {
-                "action": "gateway.message",
-                "upstream": upstream.name,
-                "tenant_id": tenant_id,
-                "method": message.get("method"),
-                "tool": None,
-            }
-            await _audit_after_forward(forward_audit_event)
-        response_headers = dict(rate_limit_headers)
-        response_headers["traceparent"] = str(trace_meta["traceparent"])
-        if trace_meta["tracestate"]:
-            response_headers["tracestate"] = str(trace_meta["tracestate"])
-        if trace_meta["baggage"]:
-            response_headers["baggage"] = str(trace_meta["baggage"])
-        _post_forward_headers(response_headers)
-        return JSONResponse(upstream_response, headers=response_headers or None)
 
     return app
 

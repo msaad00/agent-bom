@@ -36,6 +36,13 @@ accessors. A method policy retains its last valid version after a reload error;
 a firewall reload error marks that lane unavailable for fail-closed enforcement.
 Initial file-load failure remains unavailable until a successful load. The
 gateway composition root owns task startup, cancellation and shutdown.
+`api/gateway_forward.py` owns authorized forwarding, durable tool admission,
+trace propagation and response scanning through a request-local typed context.
+Audit admission failure denies tool execution before upstream effects. Audit
+delivery failure after an upstream outcome preserves the outcome and adds
+`X-Agent-BOM-Audit-Delivery: degraded`; it does not synthesize a retryable 500.
+Visual scanning remains opt-in. Its existing scan/redaction timeout path retains
+the current content; this extraction does not change that fail-open behavior.
 Authentication-store failures deny traffic; a configured shared rate limiter
 never falls back to process-local state when initialization fails.
 

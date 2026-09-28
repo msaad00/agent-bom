@@ -131,7 +131,7 @@ def create_export_destination(request: Request, body: ExportDestinationCreate, _
         created_at=now,
         updated_at=now,
     )
-    get_export_destination_store().put(record)
+    get_export_destination_store().put(record, tenant_id=tenant_id)
     log_action(
         "export_destination.create", actor=_actor(request), resource=f"export-destination/{record.id}", tenant_id=tenant_id, kind=kind
     )
@@ -214,7 +214,7 @@ def _run_export_sync(tenant_id: str, destination_id: str, run_id: str) -> None:
         record.last_run_status = "success"
         record.status_detail = ""
     record.last_run_at = datetime.now(timezone.utc).isoformat()
-    store.put(record)
+    store.put(record, tenant_id=tenant_id)
 
 
 # ── Schedules ─────────────────────────────────────────────────────────────

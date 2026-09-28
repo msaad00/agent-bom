@@ -67,7 +67,7 @@ def test_destination_public_dict_never_leaks_the_secret():
 
 def test_destination_store_is_tenant_scoped():
     store = InMemoryExportDestinationStore()
-    store.put(_destination())
+    store.put(_destination(), tenant_id="tenant-a")
     assert store.get("tenant-a", "dest-1") is not None
     assert store.get("tenant-b", "dest-1") is None  # cross-tenant read blocked
     assert store.delete("tenant-b", "dest-1") is False
@@ -129,7 +129,7 @@ def test_run_due_exports_streams_to_destination_using_stored_secret(monkeypatch)
     sched_store = InMemoryExportScheduleStore()
     sched_store.put(_schedule())
     dest_store = InMemoryExportDestinationStore()
-    dest_store.put(_destination(secret_encrypted="enc-token"))
+    dest_store.put(_destination(secret_encrypted="enc-token"), tenant_id="tenant-a")
 
     count = asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
 
@@ -169,7 +169,7 @@ def test_run_due_exports_preserves_indeterminate_publication_status(monkeypatch)
     sched_store = InMemoryExportScheduleStore()
     sched_store.put(_schedule())
     dest_store = InMemoryExportDestinationStore()
-    dest_store.put(_destination(secret_encrypted=""))
+    dest_store.put(_destination(secret_encrypted=""), tenant_id="tenant-a")
 
     count = asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
 
@@ -192,7 +192,7 @@ def test_run_due_exports_failure_log_does_not_emit_exception_text_or_traceback(m
     sched_store = InMemoryExportScheduleStore()
     sched_store.put(_schedule())
     dest_store = InMemoryExportDestinationStore()
-    dest_store.put(_destination(secret_encrypted=""))
+    dest_store.put(_destination(secret_encrypted=""), tenant_id="tenant-a")
 
     asyncio.run(run_due_exports_once(sched_store, dest_store, _now()))
 

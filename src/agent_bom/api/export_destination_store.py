@@ -18,10 +18,12 @@ import json
 import sqlite3
 import threading
 from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.export.destinations import SUPPORTED_EXPORT_KINDS
 
 STATUS_PENDING = "pending"
@@ -65,7 +67,7 @@ class ExportDestinationStore(Protocol):
     """Tenant-scoped CRUD contract for export destinations."""
 
     def init_schema(self) -> None: ...
-    def put(self, record: ExportDestinationRecord) -> None: ...
+    def put(self, record: ExportDestinationRecord, *, tenant_id: str) -> None: ...
     def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None: ...
     def list_for_tenant(self, tenant_id: str) -> list[ExportDestinationRecord]: ...
     def delete(self, tenant_id: str, destination_id: str) -> bool: ...
@@ -76,7 +78,15 @@ def is_supported_kind(kind: str) -> bool:
 
 
 def _copy(record: ExportDestinationRecord) -> ExportDestinationRecord:
-    return replace(record, config=dict(record.config))
+    return replace(record, config=deepcopy(record.config))
+
+
+def destination_write_tenant(record: ExportDestinationRecord, tenant_id: str) -> str:
+    """Require the record owner to match the tenant authorized by its caller."""
+    tenant = require_explicit_tenant_id(tenant_id)
+    if record.tenant_id != tenant:
+        raise ValueError("Export destination tenant does not match the authorized tenant")
+    return tenant
 
 
 def _decode_config(raw: Any) -> dict[str, Any]:
@@ -133,26 +143,33 @@ class InMemoryExportDestinationStore:
     def init_schema(self) -> None:
         """No-op: the in-memory backend has no persistent schema."""
 
-    def put(self, record: ExportDestinationRecord) -> None:
+    def put(self, record: ExportDestinationRecord, *, tenant_id: str) -> None:
+        tenant = destination_write_tenant(record, tenant_id)
         with self._lock:
+            previous = self._rows.get(record.id)
+            if previous is not None and previous.tenant_id != tenant:
+                raise ValueError("Export destination identity belongs to a different tenant")
             self._rows[record.id] = _copy(record)
 
     def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
             record = self._rows.get(destination_id)
-            if record is None or record.tenant_id != tenant_id:
+            if record is None or record.tenant_id != tenant:
                 return None
             return _copy(record)
 
     def list_for_tenant(self, tenant_id: str) -> list[ExportDestinationRecord]:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
-            records = [_copy(r) for r in self._rows.values() if r.tenant_id == tenant_id]
+            records = [_copy(r) for r in self._rows.values() if r.tenant_id == tenant]
         return sorted(records, key=lambda r: (r.created_at, r.id))
 
     def delete(self, tenant_id: str, destination_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
             record = self._rows.get(destination_id)
-            if record is None or record.tenant_id != tenant_id:
+            if record is None or record.tenant_id != tenant:
                 return False
             del self._rows[destination_id]
             return True
@@ -192,9 +209,15 @@ class SQLiteExportDestinationStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_export_dest_tenant ON export_destinations(tenant_id, created_at)")
         self._conn.commit()
 
-    def put(self, record: ExportDestinationRecord) -> None:
-        self._conn.execute(
-            f"INSERT OR REPLACE INTO export_destinations ({', '.join(_COLUMNS)}) VALUES ({', '.join('?' for _ in _COLUMNS)})",
+    def put(self, record: ExportDestinationRecord, *, tenant_id: str) -> None:
+        destination_write_tenant(record, tenant_id)
+        cursor = self._conn.execute(
+            f"INSERT INTO export_destinations ({', '.join(_COLUMNS)}) VALUES ({', '.join('?' for _ in _COLUMNS)}) "  # nosec B608 — columns are static and values are bound parameters
+            "ON CONFLICT (id) DO UPDATE SET tenant_id=excluded.tenant_id, kind=excluded.kind, "
+            "display_name=excluded.display_name, config=excluded.config, secret_encrypted=excluded.secret_encrypted, "
+            "status=excluded.status, status_detail=excluded.status_detail, created_at=excluded.created_at, "
+            "updated_at=excluded.updated_at, last_run_at=excluded.last_run_at, last_run_status=excluded.last_run_status "
+            "WHERE export_destinations.tenant_id=excluded.tenant_id",
             (
                 record.id,
                 record.tenant_id,
@@ -211,25 +234,30 @@ class SQLiteExportDestinationStore:
             ),
         )
         self._conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Export destination identity belongs to a different tenant")
 
     def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         row = self._conn.execute(
             f"{_SELECT} WHERE tenant_id = ? AND id = ?",
-            (tenant_id, destination_id),
+            (tenant, destination_id),
         ).fetchone()
         return _row_to_record(row) if row else None
 
     def list_for_tenant(self, tenant_id: str) -> list[ExportDestinationRecord]:
+        tenant = require_explicit_tenant_id(tenant_id)
         rows = self._conn.execute(
             f"{_SELECT} WHERE tenant_id = ? ORDER BY created_at, id",
-            (tenant_id,),
+            (tenant,),
         ).fetchall()
         return [_row_to_record(row) for row in rows]
 
     def delete(self, tenant_id: str, destination_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         cursor = self._conn.execute(
             "DELETE FROM export_destinations WHERE tenant_id = ? AND id = ?",
-            (tenant_id, destination_id),
+            (tenant, destination_id),
         )
         self._conn.commit()
         return cursor.rowcount > 0
@@ -263,9 +291,10 @@ class PostgresExportDestinationStore:
             _ensure_tenant_rls(conn, "export_destinations", "tenant_id")
             conn.commit()
 
-    def put(self, record: ExportDestinationRecord) -> None:
+    def put(self, record: ExportDestinationRecord, *, tenant_id: str) -> None:
         from agent_bom.api.postgres_common import _tenant_connection
 
+        destination_write_tenant(record, tenant_id)
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 "INSERT INTO export_destinations (id, tenant_id, kind, display_name, config, secret_encrypted, "
@@ -295,22 +324,25 @@ class PostgresExportDestinationStore:
     def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None:
         from agent_bom.api.postgres_common import _tenant_connection
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute(f"{_SELECT} WHERE tenant_id = %s AND id = %s", (tenant_id, destination_id)).fetchone()
+            row = conn.execute(f"{_SELECT} WHERE tenant_id = %s AND id = %s", (tenant, destination_id)).fetchone()
         return _row_to_record(row) if row else None
 
     def list_for_tenant(self, tenant_id: str) -> list[ExportDestinationRecord]:
         from agent_bom.api.postgres_common import _tenant_connection
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(f"{_SELECT} WHERE tenant_id = %s ORDER BY created_at, id", (tenant_id,)).fetchall()
+            rows = conn.execute(f"{_SELECT} WHERE tenant_id = %s ORDER BY created_at, id", (tenant,)).fetchall()
         return [_row_to_record(row) for row in rows]
 
     def delete(self, tenant_id: str, destination_id: str) -> bool:
         from agent_bom.api.postgres_common import _tenant_connection
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            deleted = conn.execute("DELETE FROM export_destinations WHERE tenant_id = %s AND id = %s", (tenant_id, destination_id))
+            deleted = conn.execute("DELETE FROM export_destinations WHERE tenant_id = %s AND id = %s", (tenant, destination_id))
             conn.commit()
             return bool(deleted.rowcount > 0)
 

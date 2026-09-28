@@ -45,15 +45,22 @@ def _build():
     return g, {(e.source, e.target, e.relationship.value) for e in g.edges}
 
 
+def _node_id(graph, prefix: str, suffix: str = "") -> str:
+    """Resolve a scoped cloud resource id by its stable type prefix."""
+    matches = [node_id for node_id in graph.nodes if node_id.startswith(prefix) and node_id.endswith(suffix)]
+    assert len(matches) == 1, matches
+    return matches[0]
+
+
 def test_cloudfront_is_internet_exposed_cdn() -> None:
     g, _ = _build()
-    cf = g.nodes["cloud_resource:aws:cloudfront:cdn:E123"]
+    cf = g.nodes[_node_id(g, "cloud_resource:aws:cloudfront:cdn:")]
     assert cf.attributes["internet_exposed"] is True
 
 
 def test_redshift_is_exposed_data_store() -> None:
     g, _ = _build()
-    rs = g.nodes["cloud_resource:aws:redshift:data_warehouse:warehouse"]
+    rs = g.nodes[_node_id(g, "cloud_resource:aws:redshift:data_warehouse:")]
     assert rs.entity_type.value == "data_store"
     assert rs.attributes["internet_exposed"] is True  # publicly_accessible
 
@@ -61,9 +68,9 @@ def test_redshift_is_exposed_data_store() -> None:
 def test_ecr_and_messaging_nodes_owned() -> None:
     g, edges = _build()
     for nid in (
-        "cloud_resource:aws:ecr:container_registry:app",
-        "cloud_resource:aws:messaging:messaging:events",
-        "cloud_resource:aws:messaging:messaging:jobs",
+        _node_id(g, "cloud_resource:aws:ecr:container_registry:"),
+        _node_id(g, "cloud_resource:aws:messaging:messaging:", ":events"),
+        _node_id(g, "cloud_resource:aws:messaging:messaging:", ":jobs"),
     ):
         assert nid in g.nodes
         assert ("account:aws:111122223333", nid, "owns") in edges

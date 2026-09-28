@@ -77,6 +77,7 @@ from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.redaction.log_values import sanitize_log_value
 from agent_bom.security import sanitize_log_label, sanitize_sensitive_payload, sanitize_text
 
 router = APIRouter(tags=["cloud"])
@@ -387,18 +388,17 @@ async def cloud_inventory(
                     timeout_seconds=_cloud_inventory_timeout_seconds(),
                 )
             except ProviderExecutionTimeoutError:
-                provider_label = requested if requested != "all" else "all"
-                _logger.warning("Cloud inventory timed out for %s", sanitize_log_label(provider_label))
+                _logger.warning("Cloud inventory timed out for %s", sanitize_log_value(requested))
                 return {
                     "error": "Provider inventory timed out before completing.",
-                    "provider": provider_label,
+                    "provider": requested,
                     "tenant_id": tenant_id,
                     "status": "unavailable",
                     "timed_out": True,
                     "audit_metadata": {
                         "read_only": True,
                         "writes_performed": False,
-                        "provider": provider_label,
+                        "provider": requested,
                         "note": "No cloud resource was mutated; retry with a scoped provider connection.",
                     },
                 }
@@ -577,7 +577,7 @@ async def cloud_cis_benchmark(
                     timeout_seconds=_cloud_cis_timeout_seconds(),
                 )
             except ProviderExecutionTimeoutError:
-                _logger.warning("Cloud CIS benchmark timed out for %s", sanitize_log_label(requested))
+                _logger.warning("Cloud CIS benchmark timed out for %s", sanitize_log_value(requested))
                 return {
                     "error": "Provider benchmark timed out before completing.",
                     "provider": requested,
@@ -1337,9 +1337,9 @@ async def cloud_side_scan_trigger(
         # exception detail is exposed to the caller.
         _logger.warning(
             "cloud_side_scan unavailable for %s tenant %s: %s",
-            sanitize_log_label(provider),
-            sanitize_log_label(tenant_id),
-            sanitize_text(sanitize_log_label(exc)),
+            sanitize_log_value(provider),
+            sanitize_log_value(tenant_id),
+            sanitize_text(sanitize_log_value(sanitize_log_label(exc))),
         )
         return {
             "status": "unavailable",

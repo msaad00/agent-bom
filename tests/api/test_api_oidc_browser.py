@@ -65,10 +65,9 @@ def test_oidc_browser_login_requires_client_config(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("AGENT_BOM_OIDC_ISSUER", "https://issuer.example")
     monkeypatch.delenv("AGENT_BOM_OIDC_CLIENT_ID", raising=False)
     monkeypatch.delenv("AGENT_BOM_OIDC_REDIRECT_URI", raising=False)
-    import asyncio
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(enterprise.oidc_browser_login(_request()))
+        enterprise.oidc_browser_login(_request())
     assert exc.value.status_code == 503
 
 
@@ -88,9 +87,7 @@ def test_oidc_browser_login_redirects_with_pkce(monkeypatch: pytest.MonkeyPatch)
         ),
         patch("agent_bom.api.oidc_browser.validate_url"),
     ):
-        import asyncio
-
-        response = asyncio.run(enterprise.oidc_browser_login(_request(), return_to="/jobs"))
+        response = enterprise.oidc_browser_login(_request(), return_to="/jobs")
     assert response.status_code == 302
     location = response.headers["location"]
     assert "code_challenge_method=S256" in location

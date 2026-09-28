@@ -358,3 +358,26 @@ def test_linked_machine_exports_redact_sensitive_inventory_without_collapsing_id
     rule_ids = [rule["id"] for rule in sarif_linked["rules"]]
     assert len(set(rule_ids)) == 2
     assert [result["ruleId"] for result in sarif_linked["results"]] == rule_ids
+
+
+def test_linked_document_trusted_ids_skip_resanitizing_but_never_leak():
+    """Exporter-minted identifiers (fixed namespace + counter, no input data)
+    may bypass per-ID re-sanitization; anything outside that exact pattern —
+    including a secret embedded in a would-be ID — is still redacted."""
+    import re
+
+    from agent_bom.output.finding_views import sanitize_output_text
+    from agent_bom.output.interop_security import sanitize_linked_document
+
+    namespace = "https://agent-bom.dev/spdx/00000000-0000-5000-8000-000000000000"
+    minted = f"{namespace}/SPDXRef-Annotation-7"
+    secret = "ghp_" + "c" * 36
+    smuggled = f"{namespace}/SPDXRef-{secret}"
+    trusted = re.compile(re.escape(namespace) + r"/SPDXRef-[A-Za-z]+(?:-[A-Za-z]+)*-\d+")
+    doc = {"@graph": [{"spdxId": minted, "subject": minted}, {"spdxId": smuggled, "name": secret}]}
+
+    linked = sanitize_linked_document(doc, trusted_ids=trusted)
+    assert linked["@graph"][0] == {"spdxId": minted, "subject": minted}
+    assert sanitize_output_text(minted) == minted, "trust must not change output, only skip work"
+    assert secret not in json.dumps(linked)
+    assert linked == sanitize_linked_document(doc)

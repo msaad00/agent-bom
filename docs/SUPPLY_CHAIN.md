@@ -141,7 +141,7 @@ serializing format, so a gate never has to scrape console text:
 | --- | --- |
 | JSON | `agents[].mcp_servers[].packages[].integrity_verified` / `.provenance_attested` / `.provenance_source` / `.provenance_status` |
 | CycloneDX 1.7 | `component.evidence.identity[]` — `methods[].technique` is `hash-comparison` (integrity) and `attestation` (provenance), `confidence` 1.0 pass / 0.0 fail; plus `component.properties` `agent-bom:integrity-verified`, `agent-bom:provenance-attested`, `agent-bom:provenance-source`, `agent-bom:provenance-status` |
-| SPDX 3.0.1 | `software_Package.annotation[]` with `annotationType: other` — `agent-bom:integrity-verified=<bool>`, `agent-bom:provenance-attested=<bool> source=<src>`, `agent-bom:provenance-status=<status>` |
+| SPDX 3.0.1 | standalone `Annotation` elements (`subject` = the `software_Package` spdxId, `annotationType: other`) — `agent-bom:integrity-verified=<bool>`, `agent-bom:provenance-attested=<bool> source=<src>`, `agent-bom:provenance-status=<status>` |
 | SPDX 2.2 / 2.3 | `packages[].annotations[]` with `annotationType: OTHER` and the same `comment` statements |
 | SARIF 2.1.0 | `runs[].results[].properties.package_integrity_verified` / `.package_provenance_attested` / `.package_provenance_source` / `.package_provenance_status` |
 | CSV | appended `integrity_verified`, `provenance_attested`, `provenance_source`, `provenance_status` columns |

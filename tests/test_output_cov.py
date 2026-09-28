@@ -518,7 +518,7 @@ def test_spdx_package_preserves_version_provenance_annotations():
 
     spdx = to_spdx(report)
     pkg_element = next(element for element in spdx["@graph"] if element.get("name") == pkg.name)
-    statements = {annotation["statement"] for annotation in pkg_element["annotation"]}
+    statements = {n["statement"] for n in spdx["@graph"] if n.get("type") == "Annotation" and n["subject"] == pkg_element["spdxId"]}
 
     assert "agent-bom:version-provenance-source=lockfile" in statements
     assert "agent-bom:version-provenance-confidence=exact" in statements

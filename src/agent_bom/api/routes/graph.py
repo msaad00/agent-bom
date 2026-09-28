@@ -3238,7 +3238,7 @@ async def get_graph_compliance(
 
 
 @router.get("/graph/legend", tags=["graph"], deprecated=True)
-async def get_graph_legend() -> dict:
+def get_graph_legend() -> dict:
     """Return entity and relationship legends for UI rendering.
 
     Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
@@ -3828,7 +3828,7 @@ _RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
 
 
 @router.get("/graph/schema", tags=["graph"])
-async def get_graph_schema() -> dict:
+def get_graph_schema() -> dict:
     """Canonical graph entity/edge taxonomy — single source of truth.
 
     Drives the TypeScript codegen at ``ui/scripts/codegen-graph-schema.mjs``,

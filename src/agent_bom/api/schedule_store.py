@@ -75,7 +75,7 @@ class InMemoryScheduleStore:
 
     def list_due(self, now_iso: str) -> list[ScanSchedule]:
         """Return enabled schedules where next_run <= now."""
-        return [s for s in self._schedules.values() if s.enabled and s.next_run and s.next_run <= now_iso]
+        return [s for s in list(self._schedules.values()) if s.enabled and s.next_run and s.next_run <= now_iso]
 
 
 class SQLiteScheduleStore:

@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, TypeVar, cast
+from typing import Annotated, Any, Callable, TypeVar, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -102,7 +102,7 @@ async def governance_findings(
     days: int = 30,
     severity: str | None = None,
     category: str | None = None,
-    limit: int = 500,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
     offset: int = 0,
 ) -> dict[str, Any]:
     """Return only governance findings, optionally filtered.
@@ -422,7 +422,7 @@ async def cortex_health() -> dict[str, Any]:
 
 
 @router.get("/siem/formats", tags=["siem"])
-async def siem_formats() -> dict[str, Any]:
+def siem_formats() -> dict[str, Any]:
     """List supported SIEM event formats."""
     from agent_bom.siem import list_formats
 

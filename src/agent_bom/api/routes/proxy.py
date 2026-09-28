@@ -34,10 +34,11 @@ from agent_bom.api.gateway_activity_store import (
 )
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance, canonicalize_proxy_submission
+from agent_bom.api.shield_registry import _MAX_SHIELD_SESSIONS, _get_engine, _shield_engines, _shield_engines_lock, _shield_key
 from agent_bom.api.tenancy import require_request_tenant_id
 
 if TYPE_CHECKING:
-    from agent_bom.runtime.protection import ProtectionEngine
+    pass
 
 from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
@@ -917,7 +918,7 @@ def _read_metrics_from_log(path: _Path, tenant_id: str = "default") -> dict | No
 
 
 @router.get("/proxy/status", tags=["proxy"])
-async def proxy_status(request: Request) -> dict:
+def proxy_status(request: Request) -> dict:
     """Get runtime proxy metrics.
 
     Returns the latest proxy metrics summary.  Reads from the in-process
@@ -958,7 +959,7 @@ async def proxy_status(request: Request) -> dict:
 
 
 @router.get("/runtime/production-index", tags=["runtime", "proxy"])
-async def runtime_production_index(request: Request) -> dict:
+def runtime_production_index(request: Request) -> dict:
     """Return tenant-scoped runtime security observability for proxy/gateway traffic.
 
     The production index is metadata-only by construction: it summarizes
@@ -973,7 +974,7 @@ async def runtime_production_index(request: Request) -> dict:
 
 
 @router.get("/proxy/alerts", tags=["proxy"])
-async def proxy_alerts(
+def proxy_alerts(
     request: Request,
     severity: str | None = None,
     detector: str | None = None,
@@ -1153,23 +1154,9 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
 
 # ── Shield / Deep Defense endpoints ──────────────────────────────────────────
 
-# Per-tenant, per-session protection engines. Zero trust: one tenant/session's
-# CRITICAL threat cannot block or reveal another tenant/session's tool calls.
-_ShieldKey = tuple[str, str]
-_shield_engines: dict[_ShieldKey, ProtectionEngine] = {}
-_MAX_SHIELD_SESSIONS = 64  # bound memory; evict oldest idle session
-
-
-def _shield_key(tenant_id: str, session_id: str) -> _ShieldKey:
-    return (tenant_id or "default", session_id or "default")
-
-
-def _get_engine(tenant_id: str, session_id: str) -> ProtectionEngine | None:
-    return _shield_engines.get(_shield_key(tenant_id, session_id))
-
 
 @router.post("/shield/start", tags=["shield"])
-async def shield_start(request: Request, session_id: str = "default", correlation_window: float = 30.0) -> dict:
+def shield_start(request: Request, session_id: str = "default", correlation_window: float = 30.0) -> dict:
     """Start the deep defense protection engine for a session.
 
     Each session_id gets an isolated engine — zero trust, no cross-session
@@ -1184,47 +1171,50 @@ async def shield_start(request: Request, session_id: str = "default", correlatio
 
     tenant_id = _request_tenant_id(request)
     key = _shield_key(tenant_id, session_id)
-    existing = _get_engine(tenant_id, session_id)
-    if existing is not None and existing.active:
-        return {
-            "status": "already_active",
-            "tenant_id": tenant_id,
-            "session_id": session_id,
-            **existing.status(),
-        }
+    # Runs in the threadpool: the check / evict / insert sequence must be
+    # atomic so concurrent starts cannot double-create or over-evict engines.
+    with _shield_engines_lock:
+        existing = _get_engine(tenant_id, session_id)
+        if existing is not None and existing.active:
+            return {
+                "status": "already_active",
+                "tenant_id": tenant_id,
+                "session_id": session_id,
+                **existing.status(),
+            }
 
-    # Evict oldest idle session if at capacity
-    if len(_shield_engines) >= _MAX_SHIELD_SESSIONS:
-        idle = next(
-            (candidate_key for candidate_key, eng in _shield_engines.items() if not eng.active),
-            next(iter(_shield_engines)),  # fallback: evict oldest
+        # Evict oldest idle session if at capacity
+        if len(_shield_engines) >= _MAX_SHIELD_SESSIONS:
+            idle = next(
+                (candidate_key for candidate_key, eng in _shield_engines.items() if not eng.active),
+                next(iter(_shield_engines)),  # fallback: evict oldest
+            )
+            old = _shield_engines.pop(idle)
+            if old.active:
+                old.stop()
+
+        dispatcher = AlertDispatcher()
+        from agent_bom.api.routes.proxy import push_proxy_alert
+
+        class _RingBufferChannel:
+            async def send(self, alert: dict) -> bool:
+                push_proxy_alert(alert)
+                return True
+
+        dispatcher.add_channel(_RingBufferChannel())
+
+        engine = ProtectionEngine(
+            dispatcher=dispatcher,
+            shield=True,
+            correlation_window=correlation_window,
         )
-        old = _shield_engines.pop(idle)
-        if old.active:
-            old.stop()
-
-    dispatcher = AlertDispatcher()
-    from agent_bom.api.routes.proxy import push_proxy_alert
-
-    class _RingBufferChannel:
-        async def send(self, alert: dict) -> bool:
-            push_proxy_alert(alert)
-            return True
-
-    dispatcher.add_channel(_RingBufferChannel())
-
-    engine = ProtectionEngine(
-        dispatcher=dispatcher,
-        shield=True,
-        correlation_window=correlation_window,
-    )
-    engine.start()
-    _shield_engines[key] = engine
-    return {"status": "started", "tenant_id": tenant_id, "session_id": session_id, **engine.status()}
+        engine.start()
+        _shield_engines[key] = engine
+        return {"status": "started", "tenant_id": tenant_id, "session_id": session_id, **engine.status()}
 
 
 @router.get("/shield/status", tags=["shield"])
-async def shield_status(request: Request, session_id: str = "default") -> dict:
+def shield_status(request: Request, session_id: str = "default") -> dict:
     """Get current shield threat assessment for a session."""
     tenant_id = _request_tenant_id(request)
     engine = _get_engine(tenant_id, session_id)
@@ -1252,7 +1242,7 @@ async def shield_status(request: Request, session_id: str = "default") -> dict:
 
 
 @router.post("/shield/unblock", tags=["shield"])
-async def shield_unblock(request: Request, session_id: str = "default") -> dict:
+def shield_unblock(request: Request, session_id: str = "default") -> dict:
     """Deactivate kill-switch for a session and reset to ELEVATED."""
     tenant_id = _request_tenant_id(request)
     engine = _get_engine(tenant_id, session_id)
@@ -1267,7 +1257,7 @@ async def shield_unblock(request: Request, session_id: str = "default") -> dict:
 
 
 @router.post("/shield/break-glass", tags=["shield"])
-async def break_glass(request: Request, session_id: str = "default", reason: str = "") -> dict:
+def break_glass(request: Request, session_id: str = "default", reason: str = "") -> dict:
     """Emergency kill-switch override — admin only, audit logged.
 
     Immediately unblocks all sessions and logs the override for compliance.

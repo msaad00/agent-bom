@@ -17,6 +17,17 @@ import json
 from pathlib import Path
 
 from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.sbom_formats.spdx3 import (
+    _spdx3_annotation_kv,
+    _spdx3_cvss,
+    _spdx3_fold_annotations,
+    _spdx3_graph,
+    _spdx3_package_metadata,
+    _spdx3_primary_purpose,
+    _spdx3_purl,
+    _spdx3_references,
+    _spdx3_version,
+)
 
 
 def _ecosystem_from_purl(purl: str) -> str:
@@ -254,78 +265,6 @@ def parse_cyclonedx(data: dict) -> list[Package]:
 
 # ─── SPDX ────────────────────────────────────────────────────────────────────
 
-# Element-level keys that may carry a package version across SPDX 3.0 emitters.
-# agent-bom emits ``versionInfo``; third-party tools emit the expanded
-# ``software/packageVersion`` / ``software_packageVersion`` / ``packageVersion``.
-_SPDX3_VERSION_KEYS = ("versionInfo", "software/packageVersion", "software_packageVersion", "packageVersion")
-# Element-level keys that may carry a flat PackageURL string.
-_SPDX3_PURL_KEYS = ("software/packageUrl", "software_packageUrl", "packageUrl")
-
-
-def _spdx3_version(elem: dict) -> str:
-    """Return the package version from an SPDX 3.0 element, or ``"unknown"``."""
-    for key in _SPDX3_VERSION_KEYS:
-        value = elem.get(key)
-        if value:
-            return str(value)
-    return "unknown"
-
-
-def _spdx3_purl(elem: dict) -> str:
-    """Return the PackageURL for an SPDX 3.0 element.
-
-    Handles every shape agent-bom and third-party tools produce:
-    - a flat ``software/packageUrl`` (or aliases) string, or
-    - an ``externalIdentifier`` that is either a single object or a list of
-      objects, each ``{"type": "PackageURL", "identifier": "pkg:..."}``.
-    """
-    for key in _SPDX3_PURL_KEYS:
-        value = elem.get(key)
-        if isinstance(value, str) and value:
-            return value
-
-    ext = elem.get("externalIdentifier")
-    candidates = ext if isinstance(ext, list) else [ext] if isinstance(ext, dict) else []
-    fallback = ""
-    for entry in candidates:
-        if not isinstance(entry, dict):
-            continue
-        identifier = entry.get("identifier") or ""
-        if not identifier:
-            continue
-        id_type = str(entry.get("type") or "").lower()
-        ext_id_type = str(entry.get("externalIdentifierType") or "").lower()
-        if id_type in ("packageurl", "purl") or ext_id_type in ("packageurl", "purl") or identifier.startswith("pkg:"):
-            return identifier
-        if not fallback:
-            fallback = identifier
-    return fallback
-
-
-def _spdx3_primary_purpose(elem: dict) -> str:
-    """Return the (upper-cased) primaryPurpose for an SPDX 3.0 element."""
-    for key in ("primaryPurpose", "software/primaryPurpose", "software_primaryPurpose"):
-        value = elem.get(key)
-        if isinstance(value, str) and value:
-            return value.upper()
-    return ""
-
-
-def _spdx3_annotation_kv(elem: dict) -> dict[str, str]:
-    """Parse ``agent-bom:key=value`` annotation statements into a dict."""
-    kv: dict[str, str] = {}
-    annotations = elem.get("annotation")
-    if isinstance(annotations, dict):
-        annotations = [annotations]
-    for ann in annotations or []:
-        if not isinstance(ann, dict):
-            continue
-        statement = ann.get("statement") or ""
-        if statement.startswith("agent-bom:") and "=" in statement:
-            key, _, value = statement[len("agent-bom:") :].partition("=")
-            kv[key] = value
-    return kv
-
 
 def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
     """Attach SPDX 3.0 vulnerability assessments (AFFECTS) to packages in place.
@@ -376,25 +315,19 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
         vuln_id = vuln_elem.get("name") or ""
         raw_score = vuln_elem.get("score")
         score_obj: dict = raw_score if isinstance(raw_score, dict) else {}
-        sev_str = rel.get("severity") or cvss_rel.get("security_severity") or score_obj.get("severity") or "unknown"
+        ann = _spdx3_annotation_kv(vuln_elem)
+        sev_str = ann.get("severity") or rel.get("severity") or cvss_rel.get("security_severity") or score_obj.get("severity") or "unknown"
         try:
             severity = Severity(str(sev_str).lower())
         except ValueError:
             severity = Severity.UNKNOWN
-        cvss_score: float | None = None
-        raw_cvss = cvss_rel.get("security_score") if cvss_rel.get("security_score") is not None else score_obj.get("score")
-        if raw_cvss is not None:
-            try:
-                cvss_score = float(raw_cvss)
-            except (TypeError, ValueError):
-                cvss_score = None
+        cvss_score, cvss_vector = _spdx3_cvss(cvss_rel, score_obj, ann)
 
         fixed_version = None
         remediation = rel.get("security_actionStatement") or rel.get("remediation") or ""
         if remediation.startswith("Upgrade to "):
             fixed_version = remediation[len("Upgrade to ") :].strip() or None
 
-        ann = _spdx3_annotation_kv(vuln_elem)
         cwe_ids = [v for k, v in ann.items() if k == "cwe"]
 
         def _as_float(value: str | None) -> float | None:
@@ -415,6 +348,7 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
                     summary=vuln_elem.get("description") or "",
                     severity=severity,
                     cvss_score=cvss_score,
+                    cvss_vector=cvss_vector,
                     fixed_version=fixed_version,
                     severity_source=ann.get("severity-source"),
                     epss_score=_as_float(ann.get("epss-score")),
@@ -425,23 +359,6 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
                     cwe_ids=cwe_ids,
                 )
             )
-
-
-def _spdx3_graph(data: dict) -> list | None:
-    """Return the JSON-LD ``@graph`` node list if ``data`` is a canonical
-    SPDX 3.0 document, else ``None``."""
-    graph = data.get("@graph")
-    if not isinstance(graph, list):
-        return None
-    ctx = data.get("@context")
-    if isinstance(ctx, str) and "spdx.org/rdf/3." in ctx:
-        return graph
-    if isinstance(ctx, list) and any(isinstance(c, str) and "spdx.org/rdf/3." in c for c in ctx):
-        return graph
-    for node in graph:
-        if isinstance(node, dict) and node.get("type") == "CreationInfo" and str(node.get("specVersion") or "").startswith("3."):
-            return graph
-    return None
 
 
 def _normalize_spdx3_graph(data: dict) -> dict:
@@ -466,6 +383,7 @@ def _normalize_spdx3_graph(data: dict) -> dict:
         elif ntype == "SpdxDocument":
             doc_id = node.get("spdxId") or node.get("SPDXID") or doc_id
             doc_name = node.get("name") or doc_name
+    graph = _spdx3_fold_annotations(graph)
     relationships = [n for n in graph if isinstance(n, dict) and str(n.get("type") or "").endswith("Relationship")]
     projected = dict(data)
     projected["spdxVersion"] = f"SPDX-{spec}" if spec else "SPDX-3.0"
@@ -503,6 +421,7 @@ def parse_spdx(data: dict) -> list[Package]:
     # SPDX 3.0 format
     if "spdxVersion" in data and data.get("spdxVersion", "").startswith("SPDX-3"):
         pkg_by_id: dict[str, Package] = {}
+        references = _spdx3_references(data)
         for elem in data.get("elements", []):
             if not isinstance(elem, dict):
                 continue
@@ -519,17 +438,7 @@ def parse_spdx(data: dict) -> list[Package]:
             purl = _spdx3_purl(elem)
             ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
 
-            # Extract SPDX 3.0 metadata
-            lic_3 = elem.get("declaredLicense") or elem.get("software/declaredLicense") or None
-            supplier_3 = elem.get("supplier") or elem.get("originatedBy") or None
-            if isinstance(supplier_3, dict):
-                supplier_3 = supplier_3.get("name")
-            desc_3 = elem.get("description") or elem.get("software/description") or None
-            copyright_3 = elem.get("copyrightText") or None
-            homepage_3 = elem.get("homepage") or None
-            download_3 = elem.get("downloadLocation") or None
-
-            elem_spdxid = elem.get("spdxId", elem.get("SPDXID", ""))
+            elem_spdxid = str(elem.get("spdxId") or elem.get("SPDXID") or "")
             _is_direct_3 = elem_spdxid in _spdx3_direct_ids if _spdx3_direct_ids else True
 
             pkg = Package(
@@ -538,12 +447,7 @@ def parse_spdx(data: dict) -> list[Package]:
                 ecosystem=ecosystem,
                 purl=purl or None,
                 is_direct=_is_direct_3,
-                license=lic_3 if isinstance(lic_3, str) else None,
-                supplier=supplier_3 if isinstance(supplier_3, str) else None,
-                description=desc_3[:300] if desc_3 else None,
-                homepage=homepage_3 if isinstance(homepage_3, str) else None,
-                download_url=download_3 if isinstance(download_3, str) else None,
-                copyright_text=copyright_3 if isinstance(copyright_3, str) else None,
+                **_spdx3_package_metadata(elem, references),
             )
             packages.append(pkg)
             if elem_spdxid:

@@ -96,7 +96,7 @@ def _actor(request: Request) -> str:
 
 # ── Destinations ──────────────────────────────────────────────────────────
 @router.post("/exports/destinations", tags=["exports"], status_code=201)
-async def create_export_destination(request: Request, body: ExportDestinationCreate, _role: Any = _WRITE_DEP) -> dict[str, Any]:
+def create_export_destination(request: Request, body: ExportDestinationCreate, _role: Any = _WRITE_DEP) -> dict[str, Any]:
     """Create a connect-once export destination; the secret is encrypted at rest."""
     tenant_id = require_request_tenant_id(request)
     kind = body.kind.strip().lower()
@@ -139,13 +139,13 @@ async def create_export_destination(request: Request, body: ExportDestinationCre
 
 
 @router.get("/exports/destinations", tags=["exports"])
-async def list_export_destinations(request: Request, _role: Any = _READ_DEP) -> list[dict[str, Any]]:
+def list_export_destinations(request: Request, _role: Any = _READ_DEP) -> list[dict[str, Any]]:
     tenant_id = require_request_tenant_id(request)
     return [r.to_public_dict() for r in get_export_destination_store().list_for_tenant(tenant_id)]
 
 
 @router.get("/exports/destinations/{destination_id}", tags=["exports"])
-async def get_export_destination(request: Request, destination_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
+def get_export_destination(request: Request, destination_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
     tenant_id = require_request_tenant_id(request)
     record = get_export_destination_store().get(tenant_id, destination_id)
     if record is None:
@@ -154,7 +154,7 @@ async def get_export_destination(request: Request, destination_id: str, _role: A
 
 
 @router.delete("/exports/destinations/{destination_id}", tags=["exports"], status_code=204)
-async def delete_export_destination(request: Request, destination_id: str, _role: Any = _WRITE_DEP) -> None:
+def delete_export_destination(request: Request, destination_id: str, _role: Any = _WRITE_DEP) -> None:
     tenant_id = require_request_tenant_id(request)
     if not get_export_destination_store().delete(tenant_id, destination_id):
         raise HTTPException(status_code=404, detail=f"Export destination {destination_id} not found")
@@ -162,7 +162,7 @@ async def delete_export_destination(request: Request, destination_id: str, _role
 
 
 @router.post("/exports/destinations/{destination_id}/run", tags=["exports"], status_code=202)
-async def run_export_destination(request: Request, destination_id: str, _role: Any = _WRITE_DEP) -> dict[str, Any]:
+def run_export_destination(request: Request, destination_id: str, _role: Any = _WRITE_DEP) -> dict[str, Any]:
     """Fire a one-off findings export to this destination now (off the event loop)."""
     tenant_id = require_request_tenant_id(request)
     record = get_export_destination_store().get(tenant_id, destination_id)
@@ -219,7 +219,7 @@ def _run_export_sync(tenant_id: str, destination_id: str, run_id: str) -> None:
 
 # ── Schedules ─────────────────────────────────────────────────────────────
 @router.post("/exports/schedules", tags=["exports"], status_code=201)
-async def create_export_schedule(request: Request, body: ExportScheduleCreate, _role: Any = _WRITE_DEP) -> dict[str, Any]:
+def create_export_schedule(request: Request, body: ExportScheduleCreate, _role: Any = _WRITE_DEP) -> dict[str, Any]:
     from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
 
     tenant_id = require_request_tenant_id(request)
@@ -256,13 +256,13 @@ async def create_export_schedule(request: Request, body: ExportScheduleCreate, _
 
 
 @router.get("/exports/schedules", tags=["exports"])
-async def list_export_schedules(request: Request, _role: Any = _READ_DEP) -> list[dict[str, Any]]:
+def list_export_schedules(request: Request, _role: Any = _READ_DEP) -> list[dict[str, Any]]:
     tenant_id = require_request_tenant_id(request)
     return [s.model_dump() for s in get_export_schedule_store().list_all(tenant_id=tenant_id)]
 
 
 @router.delete("/exports/schedules/{schedule_id}", tags=["exports"], status_code=204)
-async def delete_export_schedule(request: Request, schedule_id: str, _role: Any = _WRITE_DEP) -> None:
+def delete_export_schedule(request: Request, schedule_id: str, _role: Any = _WRITE_DEP) -> None:
     tenant_id = require_request_tenant_id(request)
     if not get_export_schedule_store().delete(schedule_id, tenant_id=tenant_id):
         raise HTTPException(status_code=404, detail=f"Export schedule {schedule_id} not found")
@@ -270,7 +270,7 @@ async def delete_export_schedule(request: Request, schedule_id: str, _role: Any 
 
 
 @router.put("/exports/schedules/{schedule_id}/toggle", tags=["exports"])
-async def toggle_export_schedule(request: Request, schedule_id: str, _role: Any = _WRITE_DEP) -> dict[str, Any]:
+def toggle_export_schedule(request: Request, schedule_id: str, _role: Any = _WRITE_DEP) -> dict[str, Any]:
     tenant_id = require_request_tenant_id(request)
     store = get_export_schedule_store()
     schedule = store.get(schedule_id, tenant_id=tenant_id)

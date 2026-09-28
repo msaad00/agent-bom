@@ -69,7 +69,7 @@ def _validate_dataset_id(dataset_id: str) -> str:
 
 
 @router.post("/datasets/{dataset_id}/versions", tags=["datasets"], status_code=201)
-async def register_dataset_version(
+def register_dataset_version(
     request: Request,
     dataset_id: Annotated[str, Path(min_length=1, max_length=128)],
     body: DatasetVersionCreate,
@@ -102,7 +102,7 @@ async def register_dataset_version(
 
 
 @router.get("/datasets/{dataset_id}/versions", tags=["datasets"])
-async def list_dataset_versions(
+def list_dataset_versions(
     request: Request,
     dataset_id: Annotated[str, Path(min_length=1, max_length=128)],
 ) -> dict[str, Any]:
@@ -119,7 +119,7 @@ async def list_dataset_versions(
 
 
 @router.get("/datasets/{dataset_id}/versions/{version_id}", tags=["datasets"])
-async def get_dataset_version(
+def get_dataset_version(
     request: Request,
     dataset_id: Annotated[str, Path(min_length=1, max_length=128)],
     version_id: Annotated[str, Path(min_length=1, max_length=128)],

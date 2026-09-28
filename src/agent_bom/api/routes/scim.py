@@ -516,7 +516,7 @@ def _execute_bulk_operation(request: Request, operation: dict[str, Any]) -> dict
 
 
 @router.get("/ServiceProviderConfig", name="scim_service_provider_config")
-async def service_provider_config(request: Request) -> dict[str, Any]:
+def service_provider_config(request: Request) -> dict[str, Any]:
     _require_scim(request)
     return {
         "schemas": [SCIM_SERVICE_PROVIDER_SCHEMA],
@@ -592,7 +592,7 @@ def _resource_type_resources() -> list[dict[str, Any]]:
 
 
 @router.get("/Schemas", name="scim_schemas")
-async def schemas(request: Request) -> dict[str, Any]:
+def schemas(request: Request) -> dict[str, Any]:
     _require_scim(request)
     resources = _schema_resources()
     return {
@@ -605,7 +605,7 @@ async def schemas(request: Request) -> dict[str, Any]:
 
 
 @router.get("/Schemas/{schema_id}", name="scim_get_schema")
-async def get_schema(request: Request, schema_id: str) -> dict[str, Any]:
+def get_schema(request: Request, schema_id: str) -> dict[str, Any]:
     _require_scim(request)
     for resource in _schema_resources():
         if resource["id"] == schema_id:
@@ -614,7 +614,7 @@ async def get_schema(request: Request, schema_id: str) -> dict[str, Any]:
 
 
 @router.get("/ResourceTypes", name="scim_resource_types")
-async def resource_types(request: Request) -> dict[str, Any]:
+def resource_types(request: Request) -> dict[str, Any]:
     _require_scim(request)
     resources = _resource_type_resources()
     return {
@@ -627,7 +627,7 @@ async def resource_types(request: Request) -> dict[str, Any]:
 
 
 @router.get("/ResourceTypes/{resource_type_id}", name="scim_get_resource_type")
-async def get_resource_type(request: Request, resource_type_id: str) -> dict[str, Any]:
+def get_resource_type(request: Request, resource_type_id: str) -> dict[str, Any]:
     _require_scim(request)
     for resource in _resource_type_resources():
         if resource["id"] == resource_type_id:
@@ -636,7 +636,7 @@ async def get_resource_type(request: Request, resource_type_id: str) -> dict[str
 
 
 @router.post("/Bulk", name="scim_bulk")
-async def bulk(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+def bulk(request: Request, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     operations = body.get("Operations", [])
     if not isinstance(operations, list):
@@ -671,7 +671,7 @@ async def bulk(request: Request, body: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/Users", name="scim_list_users")
-async def list_users(
+def list_users(
     request: Request,
     scim_filter: str | None = Query(default=None, alias="filter"),
     start_index: int = Query(default=1, alias="startIndex", ge=1),
@@ -698,7 +698,7 @@ async def list_users(
 
 
 @router.post("/Users", status_code=201, name="scim_create_user")
-async def create_user(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+def create_user(request: Request, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -721,7 +721,7 @@ async def create_user(request: Request, body: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/Users/{user_id}", name="scim_get_user")
-async def get_user(request: Request, user_id: str) -> dict[str, Any]:
+def get_user(request: Request, user_id: str) -> dict[str, Any]:
     _require_scim(request)
     user = _get_scim_store().get_user(_tenant_id(request), user_id)
     if user is None:
@@ -730,7 +730,7 @@ async def get_user(request: Request, user_id: str) -> dict[str, Any]:
 
 
 @router.patch("/Users/{user_id}", name="scim_patch_user")
-async def patch_user(request: Request, user_id: str, body: dict[str, Any]) -> dict[str, Any]:
+def patch_user(request: Request, user_id: str, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -750,7 +750,7 @@ async def patch_user(request: Request, user_id: str, body: dict[str, Any]) -> di
 
 
 @router.put("/Users/{user_id}", name="scim_replace_user")
-async def replace_user(request: Request, user_id: str, body: dict[str, Any]) -> dict[str, Any]:
+def replace_user(request: Request, user_id: str, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -771,7 +771,7 @@ async def replace_user(request: Request, user_id: str, body: dict[str, Any]) -> 
 
 
 @router.delete("/Users/{user_id}", status_code=204, name="scim_delete_user")
-async def delete_user(request: Request, user_id: str) -> Response:
+def delete_user(request: Request, user_id: str) -> Response:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -794,7 +794,7 @@ async def delete_user(request: Request, user_id: str) -> Response:
 
 
 @router.get("/Groups", name="scim_list_groups")
-async def list_groups(
+def list_groups(
     request: Request,
     scim_filter: str | None = Query(default=None, alias="filter"),
     start_index: int = Query(default=1, alias="startIndex", ge=1),
@@ -814,7 +814,7 @@ async def list_groups(
 
 
 @router.post("/Groups", status_code=201, name="scim_create_group")
-async def create_group(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+def create_group(request: Request, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -835,7 +835,7 @@ async def create_group(request: Request, body: dict[str, Any]) -> dict[str, Any]
 
 
 @router.get("/Groups/{group_id}", name="scim_get_group")
-async def get_group(request: Request, group_id: str) -> dict[str, Any]:
+def get_group(request: Request, group_id: str) -> dict[str, Any]:
     _require_scim(request)
     group = _get_scim_store().get_group(_tenant_id(request), group_id)
     if group is None:
@@ -844,7 +844,7 @@ async def get_group(request: Request, group_id: str) -> dict[str, Any]:
 
 
 @router.patch("/Groups/{group_id}", name="scim_patch_group")
-async def patch_group(request: Request, group_id: str, body: dict[str, Any]) -> dict[str, Any]:
+def patch_group(request: Request, group_id: str, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -863,7 +863,7 @@ async def patch_group(request: Request, group_id: str, body: dict[str, Any]) -> 
 
 
 @router.put("/Groups/{group_id}", name="scim_replace_group")
-async def replace_group(request: Request, group_id: str, body: dict[str, Any]) -> dict[str, Any]:
+def replace_group(request: Request, group_id: str, body: dict[str, Any]) -> dict[str, Any]:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
@@ -882,7 +882,7 @@ async def replace_group(request: Request, group_id: str, body: dict[str, Any]) -
 
 
 @router.delete("/Groups/{group_id}", status_code=204, name="scim_delete_group")
-async def delete_group(request: Request, group_id: str) -> Response:
+def delete_group(request: Request, group_id: str) -> Response:
     _require_scim(request)
     tenant_id = _tenant_id(request)
     deleted = _get_scim_store().delete_group(tenant_id, group_id)

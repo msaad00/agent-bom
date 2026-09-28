@@ -256,7 +256,7 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
 
 
 @router.post("/sources", tags=["sources"], status_code=201)
-async def create_source(request: Request, body: SourceCreate) -> dict:
+def create_source(request: Request, body: SourceCreate) -> dict:
     tenant_id = _tenant_id(request)
     require_body_tenant_match(body.tenant_id, tenant_id)
 
@@ -294,7 +294,7 @@ async def create_source(request: Request, body: SourceCreate) -> dict:
 
 
 @router.get("/sources", tags=["sources"])
-async def list_sources(
+def list_sources(
     request: Request,
     # cap pagination so hostile callers cannot probe an
     # entire tenant's source registry in a single request.
@@ -317,12 +317,12 @@ async def list_sources(
 
 
 @router.get("/sources/{source_id}", tags=["sources"])
-async def get_source(request: Request, source_id: str) -> dict:
+def get_source(request: Request, source_id: str) -> dict:
     return _source_for_request(request, source_id).model_dump()
 
 
 @router.put("/sources/{source_id}", tags=["sources"])
-async def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
+def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
     tenant_id = _tenant_id(request)
     with tenant_quota_guard(tenant_id):
         source = _apply_update(_source_for_request(request, source_id), body)
@@ -342,7 +342,7 @@ async def update_source(request: Request, source_id: str, body: SourceUpdate) ->
 
 
 @router.delete("/sources/{source_id}", tags=["sources"], status_code=204)
-async def delete_source(request: Request, source_id: str) -> None:
+def delete_source(request: Request, source_id: str) -> None:
     tenant_id = _tenant_id(request)
     with tenant_quota_guard(tenant_id):
         source = _source_for_request(request, source_id)
@@ -435,7 +435,7 @@ async def test_source(request: Request, source_id: str) -> dict:
 
 
 @router.post("/sources/{source_id}/run", tags=["sources"], status_code=202)
-async def run_source(request: Request, source_id: str) -> dict:
+def run_source(request: Request, source_id: str) -> dict:
     tenant_id = _tenant_id(request)
     source = _source_for_request(request, source_id).model_copy(deep=True)
     if not source.enabled:

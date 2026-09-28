@@ -186,22 +186,22 @@ def test_managed_trial_disables_connection_scheduler_even_when_flagged(monkeypat
 )
 def test_managed_trial_rejects_out_of_envelope_connection(updates: dict[str, object], detail: str) -> None:
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(cloud_connections.create_connection(request=object(), body=_body(**updates)))
+        cloud_connections.create_connection(request=object(), body=_body(**updates))
 
     assert exc_info.value.status_code == 403
     assert detail.lower() in str(exc_info.value.detail).lower()
 
 
 def test_managed_trial_forces_manual_scan_and_atomically_caps_connections() -> None:
-    first = asyncio.run(cloud_connections.create_connection(request=object(), body=_body(display_name="one")))
-    second = asyncio.run(cloud_connections.create_connection(request=object(), body=_body(display_name="two")))
+    first = cloud_connections.create_connection(request=object(), body=_body(display_name="one"))
+    second = cloud_connections.create_connection(request=object(), body=_body(display_name="two"))
 
     assert first["auto_scan_on_create"] is False
     assert second["auto_scan_on_create"] is False
     assert first["last_scan_id"] is None
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(cloud_connections.create_connection(request=object(), body=_body(display_name="three")))
+        cloud_connections.create_connection(request=object(), body=_body(display_name="three"))
     assert exc_info.value.status_code == 429
     assert "cloud_connections" in str(exc_info.value.detail)
 
@@ -345,21 +345,17 @@ def test_self_hosted_provider_quota_is_configurable_without_trial_restrictions(m
     )
 
     for name in ("aws-one", "aws-two"):
-        created = asyncio.run(
-            cloud_connections.create_connection(request=object(), body=_body(display_name=name, auto_scan_on_create=False))
-        )
+        created = cloud_connections.create_connection(request=object(), body=_body(display_name=name, auto_scan_on_create=False))
         assert created["provider"] == "aws"
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(cloud_connections.create_connection(request=object(), body=_body(display_name="aws-three", auto_scan_on_create=False)))
+        cloud_connections.create_connection(request=object(), body=_body(display_name="aws-three", auto_scan_on_create=False))
     assert exc_info.value.status_code == 429
     assert "cloud_connections_per_provider" in str(exc_info.value.detail)
 
-    azure = asyncio.run(
-        cloud_connections.create_connection(
-            request=object(),
-            body=_body(provider="azure", display_name="azure-one", regions=[], auto_scan_on_create=False),
-        )
+    azure = cloud_connections.create_connection(
+        request=object(),
+        body=_body(provider="azure", display_name="azure-one", regions=[], auto_scan_on_create=False),
     )
     assert azure["provider"] == "azure"
 

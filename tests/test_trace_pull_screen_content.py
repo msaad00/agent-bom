@@ -10,7 +10,6 @@ match: ``false`` respected, absent → default, ``true`` → screened.
 
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from typing import Any
 
@@ -30,7 +29,7 @@ def _call_pull(monkeypatch: Any, body: dict, *, default_on: bool) -> dict:
     # Stub the connector fetch + screening so we observe only the resolved flag.
     monkeypatch.setattr("agent_bom.trace_connectors.fetch_traces", lambda *a, **k: {"spans": []})
     monkeypatch.setattr(obs, "_screen_trace_content_events", lambda body, *, tenant_id: [{"detector": "x"}])
-    return asyncio.run(obs.pull_trace_connector(_request(), "langfuse", body))
+    return obs.pull_trace_connector(_request(), "langfuse", body)
 
 
 def test_pull_screen_content_false_respected_when_default_on(monkeypatch: Any) -> None:

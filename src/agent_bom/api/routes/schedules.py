@@ -81,7 +81,7 @@ def _validate_enabled_source_schedule(tenant_id: str, scan_config: dict) -> None
 
 
 @router.post("/schedules", tags=["schedules"], status_code=201)
-async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
+def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     """Create a recurring scan schedule."""
     from agent_bom.api.managed_trial import require_managed_trial_feature
 
@@ -127,14 +127,14 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
 
 
 @router.get("/schedules", tags=["schedules"])
-async def list_schedules(request: Request) -> list[dict]:
+def list_schedules(request: Request) -> list[dict]:
     """List all scan schedules."""
     tenant_id = require_request_tenant_id(request)
     return [s.model_dump() for s in _get_schedule_store().list_all(tenant_id=tenant_id)]
 
 
 @router.get("/schedules/{schedule_id}", tags=["schedules"])
-async def get_schedule(request: Request, schedule_id: str) -> dict:
+def get_schedule(request: Request, schedule_id: str) -> dict:
     """Get a specific schedule."""
     tenant_id = require_request_tenant_id(request)
     s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
@@ -144,7 +144,7 @@ async def get_schedule(request: Request, schedule_id: str) -> dict:
 
 
 @router.delete("/schedules/{schedule_id}", tags=["schedules"], status_code=204)
-async def delete_schedule(request: Request, schedule_id: str) -> None:
+def delete_schedule(request: Request, schedule_id: str) -> None:
     """Delete a schedule."""
     from agent_bom.api.audit_log import log_action
 
@@ -159,7 +159,7 @@ async def delete_schedule(request: Request, schedule_id: str) -> None:
 
 
 @router.put("/schedules/{schedule_id}/toggle", tags=["schedules"])
-async def toggle_schedule(request: Request, schedule_id: str) -> dict:
+def toggle_schedule(request: Request, schedule_id: str) -> dict:
     """Enable or disable a schedule."""
     from agent_bom.api.audit_log import log_action
 

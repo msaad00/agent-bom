@@ -13,7 +13,7 @@ router = APIRouter(prefix="/agent-bom", tags=["Agent BOM"])
 
 
 @router.get("/manifest", response_model=AgentBomManifestResponse)
-async def get_agent_bom_manifest(request: Request) -> dict[str, object]:
+def get_agent_bom_manifest(request: Request) -> dict[str, object]:
     """Return the tenant-scoped Agent BOM manifest from fleet/runtime stores."""
 
     tenant_id = require_request_tenant_id(request)

@@ -612,7 +612,7 @@ def _loopback_browser_origin(request: Request) -> bool:
 
 
 @router.post("/auth/dev-session", tags=["enterprise"], status_code=204)
-async def create_loopback_dev_session(request: Request, response: Response) -> None:
+def create_loopback_dev_session(request: Request, response: Response) -> None:
     """Mint the active zero-config loopback session without exposing its key.
 
     ``agent-bom serve`` enables this only when it generated an ephemeral dev
@@ -719,7 +719,7 @@ async def create_browser_session(request: Request, response: Response, body: Bro
 
 
 @router.delete("/auth/session", tags=["enterprise"], status_code=204)
-async def delete_browser_session(request: Request, response: Response) -> Response:
+def delete_browser_session(request: Request, response: Response) -> Response:
     """Clear the same-origin browser session cookie."""
     from agent_bom.api.audit_log import log_action
 
@@ -739,7 +739,7 @@ async def delete_browser_session(request: Request, response: Response) -> Respon
 
 
 @router.post("/auth/keys", tags=["enterprise"], status_code=201)
-async def create_key(request: Request, req: CreateKeyRequest) -> dict:
+def create_key(request: Request, req: CreateKeyRequest) -> dict:
     """Create a new API key. Returns the raw key once — store it securely."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import Role, create_api_key, get_key_store, resolve_scim_subject_binding, scopes_allow
@@ -809,7 +809,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
 
 
 @router.post("/auth/keys/{key_id}/rotate", tags=["enterprise"], status_code=201)
-async def rotate_key(
+def rotate_key(
     request: Request,
     key_id: str,
     req: RotateKeyRequest | None = None,
@@ -885,7 +885,7 @@ async def rotate_key(
 
 
 @router.get("/auth/keys", tags=["enterprise"])
-async def list_keys(request: Request) -> dict:
+def list_keys(request: Request) -> dict:
     """List all API keys (without hashes or raw values)."""
     from agent_bom.api.auth import get_key_store
 
@@ -896,7 +896,7 @@ async def list_keys(request: Request) -> dict:
 
 
 @router.get("/auth/policy", tags=["enterprise"])
-async def auth_policy(request: Request) -> dict:
+def auth_policy(request: Request) -> dict:
     """Report control-plane operator posture for auth, rate-limit and runtime safety controls.
 
     Intended for operator runbooks and posture dashboards. The payload is the
@@ -996,7 +996,7 @@ async def auth_policy(request: Request) -> dict:
 
 
 @router.get("/auth/scopes", tags=["enterprise"])
-async def auth_scopes() -> dict:
+def auth_scopes() -> dict:
     """Return the enforced RBAC scope catalog for operator tooling."""
     from agent_bom.api.middleware import APIKeyMiddleware
 
@@ -1010,7 +1010,7 @@ async def auth_scopes() -> dict:
 
 
 @router.get("/auth/secrets/lifecycle", tags=["enterprise"])
-async def auth_secret_lifecycle() -> dict:
+def auth_secret_lifecycle() -> dict:
     """Return non-secret lifecycle posture for configured control-plane secrets."""
     from agent_bom.api.secret_lifecycle import describe_secret_lifecycle_posture
 
@@ -1018,7 +1018,7 @@ async def auth_secret_lifecycle() -> dict:
 
 
 @router.get("/auth/secrets/rotation-plan", tags=["enterprise"])
-async def auth_secret_rotation_plan() -> dict:
+def auth_secret_rotation_plan() -> dict:
     """Return a non-secret operator plan for rotating control-plane secrets."""
     from agent_bom.api.secret_lifecycle import build_secret_rotation_plan
 
@@ -1026,7 +1026,7 @@ async def auth_secret_rotation_plan() -> dict:
 
 
 @router.get("/auth/secrets/credential-expiry", tags=["enterprise"])
-async def auth_secret_credential_expiry() -> dict:
+def auth_secret_credential_expiry() -> dict:
     """Return non-secret credential expiry/rotation governance.
 
     Folds in any discovered non-human-identity (NHI) credentials so an
@@ -1077,7 +1077,7 @@ def _discover_nhi_credentials() -> list[dict]:
 
 
 @router.get("/auth/scim/config", tags=["enterprise"])
-async def auth_scim_config() -> dict:
+def auth_scim_config() -> dict:
     """Return the operator-facing SCIM configuration posture."""
     from agent_bom.api.scim import describe_scim_posture
 
@@ -1085,7 +1085,7 @@ async def auth_scim_config() -> dict:
 
 
 @router.get("/auth/quota", tags=["enterprise"])
-async def auth_quota(request: Request) -> dict:
+def auth_quota(request: Request) -> dict:
     """Return the effective tenant quota runtime surface for the current tenant."""
     from agent_bom.api.tenant_quota import get_tenant_quota_runtime
 
@@ -1094,7 +1094,7 @@ async def auth_quota(request: Request) -> dict:
 
 
 @router.put("/auth/quota", tags=["enterprise"])
-async def update_auth_quota(request: Request, req: TenantQuotaUpdateRequest) -> dict:
+def update_auth_quota(request: Request, req: TenantQuotaUpdateRequest) -> dict:
     """Update tenant-specific quota overrides for the current tenant."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.tenant_quota import (
@@ -1125,7 +1125,7 @@ async def update_auth_quota(request: Request, req: TenantQuotaUpdateRequest) -> 
 
 
 @router.delete("/auth/quota", tags=["enterprise"], status_code=204)
-async def reset_auth_quota(request: Request) -> None:
+def reset_auth_quota(request: Request) -> None:
     """Clear all tenant-specific quota overrides for the current tenant."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.tenant_quota import clear_tenant_quota_overrides, get_tenant_quota_overrides
@@ -1182,7 +1182,7 @@ def _hosted_invite_url(tenant_id: str) -> str | None:
 
 
 @router.post("/auth/invitations", tags=["enterprise"], status_code=201)
-async def create_invitation(request: Request, req: InvitationRequest) -> dict:
+def create_invitation(request: Request, req: InvitationRequest) -> dict:
     """Provision a NEW tenant and mint its first scoped API key (admin-only).
 
     The hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:
@@ -1448,7 +1448,7 @@ async def retry_managed_trial_tenant_cleanup(request: Request, tenant_id: str) -
 
 
 @router.get("/auth/debug", tags=["enterprise"])
-async def auth_debug(request: Request) -> dict:
+def auth_debug(request: Request) -> dict:
     """Introspect how the current request was authenticated.
 
     Surfaces the auth method (``static_api_key`` / ``api_key`` / ``oidc`` /
@@ -1480,7 +1480,7 @@ async def auth_debug(request: Request) -> dict:
 
 
 @router.get("/auth/me", tags=["enterprise"])
-async def auth_me(request: Request) -> dict:
+def auth_me(request: Request) -> dict:
     """Return the current UI-facing actor/session contract for the active tenant."""
     from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_envelope
 
@@ -1519,7 +1519,7 @@ async def auth_me(request: Request) -> dict:
 
 
 @router.delete("/auth/keys/{key_id}", tags=["enterprise"], status_code=204)
-async def delete_key(request: Request, key_id: str) -> None:
+def delete_key(request: Request, key_id: str) -> None:
     """Revoke an API key."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import get_key_store
@@ -1712,7 +1712,7 @@ async def managed_trial_oidc_start_form(request: Request) -> RedirectResponse:
 
 
 @router.get("/auth/oidc/login", tags=["enterprise"])
-async def oidc_browser_login(request: Request, return_to: str | None = None) -> RedirectResponse:
+def oidc_browser_login(request: Request, return_to: str | None = None) -> RedirectResponse:
     """Start OIDC authorization-code + PKCE login for the dashboard."""
     from agent_bom.api.oidc import OIDCError
     from agent_bom.api.oidc_browser import (
@@ -1948,7 +1948,7 @@ def _consume_snowflake_login_state(state: str | None) -> None:
 
 
 @router.get("/auth/snowflake/login", tags=["enterprise"])
-async def snowflake_oauth_login(request: Request) -> RedirectResponse:
+def snowflake_oauth_login(request: Request) -> RedirectResponse:
     """Start Snowflake OAuth authorization-code + PKCE sign-in for the dashboard."""
     from agent_bom.api.oidc import OIDCError
     from agent_bom.api.oidc_browser import (
@@ -1997,7 +1997,7 @@ async def snowflake_oauth_login(request: Request) -> RedirectResponse:
 
 
 @router.get("/auth/snowflake/callback", tags=["enterprise"])
-async def snowflake_oauth_callback(
+def snowflake_oauth_callback(
     request: Request,
     code: str | None = None,
     state: str | None = None,
@@ -2076,7 +2076,7 @@ async def snowflake_oauth_callback(
 
 
 @router.get("/auth/saml/metadata", tags=["enterprise"])
-async def saml_metadata() -> PlainTextResponse:
+def saml_metadata() -> PlainTextResponse:
     """Return SP metadata XML for enterprise IdP configuration."""
     from agent_bom.api.saml import SAML_INSTALL_HINT, SAMLConfig, SAMLError, saml_runtime_available
 
@@ -2093,7 +2093,7 @@ async def saml_metadata() -> PlainTextResponse:
 
 
 @router.post("/auth/saml/relay-state", tags=["enterprise"])
-async def saml_relay_state() -> dict:
+def saml_relay_state() -> dict:
     """Issue a one-time RelayState nonce for SP-initiated SAML login."""
     relay_state, expires_at = _new_saml_relay_state()
     return {
@@ -2104,7 +2104,7 @@ async def saml_relay_state() -> dict:
 
 
 @router.post("/auth/saml/login", tags=["enterprise"], status_code=201)
-async def saml_login(req: SAMLLoginRequest) -> dict:
+def saml_login(req: SAMLLoginRequest) -> dict:
     """Verify a SAML assertion and return a short-lived API key."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import Role, create_api_key, get_key_store, resolve_scim_user_role
@@ -2164,7 +2164,7 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
 
 
 @router.get("/audit", tags=["enterprise"])
-async def list_audit_entries(
+def list_audit_entries(
     request: Request,
     action: str | None = None,
     resource: str | None = None,
@@ -2200,7 +2200,7 @@ def _configured_runtime_audit_log_path() -> Path | None:
 
 
 @router.get("/audit/integrity", tags=["enterprise"])
-async def audit_integrity(
+def audit_integrity(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=10_000)] = 1000,
     include_runtime: bool = True,
@@ -2254,7 +2254,7 @@ async def audit_integrity(
 
 
 @router.get("/audit/export", tags=["enterprise"])
-async def export_audit_entries(
+def export_audit_entries(
     request: Request,
     action: str | None = None,
     resource: str | None = None,
@@ -2327,7 +2327,7 @@ async def export_audit_entries(
 
 
 @router.post("/audit/export/verify", tags=["enterprise"])
-async def verify_audit_export(request: Request, body: AuditExportVerifyRequest) -> dict:
+def verify_audit_export(request: Request, body: AuditExportVerifyRequest) -> dict:
     """Verify a signed audit export packet without returning HMAC key material."""
     from agent_bom.api.audit_log import log_action, verify_export_payload
 
@@ -2354,7 +2354,7 @@ async def verify_audit_export(request: Request, body: AuditExportVerifyRequest) 
 
 
 @router.post("/exceptions", tags=["enterprise"], status_code=201)
-async def create_exception(request: Request, req: ExceptionRequest) -> dict:
+def create_exception(request: Request, req: ExceptionRequest) -> dict:
     """Request a vulnerability exception / waiver."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import VulnException
@@ -2384,7 +2384,7 @@ async def create_exception(request: Request, req: ExceptionRequest) -> dict:
 
 
 @router.get("/exceptions", tags=["enterprise"])
-async def list_exceptions(
+def list_exceptions(
     request: Request,
     status: str | None = None,
     # cap exception pagination to keep parity with /v1/audit.
@@ -2407,7 +2407,7 @@ async def list_exceptions(
 
 
 @router.get("/exceptions/{exception_id}", tags=["enterprise"])
-async def get_exception(request: Request, exception_id: str) -> dict:
+def get_exception(request: Request, exception_id: str) -> dict:
     """Get a specific exception."""
     tenant_id = require_request_tenant_id(request)
     exc = _get_exception_store().get(exception_id, tenant_id=tenant_id)
@@ -2417,7 +2417,7 @@ async def get_exception(request: Request, exception_id: str) -> dict:
 
 
 @router.put("/exceptions/{exception_id}/approve", tags=["enterprise"])
-async def approve_exception(request: Request, exception_id: str) -> dict:
+def approve_exception(request: Request, exception_id: str) -> dict:
     """Approve a pending exception (admin only)."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
@@ -2439,7 +2439,7 @@ async def approve_exception(request: Request, exception_id: str) -> dict:
 
 
 @router.put("/exceptions/{exception_id}/revoke", tags=["enterprise"])
-async def revoke_exception(request: Request, exception_id: str) -> dict:
+def revoke_exception(request: Request, exception_id: str) -> dict:
     """Revoke an active exception."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
@@ -2458,7 +2458,7 @@ async def revoke_exception(request: Request, exception_id: str) -> dict:
 
 
 @router.delete("/exceptions/{exception_id}", tags=["enterprise"], status_code=204)
-async def delete_exception(request: Request, exception_id: str) -> None:
+def delete_exception(request: Request, exception_id: str) -> None:
     """Delete an exception."""
     from agent_bom.api.audit_log import log_action
 
@@ -2478,7 +2478,7 @@ async def delete_exception(request: Request, exception_id: str) -> None:
 
 
 @router.post("/baseline/compare", tags=["enterprise"])
-async def compare_baseline(
+def compare_baseline(
     request: Request,
     previous_job_id: Annotated[str, Query(min_length=1)],
     current_job_id: Annotated[str, Query(min_length=1)],
@@ -2513,7 +2513,7 @@ async def compare_baseline(
 
 
 @router.get("/trends", tags=["enterprise"])
-async def get_trends(
+def get_trends(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=365)] = 30,
     days: Annotated[int | None, Query(ge=1, le=365)] = None,
@@ -2562,7 +2562,7 @@ async def get_trends(
 
 
 @router.get("/siem/connectors", tags=["enterprise"])
-async def list_siem_connectors() -> dict:
+def list_siem_connectors() -> dict:
     """List available SIEM connector types."""
     from agent_bom.siem import list_connectors
 
@@ -2641,7 +2641,7 @@ async def test_siem_connection(
 
 
 @router.put("/integrations/issues/{mapping_id}/status", tags=["enterprise"])
-async def update_issue_mapping_status(request: Request, mapping_id: str, req: IssueStatusUpdateRequest) -> dict:
+def update_issue_mapping_status(request: Request, mapping_id: str, req: IssueStatusUpdateRequest) -> dict:
     """Update tenant-scoped external issue mapping status after provider sync."""
     from agent_bom.api.audit_log import log_action
 
@@ -2665,9 +2665,9 @@ async def update_issue_mapping_status(request: Request, mapping_id: str, req: Is
 
 
 @router.post("/findings/false-positive", tags=["enterprise"], status_code=201)
-async def mark_false_positive(request: Request, req: FalsePositiveRequest) -> dict:
+def mark_false_positive(request: Request, req: FalsePositiveRequest) -> dict:
     """Mark a finding as false positive."""
-    feedback = await create_finding_feedback(
+    feedback = create_finding_feedback(
         request,
         FindingFeedbackRequest(
             vulnerability_id=req.vulnerability_id,
@@ -2690,7 +2690,7 @@ async def mark_false_positive(request: Request, req: FalsePositiveRequest) -> di
 
 
 @router.post("/findings/feedback", tags=["enterprise"], status_code=201)
-async def create_finding_feedback(request: Request, req: FindingFeedbackRequest) -> dict:
+def create_finding_feedback(request: Request, req: FindingFeedbackRequest) -> dict:
     """Record tenant-scoped finding feedback or suppression state."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus, VulnException
@@ -2722,7 +2722,7 @@ async def create_finding_feedback(request: Request, req: FindingFeedbackRequest)
 
 
 @router.get("/findings/feedback", tags=["enterprise"])
-async def list_finding_feedback(request: Request, state: str | None = None) -> dict:
+def list_finding_feedback(request: Request, state: str | None = None) -> dict:
     """List tenant-scoped finding feedback entries."""
     tenant_id = require_request_tenant_id(request)
     entries = []
@@ -2788,7 +2788,7 @@ def record_finding_triage(*, tenant_id: str, actor: str, req: FindingTriageReque
 
 
 @router.post("/findings/triage", tags=["enterprise"], status_code=201)
-async def create_finding_triage(request: Request, req: FindingTriageRequest) -> dict:
+def create_finding_triage(request: Request, req: FindingTriageRequest) -> dict:
     """Create a tenant-scoped finding triage queue item."""
     tenant_id = require_request_tenant_id(request)
     actor = _request_actor(request)
@@ -2796,7 +2796,7 @@ async def create_finding_triage(request: Request, req: FindingTriageRequest) -> 
 
 
 @router.get("/findings/triage", tags=["enterprise"])
-async def list_finding_triage(
+def list_finding_triage(
     request: Request,
     queue_state: str | None = None,
     decision: str | None = None,
@@ -2827,7 +2827,7 @@ async def list_finding_triage(
 
 
 @router.put("/findings/triage/{triage_id}/decision", tags=["enterprise"])
-async def update_finding_triage_decision(request: Request, triage_id: str, req: FindingTriageDecisionRequest) -> dict:
+def update_finding_triage_decision(request: Request, triage_id: str, req: FindingTriageDecisionRequest) -> dict:
     """Record a finding triage decision and review timestamp."""
     from agent_bom.api.audit_log import log_action
 
@@ -2869,7 +2869,7 @@ async def update_finding_triage_decision(request: Request, triage_id: str, req: 
 
 
 @router.get("/findings/triage/vex", tags=["enterprise"])
-async def export_finding_triage_vex(
+def export_finding_triage_vex(
     request: Request,
     assignee: Annotated[str | None, Query(max_length=256)] = None,
     package: Annotated[str | None, Query(max_length=256)] = None,
@@ -3066,7 +3066,7 @@ async def export_finding_triage_vex(
 
 
 @router.post("/findings/triage/vex/ingest", tags=["enterprise"], status_code=201)
-async def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestRequest) -> dict:
+def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestRequest) -> dict:
     """Ingest an OpenVEX document and apply its statements as triage suppressions.
 
     ``not_affected`` statements become tenant-scoped triage decisions (round-tripping
@@ -3160,7 +3160,7 @@ async def ingest_finding_triage_vex(request: Request, req: FindingTriageVexInges
 
 
 @router.get("/findings/false-positives", tags=["enterprise"])
-async def list_false_positives(request: Request) -> dict:
+def list_false_positives(request: Request) -> dict:
     """List all false positive entries."""
     tenant_id = require_request_tenant_id(request)
     all_exceptions = _get_exception_store().list_all(tenant_id=tenant_id)
@@ -3183,7 +3183,7 @@ async def list_false_positives(request: Request) -> dict:
 
 
 @router.delete("/findings/false-positive/{fp_id}", tags=["enterprise"], status_code=204)
-async def remove_false_positive(request: Request, fp_id: str) -> None:
+def remove_false_positive(request: Request, fp_id: str) -> None:
     """Un-mark a false positive."""
     from agent_bom.api.audit_log import log_action
 
@@ -3200,7 +3200,7 @@ async def remove_false_positive(request: Request, fp_id: str) -> None:
 
 
 @router.delete("/findings/feedback/{feedback_id}", tags=["enterprise"], status_code=204)
-async def remove_finding_feedback(request: Request, feedback_id: str) -> None:
+def remove_finding_feedback(request: Request, feedback_id: str) -> None:
     """Remove tenant-scoped finding feedback without deleting audit history."""
     from agent_bom.api.audit_log import log_action
 

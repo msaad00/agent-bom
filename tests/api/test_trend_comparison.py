@@ -160,7 +160,7 @@ async def test_api_selects_scope_and_preserves_legacy_history(monkeypatch):
     monkeypatch.setattr(enterprise, "_get_trend_store", lambda: store)
     monkeypatch.setattr(enterprise, "require_request_tenant_id", lambda request: "a")
     request = Request({"type": "http", "headers": []})
-    payload = await enterprise.get_trends(request, scope_id="repo:a")
+    payload = enterprise.get_trends(request, scope_id="repo:a")
     assert payload["count"] == 2
     assert payload["data_points"][0]["comparison"]["still_open"] == 1
     assert payload["available_scopes"] == ["repo:a", "repo:b"]

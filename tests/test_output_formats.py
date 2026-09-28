@@ -889,7 +889,7 @@ def test_spdx_vulnerability_annotations_preserve_enrichment_and_compliance_metad
     spdx = to_spdx(report)
     assert spdx["@context"] == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
     vuln_element = next(element for element in spdx["@graph"] if element.get("type") == "security_Vulnerability")
-    statements = {annotation["statement"] for annotation in vuln_element["annotation"]}
+    statements = {n["statement"] for n in spdx["@graph"] if n.get("type") == "Annotation" and n["subject"] == vuln_element["spdxId"]}
 
     assert "agent-bom:severity-source=nvd:cvss_v3" in statements
     assert "agent-bom:epss-score=0.8123" in statements
@@ -938,7 +938,7 @@ def test_spdx_vulnerability_annotations_use_unified_findings_without_blast_radii
 
     spdx = to_spdx(report)
     vuln_element = next(element for element in spdx["@graph"] if element.get("type") == "security_Vulnerability")
-    statements = {annotation["statement"] for annotation in vuln_element["annotation"]}
+    statements = {n["statement"] for n in spdx["@graph"] if n.get("type") == "Annotation" and n["subject"] == vuln_element["spdxId"]}
 
     assert "agent-bom:compliance-tag=owasp_llm:LLM05" in statements
     assert "agent-bom:compliance-tag=soc2:CC7.1" in statements

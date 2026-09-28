@@ -275,7 +275,7 @@ def _validate_regions(regions: list[str]) -> list[str]:
 
 
 @router.post("/cloud/connections", status_code=201)
-async def create_connection(request: Request, body: CloudConnectionCreate, _role: Any = _SCAN_DEP) -> dict[str, Any]:
+def create_connection(request: Request, body: CloudConnectionCreate, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Create a read-only cloud connection for the authenticated tenant.
 
     The ``external_id`` secret is encrypted at rest before persistence and is
@@ -414,7 +414,7 @@ async def create_connection(request: Request, body: CloudConnectionCreate, _role
 
 
 @router.get("/cloud/connections")
-async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
+def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
     from agent_bom.api.connection_scheduler import connections_scheduler_enabled
     from agent_bom.cloud.connection_workload import supported_workload_modes
@@ -615,13 +615,13 @@ def _require_connection(request: Request, connection_id: str) -> CloudConnection
 
 
 @router.get("/cloud/connections/{connection_id}")
-async def get_connection(request: Request, connection_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
+def get_connection(request: Request, connection_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
     """Return one connection's non-secret metadata (tenant-scoped)."""
     return _require_connection(request, connection_id).to_public_dict()
 
 
 @router.patch("/cloud/connections/{connection_id}")
-async def update_connection(
+def update_connection(
     request: Request,
     connection_id: str,
     body: CloudConnectionUpdate,
@@ -670,7 +670,7 @@ async def update_connection(
 
 
 @router.delete("/cloud/connections/{connection_id}", status_code=204)
-async def delete_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> None:
+def delete_connection(request: Request, connection_id: str, _role: Any = _SCAN_DEP) -> None:
     """Delete a connection owned by the authenticated tenant."""
     record = _require_connection(request, connection_id)
     get_connection_store().delete(record.tenant_id, record.id)

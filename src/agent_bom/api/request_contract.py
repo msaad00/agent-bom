@@ -20,10 +20,16 @@ two different ways.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Annotated
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 
-__all__ = ["reject_unknown_fields", "require_scalar_str"]
+__all__ = ["PageLimit1000", "reject_unknown_fields", "require_scalar_str"]
+
+# Query-string half of the contract: a list route's page size is bounded so an
+# oversized request is a visible 422 (and an OpenAPI maximum), never a silent
+# clamp or an unbounded store read.
+PageLimit1000 = Annotated[int, Query(ge=1, le=1000)]
 
 
 def reject_unknown_fields(body: object, accepted: Iterable[str]) -> None:

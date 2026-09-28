@@ -295,7 +295,7 @@ def _export_with_real_producer(framework: str = "owasp-llm", *, format: str = "j
     jobs = _seed_jobs_with_findings()
     req = _request("tenant-alpha")
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        return asyncio.run(compliance_routes.export_compliance_report(req, framework, format=format))
+        return compliance_routes.export_compliance_report(req, framework, format=format)
 
 
 # ─── Happy-path JSON ─────────────────────────────────────────────────────────
@@ -316,7 +316,7 @@ def test_report_json_signature_matches_canonical_body() -> None:
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
         with _patched_compliance_builder_returns(full_payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+            resp = compliance_routes.export_compliance_report(req, "owasp-llm")
 
     assert isinstance(resp, JSONResponse)
     body = json.loads(resp.body)
@@ -379,7 +379,7 @@ def test_real_compliance_export_wires_control_tags_and_non_empty_evidence() -> N
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
         posture = asyncio.run(compliance_routes.get_compliance(req))
-        resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+        resp = compliance_routes.export_compliance_report(req, "owasp-llm")
 
     controls = posture["owasp_llm_top10"]
     llm01 = next(c for c in controls if c["control_id"] == "LLM01")
@@ -572,7 +572,7 @@ def test_report_with_no_completed_scans_marks_controls_not_evaluated() -> None:
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
         with _patched_compliance_builder_returns(payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+            resp = compliance_routes.export_compliance_report(req, "owasp-llm")
 
     body = json.loads(resp.body)
     assert body["scope"]["completed_scan_count"] == 0
@@ -597,7 +597,7 @@ def test_report_with_missing_control_evidence_is_incomplete_not_pass() -> None:
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=_seed_jobs_with_findings()):
         with _patched_compliance_builder_returns(payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+            resp = compliance_routes.export_compliance_report(req, "owasp-llm")
 
     body = json.loads(resp.body)
     assert body["scope"]["completed_scan_count"] == 1
@@ -711,7 +711,7 @@ def test_report_fetches_audit_entries_with_tenant_scope(monkeypatch) -> None:
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+        compliance_routes.export_compliance_report(req, "owasp-llm")
 
     assert store.captured_tenant_id == "tenant-alpha"
 
@@ -731,7 +731,7 @@ def test_report_jsonl_streams_one_record_per_line() -> None:
 
     with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
         with _patched_compliance_builder_returns(full_payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "soc2", format="jsonl"))
+            resp = compliance_routes.export_compliance_report(req, "soc2", format="jsonl")
 
     # jsonl path is a StreamingResponse — drain the async iterator into bytes.
     from starlette.responses import StreamingResponse
@@ -782,7 +782,7 @@ def test_unknown_framework_returns_400() -> None:
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
         with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
-                asyncio.run(compliance_routes.export_compliance_report(req, "made-up-framework"))
+                compliance_routes.export_compliance_report(req, "made-up-framework")
     assert exc.value.status_code == 400
     assert "Unknown framework" in exc.value.detail
 
@@ -793,7 +793,7 @@ def test_invalid_format_returns_400() -> None:
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
         with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
-                asyncio.run(compliance_routes.export_compliance_report(req, "fedramp", format="csv"))
+                compliance_routes.export_compliance_report(req, "fedramp", format="csv")
     assert exc.value.status_code == 400
     assert "format must be" in exc.value.detail
 
@@ -804,7 +804,7 @@ def test_malformed_since_returns_400() -> None:
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
         with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
-                asyncio.run(compliance_routes.export_compliance_report(req, "fedramp", since="not-a-date"))
+                compliance_routes.export_compliance_report(req, "fedramp", since="not-a-date")
     assert exc.value.status_code == 400
     assert "Invalid timestamp" in exc.value.detail
 
@@ -817,13 +817,11 @@ def test_since_after_until_returns_400() -> None:
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
         with _patched_compliance_builder_returns({}):
             with pytest.raises(HTTPException) as exc:
-                asyncio.run(
-                    compliance_routes.export_compliance_report(
-                        req,
-                        "fedramp",
-                        since=later,
-                        until=earlier,
-                    )
+                compliance_routes.export_compliance_report(
+                    req,
+                    "fedramp",
+                    since=later,
+                    until=earlier,
                 )
     assert exc.value.status_code == 400
     assert "since must be earlier" in exc.value.detail

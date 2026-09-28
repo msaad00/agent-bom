@@ -158,7 +158,7 @@ def _validate_models(models: list[str]) -> list[str]:
 
 
 @router.post("/model-keys/providers", status_code=201)
-async def create_provider_key(request: Request, body: ProviderKeyCreate, _role: Any = _CONFIG_DEP) -> dict[str, Any]:
+def create_provider_key(request: Request, body: ProviderKeyCreate, _role: Any = _CONFIG_DEP) -> dict[str, Any]:
     """Register (seal) a real provider key for the authenticated tenant.
 
     Writing a real provider secret into the vault is a root-credential write and
@@ -192,7 +192,7 @@ async def create_provider_key(request: Request, body: ProviderKeyCreate, _role: 
 
 
 @router.get("/model-keys/providers")
-async def list_provider_keys(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
+def list_provider_keys(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the tenant's registered provider keys (non-secret metadata only)."""
     tenant_id = _tenant(request)
     records = get_model_key_broker_store().list_provider_keys(tenant_id)
@@ -206,7 +206,7 @@ async def list_provider_keys(request: Request, _role: Any = _READ_DEP) -> dict[s
 
 
 @router.get("/model-keys/providers/{provider_key_id}")
-async def get_provider_key(request: Request, provider_key_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
+def get_provider_key(request: Request, provider_key_id: str, _role: Any = _READ_DEP) -> dict[str, Any]:
     """Return one provider key's non-secret metadata (tenant-scoped)."""
     tenant_id = _tenant(request)
     record = get_model_key_broker_store().get_provider_key(provider_key_id, tenant_id=tenant_id)
@@ -216,7 +216,7 @@ async def get_provider_key(request: Request, provider_key_id: str, _role: Any = 
 
 
 @router.delete("/model-keys/providers/{provider_key_id}", status_code=204)
-async def delete_provider_key(request: Request, provider_key_id: str, _role: Any = _CONFIG_DEP) -> None:
+def delete_provider_key(request: Request, provider_key_id: str, _role: Any = _CONFIG_DEP) -> None:
     """Delete a provider key (admin/``config`` tier — a root-credential write).
 
     Its virtual keys then fail resolution closed.
@@ -234,7 +234,7 @@ async def delete_provider_key(request: Request, provider_key_id: str, _role: Any
 
 
 @router.post("/model-keys/providers/{provider_key_id}/virtual-keys", status_code=201)
-async def mint_virtual_key_route(
+def mint_virtual_key_route(
     request: Request,
     provider_key_id: str,
     body: VirtualKeyMint,
@@ -281,7 +281,7 @@ async def mint_virtual_key_route(
 
 
 @router.get("/model-keys/virtual-keys")
-async def list_virtual_keys(
+def list_virtual_keys(
     request: Request,
     provider_key_id: str | None = None,
     include_inactive: bool = False,
@@ -299,7 +299,7 @@ async def list_virtual_keys(
 
 
 @router.post("/model-keys/virtual-keys/{virtual_key_id}/revoke")
-async def revoke_virtual_key_route(
+def revoke_virtual_key_route(
     request: Request,
     virtual_key_id: str,
     body: VirtualKeyRevoke,
@@ -322,7 +322,7 @@ async def revoke_virtual_key_route(
 
 
 @router.post("/model-keys/authorize")
-async def authorize_virtual_key(request: Request, body: VirtualKeyAuthorize, _role: Any = _SCAN_DEP) -> dict[str, Any]:
+def authorize_virtual_key(request: Request, body: VirtualKeyAuthorize, _role: Any = _SCAN_DEP) -> dict[str, Any]:
     """Authorize a virtual key for a provider/model call — decision only, no secret.
 
     Resolves the virtual key server-side (enforcing scope, revocation, expiry, and

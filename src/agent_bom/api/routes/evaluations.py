@@ -123,7 +123,7 @@ def _validate_dataset_link(tenant_id: str, body: EvaluationRunCreate) -> None:
 
 
 @router.post("/evaluations", tags=["evaluations"], status_code=201)
-async def register_evaluation_run(request: Request, body: EvaluationRunCreate) -> dict[str, Any]:
+def register_evaluation_run(request: Request, body: EvaluationRunCreate) -> dict[str, Any]:
     """Register an evaluation run linked to dataset versions, traces, models, and prompt hashes."""
     tenant_id = _tenant_id(request)
     _validate_dataset_link(tenant_id, body)
@@ -160,7 +160,7 @@ async def register_evaluation_run(request: Request, body: EvaluationRunCreate) -
 
 
 @router.get("/evaluations", tags=["evaluations"])
-async def list_evaluation_runs(
+def list_evaluation_runs(
     request: Request,
     dataset_id: Annotated[str | None, Query(max_length=128)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
@@ -188,7 +188,7 @@ async def list_evaluation_runs(
 
 
 @router.get("/evaluations/{evaluation_id}", tags=["evaluations"])
-async def get_evaluation_run(
+def get_evaluation_run(
     request: Request,
     evaluation_id: Annotated[str, Path(min_length=1, max_length=128)],
 ) -> dict[str, Any]:

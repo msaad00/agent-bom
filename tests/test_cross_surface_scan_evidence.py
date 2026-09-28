@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from types import SimpleNamespace
 
@@ -238,7 +237,7 @@ def test_compliance_endpoint_reads_the_current_persisted_finding_queue() -> None
     request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-parity"), headers={})
 
     try:
-        payload = asyncio.run(compliance.get_compliance_narrative(request))
+        payload = compliance.get_compliance_narrative(request)
     finally:
         set_job_store(previous_store)
 
@@ -281,7 +280,7 @@ def test_completed_empty_scan_is_not_reported_as_no_scan() -> None:
     request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-empty-scan"), headers={})
 
     try:
-        payload = asyncio.run(compliance.get_compliance_narrative(request))
+        payload = compliance.get_compliance_narrative(request)
     finally:
         set_job_store(previous_store)
 

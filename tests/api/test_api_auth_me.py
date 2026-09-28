@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 from starlette.testclient import TestClient
@@ -57,7 +56,7 @@ def test_auth_me_exposes_managed_trial_deployment_envelope_for_every_principal(m
     class _FakeRequest:
         state = _FakeState()
 
-    body = asyncio.run(auth_me(_FakeRequest()))  # type: ignore[arg-type]
+    body = auth_me(_FakeRequest())  # type: ignore[arg-type]
     assert body["auth_method"] == "api_key"
     assert body["managed_trial_mode"] is True
     assert body["managed_trial_envelope"] == {
@@ -92,7 +91,7 @@ def test_auth_me_reports_contributor_capabilities_for_analyst() -> None:
     class _FakeRequest:
         state = _FakeState()
 
-    body = asyncio.run(auth_me(_FakeRequest()))  # type: ignore[arg-type]
+    body = auth_me(_FakeRequest())  # type: ignore[arg-type]
     assert body["authenticated"] is True
     assert body["role"] == "analyst"
     assert body["tenant_id"] == "tenant-alpha"
@@ -134,7 +133,7 @@ def test_auth_me_never_leaks_raw_key_or_token() -> None:
     class _FakeRequest:
         state = _FakeState()
 
-    body = asyncio.run(auth_me(_FakeRequest()))  # type: ignore[arg-type]
+    body = auth_me(_FakeRequest())  # type: ignore[arg-type]
     serialized = json.dumps(body)
     assert secret not in serialized
 

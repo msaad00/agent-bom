@@ -252,3 +252,212 @@ async def test_slow_agent_discovery_keeps_event_loop_responsive(monkeypatch):
     assert await asyncio.wait_for(_trivial(), timeout=0.15) == "responsive"
     assert asyncio.get_running_loop().time() - started < block_seconds / 2
     assert await task == {"agents": [], "count": 0}
+
+
+def _own_nodes(fn: ast.AST):
+    """Walk a function body without descending into nested defs/classes/lambdas."""
+    scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+    stack = [node for node in getattr(fn, "body", []) if not isinstance(node, scopes)]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(child for child in ast.iter_child_nodes(node) if not isinstance(child, scopes))
+
+
+def _is_coroutine_body(fn: ast.AsyncFunctionDef) -> bool:
+    return any(
+        isinstance(node, (ast.Await, ast.AsyncFor, ast.AsyncWith)) or (isinstance(node, ast.comprehension) and node.is_async)
+        for node in _own_nodes(fn)
+    )
+
+
+def _await_free_async_handlers(source: str) -> list[tuple[int, str]]:
+    tree = ast.parse(source)
+    return [(handler.lineno, handler.name) for handler in _iter_route_handlers(tree) if not _is_coroutine_body(handler)]
+
+
+def test_async_route_handlers_actually_await():
+    """An ``async def`` handler that never awaits runs its whole body — store
+    reads, SQL, file IO — on the event loop. FastAPI runs a plain ``def``
+    handler in its threadpool instead, so an await-free handler must be ``def``."""
+    offenders: list[str] = []
+    for path in sorted(ROUTES_DIR.glob("*.py")):
+        for lineno, name in _await_free_async_handlers(path.read_text(encoding="utf-8")):
+            offenders.append(f"{path.name}:{lineno} {name}")
+    assert offenders == [], "async route handler(s) with no await — declare them `def` so FastAPI offloads them:\n" + "\n".join(offenders)
+
+
+def test_await_free_guard_detects_offender_and_ignores_nested_awaits():
+    source = """
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.get("/blocking")
+async def blocking(request):
+    async def _stream():
+        await something()
+    return store.list_all()
+
+@router.get("/fine")
+async def fine(request):
+    return await run_in_threadpool(store.list_all)
+
+@router.get("/sync")
+def sync_handler(request):
+    return store.list_all()
+"""
+    assert _await_free_async_handlers(source) == [(6, "blocking")]
+
+
+_LIMIT_BOUND_KEYWORDS = {"le", "lt"}
+
+
+def _is_bounded_query(expr: ast.AST) -> bool:
+    return any(
+        isinstance(call, ast.Call) and _callable_name(call.func) == "Query" and any(kw.arg in _LIMIT_BOUND_KEYWORDS for kw in call.keywords)
+        for call in ast.walk(expr)
+    )
+
+
+def _bounded_limit_aliases() -> set[str]:
+    """Shared ``Annotated[int, Query(le=...)]`` aliases from the request contract."""
+    import agent_bom.api.request_contract as contract
+
+    tree = ast.parse(Path(contract.__file__).read_text(encoding="utf-8"))
+    return {
+        node.targets[0].id
+        for node in tree.body
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and _is_bounded_query(node.value)
+    }
+
+
+def _unbounded_limit_params(source: str) -> list[tuple[int, str, str]]:
+    aliases = _bounded_limit_aliases()
+    tree = ast.parse(source)
+    found: list[tuple[int, str, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not any(
+            isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr in HTTP_VERBS for dec in node.decorator_list
+        ):
+            continue
+        positional = node.args.posonlyargs + node.args.args
+        defaults: list[ast.expr | None] = [None] * (len(positional) - len(node.args.defaults)) + list(node.args.defaults)
+        pairs = list(zip(positional, defaults)) + list(zip(node.args.kwonlyargs, node.args.kw_defaults))
+        for arg, default in pairs:
+            if arg.arg != "limit" and not arg.arg.endswith("_limit"):
+                continue
+            bounded = any(expr is not None and _is_bounded_query(expr) for expr in (arg.annotation, default))
+            if isinstance(arg.annotation, ast.Name) and arg.annotation.id in aliases:
+                bounded = True
+            if not bounded:
+                found.append((arg.lineno, node.name, arg.arg))
+    return found
+
+
+def test_route_limit_query_params_declare_an_upper_bound():
+    """Every page-size style ``limit`` query param must carry ``le=`` so an
+    oversized request is rejected (422) and the bound is visible in OpenAPI,
+    rather than reaching a store unbounded (``LIMIT -1`` is unlimited in SQLite)."""
+    offenders: list[str] = []
+    for path in sorted(ROUTES_DIR.glob("*.py")):
+        for lineno, handler, param in _unbounded_limit_params(path.read_text(encoding="utf-8")):
+            offenders.append(f"{path.name}:{lineno} {handler}({param})")
+    assert offenders == [], "route `limit` param(s) without an upper bound (use Query(..., ge=1, le=N)):\n" + "\n".join(offenders)
+
+
+def test_limit_bound_guard_detects_bare_and_unbounded_query():
+    source = """
+from typing import Annotated
+from fastapi import APIRouter, Query
+router = APIRouter()
+
+@router.get("/a")
+def a(limit: int = 50): ...
+
+@router.get("/b")
+def b(limit: int = Query(50, ge=1)): ...
+
+@router.get("/c")
+def c(limit: int = Query(50, ge=1, le=500), edge_limit: Annotated[int, Query(le=10)] = 5): ...
+
+@router.get("/d")
+def d(*, row_limit: int = 5): ...
+"""
+    assert _unbounded_limit_params(source) == [(7, "a", "limit"), (10, "b", "limit"), (16, "d", "row_limit")]
+
+
+@pytest.mark.asyncio
+async def test_sync_store_route_runs_off_the_event_loop_and_rejects_unbounded_limit(monkeypatch):
+    """End to end through FastAPI: a slow store read in a converted handler must
+    not pin the loop, and out-of-range limits are rejected before the store."""
+    import httpx
+    from fastapi import FastAPI
+
+    import agent_bom.asset_tracker as asset_tracker_mod
+    from agent_bom.api.routes import assets
+
+    block_seconds = 0.5
+    seen_limits: list[int] = []
+
+    class _SlowTracker:
+        def __init__(self, tenant_id: str) -> None:
+            self.tenant_id = tenant_id
+
+        def __enter__(self) -> "_SlowTracker":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def list_assets(self, *, status=None, severity=None, limit=500):
+            seen_limits.append(limit)
+            time.sleep(block_seconds)
+            return []
+
+        def stats(self) -> dict:
+            return {}
+
+        def mttr_days(self):
+            return None
+
+    monkeypatch.setattr(asset_tracker_mod, "AssetTracker", _SlowTracker)
+    monkeypatch.setattr(assets, "require_request_tenant_id", lambda request: "tenant-assets")
+    app = FastAPI()
+    app.include_router(assets.router)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        task = asyncio.create_task(client.get("/assets"))
+        await asyncio.sleep(0.05)
+        assert not task.done(), "asset listing should still be in flight"
+        started = asyncio.get_running_loop().time()
+        assert await asyncio.wait_for(_trivial(), timeout=0.15) == "responsive"
+        assert asyncio.get_running_loop().time() - started < block_seconds / 2, "store read ran on the event loop"
+        response = await task
+        assert response.status_code == 200
+        assert response.json()["count"] == 0
+
+        for bad in ("-1", "0", "1001"):
+            assert (await client.get(f"/assets?limit={bad}")).status_code == 422, bad
+    assert seen_limits == [500], "rejected limits must never reach the store"
+
+
+def test_call_route_awaits_async_handlers_and_offloads_sync_ones():
+    import asyncio
+    import threading
+
+    from agent_bom.api.route_offload import call_route
+
+    loop_thread = threading.get_ident()
+
+    def sync_handler(request):
+        return ("sync", request, threading.get_ident() != loop_thread)
+
+    async def async_handler(request):
+        return ("async", request)
+
+    async def run():
+        return await call_route(sync_handler, "r1"), await call_route(async_handler, "r2")
+
+    assert asyncio.run(run()) == (("sync", "r1", True), ("async", "r2"))

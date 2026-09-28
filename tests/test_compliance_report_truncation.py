@@ -11,7 +11,6 @@ carries ``audit_events_truncated: true`` + the cap; under the cap it is false.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -68,7 +67,7 @@ def _run_export(tenant: str) -> dict:
     req = _request(tenant)
     with patch.object(compliance_routes, "_tenant_jobs", return_value=[]):
         with patch.object(compliance_routes, "get_compliance", return_value=_FULL):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+            resp = compliance_routes.export_compliance_report(req, "owasp-llm")
     assert isinstance(resp, JSONResponse)
     return json.loads(resp.body)
 

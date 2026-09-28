@@ -1134,7 +1134,7 @@ def test_spdx_output_structure(sample_report):
     assert data["@context"] == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
     graph = data["@graph"]
     doc = next(n for n in graph if n["type"] == "SpdxDocument")
-    assert doc["dataLicense"] == "CC0-1.0"
+    assert doc["dataLicense"] == "https://spdx.org/licenses/CC0-1.0"
     ci = next(n for n in graph if n["type"] == "CreationInfo")
     assert ci["specVersion"] == "3.0.1"
     assert len(graph) > 0
@@ -4615,15 +4615,19 @@ def test_cyclonedx_omits_license_when_none():
 
 
 def test_spdx_includes_declared_license():
-    """SPDX output includes declaredLicense when package has one."""
+    """SPDX 3 output links a package to its declared license via a
+    hasDeclaredLicense relationship to a LicenseExpression element."""
     pkg = Package(name="flask", version="3.0.0", ecosystem="pypi", license="BSD-3-Clause")
     server = MCPServer(name="s", command="python", args=["-m", "flask"], packages=[pkg])
     agent = Agent(name="a", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/tmp/c.json", mcp_servers=[server])
     report = AIBOMReport(agents=[agent], blast_radii=[])
     spdx = to_spdx(report)
-    pkg_elements = [e for e in spdx["@graph"] if e.get("declaredLicense")]
-    assert len(pkg_elements) >= 1
-    assert pkg_elements[0]["declaredLicense"] == "BSD-3-Clause"
+    graph = spdx["@graph"]
+    by_id = {e["spdxId"]: e for e in graph if "spdxId" in e}
+    flask = next(e for e in graph if e.get("type") == "software_Package" and e.get("name") == "flask")
+    rels = [e for e in graph if e.get("relationshipType") == "hasDeclaredLicense" and e["from"] == flask["spdxId"]]
+    assert len(rels) == 1
+    assert by_id[rels[0]["to"][0]]["simplelicensing_licenseExpression"] == "BSD-3-Clause"
 
 
 def test_json_output_includes_license():

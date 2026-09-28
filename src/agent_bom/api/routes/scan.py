@@ -2120,7 +2120,7 @@ async def check_package(body: PackageCheckRequest) -> dict[str, Any]:
 
 
 @router.get("/scan/drivers", tags=["scan"])
-async def list_scan_drivers(include_planned: bool = True) -> dict:
+def list_scan_drivers(include_planned: bool = True) -> dict:
     """List scanner driver contracts and orchestration semantics."""
 
     from agent_bom.scanners.registry import (
@@ -4636,7 +4636,7 @@ async def ingest_bulk_findings(request: Request, body: BulkFindingsRequest) -> d
 
 
 @router.get("/inventory", tags=["scan"], response_model=InventoryResponse)
-async def list_inventory(
+def list_inventory(
     request: Request,
     # enforce limit cap server-side via Pydantic.
     limit: Annotated[int, Query(ge=1, le=1000)] = 500,

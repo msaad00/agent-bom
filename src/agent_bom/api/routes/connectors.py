@@ -96,7 +96,7 @@ def _load_registry() -> list[dict]:
 
 
 @router.get("/connectors", tags=["connectors"])
-async def list_available_connectors() -> dict:
+def list_available_connectors() -> dict:
     """List available SaaS connectors for AI agent discovery."""
     from agent_bom.connectors import list_connectors
 
@@ -139,14 +139,14 @@ def _load_registry_meta() -> dict:
 
 
 @router.get("/registry", tags=["registry"])
-async def list_registry() -> dict:
+def list_registry() -> dict:
     """List all known MCP servers from the agent-bom registry."""
     servers = _load_registry()
     return {"servers": servers, "count": len(servers), "meta": _load_registry_meta()}
 
 
 @router.get("/registry/{server_id:path}", tags=["registry"])
-async def get_registry_server(server_id: str) -> dict:
+def get_registry_server(server_id: str) -> dict:
     """Get a single MCP server entry by ID (e.g. 'modelcontextprotocol/filesystem')."""
     servers = _load_registry()
     for server in servers:
@@ -159,7 +159,7 @@ async def get_registry_server(server_id: str) -> dict:
 
 
 @router.get("/malicious/check", tags=["security"])
-async def check_malicious(name: str, ecosystem: str = "npm") -> dict:
+def check_malicious(name: str, ecosystem: str = "npm") -> dict:
     """Check if a package name is a known malicious package or typosquat.
 
     Query params:

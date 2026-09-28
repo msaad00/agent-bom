@@ -45,6 +45,7 @@ def _mal_report() -> AIBOMReport:
         summary="rce",
         severity=Severity.HIGH,
         cvss_score=7.5,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
         fixed_version="2.0.0",
     )
     vpkg = Package(name="requests", version="1.0.0", ecosystem="pypi", vulnerabilities=[vuln])
@@ -76,11 +77,11 @@ def test_spdx3_flags_malicious_package():
 
     doc = to_spdx(_mal_report())
     evil = next(e for e in doc["@graph"] if e.get("name") == "evil-lib")
-    statements = {a["statement"] for a in evil.get("annotation", [])}
+    statements = {n["statement"] for n in doc["@graph"] if n.get("type") == "Annotation" and n["subject"] == evil["spdxId"]}
     assert any(s.startswith("agent-bom:malicious=true") for s in statements)
 
     benign = next(e for e in doc["@graph"] if e.get("name") == "requests")
-    benign_statements = {a["statement"] for a in benign.get("annotation", [])}
+    benign_statements = {n["statement"] for n in doc["@graph"] if n.get("type") == "Annotation" and n["subject"] == benign["spdxId"]}
     assert not any(s.startswith("agent-bom:malicious=true") for s in benign_statements)
 
 
@@ -118,6 +119,10 @@ def test_spdx3_uses_spdx3_vocabulary():
         assert "primaryPurpose" not in elem
         # No ad-hoc CVSS score object on the vulnerability element.
         assert "score" not in elem
+        # SPDX 3 models these as software_packageVersion / standalone
+        # Annotation elements; the 2.x-style inline keys are schema-invalid.
+        assert "versionInfo" not in elem
+        assert "annotation" not in elem
 
     relationships = [r for r in graph if str(r.get("type") or "").endswith("Relationship")]
     rel_types = {r.get("relationshipType") for r in relationships}
@@ -128,6 +133,7 @@ def test_spdx3_uses_spdx3_vocabulary():
     cvss_rels = [r for r in relationships if r.get("type") == "security_CvssV3VulnAssessmentRelationship"]
     assert cvss_rels
     assert cvss_rels[0]["security_score"] == 7.5
+    assert cvss_rels[0]["security_vectorString"].startswith("CVSS:3.1/")
     assert cvss_rels[0]["relationshipType"] == "hasAssessmentFor"
 
 

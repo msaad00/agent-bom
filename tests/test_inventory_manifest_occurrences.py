@@ -1,7 +1,5 @@
 """Inventory counts preserve occurrence identity and shared-server memberships."""
 
-import asyncio
-
 import pytest
 from starlette.requests import Request
 
@@ -50,7 +48,7 @@ def test_inventory_pages_preserve_distinct_occurrences_and_unknown_identity(tmp_
         )
     )
     monkeypatch.setattr(scan, "_get_store", lambda: store)
-    pages = [asyncio.run(scan.list_inventory(_request(), limit=2, offset=offset)) for offset in (0, 2, 4)]
+    pages = [scan.list_inventory(_request(), limit=2, offset=offset) for offset in (0, 2, 4)]
     assert {page["package_total"] for page in pages} == {5}
     packages = [package for page in pages for package in page["packages"]]
     assert len(packages) == 5
@@ -60,7 +58,7 @@ def test_inventory_pages_preserve_distinct_occurrences_and_unknown_identity(tmp_
         ("server:prod", "6.0"),
     }
     assert sum(not row["server_id"] for row in packages) == 2
-    assert asyncio.run(scan.list_inventory(_request("tenant-b"), limit=2, offset=0))["package_total"] == 0
+    assert scan.list_inventory(_request("tenant-b"), limit=2, offset=0)["package_total"] == 0
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite"])
@@ -96,7 +94,7 @@ def test_manifest_counts_shared_server_once_without_losing_memberships(tmp_path,
     )
     monkeypatch.setattr(agent_manifest, "_get_fleet_store", lambda: fleet)
     monkeypatch.setattr(agent_manifest, "_get_mcp_observation_store", lambda: observations)
-    result = asyncio.run(agent_manifest.get_agent_bom_manifest(_request()))
+    result = agent_manifest.get_agent_bom_manifest(_request())
     assert result["summary"]["mcp_servers"] == 2
     assert len({row["id"] for row in result["mcp_servers"]}) == 2
     shared = next(row for row in result["mcp_servers"] if row["id"] == "shared")
@@ -107,7 +105,7 @@ def test_manifest_counts_shared_server_once_without_losing_memberships(tmp_path,
     uses = {(edge["source"], edge["target"]) for edge in result["graph"]["edges"] if edge["relationship"] == "uses"}
     assert uses == {("agent-alpha", "shared"), ("agent-beta", "shared"), ("agent-alpha", "distinct")}
     assert [row["name"] for row in result["agents"]] == ["alpha", "beta"]
-    assert asyncio.run(agent_manifest.get_agent_bom_manifest(_request("tenant-b")))["summary"]["mcp_servers"] == 0
+    assert agent_manifest.get_agent_bom_manifest(_request("tenant-b"))["summary"]["mcp_servers"] == 0
 
 
 def test_conflicting_canonical_aliases_remain_observation_scoped():
@@ -136,11 +134,11 @@ def test_changed_contract_models_preserve_raw_response_and_publish_schemas(monke
     from agent_bom.api.server import app
 
     monkeypatch.setattr(scan, "_get_store", InMemoryJobStore)
-    raw = asyncio.run(scan.list_inventory(_request(), limit=2, offset=0))
+    raw = scan.list_inventory(_request(), limit=2, offset=0)
     assert InventoryResponse.model_validate(raw).model_dump() == raw
     monkeypatch.setattr(agent_manifest, "_get_fleet_store", InMemoryFleetStore)
     monkeypatch.setattr(agent_manifest, "_get_mcp_observation_store", InMemoryMCPObservationStore)
-    raw_manifest = asyncio.run(agent_manifest.get_agent_bom_manifest(_request()))
+    raw_manifest = agent_manifest.get_agent_bom_manifest(_request())
     assert AgentBomManifestResponse.model_validate(raw_manifest).model_dump() == raw_manifest
     schema = app.openapi()
     assert schema["paths"]["/v1/inventory"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
@@ -213,7 +211,7 @@ def test_http_serialization_retains_nonempty_inventory_and_shared_manifest(monke
     client = TestClient(app)
     inventory = client.get("/inventory?limit=2&offset=0")
     assert inventory.status_code == 200
-    assert inventory.json() == asyncio.run(scan.list_inventory(_request(), limit=2, offset=0))
+    assert inventory.json() == scan.list_inventory(_request(), limit=2, offset=0)
     manifest = client.get("/agent-bom/manifest")
     assert manifest.status_code == 200
-    assert manifest.json() == asyncio.run(agent_manifest.get_agent_bom_manifest(_request()))
+    assert manifest.json() == agent_manifest.get_agent_bom_manifest(_request())

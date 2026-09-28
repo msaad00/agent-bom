@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import timezone
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,13 @@ SPDX_3_SPEC_VERSION = "3.0.1"
 _CREATION_INFO_ID = "_:creationinfo"
 # Profiles this document draws vocabulary from (namespaced ``software_``/
 # ``security_``/``ai_`` terms below).
-SPDX_3_PROFILE_CONFORMANCE = ("core", "software", "security", "ai")
+SPDX_3_PROFILE_CONFORMANCE = ("core", "software", "security", "simpleLicensing", "ai")
+# SpdxDocument/dataLicense is an AnyLicenseInfo reference; SPDX listed licenses
+# are addressed by their canonical license-list IRI.
+SPDX_3_DATA_LICENSE = "https://spdx.org/licenses/CC0-1.0"
+# Action statement is mandatory on a VEX "affected" assessment. When no fixed
+# version is known the honest statement is that no upgrade path exists yet.
+_NO_FIX_ACTION = "No fixed version is known; mitigate exposure or remove the affected package."
 
 
 def to_spdx(report: AIBOMReport) -> dict:
@@ -55,6 +62,42 @@ def to_spdx(report: AIBOMReport) -> dict:
 
     elements: list[dict[str, Any]] = []
     relationships: list[dict[str, Any]] = []
+    # SPDX 3 has no inline ``annotation`` property: an Annotation is its own
+    # Element pointing at the annotated Element through ``subject``.
+    annotations: list[dict[str, Any]] = []
+
+    def _annotate(subject: str, statement: str) -> None:
+        annotations.append(
+            {
+                "type": "Annotation",
+                "spdxId": _next_id("SPDXRef-Annotation"),
+                "annotationType": "other",
+                "subject": subject,
+                "statement": statement,
+            }
+        )
+
+    supplier_ids: dict[str, str] = {}
+    license_ids: dict[str, str] = {}
+
+    def _supplier_ref(name: str) -> str:
+        if name not in supplier_ids:
+            supplier_ids[name] = _next_id("SPDXRef-Supplier")
+            elements.append({"type": "Organization", "spdxId": supplier_ids[name], "name": name})
+        return supplier_ids[name]
+
+    def _license_ref(expression: str) -> str:
+        if expression not in license_ids:
+            license_ids[expression] = _next_id("SPDXRef-License")
+            elements.append(
+                {
+                    "type": "simplelicensing_LicenseExpression",
+                    "spdxId": license_ids[expression],
+                    "simplelicensing_licenseExpression": expression,
+                }
+            )
+        return license_ids[expression]
+
     root_element_ids: list[str] = []
     document_id = _next_id("SPDXRef-DOCUMENT")
     tool_id = f"{document_namespace}/SPDXRef-Tool-agent-bom"
@@ -100,15 +143,8 @@ def to_spdx(report: AIBOMReport) -> dict:
             "name": agent.name,
             "software_primaryPurpose": "application",
             "description": f"AI Agent ({agent.agent_type.value})",
-            "annotation": [
-                {
-                    "type": "Annotation",
-                    "annotationType": "other",
-                    "subject": agent_id,
-                    "statement": f"agent-bom:ai-agent-type={agent.agent_type.value}",
-                }
-            ],
         }
+        _annotate(agent_id, f"agent-bom:ai-agent-type={agent.agent_type.value}")
         if agent.config_path:
             agent_element["comment"] = f"config_path: {agent.config_path}, status: {agent.status.value}"
         if agent.source:
@@ -116,14 +152,7 @@ def to_spdx(report: AIBOMReport) -> dict:
             # ``project`` or ``snowflake``), not an SPDX Agent identity. Keep
             # it as an annotation instead of emitting an invalid originatedBy
             # reference to a non-existent Element.
-            agent_element["annotation"].append(
-                {
-                    "type": "Annotation",
-                    "annotationType": "other",
-                    "subject": agent_id,
-                    "statement": f"agent-bom:discovery-source={agent.source}",
-                }
-            )
+            _annotate(agent_id, f"agent-bom:discovery-source={agent.source}")
         elements.append(agent_element)
 
         for server in agent.mcp_servers:
@@ -142,19 +171,10 @@ def to_spdx(report: AIBOMReport) -> dict:
                 "description": server_desc,
             }
             if server.mcp_version:
-                server_element["versionInfo"] = server.mcp_version
-            # Export MCP tool capabilities as annotations
-            if server.tools:
-                server_element["annotation"] = [
-                    {
-                        "type": "Annotation",
-                        "annotationType": "other",
-                        "subject": server_id,
-                        "statement": f"agent-bom:mcp-tool={tool.name}" + (f": {tool.description[:120]}" if tool.description else ""),
-                    }
-                    for tool in server.tools
-                ]
+                server_element["software_packageVersion"] = server.mcp_version
             elements.append(server_element)
+            for tool in server.tools:
+                _annotate(server_id, f"agent-bom:mcp-tool={tool.name}" + (f": {tool.description[:120]}" if tool.description else ""))
 
             relationships.append(
                 {
@@ -176,90 +196,26 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "type": "software_Package",
                         "spdxId": pkg_id,
                         "name": pkg.name,
-                        "versionInfo": pkg.version,
+                        "software_packageVersion": pkg.version,
                         "software_primaryPurpose": "library",
                     }
-                    version_provenance = package_version_provenance(pkg)
-                    pkg_annotations: list[dict[str, object]] = [
-                        {
-                            "type": "Annotation",
-                            "annotationType": "other",
-                            "subject": pkg_id,
-                            "statement": f"agent-bom:ecosystem={pkg.ecosystem}",
-                        },
-                        {
-                            "type": "Annotation",
-                            "annotationType": "other",
-                            "subject": pkg_id,
-                            "statement": f"agent-bom:version-provenance-source={version_provenance.get('version_source', 'unknown')}",
-                        },
-                        {
-                            "type": "Annotation",
-                            "annotationType": "other",
-                            "subject": pkg_id,
-                            "statement": f"agent-bom:version-provenance-confidence={version_provenance.get('confidence', 'unknown')}",
-                        },
-                    ]
-                    discovery_provenance = package_discovery_provenance(pkg)
-                    for field_name in ("source_type", "collector", "resource_type", "location"):
-                        value = (discovery_provenance or {}).get(field_name)
-                        if value:
-                            pkg_annotations.append(
-                                {
-                                    "type": "Annotation",
-                                    "annotationType": "other",
-                                    "subject": pkg_id,
-                                    "statement": f"agent-bom:discovery-provenance-{field_name.replace('_', '-')}={value}",
-                                }
-                            )
-                    if pkg.is_malicious:
-                        # Surface the malicious flag so a MAL- package is
-                        # distinguishable from an ordinary library in the SBOM.
-                        pkg_annotations.append(
-                            {
-                                "type": "Annotation",
-                                "annotationType": "other",
-                                "subject": pkg_id,
-                                "statement": f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}",
-                            }
-                        )
-                    for statement in integrity_verdict_statements(integrity_verdict(pkg)):
-                        # SPDX 3.0.1 has no modelled slot for a verification
-                        # verdict; ``Annotation`` with ``annotationType: other``
-                        # is the core-profile mechanism for exactly this ("extra
-                        # information about an Element which is not part of a
-                        # review"). ``verifiedUsing`` above carries the digest;
-                        # this carries whether it was checked, and what came back.
-                        pkg_annotations.append(
-                            {
-                                "type": "Annotation",
-                                "annotationType": "other",
-                                "subject": pkg_id,
-                                "statement": statement,
-                            }
-                        )
-                    pkg_element["annotation"] = pkg_annotations
-                    verified_using = spdx3_verified_using(pkg.checksums)
-                    if verified_using:
-                        pkg_element["verifiedUsing"] = verified_using
-                    purl = pkg.purl or synthesize_purl(pkg.name, pkg.version, pkg.ecosystem)
-                    if purl:
-                        pkg_element["externalIdentifier"] = [
-                            {"type": "ExternalIdentifier", "externalIdentifierType": "packageUrl", "identifier": purl}
-                        ]
-                    if pkg.license_expression or pkg.license:
-                        pkg_element["declaredLicense"] = pkg.license_expression or pkg.license
-                    if pkg.supplier:
-                        pkg_element["supplier"] = pkg.supplier
-                    if pkg.description:
-                        pkg_element["description"] = pkg.description[:300]
-                    if pkg.homepage:
-                        pkg_element["homepage"] = pkg.homepage
-                    if pkg.download_url:
-                        pkg_element["downloadLocation"] = pkg.download_url
-                    if pkg.copyright_text:
-                        pkg_element["copyrightText"] = pkg.copyright_text
+                    for statement in _package_statements(pkg):
+                        _annotate(pkg_id, statement)
+                    pkg_element.update(_package_optional_fields(pkg, _supplier_ref))
                     elements.append(pkg_element)
+                    declared_license = pkg.license_expression or pkg.license
+                    if declared_license:
+                        # Licensing is a hasDeclaredLicense edge to a
+                        # LicenseExpression element, not a package property.
+                        relationships.append(
+                            {
+                                "type": "Relationship",
+                                "spdxId": _next_id("SPDXRef-Rel"),
+                                "relationshipType": "hasDeclaredLicense",
+                                "from": pkg_id,
+                                "to": [_license_ref(declared_license)],
+                            }
+                        )
 
                 pkg_id = pkg_ref_map[pkg_key]
                 relationships.append(
@@ -285,29 +241,32 @@ def to_spdx(report: AIBOMReport) -> dict:
                             else []
                         ),
                     }
-                    vuln_annotations = _vulnerability_annotations(
+                    elements.append(vuln_element)
+                    cvss_type = _cvss_assessment_type(vuln.cvss_vector) if vuln.cvss_score is not None else None
+                    for statement in _vulnerability_statements(
                         vuln,
-                        vuln_element_id,
                         compliance_tags=vuln_compliance_tags.get(_vulnerability_key(pkg, vuln), []),
                         observed_at=report.generated_at.isoformat(),
                         workflow=vuln_workflow.get(_vulnerability_key(pkg, vuln)),
-                    )
-                    if vuln_annotations:
-                        vuln_element["annotation"] = vuln_annotations
-                    elements.append(vuln_element)
+                        cvss_in_assessment=cvss_type is not None,
+                    ):
+                        _annotate(vuln_element_id, statement)
 
                     # CVSS is a security-profile assessment relationship in
                     # SPDX 3.0, not an ad-hoc score object on the vulnerability.
-                    if vuln.cvss_score is not None:
+                    # The class follows the vector's CVSS version and the vector
+                    # is mandatory; without one the score rides on an annotation.
+                    if cvss_type is not None and vuln.cvss_score is not None:
                         relationships.append(
                             {
-                                "type": "security_CvssV3VulnAssessmentRelationship",
+                                "type": cvss_type,
                                 "spdxId": _next_id("SPDXRef-Cvss"),
                                 "relationshipType": "hasAssessmentFor",
                                 "from": vuln_element_id,
                                 "to": [pkg_id],
                                 "security_score": vuln.cvss_score,
-                                "security_severity": str(vuln.severity.value).lower(),
+                                "security_severity": _cvss_qualitative_severity(vuln.cvss_score),
+                                "security_vectorString": vuln.cvss_vector,
                             }
                         )
 
@@ -318,16 +277,15 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "relationshipType": "affects",
                         "from": vuln_element_id,
                         "to": [pkg_id],
+                        "security_actionStatement": (f"Upgrade to {vuln.fixed_version}" if vuln.fixed_version else _NO_FIX_ACTION),
                     }
-                    if vuln.fixed_version:
-                        assessment["security_actionStatement"] = f"Upgrade to {vuln.fixed_version}"
                     if vuln.is_kev:
                         assessment["comment"] = "CISA KEV: actively exploited in the wild"
                     relationships.append(assessment)
 
     # Stamp the shared CreationInfo back-reference on every element / relationship
     # node (Relationships are Elements in SPDX 3.0 and require creationInfo too).
-    for node in (*elements, *relationships):
+    for node in (*elements, *relationships, *annotations):
         node.setdefault("creationInfo", _CREATION_INFO_ID)
 
     spdx_document: dict[str, Any] = {
@@ -335,7 +293,7 @@ def to_spdx(report: AIBOMReport) -> dict:
         "spdxId": document_id,
         "creationInfo": _CREATION_INFO_ID,
         "name": f"agent-bom-{report.generated_at.strftime('%Y%m%d-%H%M%S')}",
-        "dataLicense": "CC0-1.0",
+        "dataLicense": SPDX_3_DATA_LICENSE,
         "profileConformance": list(SPDX_3_PROFILE_CONFORMANCE),
         "rootElement": root_element_ids,
         "comment": (
@@ -347,14 +305,63 @@ def to_spdx(report: AIBOMReport) -> dict:
 
     # Canonical JSON-LD: a single flat @graph holding the CreationInfo blank node,
     # the SpdxDocument root, and every element + relationship.
-    graph: list[dict[str, Any]] = [creation_info, spdx_document, *elements, *relationships]
+    graph: list[dict[str, Any]] = [creation_info, spdx_document, *elements, *relationships, *annotations]
     document = {
         "@context": SPDX_3_CONTEXT,
         "@graph": graph,
     }
     from agent_bom.output.interop_security import sanitize_linked_document
 
-    return sanitize_linked_document(document)
+    # Element IDs are minted here from the uuid5 namespace plus a fixed prefix
+    # and counter, so they carry no input text; skip re-redacting each one.
+    minted_ids = re.compile(re.escape(document_namespace) + r"/SPDXRef-[A-Za-z]+(?:-[A-Za-z]+)*(?:-\d+)?")
+    return sanitize_linked_document(document, trusted_ids=minted_ids)
+
+
+def _package_statements(pkg: Any) -> list[str]:
+    """Package enrichments with no modelled SPDX 3 slot, as annotation statements."""
+    version_provenance = package_version_provenance(pkg)
+    statements = [
+        f"agent-bom:ecosystem={pkg.ecosystem}",
+        f"agent-bom:version-provenance-source={version_provenance.get('version_source', 'unknown')}",
+        f"agent-bom:version-provenance-confidence={version_provenance.get('confidence', 'unknown')}",
+    ]
+    discovery_provenance = package_discovery_provenance(pkg) or {}
+    for field_name in ("source_type", "collector", "resource_type", "location"):
+        value = discovery_provenance.get(field_name)
+        if value:
+            statements.append(f"agent-bom:discovery-provenance-{field_name.replace('_', '-')}={value}")
+    if pkg.is_malicious:
+        # Surface the malicious flag so a MAL- package is distinguishable from
+        # an ordinary library in the SBOM.
+        statements.append(f"agent-bom:malicious=true reason={pkg.malicious_reason or 'flagged malicious'}")
+    # SPDX 3.0.1 has no modelled slot for a verification verdict; an ``other``
+    # Annotation is the core-profile mechanism for it. ``verifiedUsing`` carries
+    # the digest; this carries whether it was checked, and what came back.
+    statements.extend(integrity_verdict_statements(integrity_verdict(pkg)))
+    return statements
+
+
+def _package_optional_fields(pkg: Any, supplier_ref: Any) -> dict[str, object]:
+    """Spec-model ``software_Package`` properties that are only set when known."""
+    fields: dict[str, object] = {}
+    verified_using = spdx3_verified_using(pkg.checksums)
+    if verified_using:
+        fields["verifiedUsing"] = verified_using
+    purl = pkg.purl or synthesize_purl(pkg.name, pkg.version, pkg.ecosystem)
+    if purl:
+        fields["software_packageUrl"] = purl
+        fields["externalIdentifier"] = [{"type": "ExternalIdentifier", "externalIdentifierType": "packageUrl", "identifier": purl}]
+    if pkg.supplier:
+        fields["suppliedBy"] = supplier_ref(pkg.supplier)
+    optional = {
+        "description": pkg.description[:300] if pkg.description else None,
+        "software_homePage": pkg.homepage,
+        "software_downloadLocation": pkg.download_url,
+        "software_copyrightText": pkg.copyright_text,
+    }
+    fields.update({key: value for key, value in optional.items() if value})
+    return fields
 
 
 def export_spdx(report: AIBOMReport, output_path: str) -> None:
@@ -363,21 +370,54 @@ def export_spdx(report: AIBOMReport, output_path: str) -> None:
     Path(output_path).write_text(json.dumps(data, indent=2))
 
 
-def _vulnerability_annotations(
+def _cvss_assessment_type(vector: str | None) -> str | None:
+    """SPDX 3 CVSS assessment class for a vector, or ``None`` when the vector is
+    absent or not a CVSS v3/v4 vector (both classes require ``vectorString``)."""
+    if not vector:
+        return None
+    if vector.startswith("CVSS:3."):
+        return "security_CvssV3VulnAssessmentRelationship"
+    if vector.startswith("CVSS:4."):
+        return "security_CvssV4VulnAssessmentRelationship"
+    return None
+
+
+def _cvss_qualitative_severity(score: float) -> str:
+    """CVSS v3/v4 qualitative severity rating for a base score."""
+    if score >= 9.0:
+        return "critical"
+    if score >= 7.0:
+        return "high"
+    if score >= 4.0:
+        return "medium"
+    if score > 0.0:
+        return "low"
+    return "none"
+
+
+def _vulnerability_statements(
     vuln: Any,
-    subject: str,
     *,
     compliance_tags: list[str] | None = None,
     observed_at: str | None = None,
     workflow: dict[str, str] | None = None,
-) -> list[dict[str, object]]:
-    """Encode non-core vulnerability enrichments as SPDX annotations.
+    cvss_in_assessment: bool = False,
+) -> list[str]:
+    """Encode non-core vulnerability enrichments as SPDX annotation statements.
 
     ``observed_at`` anchors the severity-derived remediation SLA
     (``agent-bom:sla-due-at``, KEV override); omitted when no deadline is
     derivable so a missing statement never reads as "no SLA".
     """
     statements: list[str] = []
+    severity_value = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
+    # agent-bom's severity may come from a non-CVSS source, so it is carried
+    # verbatim rather than re-derived from the CVSS assessment's rating.
+    statements.append(f"agent-bom:severity={severity_value}")
+    if vuln.cvss_score is not None and not cvss_in_assessment:
+        statements.append(f"agent-bom:cvss-score={vuln.cvss_score}")
+        if vuln.cvss_vector:
+            statements.append(f"agent-bom:cvss-vector={vuln.cvss_vector}")
     if vuln.severity_source:
         statements.append(f"agent-bom:severity-source={vuln.severity_source}")
     if vuln.epss_score is not None:
@@ -391,10 +431,9 @@ def _vulnerability_annotations(
         statements.append(f"agent-bom:kev-due-date={vuln.kev_due_date}")
     from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
 
-    _severity_value = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
     workflow_data = workflow or {}
     explicit_sla = workflow_data.get("sla_due_at")
-    sla_due = explicit_sla or _compute_sla_due_at(_severity_value, observed_at, kev_due_date=vuln.kev_due_date)
+    sla_due = explicit_sla or _compute_sla_due_at(severity_value, observed_at, kev_due_date=vuln.kev_due_date)
     if sla_due is not None:
         statements.append(f"agent-bom:sla-due-at={sla_due}")
         source = workflow_data.get("sla_due_at_source", "unknown") if explicit_sla else "severity-kev/v1"
@@ -414,15 +453,7 @@ def _vulnerability_annotations(
         # provenance so SPDX consumers never read them as official.
         statements.append("agent-bom:compliance-tag-provenance=vendor-asserted")
 
-    return [
-        {
-            "type": "Annotation",
-            "annotationType": "other",
-            "subject": subject,
-            "statement": statement,
-        }
-        for statement in statements
-    ]
+    return statements
 
 
 def _vulnerability_compliance_tags(vuln: Any) -> list[str]:

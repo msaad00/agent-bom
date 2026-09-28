@@ -41,7 +41,7 @@ def _request(*, role: str = "admin", scopes: list[str] | None = None):
 @pytest.mark.parametrize("child_scopes", [[], ["privacy.data:delete"], ["*"]])
 async def test_scoped_caller_cannot_delegate_unrestricted_or_broader_key(child_scopes: list[str]) -> None:
     with pytest.raises(HTTPException) as exc:
-        await enterprise.create_key(
+        enterprise.create_key(
             _request(scopes=["auth.keys:write"]),
             CreateKeyRequest(name="child", role="viewer", scopes=child_scopes),
         )
@@ -50,7 +50,7 @@ async def test_scoped_caller_cannot_delegate_unrestricted_or_broader_key(child_s
 
 @pytest.mark.asyncio
 async def test_scoped_caller_can_delegate_equal_or_narrower_scope() -> None:
-    result = await enterprise.create_key(
+    result = enterprise.create_key(
         _request(scopes=["auth.*"]),
         CreateKeyRequest(name="child-narrow", role="viewer", scopes=["auth.keys:write"]),
     )
@@ -60,7 +60,7 @@ async def test_scoped_caller_can_delegate_equal_or_narrower_scope() -> None:
 @pytest.mark.asyncio
 async def test_caller_cannot_delegate_higher_role() -> None:
     with pytest.raises(HTTPException) as exc:
-        await enterprise.create_key(
+        enterprise.create_key(
             _request(role="analyst"),
             CreateKeyRequest(name="child-admin", role="admin"),
         )

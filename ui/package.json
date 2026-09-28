@@ -35,7 +35,7 @@
     "@dagrejs/dagre": "^3.1.1",
     "@tanstack/react-table": "9.2.4",
     "@tanstack/react-virtual": "^3.14.13",
-    "@xyflow/react": "^12.11.6",
+    "@xyflow/react": "^12.12.0",
     "graphology": "^0.26.0",
     "lucide-react": "^1.47.0",
     "next": "^16.3.3",

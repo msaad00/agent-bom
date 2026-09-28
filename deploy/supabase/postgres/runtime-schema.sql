@@ -255,6 +255,15 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss ON hub_
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_open_reach ON hub_findings_current(tenant_id,effective_reach_score DESC,last_seen DESC,canonical_id) WHERE status IN ('open','reopened');
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_scan ON hub_findings_current(tenant_id,scan_id) WHERE scan_id <> '';
 CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_ci ON hub_findings_current(tenant_id,LOWER(severity)) WHERE severity <> '';
+-- Findings pages order text tie-breakers by code point (COLLATE "C"); only these twins serve that ORDER BY.
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_reach_c ON hub_findings_current(tenant_id,effective_reach_score DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss_c ON hub_findings_current(tenant_id,cvss_score DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_c ON hub_findings_current(tenant_id,severity_rank DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_origin_cvss_c ON hub_findings_current(tenant_id,origin,cvss_score DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_ordinal_c ON hub_findings_current(tenant_id,ledger_ordinal ASC,first_seen COLLATE "C" ASC,canonical_id COLLATE "C" ASC);
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_reach_c ON hub_findings_current(tenant_id,LOWER(severity),effective_reach_score DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC) WHERE severity <> '';
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss_c ON hub_findings_current(tenant_id,LOWER(severity),cvss_score DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC) WHERE severity <> '';
+CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_open_reach_c ON hub_findings_current(tenant_id,effective_reach_score DESC,last_seen COLLATE "C" DESC,canonical_id COLLATE "C" ASC) WHERE status IN ('open','reopened');
 CREATE TABLE IF NOT EXISTS hub_cve_intel (tenant_id TEXT NOT NULL,cve_id TEXT NOT NULL,payload JSONB NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(tenant_id,cve_id));
 CREATE TABLE IF NOT EXISTS hub_framework_refs (tenant_id TEXT NOT NULL,framework_ref TEXT NOT NULL,payload JSONB NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(tenant_id,framework_ref));
 CREATE TABLE IF NOT EXISTS agent_bom_hub_backfills (name TEXT PRIMARY KEY,completed_at TEXT NOT NULL);

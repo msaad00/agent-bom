@@ -10,10 +10,13 @@ column (``JSONB`` on Postgres, ``TEXT`` on SQLite).
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
+import random
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import cmp_to_key
 from pathlib import Path
 from uuid import uuid4
 
@@ -26,6 +29,7 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.storage.sql import (
+    Col,
     Keyset,
     SqlBackend,
     SQLiteBackend,
@@ -356,6 +360,108 @@ def test_keyset_mixed_directions_preserve_ties(backend, prefix, directions, page
 def test_keyset_rejects_invalid_direction_contract(directions):
     with pytest.raises(ValueError):
         Keyset(("updated_at", "tenant_id"), directions=directions)
+
+
+def test_keyset_col_entries_match_the_name_constructor() -> None:
+    mixed = Keyset([Col("rank", desc=True, numeric=True), Col("last_seen", desc=True), Col("id")])
+    assert mixed == Keyset(("rank", "last_seen", "id"), numeric=frozenset({"rank"}), directions=(True, True, False))
+    assert mixed.cols == (Col("rank", desc=True, numeric=True), Col("last_seen", desc=True), Col("id"))
+    assert mixed.order_by("sqlite") == "rank DESC, last_seen COLLATE BINARY DESC, id COLLATE BINARY ASC"
+    assert mixed.order_by("postgres") == 'rank DESC, last_seen COLLATE "C" DESC, id COLLATE "C" ASC'
+    uniform = Keyset([Col("updated_at", desc=True), Col("tenant_id", desc=True)])
+    assert uniform == Keyset(("updated_at", "tenant_id"), descending=True)
+    assert uniform.after("sqlite", ("t", "x")) == ("(updated_at COLLATE BINARY, tenant_id COLLATE BINARY) < (?, ?)", ("t", "x"))
+    assert Keyset([Col("a"), "b"]) == Keyset(("a", "b"))
+
+
+def test_keyset_mixed_predicate_bounds_the_leading_column_for_an_index_seek() -> None:
+    keyset = Keyset([Col("rank", desc=True, numeric=True), Col("last_seen", desc=True), Col("id")])
+    predicate, params = keyset.after("postgres", (4, "2026-09-01", "f-a"))
+    assert predicate == (
+        '(rank <= ? AND ((rank < ?) OR (rank = ? AND last_seen COLLATE "C" < ?) '
+        'OR (rank = ? AND last_seen COLLATE "C" = ? AND id COLLATE "C" > ?)))'
+    )
+    assert params == (4, 4, 4, "2026-09-01", 4, "2026-09-01", "f-a")
+    ascending_first = Keyset([Col("ordinal", numeric=True), Col("seen", desc=True)])
+    assert ascending_first.after("sqlite", (7, "s"))[0].startswith("(ordinal >= ? AND ")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"descending": True}, "Col entries"),
+        ({"numeric": frozenset({"a"})}, "Col entries"),
+        ({"directions": (True, False)}, "Col entries"),
+    ],
+)
+def test_keyset_col_entries_reject_the_name_constructor_options(kwargs, match) -> None:
+    with pytest.raises(ValueError, match=match):
+        Keyset([Col("a", numeric=True), Col("b")], **kwargs)
+
+
+def test_keyset_rejects_duplicate_and_unsafe_col_names() -> None:
+    with pytest.raises(ValueError, match="distinct"):
+        Keyset([Col("a", desc=True), Col("a")])
+    with pytest.raises(ValueError, match="identifier"):
+        Keyset([Col("a; DROP TABLE x")])
+
+
+# Characters whose code-point order differs from a locale collation's.
+_PROPERTY_ALPHABET = ["a", "B", "Z", "_", "é", "~", "0", "A", "b", "É", "-", "z"]
+_PROPERTY_DIRECTIONS = [directions for size in (1, 3) for directions in itertools.product((False, True), repeat=size)]
+
+
+def _reference_order(rows: list[tuple[object, ...]], directions: tuple[bool, ...]) -> list[tuple[object, ...]]:
+    def compare(left: tuple[object, ...], right: tuple[object, ...]) -> int:
+        for a, b, descending in zip(left, right, directions):
+            if a != b:
+                return (1 if a > b else -1) * (-1 if descending else 1)  # type: ignore[operator]
+        return 0
+
+    return sorted(rows, key=cmp_to_key(compare))
+
+
+@pytest.mark.parametrize("directions", _PROPERTY_DIRECTIONS, ids=lambda d: "".join("D" if x else "A" for x in d))
+@pytest.mark.parametrize("seed", range(4))
+def test_keyset_paging_equals_python_order_for_random_rows_with_ties(backend: SqlBackend, directions, seed) -> None:
+    rng = random.Random(f"{seed}-{directions}")
+    names = ("id",) if len(directions) == 1 else ("rank", "label", "id")
+    count = rng.randint(1, 60)
+    ids: set[str] = set()
+    while len(ids) < count:
+        ids.add("".join(rng.choice(_PROPERTY_ALPHABET) for _ in range(rng.randint(1, 3))))
+    if len(directions) == 1:
+        rows: list[tuple[object, ...]] = [(value,) for value in sorted(ids)]
+    else:
+        rows = [(rng.randint(0, 3), rng.choice(_PROPERTY_ALPHABET[:4]), value) for value in sorted(ids)]
+    rng.shuffle(rows)
+    keyset = Keyset([Col(name, desc=descending, numeric=name == "rank") for name, descending in zip(names, directions)])
+    columns = ", ".join(names)
+    ddl = {"rank": "rank INTEGER NOT NULL", "label": "label TEXT NOT NULL", "id": "id TEXT NOT NULL"}
+    temp_suffix = " ON COMMIT DROP" if backend.dialect == "postgres" else ""
+    page_size = rng.randint(1, 7)
+    seen: list[tuple[object, ...]] = []
+    with backend.transaction(all_tenants=True) as tx:
+        tx.execute(f"CREATE TEMP TABLE keyset_property ({', '.join(ddl[name] for name in names)}){temp_suffix}")
+        tx.executemany(f"INSERT INTO keyset_property ({columns}) VALUES ({', '.join('?' for _ in names)})", rows)
+        after: tuple[object, ...] | None = None
+        for _ in range(len(rows) + 1):
+            predicate, params = keyset.after(backend.dialect, after)
+            where = f"WHERE {predicate}" if predicate else ""
+            fetched = tx.execute(
+                f"SELECT {columns} FROM keyset_property {where} ORDER BY {keyset.order_by(backend.dialect)} LIMIT ?",  # nosec B608
+                (*params, page_size + 1),
+            ).fetchall()
+            page, after = keyset.page(fetched, page_size)
+            seen.extend(tuple(row) for row in page)
+            if after is None:
+                break
+        else:
+            pytest.fail("cursor did not advance")
+        if backend.dialect == "sqlite":
+            tx.execute("DROP TABLE keyset_property")
+    assert seen == _reference_order(rows, directions)
+    assert len(set(seen)) == len(rows)
 
 
 def test_borrowed_sqlite_snapshot_does_not_rollback_an_active_caller_transaction(tmp_path):

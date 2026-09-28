@@ -33,6 +33,7 @@ from agent_bom.api.finding_cursor import (
     cursor_from_current_row,
     cvss_sort_value,
     decode_finding_cursor,
+    finding_order_clause,
     row_is_after_cursor,
     sqlite_keyset_clause,
 )
@@ -1668,24 +1669,15 @@ def _sqlite_current_order_clause(sort: str) -> str:
     correlated ledger subquery that forced a full scan + filesort at scale
     (#3984). Rows without a ledger reference carry the ``MAX(bigint)`` sentinel
     (``_LEDGER_ORDINAL_SENTINEL``) so they still sort last, exactly as the old
-    ``COALESCE(..., 9223372036854775807)`` fallback did.
+    ``COALESCE(..., 9223372036854775807)`` fallback did. The key itself is
+    :func:`finding_keyset`, shared with the cursor predicate.
     """
-    if sort == "ordinal":
-        return "ORDER BY ledger_ordinal ASC, first_seen ASC, canonical_id ASC"
-    if sort == "cvss":
-        # ``cvss_score`` is NOT NULL DEFAULT 0 (backfilled), so bare
-        # ``cvss_score DESC`` rides ``idx_hub_findings_current_tenant[_origin]_cvss``
-        # as an ordered range scan. A ``COALESCE`` wrapper here defeats the index
-        # and forces a full-table temp-B-tree filesort (#3641).
-        return "ORDER BY cvss_score DESC, last_seen DESC, canonical_id ASC"
-    if sort == "severity":
-        return "ORDER BY severity_rank DESC, last_seen DESC, canonical_id ASC"
-    return "ORDER BY effective_reach_score DESC, last_seen DESC, canonical_id ASC"
+    return finding_order_clause("sqlite", sort)
 
 
 def _postgres_current_order_clause(sort: str) -> str:
-    """Postgres ORDER BY for ``hub_findings_current``."""
-    return _sqlite_current_order_clause(sort)
+    """Postgres ORDER BY for ``hub_findings_current``, served by the ``COLLATE "C"`` sort indexes."""
+    return finding_order_clause("postgres", sort)
 
 
 def _desc_tie_break(value: str) -> tuple[int, ...]:

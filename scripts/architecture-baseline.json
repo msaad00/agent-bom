@@ -1705,11 +1705,11 @@
       "file_lines": 681
     },
     "gateway_server.py": {
-      "file_lines": 2850
+      "file_lines": 2503
     },
     "gateway_server.py::create_gateway_app": {
-      "complexity": 235,
-      "function_lines": 2245
+      "complexity": 221,
+      "function_lines": 2176
     },
     "gateway_server.py::create_gateway_app.firewall_check": {
       "function_lines": 116

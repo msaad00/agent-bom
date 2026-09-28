@@ -96,3 +96,49 @@ def test_conditional_failure_only_allows_a_confirmed_empty_gate(monkeypatch, out
 
     monkeypatch.setattr("agent_bom.api.agent_identity_store.get_agent_identity_store", Store)
     assert gateway._conditional_access_fail_closed("tenant-exact") == expected
+
+
+@pytest.mark.asyncio
+async def test_reload_serializes_publication_and_skips_unchanged_files(tmp_path):
+    import asyncio
+    import logging
+
+    from agent_bom.runtime.gateway_policy_reload import GatewayPolicyReloader, GatewayPolicyState
+    from agent_bom.security import sanitize_text
+
+    path = tmp_path / "policy.json"
+    path.write_text('{"rules": []}')
+    loads = []
+
+    def load(current):
+        loads.append(current)
+        return json.loads(current.read_text())
+
+    reloader = GatewayPolicyReloader(
+        state=GatewayPolicyState(policy={}, source=str(path), load_failed=True),
+        path=lambda: path,
+        interval=lambda: 0.1,
+        load=load,
+        logger=logging.getLogger(__name__),
+        log_prefix="gateway policy",
+        sanitize_log=sanitize_text,
+    )
+    results = await asyncio.gather(*(reloader.reload() for _ in range(8)))
+    assert results.count(True) == 1
+    assert loads == [path]
+    assert reloader.state.policy == {"rules": []}
+    assert reloader.state.load_failed is False
+    assert await reloader.reload(force=True)
+    assert loads == [path, path]
+
+    sleeps = []
+
+    async def sleep(delay):
+        sleeps.append(delay)
+        raise asyncio.CancelledError()
+
+    from unittest.mock import patch
+
+    with patch("agent_bom.runtime.gateway_policy_reload.asyncio.sleep", sleep), pytest.raises(asyncio.CancelledError):
+        await reloader.run()
+    assert sleeps == [1]

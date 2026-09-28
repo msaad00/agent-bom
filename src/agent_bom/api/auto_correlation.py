@@ -24,9 +24,10 @@ from agent_bom import config
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.metrics import record_auto_correlation
 from agent_bom.api.models import JobStatus, ScanJob
-from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 from agent_bom.api.store import InMemoryJobStore, JobStore
 from agent_bom.api.stores import _job_lock, _jobs_put
+from agent_bom.api.tenant_worker import tenant_bound_context
+from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.graph.correlation import CorrelationRunStatus
 from agent_bom.graph.correlation_service import (
     CorrelationRequest,
@@ -471,9 +472,12 @@ async def reconcile_auto_correlations_once(
     active_counts: dict[str, int] = {}
     parent_rows = await asyncio.to_thread(_parent_rows, job_store, policy)
     for row in parent_rows:
-        tenant_id = str(row.get("tenant_id") or "default")
-        token = set_current_tenant(tenant_id)
         try:
+            tenant_id = require_explicit_tenant_id(row.get("tenant_id"))
+        except ValueError:
+            logger.error("Automatic correlation skipped a batch without explicit tenant authority")
+            continue
+        with tenant_bound_context(tenant_id):
             parent = await asyncio.to_thread(job_store.get, str(row["job_id"]), tenant_id=tenant_id)
             if parent is None:
                 continue
@@ -490,8 +494,6 @@ async def reconcile_auto_correlations_once(
                 decisions.append(decision)
                 if len(decisions) >= policy.max_batches_per_poll:
                     break
-        finally:
-            reset_current_tenant(token)
     return decisions
 
 

@@ -31,6 +31,7 @@ AUTHORIZATION_SOURCES = frozenset(
 )
 AUTHORIZATION_CONTRACTS = (
     "tests/test_tenant_worker.py",
+    "tests/test_tenant_dispatch_boundaries.py",
     "tests/test_postgres_maintenance_pool.py",
     "tests/test_runtime_source_auth_contract.py",
     "tests/test_api_route_policy.py",
@@ -124,7 +125,19 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(
                 candidate
                 for candidate in available
-                if candidate.stem.startswith(("test_report_", "test_api_scan_worker_", "test_distributed_scan_queue", "test_exports_api"))
+                if candidate.stem.startswith(
+                    (
+                        "test_report_",
+                        "test_api_scan_worker_",
+                        "test_distributed_scan_queue",
+                        "test_exports_api",
+                        "test_connection_scheduler",
+                        "test_side_scan_scheduler",
+                        "test_auto_correlation_scheduler",
+                        "test_scan_jobs_active_gauge",
+                        "test_graph_persistence",
+                    )
+                )
             )
         if normalized.as_posix().startswith(
             ("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_", "src/agent_bom/api/gateway_")

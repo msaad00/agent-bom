@@ -15,6 +15,7 @@ LIMITS = {"file_lines": 600, "function_lines": 80, "complexity": 15}
 BASELINE = Path("scripts/architecture-baseline.json")
 OWNED_FUNCTIONS = {
     "require_explicit_tenant_id": "core/tenancy.py",
+    "tenant_bound_context": "api/tenant_worker.py",
     "normalize_severity": "core/severity.py",
     "severity_display_bucket": "core/severity.py",
     "severity_policy_rank": "core/severity.py",
@@ -48,6 +49,18 @@ OWNED_FUNCTIONS = {
     "evaluate_risk_conditions": "runtime/risk_conditions.py",
     "authorized_context_headers": "api/gateway_context.py",
 }
+
+TENANT_DISPATCH_ADAPTERS = frozenset(
+    f"api/{name}.py"
+    for name in (
+        "auto_correlation",
+        "connection_scheduler",
+        "graph_persistence",
+        "scan_job_reconciliation",
+        "scheduler",
+        "side_scan_scheduler",
+    )
+)
 
 
 def function_spans(tree: ast.AST, prefix: str = "") -> list[tuple[str, int, int]]:
@@ -87,6 +100,8 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
         if isinstance(node, ast.ClassDef) and node.name == "GraphStoreProtocol" and path != "graph/ports.py":
             errors.append(f"{path}:{node.lineno}: GraphStoreProtocol belongs in graph/ports.py")
         for module in _import_modules(path, node):
+            if path in TENANT_DISPATCH_ADAPTERS and module.rsplit(".", 1)[-1] in {"set_current_tenant", "reset_current_tenant"}:
+                errors.append(f"{path}:{node.lineno}: tenant dispatch must use api/tenant_worker.py to suspend maintenance authority")
             if path == "runtime/risk_conditions.py" and (
                 module == "agent_bom.proxy_policy" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):

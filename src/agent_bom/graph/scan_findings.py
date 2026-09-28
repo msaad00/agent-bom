@@ -166,16 +166,18 @@ def surface_graph_derived_findings(
     Returns the graph's attack paths so callers can project evidence-bearing
     paths onto rows, and, when ``include_dependency_reachability`` is true, the
     structural reachability report from this same graph, so callers do not
-    serialize and project the scan a second time. The interim JSON and graph are
-    released when this returns; ``None`` when the graph build fails.
+    project the scan a second time. The graph input carries only the report
+    sections the builder consumes (see
+    :func:`agent_bom.output.graph_evidence.graph_evidence_sections`), not the
+    full serialized report. The input and graph are released when this returns;
+    ``None`` when the graph build fails.
     Best-effort: failures are logged and swallowed.
     """
     try:
         from agent_bom.graph.builder import build_unified_graph_from_report
-        from agent_bom.output import to_json
+        from agent_bom.output.graph_evidence import graph_evidence_sections
 
-        interim_json = to_json(report)
-        graph = build_unified_graph_from_report(interim_json, scan_id=scan_id, tenant_id=tenant_id)
+        graph = build_unified_graph_from_report(graph_evidence_sections(report), scan_id=scan_id, tenant_id=tenant_id)
     except Exception as exc:  # noqa: BLE001 — never fail the scan on findings surfacing
         _logger.debug("graph-derived findings surfacing skipped: %s", exc)
         return None

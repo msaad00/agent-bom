@@ -98,7 +98,7 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
         if (
-            normalized.as_posix().startswith(("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_"))
+            normalized.as_posix().startswith(("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_", "src/agent_bom/api/gateway_"))
             or normalized.as_posix() == "src/agent_bom/runtime/trace_metadata.py"
         ):
             selected.update(candidate for candidate in available if candidate.stem.startswith(("test_gateway", "test_api_gateway")))

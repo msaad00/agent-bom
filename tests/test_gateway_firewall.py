@@ -118,7 +118,7 @@ def test_firewall_check_fails_closed_on_authenticated_policy_tenant_mismatch(tmp
                 return None
             return SimpleNamespace(tenant_id="tenant-beta", role=Role.ANALYST, has_scope=lambda _scope: True)
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
     audit = _AuditCapture()
     settings = GatewaySettings(
         registry=_registry(),

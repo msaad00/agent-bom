@@ -110,6 +110,19 @@ def test_gateway_audit_factories_have_single_owners():
         assert not boundary_errors(f"runtime/{owner}.py", tree)
 
 
+def test_gateway_http_helpers_cannot_depend_on_composition_root():
+    for module in ("gateway_auth", "gateway_request", "gateway_rate_limit"):
+        assert boundary_errors(f"api/{module}.py", ast.parse("from agent_bom import gateway_server"))
+    for function, owner in (
+        ("_authenticate_gateway_request", "gateway_auth"),
+        ("_request_groups", "gateway_request"),
+        ("_build_gateway_rate_limit_store", "gateway_rate_limit"),
+    ):
+        tree = ast.parse(f"def {function}(): pass")
+        assert boundary_errors("gateway_server.py", tree)
+        assert not boundary_errors(f"api/{owner}.py", tree)
+
+
 def test_report_projections_cannot_depend_on_orchestration_or_api():
     for module in ("package_projection", "runtime_projection", "projection_support"):
         for source in ("from .builder import build_unified_graph_from_report", "from agent_bom.api import stores"):

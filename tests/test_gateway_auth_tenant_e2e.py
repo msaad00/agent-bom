@@ -194,7 +194,7 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
                     )()
                 return None
 
-        monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+        monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
         gw_settings = GatewaySettings(
             registry=registry,

@@ -30,6 +30,9 @@ OWNED_FUNCTIONS = {
     "build_control_plane_audit_sink": "runtime/gateway_audit.py",
     "build_local_gateway_audit_sink": "runtime/gateway_audit_local.py",
     "inject_jsonrpc_trace_meta": "runtime/trace_metadata.py",
+    "_authenticate_gateway_request": "api/gateway_auth.py",
+    "_request_groups": "api/gateway_request.py",
+    "_build_gateway_rate_limit_store": "api/gateway_rate_limit.py",
     "_package_evidence": "graph/package_projection.py",
     "_resolve_affected_server_ids": "graph/package_projection.py",
     "_add_agentic_identity_graph_projections": "graph/runtime_projection.py",
@@ -71,7 +74,7 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
         if isinstance(node, ast.ClassDef) and node.name == "GraphStoreProtocol" and path != "graph/ports.py":
             errors.append(f"{path}:{node.lineno}: GraphStoreProtocol belongs in graph/ports.py")
         for module in _import_modules(path, node):
-            if path.startswith("runtime/gateway_") and module == "agent_bom.gateway_server":
+            if path.startswith(("runtime/gateway_", "api/gateway_")) and module == "agent_bom.gateway_server":
                 errors.append(f"{path}:{node.lineno}: gateway services must not import their HTTP composition root")
             if path == "runtime/gateway_relay.py" and (
                 module == "agent_bom.gateway_server" or module == "agent_bom.api" or module.startswith("agent_bom.api.")

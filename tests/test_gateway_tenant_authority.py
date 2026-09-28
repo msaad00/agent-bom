@@ -15,7 +15,7 @@ from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 @pytest.mark.parametrize("endpoint", ["/mcp/shared", "/v1/firewall/check", "/metrics"])
 def test_verified_key_without_explicit_tenant_fails_before_resources(monkeypatch, tenant, endpoint):
     key = SimpleNamespace(tenant_id=tenant, role=Role.ANALYST, has_scope=lambda _: True)
-    monkeypatch.setattr(gateway, "get_key_store", lambda: SimpleNamespace(has_keys=lambda: True, verify=lambda _: key))
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: SimpleNamespace(has_keys=lambda: True, verify=lambda _: key))
     registry = UpstreamRegistry([UpstreamConfig(name="shared", url="https://upstream.example/mcp", tenant_id="default")])
     lookup = Mock(wraps=registry.get)
     monkeypatch.setattr(registry, "get", lookup)
@@ -43,7 +43,9 @@ def test_verified_key_without_explicit_tenant_fails_before_resources(monkeypatch
 def test_selected_tenant_reaches_routing_policy_and_audit(monkeypatch, tenant, auth_mode):
     monkeypatch.setenv("AGENT_BOM_TENANT_ID", tenant)
     key = SimpleNamespace(tenant_id=tenant, role=Role.ANALYST, has_scope=lambda _: True)
-    monkeypatch.setattr(gateway, "get_key_store", lambda: SimpleNamespace(has_keys=lambda: auth_mode == "key", verify=lambda _: key))
+    monkeypatch.setattr(
+        "agent_bom.api.gateway_auth.get_key_store", lambda: SimpleNamespace(has_keys=lambda: auth_mode == "key", verify=lambda _: key)
+    )
     registry = UpstreamRegistry([UpstreamConfig(name="shared", url="https://upstream.example/mcp", tenant_id=tenant)])
     seen = []
 

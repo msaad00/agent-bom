@@ -225,7 +225,7 @@ def test_gateway_app_refuses_non_loopback_without_auth(monkeypatch) -> None:
         def has_keys(self) -> bool:
             return False
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _NoKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _NoKeyStore())
 
     settings = GatewaySettings(
         registry=_simple_registry(),
@@ -246,7 +246,7 @@ def test_gateway_app_allows_explicit_insecure_non_loopback_override(monkeypatch)
         def has_keys(self) -> bool:
             return False
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _NoKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _NoKeyStore())
 
     settings = GatewaySettings(
         registry=_simple_registry(),
@@ -510,7 +510,7 @@ def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> 
                 return _gateway_api_key("tenant-alpha")
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     settings = GatewaySettings(
         registry=_simple_registry(),
@@ -550,7 +550,7 @@ def test_relay_fails_closed_when_api_key_store_verification_errors(monkeypatch) 
         def verify(self, raw_key: str):
             raise RuntimeError("key store unavailable")
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
     client = TestClient(create_gateway_app(settings))
@@ -581,7 +581,7 @@ def test_relay_rejects_viewer_api_key_before_forwarding(monkeypatch) -> None:
                 return _gateway_api_key("tenant-alpha", role=Role.VIEWER)
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
     client = TestClient(create_gateway_app(settings))
@@ -616,7 +616,7 @@ def test_relay_rejects_api_key_without_gateway_scope(monkeypatch) -> None:
                 )
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
     client = TestClient(create_gateway_app(settings))
@@ -648,7 +648,7 @@ def test_relay_routes_same_upstream_name_by_authenticated_tenant(monkeypatch) ->
                 return _gateway_api_key("tenant-beta")
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
     registry = UpstreamRegistry(
         [
             UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.example.com/mcp"),
@@ -690,7 +690,7 @@ def test_relay_fails_closed_when_tenant_has_no_matching_upstream(monkeypatch) ->
                 return _gateway_api_key("tenant-beta")
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
     registry = UpstreamRegistry(
         [
             UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.example.com/mcp"),
@@ -721,7 +721,7 @@ def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:
                 return _gateway_api_key("tenant-beta")
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     async def fake_caller(upstream, message, extra_headers):
         return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
@@ -791,7 +791,7 @@ def test_gateway_rate_limit_shared_store_holds_under_concurrency(monkeypatch) ->
             with self._lock:
                 return dict(self._counts)
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
     shared_store = _ConcurrentSharedStore()
     monkeypatch.setattr("agent_bom.gateway_server._build_gateway_rate_limit_store", lambda _settings: shared_store)
 
@@ -831,7 +831,7 @@ def test_gateway_rate_limit_is_source_agent_scoped_within_tenant(monkeypatch) ->
                 return _gateway_api_key("tenant-alpha")
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     async def fake_caller(upstream, message, extra_headers):
         return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
@@ -877,7 +877,7 @@ def test_gateway_rate_limit_identity_required_blocks_before_relay(monkeypatch) -
                 return _gateway_api_key("tenant-alpha")
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     async def fake_caller(upstream, message, extra_headers):
         raise AssertionError("identity-blocked calls must not relay upstream")
@@ -1718,7 +1718,7 @@ def _no_key_store(monkeypatch) -> None:
         def has_keys(self) -> bool:
             return False
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _NoKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _NoKeyStore())
 
 
 def _assert_identity_blocked(resp) -> None:

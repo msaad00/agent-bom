@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
 
+from agent_bom.redaction.env_values import container_has_secret
+
 logger = logging.getLogger(__name__)
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -437,16 +439,12 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     for key, value in env.items():
         if env_key_is_credential(key):
             sanitized[key] = "***REDACTED***"
+        elif isinstance(value, dict | list | tuple | set):
+            secret = container_has_secret(value, _looks_sensitive_value, env_key_is_credential)
+            sanitized[key] = "***REDACTED***" if secret else str(value)
         else:
-            str_value = str(value)
-            # Scan values for plaintext credential patterns (catches custom-named vars)
-            if _contains_value_credential(str_value):
-                sanitized[key] = "***REDACTED***"
-            # Detect obfuscated secrets: base64-encoded values and high-entropy strings
-            elif _is_obfuscated_credential(str_value):
-                sanitized[key] = "***REDACTED***"
-            else:
-                sanitized[key] = str_value
+            # Plaintext credential patterns, then base64 / high-entropy values.
+            sanitized[key] = "***REDACTED***" if _looks_sensitive_value(str(value)) else str(value)
 
     return sanitized
 

@@ -203,7 +203,8 @@ def test_source_schedule_resolves_canonical_source_request_and_links_job(monkeyp
             display_name="Repository",
             kind=SourceKind.SCAN_REPO,
             config={"scan_request": {"repo_url": "https://example.com/acme/repo"}},
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
     schedule_store.put(
         ScanSchedule(
@@ -251,7 +252,7 @@ def test_source_schedule_resolves_canonical_source_request_and_links_job(monkeyp
     assert captured["source_id"] == "source-repo"
     assert captured["schedule_id"] == "schedule-source"
     assert captured["request_body"].repo_url == "https://example.com/acme/repo"
-    updated = source_store.get("source-repo")
+    updated = source_store.get("source-repo", tenant_id="tenant-alpha")
     assert updated is not None
     assert updated.last_job_id == "scheduled-source-job"
     assert updated.last_run_status == "pending"
@@ -280,7 +281,7 @@ def test_source_cohort_schedule_launches_one_exact_durable_cohort_per_occurrence
             config={"scan_request": {"images": ["example/app@sha256:" + "a" * 64]}},
         ),
     ):
-        source_store.put(source)
+        source_store.put(source, tenant_id=source.tenant_id)
     schedule = ScanSchedule(
         schedule_id="schedule-cohort",
         tenant_id="tenant-alpha",
@@ -364,7 +365,7 @@ def test_source_schedule_resolution_and_enqueue_are_fenced_against_delete(monkey
         scan_config={"source_id": source.source_id},
         enabled=True,
     )
-    source_store.put(source)
+    source_store.put(source, tenant_id=source.tenant_id)
     schedule_store.put(schedule)
     old_source_store = _stores._source_store
     old_schedule_store = _stores._schedule_store
@@ -402,7 +403,7 @@ def test_source_schedule_resolution_and_enqueue_are_fenced_against_delete(monkey
         delete_started.set()
         with tenant_quota_guard("tenant-alpha"):
             schedule_store.delete(schedule.schedule_id, tenant_id="tenant-alpha")
-            source_store.delete(source.source_id)
+            source_store.delete(source.source_id, tenant_id=source.tenant_id)
         delete_finished.set()
 
     monkeypatch.setattr("agent_bom.api.routes.sources._request_for_source", _blocking_request)
@@ -431,7 +432,7 @@ def test_source_schedule_resolution_and_enqueue_are_fenced_against_delete(monkey
         _stores._store = old_job_store
 
     assert enqueued == [source.source_id]
-    assert source_store.get(source.source_id) is None
+    assert source_store.get(source.source_id, tenant_id=source.tenant_id) is None
     assert schedule_store.get(schedule.schedule_id, tenant_id="tenant-alpha") is None
 
 

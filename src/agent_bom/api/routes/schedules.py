@@ -44,7 +44,7 @@ def _validate_enabled_source_schedule(tenant_id: str, scan_config: dict) -> None
         from agent_bom.api.scan_batches import scan_request_targets
 
         for member_source_id in source_ids:
-            source = _get_source_store().get(member_source_id)
+            source = _get_source_store().get(member_source_id, tenant_id=tenant_id)
             if source is None or source.tenant_id != tenant_id or not source.enabled:
                 raise HTTPException(status_code=409, detail="Scheduled source is not available in this tenant")
             _validate_credential_ref_for_tenant(tenant_id, source)
@@ -68,7 +68,7 @@ def _validate_enabled_source_schedule(tenant_id: str, scan_config: dict) -> None
                 raise HTTPException(status_code=422, detail="Invalid host discovery setting") from exc
             _sanitize_scan_request_paths(host_request, tenant_id=tenant_id)
         return
-    source = _get_source_store().get(source_id)
+    source = _get_source_store().get(source_id, tenant_id=tenant_id)
     if source is None or source.tenant_id != tenant_id or not source.enabled:
         raise HTTPException(status_code=409, detail="Scheduled source is not available in this tenant")
 

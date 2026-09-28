@@ -118,7 +118,8 @@ def tenant_stores():
                 kind=SourceKind.SCAN_REPO,
                 credential_ref="secret/ref",
                 config={"token": "do-not-export"},
-            )
+            ),
+            tenant_id=tenant_id,
         )
         exceptions.put(VulnException(exception_id=f"exception-{tenant_id}", vuln_id="CVE-2026-0001", tenant_id=tenant_id))
         quota.put(tenant_id, {"scan_jobs": 10})
@@ -268,7 +269,7 @@ def test_tenant_data_delete_removes_only_authenticated_tenant(tenant_stores) -> 
 
     assert tenant_stores["jobs"].get("job-tenant-a", tenant_id="tenant-a") is None
     assert tenant_stores["jobs"].get("job-tenant-b", tenant_id="tenant-b") is not None
-    assert tenant_stores["sources"].get("source-tenant-b") is not None
+    assert tenant_stores["sources"].get("source-tenant-b", tenant_id="tenant-b") is not None
     assert tenant_stores["connections"].get("tenant-a", "connection-tenant-a") is None
     assert tenant_stores["connections"].get("tenant-b", "connection-tenant-b") is not None
     assert tenant_stores["credentials"].get("credential-tenant-a", tenant_id="tenant-a") is None

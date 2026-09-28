@@ -1590,7 +1590,7 @@ def test_source_store_put_get_list_delete(mock_pool):
         created_at="2026-04-20T00:00:00+00:00",
         updated_at="2026-04-20T00:00:00+00:00",
     )
-    store.put(source)
+    store.put(source, tenant_id=source.tenant_id)
 
     mock_pool._conn._store.setdefault("control_plane_sources", {})["source-1"] = (
         "source-1",
@@ -1600,14 +1600,14 @@ def test_source_store_put_get_list_delete(mock_pool):
         source.model_dump_json(),
     )
 
-    loaded = store.get("source-1")
+    loaded = store.get("source-1", tenant_id="tenant-alpha")
     assert loaded is not None
     assert loaded.source_id == "source-1"
 
     listed = store.list_all(tenant_id="tenant-alpha")
     assert isinstance(listed, list)
 
-    assert store.delete("source-1") is True
+    assert store.delete("source-1", tenant_id="tenant-alpha") is True
 
 
 def test_credential_ref_store_put_get_list_delete(mock_pool):

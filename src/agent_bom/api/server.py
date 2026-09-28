@@ -350,7 +350,7 @@ def _enqueue_scheduled_scan(
             members: list[tuple[str, ScanRequest]] = []
             sources = []
             for member_source_id in source_ids:
-                source = _get_source_store().get(member_source_id)
+                source = _get_source_store().get(member_source_id, tenant_id=resolved_tenant_id)
                 if source is None or source.tenant_id != resolved_tenant_id or not source.enabled:
                     raise RuntimeError("Scheduled correlation source is unavailable in this tenant")
                 _validate_credential_ref_for_tenant(resolved_tenant_id, source)
@@ -384,7 +384,7 @@ def _enqueue_scheduled_scan(
                 source.last_run_status = "pending"
                 source.last_job_id = child_job_id
                 source.updated_at = run_at
-                _get_source_store().put(source)
+                _get_source_store().put(source, tenant_id=resolved_tenant_id)
         return parent.job_id
 
     if source_id:
@@ -402,7 +402,7 @@ def _enqueue_scheduled_scan(
                 scheduled_source_id = str(schedule.scan_config.get("source_id") or "") if schedule is not None else ""
                 if schedule is None or not schedule.enabled or scheduled_source_id != source_id:
                     raise RuntimeError("Scheduled source is no longer active in this tenant")
-            source = _get_source_store().get(source_id)
+            source = _get_source_store().get(source_id, tenant_id=resolved_tenant_id)
             if source is None or source.tenant_id != resolved_tenant_id:
                 raise RuntimeError("Scheduled source is unavailable in this tenant")
             if not source.enabled:
@@ -427,7 +427,7 @@ def _enqueue_scheduled_scan(
             source.last_run_status = job.status.value
             source.last_job_id = job.job_id
             source.updated_at = _now()
-            _get_source_store().put(source)
+            _get_source_store().put(source, tenant_id=resolved_tenant_id)
         return job.job_id
 
     request_payload = {key: value for key, value in scan_config.items() if key in ScanRequest.model_fields}

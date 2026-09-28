@@ -105,8 +105,8 @@ def _actor(request: Request) -> str:
 
 
 def _source_for_request(request: Request, source_id: str) -> SourceRecord:
-    source = _get_source_store().get(source_id)
     tenant_id = _tenant_id(request)
+    source = _get_source_store().get(source_id, tenant_id=tenant_id)
     if source is None or source.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Source {source_id} not found")
     return source
@@ -281,7 +281,7 @@ def create_source(request: Request, body: SourceCreate) -> dict:
         _validate_credential_ref_for_tenant(tenant_id, source)
         if source.kind in _RUNNABLE_SOURCE_KINDS:
             _request_for_source(source)
-        _get_source_store().put(source)
+        _get_source_store().put(source, tenant_id=tenant_id)
     log_action(
         "source.create",
         actor=_actor(request),
@@ -329,7 +329,7 @@ def update_source(request: Request, source_id: str, body: SourceUpdate) -> dict:
         _validate_credential_ref_for_tenant(tenant_id, source)
         if source.kind in _RUNNABLE_SOURCE_KINDS:
             _request_for_source(source)
-        _get_source_store().put(source)
+        _get_source_store().put(source, tenant_id=tenant_id)
     log_action(
         "source.update",
         actor=_actor(request),
@@ -359,7 +359,7 @@ def delete_source(request: Request, source_id: str) -> None:
             schedule.next_run = None
             schedule.updated_at = _now()
             schedule_store.put(schedule)
-        if not _get_source_store().delete(source_id):
+        if not _get_source_store().delete(source_id, tenant_id=tenant_id):
             raise HTTPException(status_code=409, detail="Source changed while it was being deleted; retry")
         for schedule in linked_schedules:
             schedule_store.delete(schedule.schedule_id, tenant_id=tenant_id)
@@ -417,7 +417,7 @@ async def test_source(request: Request, source_id: str) -> dict:
         if current.enabled:
             current.status = status
         current.updated_at = _now()
-        _get_source_store().put(current)
+        _get_source_store().put(current, tenant_id=tenant_id)
         source = current
     log_action(
         "source.test",
@@ -465,7 +465,7 @@ def run_source(request: Request, source_id: str) -> dict:
         current.last_run_status = job.status.value
         current.last_job_id = job.job_id
         current.updated_at = _now()
-        _get_source_store().put(current)
+        _get_source_store().put(current, tenant_id=tenant_id)
         source = current
     log_action(
         "source.run",
@@ -533,7 +533,7 @@ def _update_cohort_sources(*, parent: ScanJob, sources: list[SourceRecord]) -> N
         source.last_run_status = child.status.value
         source.last_job_id = child.job_id
         source.updated_at = parent.created_at
-        _get_source_store().put(source)
+        _get_source_store().put(source, tenant_id=parent.tenant_id)
 
 
 @router.post(

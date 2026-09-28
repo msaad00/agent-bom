@@ -244,7 +244,7 @@ def create_export_schedule(request: Request, body: ExportScheduleCreate, _role: 
         created_at=now.isoformat(),
         updated_at=now.isoformat(),
     )
-    get_export_schedule_store().put(schedule)
+    get_export_schedule_store().put(schedule, tenant_id=tenant_id)
     log_action(
         "export_schedule.create",
         actor=_actor(request),
@@ -278,7 +278,7 @@ def toggle_export_schedule(request: Request, schedule_id: str, _role: Any = _WRI
         raise HTTPException(status_code=404, detail=f"Export schedule {schedule_id} not found")
     schedule.enabled = not schedule.enabled
     schedule.updated_at = _now()
-    store.put(schedule)
+    store.put(schedule, tenant_id=tenant_id)
     log_action(
         "export_schedule.toggle",
         actor=_actor(request),

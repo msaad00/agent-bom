@@ -136,7 +136,7 @@ def _persist_run(store: ExportScheduleStore, schedule: ExportSchedule, now_iso: 
     latest.last_run_status = status
     latest.last_row_count = row_count
     latest.updated_at = now_iso
-    store.put(latest)
+    store.put(latest, tenant_id=schedule.tenant_id)
 
 
 def claim_due_schedules(store: ExportScheduleStore, now: datetime) -> list[ExportSchedule]:
@@ -148,7 +148,7 @@ def claim_due_schedules(store: ExportScheduleStore, now: datetime) -> list[Expor
             continue
         next_run = parse_cron_next(schedule.cron_expression, now)
         next_run_iso = next_run.isoformat() if next_run else None
-        if store.claim_due(schedule, next_run_iso):
+        if store.claim_due(schedule, next_run_iso, tenant_id=schedule.tenant_id):
             won.append(schedule)
     return won
 

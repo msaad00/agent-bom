@@ -28,8 +28,6 @@ Non-goals for MVP (see design doc):
 from __future__ import annotations
 
 import asyncio
-import hmac
-import ipaddress
 import json
 import logging
 import os
@@ -37,7 +35,7 @@ import threading
 import time
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -51,13 +49,99 @@ from agent_bom.agent_identity import (
     extract_identity_token,
     identity_token_scopes,
 )
-from agent_bom.api.auth import Role, get_key_store
-from agent_bom.api.forwarded_identity import resolve_forwarded_client_ip
+from agent_bom.api.gateway_auth import (
+    _api_key_allows_gateway_relay as _api_key_allows_gateway_relay,
+)
+from agent_bom.api.gateway_auth import (
+    _authenticate_gateway_request as _authenticate_gateway_request,
+)
+from agent_bom.api.gateway_auth import (
+    _configured_gateway_tenant_id as _configured_gateway_tenant_id,
+)
+from agent_bom.api.gateway_auth import (
+    _enforce_gateway_anonymous_agents_posture as _enforce_gateway_anonymous_agents_posture,
+)
+from agent_bom.api.gateway_auth import (
+    _enforce_gateway_auth_posture as _enforce_gateway_auth_posture,
+)
+from agent_bom.api.gateway_auth import (
+    _env_flag_enabled as _env_flag_enabled,
+)
+from agent_bom.api.gateway_auth import (
+    _extract_request_token as _extract_request_token,
+)
+from agent_bom.api.gateway_auth import (
+    _gateway_allows_anonymous_agents as _gateway_allows_anonymous_agents,
+)
+from agent_bom.api.gateway_auth import (
+    _gateway_requires_auth as _gateway_requires_auth,
+)
+from agent_bom.api.gateway_auth import (
+    _is_loopback_host as _is_loopback_host,
+)
+from agent_bom.api.gateway_auth import (
+    _parse_gateway_token_expiry as _parse_gateway_token_expiry,
+)
+from agent_bom.api.gateway_auth import (
+    _request_has_expected_token as _request_has_expected_token,
+)
+from agent_bom.api.gateway_auth import (
+    _role_allows_gateway_relay as _role_allows_gateway_relay,
+)
+from agent_bom.api.gateway_auth import (
+    _validate_runtime_profile_posture as _validate_runtime_profile_posture,
+)
+from agent_bom.api.gateway_rate_limit import (
+    _build_gateway_rate_limit_store as _build_gateway_rate_limit_store,
+)
+from agent_bom.api.gateway_rate_limit import (
+    _gateway_configured_replicas as _gateway_configured_replicas,
+)
+from agent_bom.api.gateway_rate_limit import (
+    _gateway_rate_limit_runtime_status as _gateway_rate_limit_runtime_status,
+)
+from agent_bom.api.gateway_rate_limit import (
+    _gateway_shared_rate_limit_required as _gateway_shared_rate_limit_required,
+)
+from agent_bom.api.gateway_rate_limit import (
+    _rate_limit_bucket_component as _rate_limit_bucket_component,
+)
+from agent_bom.api.gateway_request import (
+    _read_bounded_gateway_body as _read_bounded_gateway_body,
+)
+from agent_bom.api.gateway_request import (
+    _request_client_id as _request_client_id,
+)
+from agent_bom.api.gateway_request import (
+    _request_context_attributes as _request_context_attributes,
+)
+from agent_bom.api.gateway_request import (
+    _request_cost_center as _request_cost_center,
+)
+from agent_bom.api.gateway_request import (
+    _request_device_id as _request_device_id,
+)
+from agent_bom.api.gateway_request import (
+    _request_environment as _request_environment,
+)
+from agent_bom.api.gateway_request import (
+    _request_groups as _request_groups,
+)
+from agent_bom.api.gateway_request import (
+    _request_risk_score as _request_risk_score,
+)
+from agent_bom.api.gateway_request import (
+    _request_source_ip as _request_source_ip,
+)
+from agent_bom.api.gateway_request import (
+    _sanitize_for_log as _sanitize_for_log,
+)
+from agent_bom.api.gateway_request import (
+    _strip_gateway_identity_metadata as _strip_gateway_identity_metadata,
+)
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
-from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
 from agent_bom.api.oidc_discovery_shim import build_oidc_discovery_shim_router
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
-from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.firewall import (
     AgentFirewallPolicy,
     FirewallDecision,
@@ -126,7 +210,6 @@ from agent_bom.security import sanitize_error, sanitize_text
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
 _MAX_GATEWAY_MESSAGE_BYTES = MAX_GATEWAY_RELAY_MESSAGE_BYTES
-_GATEWAY_RELAY_SCOPE = "gateway:relay"
 
 
 # Lazy singleton so disabled deploys don't pay the import cost of the
@@ -134,11 +217,6 @@ _GATEWAY_RELAY_SCOPE = "gateway:relay"
 # ``enable_visual_leak_detection`` is True.
 _visual_detector_singleton: Any = None
 _visual_detector_lock = threading.Lock()
-
-
-def _sanitize_for_log(value: Any) -> str:
-    """Return a single-line representation safe for plain-text logs."""
-    return sanitize_text(value).replace("\r", "").replace("\n", "")
 
 
 def _public_gateway_error(exc: Exception | str) -> str:
@@ -438,127 +516,6 @@ def _evaluate_control_plane_bundle(
         return False, "control-plane policy evaluation error"
 
 
-def _request_source_ip(request: Request) -> str:
-    """Resolve the caller IP for conditional-access CIDR conditions.
-
-    The transport peer is authoritative unless the deployment declares both a
-    bounded proxy depth and trusted transport-peer CIDRs.  This prevents a
-    direct caller from satisfying an allowlisted CIDR by spoofing
-    ``X-Forwarded-For``.
-    """
-    client = getattr(request, "client", None)
-    return resolve_forwarded_client_ip(
-        peer_host=getattr(client, "host", "") or "",
-        forwarded_for=request.headers.get("x-forwarded-for", ""),
-    )
-
-
-def _request_environment(request: Request) -> str:
-    """Resolve the caller-declared environment for conditional-access conditions."""
-    return (request.headers.get("x-agent-environment", "") or "").strip()[:60]
-
-
-def _request_risk_score(request: Request) -> float | None:
-    """Resolve a caller/proxy-asserted risk score for conditional-access gates.
-
-    Read from the ``x-agent-risk-score`` header (set by an upstream risk engine
-    or trust proxy). Absent/invalid → ``None`` so a min/max-risk condition that
-    requires a score simply does not match and the call is unaffected.
-    """
-    raw = (request.headers.get("x-agent-risk-score", "") or "").strip()
-    if not raw:
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        return None
-
-
-def _request_context_attributes(request: Request) -> dict[str, str]:
-    """Resolve required-context attributes for conditional-access gates.
-
-    Attributes arrive as ``x-agent-ctx-<name>`` headers (e.g.
-    ``x-agent-ctx-mfa: true``) so a policy can require ``{"mfa": "true"}``.
-    Bounded to keep the decision context small and deterministic.
-    """
-    attributes: dict[str, str] = {}
-    for header, value in request.headers.items():
-        lowered = header.lower()
-        if lowered.startswith("x-agent-ctx-"):
-            key = lowered[len("x-agent-ctx-") :]
-            if key:
-                attributes[key] = str(value).strip()[:200]
-        if len(attributes) >= 32:
-            break
-    return attributes
-
-
-def _request_device_id(request: Request) -> str:
-    """Resolve the caller device/workstation id for device ABAC conditions.
-
-    Read from the ``x-agent-device-id`` header (set by the endpoint agent / MDM
-    posture broker). Empty when unset, in which case a device condition simply
-    fails closed for policies that require one.
-    """
-    return (request.headers.get("x-agent-device-id", "") or "").strip()[:200]
-
-
-def _request_groups(request: Request) -> list[str]:
-    """Resolve the caller's directory groups for group ABAC conditions.
-
-    Groups arrive comma-separated in the ``x-agent-groups`` header (asserted by
-    the IdP / trust proxy after authentication). Bounded and de-duplicated.
-    """
-    raw = (request.headers.get("x-agent-groups", "") or "").strip()
-    if not raw:
-        return []
-    seen: list[str] = []
-    for part in raw.split(","):
-        value = part.strip()[:120]
-        if value and value not in seen:
-            seen.append(value)
-        if len(seen) >= 64:
-            break
-    return seen
-
-
-def _request_client_id(request: Request) -> str:
-    """Resolve the MCP client application id for client ABAC conditions.
-
-    Read from the ``x-agent-client-id`` header (the client app making the call).
-    Empty when unset; a client condition fails closed for policies requiring one.
-    """
-    return (request.headers.get("x-agent-client-id", "") or "").strip()[:200]
-
-
-def _request_cost_center(request: Request, message: dict[str, Any]) -> str:
-    """Resolve the chargeback cost-center this call is allocated to.
-
-    Mirrors how cost-center flows elsewhere (OTLP span attrs / allocation tags):
-    the caller declares it via the ``x-cost-center`` header or the JSON-RPC
-    ``_meta.cost_center`` field. Empty when unset, in which case cost-center
-    budget enforcement is a no-op and existing per-agent/tenant semantics are
-    untouched.
-    """
-    header_cc = (request.headers.get("x-cost-center", "") or "").strip()
-    if header_cc:
-        return header_cc[:120]
-    # The caller declares allocation in the MCP ``_meta`` block (the same place
-    # ``agent_identity`` lives, under ``params``); also accept a top-level
-    # ``_meta`` for callers that flatten it.
-    params = message.get("params")
-    metas = []
-    if isinstance(params, dict) and isinstance(params.get("_meta"), dict):
-        metas.append(params["_meta"])
-    if isinstance(message.get("_meta"), dict):
-        metas.append(message["_meta"])
-    for meta in metas:
-        meta_cc = meta.get("cost_center")
-        if isinstance(meta_cc, str) and meta_cc.strip():
-            return meta_cc.strip()[:120]
-    return ""
-
-
 _CONDITIONAL_ACCESS_EVAL_FAILED = "conditional access evaluation failed"
 
 
@@ -659,252 +616,6 @@ def _load_policy_file(policy_path: Path) -> dict[str, Any]:
     return payload
 
 
-def _gateway_configured_replicas() -> int:
-    raw = os.environ.get("AGENT_BOM_GATEWAY_REPLICAS", "").strip()
-    if not raw:
-        return 1
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        logger.warning("Invalid AGENT_BOM_GATEWAY_REPLICAS=%r; defaulting to 1", _sanitize_for_log(raw))
-        return 1
-
-
-def _gateway_shared_rate_limit_required(settings: GatewaySettings) -> bool:
-    if settings.require_shared_rate_limit:
-        return True
-    return _gateway_configured_replicas() > 1
-
-
-def _build_gateway_rate_limit_store(settings: GatewaySettings):
-    if settings.runtime_rate_limit_per_tenant_per_minute <= 0:
-        return None
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
-        try:
-            return PostgresRateLimitStore(window_seconds=60)
-        except Exception as exc:
-            raise RuntimeError(
-                "Configured Postgres gateway rate limiter could not initialize; refusing to fall back to process-local state"
-            ) from exc
-    if _gateway_shared_rate_limit_required(settings):
-        raise RuntimeError(
-            "Shared gateway rate limiting is required for multi-replica or fail-closed deployments. "
-            "Configure AGENT_BOM_POSTGRES_URL before starting the gateway."
-        )
-    return InMemoryRateLimitStore(window_seconds=60)
-
-
-def _gateway_rate_limit_runtime_status(settings: GatewaySettings) -> dict[str, object]:
-    postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
-    replicas = _gateway_configured_replicas()
-    enabled = settings.runtime_rate_limit_per_tenant_per_minute > 0
-    shared_required = _gateway_shared_rate_limit_required(settings) if enabled else False
-    backend = "disabled" if not enabled else ("postgres_shared" if postgres_configured else "inmemory_single_process")
-    return {
-        "enabled": enabled,
-        "limit_per_tenant_per_minute": settings.runtime_rate_limit_per_tenant_per_minute,
-        "backend": backend,
-        "postgres_configured": postgres_configured,
-        "configured_gateway_replicas": replicas,
-        "shared_required": shared_required,
-        "shared_across_replicas": enabled and postgres_configured,
-        "fail_closed": (enabled and postgres_configured) or (enabled and shared_required),
-        "message": (
-            "Gateway runtime rate limiting disabled."
-            if not enabled
-            else (
-                "Gateway runtime rate limiting uses Postgres-backed per-source-agent state across replicas."
-                if postgres_configured
-                else (
-                    "Gateway runtime rate limiting is per-source-agent and process-local because the gateway "
-                    "is configured for a single replica. Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
-                )
-            )
-        ),
-    }
-
-
-def _rate_limit_bucket_component(value: str) -> str:
-    component = _sanitize_for_log(value).strip() or ANONYMOUS
-    return component.replace(":", "_")[:160]
-
-
-def _parse_gateway_token_expiry(value: str | None) -> datetime:
-    """Require a bounded absolute deadline; process restarts cannot renew it."""
-    requirement = "AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT must be a timezone-aware ISO-8601 expiry in the next hour"
-    if not value or not value.strip():
-        raise ValueError(requirement)
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            raise ValueError(requirement)
-        parsed = parsed.astimezone(timezone.utc)
-    except (ValueError, OverflowError):
-        raise ValueError(requirement) from None
-    now = datetime.now(timezone.utc)
-    if not now < parsed <= now + timedelta(hours=1):
-        raise ValueError(requirement)
-    return parsed
-
-
-def _request_has_expected_token(request: Request, expected_token: str) -> bool:
-    return hmac.compare_digest(_extract_request_token(request).encode(), expected_token.encode())
-
-
-def _extract_request_token(request: Request) -> str:
-    auth = request.headers.get("authorization", "")
-    if auth.startswith("Bearer "):
-        return auth[len("Bearer ") :].strip()
-    return request.headers.get("x-api-key", "").strip()
-
-
-def _gateway_requires_auth(settings: GatewaySettings) -> bool:
-    if settings.bearer_token:
-        return True
-    try:
-        return get_key_store().has_keys()
-    except Exception as exc:
-        logger.warning("Gateway key store status unavailable: %s", sanitize_text(_sanitize_for_log(exc)))
-        return True
-
-
-def _is_loopback_host(host: str) -> bool:
-    normalized = (host or "").strip().strip("[]").lower()
-    if normalized in {"localhost", "127.0.0.1", "::1"}:
-        return True
-    if not normalized:
-        return False
-    try:
-        return ipaddress.ip_address(normalized).is_loopback
-    except ValueError:
-        return False
-
-
-def _env_flag_enabled(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
-
-
-def _enforce_gateway_auth_posture(settings: GatewaySettings) -> None:
-    if _gateway_requires_auth(settings):
-        return
-    if _is_loopback_host(settings.listener_host):
-        return
-    if settings.allow_insecure_no_auth or _env_flag_enabled("AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH"):
-        logger.warning(
-            "Gateway starting without incoming authentication on non-loopback listener %s due to explicit insecure override",
-            _sanitize_for_log(settings.listener_host),
-        )
-        return
-    raise RuntimeError(
-        "Refusing to start gateway on a non-loopback listener without incoming authentication. "
-        "Configure AGENT_BOM_GATEWAY_BEARER_TOKEN or API keys, bind to loopback, "
-        "or set AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH=1 for an explicit insecure override."
-    )
-
-
-def _gateway_allows_anonymous_agents(settings: GatewaySettings) -> bool:
-    """Return True when a fully-MISSING agent identity may proceed.
-
-    Permissive on a loopback listener (local development), and on a non-loopback
-    listener only when the operator sets the explicit opt-out — mirroring the
-    ``allow_insecure_no_auth`` precedent for incoming transport auth. An invalid
-    or revoked token is NEVER governed by this function; it always fails closed.
-    """
-    if _is_loopback_host(settings.listener_host):
-        return True
-    return settings.allow_anonymous_agents or _env_flag_enabled("AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS")
-
-
-def _enforce_gateway_anonymous_agents_posture(settings: GatewaySettings) -> None:
-    """Emit a loud startup warning when anonymous callers are permitted on a
-    non-loopback listener via the explicit opt-out, paralleling the transport
-    auth posture warning."""
-    if _is_loopback_host(settings.listener_host):
-        return
-    if settings.allow_anonymous_agents or _env_flag_enabled("AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS"):
-        logger.warning(
-            "SECURITY: gateway relay accepting anonymous (unidentified) agent callers on non-loopback "
-            "listener %s due to explicit opt-out (AGENT_BOM_GATEWAY_ALLOW_ANONYMOUS_AGENTS / "
-            "--allow-anonymous-agents). Invalid/revoked tokens are still denied. Use only when an "
-            "upstream trust boundary already authenticates callers.",
-            _sanitize_for_log(settings.listener_host),
-        )
-
-
-def _validate_runtime_profile_posture(settings: GatewaySettings) -> str:
-    """Validate and return the canonical profile-enforcement mode."""
-    mode = settings.runtime_profile_enforcement_mode.strip().lower()
-    if mode not in {"off", "warn", "enforce"}:
-        raise RuntimeError("runtime profile enforcement mode must be off, warn, or enforce")
-    if mode != "off" and not settings.runtime_profile_environment.strip():
-        raise RuntimeError("runtime profile enforcement requires an operator-controlled profile environment")
-    if mode != "off" and not settings.runtime_profile_issuer.strip():
-        raise RuntimeError("runtime profile enforcement requires a trusted profile issuer")
-    if settings.allow_runtime_profile_dev_bypass and not _is_loopback_host(settings.listener_host):
-        raise RuntimeError("runtime profile development bypass is permitted only on a loopback listener")
-    return mode
-
-
-def _role_allows_gateway_relay(role: object) -> bool:
-    try:
-        normalized = role if isinstance(role, Role) else Role(str(role).lower())
-    except ValueError:
-        return False
-    return normalized in {Role.ADMIN, Role.ANALYST}
-
-
-def _api_key_allows_gateway_relay(api_key: Any) -> tuple[bool, str]:
-    if not _role_allows_gateway_relay(getattr(api_key, "role", None)):
-        role_value = getattr(getattr(api_key, "role", None), "value", getattr(api_key, "role", "unknown"))
-        return False, f"gateway relay requires analyst role or higher; key has {role_value}"
-    has_scope = getattr(api_key, "has_scope", None)
-    if callable(has_scope) and not has_scope(_GATEWAY_RELAY_SCOPE):
-        return False, f"gateway relay requires {_GATEWAY_RELAY_SCOPE} scope"
-    return True, ""
-
-
-def _configured_gateway_tenant_id() -> str:
-    return os.environ.get("AGENT_BOM_TENANT_ID", "default").strip() or "default"
-
-
-def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -> tuple[str, str]:
-    raw_token = _extract_request_token(request)
-    if settings.bearer_token:
-        if (
-            settings._bearer_token_deadline is None
-            or datetime.now(timezone.utc) >= settings._bearer_token_deadline
-            or not raw_token
-            or not _request_has_expected_token(request, settings.bearer_token)
-        ):
-            raise HTTPException(status_code=401, detail="gateway authentication required")
-        return _configured_gateway_tenant_id(), "static_gateway_token"
-
-    try:
-        store = get_key_store()
-        has_keys = store.has_keys()
-    except Exception as exc:
-        logger.warning("Gateway key store unavailable: %s", sanitize_text(_sanitize_for_log(exc)))
-        raise HTTPException(status_code=503, detail="gateway authentication unavailable") from exc
-
-    if has_keys:
-        try:
-            api_key = store.verify(raw_token) if raw_token else None
-        except Exception as exc:
-            logger.warning("Gateway key verification unavailable: %s", sanitize_text(_sanitize_for_log(exc)))
-            raise HTTPException(status_code=503, detail="gateway authentication unavailable") from exc
-        if api_key is None:
-            raise HTTPException(status_code=401, detail="gateway authentication required")
-        allowed, reason = _api_key_allows_gateway_relay(api_key)
-        if not allowed:
-            raise HTTPException(status_code=403, detail=reason)
-        try:
-            return require_explicit_tenant_id(getattr(api_key, "tenant_id", None)), "api_key"
-        except ValueError:
-            raise HTTPException(status_code=401, detail="gateway authentication required") from None
-
-    return _configured_gateway_tenant_id(), "none"
-
-
 def _inject_jsonrpc_trace_meta(
     message: dict[str, Any],
     *,
@@ -914,36 +625,6 @@ def _inject_jsonrpc_trace_meta(
 ) -> dict[str, Any]:
     """Preserve the gateway's explicit trace arguments at its compatibility entry."""
     return inject_jsonrpc_trace_meta(message, traceparent=traceparent, tracestate=tracestate, baggage=baggage)
-
-
-def _strip_gateway_identity_metadata(message: dict[str, Any]) -> dict[str, Any]:
-    """Remove the gateway caller credential before crossing the upstream boundary."""
-    params = message.get("params")
-    if not isinstance(params, dict):
-        return message
-    raw_meta = params.get("_meta")
-    if not isinstance(raw_meta, dict) or "agent_identity" not in raw_meta:
-        return message
-    forwarded = dict(message)
-    forwarded_params = dict(params)
-    forwarded_meta = dict(raw_meta)
-    forwarded_meta.pop("agent_identity", None)
-    if forwarded_meta:
-        forwarded_params["_meta"] = forwarded_meta
-    else:
-        forwarded_params.pop("_meta", None)
-    forwarded["params"] = forwarded_params
-    return forwarded
-
-
-async def _read_bounded_gateway_body(request: Any) -> bytes:
-    """Read a gateway request without buffering past the JSON-RPC limit."""
-    body = bytearray()
-    async for chunk in request.stream():
-        if len(body) + len(chunk) > _MAX_GATEWAY_MESSAGE_BYTES:
-            raise HTTPException(status_code=413, detail="gateway request exceeds maximum JSON-RPC message size")
-        body.extend(chunk)
-    return bytes(body)
 
 
 def _warn_on_quarantined_agents(settings: GatewaySettings) -> None:

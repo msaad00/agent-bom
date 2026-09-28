@@ -228,7 +228,7 @@ def test_control_plane_contract_scan_graph_policy_audit_flow(control_plane_contr
                 )()
             return None
 
-    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", lambda: _FakeKeyStore())
 
     gw = TestClient(
         create_gateway_app(

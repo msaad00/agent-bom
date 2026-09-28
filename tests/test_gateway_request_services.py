@@ -54,7 +54,7 @@ def test_key_storage_failure_is_closed_and_public_error_is_generic(monkeypatch, 
         raise RuntimeError("test-only-secret-internal-diagnostic")
 
     store = SimpleNamespace(has_keys=unavailable if stage == "status" else lambda: True, verify=unavailable)
-    monkeypatch.setattr(gateway, "get_key_store", unavailable if stage == "factory" else lambda: store)
+    monkeypatch.setattr("agent_bom.api.gateway_auth.get_key_store", unavailable if stage == "factory" else lambda: store)
     settings = gateway.GatewaySettings(registry=UpstreamRegistry([]), policy={})
     assert gateway._gateway_requires_auth(settings)
     with pytest.raises(HTTPException) as error:
@@ -75,7 +75,7 @@ def test_configured_shared_rate_limit_failure_never_falls_back(monkeypatch):
         raise RuntimeError("test-only-database-diagnostic")
 
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://fixture.invalid/db")
-    monkeypatch.setattr(gateway, "PostgresRateLimitStore", unavailable)
+    monkeypatch.setattr("agent_bom.api.gateway_rate_limit.PostgresRateLimitStore", unavailable)
     settings = gateway.GatewaySettings(registry=UpstreamRegistry([]), policy={}, runtime_rate_limit_per_tenant_per_minute=10)
     with pytest.raises(RuntimeError, match="refusing to fall back to process-local state"):
         gateway._build_gateway_rate_limit_store(settings)

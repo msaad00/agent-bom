@@ -27,7 +27,12 @@ from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity, na
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
-from .exception_store import ExceptionStatus, VulnException
+from .exception_store import (
+    ExceptionStatus,
+    VulnException,
+    exception_record_for_tenant,
+    exception_write_tenant,
+)
 from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
 from .schedule_store import ScanSchedule, schedule_record_for_tenant, schedule_write_tenant
@@ -854,9 +859,7 @@ class SnowflakeScheduleStore:
             cur = conn.cursor()
             cur.execute("SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id", (tenant,))
             return [
-                schedule_record_for_tenant(
-                    ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])), tenant
-                )
+                schedule_record_for_tenant(ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])), tenant)
                 for r in cur.fetchall()
             ]
 
@@ -870,9 +873,7 @@ class SnowflakeScheduleStore:
                 (now_iso,),
             )
             return [
-                schedule_record_for_tenant(
-                    ScanSchedule.model_validate_json(r[1] if isinstance(r[1], str) else json.dumps(r[1])), r[0]
-                )
+                schedule_record_for_tenant(ScanSchedule.model_validate_json(r[1] if isinstance(r[1], str) else json.dumps(r[1])), r[0])
                 for r in cur.fetchall()
             ]
 
@@ -909,27 +910,28 @@ class SnowflakeExceptionStore:
             cur.execute("ALTER TABLE exceptions ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
             _ensure_tenant_row_access_policy(cur, ("exceptions",))
 
-    def put(self, exc: VulnException) -> None:
+    def put(self, exc: VulnException, *, tenant_id: str) -> None:
+        tenant = exception_write_tenant(exc, tenant_id)
         with self._connect() as conn:
             conn.cursor().execute(
-                """MERGE INTO exceptions t USING (SELECT %s AS exception_id) s
+                """MERGE INTO exceptions t USING (SELECT %s AS exception_id, %s AS tenant_id) s
                    ON t.exception_id = s.exception_id
-                   WHEN MATCHED THEN UPDATE SET
+                   WHEN MATCHED AND t.tenant_id = s.tenant_id THEN UPDATE SET
                      vuln_id = %s, package_name = %s, server_name = %s,
-                     status = %s, created_at = %s, expires_at = %s, tenant_id = %s,
+                     status = %s, created_at = %s, expires_at = %s,
                      data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
                      (exception_id, vuln_id, package_name, server_name, status, created_at, expires_at, tenant_id, data)
                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     exc.exception_id,
+                    tenant,
                     exc.vuln_id,
                     exc.package_name,
                     exc.server_name,
                     exc.status.value,
                     exc.created_at,
                     exc.expires_at,
-                    exc.tenant_id,
                     json.dumps(exc.to_dict(), sort_keys=True),
                     exc.exception_id,
                     exc.vuln_id,
@@ -938,40 +940,37 @@ class SnowflakeExceptionStore:
                     exc.status.value,
                     exc.created_at,
                     exc.expires_at,
-                    exc.tenant_id,
+                    tenant,
                     json.dumps(exc.to_dict(), sort_keys=True),
                 ),
             )
 
-    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
+    def get(self, exception_id: str, *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("SELECT data FROM exceptions WHERE exception_id = %s", (exception_id,))
-            else:
-                cur.execute("SELECT data FROM exceptions WHERE exception_id = %s AND tenant_id = %s", (exception_id, tenant_id))
+            cur.execute("SELECT tenant_id, data FROM exceptions WHERE exception_id = %s AND tenant_id = %s", (exception_id, tenant))
             row = cur.fetchone()
             if row is None:
                 return None
-            payload = row[0] if isinstance(row[0], str) else json.dumps(row[0])
+            payload = row[1] if isinstance(row[1], str) else json.dumps(row[1])
             data = json.loads(payload)
             data["status"] = ExceptionStatus(data.get("status", ExceptionStatus.PENDING.value))
-            return VulnException(**data)
+            return exception_record_for_tenant(VulnException(**data), row[0])
 
-    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, exception_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("DELETE FROM exceptions WHERE exception_id = %s", (exception_id,))
-            else:
-                cur.execute("DELETE FROM exceptions WHERE exception_id = %s AND tenant_id = %s", (exception_id, tenant_id))
+            cur.execute("DELETE FROM exceptions WHERE exception_id = %s AND tenant_id = %s", (exception_id, tenant))
             return (cur.rowcount or 0) > 0
 
-    def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
+    def list_all(self, status: str | None = None, *, tenant_id: str) -> list[VulnException]:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._connect() as conn:
             cur = conn.cursor()
-            sql = "SELECT data FROM exceptions WHERE tenant_id = %s"
-            params: list[object] = [tenant_id]
+            sql = "SELECT tenant_id, data FROM exceptions WHERE tenant_id = %s"
+            params: list[object] = [tenant]
             if status:
                 sql += " AND status = %s"
                 params.append(status)
@@ -979,15 +978,16 @@ class SnowflakeExceptionStore:
             cur.execute(sql, tuple(params))
             results: list[VulnException] = []
             for row in cur.fetchall():
-                payload = row[0] if isinstance(row[0], str) else json.dumps(row[0])
+                payload = row[1] if isinstance(row[1], str) else json.dumps(row[1])
                 data = json.loads(payload)
                 data["status"] = ExceptionStatus(data.get("status", ExceptionStatus.PENDING.value))
-                results.append(VulnException(**data))
+                results.append(exception_record_for_tenant(VulnException(**data), row[0]))
             return results
 
-    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default") -> VulnException | None:
-        exceptions = self.list_all(status=ExceptionStatus.ACTIVE.value, tenant_id=tenant_id)
-        exceptions += self.list_all(status=ExceptionStatus.APPROVED.value, tenant_id=tenant_id)
+    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        exceptions = self.list_all(status=ExceptionStatus.ACTIVE.value, tenant_id=tenant)
+        exceptions += self.list_all(status=ExceptionStatus.APPROVED.value, tenant_id=tenant)
         for exc in exceptions:
             if exc.matches(vuln_id, package_name, server_name):
                 return exc

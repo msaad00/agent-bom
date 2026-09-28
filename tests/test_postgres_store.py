@@ -996,7 +996,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
         status=ExceptionStatus.ACTIVE,
         tenant_id="tenant-alpha",
     )
-    store.put(exc)
+    store.put(exc, tenant_id=exc.tenant_id)
 
     mock_pool._conn._store.setdefault("exceptions", {})[exc.exception_id] = (
         exc.exception_id,
@@ -1014,7 +1014,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
         exc.tenant_id,
     )
 
-    loaded = store.get(exc.exception_id)
+    loaded = store.get(exc.exception_id, tenant_id=exc.tenant_id)
     assert loaded is not None
     assert loaded.tenant_id == "tenant-alpha"
 
@@ -1026,7 +1026,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
     assert match is not None
     assert match.exception_id == exc.exception_id
 
-    assert store.delete(exc.exception_id) is True
+    assert store.delete(exc.exception_id, tenant_id=exc.tenant_id) is True
 
 
 # ─── PostgresPolicyStore ──────────────────────────────────────────────────────

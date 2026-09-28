@@ -2371,7 +2371,7 @@ def create_exception(request: Request, req: ExceptionRequest) -> dict:
         expires_at=req.expires_at,
         tenant_id=tenant_id,
     )
-    _get_exception_store().put(exc)
+    _get_exception_store().put(exc, tenant_id=tenant_id)
     log_action(
         "exception_create",
         actor=actor,
@@ -2433,7 +2433,7 @@ def approve_exception(request: Request, exception_id: str) -> dict:
     exc.status = ExceptionStatus.ACTIVE
     exc.approved_by = actor
     exc.approved_at = datetime.now(timezone.utc).isoformat()
-    store.put(exc)
+    store.put(exc, tenant_id=tenant_id)
     log_action("exception_approve", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
     return cast("dict[str, Any]", exc.to_dict())
 
@@ -2452,7 +2452,7 @@ def revoke_exception(request: Request, exception_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
     exc.status = ExceptionStatus.REVOKED
     exc.revoked_at = datetime.now(timezone.utc).isoformat()
-    store.put(exc)
+    store.put(exc, tenant_id=tenant_id)
     log_action("exception_revoke", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
     return cast("dict[str, Any]", exc.to_dict())
 
@@ -2707,7 +2707,7 @@ def create_finding_feedback(request: Request, req: FindingFeedbackRequest) -> di
         expires_at=req.expires_at,
         tenant_id=tenant_id,
     )
-    _get_exception_store().put(exc)
+    _get_exception_store().put(exc, tenant_id=tenant_id)
     log_action(
         "findings.feedback_recorded",
         actor=actor,
@@ -2773,7 +2773,7 @@ def record_finding_triage(*, tenant_id: str, actor: str, req: FindingTriageReque
         approved_at=reviewed_at,
         tenant_id=tenant_id,
     )
-    _get_exception_store().put(exc)
+    _get_exception_store().put(exc, tenant_id=tenant_id)
     log_action(
         "findings.triage_created",
         actor=actor,
@@ -2855,7 +2855,7 @@ def update_finding_triage_decision(request: Request, triage_id: str, req: Findin
     exc.approved_at = reviewed_at
     if req.expires_at is not None:
         exc.expires_at = req.expires_at
-    store.put(exc)
+    store.put(exc, tenant_id=tenant_id)
     log_action(
         "findings.triage_decision_recorded",
         actor=actor,
@@ -3139,7 +3139,7 @@ def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestReque
             if stmt.status == VexStatus.NOT_AFFECTED:
                 exc.approved_by = stmt.author or actor
                 exc.approved_at = now
-            store.put(exc)
+            store.put(exc, tenant_id=tenant_id)
             applied += 1
 
     log_action(

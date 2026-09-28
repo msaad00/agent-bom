@@ -6,8 +6,14 @@ import json
 from typing import Any
 
 from agent_bom.api.auth import ApiKey, Role, verify_api_key
-from agent_bom.api.exception_store import ExceptionStatus, VulnException
+from agent_bom.api.exception_store import (
+    ExceptionStatus,
+    VulnException,
+    exception_record_for_tenant,
+    exception_write_tenant,
+)
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 from .postgres_common import (
     Connection,
@@ -417,9 +423,10 @@ class PostgresExceptionStore:
             tenant_id=row[12],
         )
 
-    def put(self, exc: VulnException) -> None:
+    def put(self, exc: VulnException, *, tenant_id: str) -> None:
+        tenant = exception_write_tenant(exc, tenant_id)
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO exceptions
                    (exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by, status,
                     created_at, expires_at, approved_at, revoked_at, team_id)
@@ -435,8 +442,8 @@ class PostgresExceptionStore:
                      created_at = EXCLUDED.created_at,
                      expires_at = EXCLUDED.expires_at,
                      approved_at = EXCLUDED.approved_at,
-                     revoked_at = EXCLUDED.revoked_at,
-                     team_id = EXCLUDED.team_id""",
+                     revoked_at = EXCLUDED.revoked_at
+                   WHERE exceptions.team_id = EXCLUDED.team_id""",
                 (
                     exc.exception_id,
                     exc.vuln_id,
@@ -450,62 +457,56 @@ class PostgresExceptionStore:
                     exc.expires_at,
                     exc.approved_at,
                     exc.revoked_at,
-                    exc.tenant_id,
+                    tenant,
                 ),
             )
             conn.commit()
+            if int(cursor.rowcount) == 0:
+                raise ValueError("Exception identity belongs to a different tenant")
 
-    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
+    def get(self, exception_id: str, *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                row = conn.execute(
-                    """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
-                              status, created_at, expires_at, approved_at, revoked_at, team_id
-                       FROM exceptions
-                       WHERE exception_id = %s""",
-                    (exception_id,),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
-                              status, created_at, expires_at, approved_at, revoked_at, team_id
-                       FROM exceptions
-                       WHERE exception_id = %s AND team_id = %s""",
-                    (exception_id, tenant_id),
-                ).fetchone()
-            return self._row_to_exception(row) if row else None
+            row = conn.execute(
+                """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
+                          status, created_at, expires_at, approved_at, revoked_at, team_id
+                   FROM exceptions
+                   WHERE exception_id = %s AND team_id = %s""",
+                (exception_id, tenant),
+            ).fetchone()
+            return exception_record_for_tenant(self._row_to_exception(row), tenant) if row else None
 
-    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, exception_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                cursor = conn.execute("DELETE FROM exceptions WHERE exception_id = %s", (exception_id,))
-            else:
-                cursor = conn.execute(
-                    "DELETE FROM exceptions WHERE exception_id = %s AND team_id = %s",
-                    (exception_id, tenant_id),
-                )
+            cursor = conn.execute(
+                "DELETE FROM exceptions WHERE exception_id = %s AND team_id = %s",
+                (exception_id, tenant),
+            )
             conn.commit()
             return bool(cursor.rowcount > 0)
 
-    def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
+    def list_all(self, status: str | None = None, *, tenant_id: str) -> list[VulnException]:
+        tenant = require_explicit_tenant_id(tenant_id)
         query = """
             SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
                    status, created_at, expires_at, approved_at, revoked_at, team_id
             FROM exceptions
             WHERE team_id = %s
         """
-        params: list[object] = [tenant_id]
+        params: list[object] = [tenant]
         if status:
             query += " AND status = %s"
             params.append(status)
         query += " ORDER BY created_at DESC"
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(query, tuple(params)).fetchall()
-            return [self._row_to_exception(row) for row in rows]
+            return [exception_record_for_tenant(self._row_to_exception(row), tenant) for row in rows]
 
-    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default") -> VulnException | None:
-        active = self.list_all(status="active", tenant_id=tenant_id)
-        approved = self.list_all(status="approved", tenant_id=tenant_id)
+    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        active = self.list_all(status="active", tenant_id=tenant)
+        approved = self.list_all(status="approved", tenant_id=tenant)
         for exc in active + approved:
             if exc.matches(vuln_id, package_name, server_name):
                 return exc

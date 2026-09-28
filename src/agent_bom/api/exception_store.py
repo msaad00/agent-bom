@@ -14,13 +14,14 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Protocol
 from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +95,27 @@ class VulnException:
 
 
 class ExceptionStore(Protocol):
-    def put(self, exc: VulnException) -> None: ...
-    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None: ...
-    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool: ...
-    def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]: ...
-    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default") -> VulnException | None: ...
+    def put(self, exc: VulnException, *, tenant_id: str) -> None: ...
+    def get(self, exception_id: str, *, tenant_id: str) -> VulnException | None: ...
+    def delete(self, exception_id: str, *, tenant_id: str) -> bool: ...
+    def list_all(self, status: str | None = None, *, tenant_id: str) -> list[VulnException]: ...
+    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None: ...
+
+
+def exception_write_tenant(exc: VulnException, tenant_id: str) -> str:
+    """An exception record cannot choose a different tenant than its caller."""
+    tenant = require_explicit_tenant_id(tenant_id)
+    if exc.tenant_id != tenant:
+        raise ValueError("Exception tenant does not match the authorized tenant")
+    return tenant
+
+
+def exception_record_for_tenant(exc: VulnException, tenant_id: str) -> VulnException:
+    """Reject serialized exception data whose tenant disagrees with its row."""
+    tenant = require_explicit_tenant_id(tenant_id)
+    if exc.tenant_id != tenant:
+        raise ValueError("Stored exception tenant does not match its row tenant")
+    return exc
 
 
 class InMemoryExceptionStore:
@@ -106,41 +123,45 @@ class InMemoryExceptionStore:
         self._store: dict[str, VulnException] = {}
         self._lock = threading.Lock()
 
-    def put(self, exc: VulnException) -> None:
+    def put(self, exc: VulnException, *, tenant_id: str) -> None:
+        tenant = exception_write_tenant(exc, tenant_id)
         with self._lock:
-            self._store[exc.exception_id] = exc
+            existing = self._store.get(exc.exception_id)
+            if existing is not None and existing.tenant_id != tenant:
+                raise ValueError("Exception identity belongs to a different tenant")
+            self._store[exc.exception_id] = replace(exc)
 
-    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
-        exc = self._store.get(exception_id)
-        if exc is None:
-            return None
-        if tenant_id is not None and exc.tenant_id != tenant_id:
-            return None
-        return exc
-
-    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
+    def get(self, exception_id: str, *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
             exc = self._store.get(exception_id)
-            if exc is None:
-                return False
-            if tenant_id is not None and exc.tenant_id != tenant_id:
+            if exc is None or exc.tenant_id != tenant:
+                return None
+            return replace(exc)
+
+    def delete(self, exception_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
+        with self._lock:
+            exc = self._store.get(exception_id)
+            if exc is None or exc.tenant_id != tenant:
                 return False
             self._store.pop(exception_id, None)
             return True
 
-    def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
+    def list_all(self, status: str | None = None, *, tenant_id: str) -> list[VulnException]:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
-            results = list(self._store.values())
+            results = [replace(exc) for exc in self._store.values() if exc.tenant_id == tenant]
         if status:
             results = [e for e in results if e.status.value == status]
-        results = [e for e in results if e.tenant_id == tenant_id]
         return sorted(results, key=lambda e: e.created_at, reverse=True)
 
-    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default") -> VulnException | None:
+    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
             for exc in self._store.values():
-                if exc.tenant_id == tenant_id and exc.matches(vuln_id, package_name, server_name):
-                    return exc
+                if exc.tenant_id == tenant and exc.matches(vuln_id, package_name, server_name):
+                    return replace(exc)
         return None
 
 
@@ -184,11 +205,17 @@ class SQLiteExceptionStore:
         )
         self._conn.commit()
 
-    def put(self, exc: VulnException) -> None:
-        self._conn.execute(
-            "INSERT OR REPLACE INTO exceptions (exception_id, vuln_id, package_name, server_name, reason, "
+    def put(self, exc: VulnException, *, tenant_id: str) -> None:
+        tenant = exception_write_tenant(exc, tenant_id)
+        cursor = self._conn.execute(
+            "INSERT INTO exceptions (exception_id, vuln_id, package_name, server_name, reason, "
             "requested_by, approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (exception_id) DO UPDATE SET vuln_id=excluded.vuln_id, package_name=excluded.package_name, "
+            "server_name=excluded.server_name, reason=excluded.reason, requested_by=excluded.requested_by, "
+            "approved_by=excluded.approved_by, status=excluded.status, created_at=excluded.created_at, "
+            "expires_at=excluded.expires_at, approved_at=excluded.approved_at, revoked_at=excluded.revoked_at "
+            "WHERE exceptions.tenant_id=excluded.tenant_id",
             (
                 exc.exception_id,
                 exc.vuln_id,
@@ -202,58 +229,55 @@ class SQLiteExceptionStore:
                 exc.expires_at,
                 exc.approved_at,
                 exc.revoked_at,
-                exc.tenant_id,
+                tenant,
             ),
         )
         self._conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Exception identity belongs to a different tenant")
 
-    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
-        if tenant_id is None:
-            row = self._conn.execute(
-                "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
-                "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
-                "FROM exceptions WHERE exception_id = ?",
-                (exception_id,),
-            ).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
-                "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
-                "FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
-                (exception_id, tenant_id),
-            ).fetchone()
+    def get(self, exception_id: str, *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        row = self._conn.execute(
+            "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
+            "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
+            "FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
+            (exception_id, tenant),
+        ).fetchone()
         if not row:
             return None
-        return VulnException(
-            exception_id=row[0],
-            vuln_id=row[1],
-            package_name=row[2],
-            server_name=row[3],
-            reason=row[4],
-            requested_by=row[5],
-            approved_by=row[6],
-            status=ExceptionStatus(row[7]),
-            created_at=row[8],
-            expires_at=row[9],
-            approved_at=row[10],
-            revoked_at=row[11],
-            tenant_id=row[12],
+        return exception_record_for_tenant(
+            VulnException(
+                exception_id=row[0],
+                vuln_id=row[1],
+                package_name=row[2],
+                server_name=row[3],
+                reason=row[4],
+                requested_by=row[5],
+                approved_by=row[6],
+                status=ExceptionStatus(row[7]),
+                created_at=row[8],
+                expires_at=row[9],
+                approved_at=row[10],
+                revoked_at=row[11],
+                tenant_id=row[12],
+            ),
+            tenant,
         )
 
-    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
-        if tenant_id is None:
-            cursor = self._conn.execute("DELETE FROM exceptions WHERE exception_id = ?", (exception_id,))
-        else:
-            cursor = self._conn.execute(
-                "DELETE FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
-                (exception_id, tenant_id),
-            )
+    def delete(self, exception_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
+        cursor = self._conn.execute(
+            "DELETE FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
+            (exception_id, tenant),
+        )
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
+    def list_all(self, status: str | None = None, *, tenant_id: str) -> list[VulnException]:
+        tenant = require_explicit_tenant_id(tenant_id)
         clauses: list[str] = ["tenant_id = ?"]
-        params: list[Any] = [tenant_id]
+        params: list[Any] = [tenant]
         if status:
             clauses.append("status = ?")
             params.append(status)
@@ -265,27 +289,31 @@ class SQLiteExceptionStore:
             params,
         ).fetchall()
         return [
-            VulnException(
-                exception_id=r[0],
-                vuln_id=r[1],
-                package_name=r[2],
-                server_name=r[3],
-                reason=r[4],
-                requested_by=r[5],
-                approved_by=r[6],
-                status=ExceptionStatus(r[7]),
-                created_at=r[8],
-                expires_at=r[9],
-                approved_at=r[10],
-                revoked_at=r[11],
-                tenant_id=r[12],
+            exception_record_for_tenant(
+                VulnException(
+                    exception_id=r[0],
+                    vuln_id=r[1],
+                    package_name=r[2],
+                    server_name=r[3],
+                    reason=r[4],
+                    requested_by=r[5],
+                    approved_by=r[6],
+                    status=ExceptionStatus(r[7]),
+                    created_at=r[8],
+                    expires_at=r[9],
+                    approved_at=r[10],
+                    revoked_at=r[11],
+                    tenant_id=r[12],
+                ),
+                tenant,
             )
             for r in rows
         ]
 
-    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default") -> VulnException | None:
-        exceptions = self.list_all(status="active", tenant_id=tenant_id)
-        exceptions += self.list_all(status="approved", tenant_id=tenant_id)
+    def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        exceptions = self.list_all(status="active", tenant_id=tenant)
+        exceptions += self.list_all(status="approved", tenant_id=tenant)
         for exc in exceptions:
             if exc.matches(vuln_id, package_name, server_name):
                 return exc

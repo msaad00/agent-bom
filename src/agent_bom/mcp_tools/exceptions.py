@@ -78,7 +78,7 @@ async def request_exception_impl(
         expires_at=expires_at.strip(),
         tenant_id=resolved_tenant,
     )
-    _get_exception_store().put(exception)
+    _get_exception_store().put(exception, tenant_id=resolved_tenant)
     log_action(
         "exception_create",
         actor=actor,
@@ -124,7 +124,7 @@ async def approve_exception_impl(
     exception.status = ExceptionStatus.ACTIVE
     exception.approved_by = actor
     exception.approved_at = datetime.now(timezone.utc).isoformat()
-    store.put(exception)
+    store.put(exception, tenant_id=resolved_tenant)
     log_action(
         "exception_approve",
         actor=actor,

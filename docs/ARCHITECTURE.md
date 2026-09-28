@@ -29,6 +29,13 @@ Gateway composition remains in `gateway_server.py`. Its HTTP authentication,
 bounded request context and shared rate-limit selection are owned by
 `api/gateway_auth.py`, `api/gateway_request.py` and `api/gateway_rate_limit.py`.
 Transport pooling, audit delivery and settings live under `runtime/gateway_*`.
+Tenant policy lookups and control-plane bundle evaluation live in
+`api/gateway_policy.py`. `runtime/gateway_policy_reload.py` owns typed policy
+state, reload locking and polling through injected loaders and configuration
+accessors. A method policy retains its last valid version after a reload error;
+a firewall reload error marks that lane unavailable for fail-closed enforcement.
+Initial file-load failure remains unavailable until a successful load. The
+gateway composition root owns task startup, cancellation and shutdown.
 Authentication-store failures deny traffic; a configured shared rate limiter
 never falls back to process-local state when initialization fails.
 

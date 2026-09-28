@@ -34,9 +34,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager, nullcontext
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Mapping
 
 from fastapi import FastAPI, HTTPException, Request
@@ -64,6 +62,17 @@ from agent_bom.api.gateway_auth import _request_has_expected_token as _request_h
 from agent_bom.api.gateway_auth import _role_allows_gateway_relay as _role_allows_gateway_relay
 from agent_bom.api.gateway_auth import _validate_runtime_profile_posture as _validate_runtime_profile_posture
 from agent_bom.api.gateway_context import create_gateway_http_app
+from agent_bom.api.gateway_policy import _CONDITIONAL_ACCESS_EVAL_FAILED as _CONDITIONAL_ACCESS_EVAL_FAILED
+from agent_bom.api.gateway_policy import _DRIFT_INCIDENT_LOOKUP_CAP as _DRIFT_INCIDENT_LOOKUP_CAP
+from agent_bom.api.gateway_policy import _agent_cost_anomaly as _agent_cost_anomaly
+from agent_bom.api.gateway_policy import _agent_identity_revoked as _agent_identity_revoked
+from agent_bom.api.gateway_policy import _conditional_access_fail_closed as _conditional_access_fail_closed
+from agent_bom.api.gateway_policy import _DriftLookup as _DriftLookup
+from agent_bom.api.gateway_policy import _evaluate_control_plane_bundle as _evaluate_control_plane_bundle
+from agent_bom.api.gateway_policy import _fleet_containment_reason as _fleet_containment_reason
+from agent_bom.api.gateway_policy import _open_drift_violates_tool as _open_drift_violates_tool
+from agent_bom.api.gateway_policy import _validate_gateway_rule_patterns as _validate_gateway_rule_patterns
+from agent_bom.api.gateway_policy import _warn_on_quarantined_agents as _warn_on_quarantined_agents
 from agent_bom.api.gateway_rate_limit import _build_gateway_rate_limit_store as _build_gateway_rate_limit_store
 from agent_bom.api.gateway_rate_limit import _gateway_configured_replicas as _gateway_configured_replicas
 from agent_bom.api.gateway_rate_limit import _gateway_rate_limit_runtime_status as _gateway_rate_limit_runtime_status
@@ -87,7 +96,6 @@ from agent_bom.firewall import (
     AgentFirewallPolicy,
     FirewallDecision,
     FirewallEvaluation,
-    FirewallPolicyError,
     load_firewall_policy_file,
 )
 from agent_bom.firewall import evaluate as evaluate_firewall_policy
@@ -126,6 +134,8 @@ from agent_bom.runtime.gateway_events import (
     GatewayRuntimeEventType,
     build_gateway_runtime_event,
 )
+from agent_bom.runtime.gateway_policy_reload import GatewayPolicyReloader, GatewayPolicyState
+from agent_bom.runtime.gateway_policy_reload import _load_policy_file as _load_policy_file
 from agent_bom.runtime.gateway_relay import GatewayCircuitBreaker as GatewayCircuitBreaker
 from agent_bom.runtime.gateway_relay import GatewayCircuitOpenError as GatewayCircuitOpenError
 from agent_bom.runtime.gateway_relay import GatewayUpstreamRelay as GatewayUpstreamRelay
@@ -219,24 +229,6 @@ def _redact_obj_pii(value: Any, *, depth: int = 0) -> Any:
     return value
 
 
-def _agent_cost_anomaly(tenant_id: str, source_agent: str) -> tuple[bool, str]:
-    """Return (anomalous, reason) if ``source_agent`` currently has a cost-spike
-    anomaly vs the tenant fleet. Cached upstream; fail-open on any store error."""
-    if not source_agent:
-        return False, ""
-    try:
-        from agent_bom.api.anomaly import cost_anomalous_agents
-
-        flagged = cost_anomalous_agents(tenant_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gateway anomaly check failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        return False, ""
-    info = flagged.get(source_agent)
-    if info:
-        return True, (f"agent '{source_agent}' has anomalous spend (z={info.get('z_score')}) vs the tenant fleet baseline")
-    return False, ""
-
-
 def _message_tool_label(message: dict[str, Any]) -> str:
     """Best-effort tool label for audit/event records.
 
@@ -250,235 +242,6 @@ def _message_tool_label(message: dict[str, Any]) -> str:
         return name
     method = message.get("method")
     return method if isinstance(method, str) else ""
-
-
-def _fleet_containment_reason(tenant_id: str, source_agent: str) -> str | None:
-    """Return a containment reason for an exact fleet ID or failed lookup.
-
-    Resolves one agent through an indexed lookup rather than paging the roster:
-    this runs on every relay call, so its cost must not scale with fleet size.
-    Lookup failures block in enforce mode and remain visible in warn mode.
-
-    Blocking I/O — call it off the event loop.
-    """
-    if not source_agent:
-        return None
-    try:
-        from agent_bom.api.fleet_store import FleetLifecycleState, find_fleet_agent
-        from agent_bom.api.stores import _get_fleet_store
-
-        agent = find_fleet_agent(_get_fleet_store(), tenant_id, source_agent)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gateway fleet check failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        return "fleet_lookup_unavailable"
-    if agent is None:
-        return None
-    return "fleet_quarantine" if getattr(agent, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED else None
-
-
-def _agent_identity_revoked(tenant_id: str, source_agent: str) -> tuple[bool, bool, bool]:
-    """Return ``(revoked, lookup_incomplete, lookup_failed)`` for a caller with
-    no managed token.
-
-    ``identity_for_token`` only matches an agent-bom-issued ``abi_`` token, so a
-    JWKS/OIDC JWT or an opaque ``policy.agent_tokens`` caller previously bypassed
-    identity revocation entirely.
-
-    The two failure signals are deliberately distinct because they warrant
-    different verdicts:
-
-    * ``lookup_incomplete`` — the store answered, but with a result it knows is
-      partial. A revoked row may be sitting in the untraversed tail, so the
-      answer is unusable and the relay denies unconditionally.
-    * ``lookup_failed`` — the store did not answer at all. Fail-open, gated on
-      posture, so an identity-store outage never becomes a fleet-wide outage.
-
-    Blocking I/O — call it off the event loop.
-    """
-    if not source_agent or source_agent == ANONYMOUS:
-        return False, False, False
-    try:
-        from agent_bom.api.agent_identity_store import agent_identity_revoked, get_agent_identity_store
-
-        revoked, lookup_incomplete = agent_identity_revoked(get_agent_identity_store(), tenant_id, source_agent)
-        return revoked, lookup_incomplete, False
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gateway agent identity revocation check failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        return False, False, True
-
-
-# Upper bound on open incidents fetched per drift enforcement check. When a
-# tenant has more open incidents than this, we cannot rule out a violation in the
-# untraversed tail, so the lookup returns ``unavailable`` (honest partial signal)
-# rather than silently under-enforcing on the capped result.
-_DRIFT_INCIDENT_LOOKUP_CAP = 200
-
-
-@dataclass(frozen=True)
-class _DriftLookup:
-    violates: bool = False
-    unavailable: bool = False
-    reason: str = ""
-
-
-def _open_drift_violates_tool(tenant_id: str, blueprint_id: str, tool_name: str) -> _DriftLookup:
-    """Look up a tool violation for a caller's resolved role blueprint.
-
-    Drift incidents are keyed by ``blueprint_id``.  They are never keyed by an
-    agent id, so callers must resolve the managed identity -> blueprint binding
-    before invoking this function.  Store unavailability is returned explicitly
-    so secured enforce-mode callers can fail closed while development/audit
-    modes can remain observable without silently inventing a match.
-    """
-    if not blueprint_id or not tool_name:
-        return _DriftLookup()
-    try:
-        from agent_bom.api.drift_incident_store import get_drift_incident_store
-
-        incidents = get_drift_incident_store().list(tenant_id, include_resolved=False, limit=_DRIFT_INCIDENT_LOOKUP_CAP)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gateway drift check failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        return _DriftLookup(unavailable=True, reason="drift incident store unavailable")
-    blueprint_key = blueprint_id.strip().lower().replace("-", "_")
-    for incident in incidents:
-        incident_blueprint = (getattr(incident, "blueprint_id", "") or "").strip().lower().replace("-", "_")
-        if incident_blueprint != blueprint_key:
-            continue
-        drifted_tools = {
-            str(v.get("tool_name", "")).strip() for v in (getattr(incident, "top_violations", None) or []) if isinstance(v, dict)
-        }
-        if tool_name in drifted_tools:
-            return _DriftLookup(
-                violates=True,
-                reason=f"tool '{tool_name}' is outside role blueprint '{blueprint_id}'",
-            )
-    if len(incidents) >= _DRIFT_INCIDENT_LOOKUP_CAP:
-        # The open-incident set was capped, so a violation may exist in the tail
-        # we never inspected. Surface this as unavailable (partial) instead of a
-        # clean pass, so enforce-mode callers fail closed rather than silently
-        # under-enforce for the tenant's tail incidents.
-        logger.warning(
-            "gateway drift check truncated at %d open incidents for tenant; enforcement coverage is partial",
-            _DRIFT_INCIDENT_LOOKUP_CAP,
-        )
-        return _DriftLookup(
-            unavailable=True,
-            reason=f"open drift incidents exceed lookup cap ({_DRIFT_INCIDENT_LOOKUP_CAP}); enforcement coverage partial",
-        )
-    return _DriftLookup()
-
-
-def _validate_gateway_rule_patterns(policies: list[Any]) -> tuple[bool, str]:
-    """Fail closed when a control-plane rule carries an invalid regex pattern."""
-    import re
-
-    for policy in policies:
-        for rule in policy.rules:
-            if rule.tool_name_pattern:
-                try:
-                    re.compile(rule.tool_name_pattern)
-                except re.error:
-                    logger.error(
-                        "gateway control-plane bundle: invalid tool_name_pattern in rule %s (policy %s); failing closed",
-                        rule.id,
-                        policy.policy_id,
-                    )
-                    return False, "control-plane policy malformed"
-            for arg_name, arg_regex in (rule.arg_pattern or {}).items():
-                try:
-                    re.compile(arg_regex)
-                except re.error:
-                    logger.error(
-                        "gateway control-plane bundle: invalid arg_pattern for %s in rule %s (policy %s); failing closed",
-                        arg_name,
-                        rule.id,
-                        policy.policy_id,
-                    )
-                    return False, "control-plane policy malformed"
-    return True, ""
-
-
-def _evaluate_control_plane_bundle(
-    policy_dicts: list[dict[str, Any]], source_agent: str, tool_name: str, arguments: dict
-) -> tuple[bool, str]:
-    """Enforce control-plane GatewayPolicy binding for one relayed call.
-
-    Mirrors the per-MCP proxy: policies are scoped to the resolved source_agent
-    via bound_agents before evaluation, so a policy bound to other agents never
-    applies here. Returns ``(allowed, reason)``; an empty bundle allows.
-    """
-    if not policy_dicts:
-        return True, ""
-    try:
-        from agent_bom.api.policy_store import GatewayPolicy
-        from agent_bom.gateway import evaluate_gateway_policy_bundle
-
-        policies = []
-        parse_errors = 0
-        for item in policy_dicts:
-            try:
-                policies.append(GatewayPolicy(**item))
-            except (TypeError, ValueError):
-                parse_errors += 1
-                continue
-        if not policies:
-            # The bundle was configured but nothing parsed — an operator typo must
-            # not silently disable all control-plane enforcement. Fail closed.
-            if parse_errors:
-                logger.error(
-                    "gateway control-plane bundle: all %d policy/policies failed to parse; failing closed",
-                    parse_errors,
-                )
-                return False, "control-plane policy malformed"
-            return True, ""
-        if parse_errors:
-            logger.error(
-                "gateway control-plane bundle: %d policy/policies failed to parse; failing closed",
-                parse_errors,
-            )
-            return False, "control-plane policy malformed"
-        patterns_ok, pattern_reason = _validate_gateway_rule_patterns(policies)
-        if not patterns_ok:
-            return False, pattern_reason
-        return evaluate_gateway_policy_bundle(policies, source_agent, tool_name, arguments)
-    except Exception as exc:  # noqa: BLE001
-        # Fail closed: a bundle that cannot be evaluated must not silently pass.
-        logger.warning("gateway control-plane bundle evaluation failed: %s", sanitize_text(_sanitize_for_log(exc)))
-        return False, "control-plane policy evaluation error"
-
-
-_CONDITIONAL_ACCESS_EVAL_FAILED = "conditional access evaluation failed"
-
-
-def _conditional_access_fail_closed(tenant_id: str) -> tuple[bool, str, str]:
-    """Decide the conditional-access outcome after an evaluation error, fail-closed.
-
-    The primary evaluation (``evaluate_conditional_access_for_request``) raised, so
-    we cannot trust its verdict. A conditional-access ``deny``/``require`` policy
-    that would otherwise block the call MUST NOT be silently bypassed (§7 fail
-    closed). But we also must not turn a flaky store into a blanket outage for
-    tenants that never configured the feature.
-
-    Resolution:
-    - Re-read the tenant's active conditional-access policies with a cheap,
-      independent lookup. If that read succeeds and finds **no** policies, there
-      is no gate to bypass → allow.
-    - If the tenant HAS one or more active conditional-access policies → deny.
-    - If we cannot even determine whether policies exist (the lookup also
-      raised — e.g. the store is unavailable), we cannot prove the gate is empty,
-      so deny. Only a positively-confirmed empty policy set opens the gate.
-
-    Returns ``(allowed, reason, policy_id)`` matching the primary evaluator.
-    """
-    try:
-        from agent_bom.api.agent_identity_store import get_agent_identity_store
-
-        policies = get_agent_identity_store().list_conditional_policies(tenant_id, include_disabled=False, limit=1)
-    except Exception:  # noqa: BLE001 — cannot confirm an empty gate → fail closed
-        return False, _CONDITIONAL_ACCESS_EVAL_FAILED, ""
-    if not policies:
-        return True, "", ""
-    return False, _CONDITIONAL_ACCESS_EVAL_FAILED, ""
 
 
 def _emit_gateway_governance_event(event_type: str, *, tenant_id: str, subject_id: str, payload: dict[str, Any]) -> None:
@@ -540,13 +303,6 @@ async def _emit_policy_interop_event(
         logger.warning("gateway policy webhook dispatch error (event dropped, relay unaffected): %s", sanitize_text(_sanitize_for_log(exc)))
 
 
-def _load_policy_file(policy_path: Path) -> dict[str, Any]:
-    payload = json.loads(policy_path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError("gateway policy file must contain a JSON object")
-    return payload
-
-
 def _inject_jsonrpc_trace_meta(
     message: dict[str, Any],
     *,
@@ -556,40 +312,6 @@ def _inject_jsonrpc_trace_meta(
 ) -> dict[str, Any]:
     """Preserve the gateway's explicit trace arguments at its compatibility entry."""
     return inject_jsonrpc_trace_meta(message, traceparent=traceparent, tracestate=tracestate, baggage=baggage)
-
-
-def _warn_on_quarantined_agents(settings: GatewaySettings) -> None:
-    """Name the agents that fleet enforcement will block, once, at boot.
-
-    ``fleet_enforcement_mode`` now defaults to ``enforce``. An operator upgrading
-    with a stale QUARANTINED row would otherwise discover the new behaviour as
-    unexplained traffic loss — especially likely because releasing an agent did
-    not disable its deny policy until this release. Best-effort and silent on
-    error: this is an advisory log, never a boot gate.
-    """
-    if settings.fleet_enforcement_mode != "enforce":
-        return
-    try:
-        from agent_bom.api.fleet_store import FleetLifecycleState
-        from agent_bom.api.stores import _get_fleet_store
-
-        # The relay resolves a tenant per request; at boot only the default
-        # tenant is knowable, which is the single-tenant self-host shape this
-        # warning exists for.
-        quarantined = [
-            (getattr(a, "name", "") or getattr(a, "agent_id", ""))
-            for a in _get_fleet_store().list_by_tenant("default")
-            if getattr(a, "lifecycle_state", None) == FleetLifecycleState.QUARANTINED
-        ]
-    except Exception:  # noqa: BLE001
-        return
-    if quarantined:
-        logger.warning(
-            "fleet enforcement is active: %d quarantined agent(s) will be blocked at this gateway: %s "
-            "(opt out with --fleet-enforcement off)",
-            len(quarantined),
-            ", ".join(sorted(_sanitize_for_log(name) for name in quarantined)[:20]),
-        )
 
 
 def create_gateway_app(settings: GatewaySettings) -> FastAPI:
@@ -632,67 +354,41 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     fail_closed = resolved_fail_mode == "closed"
     if fail_closed:
         logger.info("gateway policy engine starting in fail-CLOSED mode: unloadable policy or evaluation errors will DENY")
-    policy_state: dict[str, Any] = {
-        "policy": dict(settings.policy),
-        "source": str(settings.policy_path) if settings.policy_path else "inline",
-        "last_loaded_at": None,
-        "last_error": None,
-        "last_mtime": None,
-        # True only when a file policy was configured but never successfully
-        # loaded. In fail-closed mode this makes the relay DENY rather than
-        # forward against the empty default policy.
-        "load_failed": settings.policy_path is not None,
-    }
-    policy_lock = asyncio.Lock()
+    policy_reload = GatewayPolicyReloader(
+        state=GatewayPolicyState(
+            policy=dict(settings.policy),
+            source=str(settings.policy_path) if settings.policy_path else "inline",
+            load_failed=settings.policy_path is not None,
+        ),
+        path=lambda: settings.policy_path,
+        interval=lambda: settings.policy_reload_interval_seconds,
+        load=lambda path: _load_policy_file(path),
+        logger=logger,
+        log_prefix="gateway policy",
+        sanitize_log=_sanitize_for_log,
+    )
+    policy_state = policy_reload.state
+    policy_lock = policy_reload.lock
     reload_task: asyncio.Task[None] | None = None
 
-    async def _reload_policy_if_changed(force: bool = False) -> bool:
-        if settings.policy_path is None:
-            return False
-
-        async with policy_lock:
-            try:
-                stat = settings.policy_path.stat()
-                mtime = stat.st_mtime
-                if not force and policy_state["last_mtime"] == mtime:
-                    return False
-                next_policy = _load_policy_file(settings.policy_path)
-            except FileNotFoundError as exc:
-                policy_state["last_error"] = sanitize_error(exc)
-                logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, sanitize_text(_sanitize_for_log(exc)))
-                return False
-            except Exception as exc:  # noqa: BLE001
-                policy_state["last_error"] = sanitize_error(exc)
-                logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, sanitize_text(_sanitize_for_log(exc)))
-                return False
-
-            policy_state["policy"] = next_policy
-            policy_state["last_loaded_at"] = time.time()
-            policy_state["last_error"] = None
-            policy_state["last_mtime"] = mtime
-            policy_state["load_failed"] = False
-        logger.info("gateway policy reloaded from %s", settings.policy_path)
-        return True
-
-    async def _policy_reload_loop() -> None:
-        while True:
-            await asyncio.sleep(max(settings.policy_reload_interval_seconds, 1))
-            await _reload_policy_if_changed()
-
-    # === Inter-agent firewall (#982 PR 2) ============================
-    # Parallel state and reload loop so firewall policy can be rotated
-    # independently from the MCP method-gating policy. Empty / missing file
-    # falls back to a permissive default-allow policy so a missing config
-    # never breaks the gateway.
-    firewall_state: dict[str, Any] = {
-        "policy": AgentFirewallPolicy(),
-        "source": str(settings.firewall_policy_path) if settings.firewall_policy_path else "default-allow",
-        "last_loaded_at": None,
-        "last_error": None,
-        "last_mtime": None,
-        "load_failed": settings.firewall_policy_path is not None,
-    }
-    firewall_lock = asyncio.Lock()
+    # The firewall rotates independently and invalidates a failed reload;
+    # method policy retains its last successfully loaded version.
+    firewall_reload = GatewayPolicyReloader(
+        state=GatewayPolicyState(
+            policy=AgentFirewallPolicy(),
+            source=str(settings.firewall_policy_path) if settings.firewall_policy_path else "default-allow",
+            load_failed=settings.firewall_policy_path is not None,
+        ),
+        path=lambda: settings.firewall_policy_path,
+        interval=lambda: settings.firewall_policy_reload_interval_seconds,
+        load=lambda path: load_firewall_policy_file(path),
+        logger=logger,
+        log_prefix="gateway firewall policy",
+        sanitize_log=_sanitize_for_log,
+        invalidate_on_error=True,
+    )
+    firewall_state = firewall_reload.state
+    firewall_lock = firewall_reload.lock
     firewall_reload_task: asyncio.Task[None] | None = None
 
     # Graph-derived reachability facts (consume direction). Static report mode is
@@ -754,49 +450,6 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             await asyncio.sleep(max(settings.graph_reachability_bundle_poll_interval_seconds, 0.1))
             await runtime_facts_poller.refresh()
 
-    async def _reload_firewall_policy_if_changed(force: bool = False) -> bool:
-        if settings.firewall_policy_path is None:
-            return False
-
-        async with firewall_lock:
-            try:
-                stat = settings.firewall_policy_path.stat()
-                mtime = stat.st_mtime
-                if not force and firewall_state["last_mtime"] == mtime:
-                    return False
-                next_policy = load_firewall_policy_file(settings.firewall_policy_path)
-            except (FileNotFoundError, FirewallPolicyError) as exc:
-                firewall_state["last_error"] = sanitize_error(exc)
-                firewall_state["load_failed"] = True
-                logger.warning(
-                    "gateway firewall policy reload failed for %s: %s",
-                    settings.firewall_policy_path,
-                    sanitize_text(_sanitize_for_log(exc)),
-                )
-                return False
-            except Exception as exc:  # noqa: BLE001
-                firewall_state["last_error"] = sanitize_error(exc)
-                firewall_state["load_failed"] = True
-                logger.warning(
-                    "gateway firewall policy reload failed for %s: %s",
-                    settings.firewall_policy_path,
-                    sanitize_text(_sanitize_for_log(exc)),
-                )
-                return False
-
-            firewall_state["policy"] = next_policy
-            firewall_state["last_loaded_at"] = time.time()
-            firewall_state["last_error"] = None
-            firewall_state["last_mtime"] = mtime
-            firewall_state["load_failed"] = False
-        logger.info("gateway firewall policy reloaded from %s", settings.firewall_policy_path)
-        return True
-
-    async def _firewall_reload_loop() -> None:
-        while True:
-            await asyncio.sleep(max(settings.firewall_policy_reload_interval_seconds, 1))
-            await _reload_firewall_policy_if_changed()
-
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
         nonlocal reload_task
@@ -806,13 +459,13 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if isinstance(settings.audit_sink, ControlPlaneAuditSink):
                 await settings.audit_sink.start()
             if settings.policy_path is not None:
-                await _reload_policy_if_changed(force=True)
+                await policy_reload.reload(force=True)
                 if settings.policy_reload_interval_seconds > 0:
-                    reload_task = asyncio.create_task(_policy_reload_loop())
+                    reload_task = asyncio.create_task(policy_reload.run())
             if settings.firewall_policy_path is not None:
-                await _reload_firewall_policy_if_changed(force=True)
+                await firewall_reload.reload(force=True)
                 if settings.firewall_policy_reload_interval_seconds > 0:
-                    firewall_reload_task = asyncio.create_task(_firewall_reload_loop())
+                    firewall_reload_task = asyncio.create_task(firewall_reload.run())
             if runtime_facts_poller is not None:
                 await runtime_facts_poller.refresh()
                 if settings.graph_reachability_bundle_poll_interval_seconds > 0:
@@ -878,26 +531,26 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         async with policy_lock:
-            policy_summary = summarize_policy_bundle(policy_state["policy"])
+            policy_summary = summarize_policy_bundle(policy_state.policy)
             policy_runtime = {
-                "source": policy_state["source"],
+                "source": policy_state.source,
                 "source_kind": "file" if settings.policy_path else "inline",
                 "reload_enabled": bool(settings.policy_path and settings.policy_reload_interval_seconds > 0),
                 "reload_interval_seconds": settings.policy_reload_interval_seconds,
-                "last_loaded_at": policy_state["last_loaded_at"],
-                "last_error": policy_state["last_error"],
+                "last_loaded_at": policy_state.last_loaded_at,
+                "last_error": policy_state.last_error,
                 **policy_summary,
             }
         async with firewall_lock:
-            firewall_policy: AgentFirewallPolicy = firewall_state["policy"]
+            firewall_policy: AgentFirewallPolicy = firewall_state.policy
             firewall_runtime = {
-                "source": firewall_state["source"],
+                "source": firewall_state.source,
                 "source_kind": "file" if settings.firewall_policy_path else "default-allow",
                 "reload_enabled": bool(settings.firewall_policy_path and settings.firewall_policy_reload_interval_seconds > 0),
                 "reload_interval_seconds": settings.firewall_policy_reload_interval_seconds,
-                "last_loaded_at": firewall_state["last_loaded_at"],
-                "last_error": firewall_state["last_error"],
-                "load_failed": bool(firewall_state.get("load_failed")),
+                "last_loaded_at": firewall_state.last_loaded_at,
+                "last_error": firewall_state.last_error,
+                "load_failed": bool(firewall_state.load_failed),
                 "rule_count": len(firewall_policy.rules),
                 "default_decision": firewall_policy.default_decision.value,
                 "enforcement_mode": firewall_policy.enforcement_mode.value,
@@ -1013,10 +666,10 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             raise HTTPException(status_code=400, detail="'target_roles' must be a list of strings")
 
         async with firewall_lock:
-            policy: AgentFirewallPolicy = firewall_state["policy"]
-            policy_source = firewall_state["source"]
-            policy_loaded_at = firewall_state["last_loaded_at"]
-            policy_load_failed = bool(firewall_state.get("load_failed"))
+            policy: AgentFirewallPolicy = firewall_state.policy
+            policy_source = firewall_state.source
+            policy_loaded_at = firewall_state.last_loaded_at
+            policy_load_failed = bool(firewall_state.load_failed)
         if policy.tenant_id is not None and policy.tenant_id != tenant_id:
             raise HTTPException(status_code=403, detail="firewall policy is not bound to the authenticated tenant")
         if fail_closed and policy_load_failed and settings.firewall_policy_path is not None:
@@ -1141,8 +794,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         # Inline policy check — reuse the exact evaluator the per-MCP proxy uses.
         async with policy_lock:
-            current_policy = dict(policy_state["policy"])
-            policy_load_failed = bool(policy_state["load_failed"])
+            current_policy = dict(policy_state.policy)
+            policy_load_failed = bool(policy_state.load_failed)
 
         # Fail-closed posture: a configured file policy that never loaded means
         # the relay would otherwise forward against an empty default-allow
@@ -1568,8 +1221,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         # audited but does not block (matching enforcement_mode dry-run).
         if settings.firewall_policy_path is not None:
             async with firewall_lock:
-                fw_policy: AgentFirewallPolicy = firewall_state["policy"]
-                fw_load_failed = bool(firewall_state.get("load_failed"))
+                fw_policy: AgentFirewallPolicy = firewall_state.policy
+                fw_load_failed = bool(firewall_state.load_failed)
             if fail_closed and fw_load_failed:
                 record_gateway_relay(upstream.name, "blocked")
                 return JSONResponse(

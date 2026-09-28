@@ -37,6 +37,9 @@ OWNED_FUNCTIONS = {
     "_authenticate_gateway_request": "api/gateway_auth.py",
     "_request_groups": "api/gateway_request.py",
     "_build_gateway_rate_limit_store": "api/gateway_rate_limit.py",
+    "_evaluate_control_plane_bundle": "api/gateway_policy.py",
+    "_conditional_access_fail_closed": "api/gateway_policy.py",
+    "_open_drift_violates_tool": "api/gateway_policy.py",
     "_package_evidence": "graph/package_projection.py",
     "_resolve_affected_server_ids": "graph/package_projection.py",
     "_add_agentic_identity_graph_projections": "graph/runtime_projection.py",
@@ -94,6 +97,10 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
                 module == "agent_bom.gateway_server" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):
                 errors.append(f"{path}:{node.lineno}: upstream relay must not import HTTP application or API adapters")
+            if path == "runtime/gateway_policy_reload.py" and (
+                module == "agent_bom.api" or module.startswith("agent_bom.api.") or module == "agent_bom.gateway_server"
+            ):
+                errors.append(f"{path}:{node.lineno}: policy reload state must receive adapters through typed callables")
 
             if path in {"graph/ports.py", "graph/correlation_service.py"} and (
                 module == "agent_bom.api"

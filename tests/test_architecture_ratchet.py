@@ -166,3 +166,9 @@ def test_shared_semantic_aliases_cannot_restore_duplicate_implementations():
 def test_risk_conditions_cannot_import_orchestration_or_adapters():
     for source in ("from agent_bom import proxy_policy", "from agent_bom.api import auth"):
         assert boundary_errors("runtime/risk_conditions.py", ast.parse(source))
+
+
+def test_gateway_policy_reload_cannot_import_adapters():
+    for source in ("from agent_bom.api import gateway_policy", "import agent_bom.gateway_server"):
+        assert boundary_errors("runtime/gateway_policy_reload.py", ast.parse(source))
+    assert not boundary_errors("runtime/gateway_policy_reload.py", ast.parse("from agent_bom.security import sanitize_error"))

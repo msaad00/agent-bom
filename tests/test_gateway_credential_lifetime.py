@@ -80,6 +80,7 @@ def test_cli_reads_expiry_from_environment(monkeypatch, tmp_path):
         result = CliRunner().invoke(gateway_group, ["serve", "--upstreams", str(source)])
     assert result.exit_code == 0, result.output
     assert run.call_count == 1
+    assert run.call_args.kwargs["proxy_headers"] is False
     app = run.call_args.args[0]
     client = TestClient(app)
     assert client.get("/metrics", headers={"Authorization": "Bearer synthetic-token"}).status_code == 200

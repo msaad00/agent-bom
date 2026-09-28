@@ -492,12 +492,13 @@ def test_conditional_access_blocks_at_gateway(store):
         audit_events.append(event)
 
     settings = GatewaySettings(
+        trusted_context_proxy_cidrs=("127.0.0.1/32",),
         registry=UpstreamRegistry([UpstreamConfig(name="filesystem", url="http://fs.local:8100")]),
         policy={},
         upstream_caller=ok_caller,
         audit_sink=audit_sink,
     )
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_files", "arguments": {}}}
 
     blocked = client.post("/mcp/filesystem", json=message, headers={"x-agent-environment": "dev"})

@@ -68,6 +68,7 @@ def _settings(audit: list[dict[str, Any]] | None = None, **kwargs: Any) -> Gatew
 
     return GatewaySettings(
         registry=_registry(),
+        trusted_context_proxy_cidrs=("127.0.0.1/32",),
         policy=kwargs.pop("policy", {"rules": []}),
         upstream_caller=_ok_caller,
         audit_sink=_sink if audit is not None else None,
@@ -120,7 +121,7 @@ def test_fail_closed_denies_when_policy_file_unloadable(tmp_path):
     missing = tmp_path / "does-not-exist.json"
     audit: list[dict[str, Any]] = []
     settings = _settings(audit=audit, policy_path=missing, fail_mode="closed")
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call())
     assert _is_blocked(resp)
     assert resp.json()["error"]["data"]["policy_source"] == "fail_closed"
@@ -131,7 +132,7 @@ def test_fail_closed_default_denies_when_policy_file_unloadable(tmp_path):
     missing = tmp_path / "does-not-exist.json"
     audit: list[dict[str, Any]] = []
     settings = _settings(audit=audit, policy_path=missing)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call())
     assert _is_blocked(resp)
     assert resp.json()["error"]["data"]["policy_source"] == "fail_closed"
@@ -141,7 +142,7 @@ def test_fail_closed_default_denies_when_policy_file_unloadable(tmp_path):
 def test_explicit_fail_open_allows_when_policy_file_unloadable(tmp_path):
     missing = tmp_path / "does-not-exist.json"
     settings = _settings(policy_path=missing, fail_mode="open")
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call())
     # Local/dev compatibility: explicit fail-open still forwards.
     assert resp.status_code == 200
@@ -176,7 +177,7 @@ def test_conditional_rule_required_attribute_denies_in_relay():
     audit: list[dict[str, Any]] = []
     policy = {"rules": [{"id": "need-mfa", "action": "block", "conditions": {"required_attributes": {"mfa": "true"}}}]}
     settings = _settings(audit=audit, policy=policy)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     # No mfa context attribute → the required-attribute gate is not satisfied.
     resp = client.post("/mcp/filesystem", json=_call())
     assert _is_blocked(resp)
@@ -190,7 +191,7 @@ def test_conditional_rule_risk_score_denies_in_relay():
     audit: list[dict[str, Any]] = []
     policy = {"rules": [{"id": "risk-cap", "action": "block", "conditions": {"max_risk_score": 0.5}}]}
     settings = _settings(audit=audit, policy=policy)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call(), headers={"x-agent-risk-score": "0.9"})
     assert _is_blocked(resp)
     assert resp.json()["error"]["data"]["policy_source"] == "conditional_access"
@@ -204,7 +205,7 @@ def test_quarantine_rule_returns_distinct_decision():
     audit: list[dict[str, Any]] = []
     policy = {"rules": [{"id": "q-high-risk", "action": "quarantine", "conditions": {"max_risk_score": 0.5}}]}
     settings = _settings(audit=audit, policy=policy)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call(), headers={"x-agent-risk-score": "0.95"})
     body = resp.json()
     assert resp.status_code == 200
@@ -227,7 +228,7 @@ def test_plugin_evaluator_can_deny_in_relay():
     register_policy_evaluator("deny-shell", _deny_evaluator)
     audit: list[dict[str, Any]] = []
     settings = _settings(audit=audit)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
     assert _is_blocked(resp)
     assert resp.json()["error"]["data"]["policy_source"] == "policy_plugin"
@@ -240,7 +241,7 @@ def test_raising_plugin_fails_closed_by_default():
     register_policy_evaluator("boom", _boom)
     audit: list[dict[str, Any]] = []
     settings = _settings(audit=audit)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call())
     assert _is_blocked(resp)
     body = resp.json()
@@ -258,7 +259,7 @@ def test_raising_plugin_is_isolated_in_explicit_fail_open_mode():
 
     register_policy_evaluator("boom", _boom)
     settings = _settings(fail_mode="open")
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call())
     # Decision still returned — the call forwards only under explicit fail-open.
     assert resp.status_code == 200
@@ -366,7 +367,7 @@ def test_webhook_failure_does_not_block_relay():
     audit: list[dict[str, Any]] = []
     policy = {"rules": [{"id": "deny-shell", "action": "block", "block_tools": ["run_shell"]}]}
     settings = _settings(audit=audit, policy=policy, policy_webhook_url="https://siem.example/ingest")
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
     assert _is_blocked(resp)  # relay still denies even though the webhook would fail
 
@@ -378,7 +379,7 @@ def test_defaults_preserve_existing_allow_behaviour():
     # No policy_path, no webhook, no conditional rules, no plugins: an unmatched
     # inline policy is still non-enforcement and forwards.
     settings = _settings(policy={"rules": []})
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call())
     assert resp.status_code == 200
     assert resp.json().get("result") == {"ok": True}
@@ -389,7 +390,7 @@ def test_defaults_preserve_existing_block_behaviour():
     # original -32001 code and policy_source "file".
     policy = {"rules": [{"id": "no-shell", "action": "block", "block_tools": ["run_shell"]}]}
     settings = _settings(policy=policy)
-    client = TestClient(create_gateway_app(settings))
+    client = TestClient(create_gateway_app(settings), client=("127.0.0.1", 7777))
     resp = client.post("/mcp/filesystem", json=_call(tool="run_shell"))
     body = resp.json()
     assert body["error"]["code"] == -32001

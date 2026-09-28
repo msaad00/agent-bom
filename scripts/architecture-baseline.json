@@ -1719,14 +1719,14 @@
     },
     "gateway_server.py::create_gateway_app": {
       "complexity": 235,
-      "function_lines": 2246
+      "function_lines": 2245
     },
     "gateway_server.py::create_gateway_app.firewall_check": {
       "function_lines": 116
     },
     "gateway_server.py::create_gateway_app.relay": {
       "complexity": 164,
-      "function_lines": 1735
+      "function_lines": 1734
     },
     "github_actions.py::_extract_workflow_info": {
       "complexity": 16,
@@ -1772,7 +1772,7 @@
       "file_lines": 688
     },
     "graph/builder.py": {
-      "file_lines": 7295
+      "file_lines": 6645
     },
     "graph/builder.py::_add_agent_cloud_lineage": {
       "function_lines": 282

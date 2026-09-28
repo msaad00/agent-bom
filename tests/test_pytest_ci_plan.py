@@ -100,3 +100,19 @@ def test_gateway_modules_select_cross_surface_enforcement_contracts(tmp_path: Pa
         "src/agent_bom/runtime/trace_metadata.py",
     ):
         assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+def test_report_projection_edits_select_builder_store_and_runtime_contracts(tmp_path: Path) -> None:
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_graph_builder.py",
+            "test_graph_projection_contracts.py",
+            "test_runtime_incident_feedback.py",
+            "graph/test_store_backed_unified_graph.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    for module in ("builder", "package_projection", "runtime_projection", "projection_support"):
+        assert select_targeted_tests(changed_files=[Path(f"src/agent_bom/graph/{module}.py")], root=tmp_path) == expected

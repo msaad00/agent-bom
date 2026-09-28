@@ -108,3 +108,17 @@ def test_gateway_audit_factories_have_single_owners():
         tree = ast.parse(f"def {function}():\n pass")
         assert boundary_errors("gateway_server.py", tree)
         assert not boundary_errors(f"runtime/{owner}.py", tree)
+
+
+def test_report_projections_cannot_depend_on_orchestration_or_api():
+    for module in ("package_projection", "runtime_projection", "projection_support"):
+        for source in ("from .builder import build_unified_graph_from_report", "from agent_bom.api import stores"):
+            assert boundary_errors(f"graph/{module}.py", ast.parse(source))
+        assert not boundary_errors(f"graph/{module}.py", ast.parse("from agent_bom.graph.node import UnifiedNode"))
+
+
+def test_report_projection_judgments_cannot_be_duplicated_in_builder():
+    for name, owner in (("_package_evidence", "package_projection"), ("_add_agentic_identity_graph_projections", "runtime_projection")):
+        tree = ast.parse(f"def {name}():\n pass")
+        assert boundary_errors("graph/builder.py", tree)
+        assert not boundary_errors(f"graph/{owner}.py", tree)

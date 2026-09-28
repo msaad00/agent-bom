@@ -30,6 +30,11 @@ OWNED_FUNCTIONS = {
     "build_control_plane_audit_sink": "runtime/gateway_audit.py",
     "build_local_gateway_audit_sink": "runtime/gateway_audit_local.py",
     "inject_jsonrpc_trace_meta": "runtime/trace_metadata.py",
+    "_package_evidence": "graph/package_projection.py",
+    "_resolve_affected_server_ids": "graph/package_projection.py",
+    "_add_agentic_identity_graph_projections": "graph/runtime_projection.py",
+    "_add_runtime_incident_feedback": "graph/runtime_projection.py",
+    "_agent_node_id": "graph/projection_support.py",
 }
 
 
@@ -70,6 +75,11 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
                 module == "agent_bom.gateway_server" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):
                 errors.append(f"{path}:{node.lineno}: upstream relay must not import HTTP application or API adapters")
+
+            if path in {"graph/package_projection.py", "graph/runtime_projection.py", "graph/projection_support.py"} and (
+                module == "agent_bom.graph.builder" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
+            ):
+                errors.append(f"{path}:{node.lineno}: report projections must not import builder orchestration or API adapters")
             if path == "api/graph_persistence.py" and module in {
                 "agent_bom.api.pipeline",
                 "agent_bom.api.server",

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from agent_bom.api.agent_findings import current_agent_blast_rows, estate_reach_names
 from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
@@ -666,20 +667,19 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
         if not server.packages:
             server.packages = extract_packages(server)
 
-    # Cross-reference blast radii from completed scans
-    agent_blast: list[dict] = []
-    for job in _get_store().list_all(tenant_id=_tenant_id(request)):
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        for br in job.result.get("blast_radius", []):
-            if agent.canonical_id in br.get("affected_agent_ids", []):
-                agent_blast.append(br)
-
     total_packages = sum(len(s.packages) for s in agent.mcp_servers)
     total_tools = sum(len(s.tools) for s in agent.mcp_servers)
     all_credentials: list[str] = []
     for s in agent.mcp_servers:
         all_credentials.extend(s.credential_names)
+
+    agent_blast = current_agent_blast_rows(
+        _get_store().list_all(tenant_id=_tenant_id(request)),
+        agent_id=agent.canonical_id,
+        credential_names=set(all_credentials),
+        tool_names={tool.name for s in agent.mcp_servers for tool in s.tools},
+        server_names={s.name for s in agent.mcp_servers},
+    )
 
     # Every blast radius lands in exactly one bucket. Advisories with no CVSS
     # vector normalise to ``unknown``; without an explicit bucket they fell out
@@ -742,20 +742,15 @@ def _estate_agent_detail(request: Request, agent_name: str) -> dict:
     agent = matches[0]
     canonical_id = agent_identity_key(agent) or ""
 
-    agent_blast: list[dict] = []
-    for job in _get_store().list_all(tenant_id=tenant_id):
-        if job.status != JobStatus.DONE or not job.result:
-            continue
-        for br in job.result.get("blast_radius", []):
-            if canonical_id in br.get("affected_agent_ids", []):
-                agent_blast.append(br)
-
     servers = [server for server in agent.get("mcp_servers") or [] if isinstance(server, dict)]
     credentials: list[str] = []
     for server in servers:
         for name in server.get("credential_env_vars") or []:
             if isinstance(name, str) and name not in credentials:
                 credentials.append(name)
+    agent_blast = current_agent_blast_rows(
+        _get_store().list_all(tenant_id=tenant_id), agent_id=canonical_id, **estate_reach_names(servers, credentials)
+    )
     severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unrated": 0}
     for br in agent_blast:
         sev = normalize_severity(br.get("severity"))

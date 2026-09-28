@@ -713,7 +713,7 @@ def test_posture_uses_canonical_newest_success_independent_of_store_order(
                 store.put(job)
             response = TestClient(app).get("/v1/posture", headers=_AUTH_HEADERS)
             assert response.status_code == 200
-            results.append((response.json()["grade"], response.json()["summary"]))
+            results.append((response.json()["grade"], response.json()["scan_scorecard"]["summary"]))
     finally:
         _clear_jobs()
 

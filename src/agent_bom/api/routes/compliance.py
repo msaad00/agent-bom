@@ -23,9 +23,6 @@ import json
 import logging
 import os
 import secrets
-import threading
-import time
-from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, cast
@@ -37,6 +34,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
+from agent_bom.api.posture_counts_cache import POSTURE_COUNTS_CACHE, cached_posture_block
 from agent_bom.api.stores import (
     _get_analytics_store,
     _get_credential_ref_store,
@@ -2309,7 +2307,9 @@ async def get_posture_scorecard(request: Request) -> dict:
 
     scorecard = latest_result.get("posture_scorecard")
     if scorecard:
-        return cast(dict, scorecard)
+        from agent_bom.api.exec_posture import canonical_posture_payload
+
+        return await anyio.to_thread.run_sync(canonical_posture_payload, request, cast(dict, scorecard))
 
     return {
         "grade": "N/A",
@@ -2399,52 +2399,8 @@ async def get_posture_counts(request: Request) -> dict:
         ) from exc
 
 
-_POSTURE_COUNTS_TTL_SECONDS = 15.0
-_POSTURE_COUNTS_CACHE_MAX = 256
-_POSTURE_COUNTS_CACHE: OrderedDict[tuple[str, str, str], tuple[float, dict[str, Any]]] = OrderedDict()
-_POSTURE_COUNTS_LOCK = threading.Lock()
-
-
-def _issue_counts_fingerprint(tenant_id: str, tenant_jobs: list[Any]) -> str:
-    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
-
-    try:
-        hub_revision = str(get_compliance_hub_store().overview_evidence_revision(tenant_id))
-    except Exception:  # noqa: BLE001
-        hub_revision = "unknown"
-    digest = hashlib.sha256(hub_revision.encode())
-    for job in tenant_jobs:
-        digest.update(f"|{job.job_id}:{job.status}:{getattr(job, 'completed_at', '')}".encode())
-    return digest.hexdigest()
-
-
-def _cached_posture_block(
-    request: Request,
-    tenant_jobs: list[Any],
-    kind: str,
-    compute: Callable[[], dict[str, Any]],
-) -> dict[str, Any]:
-    """Posture-count block reused only while jobs and hub evidence are unchanged.
-
-    The TTL bounds staleness from lifecycle edits and out-of-band graph writes
-    that do not move either fingerprint input; a new scan or ingest invalidates
-    immediately.
-    """
-    tenant_id = require_request_tenant_id(request)
-    key = (tenant_id, kind, _issue_counts_fingerprint(tenant_id, tenant_jobs))
-    now = time.monotonic()
-    with _POSTURE_COUNTS_LOCK:
-        hit = _POSTURE_COUNTS_CACHE.get(key)
-        if hit is not None and hit[0] > now:
-            _POSTURE_COUNTS_CACHE.move_to_end(key)
-            return dict(hit[1])
-    block = compute()
-    with _POSTURE_COUNTS_LOCK:
-        _POSTURE_COUNTS_CACHE[key] = (now + _POSTURE_COUNTS_TTL_SECONDS, dict(block))
-        _POSTURE_COUNTS_CACHE.move_to_end(key)
-        while len(_POSTURE_COUNTS_CACHE) > _POSTURE_COUNTS_CACHE_MAX:
-            _POSTURE_COUNTS_CACHE.popitem(last=False)
-    return block
+_POSTURE_COUNTS_CACHE = POSTURE_COUNTS_CACHE
+_cached_posture_block = cached_posture_block
 
 
 def _cached_issue_severity_counts(request: Request, tenant_jobs: list[Any]) -> dict[str, Any]:

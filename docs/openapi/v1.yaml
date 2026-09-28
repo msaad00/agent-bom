@@ -18575,11 +18575,13 @@ paths:
 
         `/v1/graph` intentionally windows nodes and therefore cannot be the source
 
-        of truth for fix-first triage. This endpoint ranks persisted paths across
+        of truth for fix-first triage. This endpoint ranks paths across the whole
 
-        the whole snapshot and hydrates only the hop nodes needed to render the
+        snapshot by on-path exploitability evidence, then stored composite risk
 
-        selected queue page.'
+        (see ``graph.attack_path_queue_rank``), and hydrates only the hop nodes
+
+        needed to render the selected queue page.'
       operationId: get_graph_attack_paths_v1_graph_attack_paths_get
       parameters:
       - description: Scan ID
@@ -18613,6 +18615,42 @@ paths:
           minimum: 1
           title: Limit
           type: integer
+      - description: Only paths whose worst on-path finding is at least this severity
+        in: query
+        name: min_severity
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - critical
+            - high
+            - medium
+            - low
+            type: string
+          - type: 'null'
+          description: Only paths whose worst on-path finding is at least this severity
+          title: Min Severity
+      - description: Only paths that do (true) or do not (false) expose a credential
+        in: query
+        name: has_credential
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: Only paths that do (true) or do not (false) expose a credential
+          title: Has Credential
+      - description: Only paths whose entrypoint node has this entity type
+        in: query
+        name: source_type
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          description: Only paths whose entrypoint node has this entity type
+          title: Source Type
       responses:
         '200':
           content:

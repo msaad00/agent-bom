@@ -634,9 +634,12 @@ def test_demo_estate_exec_severity_counts_reconcile_across_surfaces(
     overview = demo_estate_client.get("/v1/overview").json()
     headline = overview["headline"]
 
-    # 1. The exec headline and the nav-badge counts are the same number.
-    assert counts["critical"] == headline["critical"], (counts, headline)
-    assert counts["high"] == headline["high"], (counts, headline)
+    # 1. The exec headline and the nav-badge issue counts are the same number;
+    #    occurrence counts reconcile with the overview's ``finding_counts``.
+    assert counts["issues"]["critical"] == headline["critical"], (counts, headline)
+    assert counts["issues"]["high"] == headline["high"], (counts, headline)
+    assert counts["critical"] == overview["finding_counts"]["critical"], (counts, overview["finding_counts"])
+    assert overview["posture"]["severity_basis"] == "issue_groups"
     assert counts["kev"] == headline["kev"], (counts, headline)
     # The demo estate carries the non-CVE critical/high that blast_radius missed.
     assert counts["critical"] >= 3 and counts["high"] >= 12, counts

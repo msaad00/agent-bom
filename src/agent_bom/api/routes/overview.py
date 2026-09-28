@@ -47,6 +47,7 @@ import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
+from agent_bom.api.exec_posture import issue_counts_payload, issue_severity_counts, tenant_exec_posture
 from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -57,7 +58,6 @@ from agent_bom.core.severity import (
     UNRATED_SEVERITY_BUCKET,
     severity_display_bucket,
 )
-from agent_bom.exec_score import compute_exec_score
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -245,7 +245,10 @@ def _overview_cache_put(tenant_id: str, fingerprint: str, payload: dict[str, Any
 
 
 def _reset_overview_cache() -> None:
-    """Test hook: drop all cached overview payloads."""
+    """Test hook: drop all cached overview payloads and the shared posture-count blocks."""
+    from agent_bom.api.posture_counts_cache import clear_posture_counts_cache
+
+    clear_posture_counts_cache()
     with _overview_cache_lock:
         _overview_cache.clear()
         _scan_aggregate_cache.clear()
@@ -1315,43 +1318,11 @@ def _exec_posture(
     hub_severity: dict[str, int],
     hub_kev: int = 0,
     hub_failing_frameworks: set[str] | None = None,
+    issue_severity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Compute the configurable exec risk score from the honest estate counts.
-
-    The grade derives from the same reconciled severity buckets (the unified
-    findings spine + hub-ingested evidence), KEV, credential exposure, and the
-    live count of failing compliance frameworks the overview already exposes —
-    so it can never contradict them (a non-zero counted total always carries
-    penalty). An authoritative scan scorecard is passed as a *floor*: the final
-    score is the worst of the count-derived score and that scorecard, so
-    ingested/benign evidence can only move the grade down, never launder a
-    failing posture up. Reads the tenant's persisted score-config
-    (defaults < env < tenant override).
-    """
-    from agent_bom.api.exec_score_config import resolve_exec_score_config
-
-    combined = _combined_severity(estate["severity"], hub_severity)
-    floor: float | None = None
-    if scan_posture.get("grade") not in (None, "N/A"):
-        floor = float(scan_posture.get("score") or 0.0)
-    config = resolve_exec_score_config(_tenant_id(request))
-    scan_frameworks = estate.get("compliance_failing_frameworks")
-    if scan_frameworks is None:
-        compliance_failing = int(estate.get("compliance_failing", 0) or 0) + len(hub_failing_frameworks or set())
-    else:
-        compliance_failing = len(set(scan_frameworks) | set(hub_failing_frameworks or set()))
-    return compute_exec_score(
-        severity=combined,
-        kev=int(estate.get("kev", 0) or 0) + int(hub_kev or 0),
-        exposure=int(estate.get("credential_exposed", 0) or 0),
-        # Live count of failing compliance frameworks, accumulated in the same
-        # estate rollup (#3962): a framework with a critical/high finding fails.
-        # Cheap — no second control-by-control evaluation on this hot endpoint.
-        compliance_failing=compliance_failing,
-        config=config,
-        floor_score=floor,
-        floor_summary=str(scan_posture.get("summary") or "") or None,
-    )
+    """The tenant exec posture; see :func:`agent_bom.api.exec_posture.tenant_exec_posture`."""
+    occurrences = _combined_severity(estate["severity"], hub_severity)
+    return tenant_exec_posture(_tenant_id(request), scan_posture, estate, occurrences, hub_kev, hub_failing_frameworks, issue_severity)
 
 
 def _cloud_account_count(request: Request, scanned_scopes: dict[str, Any] | None) -> int:
@@ -1673,6 +1644,7 @@ def _compose_overview(
             "repo_scans": _repo_scan_count(jobs),
             "runtime_results": runtime_results,
             "cloud_scopes": scanned_cloud_scopes(jobs),
+            "issue_counts": issue_severity_counts(request, jobs),
         }
         if scan_cache_key:
             _scan_aggregate_put(scan_cache_key, scan_inputs, jobs)
@@ -1703,6 +1675,7 @@ def _compose_overview(
         hub_severity,
         hub_kev,
         hub_failing_frameworks,
+        issue_severity=(issue_counts := scan_inputs.get("issue_counts")),
     )
     runtime_jobs = [SimpleNamespace(status=JobStatus.DONE, result=result) for result in scan_inputs["runtime_results"]]
     runtime = _runtime_snapshot(request, runtime_jobs)
@@ -1713,13 +1686,9 @@ def _compose_overview(
     # canonical keys, so the hub-findings count never silently drops a band the
     # exec total (via ``_combined_severity``) still carries.
     hub_findings = sum(int(v or 0) for v in hub_severity.values())
-    # Headline severity reads the SAME reconciled source of truth that
-    # /v1/posture/counts reads — the unified spine folded with hub-ingested
-    # evidence — never the CVE-only blast_radius (#3961). Both exec surfaces
-    # route through ``_reconciled_exec_counts`` so they can never disagree.
+    # Headline = the issue counts the grade and tiles use; occurrences stay in finding_counts (#3961).
     exec_counts = _reconciled_exec_counts(exec_estate, hub_severity, hub_kev)
-    headline_critical = exec_counts["critical"]
-    headline_high = exec_counts["high"]
+    headline_critical, headline_high = (int((issue_counts or exec_counts)[key]) for key in ("critical", "high"))
     critical_high = headline_critical + headline_high
 
     cloud_scopes = scan_inputs.get("cloud_scopes")
@@ -1831,6 +1800,7 @@ def _compose_overview(
         "tenant_id": tenant_id,
         "posture": posture,
         "finding_counts": {key: exec_counts[key] for key in ("critical", "high", "medium", "low", "unrated", "total", "kev")},
+        "issue_counts": issue_counts_payload(issue_counts),
         "headline": {
             "critical": headline_critical,
             "high": headline_high,

@@ -222,7 +222,8 @@ def test_tenant_assignment_is_joined_before_rescan_document_export(monkeypatch) 
             approved_by="security-lead",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-a",
-        )
+        ),
+        tenant_id="tenant-a",
     )
     monkeypatch.setattr(enterprise, "_get_exception_store", lambda: store)
     report = _owned_report()

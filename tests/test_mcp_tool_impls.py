@@ -1219,7 +1219,7 @@ async def test_exception_tools_share_tenant_bound_lifecycle(monkeypatch):
     monkeypatch.setattr(stores, "_exception_store", store)
     monkeypatch.setattr("agent_bom.api.audit_log.log_action", lambda *args, **kwargs: None)
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-exceptions")
-    store.put(VulnException(vuln_id="CVE-OTHER", package_name="other", tenant_id="other-tenant"))
+    store.put(VulnException(vuln_id="CVE-OTHER", package_name="other", tenant_id="other-tenant"), tenant_id="other-tenant")
 
     requested = json.loads(
         await request_exception_impl(

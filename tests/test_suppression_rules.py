@@ -34,7 +34,8 @@ def test_tenant_suppression_marks_finding_without_deleting_evidence():
             requested_by="analyst",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-a",
-        )
+        ),
+        tenant_id="tenant-a",
     )
     blast_radii = [_blast_radius()]
 
@@ -60,7 +61,8 @@ def test_tenant_suppression_does_not_cross_tenants():
             reason="[finding_feedback:accepted_risk] beta only",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-b",
-        )
+        ),
+        tenant_id="tenant-b",
     )
     blast_radii = [_blast_radius()]
 
@@ -83,7 +85,8 @@ def test_suppression_metadata_is_exported_in_json_report():
             reason="[finding_feedback:not_affected] not deployed",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-a",
-        )
+        ),
+        tenant_id="tenant-a",
     )
     br = _blast_radius()
     apply_tenant_suppression_rules([br], store, tenant_id="tenant-a")
@@ -107,7 +110,8 @@ def test_needs_review_feedback_does_not_suppress_actionability():
             reason="[finding_feedback:needs_review] low confidence runtime-only match",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-a",
-        )
+        ),
+        tenant_id="tenant-a",
     )
     blast_radii = [_blast_radius()]
 
@@ -135,7 +139,8 @@ def test_approved_exception_has_one_suppression_contract_across_six_surfaces():
             reason="[finding_feedback:accepted_risk] approved until upgrade window",
             status=ExceptionStatus.APPROVED,
             tenant_id="tenant-a",
-        )
+        ),
+        tenant_id="tenant-a",
     )
     br = _blast_radius()
     apply_tenant_suppression_rules([br], store, tenant_id="tenant-a")

@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 
 class ScanSchedule(BaseModel):
@@ -33,11 +34,27 @@ class ScanSchedule(BaseModel):
 class ScheduleStore(Protocol):
     """Protocol for schedule persistence."""
 
-    def put(self, schedule: ScanSchedule) -> None: ...
-    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None: ...
-    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool: ...
-    def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]: ...
+    def put(self, schedule: ScanSchedule, *, tenant_id: str) -> None: ...
+    def get(self, schedule_id: str, tenant_id: str) -> ScanSchedule | None: ...
+    def delete(self, schedule_id: str, tenant_id: str) -> bool: ...
+    def list_all(self, tenant_id: str) -> list[ScanSchedule]: ...
     def list_due(self, now_iso: str) -> list[ScanSchedule]: ...
+
+
+def schedule_write_tenant(schedule: ScanSchedule, tenant_id: str) -> str:
+    """A schedule record cannot choose a different tenant than its caller."""
+    tenant = require_explicit_tenant_id(tenant_id)
+    if schedule.tenant_id != tenant:
+        raise ValueError("Schedule tenant does not match the authorized tenant")
+    return tenant
+
+
+def schedule_record_for_tenant(schedule: ScanSchedule, tenant_id: str) -> ScanSchedule:
+    """Reject serialized schedule data whose tenant disagrees with its row scope."""
+    tenant = require_explicit_tenant_id(tenant_id)
+    if schedule.tenant_id != tenant:
+        raise ValueError("Stored schedule tenant does not match its row tenant")
+    return schedule
 
 
 class InMemoryScheduleStore:
@@ -46,36 +63,41 @@ class InMemoryScheduleStore:
     def __init__(self) -> None:
         self._schedules: dict[str, ScanSchedule] = {}
 
-    def put(self, schedule: ScanSchedule) -> None:
-        self._schedules[schedule.schedule_id] = schedule
+    def put(self, schedule: ScanSchedule, *, tenant_id: str) -> None:
+        tenant = schedule_write_tenant(schedule, tenant_id)
+        previous = self._schedules.get(schedule.schedule_id)
+        if previous is not None and previous.tenant_id != tenant:
+            raise ValueError("Schedule identity belongs to a different tenant")
+        self._schedules[schedule.schedule_id] = schedule.model_copy(deep=True)
 
-    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
+    def get(self, schedule_id: str, tenant_id: str) -> ScanSchedule | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         schedule = self._schedules.get(schedule_id)
         if schedule is None:
             return None
-        if tenant_id is not None and schedule.tenant_id != tenant_id:
+        if schedule.tenant_id != tenant:
             return None
-        return schedule
+        return schedule.model_copy(deep=True)
 
-    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, schedule_id: str, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         schedule = self._schedules.get(schedule_id)
         if schedule is None:
             return False
-        if tenant_id is not None and schedule.tenant_id != tenant_id:
+        if schedule.tenant_id != tenant:
             return False
         del self._schedules[schedule_id]
         return True
-        return False
 
-    def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]:
-        schedules = list(self._schedules.values())
-        if tenant_id is None:
-            return schedules
-        return [schedule for schedule in schedules if schedule.tenant_id == tenant_id]
+    def list_all(self, tenant_id: str) -> list[ScanSchedule]:
+        tenant = require_explicit_tenant_id(tenant_id)
+        return [schedule.model_copy(deep=True) for schedule in self._schedules.values() if schedule.tenant_id == tenant]
 
     def list_due(self, now_iso: str) -> list[ScanSchedule]:
-        """Return enabled schedules where next_run <= now."""
-        return [s for s in list(self._schedules.values()) if s.enabled and s.next_run and s.next_run <= now_iso]
+        """Return due rows for the privileged scheduler, which binds each tenant before work."""
+        return [
+            s.model_copy(deep=True) for s in self._schedules.values() if s.enabled and s.next_run and s.next_run <= now_iso
+        ]
 
 
 class SQLiteScheduleStore:
@@ -126,51 +148,51 @@ class SQLiteScheduleStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_sched_tenant_due ON scan_schedules(tenant_id, enabled, next_run)")
         self._conn.commit()
 
-    def put(self, schedule: ScanSchedule) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO scan_schedules (schedule_id, enabled, next_run, tenant_id, data)
-               VALUES (?, ?, ?, ?, ?)""",
+    def put(self, schedule: ScanSchedule, *, tenant_id: str) -> None:
+        schedule_write_tenant(schedule, tenant_id)
+        cursor = self._conn.execute(
+            """INSERT INTO scan_schedules (schedule_id, enabled, next_run, tenant_id, data)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT (schedule_id) DO UPDATE SET enabled=excluded.enabled,
+                 next_run=excluded.next_run, data=excluded.data
+               WHERE scan_schedules.tenant_id=excluded.tenant_id""",
             (schedule.schedule_id, int(schedule.enabled), schedule.next_run, schedule.tenant_id, schedule.model_dump_json()),
         )
         self._conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Schedule identity belongs to a different tenant")
 
-    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
-        if tenant_id is None:
-            row = self._conn.execute("SELECT data FROM scan_schedules WHERE schedule_id = ?", (schedule_id,)).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT data FROM scan_schedules WHERE schedule_id = ? AND tenant_id = ?",
-                (schedule_id, tenant_id),
-            ).fetchone()
+    def get(self, schedule_id: str, tenant_id: str) -> ScanSchedule | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        row = self._conn.execute(
+            "SELECT data FROM scan_schedules WHERE schedule_id = ? AND tenant_id = ?",
+            (schedule_id, tenant),
+        ).fetchone()
         if row is None:
             return None
         schedule: ScanSchedule = ScanSchedule.model_validate_json(row[0])
-        return schedule
+        return schedule_record_for_tenant(schedule, tenant)
 
-    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
-        if tenant_id is None:
-            cursor = self._conn.execute("DELETE FROM scan_schedules WHERE schedule_id = ?", (schedule_id,))
-        else:
-            cursor = self._conn.execute(
-                "DELETE FROM scan_schedules WHERE schedule_id = ? AND tenant_id = ?",
-                (schedule_id, tenant_id),
-            )
+    def delete(self, schedule_id: str, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
+        cursor = self._conn.execute(
+            "DELETE FROM scan_schedules WHERE schedule_id = ? AND tenant_id = ?",
+            (schedule_id, tenant),
+        )
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]:
-        if tenant_id is None:
-            rows = self._conn.execute("SELECT data FROM scan_schedules ORDER BY schedule_id").fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT data FROM scan_schedules WHERE tenant_id = ? ORDER BY schedule_id",
-                (tenant_id,),
-            ).fetchall()
-        return [ScanSchedule.model_validate_json(r[0]) for r in rows]
+    def list_all(self, tenant_id: str) -> list[ScanSchedule]:
+        tenant = require_explicit_tenant_id(tenant_id)
+        rows = self._conn.execute(
+            "SELECT data FROM scan_schedules WHERE tenant_id = ? ORDER BY schedule_id",
+            (tenant,),
+        ).fetchall()
+        return [schedule_record_for_tenant(ScanSchedule.model_validate_json(r[0]), tenant) for r in rows]
 
     def list_due(self, now_iso: str) -> list[ScanSchedule]:
         rows = self._conn.execute(
-            "SELECT data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= ?",
+            "SELECT tenant_id, data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= ?",
             (now_iso,),
         ).fetchall()
-        return [ScanSchedule.model_validate_json(r[0]) for r in rows]
+        return [schedule_record_for_tenant(ScanSchedule.model_validate_json(r[1]), r[0]) for r in rows]

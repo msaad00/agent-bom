@@ -889,7 +889,7 @@ class TestSnowflakeScheduleStore:
         conn = _mock_connection()
         mock_connect.return_value = conn
         store = self._make_store()
-        store.put(self._make_schedule())
+        store.put(self._make_schedule(), tenant_id="default")
         calls = conn.cursor().execute.call_args_list
         merge_call = [c for c in calls if "MERGE INTO scan_schedules" in str(c)]
         assert len(merge_call) > 0
@@ -922,7 +922,7 @@ class TestSnowflakeScheduleStore:
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_due(self, mock_connect):
         schedule = self._make_schedule("sched-due", enabled=True, next_run="2025-01-01T00:00:00Z")
-        cur = _mock_cursor(fetchall_val=[(schedule.model_dump_json(),)])
+        cur = _mock_cursor(fetchall_val=[(schedule.tenant_id, schedule.model_dump_json())])
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()

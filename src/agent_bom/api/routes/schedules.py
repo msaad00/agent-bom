@@ -114,7 +114,7 @@ def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     with tenant_quota_guard(tenant_id, lambda: enforce_schedule_quota(tenant_id)):
         if schedule.enabled:
             _validate_enabled_source_schedule(tenant_id, schedule.scan_config)
-        _get_schedule_store().put(schedule)
+        _get_schedule_store().put(schedule, tenant_id=tenant_id)
     log_action(
         "schedule.create",
         actor=actor,
@@ -174,7 +174,7 @@ def toggle_schedule(request: Request, schedule_id: str) -> dict:
             _validate_enabled_source_schedule(tenant_id, s.scan_config)
         s.enabled = enabling
         s.updated_at = datetime.now(timezone.utc).isoformat()
-        _get_schedule_store().put(s)
+        _get_schedule_store().put(s, tenant_id=tenant_id)
     log_action(
         "schedule.toggle",
         actor=actor,

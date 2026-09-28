@@ -358,7 +358,7 @@ def delete_source(request: Request, source_id: str) -> None:
             schedule.enabled = False
             schedule.next_run = None
             schedule.updated_at = _now()
-            schedule_store.put(schedule)
+            schedule_store.put(schedule, tenant_id=tenant_id)
         if not _get_source_store().delete(source_id, tenant_id=tenant_id):
             raise HTTPException(status_code=409, detail="Source changed while it was being deleted; retry")
         for schedule in linked_schedules:

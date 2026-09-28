@@ -21,19 +21,18 @@ import json
 import os
 import warnings
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity, native_app_mode
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 from .exception_store import ExceptionStatus, VulnException
 from .fleet_store import FleetAgent, FleetEndpoint, FleetLifecycleState
 from .policy_store import GatewayPolicy, PolicyAuditEntry
+from .schedule_store import ScanSchedule, schedule_record_for_tenant, schedule_write_tenant
 from .server import ScanJob
 from .store import _literal_like_pattern, _require_tenant_scope
-
-if TYPE_CHECKING:
-    from .schedule_store import ScanSchedule
 
 
 def _sf_connect(**kwargs: Any) -> Any:
@@ -805,76 +804,77 @@ class SnowflakeScheduleStore:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_tenant_due ON scan_schedules(tenant_id, enabled, next_run)")
             _ensure_tenant_row_access_policy(cur, ("scan_schedules",))
 
-    def put(self, schedule: ScanSchedule) -> None:
+    def put(self, schedule: ScanSchedule, *, tenant_id: str) -> None:
+        tenant = schedule_write_tenant(schedule, tenant_id)
         with self._connect() as conn:
             conn.cursor().execute(
-                """MERGE INTO scan_schedules t USING (SELECT %s AS schedule_id) s
+                """MERGE INTO scan_schedules t USING (SELECT %s AS schedule_id, %s AS tenant_id) s
                    ON t.schedule_id = s.schedule_id
-                   WHEN MATCHED THEN UPDATE SET
-                     enabled = %s, next_run = %s, tenant_id = %s, data = PARSE_JSON(%s)
+                   WHEN MATCHED AND t.tenant_id = s.tenant_id THEN UPDATE SET
+                     enabled = %s, next_run = %s, data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
                      (schedule_id, enabled, next_run, tenant_id, data)
                      VALUES (%s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     schedule.schedule_id,
+                    tenant,
                     schedule.enabled,
                     schedule.next_run,
-                    schedule.tenant_id,
                     schedule.model_dump_json(),
                     schedule.schedule_id,
                     schedule.enabled,
                     schedule.next_run,
-                    schedule.tenant_id,
+                    tenant,
                     schedule.model_dump_json(),
                 ),
             )
 
-    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
-        from .schedule_store import ScanSchedule
-
+    def get(self, schedule_id: str, tenant_id: str) -> ScanSchedule | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
-            else:
-                cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s", (schedule_id, tenant_id))
+            cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s", (schedule_id, tenant))
             row = cur.fetchone()
             if row is None:
                 return None
-            return ScanSchedule.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+            return schedule_record_for_tenant(
+                ScanSchedule.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])), tenant
+            )
 
-    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, schedule_id: str, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
-            else:
-                cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s", (schedule_id, tenant_id))
+            cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s", (schedule_id, tenant))
             return (cur.rowcount or 0) > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list:
-        from .schedule_store import ScanSchedule
-
+    def list_all(self, tenant_id: str) -> list:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._connect() as conn:
             cur = conn.cursor()
-            if tenant_id is None:
-                cur.execute("SELECT data FROM scan_schedules ORDER BY schedule_id")
-            else:
-                cur.execute("SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id", (tenant_id,))
-            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            cur.execute("SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id", (tenant,))
+            return [
+                schedule_record_for_tenant(
+                    ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])), tenant
+                )
+                for r in cur.fetchall()
+            ]
 
     def list_due(self, now_iso: str) -> list:
-        from .schedule_store import ScanSchedule
-
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute(
-                """SELECT data
+                """SELECT tenant_id, data
                    FROM scan_schedules
                    WHERE enabled = TRUE AND next_run IS NOT NULL AND next_run <= %s""",
                 (now_iso,),
             )
-            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            return [
+                schedule_record_for_tenant(
+                    ScanSchedule.model_validate_json(r[1] if isinstance(r[1], str) else json.dumps(r[1])), r[0]
+                )
+                for r in cur.fetchall()
+            ]
 
 
 # ─── Exception Store ─────────────────────────────────────────────────────────

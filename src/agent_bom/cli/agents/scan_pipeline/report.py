@@ -125,6 +125,7 @@ def _seed_findings_and_scan_id(opts: ScanOptions, st: ScanState) -> None:
         _pinned_ts = _generated_at.isoformat().replace("+00:00", "Z")
         for _agent in st.agents:
             _agent.discovered_at = _pinned_ts
+            _agent.last_seen = _pinned_ts
 
 
 def _collect_scan_issues(opts: ScanOptions, st: ScanState) -> None:

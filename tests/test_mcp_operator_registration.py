@@ -139,3 +139,25 @@ def test_graph_export_delegates_scan_and_preserves_truncation():
     fn = registry.tools["graph_export"][0]
     assert asyncio.run(fn(config_path="fixture-root")) == "truncated:scan-error-envelope"
     assert calls == [{"config_path": "fixture-root"}]
+
+
+def test_each_server_captures_current_implementation_without_rebinding_old_tools(monkeypatch):
+    from agent_bom.mcp_tools import posture
+
+    first, second = Registry(), Registry()
+    first_calls, second_calls = [], []
+
+    def first_impl(**kwargs):
+        return "first"
+
+    def second_impl(**kwargs):
+        return "second"
+
+    monkeypatch.setattr(posture, "access_review_impl", first_impl)
+    register_operator_tools(**bindings(first, first_calls, "first"))
+    monkeypatch.setattr(posture, "access_review_impl", second_impl)
+    register_operator_tools(**bindings(second, second_calls, "second"))
+    asyncio.run(first.tools["access_review"][0]())
+    asyncio.run(second.tools["access_review"][0]())
+    assert first_calls[0][1] is first_impl
+    assert second_calls[0][1] is second_impl

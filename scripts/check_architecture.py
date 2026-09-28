@@ -210,6 +210,8 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
         if path.startswith("api/") and _imports_package(modules, "agent_bom.cli"):
             errors.append(f"{path}:{line}: api must not import the CLI; move shared logic below both layers")
         for module in modules:
+            if path.startswith("mcp_tools/operator/") and module in {"agent_bom.mcp_server", "agent_bom.mcp_server_operator_tools"}:
+                errors.append(f"{path}:{line}: operator registrations must receive server bindings")
             if path in TENANT_DISPATCH_ADAPTERS and module.rsplit(".", 1)[-1] in {"set_current_tenant", "reset_current_tenant"}:
                 errors.append(f"{path}:{line}: tenant dispatch must use api/tenant_worker.py to suspend maintenance authority")
             if path == "runtime/risk_conditions.py" and (

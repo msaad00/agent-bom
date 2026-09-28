@@ -3053,12 +3053,7 @@
       "file_lines": 742
     },
     "mcp_server_operator_tools.py": {
-      "deferred_imports": 19,
-      "file_lines": 1544
-    },
-    "mcp_server_operator_tools.py::register_operator_tools": {
-      "complexity": 53,
-      "function_lines": 1528
+      "deferred_imports": 2
     },
     "mcp_server_runtime.py": {
       "deferred_imports": 6,
@@ -3161,6 +3156,27 @@
     },
     "mcp_tools/oauth.py": {
       "deferred_imports": 8
+    },
+    "mcp_tools/operator/benchmarks.py": {
+      "deferred_imports": 3
+    },
+    "mcp_tools/operator/findings.py": {
+      "deferred_imports": 8
+    },
+    "mcp_tools/operator/governance.py": {
+      "deferred_imports": 9
+    },
+    "mcp_tools/operator/graphs.py": {
+      "deferred_imports": 7
+    },
+    "mcp_tools/operator/identity.py": {
+      "deferred_imports": 9
+    },
+    "mcp_tools/operator/runtime.py": {
+      "deferred_imports": 10
+    },
+    "mcp_tools/operator/scanning.py": {
+      "deferred_imports": 3
     },
     "mcp_tools/posture.py": {
       "api_imports": 5,

@@ -114,13 +114,9 @@ class TestCountConsistency:
         """MCP tool count in pyproject.toml must match actual @mcp.tool decorators."""
         from pathlib import Path
 
-        mcp_tool_surface_paths = [
-            Path("src/agent_bom/mcp_server.py"),
-            Path("src/agent_bom/mcp_server_operator_tools.py"),
-            Path("src/agent_bom/mcp_server_runtime_catalog.py"),
-            Path("src/agent_bom/mcp_server_specialized.py"),
-        ]
-        actual_tools = sum(path.read_text().count("@mcp.tool") for path in mcp_tool_surface_paths)
+        from agent_bom.mcp_tools.catalog import registered_mcp_tool_decorator_names
+
+        actual_tools = len(registered_mcp_tool_decorator_names())
 
         pyproject = Path("pyproject.toml").read_text()
         # Extract "33 MCP tools" or similar from description

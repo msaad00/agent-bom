@@ -308,3 +308,12 @@ def test_import_debt_is_budgeted_per_category_so_splits_can_move_it():
     grown = {"big.py": {"deferred_imports": 1}, "big_part.py": {"deferred_imports": 3}}
     assert regressions(grown, baseline) == ["deferred_imports: total 4 exceeds budget 3"]
     assert regressions({"new.py": {"graph_api_imports": 1}}, {}) == ["graph_api_imports: total 1 exceeds budget 0"]
+
+def test_operator_registrations_cannot_import_server_composition():
+    for source in (
+        "from agent_bom.mcp_server import _execute_tool_async",
+        "from ...mcp_server_operator_tools import register_operator_tools",
+        "def f():\n import agent_bom.mcp_server",
+    ):
+        assert boundary_errors("mcp_tools/operator/graphs.py", ast.parse(source))
+    assert not boundary_errors("mcp_tools/operator/graphs.py", ast.parse("from .bindings import OperatorToolBindings"))

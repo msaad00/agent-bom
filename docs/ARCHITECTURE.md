@@ -54,8 +54,11 @@ trace propagation and response scanning through a request-local typed context.
 Audit admission failure denies tool execution before upstream effects. Audit
 delivery failure after an upstream outcome preserves the outcome and adds
 `X-Agent-BOM-Audit-Delivery: degraded`; it does not synthesize a retryable 500.
-Visual scanning remains opt-in. Its existing scan/redaction timeout path retains
-the current content; this extraction does not change that fail-open behavior.
+Visual scanning remains opt-in. Once enabled, a scan/redaction timeout or detector
+exception withholds the response as incomplete. The JSON-RPC error records that
+the upstream call completed and is not automatically retryable; HTTP remains 200.
+A redaction event is emitted only after replacement content is ready. Failure to
+deliver the post-execution audit still marks the withheld response degraded.
 Authentication-store failures deny traffic; a configured shared rate limiter
 never falls back to process-local state when initialization fails.
 

@@ -31,7 +31,7 @@ import json
 import re
 import sqlite3
 import threading
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -153,7 +153,9 @@ class Keyset:
     ``columns`` are the sort key, most significant first. They must be NOT
     NULL (the engines order NULLs differently) and together unique, and they
     must be the first columns of the SELECT so :meth:`page` can read the
-    cursor. Text columns are compared by code point: ``COLLATE BINARY`` on
+    cursor. ``directions`` optionally supplies one descending flag per column
+    for mixed orders; otherwise ``descending`` applies to every column.
+    Text columns are compared by code point: ``COLLATE BINARY`` on
     SQLite and ``COLLATE "C"`` on a UTF-8 Postgres, which agree, whereas a
     locale collation such as ``en_US`` would not. On Postgres an index serves
     this order only if it is built with ``COLLATE "C"`` (or the database
@@ -164,6 +166,7 @@ class Keyset:
     columns: tuple[str, ...]
     descending: bool = False
     numeric: frozenset[str] = frozenset()
+    directions: tuple[bool, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.columns:
@@ -172,6 +175,14 @@ class Keyset:
             _identifier(column)
         if not self.numeric <= set(self.columns):
             raise ValueError("numeric columns must be keyset columns")
+        if self.directions is not None:
+            if len(self.directions) != len(self.columns) or any(type(value) is not bool for value in self.directions):
+                raise ValueError("keyset directions must provide one boolean per column")
+            if self.descending:
+                raise ValueError("use descending or per-column directions, not both")
+
+    def _directions(self) -> tuple[bool, ...]:
+        return self.directions if self.directions is not None else (self.descending,) * len(self.columns)
 
     def _term(self, dialect: Dialect, column: str) -> str:
         if column in self.numeric:
@@ -180,8 +191,10 @@ class Keyset:
 
     def order_by(self, dialect: Dialect) -> str:
         """``ORDER BY`` body (without the keywords)."""
-        direction = "DESC" if self.descending else "ASC"
-        return ", ".join(f"{self._term(dialect, column)} {direction}" for column in self.columns)
+        return ", ".join(
+            f"{self._term(dialect, column)} {'DESC' if descending else 'ASC'}"
+            for column, descending in zip(self.columns, self._directions())
+        )
 
     def after(self, dialect: Dialect, cursor: Sequence[Any] | None) -> tuple[str, tuple[Any, ...]]:
         """Predicate selecting rows strictly after ``cursor``, or ``("", ())`` for the first page."""
@@ -189,9 +202,19 @@ class Keyset:
             return "", ()
         if len(cursor) != len(self.columns):
             raise ValueError("keyset cursor does not match the keyset columns")
-        terms = ", ".join(self._term(dialect, column) for column in self.columns)
+        directions = self._directions()
+        expressions = [self._term(dialect, column) for column in self.columns]
+        if len(set(directions)) > 1:
+            clauses = []
+            params: list[Any] = []
+            for index, (term, descending) in enumerate(zip(expressions, directions)):
+                prefix = [f"{prior} = ?" for prior in expressions[:index]]
+                clauses.append("(" + " AND ".join([*prefix, f"{term} {'<' if descending else '>'} ?"]) + ")")
+                params.extend(cursor[: index + 1])
+            return "(" + " OR ".join(clauses) + ")", tuple(params)
+        terms = ", ".join(expressions)
         placeholders = ", ".join("?" for _ in self.columns)
-        operator = "<" if self.descending else ">"
+        operator = "<" if directions[0] else ">"
         return f"({terms}) {operator} ({placeholders})", tuple(cursor)
 
     def page(self, rows: Sequence[Sequence[Any]], limit: int) -> tuple[list[Sequence[Any]], tuple[Any, ...] | None]:
@@ -251,16 +274,21 @@ class SQLiteBackend:
     """Thread-local SQLite connections; tenant isolation is the store's WHERE clause.
 
     ``all_tenants`` changes nothing on SQLite (there is no RLS); the explicit
-    scope check lives in :func:`require_tenant_scope`.
+    scope check lives in :func:`require_tenant_scope`. A connection factory can
+    share an existing store's thread-local connection during a gradual port;
+    a read-only snapshot rejects an active caller transaction without altering it.
     """
 
     dialect: Dialect = "sqlite"
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, connection_factory: Callable[[], sqlite3.Connection] | None = None) -> None:
         self._db_path = db_path
         self._local = threading.local()
+        self._connection_factory = connection_factory
 
     def _conn(self) -> sqlite3.Connection:
+        if self._connection_factory is not None:
+            return self._connection_factory()
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
         if conn is None:
             conn = sqlite3.connect(self._db_path, check_same_thread=False)
@@ -273,6 +301,8 @@ class SQLiteBackend:
         del all_tenants
         conn = self._conn()
         if read_only:
+            if conn.in_transaction:
+                raise ValueError("read-only snapshot requires an idle connection")
             conn.execute("PRAGMA query_only = ON")
             try:
                 conn.execute("BEGIN")

@@ -22,7 +22,6 @@ from agent_bom.api.compliance_hub_store import (
     _frameworks_csv,
     _now_utc_iso,
     _postgres_current_order_clause,
-    _postgres_order_clause,
     _redact_finding,
     _redact_findings,
     _severity_rank,
@@ -48,6 +47,8 @@ from agent_bom.api.hub_reference_store import (
     persist_finding_references_postgres,
 )
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.storage.finding_reads import SqlFindingReads
+from agent_bom.api.storage.sql import PostgresBackend
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
@@ -345,6 +346,10 @@ def _postgres_current_has_ledger_col(conn: Any) -> bool:
 
 class PostgresComplianceHubStore:
     """Shared hub store backing multi-replica self-hosted deployments."""
+
+    @property
+    def _ledger_reads(self) -> SqlFindingReads:
+        return SqlFindingReads(PostgresBackend(self._pool))
 
     def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
@@ -833,13 +838,7 @@ class PostgresComplianceHubStore:
         return new_total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                "SELECT payload FROM compliance_hub_findings WHERE tenant_id = %s ORDER BY ordinal ASC",
-                (tenant_id,),
-            ).fetchall()
-            payloads = [decode_hub_payload(row[0]) for row in rows]
-            return hydrate_finding_payloads_postgres(conn, tenant_id, payloads)
+        return self._ledger_reads.list(tenant_id)
 
     def list_page(
         self,
@@ -853,63 +852,12 @@ class PostgresComplianceHubStore:
         origin: str | None = None,
         include_total: bool = True,
     ) -> FindingPage:
-        where = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
-        if origin is not None:
-            where.append("origin = %s")
-            params.append(origin)
-        if severity is not None:
-            # Filter on the materialised severity STRING (exact, lowercased) so
-            # every backend agrees; ``severity_rank`` collapses info==low and is
-            # kept for ORDER BY only (#3192).
-            where.append("severity <> '' AND LOWER(severity) = %s")
-            params.append(severity.lower())
-        if scan_id is not None:
-            where.append("scan_id = %s AND scan_id <> ''")
-            params.append(scan_id)
-        where_sql = " AND ".join(where)
-        order_sql = _postgres_order_clause(sort)
-
-        with _tenant_connection(self._pool) as conn:
-            total: int | None
-            if include_total:
-                # ``where_sql`` is assembled only from fixed predicates above; all caller values
-                # stay in ``params`` as psycopg bindings.
-                total_row = conn.execute(
-                    f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
-                    tuple(params),
-                ).fetchone()
-                total = int(total_row[0]) if total_row else 0
-            else:
-                total = None
-            # ``order_sql`` comes from a closed sort allowlist; all caller values stay bound.
-            rows = conn.execute(
-                f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT %s OFFSET %s",  # nosec B608
-                (*params, int(limit), int(offset)),
-            ).fetchall()
-            payloads = [decode_hub_payload(row[0]) for row in rows]
-            out = hydrate_finding_payloads_postgres(conn, tenant_id, payloads)
-        return out, total
+        return self._ledger_reads.list_page(
+            tenant_id, limit=limit, offset=offset, sort=sort, severity=severity, scan_id=scan_id, origin=origin, include_total=include_total
+        )
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
-        with _tenant_connection(self._pool) as conn:
-            # GROUP BY the materialised ``severity`` column (populated on ingest,
-            # backed by the tenant/severity index) instead of an unindexed per-row
-            # ``payload->>'severity'`` JSON decode (#3963).
-            rows = conn.execute(
-                """
-                SELECT LOWER(COALESCE(NULLIF(severity, ''), 'unknown')) AS sev, COUNT(*)
-                FROM compliance_hub_findings
-                WHERE tenant_id = %s
-                GROUP BY sev
-                """,
-                (tenant_id,),
-            ).fetchall()
-        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
-        for sev, count in rows:
-            key = str(sev or "unknown").lower()
-            counts[key] = counts.get(key, 0) + int(count)
-        return counts
+        return self._ledger_reads.severity_breakdown(tenant_id)
 
     def current_severity_breakdown(
         self,
@@ -1063,20 +1011,10 @@ class PostgresComplianceHubStore:
         return counts
 
     def overview_evidence_revision(self, tenant_id: str) -> int:
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute(
-                "SELECT revision FROM hub_overview_revisions WHERE tenant_id = %s",
-                (tenant_id,),
-            ).fetchone()
-        return int(row[0]) if row else 0
+        return self._ledger_reads.overview_evidence_revision(tenant_id)
 
     def count(self, tenant_id: str) -> int:
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM compliance_hub_findings WHERE tenant_id = %s",
-                (tenant_id,),
-            ).fetchone()
-        return int(row[0]) if row else 0
+        return self._ledger_reads.count(tenant_id)
 
     def clear(self, tenant_id: str) -> int:
         with _tenant_connection(self._pool) as conn:

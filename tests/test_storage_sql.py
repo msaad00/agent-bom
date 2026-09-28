@@ -316,3 +316,60 @@ def test_like_pattern_escapes_wildcards_and_the_escape_character() -> None:
     assert like_pattern("Tenant-", mode="prefix") == "tenant-%"
     with pytest.raises(ValueError, match="mode"):
         like_pattern("x", mode="suffix")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("directions", [(True, False), (False, True)])
+@pytest.mark.parametrize("page_size", [1, 5, 50])
+def test_keyset_mixed_directions_preserve_ties(backend, prefix, directions, page_size):
+    from functools import cmp_to_key
+
+    rows = [(f"{prefix}{suffix}", f"t{index % 3}", {}) for index, suffix in enumerate(_KEY_SUFFIXES)]
+    _seed(backend, rows)
+    keyset = Keyset(("updated_at", "tenant_id"), directions=directions)
+
+    def compare(left, right):
+        for a, b, descending in zip(left, right, directions):
+            if a != b:
+                return ((a > b) - (a < b)) * (-1 if descending else 1)
+        return 0
+
+    expected = sorted(((stamp, tenant) for tenant, stamp, _ in rows), key=cmp_to_key(compare))
+    seen = []
+    after = None
+    while True:
+        predicate, params = keyset.after(backend.dialect, after)
+        sql = (
+            f"SELECT updated_at, tenant_id FROM tenant_quota_overrides WHERE {like_clause(backend.dialect, 'tenant_id')}"
+            f"{' AND ' + predicate if predicate else ''} ORDER BY {keyset.order_by(backend.dialect)} LIMIT ?"
+        )
+        with backend.transaction(all_tenants=True, read_only=True) as tx:
+            fetched = tx.execute(sql, (like_pattern(prefix, mode="prefix"), *params, page_size + 1)).fetchall()
+        page, after = keyset.page(fetched, page_size)
+        seen.extend(tuple(row) for row in page)
+        if after is None:
+            break
+        assert len(seen) <= len(expected), "cursor did not advance"
+    assert seen == expected
+
+
+@pytest.mark.parametrize("directions", [(), (True,), (True, False, True), ("DESC", "ASC"), (1, 0)])
+def test_keyset_rejects_invalid_direction_contract(directions):
+    with pytest.raises(ValueError):
+        Keyset(("updated_at", "tenant_id"), directions=directions)
+
+
+def test_borrowed_sqlite_snapshot_does_not_rollback_an_active_caller_transaction(tmp_path):
+    import sqlite3
+
+    conn = sqlite3.connect(str(tmp_path / "borrowed.db"))
+    conn.execute("CREATE TABLE writes (value TEXT)")
+    conn.execute("INSERT INTO writes VALUES ('pending')")
+    backend = SQLiteBackend("unused", connection_factory=lambda: conn)
+    with pytest.raises(ValueError, match="idle connection"):
+        with backend.transaction(read_only=True):
+            pytest.fail("active caller transaction was adopted")
+    assert conn.in_transaction
+    assert conn.execute("SELECT value FROM writes").fetchall() == [("pending",)]
+    assert conn.execute("PRAGMA query_only").fetchone()[0] == 0
+    conn.rollback()
+    conn.close()

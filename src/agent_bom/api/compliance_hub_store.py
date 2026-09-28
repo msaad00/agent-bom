@@ -50,7 +50,10 @@ from agent_bom.api.hub_reference_store import (
     normalize_finding_payload_for_store,
     persist_finding_references_sqlite,
 )
+from agent_bom.api.storage.finding_reads import SqlFindingReads
+from agent_bom.api.storage.sql import SQLiteBackend
 from agent_bom.core.severity import severity_policy_rank
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 _logger = logging.getLogger(__name__)
 
@@ -366,7 +369,7 @@ def _filter_hub_rows(
         sev = severity.lower()
         rows = [r for r in rows if str(r.get("severity", "")).lower() == sev]
     if scan_id is not None:
-        rows = [r for r in rows if str(r.get("scan_id") or "") == scan_id]
+        rows = [r for r in rows if str(r.get("batch_id") or r.get("scan_id") or "") == scan_id]
     return rows
 
 
@@ -1089,6 +1092,7 @@ class InMemoryComplianceHubStore:
         hub_overview_cache.invalidate_tenant(tenant_id)
 
     def overview_evidence_revision(self, tenant_id: str) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             return self._overview_revisions.get(tenant_id, 0)
 
@@ -1177,6 +1181,7 @@ class InMemoryComplianceHubStore:
         return total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
         return _strip_reach_sort(hydrate_finding_payloads_memory(tenant_id, rows))
@@ -1212,6 +1217,7 @@ class InMemoryComplianceHubStore:
         origin: str | None = None,
         include_total: bool = True,
     ) -> FindingPage:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
         self._guard_sort_ceiling(tenant_id, len(rows))
@@ -1226,6 +1232,7 @@ class InMemoryComplianceHubStore:
         return _strip_reach_sort(hydrate_finding_payloads_memory(tenant_id, rows)), total
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             rows = list(self._by_tenant.get(tenant_id, []))
         return _severity_breakdown_from_rows(rows)
@@ -1281,6 +1288,7 @@ class InMemoryComplianceHubStore:
         return _framework_slug_counts_from_rows(row.get("payload") or {} for row in hydrated)
 
     def count(self, tenant_id: str) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             return len(self._by_tenant.get(tenant_id, []))
 
@@ -1648,25 +1656,6 @@ def resolve_current_ledger_ordinal_sqlite(
     return int(row[0]) if row else _LEDGER_ORDINAL_SENTINEL
 
 
-def _sqlite_order_clause(sort: str) -> str:
-    """ORDER BY clause for the SQLite backend, ordinal-tiebroken to match
-    the in-memory backend's stable sort.
-
-    ``cvss``/``severity`` order by the materialised ``cvss_score`` /
-    ``severity_rank`` columns (not ``json_extract``) so the composite
-    ``(tenant_id, origin, <col> DESC, ordinal)`` indexes back the sort with
-    an ordered range scan instead of a temp-B-tree filesort (#3192).
-    """
-    if sort == "ordinal":
-        return "ORDER BY ordinal ASC"
-    if sort == "cvss":
-        return "ORDER BY cvss_score DESC, ordinal ASC"
-    if sort == "severity":
-        return "ORDER BY severity_rank DESC, ordinal ASC"
-    # effective_reach (default) — index-backed range scan + limit.
-    return "ORDER BY effective_reach_score DESC, ordinal ASC"
-
-
 def _sqlite_current_order_clause(sort: str) -> str:
     """ORDER BY for ``hub_findings_current``.
 
@@ -1751,22 +1740,6 @@ def _filter_current_rows(
     return rows
 
 
-def _postgres_order_clause(sort: str) -> str:
-    """ORDER BY clause for the Postgres backend, mirroring SQLite semantics.
-
-    ``cvss``/``severity`` order by the materialised ``cvss_score`` /
-    ``severity_rank`` columns backed by the composite
-    ``(tenant_id, origin, <col> DESC, ordinal)`` indexes (#3192).
-    """
-    if sort == "ordinal":
-        return "ORDER BY ordinal ASC"
-    if sort == "cvss":
-        return "ORDER BY cvss_score DESC, ordinal ASC"
-    if sort == "severity":
-        return "ORDER BY severity_rank DESC, ordinal ASC"
-    return "ORDER BY effective_reach_score DESC, ordinal ASC"
-
-
 class SQLiteComplianceHubStore:
     """SQLite-backed hub store for single-node persistence.
 
@@ -1774,6 +1747,10 @@ class SQLiteComplianceHubStore:
     the file. Use ``PostgresComplianceHubStore`` when more than one API
     pod must share findings.
     """
+
+    @property
+    def _ledger_reads(self) -> SqlFindingReads:
+        return SqlFindingReads(SQLiteBackend(self._db_path, connection_factory=lambda: self._conn))
 
     def __init__(self, db_path: str = "agent_bom.db") -> None:
         self._db_path = db_path
@@ -1879,7 +1856,8 @@ class SQLiteComplianceHubStore:
         if "scan_id" not in cols:
             self._conn.execute("ALTER TABLE compliance_hub_findings ADD COLUMN scan_id TEXT NOT NULL DEFAULT ''")
             self._conn.execute(
-                "UPDATE compliance_hub_findings SET scan_id = COALESCE(json_extract(payload, '$.scan_id'), '') WHERE scan_id = ''"
+                "UPDATE compliance_hub_findings SET scan_id = COALESCE(NULLIF(json_extract(payload, '$.batch_id'), ''), "
+                "json_extract(payload, '$.scan_id'), '') WHERE scan_id = ''"
             )
 
     def _migrate_primary_key(self) -> None:
@@ -2050,11 +2028,7 @@ class SQLiteComplianceHubStore:
         hub_overview_cache.invalidate_tenant(tenant_id)
 
     def overview_evidence_revision(self, tenant_id: str) -> int:
-        row = self._conn.execute(
-            "SELECT revision FROM hub_overview_revisions WHERE tenant_id = ?",
-            (tenant_id,),
-        ).fetchone()
-        return int(row[0]) if row else 0
+        return self._ledger_reads.overview_evidence_revision(tenant_id)
 
     def _ledger_insert_no_commit(self, tenant_id: str, findings: list[dict[str, Any]]) -> tuple[int, int, int]:
         """Append the batch to the ledger WITHOUT committing.
@@ -2205,12 +2179,7 @@ class SQLiteComplianceHubStore:
         return new_total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT payload FROM compliance_hub_findings WHERE tenant_id = ? ORDER BY ordinal ASC",
-            (tenant_id,),
-        ).fetchall()
-        payloads = [decode_hub_payload(row[0]) for row in rows]
-        return hydrate_finding_payloads_sqlite(self._conn, tenant_id, payloads)
+        return self._ledger_reads.list(tenant_id)
 
     def list_page(
         self,
@@ -2224,67 +2193,15 @@ class SQLiteComplianceHubStore:
         origin: str | None = None,
         include_total: bool = True,
     ) -> FindingPage:
-        where = ["tenant_id = ?"]
-        params: list[Any] = [tenant_id]
-        if origin is not None:
-            where.append("origin = ?")
-            params.append(origin)
-        if severity is not None:
-            # Filter on the materialised severity STRING (exact match, lowercased)
-            # so every backend agrees. ``severity_rank`` collapses info==low and
-            # is kept for ORDER BY only (#3192). The ``severity != ''`` guard is
-            # redundant for any real severity but lets the partial expression
-            # index idx_hub_findings_tenant_severity_ci serve the filter.
-            where.append("severity != '' AND LOWER(severity) = ?")
-            params.append(severity.lower())
-        if scan_id is not None:
-            # Materialised scan_id column + partial idx_hub_findings_tenant_scan
-            # (was a per-row json_extract scan). The ``scan_id != ''`` guard is
-            # redundant for any real scan_id but lets the partial index apply.
-            where.append("scan_id = ? AND scan_id != ''")
-            params.append(scan_id)
-        where_sql = " AND ".join(where)
-
-        total: int | None
-        if include_total:
-            # ``where_sql`` is assembled only from fixed predicates above; all caller values
-            # stay in ``params`` as sqlite bindings.
-            total_row = self._conn.execute(
-                f"SELECT COUNT(*) FROM compliance_hub_findings WHERE {where_sql}",  # nosec B608
-                params,
-            ).fetchone()
-            total = int(total_row[0]) if total_row else 0
-        else:
-            total = None
-
-        order_sql = _sqlite_order_clause(sort)
-        page_params = [*params, int(limit), int(offset)]
-        # ``order_sql`` comes from a closed sort allowlist; all caller values stay bound.
-        rows = self._conn.execute(
-            f"SELECT payload FROM compliance_hub_findings WHERE {where_sql} {order_sql} LIMIT ? OFFSET ?",  # nosec B608
-            page_params,
-        ).fetchall()
-        payloads = [decode_hub_payload(row[0]) for row in rows]
-        return hydrate_finding_payloads_sqlite(self._conn, tenant_id, payloads), total
+        return self._ledger_reads.list_page(
+            tenant_id, limit=limit, offset=offset, sort=sort, severity=severity, scan_id=scan_id, origin=origin, include_total=include_total
+        )
 
     def severity_breakdown(self, tenant_id: str) -> dict[str, int]:
         # GROUP BY the materialised ``severity`` column (populated on ingest and
         # backed by ``idx_hub_findings_tenant_severity_ci``) instead of an
         # unindexed per-row ``json_extract(payload, '$.severity')`` decode (#3963).
-        rows = self._conn.execute(
-            """
-            SELECT LOWER(COALESCE(NULLIF(severity, ''), 'unknown')) AS sev, COUNT(*)
-            FROM compliance_hub_findings
-            WHERE tenant_id = ?
-            GROUP BY sev
-            """,
-            (tenant_id,),
-        ).fetchall()
-        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
-        for sev, count in rows:
-            key = str(sev or "unknown").lower()
-            counts[key] = counts.get(key, 0) + int(count)
-        return counts
+        return self._ledger_reads.severity_breakdown(tenant_id)
 
     def current_severity_breakdown(
         self,
@@ -2449,11 +2366,7 @@ class SQLiteComplianceHubStore:
         return counts
 
     def count(self, tenant_id: str) -> int:
-        row = self._conn.execute(
-            "SELECT COUNT(*) FROM compliance_hub_findings WHERE tenant_id = ?",
-            (tenant_id,),
-        ).fetchone()
-        return int(row[0]) if row else 0
+        return self._ledger_reads.count(tenant_id)
 
     def clear(self, tenant_id: str) -> int:
         with self._conn:

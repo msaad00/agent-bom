@@ -60,6 +60,16 @@ GRAPH_PROJECTION_SOURCES = frozenset(
         "src/agent_bom/graph/authorization_evidence.py",
         "src/agent_bom/graph/cloud_rbac.py",
         "src/agent_bom/graph/nhi_governance.py",
+        "src/agent_bom/graph/build_input.py",
+        "src/agent_bom/graph/build_indexes.py",
+        "src/agent_bom/graph/build_analysis.py",
+        "src/agent_bom/graph/agent_projection.py",
+        "src/agent_bom/graph/credential_projection.py",
+        "src/agent_bom/graph/blast_projection.py",
+        "src/agent_bom/graph/benchmark_projection.py",
+        "src/agent_bom/graph/resource_aliases.py",
+        "src/agent_bom/graph/finding_projection.py",
+        "src/agent_bom/graph/training_projection.py",
     }
 )
 

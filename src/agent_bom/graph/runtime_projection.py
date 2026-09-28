@@ -323,3 +323,36 @@ def _runtime_identity_evidence(
     if tenant_id:
         safe_evidence.setdefault("tenant_id", sanitize_text(tenant_id, max_len=200))
     return safe_evidence
+
+
+def project_runtime_session(graph: UnifiedGraph, runtime_graph: dict[str, Any] | None) -> None:
+    if runtime_graph:
+        for edge_dict in runtime_graph.get("edges", []):
+            rel_str = edge_dict.get("interaction_type", edge_dict.get("relation", ""))
+            rel_map = {
+                "tool_call": RelationshipType.INVOKED,
+                "invoked": RelationshipType.INVOKED,
+                "resource_access": RelationshipType.ACCESSED,
+                "accessed": RelationshipType.ACCESSED,
+                "delegation": RelationshipType.DELEGATED_TO,
+                "delegated_to": RelationshipType.DELEGATED_TO,
+            }
+            rel = rel_map.get(rel_str.lower())
+            if not rel:
+                continue
+            src = edge_dict.get("source_node_id", edge_dict.get("source", ""))
+            tgt = edge_dict.get("target_node_id", edge_dict.get("target", ""))
+            if src and tgt:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=src,
+                        target=tgt,
+                        relationship=rel,
+                        evidence={
+                            "timestamp": edge_dict.get("timestamp", ""),
+                            "tool_capability": edge_dict.get("tool_capability", ""),
+                            "risk_score": edge_dict.get("risk_score", 0),
+                            "data_source": "runtime-proxy",
+                        },
+                    )
+                )

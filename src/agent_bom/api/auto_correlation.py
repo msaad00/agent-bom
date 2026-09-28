@@ -22,7 +22,6 @@ from typing import Any
 
 from agent_bom import config
 from agent_bom.api.audit_log import log_action
-from agent_bom.api.graph_store import GraphStoreProtocol
 from agent_bom.api.metrics import record_auto_correlation
 from agent_bom.api.models import JobStatus, ScanJob
 from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
@@ -35,6 +34,7 @@ from agent_bom.graph.correlation_service import (
     GraphCorrelationService,
     get_graph_correlation_service,
 )
+from agent_bom.graph.ports import GraphStoreProtocol
 from agent_bom.security import sanitize_text
 
 logger = logging.getLogger(__name__)

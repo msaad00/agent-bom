@@ -109,7 +109,7 @@
       "function_lines": 114
     },
     "api/graph_store.py": {
-      "file_lines": 2915
+      "file_lines": 2614
     },
     "api/graph_store.py::SQLiteGraphStore._frontier_edge_query": {
       "function_lines": 81
@@ -1772,7 +1772,7 @@
       "file_lines": 688
     },
     "graph/builder.py": {
-      "file_lines": 7295
+      "file_lines": 6645
     },
     "graph/builder.py::_add_agent_cloud_lineage": {
       "function_lines": 282

@@ -18,10 +18,10 @@ from agent_bom import __version__
 from agent_bom.security import sanitize_error, sanitize_text
 
 if TYPE_CHECKING:
-    from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.api.models import ScanJob
     from agent_bom.graph.container import UnifiedGraph
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
+    from agent_bom.graph.ports import GraphStoreProtocol
 
 # Preserve the existing operator-facing log category across the extraction.
 _logger = logging.getLogger("agent_bom.api.pipeline")

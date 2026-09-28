@@ -5,6 +5,16 @@ CLI entry points, API/UI, MCP server mode, runtime proxy/gateway, cloud posture,
 IaC scanning, fleet, graph, reporting, and compliance workflows over shared
 finding, inventory, graph, and audit contracts.
 
+Report graph construction is composed in `graph/builder.py`. Package/advisory
+provenance and conservative tool-impact edges belong to `graph/package_projection.py`;
+runtime identity and incident observations belong to `graph/runtime_projection.py`.
+They share stable agent IDs and edge insertion through `graph/projection_support.py`
+without importing the builder or API adapters. Static package reachability and
+runtime observations keep their distinct evidence fields and relationship types.
+Graph application services consume the typed `graph/ports.py` persistence/query
+contract. SQLite and PostgreSQL adapters implement that same snapshot, paging,
+tenant and generation contract; the API module retains its compatible type export.
+
 > **Product overview lives in [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md)** — the
 > canonical five-stage flow (intake → scan → evidence → control → artifacts) and
 > the symbol-level CVE reachability differentiator. This document is the deeper

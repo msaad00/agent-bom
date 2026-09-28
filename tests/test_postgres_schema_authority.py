@@ -291,9 +291,9 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
             "export_destination_store.py",
             "lifecycle_store.py",
             "shared_auth_state.py",
-            "tenant_quota_store.py",
         )
     )
+    runtime_paths.extend(_sql_layer_bootstrap_modules())
     runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "mcp_tools" / "result_store.py")
@@ -317,6 +317,25 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
     )
     assert components == set(re.findall(r"'([a-z_]+)'", "\n".join(marker_sections)))
     assert migration_sql.rfind("INSERT INTO control_plane_schema_versions") > migration_sql.rfind("CREATE TABLE")
+
+
+def _sql_layer_bootstrap_modules() -> list[Path]:
+    """Stores on the shared SQL layer, found by their ``.bootstrap("component", ...)`` call.
+
+    Discovered rather than listed so a domain moved onto the layer is covered
+    without editing this file.
+    """
+    layer = SRC / "agent_bom" / "api" / "storage" / "sql.py"
+    return [
+        path
+        for path in sorted((SRC / "agent_bom").rglob("*.py"))
+        if path != layer and "agent_bom.api.storage.sql" in (text := path.read_text()) and re.search(r'\.bootstrap\(\s*"[a-z_]+"', text)
+    ]
+
+
+def test_sql_layer_stores_are_discovered_for_the_schema_guard() -> None:
+    discovered = {path.name for path in _sql_layer_bootstrap_modules()}
+    assert {"tenant_quota_store.py", "tenant_graph_retention_store.py"} <= discovered
 
 
 def _rls_forced_tables(sql: str) -> set[str]:

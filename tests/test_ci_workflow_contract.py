@@ -197,6 +197,20 @@ def test_postgres_integration_uses_a_persistent_audit_signing_key() -> None:
     assert postgres_env["AGENT_BOM_AUDIT_HMAC_KEY"] == "ci-postgres-audit-signing-key"
 
 
+def test_postgres_storage_contract_passes_every_listed_suite_to_one_pytest_command() -> None:
+    """A missing line continuation would run a suite path as its own shell command."""
+    steps = _ci()["jobs"]["postgres-integration"]["steps"]
+    script = next(step["run"] for step in steps if step.get("name") == "Run real Postgres storage contract")
+    lines = [line.strip() for line in script.strip().splitlines() if line.strip()]
+
+    assert lines[0].startswith("uv run pytest")
+    assert all(line.endswith("\\") for line in lines[:-1]), [line for line in lines[:-1] if not line.endswith("\\")]
+    listed = {line.rstrip("\\ ").strip() for line in lines[1:]}
+    for suite in ("tests/test_tenant_quota_store.py", "tests/test_tenant_graph_retention_store.py", "tests/test_storage_sql.py"):
+        assert suite in listed
+        assert (ROOT / suite).is_file()
+
+
 def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     """Keep bounded headroom over the Python 3.11 coverage lane on main.
 

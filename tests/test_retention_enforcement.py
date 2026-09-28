@@ -170,6 +170,28 @@ class TestSaveGraphRetentionHook:
         assert [s["scan_id"] for s in snaps] == ["recent"]
         assert graph_retention_policy(db)["last_purged_count"] == 0
 
+    def test_save_graph_keeps_everything_when_overrides_cannot_be_listed(self, db):
+        """Fail closed: an unreadable override store deletes nothing and never fails the committed save."""
+        from agent_bom.api.postgres_common import MaintenanceRoleConfigurationError
+        from agent_bom.api.stores import set_tenant_graph_retention_store
+        from agent_bom.api.tenant_graph_retention_store import InMemoryTenantGraphRetentionStore
+        from agent_bom.db.graph_store import list_snapshots, save_graph
+        from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+        class Unlistable(InMemoryTenantGraphRetentionStore):
+            def list_overrides(self, tenant_id=None, *, all_tenants=False):
+                raise MaintenanceRoleConfigurationError("maintenance role not configured")
+
+        set_tenant_graph_retention_store(Unlistable())
+        try:
+            aged = UnifiedGraph(scan_id="aged", created_at="2020-01-01T00:00:00+00:00")
+            aged.add_node(UnifiedNode(id="agent:x", entity_type=EntityType.AGENT, label="x"))
+            save_graph(db, aged)
+        finally:
+            set_tenant_graph_retention_store(InMemoryTenantGraphRetentionStore())
+
+        assert [s["scan_id"] for s in list_snapshots(db)] == ["aged"]
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # On-disk scan history cap

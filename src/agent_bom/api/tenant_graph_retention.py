@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from typing import Any
 
 from agent_bom.api.stores import _get_tenant_graph_retention_store, set_tenant_graph_retention_store
@@ -50,6 +51,31 @@ def resolve_graph_retention_days(tenant_id: str | None = None) -> int:
     return _graph_retention_days()
 
 
+def resolve_graph_retention_days_by_tenant(tenant_ids: Iterable[str], *, all_tenants: bool) -> dict[str, int]:
+    """Resolve retention windows for the tenants a purge is about to sweep.
+
+    A tenant-scoped purge resolves each tenant with
+    :func:`resolve_graph_retention_days`. A cross-tenant background sweep
+    (``all_tenants=True``) reads every stored override in one explicitly
+    flagged listing (the maintenance path on Postgres) instead of one
+    tenant-bound read per tenant, which RLS would answer with "no override"
+    for every tenant but the bound one. Precedence is the same either way.
+    """
+    from agent_bom.db.graph_store import _graph_retention_days, normalize_graph_tenant_id
+
+    wanted = set(tenant_ids)
+    if not wanted or not all_tenants:
+        return {tenant_id: resolve_graph_retention_days(tenant_id) for tenant_id in wanted}
+    stored = _get_tenant_graph_retention_store().list_overrides(all_tenants=True)
+    env_overrides = _env_graph_retention_overrides()
+    default_days = _graph_retention_days()
+    resolved: dict[str, int] = {}
+    for tenant_id in wanted:
+        tid = normalize_graph_tenant_id(tenant_id)
+        resolved[tenant_id] = max(1, int(stored[tid])) if tid in stored else env_overrides.get(tid, default_days)
+    return resolved
+
+
 def get_tenant_graph_retention_override(tenant_id: str) -> int | None:
     """Return the persisted override for *tenant_id*, if any."""
     from agent_bom.db.graph_store import normalize_graph_tenant_id
@@ -87,6 +113,7 @@ __all__ = [
     "get_tenant_graph_retention_override",
     "graph_retention_overrides_snapshot",
     "resolve_graph_retention_days",
+    "resolve_graph_retention_days_by_tenant",
     "set_tenant_graph_retention_override",
     "set_tenant_graph_retention_store",
 ]

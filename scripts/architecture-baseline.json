@@ -1715,7 +1715,7 @@
       "file_lines": 681
     },
     "gateway_server.py": {
-      "file_lines": 3254
+      "file_lines": 3238
     },
     "gateway_server.py::create_gateway_app": {
       "complexity": 235,
@@ -2767,7 +2767,7 @@
       "function_lines": 347
     },
     "proxy.py": {
-      "file_lines": 2244
+      "file_lines": 2222
     },
     "proxy.py::_maybe_block_on_firewall": {
       "function_lines": 89

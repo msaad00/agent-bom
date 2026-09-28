@@ -97,5 +97,6 @@ def test_gateway_modules_select_cross_surface_enforcement_contracts(tmp_path: Pa
         "src/agent_bom/gateway_server.py",
         "src/agent_bom/runtime/gateway_relay.py",
         "src/agent_bom/runtime/gateway_settings.py",
+        "src/agent_bom/runtime/trace_metadata.py",
     ):
         assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

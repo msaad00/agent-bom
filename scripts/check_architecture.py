@@ -29,6 +29,7 @@ OWNED_FUNCTIONS = {
     "credential_governance_summary": "core/credential_policy.py",
     "build_control_plane_audit_sink": "runtime/gateway_audit.py",
     "build_local_gateway_audit_sink": "runtime/gateway_audit_local.py",
+    "inject_jsonrpc_trace_meta": "runtime/trace_metadata.py",
 }
 
 

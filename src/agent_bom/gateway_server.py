@@ -120,6 +120,7 @@ from agent_bom.runtime.gateway_relay_contract import MAX_GATEWAY_RELAY_MESSAGE_B
 from agent_bom.runtime.gateway_settings import GatewaySettings as GatewaySettings
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
 from agent_bom.runtime.profile_resolution import ProfileResolutionCode
+from agent_bom.runtime.trace_metadata import inject_jsonrpc_trace_meta
 from agent_bom.security import sanitize_error, sanitize_text
 
 logger = logging.getLogger(__name__)
@@ -911,25 +912,8 @@ def _inject_jsonrpc_trace_meta(
     tracestate: str | None,
     baggage: str | None,
 ) -> dict[str, Any]:
-    """Return a JSON-RPC message with bounded W3C trace context in `_meta`.
-
-    MCP clients and servers increasingly use `_meta` as the least-surprising
-    place to carry end-to-end trace context across JSON-RPC boundaries.
-    """
-    if not traceparent and not tracestate and not baggage:
-        return message
-
-    enriched = dict(message)
-    raw_meta = message.get("_meta")
-    meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
-    if traceparent:
-        meta["traceparent"] = traceparent
-    if tracestate:
-        meta["tracestate"] = tracestate
-    if baggage:
-        meta["baggage"] = baggage
-    enriched["_meta"] = meta
-    return enriched
+    """Preserve the gateway's explicit trace arguments at its compatibility entry."""
+    return inject_jsonrpc_trace_meta(message, traceparent=traceparent, tracestate=tracestate, baggage=baggage)
 
 
 def _strip_gateway_identity_metadata(message: dict[str, Any]) -> dict[str, Any]:

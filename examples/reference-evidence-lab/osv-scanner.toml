@@ -1,0 +1,9 @@
+# The reference evidence lab pins Pillow 9.0.0 on purpose: it is the known
+# vulnerable package the lab's correlation proof is built around. It is example
+# input, not a dependency of agent-bom (the product locks Pillow 12.3.0).
+
+[[PackageOverrides]]
+name = "pillow"
+ecosystem = "PyPI"
+vulnerability.ignore = true
+reason = "Intentionally vulnerable reference-lab fixture; not a shipped dependency"

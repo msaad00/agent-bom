@@ -1907,7 +1907,7 @@
       "complexity": 18
     },
     "graph/nhi_governance.py": {
-      "file_lines": 795
+      "file_lines": 794
     },
     "graph/nhi_governance.py::build_nhi_governance_findings": {
       "function_lines": 87

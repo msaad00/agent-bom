@@ -13,7 +13,7 @@ from typing import Any
 from agent_bom.graph.authorization_evidence import has_authoritative_authorization_evidence
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
-from agent_bom.graph.identity_nodes import identity_node_id
+from agent_bom.graph.identity_nodes import find_native_principal, identity_node_id, unresolved_principal_node_id
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.graph.util import clean_graph_part
@@ -110,17 +110,19 @@ class _Projection:
     def add_assignment(self, principal: str, entry: dict[str, Any]) -> None:
         principal_type = entry["principal_type"]
         entity = _RBAC_PRINCIPAL_ENTITY.get(principal_type, EntityType.SERVICE_PRINCIPAL)
-        principal_node = identity_node_id(entity, self.provider, principal)
-        self.graph.add_node(
-            UnifiedNode(
-                id=principal_node,
-                entity_type=entity,
-                label=f"{principal_type or 'principal'}: {principal[:8]}",
-                attributes={"principal_id": principal, "principal_type": principal_type, "cloud_provider": self.provider},
-                data_sources=self.data_sources,
-                dimensions=NodeDimensions(cloud_provider=self.provider, surface="identity"),
+        principal_node = find_native_principal(self.graph, self.provider, entity, principal)
+        if principal_node is None:
+            principal_node = unresolved_principal_node_id(self.graph, self.provider, entity, principal)
+            self.graph.add_node(
+                UnifiedNode(
+                    id=principal_node,
+                    entity_type=entity,
+                    label=f"{principal_type or 'principal'}: {principal[:8]}",
+                    attributes={"principal_id": principal, "principal_type": principal_type, "cloud_provider": self.provider},
+                    data_sources=self.data_sources,
+                    dimensions=NodeDimensions(cloud_provider=self.provider, surface="identity"),
+                )
             )
-        )
         target = self.scope_target(entry["scope"])
         roles = entry["roles"]
         evidence = {

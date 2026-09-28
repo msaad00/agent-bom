@@ -68,6 +68,8 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
             owner = OWNED_FUNCTIONS.get(node.name)
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
+        if isinstance(node, ast.ClassDef) and node.name == "GraphStoreProtocol" and path != "graph/ports.py":
+            errors.append(f"{path}:{node.lineno}: GraphStoreProtocol belongs in graph/ports.py")
         for module in _import_modules(path, node):
             if path.startswith("runtime/gateway_") and module == "agent_bom.gateway_server":
                 errors.append(f"{path}:{node.lineno}: gateway services must not import their HTTP composition root")
@@ -76,6 +78,13 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
             ):
                 errors.append(f"{path}:{node.lineno}: upstream relay must not import HTTP application or API adapters")
 
+            if path in {"graph/ports.py", "graph/correlation_service.py"} and (
+                module == "agent_bom.api"
+                or module.startswith("agent_bom.api.")
+                or module == "agent_bom.db"
+                or module.startswith("agent_bom.db.")
+            ):
+                errors.append(f"{path}:{node.lineno}: graph services and ports must not import storage adapters")
             if path in {"graph/package_projection.py", "graph/runtime_projection.py", "graph/projection_support.py"} and (
                 module == "agent_bom.graph.builder" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):

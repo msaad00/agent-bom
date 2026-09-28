@@ -20,7 +20,7 @@ from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
 if TYPE_CHECKING:
-    from agent_bom.api.graph_store import GraphStoreProtocol
+    from agent_bom.graph.ports import GraphStoreProtocol
 
 ShowcaseProfile = Literal["baseline", "current"]
 

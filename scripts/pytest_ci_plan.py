@@ -51,6 +51,7 @@ GRAPH_PROJECTION_SOURCES = frozenset(
         "src/agent_bom/graph/package_projection.py",
         "src/agent_bom/graph/runtime_projection.py",
         "src/agent_bom/graph/projection_support.py",
+        "src/agent_bom/graph/ports.py",
     }
 )
 

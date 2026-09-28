@@ -109,7 +109,7 @@
       "function_lines": 114
     },
     "api/graph_store.py": {
-      "file_lines": 2915
+      "file_lines": 2614
     },
     "api/graph_store.py::SQLiteGraphStore._frontier_edge_query": {
       "function_lines": 81

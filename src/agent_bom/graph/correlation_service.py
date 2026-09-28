@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Sequence
 
-from agent_bom.api.graph_store import GraphStoreProtocol
 from agent_bom.graph.analysis import analysis_status_map_to_dict
 from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion
 from agent_bom.graph.attack_path_mitre import apply_attack_path_technique_mappings
@@ -28,6 +27,7 @@ from agent_bom.graph.correlation_receipts import (
     verify_correlation_receipt,
 )
 from agent_bom.graph.correlation_workspace import CorrelationMergeBudgetError, CorrelationMergeWorkspace
+from agent_bom.graph.ports import GraphStoreProtocol
 
 logger = logging.getLogger(__name__)
 

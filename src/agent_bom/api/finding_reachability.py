@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping
 from agent_bom.graph.types import RelationshipType
 
 if TYPE_CHECKING:
-    from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.graph.container import AttackPath
+    from agent_bom.graph.ports import GraphStoreProtocol
 
 
 MAX_FINDING_REACHABILITY_PATHS = 1000

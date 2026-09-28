@@ -5,9 +5,10 @@ from uuid import uuid4
 
 import pytest
 
-from agent_bom.api.graph_store import GraphStoreProtocol, SQLiteGraphStore
+from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedNode
+from agent_bom.graph.ports import GraphStoreProtocol
 
 
 @pytest.fixture(params=["sqlite", "postgres"])
@@ -61,3 +62,9 @@ def test_streaming_snapshot_port_preserves_paging_scope_and_generation(store_fac
         assert not reopened.load_graph(tenant_id=tenant, scan_id=scan).nodes
     finally:
         reset_current_tenant(context)
+
+
+def test_api_port_import_remains_compatible():
+    from agent_bom.api.graph_store import GraphStoreProtocol as LegacyGraphStoreProtocol
+
+    assert LegacyGraphStoreProtocol is GraphStoreProtocol

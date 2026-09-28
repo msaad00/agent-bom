@@ -122,3 +122,17 @@ def test_report_projection_judgments_cannot_be_duplicated_in_builder():
         tree = ast.parse(f"def {name}():\n pass")
         assert boundary_errors("graph/builder.py", tree)
         assert not boundary_errors(f"graph/{owner}.py", tree)
+
+
+def test_graph_ports_and_services_cannot_import_concrete_storage():
+    for path in ("graph/ports.py", "graph/correlation_service.py"):
+        for source in (
+            "from agent_bom.api.graph_store import SQLiteGraphStore",
+            "from ..api import graph_store",
+            "import agent_bom.db.graph_store",
+        ):
+            assert boundary_errors(path, ast.parse(source))
+        assert not boundary_errors(path, ast.parse("from agent_bom.graph.ports import GraphStoreProtocol"))
+    contract = ast.parse("class GraphStoreProtocol: pass")
+    assert boundary_errors("api/graph_store.py", contract)
+    assert not boundary_errors("graph/ports.py", contract)

@@ -25,10 +25,13 @@ AUTHORIZATION_SOURCES = frozenset(
         "src/agent_bom/api/sse_authorization.py",
         "src/agent_bom/api/websocket_auth.py",
         "src/agent_bom/api/tenancy.py",
+        "src/agent_bom/api/tenant_worker.py",
         "src/agent_bom/api/routes/proxy.py",
     }
 )
 AUTHORIZATION_CONTRACTS = (
+    "tests/test_tenant_worker.py",
+    "tests/test_postgres_maintenance_pool.py",
     "tests/test_runtime_source_auth_contract.py",
     "tests/test_api_route_policy.py",
     "tests/api/test_operation_scope_coverage.py",
@@ -117,6 +120,12 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(root / path for path in MCP_TOOL_CONTRACTS if root / path in available)
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
+        if normalized.as_posix() == "src/agent_bom/api/tenant_worker.py":
+            selected.update(
+                candidate
+                for candidate in available
+                if candidate.stem.startswith(("test_report_", "test_api_scan_worker_", "test_distributed_scan_queue", "test_exports_api"))
+            )
         if normalized.as_posix().startswith(
             ("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_", "src/agent_bom/api/gateway_")
         ) or normalized.as_posix() in {"src/agent_bom/runtime/trace_metadata.py", "src/agent_bom/runtime/risk_conditions.py"}:

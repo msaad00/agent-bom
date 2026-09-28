@@ -83,3 +83,28 @@ def test_explicit_tenant_validation_has_one_domain_owner():
     tree = ast.parse("def require_explicit_tenant_id(value):\n return value\n")
     assert boundary_errors("api/tenancy.py", tree)
     assert not boundary_errors("core/tenancy.py", tree)
+
+
+def test_gateway_relay_cannot_import_http_app_or_api_adapters():
+    for source in (
+        "import agent_bom.gateway_server",
+        "from agent_bom import gateway_server",
+        "from agent_bom.api.auth import get_key_store",
+        "from ..api import auth",
+        "from .. import gateway_server",
+    ):
+        assert boundary_errors("runtime/gateway_relay.py", ast.parse(source))
+    assert not boundary_errors("runtime/gateway_relay.py", ast.parse("from .gateway_relay_contract import RelayForwardRequest"))
+
+
+def test_gateway_services_cannot_import_composition_root():
+    for path in ("gateway_settings", "gateway_audit", "gateway_audit_registry", "gateway_audit_local", "gateway_contracts"):
+        for source in ("from agent_bom import gateway_server", "from ..gateway_server import GatewaySettings"):
+            assert boundary_errors(f"runtime/{path}.py", ast.parse(source))
+
+
+def test_gateway_audit_factories_have_single_owners():
+    for function, owner in (("build_control_plane_audit_sink", "gateway_audit"), ("build_local_gateway_audit_sink", "gateway_audit_local")):
+        tree = ast.parse(f"def {function}():\n pass")
+        assert boundary_errors("gateway_server.py", tree)
+        assert not boundary_errors(f"runtime/{owner}.py", tree)

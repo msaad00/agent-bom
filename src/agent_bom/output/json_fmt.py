@@ -17,9 +17,10 @@ from agent_bom.compliance_utils import effective_blast_radius_tags, framework_qu
 from agent_bom.exploitability import fused_triage_priority
 from agent_bom.finding import FINDING_SCHEMA_VERSION, Finding, _forward_fixed_version
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.models import AIBOMReport, BlastRadius
 from agent_bom.output.exposure_path import exposure_path_for_report_finding
 from agent_bom.output.finding_views import cve_findings
+from agent_bom.output.json_sections import _package_occurrence_to_dict, _severity_label, _severity_state, agents_json
 from agent_bom.output.json_writer import write_json_document
 from agent_bom.security import (
     sanitize_command_args,
@@ -37,16 +38,6 @@ INVENTORY_SNAPSHOT_SCHEMA_VERSION = "1"
 _FINDING_SEVERITIES = ("critical", "high", "medium", "low", "unknown")
 
 
-def _severity_state(severity: Severity) -> str:
-    """Stable severity-state label for structured consumers."""
-    return "pending" if severity == Severity.UNKNOWN else "scored"
-
-
-def _severity_label(severity: Severity) -> str:
-    """Human-friendly label that distinguishes advisory-only findings."""
-    return "advisory" if severity == Severity.UNKNOWN else severity.value
-
-
 def _risk_narrative(item: dict) -> str:
     """Build plain-text risk narrative for a remediation item."""
     vuln_id = item["vulns"][0] if item["vulns"] else "this vulnerability"
@@ -61,20 +52,6 @@ def _risk_narrative(item: dict) -> str:
     if tools:
         parts.append(f"through {tools}")
     return " ".join(parts) + "."
-
-
-def _package_occurrence_to_dict(occurrence) -> dict[str, object]:
-    """Serialize package provenance observations without importing parser internals."""
-    if hasattr(occurrence, "to_dict"):
-        return occurrence.to_dict()
-    return {
-        "layer_index": getattr(occurrence, "layer_index", None),
-        "layer_id": getattr(occurrence, "layer_id", None),
-        "layer_path": getattr(occurrence, "layer_path", None),
-        "package_path": getattr(occurrence, "package_path", None),
-        "created_by": getattr(occurrence, "created_by", None),
-        "dockerfile_instruction": getattr(occurrence, "dockerfile_instruction", None),
-    }
 
 
 def _stable_report_finding_id(*parts: object) -> str:
@@ -1011,17 +988,18 @@ def _blast_radius_json_entry(
     }
 
 
-def to_json(report: AIBOMReport) -> dict:
-    """Convert report to JSON-serializable dict."""
-    ai_bom_entities = _build_ai_bom_entities_snapshot(report)
-    inventory_snapshot = _build_inventory_snapshot(report)
-    mcp_runtime_diff = _build_mcp_runtime_diff(report)
-    from agent_bom.mitre_fetch import get_catalog_metadata
-    from agent_bom.scorecard import summarize_scorecard_coverage
-
-    all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
+def _cve_pairs_and_exposure_paths(report: AIBOMReport) -> tuple[list[tuple[Finding, BlastRadius]], list[dict[str, Any]]]:
     cve_pairs = list(zip(cve_findings(report, report.blast_radii), report.blast_radii, strict=True)) if report.blast_radii else []
     exposure_paths = [exposure_path_for_report_finding(finding, br=br, rank=rank) for rank, (finding, br) in enumerate(cve_pairs, start=1)]
+    return cve_pairs, exposure_paths
+
+
+def _blast_radius_rows(cve_pairs: list[tuple[Finding, BlastRadius]], exposure_paths: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_blast_radius_json_entry(br, finding, rank, exposure_paths[rank - 1]) for rank, (finding, br) in enumerate(cve_pairs, start=1)]
+
+
+def _export_findings_json(report: AIBOMReport) -> list[dict[str, Any]]:
+    """Unified findings as exported, before prompt-scan / browser-extension rows are appended."""
     from agent_bom.output.finding_views import apply_workload_runtime_evidence_for_export
 
     export_findings = apply_workload_runtime_evidence_for_export(list(report.to_findings()))
@@ -1034,7 +1012,28 @@ def to_json(report: AIBOMReport) -> dict:
     for finding in export_findings:
         if not finding.first_seen:
             finding.first_seen = scan_observed_at
-    unified_findings = [finding.to_dict() for finding in export_findings]
+    return [finding.to_dict() for finding in export_findings]
+
+
+def _append_side_findings(findings: list[dict[str, Any]], report: AIBOMReport) -> None:
+    """Append prompt-scan and browser-extension rows the unified stream does not already carry."""
+    if report.prompt_scan_data and not any(finding.get("source") == "PROMPT_SCAN" for finding in findings if isinstance(finding, dict)):
+        findings.extend(_prompt_scan_findings(report.prompt_scan_data))
+    if report.browser_extensions:
+        findings.extend(_browser_extension_findings(report.browser_extensions))
+
+
+def to_json(report: AIBOMReport) -> dict:
+    """Convert report to JSON-serializable dict."""
+    ai_bom_entities = _build_ai_bom_entities_snapshot(report)
+    inventory_snapshot = _build_inventory_snapshot(report)
+    mcp_runtime_diff = _build_mcp_runtime_diff(report)
+    from agent_bom.mitre_fetch import get_catalog_metadata
+    from agent_bom.scorecard import summarize_scorecard_coverage
+
+    all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
+    cve_pairs, exposure_paths = _cve_pairs_and_exposure_paths(report)
+    unified_findings = _export_findings_json(report)
     asset_inventory = _build_asset_inventory(unified_findings)
     finding_summary = _build_finding_summary(unified_findings)
     from agent_bom.evidence.scan_run import effective_scan_run
@@ -1085,223 +1084,8 @@ def to_json(report: AIBOMReport) -> dict:
         "assets": asset_inventory,
         "coverage_warnings": list(report.coverage_warnings),
         "inventory_snapshot": inventory_snapshot,
-        "agents": [
-            {
-                "name": agent.name,
-                "stable_id": agent.stable_id,
-                "canonical_id": agent.canonical_id,
-                "previous_canonical_ids": agent.previous_canonical_ids,
-                "agent_type": agent.agent_type.value,
-                "type": agent.agent_type.value,
-                "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
-                "source": agent.source,
-                "status": agent.status.value,
-                "discovered_at": agent.discovered_at,
-                "last_seen": agent.last_seen,
-                "discovery_provenance": agent_discovery_provenance(agent),
-                "metadata": agent.metadata,
-                "automation_settings": agent.automation_settings,
-                "mcp_servers": [
-                    {
-                        "name": server.name,
-                        "stable_id": server.stable_id,
-                        "canonical_id": server.canonical_id,
-                        "surface": server.surface.value,
-                        "fingerprint": server.fingerprint,
-                        "command": server.command,
-                        "args": sanitize_command_args(server.args),
-                        "transport": server.transport.value,
-                        "url": sanitize_url(server.url),
-                        "auth_mode": server.auth_mode,
-                        "mcp_version": server.mcp_version,
-                        "has_credentials": server.has_credentials,
-                        "credential_env_vars": server.credential_names,
-                        "identity_bindings": [binding.to_dict() for binding in server.identity_bindings],
-                        "registry_verified": server.registry_verified,
-                        "registry_badge": "verified" if server.registry_verified else "unknown",
-                        "security_blocked": server.security_blocked,
-                        "security_warnings": sanitize_security_warnings(server.security_warnings),
-                        "security_intelligence": [
-                            sanitize_security_intelligence_entry(item)
-                            for item in (server.security_intelligence or [])
-                            if isinstance(item, dict)
-                        ],
-                        "discovery_sources": server.discovery_sources,
-                        "discovery_provenance": sanitize_discovery_provenance(
-                            server.discovery_provenance,
-                            defaults=agent_discovery_provenance(agent),
-                        ),
-                        "tools": [
-                            {
-                                "name": t.name,
-                                "stable_id": t.stable_id,
-                                "canonical_id": t.canonical_id,
-                                "fingerprint": t.fingerprint,
-                                "description": t.description,
-                                "discovery_source": t.discovery_source,
-                                "discovery_confidence": t.discovery_confidence,
-                                "schema_findings": t.schema_findings,
-                                "schema_rule_findings": t.schema_rule_findings,
-                                "risk_score": t.risk_score,
-                            }
-                            for t in server.tools
-                        ],
-                        "resources": [
-                            {
-                                "uri": r.uri,
-                                "stable_id": r.stable_id,
-                                "canonical_id": r.canonical_id,
-                                "fingerprint": r.fingerprint,
-                                "name": r.name,
-                                "description": r.description,
-                                "mime_type": r.mime_type,
-                                "content_findings": r.content_findings,
-                                "risk_score": r.risk_score,
-                            }
-                            for r in server.resources
-                        ],
-                        "prompts": [
-                            {
-                                "name": p.name,
-                                "stable_id": p.stable_id,
-                                "canonical_id": p.canonical_id,
-                                "fingerprint": p.fingerprint,
-                                "description": p.description,
-                                "arguments": p.arguments,
-                                "content_findings": p.content_findings,
-                                "risk_score": p.risk_score,
-                            }
-                            for p in server.prompts
-                        ],
-                        "packages": [
-                            {
-                                "name": pkg.name,
-                                "stable_id": pkg.stable_id,
-                                "canonical_id": pkg.canonical_id,
-                                "version": pkg.version,
-                                "ecosystem": pkg.ecosystem,
-                                "purl": pkg.purl,
-                                "source_package": pkg.source_package,
-                                "distro_name": pkg.distro_name,
-                                "distro_version": pkg.distro_version,
-                                "occurrence_count": len(pkg.occurrences),
-                                "occurrences": [_package_occurrence_to_dict(occ) for occ in pkg.occurrences],
-                                "introduced_in_layer": (
-                                    _package_occurrence_to_dict(pkg.primary_occurrence) if pkg.primary_occurrence else None
-                                ),
-                                "is_direct": pkg.is_direct,
-                                "parent_package": pkg.parent_package,
-                                "dependency_depth": pkg.dependency_depth,
-                                "dependency_scope": pkg.dependency_scope,
-                                "reachability_evidence": pkg.reachability_evidence,
-                                "resolved_from_registry": pkg.resolved_from_registry,
-                                "version_source": pkg.version_source,
-                                "declared_version": pkg.declared_version,
-                                "resolved_version": pkg.resolved_version,
-                                "version_confidence": pkg.version_confidence,
-                                "version_resolved_at": pkg.version_resolved_at,
-                                "version_evidence": pkg.version_evidence or None,
-                                "version_conflicts": pkg.version_conflicts or None,
-                                "version_provenance": package_version_provenance(
-                                    pkg,
-                                    inherited=agent_discovery_provenance(agent),
-                                ),
-                                "discovery_provenance": package_discovery_provenance(
-                                    pkg,
-                                    inherited=agent_discovery_provenance(agent),
-                                ),
-                                "floating_reference": pkg.floating_reference,
-                                "floating_reference_reason": pkg.floating_reference_reason,
-                                "is_malicious": pkg.is_malicious,
-                                "malicious_reason": pkg.malicious_reason,
-                                "registry_version": pkg.registry_version,
-                                "license": pkg.license,
-                                "license_expression": pkg.license_expression,
-                                "supplier": pkg.supplier,
-                                "author": pkg.author,
-                                "description": pkg.description,
-                                "homepage": pkg.homepage,
-                                "repository_url": pkg.repository_url,
-                                "download_url": pkg.download_url,
-                                "copyright_text": pkg.copyright_text,
-                                "deps_dev_resolved": pkg.deps_dev_resolved,
-                                # --verify-integrity verdict; null means the
-                                # check never ran (not "ran and failed").
-                                "integrity_verified": pkg.integrity_verified,
-                                "provenance_attested": pkg.provenance_attested,
-                                "provenance_source": pkg.provenance_source,
-                                # Why the verdict is what it is. "unavailable"
-                                # means the registry never answered — not that
-                                # the attestation is missing.
-                                "provenance_status": pkg.provenance_status,
-                                "scorecard_score": pkg.scorecard_score,
-                                "scorecard_checks": pkg.scorecard_checks or None,
-                                "scorecard_repo": pkg.scorecard_repo,
-                                "scorecard_lookup_state": pkg.scorecard_lookup_state,
-                                "scorecard_lookup_reason": pkg.scorecard_lookup_reason,
-                                "vulnerability_count": len(pkg.vulnerabilities),
-                                "vulnerabilities": [
-                                    {
-                                        "id": v.id,
-                                        "summary": v.summary,
-                                        "severity": v.severity.value,
-                                        "severity_label": _severity_label(v.severity),
-                                        "severity_state": _severity_state(v.severity),
-                                        "severity_source": v.severity_source,
-                                        "advisory_sources": v.all_advisory_sources,
-                                        "primary_advisory_source": v.all_advisory_sources[0] if v.all_advisory_sources else None,
-                                        "advisory_coverage_state": v.advisory_coverage_state,
-                                        "match_confidence_tier": v.match_confidence_tier,
-                                        "confidence": v.confidence,
-                                        "cvss_score": v.cvss_score,
-                                        "epss_score": v.epss_score,
-                                        "epss_percentile": v.epss_percentile,
-                                        "is_kev": v.is_kev,
-                                        "kev_date_added": v.kev_date_added,
-                                        "kev_due_date": v.kev_due_date,
-                                        "exploit_likelihood": v.exploit_likelihood,
-                                        "published_at": v.published_at,
-                                        "modified_at": v.modified_at,
-                                        "aliases": v.aliases,
-                                        "exploitability": v.exploitability,
-                                        "cwe_ids": v.cwe_ids,
-                                        "fixed_version": v.fixed_version,
-                                        "references": v.references,
-                                        "nvd_published": v.nvd_published,
-                                        "nvd_modified": v.nvd_modified,
-                                        "nvd_status": v.nvd_status,
-                                        "vex_status": v.vex_status,
-                                        "vex_justification": v.vex_justification,
-                                        "compliance_tags": v.compliance_tags,
-                                    }
-                                    for v in pkg.vulnerabilities
-                                ],
-                            }
-                            for pkg in server.packages
-                        ],
-                        "permission_profile": (
-                            {
-                                "runs_as_root": server.permission_profile.runs_as_root,
-                                "container_privileged": server.permission_profile.container_privileged,
-                                "privilege_level": server.permission_profile.privilege_level,
-                                "tool_permissions": server.permission_profile.tool_permissions,
-                                "capabilities": server.permission_profile.capabilities,
-                                "network_access": server.permission_profile.network_access,
-                                "filesystem_write": server.permission_profile.filesystem_write,
-                                "shell_access": server.permission_profile.shell_access,
-                            }
-                            if server.permission_profile
-                            else None
-                        ),
-                    }
-                    for server in agent.mcp_servers
-                ],
-            }
-            for agent in report.agents
-        ],
-        "blast_radius": [
-            _blast_radius_json_entry(br, finding, rank, exposure_paths[rank - 1]) for rank, (finding, br) in enumerate(cve_pairs, start=1)
-        ],
+        "agents": agents_json(report),
+        "blast_radius": _blast_radius_rows(cve_pairs, exposure_paths),
         "exposure_paths": {
             "schema_version": "1",
             "source": "blast_radius_output",
@@ -1335,12 +1119,7 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.prompt_scan_data:
         result["prompt_scan"] = report.prompt_scan_data
-        findings = result.get("findings")
-        has_unified_prompt_findings = isinstance(findings, list) and any(
-            isinstance(finding, dict) and finding.get("source") == "PROMPT_SCAN" for finding in findings
-        )
-        if isinstance(findings, list) and not has_unified_prompt_findings:
-            findings.extend(_prompt_scan_findings(report.prompt_scan_data))
+    _append_side_findings(unified_findings, report)
 
     if report.model_files:
         result["model_files"] = report.model_files
@@ -1485,9 +1264,6 @@ def to_json(report: AIBOMReport) -> dict:
         result["serving_configs"] = report.serving_configs
     if report.browser_extensions:
         result["browser_extensions"] = report.browser_extensions
-        findings = result.get("findings")
-        if isinstance(findings, list):
-            findings.extend(_browser_extension_findings(report.browser_extensions))
     if report.endpoint_inventory_data:
         result["endpoint_inventory"] = report.endpoint_inventory_data
     if report.ai_inventory_data:

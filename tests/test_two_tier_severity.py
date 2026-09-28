@@ -325,9 +325,9 @@ def test_preset_ci_sets_warn_on_high():
     import ast
     import inspect
 
-    from agent_bom.cli.agents import scan
+    from agent_bom.cli.agents.scan_pipeline import prepare
 
-    src = inspect.getsource(scan.callback)
+    src = inspect.getsource(prepare)
     tree = ast.parse(src)
 
     # Find the preset == "ci" block and verify warn_on_severity assignment
@@ -336,10 +336,12 @@ def test_preset_ci_sets_warn_on_high():
         if (
             isinstance(node, ast.If)
             and isinstance(node.test, ast.Compare)
-            and isinstance(node.test.left, ast.Name)
-            and node.test.left.id == "preset"
+            and isinstance(node.test.left, ast.Attribute)
+            and node.test.left.attr == "preset"
+            and isinstance(node.test.comparators[0], ast.Constant)
+            and node.test.comparators[0].value == "ci"
         ):
             for child in ast.walk(node):
-                if isinstance(child, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "warn_on_severity" for t in child.targets):
+                if isinstance(child, ast.Assign) and any(isinstance(t, ast.Attribute) and t.attr == "warn_on_severity" for t in child.targets):
                     found = True
     assert found, "preset=='ci' block must assign warn_on_severity"

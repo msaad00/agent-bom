@@ -24,13 +24,12 @@ def test_cli_generates_vex_after_reachability_stamping():
     """The CLI must not auto-triage before symbol evidence reaches findings."""
     from inspect import getsource
 
-    from agent_bom.cli.agents.scan_cmd import scan
+    from agent_bom.cli.agents.scan_pipeline import policy
 
-    source = getsource(scan.callback)
-    stamp_index = source.index("apply_symbol_reachability_to_blast_radii")
-    vex_index = source.index("_vex_doc = generate_vex(report, auto_triage=True)")
-
-    assert stamp_index < vex_index
+    order = getsource(policy.run_policy)
+    assert order.index("_stamp_reachability(") < order.index("_generate_vex(")
+    assert "apply_symbol_reachability_to_blast_radii" in getsource(policy._stamp_reachability)
+    assert "generate_vex(st.report, auto_triage=True)" in getsource(policy._generate_vex)
 
 
 # ---------------------------------------------------------------------------

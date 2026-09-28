@@ -10,7 +10,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_firewall_check(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import firewall_check_impl
 
     mcp = bindings.mcp
 
@@ -28,11 +27,11 @@ def register_firewall_check(bindings: OperatorToolBindings) -> None:
         ] = "",
     ) -> str:
         """Dry-run an inter-agent firewall decision without recording it to the control-plane tally."""
-        # firewall_check_impl is a synchronous handler — route it through the
+        # bindings.implementations["firewall_check_impl"] is a synchronous handler — route it through the
         # sync executor (run in a thread) rather than awaiting its str return.
         return await bindings.execute_tool_sync_async(
             "firewall_check",
-            firewall_check_impl,
+            bindings.implementations["firewall_check_impl"],
             source_agent=source_agent,
             target_agent=target_agent,
             source_roles=source_roles,
@@ -42,7 +41,6 @@ def register_firewall_check(bindings: OperatorToolBindings) -> None:
 
 
 def register_audit_query(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import audit_query_impl
 
     mcp = bindings.mcp
 
@@ -97,7 +95,7 @@ def register_audit_query(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "audit_query",
-            audit_query_impl,
+            bindings.implementations["audit_query_impl"],
             tenant_id=tenant_id,
             action=action,
             resource=resource,
@@ -109,7 +107,6 @@ def register_audit_query(bindings: OperatorToolBindings) -> None:
 
 
 def register_audit_integrity(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import audit_integrity_impl
 
     mcp = bindings.mcp
 
@@ -131,7 +128,7 @@ def register_audit_integrity(bindings: OperatorToolBindings) -> None:
         """Verify control-plane and runtime audit chain integrity."""
         return await bindings.execute_tool_async(
             "audit_integrity",
-            audit_integrity_impl,
+            bindings.implementations["audit_integrity_impl"],
             tenant_id=tenant_id,
             limit=limit,
             include_runtime=include_runtime,
@@ -140,7 +137,6 @@ def register_audit_integrity(bindings: OperatorToolBindings) -> None:
 
 
 def register_cost_forecast(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.posture import cost_forecast_impl
 
     mcp = bindings.mcp
 
@@ -164,7 +160,7 @@ def register_cost_forecast(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "cost_forecast",
-            cost_forecast_impl,
+            bindings.implementations["cost_forecast_impl"],
             agent=agent,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -172,7 +168,6 @@ def register_cost_forecast(bindings: OperatorToolBindings) -> None:
 
 
 def register_cost_allocation(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.posture import cost_allocation_impl
 
     mcp = bindings.mcp
 
@@ -203,7 +198,7 @@ def register_cost_allocation(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "cost_allocation",
-            cost_allocation_impl,
+            bindings.implementations["cost_allocation_impl"],
             cost_center=cost_center,
             tag=tag,
             agent=agent,
@@ -213,7 +208,6 @@ def register_cost_allocation(bindings: OperatorToolBindings) -> None:
 
 
 def register_credential_expiry(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.posture import credential_expiry_impl
 
     mcp = bindings.mcp
 
@@ -227,13 +221,12 @@ def register_credential_expiry(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "credential_expiry",
-            credential_expiry_impl,
+            bindings.implementations["credential_expiry_impl"],
             _truncate_response=bindings.truncate_response,
         )
 
 
 def register_nhi_discover(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.posture import nhi_discover_impl
 
     mcp = bindings.mcp
 
@@ -258,7 +251,7 @@ def register_nhi_discover(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "nhi_discover",
-            nhi_discover_impl,
+            bindings.implementations["nhi_discover_impl"],
             providers=providers,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -266,7 +259,6 @@ def register_nhi_discover(bindings: OperatorToolBindings) -> None:
 
 
 def register_cloud_inventory(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.posture import cloud_inventory_impl
 
     mcp = bindings.mcp
 
@@ -294,7 +286,7 @@ def register_cloud_inventory(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "cloud_inventory",
-            cloud_inventory_impl,
+            bindings.implementations["cloud_inventory_impl"],
             providers=providers,
             region=region,
             tenant_id=tenant_id,
@@ -303,7 +295,6 @@ def register_cloud_inventory(bindings: OperatorToolBindings) -> None:
 
 
 def register_access_review(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.posture import access_review_impl
 
     mcp = bindings.mcp
 
@@ -332,7 +323,7 @@ def register_access_review(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "access_review",
-            access_review_impl,
+            bindings.implementations["access_review_impl"],
             destructive=True,
             required_scope="identity:write",
             campaign_id=campaign_id,

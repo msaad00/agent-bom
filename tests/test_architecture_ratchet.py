@@ -309,6 +309,7 @@ def test_import_debt_is_budgeted_per_category_so_splits_can_move_it():
     assert regressions(grown, baseline) == ["deferred_imports: total 4 exceeds budget 3"]
     assert regressions({"new.py": {"graph_api_imports": 1}}, {}) == ["graph_api_imports: total 1 exceeds budget 0"]
 
+
 def test_operator_registrations_cannot_import_server_composition():
     for source in (
         "from agent_bom.mcp_server import _execute_tool_async",

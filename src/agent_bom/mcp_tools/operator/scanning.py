@@ -10,7 +10,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_cloud_side_scan(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.side_scan import cloud_side_scan_impl
 
     mcp = bindings.mcp
 
@@ -45,7 +44,7 @@ def register_cloud_side_scan(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "cloud_side_scan",
-            cloud_side_scan_impl,
+            bindings.implementations["cloud_side_scan_impl"],
             destructive=True,
             required_scope="cloud:write",
             provider=provider,
@@ -66,7 +65,6 @@ def register_cloud_side_scan(bindings: OperatorToolBindings) -> None:
 
 
 def register_marketplace_check(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.registry import marketplace_check_impl
 
     mcp = bindings.mcp
 
@@ -92,7 +90,7 @@ def register_marketplace_check(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "marketplace_check",
-            marketplace_check_impl,
+            bindings.implementations["marketplace_check_impl"],
             package=package,
             ecosystem=ecosystem,
             _validate_ecosystem=bindings.validate_ecosystem,
@@ -102,7 +100,6 @@ def register_marketplace_check(bindings: OperatorToolBindings) -> None:
 
 
 def register_code_scan(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.scanning import code_scan_impl
 
     mcp = bindings.mcp
 
@@ -125,7 +122,7 @@ def register_code_scan(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "code_scan",
-            code_scan_impl,
+            bindings.implementations["code_scan_impl"],
             path=path,
             config=config,
             _safe_path=bindings.safe_path,

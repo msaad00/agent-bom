@@ -10,7 +10,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_runtime_correlate(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import runtime_correlate_impl
 
     mcp = bindings.mcp
 
@@ -48,7 +47,7 @@ def register_runtime_correlate(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "runtime_correlate",
-            runtime_correlate_impl,
+            bindings.implementations["runtime_correlate_impl"],
             config_path=config_path,
             audit_log=audit_log,
             otel_trace=otel_trace,
@@ -59,7 +58,6 @@ def register_runtime_correlate(bindings: OperatorToolBindings) -> None:
 
 
 def register_runtime_production_index(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import runtime_production_index_impl
 
     mcp = bindings.mcp
 
@@ -79,14 +77,13 @@ def register_runtime_production_index(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "runtime_production_index",
-            runtime_production_index_impl,
+            bindings.implementations["runtime_production_index_impl"],
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
         )
 
 
 def register_runtime_blueprints(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import runtime_blueprints_impl
 
     mcp = bindings.mcp
 
@@ -104,7 +101,7 @@ def register_runtime_blueprints(bindings: OperatorToolBindings) -> None:
         """Return canonical role/profile blueprints for runtime policy design."""
         return await bindings.execute_tool_async(
             "runtime_blueprints",
-            runtime_blueprints_impl,
+            bindings.implementations["runtime_blueprints_impl"],
             blueprint_id=blueprint_id,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -112,7 +109,6 @@ def register_runtime_blueprints(bindings: OperatorToolBindings) -> None:
 
 
 def register_runtime_blueprint_drift(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import runtime_blueprint_drift_impl
 
     mcp = bindings.mcp
 
@@ -130,7 +126,7 @@ def register_runtime_blueprint_drift(bindings: OperatorToolBindings) -> None:
         """Compare current runtime traffic with an approved role/profile blueprint."""
         return await bindings.execute_tool_async(
             "runtime_blueprint_drift",
-            runtime_blueprint_drift_impl,
+            bindings.implementations["runtime_blueprint_drift_impl"],
             blueprint_id=blueprint_id,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -138,7 +134,6 @@ def register_runtime_blueprint_drift(bindings: OperatorToolBindings) -> None:
 
 
 def register_cost_report(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import cost_report_impl
 
     mcp = bindings.mcp
 
@@ -160,7 +155,7 @@ def register_cost_report(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "cost_report",
-            cost_report_impl,
+            bindings.implementations["cost_report_impl"],
             agent=agent,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -168,7 +163,6 @@ def register_cost_report(bindings: OperatorToolBindings) -> None:
 
 
 def register_anomaly_scan(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import anomaly_scan_impl
 
     mcp = bindings.mcp
 
@@ -187,7 +181,7 @@ def register_anomaly_scan(bindings: OperatorToolBindings) -> None:
         tool-call-rate statistical outliers, for proactive runaway-agent detection."""
         return await bindings.execute_tool_async(
             "anomaly_scan",
-            anomaly_scan_impl,
+            bindings.implementations["anomaly_scan_impl"],
             z_threshold=z_threshold,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -195,7 +189,6 @@ def register_anomaly_scan(bindings: OperatorToolBindings) -> None:
 
 
 def register_drift_incidents(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import drift_incidents_impl
 
     mcp = bindings.mcp
 
@@ -217,7 +210,7 @@ def register_drift_incidents(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "drift_incidents",
-            drift_incidents_impl,
+            bindings.implementations["drift_incidents_impl"],
             include_resolved=include_resolved,
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
@@ -225,7 +218,6 @@ def register_drift_incidents(bindings: OperatorToolBindings) -> None:
 
 
 def register_proxy_status(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import proxy_status_impl
 
     mcp = bindings.mcp
 
@@ -239,14 +231,13 @@ def register_proxy_status(bindings: OperatorToolBindings) -> None:
         """Return current MCP proxy metrics and alert summary, if a session is active."""
         return await bindings.execute_tool_async(
             "proxy_status",
-            proxy_status_impl,
+            bindings.implementations["proxy_status_impl"],
             tenant_id=tenant_id,
             _truncate_response=bindings.truncate_response,
         )
 
 
 def register_proxy_alerts(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import proxy_alerts_impl
 
     mcp = bindings.mcp
 
@@ -272,7 +263,7 @@ def register_proxy_alerts(bindings: OperatorToolBindings) -> None:
         """Return recent runtime proxy alerts without prompts, arguments, or responses."""
         return await bindings.execute_tool_async(
             "proxy_alerts",
-            proxy_alerts_impl,
+            bindings.implementations["proxy_alerts_impl"],
             tenant_id=tenant_id,
             severity=severity,
             detector=detector,
@@ -282,7 +273,6 @@ def register_proxy_alerts(bindings: OperatorToolBindings) -> None:
 
 
 def register_gateway_status(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import gateway_status_impl
 
     mcp = bindings.mcp
 
@@ -312,7 +302,7 @@ def register_gateway_status(bindings: OperatorToolBindings) -> None:
         """Return gateway policy, firewall, durable activity, and optional self-posture evidence."""
         return await bindings.execute_tool_async(
             "gateway_status",
-            gateway_status_impl,
+            bindings.implementations["gateway_status_impl"],
             tenant_id=tenant_id,
             include_activity=include_activity,
             activity_limit=activity_limit,

@@ -10,7 +10,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_graph_correlate(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.graph import graph_correlate_impl
 
     mcp = bindings.mcp
 
@@ -36,7 +35,7 @@ def register_graph_correlate(bindings: OperatorToolBindings) -> None:
 
         return await bindings.execute_tool_async(
             "graph_correlate",
-            graph_correlate_impl,
+            bindings.implementations["graph_correlate_impl"],
             destructive=True,
             required_scope="scan:write",
             name=name,
@@ -53,7 +52,6 @@ def register_graph_correlate(bindings: OperatorToolBindings) -> None:
 
 
 def register_graph_correlation_status(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.graph import graph_correlation_status_impl
 
     mcp = bindings.mcp
 
@@ -66,7 +64,7 @@ def register_graph_correlation_status(bindings: OperatorToolBindings) -> None:
 
         return await bindings.execute_tool_async(
             "graph_correlation_status",
-            graph_correlation_status_impl,
+            bindings.implementations["graph_correlation_status_impl"],
             required_scope="graph:read",
             correlation_id=correlation_id,
             tenant_id=tenant_id,
@@ -75,7 +73,6 @@ def register_graph_correlation_status(bindings: OperatorToolBindings) -> None:
 
 
 def register_diff(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.sbom import diff_impl
 
     mcp = bindings.mcp
 
@@ -100,7 +97,7 @@ def register_diff(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "diff",
-            diff_impl,
+            bindings.implementations["diff_impl"],
             destructive=True,
             required_scope="findings:write",
             baseline=baseline,
@@ -110,7 +107,6 @@ def register_diff(bindings: OperatorToolBindings) -> None:
 
 
 def register_findings_triage(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.triage import findings_triage_impl
 
     mcp = bindings.mcp
 
@@ -140,7 +136,7 @@ def register_findings_triage(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "findings_triage",
-            findings_triage_impl,
+            bindings.implementations["findings_triage_impl"],
             destructive=True,
             required_scope="findings:write",
             vulnerability_id=vulnerability_id,
@@ -161,7 +157,6 @@ def register_findings_triage(bindings: OperatorToolBindings) -> None:
 
 
 def register_list_exceptions(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.exceptions import list_exceptions_impl
 
     mcp = bindings.mcp
 
@@ -183,7 +178,7 @@ def register_list_exceptions(bindings: OperatorToolBindings) -> None:
         """List tenant-scoped exception evidence from the canonical store."""
         return await bindings.execute_tool_async(
             "list_exceptions",
-            list_exceptions_impl,
+            bindings.implementations["list_exceptions_impl"],
             status=status,
             limit=limit,
             tenant_id=tenant_id,
@@ -192,7 +187,6 @@ def register_list_exceptions(bindings: OperatorToolBindings) -> None:
 
 
 def register_request_exception(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.exceptions import request_exception_impl
 
     mcp = bindings.mcp
 
@@ -214,7 +208,7 @@ def register_request_exception(bindings: OperatorToolBindings) -> None:
         """Create a pending exception through the shared REST/UI/MCP lifecycle."""
         return await bindings.execute_tool_async(
             "request_exception",
-            request_exception_impl,
+            bindings.implementations["request_exception_impl"],
             destructive=True,
             required_scope="findings:write",
             vulnerability_id=vulnerability_id,
@@ -231,7 +225,6 @@ def register_request_exception(bindings: OperatorToolBindings) -> None:
 
 
 def register_approve_exception(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.exceptions import approve_exception_impl
 
     mcp = bindings.mcp
 
@@ -249,7 +242,7 @@ def register_approve_exception(bindings: OperatorToolBindings) -> None:
         """Activate a pending exception through the canonical lifecycle store."""
         return await bindings.execute_tool_async(
             "approve_exception",
-            approve_exception_impl,
+            bindings.implementations["approve_exception_impl"],
             destructive=True,
             required_scope="findings:write",
             exception_id=exception_id,
@@ -262,7 +255,6 @@ def register_approve_exception(bindings: OperatorToolBindings) -> None:
 
 
 def register_risk_campaign_workflow(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.risk_campaigns import risk_campaign_workflow_impl
 
     mcp = bindings.mcp
 
@@ -294,7 +286,7 @@ def register_risk_campaign_workflow(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "risk_campaign_workflow",
-            risk_campaign_workflow_impl,
+            bindings.implementations["risk_campaign_workflow_impl"],
             destructive=True,
             required_scope="findings:write",
             action=action,

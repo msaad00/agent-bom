@@ -10,7 +10,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_shield_status(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import shield_status_impl
 
     mcp = bindings.mcp
 
@@ -24,14 +23,13 @@ def register_shield_status(bindings: OperatorToolBindings) -> None:
         """Return current Shield assessment for a session without changing enforcement state."""
         return await bindings.execute_tool_async(
             "shield_status",
-            shield_status_impl,
+            bindings.implementations["shield_status_impl"],
             session_id=session_id,
             _truncate_response=bindings.truncate_response,
         )
 
 
 def register_shield_start(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import shield_start_impl
 
     mcp = bindings.mcp
 
@@ -65,7 +63,7 @@ def register_shield_start(bindings: OperatorToolBindings) -> None:
         """Start Shield enforcement for a session. Requires admin role, shield:write scope, and audit reason."""
         return await bindings.execute_tool_async(
             "shield_start",
-            shield_start_impl,
+            bindings.implementations["shield_start_impl"],
             destructive=True,
             required_scope="shield:write",
             session_id=session_id,
@@ -79,7 +77,6 @@ def register_shield_start(bindings: OperatorToolBindings) -> None:
 
 
 def register_shield_unblock(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import shield_unblock_impl
 
     mcp = bindings.mcp
 
@@ -109,7 +106,7 @@ def register_shield_unblock(bindings: OperatorToolBindings) -> None:
         """Unblock Shield enforcement for a session. Requires admin role, shield:write scope, and audit reason."""
         return await bindings.execute_tool_async(
             "shield_unblock",
-            shield_unblock_impl,
+            bindings.implementations["shield_unblock_impl"],
             destructive=True,
             required_scope="shield:write",
             session_id=session_id,
@@ -122,7 +119,6 @@ def register_shield_unblock(bindings: OperatorToolBindings) -> None:
 
 
 def register_shield_break_glass(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.runtime import shield_break_glass_impl
 
     mcp = bindings.mcp
 
@@ -152,7 +148,7 @@ def register_shield_break_glass(bindings: OperatorToolBindings) -> None:
         """Run Shield break-glass override. Requires admin role, shield:write scope, and audit reason."""
         return await bindings.execute_tool_async(
             "shield_break_glass",
-            shield_break_glass_impl,
+            bindings.implementations["shield_break_glass_impl"],
             destructive=True,
             required_scope="shield:write",
             session_id=session_id,
@@ -165,7 +161,6 @@ def register_shield_break_glass(bindings: OperatorToolBindings) -> None:
 
 
 def register_identity_issue(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.identity import identity_issue_impl
 
     mcp = bindings.mcp
 
@@ -184,7 +179,7 @@ def register_identity_issue(bindings: OperatorToolBindings) -> None:
         """Issue a managed agent identity. Requires admin role, identity:write scope, and an audit reason. Returns the raw token once."""
         return await bindings.execute_tool_async(
             "identity_issue",
-            identity_issue_impl,
+            bindings.implementations["identity_issue_impl"],
             destructive=True,
             required_scope="identity:write",
             agent_id=agent_id,
@@ -201,7 +196,6 @@ def register_identity_issue(bindings: OperatorToolBindings) -> None:
 
 
 def register_identity_rotate(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.identity import identity_rotate_impl
 
     mcp = bindings.mcp
 
@@ -221,7 +215,7 @@ def register_identity_rotate(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "identity_rotate",
-            identity_rotate_impl,
+            bindings.implementations["identity_rotate_impl"],
             destructive=True,
             required_scope="identity:write",
             identity_id=identity_id,
@@ -236,7 +230,6 @@ def register_identity_rotate(bindings: OperatorToolBindings) -> None:
 
 
 def register_identity_revoke(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.identity import identity_revoke_impl
 
     mcp = bindings.mcp
 
@@ -251,7 +244,7 @@ def register_identity_revoke(bindings: OperatorToolBindings) -> None:
         """Revoke a managed identity immediately. Requires admin role, identity:write scope, and an audit reason."""
         return await bindings.execute_tool_async(
             "identity_revoke",
-            identity_revoke_impl,
+            bindings.implementations["identity_revoke_impl"],
             destructive=True,
             required_scope="identity:write",
             identity_id=identity_id,
@@ -264,7 +257,6 @@ def register_identity_revoke(bindings: OperatorToolBindings) -> None:
 
 
 def register_identity_grant_jit(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.identity import identity_grant_jit_impl
 
     mcp = bindings.mcp
 
@@ -282,7 +274,7 @@ def register_identity_grant_jit(bindings: OperatorToolBindings) -> None:
         """Grant an identity time-bound JIT access to one tool. Requires admin role, identity:write scope, and an audit reason."""
         return await bindings.execute_tool_async(
             "identity_grant_jit",
-            identity_grant_jit_impl,
+            bindings.implementations["identity_grant_jit_impl"],
             destructive=True,
             required_scope="identity:write",
             identity_id=identity_id,
@@ -298,7 +290,6 @@ def register_identity_grant_jit(bindings: OperatorToolBindings) -> None:
 
 
 def register_identity_revoke_jit(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.identity import identity_revoke_jit_impl
 
     mcp = bindings.mcp
 
@@ -313,7 +304,7 @@ def register_identity_revoke_jit(bindings: OperatorToolBindings) -> None:
         """Revoke an active JIT grant immediately. Requires admin role, identity:write scope, and an audit reason."""
         return await bindings.execute_tool_async(
             "identity_revoke_jit",
-            identity_revoke_jit_impl,
+            bindings.implementations["identity_revoke_jit_impl"],
             destructive=True,
             required_scope="identity:write",
             grant_id=grant_id,

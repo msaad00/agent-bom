@@ -3157,26 +3157,8 @@
     "mcp_tools/oauth.py": {
       "deferred_imports": 8
     },
-    "mcp_tools/operator/benchmarks.py": {
-      "deferred_imports": 3
-    },
-    "mcp_tools/operator/findings.py": {
-      "deferred_imports": 8
-    },
-    "mcp_tools/operator/governance.py": {
-      "deferred_imports": 9
-    },
-    "mcp_tools/operator/graphs.py": {
-      "deferred_imports": 7
-    },
-    "mcp_tools/operator/identity.py": {
-      "deferred_imports": 9
-    },
-    "mcp_tools/operator/runtime.py": {
-      "deferred_imports": 10
-    },
-    "mcp_tools/operator/scanning.py": {
-      "deferred_imports": 3
+    "mcp_tools/operator/bindings.py": {
+      "deferred_imports": 15
     },
     "mcp_tools/posture.py": {
       "api_imports": 5,

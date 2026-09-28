@@ -20,7 +20,7 @@ def register_operator_tools(
 ) -> None:
     """Register operator tools in their public order with server-local dependencies."""
     from agent_bom.mcp_tools.operator import benchmarks, findings, governance, graphs, identity, runtime, scanning
-    from agent_bom.mcp_tools.operator.bindings import OperatorToolBindings
+    from agent_bom.mcp_tools.operator.bindings import OperatorToolBindings, capture_operator_implementations
 
     bindings = OperatorToolBindings(
         mcp=mcp,
@@ -35,6 +35,7 @@ def register_operator_tools(
         validate_ecosystem=validate_ecosystem,
         get_registry_data_raw=get_registry_data_raw,
         build_dep_graph_from_agents=build_dep_graph_from_agents,
+        implementations=capture_operator_implementations(),
     )
     for group in (findings, scanning, graphs, benchmarks, runtime, identity, governance):
         for register in group.REGISTRATIONS:

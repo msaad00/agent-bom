@@ -10,7 +10,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_cis_benchmark(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.compliance import cis_benchmark_impl
 
     mcp = bindings.mcp
 
@@ -57,7 +56,7 @@ def register_cis_benchmark(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "cis_benchmark",
-            cis_benchmark_impl,
+            bindings.implementations["cis_benchmark_impl"],
             provider=provider,
             checks=checks,
             region=region,
@@ -69,7 +68,6 @@ def register_cis_benchmark(bindings: OperatorToolBindings) -> None:
 
 
 def register_kspm_cluster_posture(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.kspm import kspm_cluster_posture_impl
 
     mcp = bindings.mcp
 
@@ -112,7 +110,7 @@ def register_kspm_cluster_posture(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "kspm_cluster_posture",
-            kspm_cluster_posture_impl,
+            bindings.implementations["kspm_cluster_posture_impl"],
             namespace=namespace,
             all_namespaces=all_namespaces,
             context=context,
@@ -122,7 +120,6 @@ def register_kspm_cluster_posture(bindings: OperatorToolBindings) -> None:
 
 
 def register_fleet_scan(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.registry import fleet_scan_impl
 
     mcp = bindings.mcp
 
@@ -152,7 +149,7 @@ def register_fleet_scan(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "fleet_scan",
-            fleet_scan_impl,
+            bindings.implementations["fleet_scan_impl"],
             servers=servers,
             _truncate_response=bindings.truncate_response,
         )

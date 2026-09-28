@@ -12,7 +12,6 @@ from .bindings import OperatorToolBindings
 
 
 def register_context_graph(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.analysis import context_graph_impl
 
     mcp = bindings.mcp
 
@@ -42,7 +41,7 @@ def register_context_graph(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "context_graph",
-            context_graph_impl,
+            bindings.implementations["context_graph_impl"],
             config_path=config_path,
             source_agent=source_agent,
             max_depth=max_depth,
@@ -94,42 +93,25 @@ def register_graph_export(bindings: OperatorToolBindings) -> None:
             agents, _blast_radii, _warnings, _sources = scan_result
             agents_data = [asdict(agent) for agent in agents]
 
-            from agent_bom.output.graph_export import (
-                to_cypher as _to_cypher,
-            )
-            from agent_bom.output.graph_export import (
-                to_dot as _to_dot,
-            )
-            from agent_bom.output.graph_export import (
-                to_graphml as _to_graphml,
-            )
-            from agent_bom.output.graph_export import (
-                to_json as _graph_to_json,
-            )
-            from agent_bom.output.graph_export import (
-                to_mermaid as _to_mermaid,
-            )
-
             graph = bindings.build_dep_graph_from_agents(agents_data)
 
             _fmt = format.lower()
             if _fmt == "graphml":
-                return bindings.truncate_response(_to_graphml(graph))
+                return bindings.truncate_response(bindings.implementations["_to_graphml"](graph))
             if _fmt == "cypher":
-                return bindings.truncate_response(_to_cypher(graph))
+                return bindings.truncate_response(bindings.implementations["_to_cypher"](graph))
             if _fmt == "dot":
-                return bindings.truncate_response(_to_dot(graph))
+                return bindings.truncate_response(bindings.implementations["_to_dot"](graph))
             if _fmt == "mermaid":
                 if mermaid_limit == 0:
-                    return bindings.truncate_response(_to_mermaid(graph, max_nodes=None, max_edges=None))
-                return bindings.truncate_response(_to_mermaid(graph, max_nodes=mermaid_limit))
-            return bindings.truncate_response(json.dumps(_graph_to_json(graph), indent=2))
+                    return bindings.truncate_response(bindings.implementations["_to_mermaid"](graph, max_nodes=None, max_edges=None))
+                return bindings.truncate_response(bindings.implementations["_to_mermaid"](graph, max_nodes=mermaid_limit))
+            return bindings.truncate_response(json.dumps(bindings.implementations["_graph_to_json"](graph), indent=2))
 
         return await bindings.execute_tool_async("graph_export", _impl)
 
 
 def register_analytics_query(bindings: OperatorToolBindings) -> None:
-    from agent_bom.mcp_tools.analysis import analytics_query_impl
 
     mcp = bindings.mcp
 
@@ -163,7 +145,7 @@ def register_analytics_query(bindings: OperatorToolBindings) -> None:
         """
         return await bindings.execute_tool_async(
             "analytics_query",
-            analytics_query_impl,
+            bindings.implementations["analytics_query_impl"],
             query_type=query_type,
             days=days,
             hours=hours,

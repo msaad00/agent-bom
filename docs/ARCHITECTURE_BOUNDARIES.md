@@ -30,21 +30,37 @@ no inherited exception. The Python gate excludes browser bundles and generated
 JSON/schema/TypeScript artifacts, which retain their owning generation checks.
 It sets no PR line-count limit.
 
-Finding ledger reads share `api/storage/finding_reads.py` across SQLite and
-Postgres. Listing, counts, severity summaries and evidence revisions require an
-explicit tenant. A page's count, rows and reference hydration use one read-only
-snapshot; Postgres also applies the application role's tenant RLS context. A
-SQLite read refuses an already active transaction without rolling back its
-pending writes. Lifecycle writes and current-state pagination retain their
-existing adapter transactions. No Postgres schema migration is needed for this
-read path. The SQLite legacy-column backfill uses `batch_id` before `scan_id`,
-matching new ingest and in-memory filtering.
+Finding ledger and current-state reads share `api/storage/finding_reads.py`
+and `finding_current_reads.py` across SQLite and Postgres. Explicit tenants are
+required. A page's count, rows and reference hydration use one read-only
+snapshot, including batched scope filtering. Postgres also applies the
+application role's tenant RLS context. SQLite refuses reads on an already
+active transaction without rolling back its pending writes.
+
+Ledger/reference writes, current observations and reconciliation use shared
+transaction-owned SQL in `api/storage/`. The adapters retain schema bootstrap,
+observation-partition validation, commit ownership, post-commit caches and
+backend-specific overview aggregates. An ingest failure rolls back its ledger,
+references, observation deduplication and current state together; retrying the
+same batch remains idempotent. SQLite serializes writes with `BEGIN IMMEDIATE`;
+Postgres takes a transaction-scoped advisory lock per tenant before hub row
+locks. This prevents concurrent first/current observations from overwriting
+one another's scan counts. The lock serializes a tenant's ingestion batches;
+throughput under contention requires deployment-specific measurement. Different
+tenants use different Postgres lock keys (hash collisions only add contention).
+
+Missing tenant identities fail closed before database access. SQL values stay
+bound, and PostgreSQL application-role RLS remains enforced during reads and
+writes. No new schema migration is required. Current-state cursors retain the
+existing indexed database collation; identical mixed-text order across
+differently collated databases is not guaranteed. The SQLite legacy ledger
+scan-column backfill uses `batch_id` before `scan_id`, matching ingest/filtering.
 
 The shared SQL keyset helper supports per-column descending flags, including
 descending score with ascending tie-breaker. Its text comparisons use binary/C
 collation on SQLite/Postgres; matching indexes must use that same collation.
 Run `pytest tests/test_storage_sql.py tests/test_findings_sql_read_contract.py
-tests/test_findings_sql_backfill.py -q` for the contract. The Postgres cases need
+tests/test_findings_sql_backfill.py tests/test_findings_current_sql_contract.py -q` for the contract. The Postgres cases need
 a migrated, isolated test database with the non-superuser application and
 maintenance URLs; without them those cases are skipped.
 

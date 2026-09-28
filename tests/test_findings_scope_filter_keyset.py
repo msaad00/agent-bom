@@ -407,6 +407,9 @@ class _FakePGConn:
         self.master = master  # list of current-row dicts, keyset order
         self.select_calls: list[tuple[str, tuple]] = []
 
+    def rollback(self):
+        pass
+
     def execute(self, sql, params=None):
         flat = " ".join(sql.split())
         if "information_schema.columns" in flat:
@@ -447,7 +450,7 @@ class _FakePGConn:
 def test_postgres_list_current_page_scoped_no_dup_no_drop(monkeypatch) -> None:
     from contextlib import contextmanager
 
-    import agent_bom.api.postgres_compliance_hub as pgmod
+    import agent_bom.api.storage.sql as pgmod
     from agent_bom.api.postgres_compliance_hub import PostgresComplianceHubStore
 
     # 500 rows, only every 20th is aws -> sparse matches force a multi-batch
@@ -475,7 +478,8 @@ def test_postgres_list_current_page_scoped_no_dup_no_drop(monkeypatch) -> None:
     conn = _FakePGConn(master)
 
     @contextmanager
-    def fake_tenant_connection(_pool):
+    def fake_tenant_connection(_pool, *, repeatable_read=False):
+        assert repeatable_read
         yield conn
 
     monkeypatch.setattr(pgmod, "_tenant_connection", fake_tenant_connection)

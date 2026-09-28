@@ -34,7 +34,6 @@ from agent_bom.api.finding_cursor import (
     cvss_sort_value,
     decode_finding_cursor,
     row_is_after_cursor,
-    sqlite_keyset_clause,
 )
 from agent_bom.api.hub_current_payload import (
     batch_ledger_payloads,
@@ -42,15 +41,18 @@ from agent_bom.api.hub_current_payload import (
     hydrate_current_payload,
     resolve_ledger_finding_id,
 )
-from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
+from agent_bom.api.hub_payload_codec import decode_hub_payload
 from agent_bom.api.hub_reference_store import (
     ensure_sqlite_reference_tables,
     hydrate_finding_payloads_memory,
     hydrate_finding_payloads_sqlite,
     normalize_finding_payload_for_store,
-    persist_finding_references_sqlite,
 )
+from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads, current_order
+from agent_bom.api.storage.finding_current_writes import reconcile_current, write_current_batch
+from agent_bom.api.storage.finding_ledger_writes import write_ledger_batch
 from agent_bom.api.storage.finding_reads import SqlFindingReads
+from agent_bom.api.storage.finding_write_session import finding_write_session
 from agent_bom.api.storage.sql import SQLiteBackend
 from agent_bom.core.severity import severity_policy_rank
 from agent_bom.core.tenancy import require_explicit_tenant_id
@@ -712,172 +714,6 @@ def _sqlite_current_row_from_db(row: tuple[Any, ...], *, has_ledger_col: bool) -
     return current_row
 
 
-def _upsert_current_finding_sqlite(
-    conn: sqlite3.Connection,
-    *,
-    tenant_id: str,
-    payload: dict[str, Any],
-    observed_at: str,
-    scan_id: str,
-    source: str,
-    has_ledger_col: bool | None = None,
-) -> None:
-    from agent_bom.api.finding_lifecycle import (
-        apply_observation_to_current,
-        lifecycle_metrics,
-        resolve_canonical_id,
-    )
-
-    canonical = resolve_canonical_id(payload, source=source)
-    metrics = lifecycle_metrics(payload)
-    now = _now_utc_iso()
-    ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
-    inserted = conn.execute(
-        """
-        INSERT OR IGNORE INTO hub_findings_current_observations
-            (tenant_id, canonical_id, scan_id, observed_at)
-        VALUES (?, ?, ?, ?)
-        """,
-        (tenant_id, canonical, scan_id, observed_at),
-    ).rowcount
-    if not inserted:
-        return
-
-    if has_ledger_col is None:
-        has_ledger_col = _hub_findings_current_has_ledger_col(conn)
-    payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
-    existing_row = conn.execute(
-        f"""
-        SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-               cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-               updated_at, {payload_select}
-        FROM hub_findings_current
-        WHERE tenant_id = ? AND canonical_id = ?
-        """,  # nosec B608
-        (tenant_id, canonical),
-    ).fetchone()
-    existing: dict[str, Any] | None
-    if existing_row is None:
-        existing = None
-    else:
-        existing = _sqlite_current_row_from_db(existing_row, has_ledger_col=has_ledger_col)
-        if has_ledger_col:
-            ledger_map = _fetch_ledger_payloads_sqlite(
-                conn,
-                tenant_id,
-                [str(existing.get("ledger_finding_id") or "")],
-            )
-            existing["payload"] = hydrate_current_payload(existing, ledger_payloads=ledger_map)
-    merged = apply_observation_to_current(
-        existing,
-        canonical_id=canonical,
-        observed_at=observed_at,
-        metrics=metrics,
-        payload=payload,
-        updated_at=now,
-    )
-    overlay = current_state_overlay(merged["payload"]) if ledger_finding_id else merged["payload"]
-    payload_json = encode_hub_payload(overlay)
-    origin_val = str(payload.get("origin") or "")
-    # Materialise the scan filter key: batch_id first, scan_id fallback — the
-    # canonical ``batch_id or scan_id`` the in-memory filter compares against so
-    # every backend agrees and the read rides the (tenant_id, scan_id) index.
-    scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
-    if has_ledger_col:
-        # Materialise the ledger ingest ordinal so ``sort=ordinal`` reads an
-        # index range scan instead of a per-row correlated subquery (#3984).
-        ledger_ordinal_val = resolve_current_ledger_ordinal_sqlite(conn, tenant_id, ledger_finding_id or "")
-        conn.execute(
-            """
-            INSERT INTO hub_findings_current
-                (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                 cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload, ledger_finding_id, origin, scan_id, ledger_ordinal)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
-                first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
-                last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
-                status = excluded.status,
-                severity = excluded.severity,
-                severity_rank = excluded.severity_rank,
-                cvss_score = excluded.cvss_score,
-                effective_reach_score = excluded.effective_reach_score,
-                scan_count = excluded.scan_count,
-                resolved_at = excluded.resolved_at,
-                reopened_at = excluded.reopened_at,
-                updated_at = excluded.updated_at,
-                payload = excluded.payload,
-                ledger_finding_id = excluded.ledger_finding_id,
-                origin = excluded.origin,
-                scan_id = excluded.scan_id,
-                ledger_ordinal = excluded.ledger_ordinal
-            """,
-            (
-                tenant_id,
-                canonical,
-                merged["first_seen"],
-                merged["last_seen"],
-                merged["status"],
-                merged["severity"],
-                merged["severity_rank"],
-                merged["cvss_score"],
-                merged["effective_reach_score"],
-                merged["scan_count"],
-                merged["resolved_at"],
-                merged["reopened_at"],
-                merged["updated_at"],
-                payload_json,
-                ledger_finding_id or None,
-                origin_val,
-                scan_id_val,
-                ledger_ordinal_val,
-            ),
-        )
-    else:
-        conn.execute(
-            """
-            INSERT INTO hub_findings_current
-                (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                 cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                 updated_at, payload, origin, scan_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tenant_id, canonical_id) DO UPDATE SET
-                first_seen = MIN(hub_findings_current.first_seen, excluded.first_seen),
-                last_seen = MAX(hub_findings_current.last_seen, excluded.last_seen),
-                status = excluded.status,
-                severity = excluded.severity,
-                severity_rank = excluded.severity_rank,
-                cvss_score = excluded.cvss_score,
-                effective_reach_score = excluded.effective_reach_score,
-                scan_count = excluded.scan_count,
-                resolved_at = excluded.resolved_at,
-                reopened_at = excluded.reopened_at,
-                updated_at = excluded.updated_at,
-                payload = excluded.payload,
-                origin = excluded.origin,
-                scan_id = excluded.scan_id
-            """,
-            (
-                tenant_id,
-                canonical,
-                merged["first_seen"],
-                merged["last_seen"],
-                merged["status"],
-                merged["severity"],
-                merged["severity_rank"],
-                merged["cvss_score"],
-                merged["effective_reach_score"],
-                merged["scan_count"],
-                merged["resolved_at"],
-                merged["reopened_at"],
-                merged["updated_at"],
-                payload_json,
-                origin_val,
-                scan_id_val,
-            ),
-        )
-
-
 def _hydrate_sqlite_current_rows(
     conn: sqlite3.Connection,
     tenant_id: str,
@@ -1122,6 +958,7 @@ class InMemoryComplianceHubStore:
         return len(bucket)
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             total = self._add_locked(tenant_id, findings)
         if findings:
@@ -1147,6 +984,7 @@ class InMemoryComplianceHubStore:
         restored so nothing is partially applied. Mirrors the SQL backends'
         single-transaction seam. Returns ``(new_total, reconciled)``.
         """
+        tenant_id = require_explicit_tenant_id(tenant_id)
         clean = _redact_findings(findings)
         with self._lock:
             snap_bucket = list(self._by_tenant.get(tenant_id, []))
@@ -1293,6 +1131,7 @@ class InMemoryComplianceHubStore:
             return len(self._by_tenant.get(tenant_id, []))
 
     def clear(self, tenant_id: str) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             removed = len(self._by_tenant.get(tenant_id, []))
             had_current = bool(self._current.get(tenant_id))
@@ -1364,6 +1203,7 @@ class InMemoryComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         clean = _redact_findings(findings)
         with self._lock:
             self._upsert_current_locked(
@@ -1401,6 +1241,7 @@ class InMemoryComplianceHubStore:
     def lookup_current_ids(
         self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
     ) -> set[str]:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             current = self._current.get(tenant_id, {})
             found = set()
@@ -1417,6 +1258,7 @@ class InMemoryComplianceHubStore:
             return found
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             row = self._current.get(tenant_id, {}).get(canonical_id)
             if not row:
@@ -1441,6 +1283,7 @@ class InMemoryComplianceHubStore:
         status: str | None = None,
         scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         from agent_bom.api.finding_lifecycle import enriched_finding_payload
 
         normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
@@ -1580,6 +1423,7 @@ class InMemoryComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._lock:
             updated = self._reconcile_locked(
                 tenant_id,
@@ -1657,30 +1501,8 @@ def resolve_current_ledger_ordinal_sqlite(
 
 
 def _sqlite_current_order_clause(sort: str) -> str:
-    """ORDER BY for ``hub_findings_current``.
-
-    Current-state rows keep a ``ledger_finding_id`` pointer to the durable
-    ingest row, and its ingest ``ordinal`` is materialised into the
-    ``ledger_ordinal`` column at upsert time (mirroring ``severity_rank`` /
-    ``cvss_score`` / ``scan_id``). The legacy hub-list ``ordinal`` contract
-    therefore orders by that column directly — an index range scan over
-    ``idx_hub_findings_current_tenant_ordinal`` — instead of the per-row
-    correlated ledger subquery that forced a full scan + filesort at scale
-    (#3984). Rows without a ledger reference carry the ``MAX(bigint)`` sentinel
-    (``_LEDGER_ORDINAL_SENTINEL``) so they still sort last, exactly as the old
-    ``COALESCE(..., 9223372036854775807)`` fallback did.
-    """
-    if sort == "ordinal":
-        return "ORDER BY ledger_ordinal ASC, first_seen ASC, canonical_id ASC"
-    if sort == "cvss":
-        # ``cvss_score`` is NOT NULL DEFAULT 0 (backfilled), so bare
-        # ``cvss_score DESC`` rides ``idx_hub_findings_current_tenant[_origin]_cvss``
-        # as an ordered range scan. A ``COALESCE`` wrapper here defeats the index
-        # and forces a full-table temp-B-tree filesort (#3641).
-        return "ORDER BY cvss_score DESC, last_seen DESC, canonical_id ASC"
-    if sort == "severity":
-        return "ORDER BY severity_rank DESC, last_seen DESC, canonical_id ASC"
-    return "ORDER BY effective_reach_score DESC, last_seen DESC, canonical_id ASC"
+    """Compatibility export for the shared indexed current-state order."""
+    return "ORDER BY " + current_order(sort)
 
 
 def _postgres_current_order_clause(sort: str) -> str:
@@ -1747,6 +1569,10 @@ class SQLiteComplianceHubStore:
     the file. Use ``PostgresComplianceHubStore`` when more than one API
     pod must share findings.
     """
+
+    @property
+    def _current_reads(self) -> SqlCurrentFindingReads:
+        return SqlCurrentFindingReads(SQLiteBackend(self._db_path, connection_factory=lambda: self._conn))
 
     @property
     def _ledger_reads(self) -> SqlFindingReads:
@@ -2000,21 +1826,6 @@ class SQLiteComplianceHubStore:
             self._finding_count_by_tenant[tenant_id] = int(count_row[0]) if count_row else 0
             self._next_ordinal_by_tenant[tenant_id] = int(max_row[0]) + 1 if max_row else 1
 
-    def _existing_finding_ids(self, tenant_id: str, finding_ids: list[str]) -> set[str]:
-        if not finding_ids:
-            return set()
-        existing: set[str] = set()
-        chunk_size = 500
-        for offset in range(0, len(finding_ids), chunk_size):
-            chunk = finding_ids[offset : offset + chunk_size]
-            placeholders = ",".join("?" * len(chunk))
-            rows = self._conn.execute(
-                f"SELECT finding_id FROM compliance_hub_findings WHERE tenant_id = ? AND finding_id IN ({placeholders})",  # nosec B608
-                [tenant_id, *chunk],
-            ).fetchall()
-            existing.update(str(row[0]) for row in rows)
-        return existing
-
     def _next_ordinal(self, tenant_id: str) -> int:
         self._bootstrap_ingest_stats(tenant_id)
         with self._ingest_stats_lock:
@@ -2031,82 +1842,10 @@ class SQLiteComplianceHubStore:
         return self._ledger_reads.overview_evidence_revision(tenant_id)
 
     def _ledger_insert_no_commit(self, tenant_id: str, findings: list[dict[str, Any]]) -> tuple[int, int, int]:
-        """Append the batch to the ledger WITHOUT committing.
-
-        Returns ``(new_rows, next_ord, num_rows)`` so the caller can commit (or
-        roll back) as part of a larger transaction and only then advance the
-        cached ordinal/total. The commit and the post-commit stat/cache updates
-        are the caller's responsibility (see ``add`` / ``ingest_batch_atomic``).
-        """
-        from agent_bom.graph.sla import carry_finding_sla
-
-        # Serialize the legacy carry-forward read with the ensuing replacement.
-        if not self._conn.in_transaction:
-            self._conn.execute("BEGIN IMMEDIATE")
-        previous_payloads = _fetch_ledger_payloads_sqlite(
-            self._conn, tenant_id, [str(row["id"]) for row in findings if isinstance(row, dict) and row.get("id")]
-        )
-        now = _now_utc_iso()
+        tx = finding_write_session(self._conn, "sqlite", tenant_id)
         next_ord = self._next_ordinal(tenant_id)
-        rows: list[tuple[Any, ...]] = []
-        finding_ids: list[str] = []
-        for offset, original in enumerate(findings):
-            if not isinstance(original, dict):
-                continue
-            frameworks_csv = _frameworks_csv(original)
-            slim = persist_finding_references_sqlite(self._conn, tenant_id, original)
-            payload = _redact_finding(slim)
-            finding_id = str(payload.get("id") or f"hub-{next_ord + offset}")
-            payload = carry_finding_sla(payload, previous_payloads.get(finding_id, {}))
-            previous_payloads[finding_id] = payload
-            finding_ids.append(finding_id)
-            rows.append(
-                (
-                    tenant_id,
-                    finding_id,
-                    now,
-                    str(payload.get("source") or ""),
-                    frameworks_csv,
-                    encode_hub_payload(payload),
-                    next_ord + offset,
-                    compute_effective_reach_score(payload),
-                    str(payload.get("origin") or ""),
-                    str(payload.get("severity") or ""),
-                    _severity_rank(payload),
-                    _cvss_value(payload),
-                    str(payload.get("batch_id") or payload.get("scan_id") or ""),
-                )
-            )
-        existing_ids = self._existing_finding_ids(tenant_id, finding_ids)
-        # Count DISTINCT ids: ``ON CONFLICT … DO UPDATE`` collapses ids repeated
-        # WITHIN the batch into one row, so counting per-row overstated the
-        # tenant total permanently (the cached total then disagreed with
-        # ``COUNT(*)`` forever).
-        new_rows = len({str(row[1]) for row in rows} - existing_ids)
-        # Idempotent ingest: a repeat of the same (tenant_id, finding_id)
-        # refreshes the stored payload/metadata in place and keeps the original
-        # ``ordinal`` (ingest order) instead of appending a duplicate row.
-        self._conn.executemany(
-            """
-            INSERT INTO compliance_hub_findings
-                (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
-                 ordinal, effective_reach_score, origin, severity, severity_rank, cvss_score, scan_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tenant_id, finding_id) DO UPDATE SET
-                ingested_at = excluded.ingested_at,
-                source = excluded.source,
-                applicable_frameworks_csv = excluded.applicable_frameworks_csv,
-                payload = excluded.payload,
-                effective_reach_score = excluded.effective_reach_score,
-                origin = excluded.origin,
-                severity = excluded.severity,
-                severity_rank = excluded.severity_rank,
-                cvss_score = excluded.cvss_score,
-                scan_id = excluded.scan_id
-            """,
-            rows,
-        )
-        return new_rows, next_ord, len(rows)
+        new_rows, num_rows = write_ledger_batch(tx, "sqlite", tenant_id, findings, next_ordinal=next_ord)
+        return new_rows, next_ord, num_rows
 
     def _commit_ledger_stats(self, tenant_id: str, next_ord: int, num_rows: int, new_rows: int) -> int:
         """Advance the cached ordinal/total AFTER the ledger write committed."""
@@ -2116,6 +1855,7 @@ class SQLiteComplianceHubStore:
             return self._finding_count_by_tenant[tenant_id]
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         if not findings:
             self._bootstrap_ingest_stats(tenant_id)
             with self._ingest_stats_lock:
@@ -2152,6 +1892,7 @@ class SQLiteComplianceHubStore:
         ordinal/total is advanced only after the commit succeeds. Returns
         ``(new_total, reconciled)``.
         """
+        tenant_id = require_explicit_tenant_id(tenant_id)
         conn = self._conn
         with conn:  # sqlite3 connection: commit on success, rollback on exception
             if findings:
@@ -2369,6 +2110,7 @@ class SQLiteComplianceHubStore:
         return self._ledger_reads.count(tenant_id)
 
     def clear(self, tenant_id: str) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._conn:
             cur = self._conn.execute(
                 "DELETE FROM compliance_hub_findings WHERE tenant_id = ?",
@@ -2396,20 +2138,17 @@ class SQLiteComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
-        clean = _redact_findings(findings)
-        if not clean:
-            return
-        has_ledger_col = self._ensure_current_has_ledger_col()
-        for payload in clean:
-            _upsert_current_finding_sqlite(
-                self._conn,
-                tenant_id=tenant_id,
-                payload=payload,
-                observed_at=observed_at,
-                scan_id=batch_id,
-                source=source,
-                has_ledger_col=has_ledger_col,
-            )
+        tx = finding_write_session(self._conn, "sqlite", tenant_id)
+        write_current_batch(
+            tx,
+            "sqlite",
+            tenant_id,
+            _redact_findings(findings),
+            observed_at=observed_at,
+            batch_id=batch_id,
+            source=source,
+            has_ledger=self._ensure_current_has_ledger_col(),
+        )
 
     def upsert_current_batch(
         self,
@@ -2420,6 +2159,7 @@ class SQLiteComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._conn:
             self._upsert_current_no_commit(
                 tenant_id,
@@ -2436,40 +2176,10 @@ class SQLiteComplianceHubStore:
     def lookup_current_ids(
         self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
     ) -> set[str]:
-        found: set[str] = set()
-        keys = list(dict.fromkeys(canonical_ids))
-        for start in range(0, len(keys), 500):
-            batch = keys[start : start + 500]
-            placeholders = ",".join("?" for _ in batch)
-            predicates = ["tenant_id = ?", f"canonical_id IN ({placeholders})"]
-            params: list[Any] = [tenant_id, *batch]
-            if scan_id is not None:
-                predicates.append("scan_id = ?")
-                params.append(scan_id)
-            if origin is not None:
-                predicates.append("origin = ?")
-                params.append(origin)
-            rows = self._conn.execute("SELECT canonical_id FROM hub_findings_current WHERE " + " AND ".join(predicates), params).fetchall()  # nosec B608 - predicates are fixed and values are bound.
-            found.update(str(row[0]) for row in rows)
-        return found
+        return self._current_reads.lookup(tenant_id, canonical_ids, scan_id=scan_id, origin=origin)
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
-        has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
-        payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
-        row = self._conn.execute(
-            f"""
-            SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                   cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                   updated_at, {payload_select}
-            FROM hub_findings_current
-            WHERE tenant_id = ? AND canonical_id = ?
-            """,  # nosec B608
-            (tenant_id, canonical_id),
-        ).fetchone()
-        if row is None:
-            return None
-        current_row = _sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col)
-        return _hydrate_sqlite_current_rows(self._conn, tenant_id, [current_row])[0]
+        return self._current_reads.get(tenant_id, canonical_id)
 
     def list_current_page(
         self,
@@ -2488,170 +2198,21 @@ class SQLiteComplianceHubStore:
         status: str | None = None,
         scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
-        from agent_bom.api.finding_lifecycle import enriched_finding_payload
-
-        normalized_sort = sort if sort in _LIST_PAGE_SORTS else "effective_reach"
-        where = ["tenant_id = ?"]
-        params: list[Any] = [tenant_id]
-        if since:
-            # Default read-window: bound to findings last observed within the
-            # window so counts stay honestly "last Nd" at scale (#4009).
-            where.append("last_seen >= ?")
-            params.append(since)
-        if origin is not None:
-            # Materialised column (backfilled from payload) so the exact COUNT(*)
-            # rides the (tenant_id, origin, …) index prefix instead of scanning
-            # every row through json_extract (#3641).
-            where.append("origin = ?")
-            params.append(origin)
-        if severity is not None:
-            # Match the materialised severity STRING (exact, lowercased) so all
-            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192). The
-            # ``severity != ''`` guard is redundant for any real severity but
-            # lets the partial expression index idx_hub_findings_current_tenant_
-            # severity_ci serve the filter (#3926).
-            where.append("severity != '' AND LOWER(severity) = ?")
-            params.append(severity.lower())
-        if scan_id is not None:
-            # Materialised column (backfilled from batch_id|scan_id) so the scan
-            # filter and its COUNT(*) ride idx_hub_findings_current_tenant_scan
-            # instead of a per-row json_extract full scan. The ``scan_id != ''``
-            # guard is redundant for any real scan_id but lets SQLite apply the
-            # partial index (it cannot prove a bound param is non-empty) (#3926).
-            where.append("scan_id = ? AND scan_id != ''")
-            params.append(scan_id)
-        # Lifecycle-status filter over the sargable ``status`` column. Added to
-        # the base predicate so it applies in BOTH the fast keyset path and the
-        # scoped batched path (base_where flows into the scope fetch_batch). The
-        # default-open path rides idx_hub_findings_current_tenant_open_reach.
-        status_sql, status_params = status_sql_predicate(status)
-        if status_sql:
-            where.append(status_sql)
-            params.extend(status_params)
-        if scope:
-            # provider/account_ref/environment/domain live in the JSON payload and
-            # ``domain`` is a computed overlapping-lens SET — not a single SQL
-            # predicate. Run the scope filter INSIDE the store on pre-enrichment
-            # current rows, batched + keyset-paged, so a scoped page never
-            # materializes the whole tenant. total is None (approximate) here.
-            return self._list_current_page_scoped(
-                base_where=list(where),
-                base_params=list(params),
-                tenant_id=tenant_id,
-                normalized_sort=normalized_sort,
-                limit=limit,
-                cursor=cursor,
-                scope=scope,
-                scope_metadata=scope_metadata,
-            )
-        if cursor:
-            keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, cursor)
-            where.append(keyset_sql.removeprefix(" AND "))
-            params.extend(keyset_params)
-        where_sql = " AND ".join(where)
-
-        total: int | None
-        if include_total and not cursor:
-            total_row = self._conn.execute(
-                f"SELECT COUNT(*) FROM hub_findings_current WHERE {where_sql}",  # nosec B608
-                params,
-            ).fetchone()
-            total = int(total_row[0]) if total_row else 0
-        else:
-            total = None
-
-        order_sql = _sqlite_current_order_clause(normalized_sort)
-        page_limit = max(0, int(limit))
-        fetch_limit = page_limit + 1 if page_limit >= 0 else page_limit
-        if cursor:
-            page_params = [*params, fetch_limit]
-            limit_sql = "LIMIT ?"
-        else:
-            page_params = [*params, fetch_limit, int(offset)]
-            limit_sql = "LIMIT ? OFFSET ?"
-        has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
-        payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
-        rows = self._conn.execute(
-            f"""
-            SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                   cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                   updated_at, {payload_select}
-            FROM hub_findings_current
-            WHERE {where_sql} {order_sql} {limit_sql}
-            """,  # nosec B608
-            page_params,
-        ).fetchall()
-        current_rows = [_sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
-        has_more = page_limit >= 0 and len(current_rows) > page_limit
-        if has_more:
-            current_rows = current_rows[:page_limit]
-        hydrated_rows = _hydrate_sqlite_current_rows(self._conn, tenant_id, current_rows)
-        out: list[dict[str, Any]] = []
-        for current_row in hydrated_rows:
-            out.append(enriched_finding_payload(current_row))
-        next_cursor = None
-        if has_more and hydrated_rows:
-            next_cursor = cursor_from_current_row(hydrated_rows[-1], sort=normalized_sort)
-        return out, total, next_cursor
-
-    def _list_current_page_scoped(
-        self,
-        *,
-        base_where: Sequence[str],
-        base_params: Sequence[Any],
-        tenant_id: str,
-        normalized_sort: str,
-        limit: int,
-        cursor: str | None,
-        scope: Mapping[str, str],
-        scope_metadata: dict[str, Any] | None = None,
-    ) -> FindingCursorPage:
-        from agent_bom.api.finding_lifecycle import enriched_finding_payload
-        from agent_bom.finding_scope import row_matches_scope
-
-        order_sql = _sqlite_current_order_clause(normalized_sort)
-        has_ledger_col = _hub_findings_current_has_ledger_col(self._conn)
-        payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
-
-        def fetch_batch(batch_cursor: str | None, batch_limit: int) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]:
-            where = list(base_where)
-            params = list(base_params)
-            if batch_cursor:
-                keyset_sql, keyset_params = sqlite_keyset_clause(normalized_sort, batch_cursor)
-                where.append(keyset_sql.removeprefix(" AND "))
-                params.extend(keyset_params)
-            where_sql = " AND ".join(where)
-            fetch_limit = batch_limit + 1
-            rows = self._conn.execute(
-                f"""
-                SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                       cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                       updated_at, {payload_select}
-                FROM hub_findings_current
-                WHERE {where_sql} {order_sql} LIMIT ?
-                """,  # nosec B608
-                [*params, fetch_limit],
-            ).fetchall()
-            current_rows = [_sqlite_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
-            more = len(current_rows) > batch_limit
-            if more:
-                current_rows = current_rows[:batch_limit]
-            hydrated = _hydrate_sqlite_current_rows(self._conn, tenant_id, current_rows)
-            pairs = [(row, enriched_finding_payload(row)) for row in hydrated]
-            batch_next = cursor_from_current_row(hydrated[-1], sort=normalized_sort) if more and hydrated else None
-            return pairs, batch_next
-
-        page_limit = max(0, int(limit))
-        payloads, next_cursor = collect_scope_filtered_page(
-            fetch_batch,
-            predicate=lambda payload: row_matches_scope(payload, scope),
-            page_limit=page_limit,
-            start_cursor=cursor,
-            sort=normalized_sort,
-            batch_size=scope_filter_batch_size(page_limit),
-            metadata=scope_metadata,
+        return self._current_reads.list_page(
+            tenant_id,
+            limit=limit,
+            offset=offset,
+            sort=sort,
+            severity=severity,
+            scan_id=scan_id,
+            origin=origin,
+            include_total=include_total,
+            cursor=cursor,
+            since=since,
+            scope=scope,
+            status=status,
+            scope_metadata=scope_metadata,
         )
-        return payloads, None, next_cursor
 
     def _reconcile_current_absent_no_commit(
         self,
@@ -2661,35 +2222,10 @@ class SQLiteComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
-        now = _now_utc_iso()
-        where = ["tenant_id = ?", "status IN ('open', 'reopened')"]
-        params: list[Any] = [tenant_id]
-        if scope_source is not None:
-            where.append("COALESCE(json_extract(payload, '$.ingest_source'), json_extract(payload, '$.source')) = ?")
-            params.append(scope_source)
-        where_sql = " AND ".join(where)
-        rows = self._conn.execute(
-            f"SELECT canonical_id FROM hub_findings_current WHERE {where_sql}",  # nosec B608
-            params,
-        ).fetchall()
-        open_ids = {str(row[0]) for row in rows}
-        absent = sorted(open_ids - present_canonical_ids)
-        if not absent:
-            return 0
-        total = 0
-        for offset in range(0, len(absent), RECONCILE_ABSENT_CHUNK):
-            chunk = absent[offset : offset + RECONCILE_ABSENT_CHUNK]
-            placeholders = ",".join("?" * len(chunk))
-            cur = self._conn.execute(
-                f"""
-                UPDATE hub_findings_current
-                SET status = 'resolved', resolved_at = ?, updated_at = ?
-                WHERE {where_sql} AND canonical_id IN ({placeholders})
-                """,  # nosec B608
-                [observed_at, now, *params, *chunk],
-            )
-            total += int(cur.rowcount or 0)
-        return total
+        tx = finding_write_session(self._conn, "sqlite", tenant_id)
+        return reconcile_current(
+            tx, "sqlite", tenant_id, present_canonical_ids=present_canonical_ids, observed_at=observed_at, scope_source=scope_source
+        )
 
     def reconcile_current_absent(
         self,
@@ -2699,6 +2235,7 @@ class SQLiteComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with self._conn:
             total = self._reconcile_current_absent_no_commit(
                 tenant_id,

@@ -134,6 +134,24 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                 candidate
                 for candidate in available
                 if "findings" in candidate.stem
+                or candidate.stem
+                in {
+                    "test_ingest_idempotency",
+                    "test_finding_sla_lifecycle",
+                    "test_postgres_integration",
+                    "test_postgres_ledger_scan_filter",
+                    "test_api_surface_0943",
+                    "test_read_path_compliance_hub",
+                    "test_delta_stream",
+                    "test_report_jobs",
+                    "test_finding_cursor",
+                    "test_overview_cve_counts",
+                    "test_finding_lifecycle",
+                    "test_reconcile_absent_chunking",
+                    "test_bounded_retention_window",
+                    "test_audit_followup_post3624",
+                    "test_overview",
+                }
                 or candidate.stem.startswith(
                     ("test_hub_", "test_compliance_hub", "test_storage_sql", "test_tenant_quota_store", "test_tenant_graph_retention_store")
                 )

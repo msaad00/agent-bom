@@ -232,6 +232,8 @@ class SqlSession(Protocol):
 
     def executemany(self, sql: str, rows: Iterable[Sequence[Any]]) -> int: ...
 
+    def executemany_returning(self, sql: str, rows: Iterable[Sequence[Any]]) -> list[tuple[Any, ...]]: ...
+
 
 class SqlBackend(Protocol):
     """Connection source plus the dialect differences a store must not see."""
@@ -268,6 +270,27 @@ class _Session:
                 cursor.executemany(statement, batch)
                 return int(cursor.rowcount)
         return int(self._conn.executemany(statement, batch).rowcount)
+
+    def executemany_returning(self, sql: str, rows: Iterable[Sequence[Any]]) -> list[tuple[Any, ...]]:
+        batch = [tuple(row) for row in rows]
+        if not batch:
+            return []
+        statement = self._sql(sql)
+        if not self._rewrite:
+            return [tuple(result) for row in batch for result in self._conn.execute(statement, row).fetchall()]
+        results: list[tuple[Any, ...]] = []
+        with self._conn.cursor() as cursor:
+            cursor.executemany(statement, batch, returning=True)
+            while True:
+                results.extend(tuple(row) for row in cursor.fetchall())
+                if not cursor.nextset():
+                    break
+        return results
+
+
+def connection_session(conn: Any, dialect: Dialect) -> SqlSession:
+    """Bind portable SQL to an adapter-owned transaction without committing it."""
+    return _Session(conn, rewrite_placeholders=dialect == "postgres")
 
 
 class SQLiteBackend:

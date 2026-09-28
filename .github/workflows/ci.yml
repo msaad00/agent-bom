@@ -1492,7 +1492,8 @@ jobs:
             tests/test_jit_grant_tenant_boundary.py \
             tests/test_identity_policy_tenant_boundary.py \
             tests/test_findings_sql_read_contract.py \
-            tests/test_findings_sql_backfill.py
+            tests/test_findings_sql_backfill.py \
+            tests/test_findings_current_sql_contract.py
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

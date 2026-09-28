@@ -118,14 +118,8 @@
       "deferred_imports": 1
     },
     "api/compliance_hub_store.py": {
-      "deferred_imports": 26,
-      "file_lines": 2756
-    },
-    "api/compliance_hub_store.py::SQLiteComplianceHubStore.list_current_page": {
-      "function_lines": 122
-    },
-    "api/compliance_hub_store.py::_upsert_current_finding_sqlite": {
-      "function_lines": 164
+      "deferred_imports": 21,
+      "file_lines": 2293
     },
     "api/compliance_hub_store.py::collect_scope_filtered_page": {
       "function_lines": 88
@@ -361,21 +355,11 @@
       "file_lines": 666
     },
     "api/postgres_compliance_hub.py": {
-      "deferred_imports": 13,
-      "file_lines": 1559
+      "deferred_imports": 8,
+      "file_lines": 1043
     },
     "api/postgres_compliance_hub.py::PostgresComplianceHubStore._init_tables": {
       "function_lines": 223
-    },
-    "api/postgres_compliance_hub.py::PostgresComplianceHubStore._write_current_batch": {
-      "complexity": 16,
-      "function_lines": 211
-    },
-    "api/postgres_compliance_hub.py::PostgresComplianceHubStore._write_ledger_batch": {
-      "function_lines": 94
-    },
-    "api/postgres_compliance_hub.py::PostgresComplianceHubStore.list_current_page": {
-      "function_lines": 120
     },
     "api/postgres_fleet_store.py": {
       "deferred_imports": 8
@@ -867,6 +851,18 @@
     },
     "api/source_postgres.py": {
       "deferred_imports": 2
+    },
+    "api/storage/finding_current_reads.py": {
+      "deferred_imports": 5
+    },
+    "api/storage/finding_current_writes.py": {
+      "deferred_imports": 1
+    },
+    "api/storage/finding_ledger_writes.py": {
+      "deferred_imports": 1
+    },
+    "api/storage/finding_payloads.py": {
+      "deferred_imports": 1
     },
     "api/store.py": {
       "file_lines": 703

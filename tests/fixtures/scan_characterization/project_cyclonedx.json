@@ -1,0 +1,610 @@
+{
+ "document": {
+  "bomFormat": "CycloneDX",
+  "components": [
+   {
+    "bom-ref": "agent-<UUID>",
+    "description": "AI Agent (custom)",
+    "name": "project:proj",
+    "properties": [
+     {
+      "name": "agent-bom:canonical-id-schema-version",
+      "value": "2"
+     },
+     {
+      "name": "agent-bom:config-path",
+      "value": "<path:proj>"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:previous-canonical-id",
+      "value": "<UUID>"
+     },
+     {
+      "name": "agent-bom:status",
+      "value": "configured"
+     },
+     {
+      "name": "agent-bom:type",
+      "value": "ai-agent"
+     }
+    ],
+    "type": "application",
+    "version": "unknown"
+   },
+   {
+    "bom-ref": "mcp-server-<UUID>",
+    "description": "MCP Server (stdio)",
+    "name": "filesystem",
+    "properties": [
+     {
+      "name": "agent-bom:command",
+      "value": "npx -y @modelcontextprotocol/server-filesystem@0.6.2 /data"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:has-credentials",
+      "value": "true"
+     },
+     {
+      "name": "agent-bom:transport",
+      "value": "stdio"
+     },
+     {
+      "name": "agent-bom:type",
+      "value": "mcp-server"
+     }
+    ],
+    "type": "application"
+   },
+   {
+    "bom-ref": "mcp-server-<UUID>",
+    "description": "MCP Server (stdio)",
+    "name": "proj",
+    "properties": [
+     {
+      "name": "agent-bom:command",
+      "value": "project <redacted>"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:transport",
+      "value": "stdio"
+     },
+     {
+      "name": "agent-bom:type",
+      "value": "mcp-server"
+     }
+    ],
+    "type": "application"
+   },
+   {
+    "bom-ref": "pkg-<UUID>",
+    "name": "@modelcontextprotocol/server-filesystem",
+    "properties": [
+     {
+      "name": "agent-bom:dependency-depth",
+      "value": "0"
+     },
+     {
+      "name": "agent-bom:dependency-scope",
+      "value": "runtime"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-provenance",
+      "value": "{\"confidence\":\"exact\",\"declared_name\":\"@modelcontextprotocol/server-filesystem\",\"declared_version\":\"0.6.2\",\"evidence\":[{\"parser\":\"npx\",\"source_file\":\"<path:.mcp.json>\",\"type\":\"command_pin\"}],\"resolved_from_registry\":false,\"resolved_version\":\"0.6.2\",\"source_precedence\":30,\"version_source\":\"command_pin\"}"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-source",
+      "value": "command_pin"
+     },
+     {
+      "name": "agent-bom:ecosystem",
+      "value": "npm"
+     },
+     {
+      "name": "agent-bom:floating-reference",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:is-direct",
+      "value": "true"
+     },
+     {
+      "name": "agent-bom:reachability-evidence",
+      "value": "runtime_dependency"
+     },
+     {
+      "name": "agent-bom:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:version-provenance-confidence",
+      "value": "exact"
+     },
+     {
+      "name": "agent-bom:version-provenance-source",
+      "value": "command_pin"
+     },
+     {
+      "name": "agent-bom:version-source",
+      "value": "command_pin"
+     }
+    ],
+    "purl": "pkg:npm/%40modelcontextprotocol/server-filesystem@0.6.2",
+    "type": "library",
+    "version": "0.6.2"
+   },
+   {
+    "bom-ref": "pkg-<UUID>",
+    "name": "jinja2",
+    "properties": [
+     {
+      "name": "agent-bom:dependency-depth",
+      "value": "0"
+     },
+     {
+      "name": "agent-bom:dependency-scope",
+      "value": "runtime"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-provenance",
+      "value": "{\"confidence\":\"unknown\",\"declared_name\":\"jinja2\",\"evidence\":[{\"line\":2,\"source_file\":\"<path:requirements.txt>\",\"type\":\"manifest\"}],\"legacy_version_source\":\"detected\",\"resolved_from_registry\":false,\"resolved_version\":\"2.10\",\"source_precedence\":0,\"version_source\":\"unknown\"}"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-source",
+      "value": "detected"
+     },
+     {
+      "name": "agent-bom:ecosystem",
+      "value": "pypi"
+     },
+     {
+      "name": "agent-bom:floating-reference",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:is-direct",
+      "value": "true"
+     },
+     {
+      "name": "agent-bom:reachability-evidence",
+      "value": "declaration_only"
+     },
+     {
+      "name": "agent-bom:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:version-provenance-confidence",
+      "value": "unknown"
+     },
+     {
+      "name": "agent-bom:version-provenance-source",
+      "value": "unknown"
+     },
+     {
+      "name": "agent-bom:version-source",
+      "value": "detected"
+     }
+    ],
+    "purl": "pkg:pypi/jinja2@2.10",
+    "type": "library",
+    "version": "2.10"
+   },
+   {
+    "bom-ref": "pkg-<UUID>",
+    "name": "lodash",
+    "properties": [
+     {
+      "name": "agent-bom:dependency-depth",
+      "value": "0"
+     },
+     {
+      "name": "agent-bom:dependency-scope",
+      "value": "runtime"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-provenance",
+      "value": "{\"confidence\":\"exact\",\"declared_name\":\"lodash\",\"declared_version\":\"4.17.4\",\"evidence\":[{\"line\":1,\"source_file\":\"<path:package.json>\",\"type\":\"manifest\"}],\"legacy_version_source\":\"manifest\",\"resolved_from_registry\":false,\"resolved_version\":\"4.17.4\",\"source_precedence\":30,\"version_source\":\"command_pin\"}"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-source",
+      "value": "manifest"
+     },
+     {
+      "name": "agent-bom:ecosystem",
+      "value": "npm"
+     },
+     {
+      "name": "agent-bom:floating-reference",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:is-direct",
+      "value": "true"
+     },
+     {
+      "name": "agent-bom:reachability-evidence",
+      "value": "declaration_only"
+     },
+     {
+      "name": "agent-bom:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:version-provenance-confidence",
+      "value": "exact"
+     },
+     {
+      "name": "agent-bom:version-provenance-source",
+      "value": "command_pin"
+     },
+     {
+      "name": "agent-bom:version-source",
+      "value": "manifest"
+     }
+    ],
+    "purl": "pkg:npm/lodash@4.17.4",
+    "type": "library",
+    "version": "4.17.4"
+   },
+   {
+    "bom-ref": "pkg-<UUID>",
+    "name": "minimist",
+    "properties": [
+     {
+      "name": "agent-bom:dependency-depth",
+      "value": "0"
+     },
+     {
+      "name": "agent-bom:dependency-scope",
+      "value": "runtime"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-provenance",
+      "value": "{\"confidence\":\"exact\",\"declared_name\":\"minimist\",\"declared_version\":\"1.2.0\",\"legacy_version_source\":\"manifest\",\"resolved_from_registry\":false,\"resolved_version\":\"1.2.0\",\"source_precedence\":30,\"version_source\":\"command_pin\"}"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-source",
+      "value": "manifest"
+     },
+     {
+      "name": "agent-bom:ecosystem",
+      "value": "npm"
+     },
+     {
+      "name": "agent-bom:floating-reference",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:is-direct",
+      "value": "true"
+     },
+     {
+      "name": "agent-bom:reachability-evidence",
+      "value": "declaration_only"
+     },
+     {
+      "name": "agent-bom:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:version-provenance-confidence",
+      "value": "exact"
+     },
+     {
+      "name": "agent-bom:version-provenance-source",
+      "value": "command_pin"
+     },
+     {
+      "name": "agent-bom:version-source",
+      "value": "manifest"
+     }
+    ],
+    "purl": "pkg:npm/minimist@1.2.0",
+    "type": "library",
+    "version": "1.2.0"
+   },
+   {
+    "bom-ref": "pkg-<UUID>",
+    "name": "requests",
+    "properties": [
+     {
+      "name": "agent-bom:dependency-depth",
+      "value": "0"
+     },
+     {
+      "name": "agent-bom:dependency-scope",
+      "value": "runtime"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:confidence",
+      "value": "medium"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:observed-via",
+      "value": "[\"local_discovery\"]"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source",
+      "value": "project"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:source-type",
+      "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-provenance",
+      "value": "{\"confidence\":\"unknown\",\"declared_name\":\"requests\",\"evidence\":[{\"line\":1,\"source_file\":\"<path:requirements.txt>\",\"type\":\"manifest\"}],\"legacy_version_source\":\"detected\",\"resolved_from_registry\":false,\"resolved_version\":\"2.19.0\",\"source_precedence\":0,\"version_source\":\"unknown\"}"
+     },
+     {
+      "name": "agent-bom:discovery-provenance:version-source",
+      "value": "detected"
+     },
+     {
+      "name": "agent-bom:ecosystem",
+      "value": "pypi"
+     },
+     {
+      "name": "agent-bom:floating-reference",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:is-direct",
+      "value": "true"
+     },
+     {
+      "name": "agent-bom:reachability-evidence",
+      "value": "declaration_only"
+     },
+     {
+      "name": "agent-bom:resolved-from-registry",
+      "value": "false"
+     },
+     {
+      "name": "agent-bom:version-provenance-confidence",
+      "value": "unknown"
+     },
+     {
+      "name": "agent-bom:version-provenance-source",
+      "value": "unknown"
+     },
+     {
+      "name": "agent-bom:version-source",
+      "value": "detected"
+     }
+    ],
+    "purl": "pkg:pypi/requests@2.19.0",
+    "type": "library",
+    "version": "2.19.0"
+   }
+  ],
+  "compositions": [
+   {
+    "aggregate": "incomplete",
+    "assemblies": [
+     "agent-<UUID>",
+     "mcp-server-<UUID>",
+     "mcp-server-<UUID>",
+     "pkg-<UUID>",
+     "pkg-<UUID>",
+     "pkg-<UUID>",
+     "pkg-<UUID>",
+     "pkg-<UUID>"
+    ]
+   }
+  ],
+  "dependencies": [
+   {
+    "dependsOn": [
+     "mcp-server-<UUID>",
+     "mcp-server-<UUID>"
+    ],
+    "ref": "agent-<UUID>"
+   },
+   {
+    "dependsOn": [
+     "pkg-<UUID>",
+     "pkg-<UUID>",
+     "pkg-<UUID>",
+     "pkg-<UUID>"
+    ],
+    "ref": "mcp-server-<UUID>"
+   },
+   {
+    "dependsOn": [
+     "pkg-<UUID>"
+    ],
+    "ref": "mcp-server-<UUID>"
+   }
+  ],
+  "formulation": [
+   {
+    "components": [
+     {
+      "name": "agent-bom",
+      "type": "application",
+      "version": "<VERSION>"
+     }
+    ]
+   }
+  ],
+  "metadata": {
+   "properties": [
+    {
+     "name": "agent-bom:canonical-id-schema-version",
+     "value": "2"
+    },
+    {
+     "name": "agent-bom:ml-models",
+     "value": "0"
+    },
+    {
+     "name": "agent-bom:scan-issue-count",
+     "value": "1"
+    },
+    {
+     "name": "agent-bom:scan-outcome",
+     "value": "partial"
+    },
+    {
+     "name": "agent-bom:total-agents",
+     "value": "1"
+    },
+    {
+     "name": "agent-bom:total-mcp-servers",
+     "value": "1"
+    },
+    {
+     "name": "agent-bom:total-vulnerabilities",
+     "value": "0"
+    }
+   ],
+   "timestamp": "<TS>",
+   "tools": {
+    "components": [
+     {
+      "description": "Security scanner for AI infrastructure \u2014 from agent to runtime",
+      "name": "agent-bom",
+      "type": "application",
+      "version": "<VERSION>"
+     }
+    ]
+   }
+  },
+  "serialNumber": "urn:uuid:<UUID>",
+  "specVersion": "1.7",
+  "version": 1
+ },
+ "exit_code": 1
+}

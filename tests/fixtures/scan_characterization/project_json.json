@@ -1,0 +1,2862 @@
+{
+ "document": {
+  "agents": [
+   {
+    "agent_type": "custom",
+    "automation_settings": [],
+    "canonical_id": "<UUID>",
+    "config_path": "<path:proj>",
+    "discovered_at": "<TS>",
+    "discovery_provenance": {
+     "confidence": "medium",
+     "observed_via": [
+      "local_discovery"
+     ],
+     "source": "project",
+     "source_type": "local_discovery"
+    },
+    "last_seen": "<TS>",
+    "mcp_servers": [
+     {
+      "args": [
+       "-y",
+       "<path:data>",
+       "@modelcontextprotocol/server-filesystem@0.6.2"
+      ],
+      "auth_mode": "env-credentials",
+      "canonical_id": "<UUID>",
+      "command": "npx",
+      "credential_env_vars": [
+       "API_TOKEN"
+      ],
+      "discovery_provenance": {
+       "confidence": "medium",
+       "observed_via": [
+        "local_discovery"
+       ],
+       "source": "project",
+       "source_type": "local_discovery"
+      },
+      "discovery_sources": [
+       "***REDACTED***"
+      ],
+      "fingerprint": "<UUID>",
+      "has_credentials": true,
+      "identity_bindings": [],
+      "mcp_version": null,
+      "name": "filesystem",
+      "packages": [
+       {
+        "author": null,
+        "canonical_id": "<UUID>",
+        "copyright_text": null,
+        "declared_version": "0.6.2",
+        "dependency_depth": 0,
+        "dependency_scope": "runtime",
+        "deps_dev_resolved": false,
+        "description": null,
+        "discovery_provenance": {
+         "confidence": "medium",
+         "observed_via": [
+          "local_discovery"
+         ],
+         "resolved_from_registry": false,
+         "source": "project",
+         "source_type": "local_discovery",
+         "version_provenance": {
+          "confidence": "exact",
+          "declared_name": "@modelcontextprotocol/server-filesystem",
+          "declared_version": "0.6.2",
+          "evidence": [
+           {
+            "parser": "npx",
+            "source_file": "<path:.mcp.json>",
+            "type": "command_pin"
+           }
+          ],
+          "resolved_from_registry": false,
+          "resolved_version": "0.6.2",
+          "source_precedence": 30,
+          "version_source": "command_pin"
+         },
+         "version_source": "command_pin"
+        },
+        "distro_name": null,
+        "distro_version": null,
+        "download_url": null,
+        "ecosystem": "npm",
+        "floating_reference": false,
+        "floating_reference_reason": null,
+        "homepage": null,
+        "integrity_verified": null,
+        "introduced_in_layer": null,
+        "is_direct": true,
+        "is_malicious": false,
+        "license": null,
+        "license_expression": null,
+        "malicious_reason": null,
+        "name": "@modelcontextprotocol/server-filesystem",
+        "occurrence_count": 0,
+        "occurrences": [],
+        "parent_package": null,
+        "provenance_attested": null,
+        "provenance_source": null,
+        "provenance_status": null,
+        "purl": "pkg:npm/%40modelcontextprotocol/server-filesystem@0.6.2",
+        "reachability_evidence": "runtime_dependency",
+        "registry_version": null,
+        "repository_url": null,
+        "resolved_from_registry": false,
+        "resolved_version": "0.6.2",
+        "scorecard_checks": null,
+        "scorecard_lookup_reason": null,
+        "scorecard_lookup_state": null,
+        "scorecard_repo": null,
+        "scorecard_score": null,
+        "source_package": null,
+        "stable_id": "<UUID>",
+        "supplier": null,
+        "version": "0.6.2",
+        "version_confidence": "exact",
+        "version_conflicts": null,
+        "version_evidence": [
+         {
+          "parser": "npx",
+          "source_file": "<path:.mcp.json>",
+          "type": "command_pin"
+         }
+        ],
+        "version_provenance": {
+         "confidence": "exact",
+         "declared_name": "@modelcontextprotocol/server-filesystem",
+         "declared_version": "0.6.2",
+         "evidence": [
+          {
+           "parser": "npx",
+           "source_file": "<path:.mcp.json>",
+           "type": "command_pin"
+          }
+         ],
+         "resolved_from_registry": false,
+         "resolved_version": "0.6.2",
+         "source_precedence": 30,
+         "version_source": "command_pin"
+        },
+        "version_resolved_at": null,
+        "version_source": "command_pin",
+        "vulnerabilities": [],
+        "vulnerability_count": 0
+       }
+      ],
+      "permission_profile": null,
+      "prompts": [],
+      "registry_badge": "unknown",
+      "registry_verified": false,
+      "resources": [],
+      "security_blocked": false,
+      "security_intelligence": [],
+      "security_warnings": [],
+      "stable_id": "<UUID>",
+      "surface": "mcp-server",
+      "tools": [],
+      "transport": "stdio",
+      "url": null
+     },
+     {
+      "args": [
+       "<redacted>"
+      ],
+      "auth_mode": "local-stdio",
+      "canonical_id": "<UUID>",
+      "command": "project",
+      "credential_env_vars": [],
+      "discovery_provenance": {
+       "confidence": "medium",
+       "observed_via": [
+        "local_discovery"
+       ],
+       "source": "project",
+       "source_type": "local_discovery"
+      },
+      "discovery_sources": [],
+      "fingerprint": "<UUID>",
+      "has_credentials": false,
+      "identity_bindings": [],
+      "mcp_version": null,
+      "name": "proj",
+      "packages": [
+       {
+        "author": null,
+        "canonical_id": "<UUID>",
+        "copyright_text": null,
+        "declared_version": "1.2.0",
+        "dependency_depth": 0,
+        "dependency_scope": "runtime",
+        "deps_dev_resolved": false,
+        "description": null,
+        "discovery_provenance": {
+         "confidence": "medium",
+         "observed_via": [
+          "local_discovery"
+         ],
+         "resolved_from_registry": false,
+         "source": "project",
+         "source_type": "local_discovery",
+         "version_provenance": {
+          "confidence": "exact",
+          "declared_name": "minimist",
+          "declared_version": "1.2.0",
+          "legacy_version_source": "manifest",
+          "resolved_from_registry": false,
+          "resolved_version": "1.2.0",
+          "source_precedence": 30,
+          "version_source": "command_pin"
+         },
+         "version_source": "manifest"
+        },
+        "distro_name": null,
+        "distro_version": null,
+        "download_url": null,
+        "ecosystem": "npm",
+        "floating_reference": false,
+        "floating_reference_reason": null,
+        "homepage": null,
+        "integrity_verified": null,
+        "introduced_in_layer": null,
+        "is_direct": true,
+        "is_malicious": false,
+        "license": null,
+        "license_expression": null,
+        "malicious_reason": null,
+        "name": "minimist",
+        "occurrence_count": 0,
+        "occurrences": [],
+        "parent_package": null,
+        "provenance_attested": null,
+        "provenance_source": null,
+        "provenance_status": null,
+        "purl": "pkg:npm/minimist@1.2.0",
+        "reachability_evidence": "declaration_only",
+        "registry_version": null,
+        "repository_url": null,
+        "resolved_from_registry": false,
+        "resolved_version": null,
+        "scorecard_checks": null,
+        "scorecard_lookup_reason": null,
+        "scorecard_lookup_state": null,
+        "scorecard_repo": null,
+        "scorecard_score": null,
+        "source_package": null,
+        "stable_id": "<UUID>",
+        "supplier": null,
+        "version": "1.2.0",
+        "version_confidence": null,
+        "version_conflicts": null,
+        "version_evidence": null,
+        "version_provenance": {
+         "confidence": "exact",
+         "declared_name": "minimist",
+         "declared_version": "1.2.0",
+         "legacy_version_source": "manifest",
+         "resolved_from_registry": false,
+         "resolved_version": "1.2.0",
+         "source_precedence": 30,
+         "version_source": "command_pin"
+        },
+        "version_resolved_at": null,
+        "version_source": "manifest",
+        "vulnerabilities": [],
+        "vulnerability_count": 0
+       },
+       {
+        "author": null,
+        "canonical_id": "<UUID>",
+        "copyright_text": null,
+        "declared_version": "4.17.4",
+        "dependency_depth": 0,
+        "dependency_scope": "runtime",
+        "deps_dev_resolved": false,
+        "description": null,
+        "discovery_provenance": {
+         "confidence": "medium",
+         "observed_via": [
+          "local_discovery"
+         ],
+         "resolved_from_registry": false,
+         "source": "project",
+         "source_type": "local_discovery",
+         "version_provenance": {
+          "confidence": "exact",
+          "declared_name": "lodash",
+          "declared_version": "4.17.4",
+          "evidence": [
+           {
+            "line": 1,
+            "source_file": "<path:package.json>",
+            "type": "manifest"
+           }
+          ],
+          "legacy_version_source": "manifest",
+          "resolved_from_registry": false,
+          "resolved_version": "4.17.4",
+          "source_precedence": 30,
+          "version_source": "command_pin"
+         },
+         "version_source": "manifest"
+        },
+        "distro_name": null,
+        "distro_version": null,
+        "download_url": null,
+        "ecosystem": "npm",
+        "floating_reference": false,
+        "floating_reference_reason": null,
+        "homepage": null,
+        "integrity_verified": null,
+        "introduced_in_layer": null,
+        "is_direct": true,
+        "is_malicious": false,
+        "license": null,
+        "license_expression": null,
+        "malicious_reason": null,
+        "name": "lodash",
+        "occurrence_count": 0,
+        "occurrences": [],
+        "parent_package": null,
+        "provenance_attested": null,
+        "provenance_source": null,
+        "provenance_status": null,
+        "purl": "pkg:npm/lodash@4.17.4",
+        "reachability_evidence": "declaration_only",
+        "registry_version": null,
+        "repository_url": null,
+        "resolved_from_registry": false,
+        "resolved_version": null,
+        "scorecard_checks": null,
+        "scorecard_lookup_reason": null,
+        "scorecard_lookup_state": null,
+        "scorecard_repo": null,
+        "scorecard_score": null,
+        "source_package": null,
+        "stable_id": "<UUID>",
+        "supplier": null,
+        "version": "4.17.4",
+        "version_confidence": null,
+        "version_conflicts": null,
+        "version_evidence": [
+         {
+          "line": 1,
+          "source_file": "<path:package.json>",
+          "type": "manifest"
+         }
+        ],
+        "version_provenance": {
+         "confidence": "exact",
+         "declared_name": "lodash",
+         "declared_version": "4.17.4",
+         "evidence": [
+          {
+           "line": 1,
+           "source_file": "<path:package.json>",
+           "type": "manifest"
+          }
+         ],
+         "legacy_version_source": "manifest",
+         "resolved_from_registry": false,
+         "resolved_version": "4.17.4",
+         "source_precedence": 30,
+         "version_source": "command_pin"
+        },
+        "version_resolved_at": null,
+        "version_source": "manifest",
+        "vulnerabilities": [],
+        "vulnerability_count": 0
+       },
+       {
+        "author": null,
+        "canonical_id": "<UUID>",
+        "copyright_text": null,
+        "declared_version": null,
+        "dependency_depth": 0,
+        "dependency_scope": "runtime",
+        "deps_dev_resolved": false,
+        "description": null,
+        "discovery_provenance": {
+         "confidence": "medium",
+         "observed_via": [
+          "local_discovery"
+         ],
+         "resolved_from_registry": false,
+         "source": "project",
+         "source_type": "local_discovery",
+         "version_provenance": {
+          "confidence": "unknown",
+          "declared_name": "jinja2",
+          "evidence": [
+           {
+            "line": 2,
+            "source_file": "<path:requirements.txt>",
+            "type": "manifest"
+           }
+          ],
+          "legacy_version_source": "detected",
+          "resolved_from_registry": false,
+          "resolved_version": "2.10",
+          "source_precedence": 0,
+          "version_source": "unknown"
+         },
+         "version_source": "detected"
+        },
+        "distro_name": null,
+        "distro_version": null,
+        "download_url": null,
+        "ecosystem": "pypi",
+        "floating_reference": false,
+        "floating_reference_reason": null,
+        "homepage": null,
+        "integrity_verified": null,
+        "introduced_in_layer": null,
+        "is_direct": true,
+        "is_malicious": false,
+        "license": null,
+        "license_expression": null,
+        "malicious_reason": null,
+        "name": "jinja2",
+        "occurrence_count": 0,
+        "occurrences": [],
+        "parent_package": null,
+        "provenance_attested": null,
+        "provenance_source": null,
+        "provenance_status": null,
+        "purl": "pkg:pypi/jinja2@2.10",
+        "reachability_evidence": "declaration_only",
+        "registry_version": null,
+        "repository_url": null,
+        "resolved_from_registry": false,
+        "resolved_version": null,
+        "scorecard_checks": null,
+        "scorecard_lookup_reason": null,
+        "scorecard_lookup_state": null,
+        "scorecard_repo": null,
+        "scorecard_score": null,
+        "source_package": null,
+        "stable_id": "<UUID>",
+        "supplier": null,
+        "version": "2.10",
+        "version_confidence": null,
+        "version_conflicts": null,
+        "version_evidence": [
+         {
+          "line": 2,
+          "source_file": "<path:requirements.txt>",
+          "type": "manifest"
+         }
+        ],
+        "version_provenance": {
+         "confidence": "unknown",
+         "declared_name": "jinja2",
+         "evidence": [
+          {
+           "line": 2,
+           "source_file": "<path:requirements.txt>",
+           "type": "manifest"
+          }
+         ],
+         "legacy_version_source": "detected",
+         "resolved_from_registry": false,
+         "resolved_version": "2.10",
+         "source_precedence": 0,
+         "version_source": "unknown"
+        },
+        "version_resolved_at": null,
+        "version_source": "detected",
+        "vulnerabilities": [],
+        "vulnerability_count": 0
+       },
+       {
+        "author": null,
+        "canonical_id": "<UUID>",
+        "copyright_text": null,
+        "declared_version": null,
+        "dependency_depth": 0,
+        "dependency_scope": "runtime",
+        "deps_dev_resolved": false,
+        "description": null,
+        "discovery_provenance": {
+         "confidence": "medium",
+         "observed_via": [
+          "local_discovery"
+         ],
+         "resolved_from_registry": false,
+         "source": "project",
+         "source_type": "local_discovery",
+         "version_provenance": {
+          "confidence": "unknown",
+          "declared_name": "requests",
+          "evidence": [
+           {
+            "line": 1,
+            "source_file": "<path:requirements.txt>",
+            "type": "manifest"
+           }
+          ],
+          "legacy_version_source": "detected",
+          "resolved_from_registry": false,
+          "resolved_version": "2.19.0",
+          "source_precedence": 0,
+          "version_source": "unknown"
+         },
+         "version_source": "detected"
+        },
+        "distro_name": null,
+        "distro_version": null,
+        "download_url": null,
+        "ecosystem": "pypi",
+        "floating_reference": false,
+        "floating_reference_reason": null,
+        "homepage": null,
+        "integrity_verified": null,
+        "introduced_in_layer": null,
+        "is_direct": true,
+        "is_malicious": false,
+        "license": null,
+        "license_expression": null,
+        "malicious_reason": null,
+        "name": "requests",
+        "occurrence_count": 0,
+        "occurrences": [],
+        "parent_package": null,
+        "provenance_attested": null,
+        "provenance_source": null,
+        "provenance_status": null,
+        "purl": "pkg:pypi/requests@2.19.0",
+        "reachability_evidence": "declaration_only",
+        "registry_version": null,
+        "repository_url": null,
+        "resolved_from_registry": false,
+        "resolved_version": null,
+        "scorecard_checks": null,
+        "scorecard_lookup_reason": null,
+        "scorecard_lookup_state": null,
+        "scorecard_repo": null,
+        "scorecard_score": null,
+        "source_package": null,
+        "stable_id": "<UUID>",
+        "supplier": null,
+        "version": "2.19.0",
+        "version_confidence": null,
+        "version_conflicts": null,
+        "version_evidence": [
+         {
+          "line": 1,
+          "source_file": "<path:requirements.txt>",
+          "type": "manifest"
+         }
+        ],
+        "version_provenance": {
+         "confidence": "unknown",
+         "declared_name": "requests",
+         "evidence": [
+          {
+           "line": 1,
+           "source_file": "<path:requirements.txt>",
+           "type": "manifest"
+          }
+         ],
+         "legacy_version_source": "detected",
+         "resolved_from_registry": false,
+         "resolved_version": "2.19.0",
+         "source_precedence": 0,
+         "version_source": "unknown"
+        },
+        "version_resolved_at": null,
+        "version_source": "detected",
+        "vulnerabilities": [],
+        "vulnerability_count": 0
+       }
+      ],
+      "permission_profile": null,
+      "prompts": [],
+      "registry_badge": "unknown",
+      "registry_verified": false,
+      "resources": [],
+      "security_blocked": false,
+      "security_intelligence": [],
+      "security_warnings": [],
+      "stable_id": "<UUID>",
+      "surface": "other",
+      "tools": [],
+      "transport": "stdio",
+      "url": null
+     }
+    ],
+    "metadata": {
+     "evidence_sources": [
+      "project",
+      "project-config"
+     ],
+     "project_root": "<path:proj>"
+    },
+    "name": "project:proj",
+    "previous_canonical_ids": [
+     "<UUID>"
+    ],
+    "source": "project",
+    "stable_id": "<UUID>",
+    "status": "configured",
+    "type": "custom"
+   }
+  ],
+  "ai_bom_entities": {
+   "agents": [
+    {
+     "agent_type": "custom",
+     "canonical_id": "<UUID>",
+     "config_path": "<path:proj>",
+     "discovered_at": "<TS>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "source": "project",
+      "source_type": "local_discovery"
+     },
+     "id": "<UUID>",
+     "last_seen": "<TS>",
+     "name": "project:proj",
+     "previous_canonical_ids": [
+      "<UUID>"
+     ],
+     "server_ids": [
+      "<UUID>",
+      "<UUID>"
+     ],
+     "status": "configured",
+     "type": "custom"
+    }
+   ],
+   "packages": [
+    {
+     "canonical_id": "<UUID>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "exact",
+       "declared_name": "@modelcontextprotocol/server-filesystem",
+       "declared_version": "0.6.2",
+       "evidence": [
+        {
+         "parser": "npx",
+         "source_file": "<path:.mcp.json>",
+         "type": "command_pin"
+        }
+       ],
+       "resolved_from_registry": false,
+       "resolved_version": "0.6.2",
+       "source_precedence": 30,
+       "version_source": "command_pin"
+      },
+      "version_source": "command_pin"
+     },
+     "distro_name": null,
+     "distro_version": null,
+     "ecosystem": "npm",
+     "floating_reference": false,
+     "floating_reference_reason": null,
+     "id": "<UUID>",
+     "is_malicious": false,
+     "malicious_reason": null,
+     "name": "@modelcontextprotocol/server-filesystem",
+     "occurrence_count": 0,
+     "occurrences": [],
+     "purl": "pkg:npm/%40modelcontextprotocol/server-filesystem@0.6.2",
+     "source_package": null,
+     "version": "0.6.2",
+     "version_provenance": {
+      "confidence": "exact",
+      "declared_name": "@modelcontextprotocol/server-filesystem",
+      "declared_version": "0.6.2",
+      "evidence": [
+       {
+        "parser": "npx",
+        "source_file": "<path:.mcp.json>",
+        "type": "command_pin"
+       }
+      ],
+      "resolved_from_registry": false,
+      "resolved_version": "0.6.2",
+      "source_precedence": 30,
+      "version_source": "command_pin"
+     },
+     "vulnerability_count": 0
+    },
+    {
+     "canonical_id": "<UUID>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "exact",
+       "declared_name": "lodash",
+       "declared_version": "4.17.4",
+       "evidence": [
+        {
+         "line": 1,
+         "source_file": "<path:package.json>",
+         "type": "manifest"
+        }
+       ],
+       "legacy_version_source": "manifest",
+       "resolved_from_registry": false,
+       "resolved_version": "4.17.4",
+       "source_precedence": 30,
+       "version_source": "command_pin"
+      },
+      "version_source": "manifest"
+     },
+     "distro_name": null,
+     "distro_version": null,
+     "ecosystem": "npm",
+     "floating_reference": false,
+     "floating_reference_reason": null,
+     "id": "<UUID>",
+     "is_malicious": false,
+     "malicious_reason": null,
+     "name": "lodash",
+     "occurrence_count": 0,
+     "occurrences": [],
+     "purl": "pkg:npm/lodash@4.17.4",
+     "source_package": null,
+     "version": "4.17.4",
+     "version_provenance": {
+      "confidence": "exact",
+      "declared_name": "lodash",
+      "declared_version": "4.17.4",
+      "evidence": [
+       {
+        "line": 1,
+        "source_file": "<path:package.json>",
+        "type": "manifest"
+       }
+      ],
+      "legacy_version_source": "manifest",
+      "resolved_from_registry": false,
+      "resolved_version": "4.17.4",
+      "source_precedence": 30,
+      "version_source": "command_pin"
+     },
+     "vulnerability_count": 0
+    },
+    {
+     "canonical_id": "<UUID>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "exact",
+       "declared_name": "minimist",
+       "declared_version": "1.2.0",
+       "legacy_version_source": "manifest",
+       "resolved_from_registry": false,
+       "resolved_version": "1.2.0",
+       "source_precedence": 30,
+       "version_source": "command_pin"
+      },
+      "version_source": "manifest"
+     },
+     "distro_name": null,
+     "distro_version": null,
+     "ecosystem": "npm",
+     "floating_reference": false,
+     "floating_reference_reason": null,
+     "id": "<UUID>",
+     "is_malicious": false,
+     "malicious_reason": null,
+     "name": "minimist",
+     "occurrence_count": 0,
+     "occurrences": [],
+     "purl": "pkg:npm/minimist@1.2.0",
+     "source_package": null,
+     "version": "1.2.0",
+     "version_provenance": {
+      "confidence": "exact",
+      "declared_name": "minimist",
+      "declared_version": "1.2.0",
+      "legacy_version_source": "manifest",
+      "resolved_from_registry": false,
+      "resolved_version": "1.2.0",
+      "source_precedence": 30,
+      "version_source": "command_pin"
+     },
+     "vulnerability_count": 0
+    },
+    {
+     "canonical_id": "<UUID>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "unknown",
+       "declared_name": "jinja2",
+       "evidence": [
+        {
+         "line": 2,
+         "source_file": "<path:requirements.txt>",
+         "type": "manifest"
+        }
+       ],
+       "legacy_version_source": "detected",
+       "resolved_from_registry": false,
+       "resolved_version": "2.10",
+       "source_precedence": 0,
+       "version_source": "unknown"
+      },
+      "version_source": "detected"
+     },
+     "distro_name": null,
+     "distro_version": null,
+     "ecosystem": "pypi",
+     "floating_reference": false,
+     "floating_reference_reason": null,
+     "id": "<UUID>",
+     "is_malicious": false,
+     "malicious_reason": null,
+     "name": "jinja2",
+     "occurrence_count": 0,
+     "occurrences": [],
+     "purl": "pkg:pypi/jinja2@2.10",
+     "source_package": null,
+     "version": "2.10",
+     "version_provenance": {
+      "confidence": "unknown",
+      "declared_name": "jinja2",
+      "evidence": [
+       {
+        "line": 2,
+        "source_file": "<path:requirements.txt>",
+        "type": "manifest"
+       }
+      ],
+      "legacy_version_source": "detected",
+      "resolved_from_registry": false,
+      "resolved_version": "2.10",
+      "source_precedence": 0,
+      "version_source": "unknown"
+     },
+     "vulnerability_count": 0
+    },
+    {
+     "canonical_id": "<UUID>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "unknown",
+       "declared_name": "requests",
+       "evidence": [
+        {
+         "line": 1,
+         "source_file": "<path:requirements.txt>",
+         "type": "manifest"
+        }
+       ],
+       "legacy_version_source": "detected",
+       "resolved_from_registry": false,
+       "resolved_version": "2.19.0",
+       "source_precedence": 0,
+       "version_source": "unknown"
+      },
+      "version_source": "detected"
+     },
+     "distro_name": null,
+     "distro_version": null,
+     "ecosystem": "pypi",
+     "floating_reference": false,
+     "floating_reference_reason": null,
+     "id": "<UUID>",
+     "is_malicious": false,
+     "malicious_reason": null,
+     "name": "requests",
+     "occurrence_count": 0,
+     "occurrences": [],
+     "purl": "pkg:pypi/requests@2.19.0",
+     "source_package": null,
+     "version": "2.19.0",
+     "version_provenance": {
+      "confidence": "unknown",
+      "declared_name": "requests",
+      "evidence": [
+       {
+        "line": 1,
+        "source_file": "<path:requirements.txt>",
+        "type": "manifest"
+       }
+      ],
+      "legacy_version_source": "detected",
+      "resolved_from_registry": false,
+      "resolved_version": "2.19.0",
+      "source_precedence": 0,
+      "version_source": "unknown"
+     },
+     "vulnerability_count": 0
+    }
+   ],
+   "prompts": [],
+   "relationships": [
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "depends_on"
+    },
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "depends_on"
+    },
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "depends_on"
+    },
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "depends_on"
+    },
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "depends_on"
+    },
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "uses"
+    },
+    {
+     "from": "<UUID>",
+     "to": "<UUID>",
+     "type": "uses"
+    }
+   ],
+   "resources": [],
+   "schema_version": "1.0",
+   "servers": [
+    {
+     "auth_mode": "env-credentials",
+     "canonical_id": "<UUID>",
+     "command": "npx",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "source": "project",
+      "source_type": "local_discovery"
+     },
+     "fingerprint": "<UUID>",
+     "id": "<UUID>",
+     "name": "filesystem",
+     "package_ids": [
+      "<UUID>"
+     ],
+     "prompt_ids": [],
+     "resource_ids": [],
+     "surface": "mcp-server",
+     "tool_ids": [],
+     "transport": "stdio",
+     "url": null
+    },
+    {
+     "auth_mode": "local-stdio",
+     "canonical_id": "<UUID>",
+     "command": "project",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "source": "project",
+      "source_type": "local_discovery"
+     },
+     "fingerprint": "<UUID>",
+     "id": "<UUID>",
+     "name": "proj",
+     "package_ids": [
+      "<UUID>",
+      "<UUID>",
+      "<UUID>",
+      "<UUID>"
+     ],
+     "prompt_ids": [],
+     "resource_ids": [],
+     "surface": "other",
+     "tool_ids": [],
+     "transport": "stdio",
+     "url": null
+    }
+   ],
+   "summary": {
+    "agents": 1,
+    "packages": 5,
+    "prompts": 0,
+    "relationships": 7,
+    "resources": 0,
+    "servers": 2,
+    "tools": 0
+   },
+   "tools": []
+  },
+  "ai_bom_version": "<VERSION>",
+  "assets": [],
+  "blast_radius": [],
+  "canonical_id_schema_version": "2",
+  "codeowners": [],
+  "coverage_warnings": [],
+  "credential_risk_ranking": [
+   {
+    "agents": [
+     "project:proj"
+    ],
+    "basis": "discovery",
+    "credential": "***REDACTED***",
+    "max_risk_score": 0.0,
+    "reachable_tools": [],
+    "risk_tier": "low",
+    "server_count": 1,
+    "vuln_critical": 0,
+    "vuln_high": 0,
+    "vuln_total": 0
+   }
+  ],
+  "document_type": "AI-BOM",
+  "exposure_paths": {
+   "path_count": 0,
+   "paths": [],
+   "schema_version": "1",
+   "source": "blast_radius_output"
+  },
+  "finding_summary": {
+   "by_severity": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "medium": 0,
+    "unknown": 0
+   },
+   "by_source": {},
+   "by_type": {},
+   "total": 0
+  },
+  "findings": [],
+  "framework_catalogs": {
+   "mitre_attack": {
+    "attack_release": "18.1",
+    "attack_version": "18.1",
+    "catalog_id": "mitre_attack_enterprise_capec",
+    "catalog_type": "mitre_attack",
+    "cwe_mapping_count": 109,
+    "fetched_at": 1784387191.4278789,
+    "normalized_sha256": "<HEX>",
+    "path": "<path:mitre_attack_catalog.json>",
+    "schema_version": 1,
+    "source": "bundled",
+    "sources": {
+     "capec": {
+      "release": "3.5",
+      "sha256": "<HEX>",
+      "url": "https://raw.githubusercontent.com/mitre/cti/CAPEC-v3.5/capec/2.1/stix-capec.json"
+     },
+     "enterprise_attack": {
+      "release": "18.1",
+      "sha256": "<HEX>",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v18.1/enterprise-attack/enterprise-attack-18.1.json"
+     }
+    },
+    "tactic_count": 14,
+    "technique_count": 691,
+    "updated_at": "<TS>"
+   }
+  },
+  "generated_at": "<TS>",
+  "has_agent_context": false,
+  "has_mcp_context": true,
+  "incident_correlation": [],
+  "inventory_snapshot": {
+   "agents": [
+    {
+     "agent_type": "custom",
+     "config_path": "<path:proj>",
+     "discovered_at": "<TS>",
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "source": "project",
+      "source_type": "local_discovery"
+     },
+     "last_seen": "<TS>",
+     "mcp_servers": [
+      {
+       "args": [
+        "-y",
+        "<path:data>",
+        "@modelcontextprotocol/server-filesystem@0.6.2"
+       ],
+       "command": "npx",
+       "config_path": "<path:.mcp.json>",
+       "discovery_provenance": {
+        "confidence": "medium",
+        "observed_via": [
+         "local_discovery"
+        ],
+        "source": "project",
+        "source_type": "local_discovery"
+       },
+       "name": "filesystem",
+       "packages": [
+        {
+         "discovery_provenance": {
+          "confidence": "medium",
+          "observed_via": [
+           "local_discovery"
+          ],
+          "resolved_from_registry": false,
+          "source": "project",
+          "source_type": "local_discovery",
+          "version_provenance": {
+           "confidence": "exact",
+           "declared_name": "@modelcontextprotocol/server-filesystem",
+           "declared_version": "0.6.2",
+           "evidence": [
+            {
+             "parser": "npx",
+             "source_file": "<path:.mcp.json>",
+             "type": "command_pin"
+            }
+           ],
+           "resolved_from_registry": false,
+           "resolved_version": "0.6.2",
+           "version_source": "command_pin"
+          },
+          "version_source": "command_pin"
+         },
+         "ecosystem": "npm",
+         "name": "@modelcontextprotocol/server-filesystem",
+         "purl": "pkg:npm/%40modelcontextprotocol/server-filesystem@0.6.2",
+         "version": "0.6.2"
+        }
+       ],
+       "transport": "stdio"
+      },
+      {
+       "args": [
+        "<redacted>"
+       ],
+       "command": "project",
+       "discovery_provenance": {
+        "confidence": "medium",
+        "observed_via": [
+         "local_discovery"
+        ],
+        "source": "project",
+        "source_type": "local_discovery"
+       },
+       "name": "proj",
+       "packages": [
+        {
+         "discovery_provenance": {
+          "confidence": "medium",
+          "observed_via": [
+           "local_discovery"
+          ],
+          "resolved_from_registry": false,
+          "source": "project",
+          "source_type": "local_discovery",
+          "version_provenance": {
+           "confidence": "exact",
+           "declared_name": "lodash",
+           "declared_version": "4.17.4",
+           "evidence": [
+            {
+             "line": 1,
+             "source_file": "<path:package.json>",
+             "type": "manifest"
+            }
+           ],
+           "resolved_from_registry": false,
+           "resolved_version": "4.17.4",
+           "version_source": "command_pin"
+          },
+          "version_source": "manifest"
+         },
+         "ecosystem": "npm",
+         "name": "lodash",
+         "purl": "pkg:npm/lodash@4.17.4",
+         "version": "4.17.4"
+        },
+        {
+         "discovery_provenance": {
+          "confidence": "medium",
+          "observed_via": [
+           "local_discovery"
+          ],
+          "resolved_from_registry": false,
+          "source": "project",
+          "source_type": "local_discovery",
+          "version_provenance": {
+           "confidence": "exact",
+           "declared_name": "minimist",
+           "declared_version": "1.2.0",
+           "resolved_from_registry": false,
+           "resolved_version": "1.2.0",
+           "version_source": "command_pin"
+          },
+          "version_source": "manifest"
+         },
+         "ecosystem": "npm",
+         "name": "minimist",
+         "purl": "pkg:npm/minimist@1.2.0",
+         "version": "1.2.0"
+        },
+        {
+         "discovery_provenance": {
+          "confidence": "medium",
+          "observed_via": [
+           "local_discovery"
+          ],
+          "resolved_from_registry": false,
+          "source": "project",
+          "source_type": "local_discovery",
+          "version_provenance": {
+           "confidence": "unknown",
+           "declared_name": "jinja2",
+           "evidence": [
+            {
+             "line": 2,
+             "source_file": "<path:requirements.txt>",
+             "type": "manifest"
+            }
+           ],
+           "resolved_from_registry": false,
+           "resolved_version": "2.10",
+           "version_source": "unknown"
+          },
+          "version_source": "detected"
+         },
+         "ecosystem": "pypi",
+         "name": "jinja2",
+         "purl": "pkg:pypi/jinja2@2.10",
+         "version": "2.10"
+        },
+        {
+         "discovery_provenance": {
+          "confidence": "medium",
+          "observed_via": [
+           "local_discovery"
+          ],
+          "resolved_from_registry": false,
+          "source": "project",
+          "source_type": "local_discovery",
+          "version_provenance": {
+           "confidence": "unknown",
+           "declared_name": "requests",
+           "evidence": [
+            {
+             "line": 1,
+             "source_file": "<path:requirements.txt>",
+             "type": "manifest"
+            }
+           ],
+           "resolved_from_registry": false,
+           "resolved_version": "2.19.0",
+           "version_source": "unknown"
+          },
+          "version_source": "detected"
+         },
+         "ecosystem": "pypi",
+         "name": "requests",
+         "purl": "pkg:pypi/requests@2.19.0",
+         "version": "2.19.0"
+        }
+       ],
+       "transport": "stdio"
+      }
+     ],
+     "metadata": {
+      "evidence_sources": [
+       "project",
+       "project-config"
+      ],
+      "project_root": "<path:proj>"
+     },
+     "name": "project:proj",
+     "source": "project"
+    }
+   ],
+   "generated_at": "<TS>",
+   "packages": [
+    {
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "exact",
+       "declared_name": "@modelcontextprotocol/server-filesystem",
+       "declared_version": "0.6.2",
+       "evidence": [
+        {
+         "parser": "npx",
+         "source_file": "<path:.mcp.json>",
+         "type": "command_pin"
+        }
+       ],
+       "resolved_from_registry": false,
+       "resolved_version": "0.6.2",
+       "version_source": "command_pin"
+      },
+      "version_source": "command_pin"
+     },
+     "ecosystem": "npm",
+     "name": "@modelcontextprotocol/server-filesystem",
+     "purl": "pkg:npm/%40modelcontextprotocol/server-filesystem@0.6.2",
+     "version": "0.6.2"
+    },
+    {
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "exact",
+       "declared_name": "lodash",
+       "declared_version": "4.17.4",
+       "evidence": [
+        {
+         "line": 1,
+         "source_file": "<path:package.json>",
+         "type": "manifest"
+        }
+       ],
+       "resolved_from_registry": false,
+       "resolved_version": "4.17.4",
+       "version_source": "command_pin"
+      },
+      "version_source": "manifest"
+     },
+     "ecosystem": "npm",
+     "name": "lodash",
+     "purl": "pkg:npm/lodash@4.17.4",
+     "version": "4.17.4"
+    },
+    {
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "exact",
+       "declared_name": "minimist",
+       "declared_version": "1.2.0",
+       "resolved_from_registry": false,
+       "resolved_version": "1.2.0",
+       "version_source": "command_pin"
+      },
+      "version_source": "manifest"
+     },
+     "ecosystem": "npm",
+     "name": "minimist",
+     "purl": "pkg:npm/minimist@1.2.0",
+     "version": "1.2.0"
+    },
+    {
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "unknown",
+       "declared_name": "jinja2",
+       "evidence": [
+        {
+         "line": 2,
+         "source_file": "<path:requirements.txt>",
+         "type": "manifest"
+        }
+       ],
+       "resolved_from_registry": false,
+       "resolved_version": "2.10",
+       "version_source": "unknown"
+      },
+      "version_source": "detected"
+     },
+     "ecosystem": "pypi",
+     "name": "jinja2",
+     "purl": "pkg:pypi/jinja2@2.10",
+     "version": "2.10"
+    },
+    {
+     "discovery_provenance": {
+      "confidence": "medium",
+      "observed_via": [
+       "local_discovery"
+      ],
+      "resolved_from_registry": false,
+      "source": "project",
+      "source_type": "local_discovery",
+      "version_provenance": {
+       "confidence": "unknown",
+       "declared_name": "requests",
+       "evidence": [
+        {
+         "line": 1,
+         "source_file": "<path:requirements.txt>",
+         "type": "manifest"
+        }
+       ],
+       "resolved_from_registry": false,
+       "resolved_version": "2.19.0",
+       "version_source": "unknown"
+      },
+      "version_source": "detected"
+     },
+     "ecosystem": "pypi",
+     "name": "requests",
+     "purl": "pkg:pypi/requests@2.19.0",
+     "version": "2.19.0"
+    }
+   ],
+   "schema_version": "1"
+  },
+  "packages": [
+   {
+    "canonical_id": "<UUID>",
+    "discovery_provenance": {
+     "confidence": "medium",
+     "observed_via": [
+      "local_discovery"
+     ],
+     "resolved_from_registry": false,
+     "source": "project",
+     "source_type": "local_discovery",
+     "version_provenance": {
+      "confidence": "exact",
+      "declared_name": "@modelcontextprotocol/server-filesystem",
+      "declared_version": "0.6.2",
+      "evidence": [
+       {
+        "parser": "npx",
+        "source_file": "<path:.mcp.json>",
+        "type": "command_pin"
+       }
+      ],
+      "resolved_from_registry": false,
+      "resolved_version": "0.6.2",
+      "source_precedence": 30,
+      "version_source": "command_pin"
+     },
+     "version_source": "command_pin"
+    },
+    "distro_name": null,
+    "distro_version": null,
+    "ecosystem": "npm",
+    "floating_reference": false,
+    "floating_reference_reason": null,
+    "id": "<UUID>",
+    "is_malicious": false,
+    "malicious_reason": null,
+    "name": "@modelcontextprotocol/server-filesystem",
+    "occurrence_count": 0,
+    "occurrences": [],
+    "purl": "pkg:npm/%40modelcontextprotocol/server-filesystem@0.6.2",
+    "source_package": null,
+    "version": "0.6.2",
+    "version_provenance": {
+     "confidence": "exact",
+     "declared_name": "@modelcontextprotocol/server-filesystem",
+     "declared_version": "0.6.2",
+     "evidence": [
+      {
+       "parser": "npx",
+       "source_file": "<path:.mcp.json>",
+       "type": "command_pin"
+      }
+     ],
+     "resolved_from_registry": false,
+     "resolved_version": "0.6.2",
+     "source_precedence": 30,
+     "version_source": "command_pin"
+    },
+    "vulnerability_count": 0
+   },
+   {
+    "canonical_id": "<UUID>",
+    "discovery_provenance": {
+     "confidence": "medium",
+     "observed_via": [
+      "local_discovery"
+     ],
+     "resolved_from_registry": false,
+     "source": "project",
+     "source_type": "local_discovery",
+     "version_provenance": {
+      "confidence": "exact",
+      "declared_name": "lodash",
+      "declared_version": "4.17.4",
+      "evidence": [
+       {
+        "line": 1,
+        "source_file": "<path:package.json>",
+        "type": "manifest"
+       }
+      ],
+      "legacy_version_source": "manifest",
+      "resolved_from_registry": false,
+      "resolved_version": "4.17.4",
+      "source_precedence": 30,
+      "version_source": "command_pin"
+     },
+     "version_source": "manifest"
+    },
+    "distro_name": null,
+    "distro_version": null,
+    "ecosystem": "npm",
+    "floating_reference": false,
+    "floating_reference_reason": null,
+    "id": "<UUID>",
+    "is_malicious": false,
+    "malicious_reason": null,
+    "name": "lodash",
+    "occurrence_count": 0,
+    "occurrences": [],
+    "purl": "pkg:npm/lodash@4.17.4",
+    "source_package": null,
+    "version": "4.17.4",
+    "version_provenance": {
+     "confidence": "exact",
+     "declared_name": "lodash",
+     "declared_version": "4.17.4",
+     "evidence": [
+      {
+       "line": 1,
+       "source_file": "<path:package.json>",
+       "type": "manifest"
+      }
+     ],
+     "legacy_version_source": "manifest",
+     "resolved_from_registry": false,
+     "resolved_version": "4.17.4",
+     "source_precedence": 30,
+     "version_source": "command_pin"
+    },
+    "vulnerability_count": 0
+   },
+   {
+    "canonical_id": "<UUID>",
+    "discovery_provenance": {
+     "confidence": "medium",
+     "observed_via": [
+      "local_discovery"
+     ],
+     "resolved_from_registry": false,
+     "source": "project",
+     "source_type": "local_discovery",
+     "version_provenance": {
+      "confidence": "exact",
+      "declared_name": "minimist",
+      "declared_version": "1.2.0",
+      "legacy_version_source": "manifest",
+      "resolved_from_registry": false,
+      "resolved_version": "1.2.0",
+      "source_precedence": 30,
+      "version_source": "command_pin"
+     },
+     "version_source": "manifest"
+    },
+    "distro_name": null,
+    "distro_version": null,
+    "ecosystem": "npm",
+    "floating_reference": false,
+    "floating_reference_reason": null,
+    "id": "<UUID>",
+    "is_malicious": false,
+    "malicious_reason": null,
+    "name": "minimist",
+    "occurrence_count": 0,
+    "occurrences": [],
+    "purl": "pkg:npm/minimist@1.2.0",
+    "source_package": null,
+    "version": "1.2.0",
+    "version_provenance": {
+     "confidence": "exact",
+     "declared_name": "minimist",
+     "declared_version": "1.2.0",
+     "legacy_version_source": "manifest",
+     "resolved_from_registry": false,
+     "resolved_version": "1.2.0",
+     "source_precedence": 30,
+     "version_source": "command_pin"
+    },
+    "vulnerability_count": 0
+   },
+   {
+    "canonical_id": "<UUID>",
+    "discovery_provenance": {
+     "confidence": "medium",
+     "observed_via": [
+      "local_discovery"
+     ],
+     "resolved_from_registry": false,
+     "source": "project",
+     "source_type": "local_discovery",
+     "version_provenance": {
+      "confidence": "unknown",
+      "declared_name": "jinja2",
+      "evidence": [
+       {
+        "line": 2,
+        "source_file": "<path:requirements.txt>",
+        "type": "manifest"
+       }
+      ],
+      "legacy_version_source": "detected",
+      "resolved_from_registry": false,
+      "resolved_version": "2.10",
+      "source_precedence": 0,
+      "version_source": "unknown"
+     },
+     "version_source": "detected"
+    },
+    "distro_name": null,
+    "distro_version": null,
+    "ecosystem": "pypi",
+    "floating_reference": false,
+    "floating_reference_reason": null,
+    "id": "<UUID>",
+    "is_malicious": false,
+    "malicious_reason": null,
+    "name": "jinja2",
+    "occurrence_count": 0,
+    "occurrences": [],
+    "purl": "pkg:pypi/jinja2@2.10",
+    "source_package": null,
+    "version": "2.10",
+    "version_provenance": {
+     "confidence": "unknown",
+     "declared_name": "jinja2",
+     "evidence": [
+      {
+       "line": 2,
+       "source_file": "<path:requirements.txt>",
+       "type": "manifest"
+      }
+     ],
+     "legacy_version_source": "detected",
+     "resolved_from_registry": false,
+     "resolved_version": "2.10",
+     "source_precedence": 0,
+     "version_source": "unknown"
+    },
+    "vulnerability_count": 0
+   },
+   {
+    "canonical_id": "<UUID>",
+    "discovery_provenance": {
+     "confidence": "medium",
+     "observed_via": [
+      "local_discovery"
+     ],
+     "resolved_from_registry": false,
+     "source": "project",
+     "source_type": "local_discovery",
+     "version_provenance": {
+      "confidence": "unknown",
+      "declared_name": "requests",
+      "evidence": [
+       {
+        "line": 1,
+        "source_file": "<path:requirements.txt>",
+        "type": "manifest"
+       }
+      ],
+      "legacy_version_source": "detected",
+      "resolved_from_registry": false,
+      "resolved_version": "2.19.0",
+      "source_precedence": 0,
+      "version_source": "unknown"
+     },
+     "version_source": "detected"
+    },
+    "distro_name": null,
+    "distro_version": null,
+    "ecosystem": "pypi",
+    "floating_reference": false,
+    "floating_reference_reason": null,
+    "id": "<UUID>",
+    "is_malicious": false,
+    "malicious_reason": null,
+    "name": "requests",
+    "occurrence_count": 0,
+    "occurrences": [],
+    "purl": "pkg:pypi/requests@2.19.0",
+    "source_package": null,
+    "version": "2.19.0",
+    "version_provenance": {
+     "confidence": "unknown",
+     "declared_name": "requests",
+     "evidence": [
+      {
+       "line": 1,
+       "source_file": "<path:requirements.txt>",
+       "type": "manifest"
+      }
+     ],
+     "legacy_version_source": "detected",
+     "resolved_from_registry": false,
+     "resolved_version": "2.19.0",
+     "source_precedence": 0,
+     "version_source": "unknown"
+    },
+    "vulnerability_count": 0
+   }
+  ],
+  "posture_grade": "N/A",
+  "posture_scorecard": {
+   "dimensions": {
+    "active_exploitation": {
+     "details": "No actively exploited vulnerabilities",
+     "name": "Active Exploitation",
+     "score": 100.0,
+     "weight": 0.1,
+     "weighted_score": 10.0
+    },
+    "compliance_coverage": {
+     "details": "No findings to map",
+     "name": "Compliance Coverage",
+     "score": 100.0,
+     "weight": 0.15,
+     "weighted_score": 15.0
+    },
+    "configuration_quality": {
+     "details": "0/2 verified, 0/2 with tool declarations",
+     "name": "Configuration Quality",
+     "score": 0.0,
+     "weight": 0.1,
+     "weighted_score": 0.0
+    },
+    "credential_hygiene": {
+     "details": "1 unique credentials across 1 servers",
+     "name": "Credential Hygiene",
+     "score": 89.0,
+     "weight": 0.2,
+     "weighted_score": 17.8
+    },
+    "supply_chain_quality": {
+     "details": "No GitHub-backed packages eligible for OpenSSF Scorecard",
+     "name": "Supply Chain Quality",
+     "score": 50.0,
+     "weight": 0.15,
+     "weighted_score": 7.5
+    },
+    "vulnerability_posture": {
+     "details": "No vulnerabilities found",
+     "name": "Vulnerability Posture",
+     "score": 100.0,
+     "weight": 0.3,
+     "weighted_score": 30.0
+    }
+   },
+   "grade": "N/A",
+   "no_data": true,
+   "policy_source": "default",
+   "score": 0.0,
+   "summary": "Vulnerability coverage incomplete \u2014 posture grade unavailable. Re-run once vulnerability data is available."
+  },
+  "remediation_plan": [],
+  "scan_id": "",
+  "scan_performance": {
+   "coverage_reason": "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update --source osv` before using `--offline` (the all-ecosystems archive can exceed 1 GB), or drop `--offline`.",
+   "coverage_state": "incomplete"
+  },
+  "scan_run": {
+   "complete_scope_count": 0,
+   "generated_at": "<TS>",
+   "incomplete_scope_count": 0,
+   "issues": [
+    {
+     "affects_coverage": true,
+     "code": "required_scanner_unavailable",
+     "message": "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update --source osv` before using `--offline` (the all-ecosystems archive can exceed 1 GB), or drop `--offline`.",
+     "severity": "error",
+     "source": "vulnerability-data",
+     "stage": "scanning"
+    }
+   ],
+   "outcome": "partial",
+   "requested_scope_count": 0,
+   "scan_id": "",
+   "schema_version": "1",
+   "scopes": [],
+   "source_count": 1,
+   "warning_count": 1
+  },
+  "scan_sources": [
+   "agent_discovery"
+  ],
+  "schema_version": "1.0",
+  "scorecard_summary": {
+   "attempted_packages": 0,
+   "eligible_packages": 0,
+   "enriched_packages": 0,
+   "failed_packages": 0,
+   "failed_reasons": {},
+   "persistent_failed_packages": 0,
+   "total_packages": 5,
+   "transient_failed_packages": 0,
+   "unique_packages": 5,
+   "unresolved_packages": 5
+  },
+  "spec_version": "1.0",
+  "summary": {
+   "coverage_warnings": [],
+   "critical_findings": 0,
+   "critical_unified_findings": 0,
+   "high_unified_findings": 0,
+   "total_agents": 1,
+   "total_findings": 0,
+   "total_mcp_servers": 1,
+   "total_packages": 5,
+   "total_vulnerabilities": 0,
+   "unique_assets": 0,
+   "unique_packages": 5
+  },
+  "threat_framework_summary": {
+   "cis_controls": [
+    {
+     "code": "CIS-02.1",
+     "findings": 0,
+     "name": "Software asset inventory",
+     "triggered": false
+    },
+    {
+     "code": "CIS-02.3",
+     "findings": 0,
+     "name": "Unauthorized-software remediation",
+     "triggered": false
+    },
+    {
+     "code": "CIS-02.7",
+     "findings": 0,
+     "name": "Approved-library allowlisting",
+     "triggered": false
+    },
+    {
+     "code": "CIS-07.1",
+     "findings": 0,
+     "name": "Vulnerability-management program",
+     "triggered": false
+    },
+    {
+     "code": "CIS-07.4",
+     "findings": 0,
+     "name": "Automated patch remediation",
+     "triggered": false
+    },
+    {
+     "code": "CIS-07.5",
+     "findings": 0,
+     "name": "Internal-asset vulnerability scanning",
+     "triggered": false
+    },
+    {
+     "code": "CIS-07.6",
+     "findings": 0,
+     "name": "External-facing vulnerability scanning",
+     "triggered": false
+    },
+    {
+     "code": "CIS-16.1",
+     "findings": 0,
+     "name": "Secure application-development lifecycle",
+     "triggered": false
+    },
+    {
+     "code": "CIS-16.11",
+     "findings": 0,
+     "name": "Hardened application configuration baselines",
+     "triggered": false
+    },
+    {
+     "code": "CIS-16.12",
+     "findings": 0,
+     "name": "Code-level security testing",
+     "triggered": false
+    }
+   ],
+   "eu_ai_act": [
+    {
+     "code": "ART-10",
+     "findings": 0,
+     "name": "Data & Data Governance",
+     "triggered": false
+    },
+    {
+     "code": "ART-15",
+     "findings": 0,
+     "name": "Accuracy, Robustness & Cybersecurity",
+     "triggered": false
+    },
+    {
+     "code": "ART-17",
+     "findings": 0,
+     "name": "Quality Management System",
+     "triggered": false
+    },
+    {
+     "code": "ART-5",
+     "findings": 0,
+     "name": "Prohibited AI Practices",
+     "triggered": false
+    },
+    {
+     "code": "ART-6",
+     "findings": 0,
+     "name": "High-Risk AI System Classification",
+     "triggered": false
+    },
+    {
+     "code": "ART-9",
+     "findings": 0,
+     "name": "Risk Management System",
+     "triggered": false
+    }
+   ],
+   "iso_27001": [
+    {
+     "code": "A.5.19",
+     "findings": 0,
+     "name": "Supplier-relationship information security",
+     "triggered": false
+    },
+    {
+     "code": "A.5.20",
+     "findings": 0,
+     "name": "Security terms in supplier agreements",
+     "triggered": false
+    },
+    {
+     "code": "A.5.21",
+     "findings": 0,
+     "name": "ICT supply-chain security management",
+     "triggered": false
+    },
+    {
+     "code": "A.5.23",
+     "findings": 0,
+     "name": "Cloud-service information security",
+     "triggered": false
+    },
+    {
+     "code": "A.5.28",
+     "findings": 0,
+     "name": "Incident evidence collection",
+     "triggered": false
+    },
+    {
+     "code": "A.8.24",
+     "findings": 0,
+     "name": "Use of cryptographic protection",
+     "triggered": false
+    },
+    {
+     "code": "A.8.28",
+     "findings": 0,
+     "name": "Secure development / coding practices",
+     "triggered": false
+    },
+    {
+     "code": "A.8.8",
+     "findings": 0,
+     "name": "Technical vulnerability management",
+     "triggered": false
+    },
+    {
+     "code": "A.8.9",
+     "findings": 0,
+     "name": "System configuration management",
+     "triggered": false
+    }
+   ],
+   "mitre_atlas": [
+    {
+     "findings": 0,
+     "name": "AI Agent Tool Invocation",
+     "technique_id": "AML.T0053",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI Artifact Collection",
+     "technique_id": "AML.T0035",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI Model Inference API Access",
+     "technique_id": "AML.T0040",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI Software",
+     "technique_id": "AML.T0010.001",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI Supply Chain Compromise",
+     "technique_id": "AML.T0010",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Acquire Infrastructure",
+     "technique_id": "AML.T0008",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Acquire Public AI Artifacts",
+     "technique_id": "AML.T0002",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Active Scanning",
+     "technique_id": "AML.T0006",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Command and Scripting Interpreter",
+     "technique_id": "AML.T0050",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Container Registry",
+     "technique_id": "AML.T0010.004",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Cost Harvesting",
+     "technique_id": "AML.T0034",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Craft Adversarial Data",
+     "technique_id": "AML.T0043",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Create Proxy AI Model",
+     "technique_id": "AML.T0005",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Data from Information Repositories",
+     "technique_id": "AML.T0036",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Data from Local System",
+     "technique_id": "AML.T0037",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Data",
+     "technique_id": "AML.T0010.002",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Denial of AI Service",
+     "technique_id": "AML.T0029",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Develop Capabilities",
+     "technique_id": "AML.T0017",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Direct Prompt Injection",
+     "technique_id": "AML.T0051.000",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Discover AI Artifacts",
+     "technique_id": "AML.T0007",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Discover AI Model Family",
+     "technique_id": "AML.T0014",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Discover AI Model Ontology",
+     "technique_id": "AML.T0013",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Discover AI Model Outputs",
+     "technique_id": "AML.T0063",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Discover LLM System Information",
+     "technique_id": "AML.T0069",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Embed Malware",
+     "technique_id": "AML.T0018.002",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Erode AI Model Integrity",
+     "technique_id": "AML.T0031",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Evade AI Model",
+     "technique_id": "AML.T0015",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Exfiltration via AI Inference API",
+     "technique_id": "AML.T0024",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Exfiltration via Cyber Means",
+     "technique_id": "AML.T0025",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Exploit Public-Facing Application",
+     "technique_id": "AML.T0049",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "External Harms",
+     "technique_id": "AML.T0048",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Extract AI Model",
+     "technique_id": "AML.T0024.002",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Extract LLM System Prompt",
+     "technique_id": "AML.T0056",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "False RAG Entry Injection",
+     "technique_id": "AML.T0071",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Gather RAG-Indexed Targets",
+     "technique_id": "AML.T0064",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Impersonation",
+     "technique_id": "AML.T0073",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Indirect Prompt Injection",
+     "technique_id": "AML.T0051.001",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Insert Backdoor Trigger",
+     "technique_id": "AML.T0043.004",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Invert AI Model",
+     "technique_id": "AML.T0024.001",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "LLM Data Leakage",
+     "technique_id": "AML.T0057",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "LLM Jailbreak",
+     "technique_id": "AML.T0054",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "LLM Prompt Crafting",
+     "technique_id": "AML.T0065",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "LLM Prompt Injection",
+     "technique_id": "AML.T0051",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "LLM Prompt Obfuscation",
+     "technique_id": "AML.T0068",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "LLM Trusted Output Components Manipulation",
+     "technique_id": "AML.T0067",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Malicious Package",
+     "technique_id": "AML.T0011.001",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Manipulate AI Model",
+     "technique_id": "AML.T0018",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Masquerading",
+     "technique_id": "AML.T0074",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Model",
+     "technique_id": "AML.T0010.003",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Modify AI Model Architecture",
+     "technique_id": "AML.T0018.001",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Obtain Capabilities",
+     "technique_id": "AML.T0016",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Phishing",
+     "technique_id": "AML.T0052",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Poison AI Model",
+     "technique_id": "AML.T0018.000",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Poison Training Data",
+     "technique_id": "AML.T0020",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Publish Poisoned Datasets",
+     "technique_id": "AML.T0019",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "RAG Poisoning",
+     "technique_id": "AML.T0070",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Retrieval Content Crafting",
+     "technique_id": "AML.T0066",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Search Application Repositories",
+     "technique_id": "AML.T0004",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Search Open AI Vulnerability Analysis",
+     "technique_id": "AML.T0001",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Search Open Technical Databases",
+     "technique_id": "AML.T0000",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Spamming AI System with Chaff Data",
+     "technique_id": "AML.T0046",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Spearphishing via Social Engineering LLM",
+     "technique_id": "AML.T0052.000",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Unsecured Credentials",
+     "technique_id": "AML.T0055",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "User Execution",
+     "technique_id": "AML.T0011",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Valid Accounts",
+     "technique_id": "AML.T0012",
+     "triggered": false
+    }
+   ],
+   "nist_ai_rmf": [
+    {
+     "findings": 0,
+     "name": "AI deployment impact practices identified",
+     "subcategory_id": "MAP-5.2",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI supply chain risks assessed",
+     "subcategory_id": "MAP-3.5",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI system results validated",
+     "subcategory_id": "MEASURE-2.6",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "AI system security testing conducted",
+     "subcategory_id": "MEASURE-2.5",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Anomalous event detection and response",
+     "subcategory_id": "MANAGE-2.2",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Assessment policies for third-party AI entities",
+     "subcategory_id": "GOVERN-6.1",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Contingency plans for third-party AI failures",
+     "subcategory_id": "GOVERN-6.2",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Effectiveness of risk mitigations assessed",
+     "subcategory_id": "MEASURE-2.9",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Ongoing monitoring mechanisms for AI risk",
+     "subcategory_id": "GOVERN-1.5",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Post-deployment monitoring plans implemented",
+     "subcategory_id": "MANAGE-4.1",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Responses to identified AI risks documented",
+     "subcategory_id": "MANAGE-1.3",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Risk treatments including remediation applied",
+     "subcategory_id": "MANAGE-2.4",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "System dependencies and external interfaces mapped",
+     "subcategory_id": "MAP-1.6",
+     "triggered": false
+    },
+    {
+     "findings": 0,
+     "name": "Third-party AI component risk processes",
+     "subcategory_id": "GOVERN-1.7",
+     "triggered": false
+    }
+   ],
+   "nist_csf": [
+    {
+     "code": "DE.CM-01",
+     "findings": 0,
+     "name": "Networks and network services are monitored",
+     "triggered": false
+    },
+    {
+     "code": "DE.CM-09",
+     "findings": 0,
+     "name": "Computing hardware and software are monitored for vulnerabilities",
+     "triggered": false
+    },
+    {
+     "code": "GV.SC-05",
+     "findings": 0,
+     "name": "Cyber supply chain risk management requirements established",
+     "triggered": false
+    },
+    {
+     "code": "GV.SC-07",
+     "findings": 0,
+     "name": "Supplier risks identified, recorded, and mitigated",
+     "triggered": false
+    },
+    {
+     "code": "ID.AM-05",
+     "findings": 0,
+     "name": "Assets prioritized based on classification and criticality",
+     "triggered": false
+    },
+    {
+     "code": "ID.RA-01",
+     "findings": 0,
+     "name": "Vulnerabilities in assets are identified",
+     "triggered": false
+    },
+    {
+     "code": "ID.RA-02",
+     "findings": 0,
+     "name": "Cyber threat intelligence received from information sharing forums",
+     "triggered": false
+    },
+    {
+     "code": "ID.RA-05",
+     "findings": 0,
+     "name": "Threats, vulnerabilities, likelihoods, and impacts used to determine risk",
+     "triggered": false
+    },
+    {
+     "code": "PR.AA-01",
+     "findings": 0,
+     "name": "Identities and credentials managed for authorized users and services",
+     "triggered": false
+    },
+    {
+     "code": "PR.AA-03",
+     "findings": 0,
+     "name": "Users, services, and hardware are authenticated",
+     "triggered": false
+    },
+    {
+     "code": "PR.DS-01",
+     "findings": 0,
+     "name": "Data-at-rest is protected",
+     "triggered": false
+    },
+    {
+     "code": "PR.DS-02",
+     "findings": 0,
+     "name": "Data-in-transit is protected",
+     "triggered": false
+    },
+    {
+     "code": "PR.PS-06",
+     "findings": 0,
+     "name": "Secure software development practices integrated and monitored throughout the lifecycle",
+     "triggered": false
+    },
+    {
+     "code": "RS.AN-03",
+     "findings": 0,
+     "name": "Analysis is performed to determine what has taken place",
+     "triggered": false
+    },
+    {
+     "code": "RS.MI-02",
+     "findings": 0,
+     "name": "Incidents are contained and mitigated",
+     "triggered": false
+    }
+   ],
+   "owasp_agentic_top10": [
+    {
+     "code": "ASI01",
+     "findings": 0,
+     "name": "Excessive Agency & Autonomy",
+     "triggered": false
+    },
+    {
+     "code": "ASI02",
+     "findings": 0,
+     "name": "Tool Misuse & Exploitation",
+     "triggered": false
+    },
+    {
+     "code": "ASI03",
+     "findings": 0,
+     "name": "Identity & Privilege Abuse",
+     "triggered": false
+    },
+    {
+     "code": "ASI04",
+     "findings": 0,
+     "name": "Agentic Supply Chain Vulnerabilities",
+     "triggered": false
+    },
+    {
+     "code": "ASI05",
+     "findings": 0,
+     "name": "Unexpected Code Execution",
+     "triggered": false
+    },
+    {
+     "code": "ASI06",
+     "findings": 0,
+     "name": "Memory & Context Poisoning",
+     "triggered": false
+    },
+    {
+     "code": "ASI07",
+     "findings": 0,
+     "name": "Insecure Inter-Agent Communication",
+     "triggered": false
+    },
+    {
+     "code": "ASI08",
+     "findings": 0,
+     "name": "Cascading Hallucination Failures",
+     "triggered": false
+    },
+    {
+     "code": "ASI09",
+     "findings": 0,
+     "name": "Human-Agent Trust Exploitation",
+     "triggered": false
+    },
+    {
+     "code": "ASI10",
+     "findings": 0,
+     "name": "Rogue Agent Persistence",
+     "triggered": false
+    }
+   ],
+   "owasp_llm_top10": [
+    {
+     "code": "LLM01",
+     "findings": 0,
+     "name": "Prompt Injection",
+     "triggered": false
+    },
+    {
+     "code": "LLM02",
+     "findings": 0,
+     "name": "Insecure Output Handling",
+     "triggered": false
+    },
+    {
+     "code": "LLM03",
+     "findings": 0,
+     "name": "Training Data Poisoning",
+     "triggered": false
+    },
+    {
+     "code": "LLM04",
+     "findings": 0,
+     "name": "Data and Model Poisoning",
+     "triggered": false
+    },
+    {
+     "code": "LLM05",
+     "findings": 0,
+     "name": "Supply Chain Vulnerabilities",
+     "triggered": false
+    },
+    {
+     "code": "LLM06",
+     "findings": 0,
+     "name": "Sensitive Information Disclosure",
+     "triggered": false
+    },
+    {
+     "code": "LLM07",
+     "findings": 0,
+     "name": "System Prompt Leakage",
+     "triggered": false
+    },
+    {
+     "code": "LLM08",
+     "findings": 0,
+     "name": "Excessive Agency",
+     "triggered": false
+    },
+    {
+     "code": "LLM09",
+     "findings": 0,
+     "name": "Misinformation",
+     "triggered": false
+    },
+    {
+     "code": "LLM10",
+     "findings": 0,
+     "name": "Unbounded Consumption",
+     "triggered": false
+    }
+   ],
+   "owasp_mcp_top10": [
+    {
+     "code": "MCP01",
+     "findings": 0,
+     "name": "Token Mismanagement & Secret Exposure",
+     "triggered": false
+    },
+    {
+     "code": "MCP02",
+     "findings": 0,
+     "name": "Privilege Escalation via Scope Creep",
+     "triggered": false
+    },
+    {
+     "code": "MCP03",
+     "findings": 0,
+     "name": "Tool Poisoning",
+     "triggered": false
+    },
+    {
+     "code": "MCP04",
+     "findings": 0,
+     "name": "Software Supply Chain Attacks",
+     "triggered": false
+    },
+    {
+     "code": "MCP05",
+     "findings": 0,
+     "name": "Command Injection & Execution",
+     "triggered": false
+    },
+    {
+     "code": "MCP06",
+     "findings": 0,
+     "name": "Intent Flow Subversion",
+     "triggered": false
+    },
+    {
+     "code": "MCP07",
+     "findings": 0,
+     "name": "Insufficient Authentication & Authorization",
+     "triggered": false
+    },
+    {
+     "code": "MCP08",
+     "findings": 0,
+     "name": "Lack of Audit & Telemetry",
+     "triggered": false
+    },
+    {
+     "code": "MCP09",
+     "findings": 0,
+     "name": "Shadow MCP Servers",
+     "triggered": false
+    },
+    {
+     "code": "MCP10",
+     "findings": 0,
+     "name": "Context Injection & Over-Sharing",
+     "triggered": false
+    }
+   ],
+   "soc2_tsc": [
+    {
+     "code": "CC6.1",
+     "findings": 0,
+     "name": "Logical/physical access restriction",
+     "triggered": false
+    },
+    {
+     "code": "CC6.6",
+     "findings": 0,
+     "name": "External access-boundary protection",
+     "triggered": false
+    },
+    {
+     "code": "CC6.8",
+     "findings": 0,
+     "name": "Malicious/unauthorized software controls",
+     "triggered": false
+    },
+    {
+     "code": "CC7.1",
+     "findings": 0,
+     "name": "Anomaly and event detection",
+     "triggered": false
+    },
+    {
+     "code": "CC7.2",
+     "findings": 0,
+     "name": "Security-event monitoring",
+     "triggered": false
+    },
+    {
+     "code": "CC7.4",
+     "findings": 0,
+     "name": "Security-incident response",
+     "triggered": false
+    },
+    {
+     "code": "CC8.1",
+     "findings": 0,
+     "name": "Change authorization and control",
+     "triggered": false
+    },
+    {
+     "code": "CC9.1",
+     "findings": 0,
+     "name": "Risk-mitigation activities",
+     "triggered": false
+    },
+    {
+     "code": "CC9.2",
+     "findings": 0,
+     "name": "Vendor/third-party risk management",
+     "triggered": false
+    }
+   ],
+   "total_atlas_triggered": 0,
+   "total_cis_triggered": 0,
+   "total_eu_ai_act_triggered": 0,
+   "total_iso_27001_triggered": 0,
+   "total_nist_csf_triggered": 0,
+   "total_nist_triggered": 0,
+   "total_owasp_agentic_triggered": 0,
+   "total_owasp_mcp_triggered": 0,
+   "total_owasp_triggered": 0,
+   "total_soc2_triggered": 0
+  },
+  "warnings": [
+   "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update --source osv` before using `--offline` (the all-ecosystems archive can exceed 1 GB), or drop `--offline`."
+  ]
+ },
+ "exit_code": 1
+}

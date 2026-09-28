@@ -20,7 +20,9 @@ verifies before acting on-behalf-of the delegator:
   cannot be amplified as it flows down the chain.
 
 The token format mirrors the browser-session token (``payload_b64.sig_b64``)
-and reuses the same file/env secret-source resolution.
+and reuses the same file/env secret-source resolution. These low-level helpers
+validate cryptographic claims only. Control-plane callers use delegation_service
+to enforce the current source identity lifecycle and tool ceiling.
 """
 
 from __future__ import annotations
@@ -105,6 +107,22 @@ class DelegationToken:
     remaining_depth: int
     iat: int
     exp: int
+    source_identity_id: str = ""
+
+    def to_public_dict(self) -> dict[str, object]:
+        """Expose the same signed authority metadata on every delegation route."""
+        return {
+            "jti": self.jti,
+            "tenant_id": self.tenant_id,
+            "source_identity_id": self.source_identity_id,
+            "delegator": self.delegator,
+            "delegatee": self.delegatee,
+            "scopes": list(self.scopes),
+            "chain": list(self.chain),
+            "remaining_depth": self.remaining_depth,
+            "issued_at": self.iat,
+            "expires_at": self.exp,
+        }
 
     def allows(self, scope: str) -> bool:
         """True when ``scope`` is within the delegated capability set."""
@@ -120,6 +138,7 @@ def issue_delegation_token(
     ttl_seconds: int,
     chain: list[str] | None = None,
     remaining_depth: int = MAX_DELEGATION_DEPTH,
+    source_identity_id: str = "",
     at: datetime | None = None,
 ) -> tuple[str, DelegationToken]:
     """Mint a scoped, signed, expiring delegation token.
@@ -142,6 +161,7 @@ def issue_delegation_token(
     hops = [str(h).strip()[:200] for h in (chain or []) if str(h).strip()][:MAX_DELEGATION_DEPTH]
     hops = [*hops, str(delegatee).strip()[:200]]
     claims = DelegationToken(
+        source_identity_id=source_identity_id,
         jti=f"dlg_{secrets.token_hex(8)}",
         tenant_id=tenant_id,
         delegator=str(delegator)[:200],
@@ -158,6 +178,7 @@ def issue_delegation_token(
 def _encode(claims: DelegationToken) -> str:
     payload: dict[str, Any] = {
         "v": 1,
+        "source_identity_id": claims.source_identity_id,
         "jti": claims.jti,
         "tenant_id": claims.tenant_id,
         "delegator": claims.delegator,
@@ -213,6 +234,7 @@ def verify_delegation_token(
         raise DelegationTokenError("delegation token tenant does not match")
     scopes = [str(s) for s in (payload.get("scopes") or []) if str(s)]
     claims = DelegationToken(
+        source_identity_id=str(payload.get("source_identity_id") or ""),
         jti=str(payload.get("jti") or ""),
         tenant_id=token_tenant,
         delegator=str(payload.get("delegator") or ""),
@@ -256,6 +278,7 @@ def propagate_delegation_token(
     if broadened:
         raise DelegationTokenError("a propagated delegation token cannot broaden scope")
     child = DelegationToken(
+        source_identity_id=parent.source_identity_id,
         jti=f"dlg_{secrets.token_hex(8)}",
         tenant_id=parent.tenant_id,
         delegator=parent.delegatee,

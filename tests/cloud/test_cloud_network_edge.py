@@ -250,6 +250,13 @@ def test_discover_inventory_payload_has_network_edge_keys() -> None:
 
 
 # ── Graph wiring ─────────────────────────────────────────────────────────
+def _node_id(graph, prefix: str, suffix: str = "") -> str:
+    """Resolve a scoped cloud resource id by its stable type prefix."""
+    matches = [node_id for node_id in graph.nodes if node_id.startswith(prefix) and node_id.endswith(suffix)]
+    assert len(matches) == 1, matches
+    return matches[0]
+
+
 def _aws_inventory() -> dict:
     return {
         "provider": "aws",
@@ -333,7 +340,7 @@ def test_waf_node_and_protects_edge() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     edges = {(e.source, e.target, e.relationship.value) for e in g.edges}
     waf_id = "cloud_resource:aws:waf:web_acl:acl-id"
-    alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    alb_id = _node_id(g, "cloud_resource:aws:elbv2:load_balancer:")
     assert waf_id in g.nodes
     assert (waf_id, alb_id, "protects") in edges
 
@@ -371,7 +378,7 @@ def test_elastic_ip_emits_exposed_to_attached_instance() -> None:
 
 def test_internet_facing_lb_emits_exposed_to_reachable_instance() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
-    lb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    lb_id = _node_id(g, "cloud_resource:aws:elbv2:load_balancer:")
     inst_id = "cloud_resource:aws:ec2:instance:i-1"
     exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == lb_id and e.target == inst_id]
     assert exposed
@@ -381,7 +388,7 @@ def test_internet_facing_lb_emits_exposed_to_reachable_instance() -> None:
 def test_internet_facing_api_gateway_emits_exposed_to_frontend() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     api_id = "api_gateway:aws:rest1"
-    alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    alb_id = _node_id(g, "cloud_resource:aws:elbv2:load_balancer:")
     exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == api_id and e.target == alb_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "internet_facing_api_gateway"
@@ -390,7 +397,7 @@ def test_internet_facing_api_gateway_emits_exposed_to_frontend() -> None:
 def test_waf_emits_internet_entry_exposed_to_frontend() -> None:
     g = build_unified_graph_from_report({"cloud_inventory": _aws_inventory()})
     waf_id = "cloud_resource:aws:waf:web_acl:acl-id"
-    alb_id = "cloud_resource:aws:elbv2:load_balancer:web-alb"
+    alb_id = _node_id(g, "cloud_resource:aws:elbv2:load_balancer:")
     exposed = [e for e in g.edges if e.relationship == RelationshipType.EXPOSED_TO and e.source == waf_id and e.target == alb_id]
     assert exposed
     assert exposed[0].evidence.get("reason") == "waf_internet_entry"

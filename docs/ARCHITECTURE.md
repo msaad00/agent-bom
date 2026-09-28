@@ -38,6 +38,14 @@ tenant and generation contract; the API retains its compatible type export.
 
 ## 1. System Overview — Product Surfaces
 
+Operator MCP registrations live in bounded `mcp_tools/operator/` modules for
+findings, scanning, graphs, benchmarks, runtime, identity and governance.
+`mcp_server_operator_tools.py` composes their public registration order with one
+immutable, server-local `OperatorToolBindings` object. Registrations receive
+authenticated dispatch and scan/output adapters; they cannot import the server
+composition root. Tool schemas, annotations and write-scope requirements remain
+owned by the public MCP contract and verified against the live server catalog.
+
 Gateway composition remains in `gateway_server.py`. Its HTTP authentication,
 bounded request context and shared rate-limit selection are owned by
 `api/gateway_auth.py`, `api/gateway_request.py` and `api/gateway_rate_limit.py`.

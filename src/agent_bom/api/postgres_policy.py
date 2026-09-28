@@ -17,13 +17,13 @@ from .postgres_common import (
     _tenant_connection,
     bypass_tenant_rls,
 )
+from .schedule_store import ScanSchedule, schedule_record_for_tenant, schedule_write_tenant
 
 if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
 
     from .models import CredentialRefRecord
     from .policy_store import GatewayPolicy, PolicyAuditEntry
-    from .schedule_store import ScanSchedule
 
 
 class PostgresPolicyStore:
@@ -375,72 +375,69 @@ class PostgresScheduleStore:
             _ensure_tenant_rls(conn, "scan_schedules", "tenant_id")
             conn.commit()
 
-    def put(self, schedule: ScanSchedule) -> None:
+    def put(self, schedule: ScanSchedule, *, tenant_id: str) -> None:
+        tenant = schedule_write_tenant(schedule, tenant_id)
         data = schedule.model_dump_json()
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO scan_schedules (schedule_id, enabled, next_run, tenant_id, data)
                    VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (schedule_id) DO UPDATE SET
                      enabled = EXCLUDED.enabled,
                      next_run = EXCLUDED.next_run,
-                     tenant_id = EXCLUDED.tenant_id,
-                     data = EXCLUDED.data""",
-                (schedule.schedule_id, int(schedule.enabled), schedule.next_run, schedule.tenant_id, data),
+                     data = EXCLUDED.data
+                   WHERE scan_schedules.tenant_id = EXCLUDED.tenant_id""",
+                (schedule.schedule_id, int(schedule.enabled), schedule.next_run, tenant, data),
             )
             conn.commit()
+            if int(cursor.rowcount) == 0:
+                raise ValueError("Schedule identity belongs to a different tenant")
 
-    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
-        from .schedule_store import ScanSchedule
-
+    def get(self, schedule_id: str, tenant_id: str) -> ScanSchedule | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                row = conn.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,)).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT data FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s",
-                    (schedule_id, tenant_id),
-                ).fetchone()
+            row = conn.execute(
+                "SELECT data FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s",
+                (schedule_id, tenant),
+            ).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            return ScanSchedule.model_validate_json(raw)
+            return schedule_record_for_tenant(ScanSchedule.model_validate_json(raw), tenant)
 
-    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
+    def delete(self, schedule_id: str, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                cursor = conn.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
-            else:
-                cursor = conn.execute(
-                    "DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s",
-                    (schedule_id, tenant_id),
-                )
+            cursor = conn.execute(
+                "DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s",
+                (schedule_id, tenant),
+            )
             conn.commit()
             return int(cursor.rowcount) > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list:
-        from .schedule_store import ScanSchedule
-
+    def list_all(self, tenant_id: str) -> list:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                rows = conn.execute("SELECT data FROM scan_schedules ORDER BY schedule_id").fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id",
-                    (tenant_id,),
-                ).fetchall()
-            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+            rows = conn.execute(
+                "SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id",
+                (tenant,),
+            ).fetchall()
+            return [
+                schedule_record_for_tenant(ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])), tenant)
+                for r in rows
+            ]
 
     def list_due(self, now_iso: str) -> list:
-        from .schedule_store import ScanSchedule
-
         with bypass_tenant_rls():
             with _maintenance_connection(self._maintenance_pool) as conn:
                 rows = conn.execute(
-                    "SELECT data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= %s",
+                    "SELECT tenant_id, data FROM scan_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= %s",
                     (now_iso,),
                 ).fetchall()
-                return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+                return [
+                    schedule_record_for_tenant(ScanSchedule.model_validate_json(r[1] if isinstance(r[1], str) else json.dumps(r[1])), r[0])
+                    for r in rows
+                ]
 
 
 class PostgresCredentialRefStore:

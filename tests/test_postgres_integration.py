@@ -1822,3 +1822,47 @@ def test_graph_risk_assessment_digest_and_webhook_preserve_tenant_bound_evidence
         store.delete_tenant(tenant_id=tenant_a)
     finally:
         reset_current_tenant(token)
+
+
+def test_postgres_schedule_store_keeps_schedule_identity_bound_to_tenant():
+    """A schedule ID is not writable, readable, or deletable across tenant scopes."""
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_store import PostgresScheduleStore
+    from agent_bom.api.schedule_store import ScanSchedule
+
+    suffix = uuid4().hex
+    schedule_id = f"tenant-boundary-{suffix}"
+    tenant_a = f"schedule-a-{suffix}"
+    tenant_b = f"schedule-b-{suffix}"
+    store = PostgresScheduleStore()
+    schedule = ScanSchedule(
+        schedule_id=schedule_id,
+        name="tenant boundary integration",
+        cron_expression="0 * * * *",
+        scan_config={"images": ["example.invalid/app:latest"]},
+        tenant_id=tenant_a,
+    )
+    token = set_current_tenant(tenant_a)
+    try:
+        store.put(schedule, tenant_id=tenant_a)
+    finally:
+        reset_current_tenant(token)
+
+    token = set_current_tenant(tenant_b)
+    try:
+        assert store.get(schedule_id, tenant_id=tenant_b) is None
+        assert store.delete(schedule_id, tenant_id=tenant_b) is False
+        takeover = schedule.model_copy(update={"tenant_id": tenant_b, "name": "cross-tenant takeover"})
+        with pytest.raises(ValueError, match="different tenant"):
+            store.put(takeover, tenant_id=tenant_b)
+    finally:
+        reset_current_tenant(token)
+
+    token = set_current_tenant(tenant_a)
+    try:
+        persisted = store.get(schedule_id, tenant_id=tenant_a)
+        assert persisted is not None
+        assert persisted.name == schedule.name
+        assert store.delete(schedule_id, tenant_id=tenant_a) is True
+    finally:
+        reset_current_tenant(token)

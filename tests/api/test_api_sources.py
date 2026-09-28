@@ -1617,7 +1617,8 @@ def test_source_delete_removes_linked_schedules_for_same_tenant_only(source_clie
             scan_config={"source_id": source_id},
             enabled=True,
             next_run="2026-08-27T00:00:00+00:00",
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
     _stores._schedule_store.put(
         ScanSchedule(
@@ -1628,7 +1629,8 @@ def test_source_delete_removes_linked_schedules_for_same_tenant_only(source_clie
             scan_config={"source_id": source_id},
             enabled=True,
             next_run="2026-08-27T00:00:00+00:00",
-        )
+        ),
+        tenant_id="tenant-beta",
     )
 
     deleted = source_client.delete(f"/v1/sources/{source_id}", headers=ADMIN_HEADERS)

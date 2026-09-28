@@ -190,7 +190,7 @@ async def test_rotate_key_returns_404_for_cross_tenant_key(isolated_key_store):
 @pytest.mark.asyncio
 async def test_get_exception_returns_404_for_cross_tenant(isolated_exception_store):
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-beta")
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     with pytest.raises(HTTPException) as error:
         enterprise.get_exception(_request("tenant-alpha"), exc.exception_id)
@@ -223,7 +223,7 @@ async def test_create_exception_uses_authenticated_actor_not_body(isolated_excep
 @pytest.mark.asyncio
 async def test_approve_exception_uses_request_actor_and_tenant(isolated_exception_store):
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     approved = enterprise.approve_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
 
@@ -235,7 +235,7 @@ async def test_approve_exception_uses_request_actor_and_tenant(isolated_exceptio
 async def test_revoke_exception_uses_authenticated_actor(isolated_exception_store):
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
     exc.status = ExceptionStatus.ACTIVE
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     revoked = enterprise.revoke_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
 
@@ -245,7 +245,7 @@ async def test_revoke_exception_uses_authenticated_actor(isolated_exception_stor
 @pytest.mark.asyncio
 async def test_revoke_exception_returns_404_for_cross_tenant(isolated_exception_store):
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-beta")
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     with pytest.raises(HTTPException) as error:
         enterprise.revoke_exception(_request("tenant-alpha"), exc.exception_id)
@@ -256,19 +256,19 @@ async def test_revoke_exception_returns_404_for_cross_tenant(isolated_exception_
 @pytest.mark.asyncio
 async def test_delete_exception_returns_404_for_cross_tenant(isolated_exception_store):
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-beta")
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     with pytest.raises(HTTPException) as error:
         enterprise.delete_exception(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
-    assert isolated_exception_store.get(exc.exception_id) is not None
+    assert isolated_exception_store.get(exc.exception_id, tenant_id=exc.tenant_id) is not None
 
 
 @pytest.mark.asyncio
 async def test_delete_exception_audit_logs_actor_and_tenant(isolated_exception_store, isolated_audit_log):
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
 
@@ -378,13 +378,13 @@ async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_excep
         reason="[false_positive] expected noise",
         tenant_id="tenant-beta",
     )
-    isolated_exception_store.put(exc)
+    isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     with pytest.raises(HTTPException) as error:
         enterprise.remove_false_positive(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
-    assert isolated_exception_store.get(exc.exception_id) is not None
+    assert isolated_exception_store.get(exc.exception_id, tenant_id=exc.tenant_id) is not None
 
 
 @pytest.mark.asyncio
@@ -461,8 +461,8 @@ async def test_finding_feedback_list_is_tenant_scoped(isolated_exception_store):
         requested_by="bob",
         tenant_id="tenant-beta",
     )
-    isolated_exception_store.put(alpha)
-    isolated_exception_store.put(beta)
+    isolated_exception_store.put(alpha, tenant_id=alpha.tenant_id)
+    isolated_exception_store.put(beta, tenant_id=beta.tenant_id)
 
     result = enterprise.list_finding_feedback(_request("tenant-alpha"), state="false_positive")
 
@@ -816,13 +816,13 @@ async def test_remove_finding_feedback_returns_404_for_wrong_tenant(isolated_exc
         reason="[finding_feedback:not_applicable] beta only",
         tenant_id="tenant-beta",
     )
-    isolated_exception_store.put(feedback)
+    isolated_exception_store.put(feedback, tenant_id=feedback.tenant_id)
 
     with pytest.raises(HTTPException) as error:
         enterprise.remove_finding_feedback(_request("tenant-alpha"), feedback.exception_id)
 
     assert error.value.status_code == 404
-    assert isolated_exception_store.get(feedback.exception_id) is not None
+    assert isolated_exception_store.get(feedback.exception_id, tenant_id=feedback.tenant_id) is not None
 
 
 @pytest.mark.asyncio

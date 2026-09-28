@@ -255,7 +255,7 @@ class MockConnection:
                         rows = [r for r in rows if r[0] == params[0]]
                     elif "tenant_id = %s" in sql_lower:
                         rows = [r for r in rows if r[3] == params[0]]
-                cursor.rows = [(r[-1],) for r in rows]
+                cursor.rows = [(r[3], r[-1]) for r in rows] if "tenant_id, data" in sql_lower else [(r[-1],) for r in rows]
             elif "from fleet_agents" in sql_lower and "select data" in sql_lower:
                 rows = list(self._store.get("fleet_agents", {}).values())
                 cursor.rows = [(r[-1],) for r in rows]
@@ -996,7 +996,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
         status=ExceptionStatus.ACTIVE,
         tenant_id="tenant-alpha",
     )
-    store.put(exc)
+    store.put(exc, tenant_id=exc.tenant_id)
 
     mock_pool._conn._store.setdefault("exceptions", {})[exc.exception_id] = (
         exc.exception_id,
@@ -1014,7 +1014,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
         exc.tenant_id,
     )
 
-    loaded = store.get(exc.exception_id)
+    loaded = store.get(exc.exception_id, tenant_id=exc.tenant_id)
     assert loaded is not None
     assert loaded.tenant_id == "tenant-alpha"
 
@@ -1026,7 +1026,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
     assert match is not None
     assert match.exception_id == exc.exception_id
 
-    assert store.delete(exc.exception_id) is True
+    assert store.delete(exc.exception_id, tenant_id=exc.tenant_id) is True
 
 
 # ─── PostgresPolicyStore ──────────────────────────────────────────────────────
@@ -1515,16 +1515,17 @@ def test_schedule_store_put_get(mock_pool):
         created_at="2025-01-01T00:00:00+00:00",
         updated_at="2025-01-01T00:00:00+00:00",
     )
-    store.put(schedule)
+    store.put(schedule, tenant_id="default")
 
     mock_pool._conn._store.setdefault("scan_schedules", {})["sched-1"] = (
         "sched-1",
         1,
         "2025-01-01T00:00:00+00:00",
+        "default",
         schedule.model_dump_json(),
     )
 
-    retrieved = store.get("sched-1")
+    retrieved = store.get("sched-1", tenant_id="default")
     assert retrieved is not None
     assert retrieved.schedule_id == "sched-1"
     assert retrieved.name == "nightly-scan"
@@ -1534,29 +1535,29 @@ def test_schedule_store_get_nonexistent(mock_pool):
     from agent_bom.api.postgres_store import PostgresScheduleStore
 
     store = PostgresScheduleStore(pool=mock_pool)
-    assert store.get("nonexistent") is None
+    assert store.get("nonexistent", tenant_id="default") is None
 
 
 def test_schedule_store_delete(mock_pool):
     from agent_bom.api.postgres_store import PostgresScheduleStore
 
     store = PostgresScheduleStore(pool=mock_pool)
-    mock_pool._conn._store.setdefault("scan_schedules", {})["sched-1"] = ("sched-1", 1, None, "{}")
-    assert store.delete("sched-1") is True
+    mock_pool._conn._store.setdefault("scan_schedules", {})["sched-1"] = ("sched-1", 1, None, "default", "{}")
+    assert store.delete("sched-1", tenant_id="default") is True
 
 
 def test_schedule_store_delete_nonexistent(mock_pool):
     from agent_bom.api.postgres_store import PostgresScheduleStore
 
     store = PostgresScheduleStore(pool=mock_pool)
-    assert store.delete("nonexistent") is False
+    assert store.delete("nonexistent", tenant_id="default") is False
 
 
 def test_schedule_store_list_all(mock_pool):
     from agent_bom.api.postgres_store import PostgresScheduleStore
 
     store = PostgresScheduleStore(pool=mock_pool)
-    result = store.list_all()
+    result = store.list_all(tenant_id="default")
     assert isinstance(result, list)
 
 

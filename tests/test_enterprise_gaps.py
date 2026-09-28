@@ -297,11 +297,40 @@ class TestExceptionStore:
 
         store = InMemoryExceptionStore()
         exc = VulnException(vuln_id="CVE-1", package_name="pkg", reason="test")
-        store.put(exc)
-        assert store.get(exc.exception_id) is not None
-        assert len(store.list_all()) == 1
-        store.delete(exc.exception_id)
-        assert store.get(exc.exception_id) is None
+        store.put(exc, tenant_id=exc.tenant_id)
+        assert store.get(exc.exception_id, tenant_id=exc.tenant_id) is not None
+        assert len(store.list_all(tenant_id=exc.tenant_id)) == 1
+        store.delete(exc.exception_id, tenant_id=exc.tenant_id)
+        assert store.get(exc.exception_id, tenant_id=exc.tenant_id) is None
+
+    def test_exception_store_rejects_cross_tenant_id_takeover_and_returns_copies(self, tmp_path):
+        import pytest
+
+        from agent_bom.api.exception_store import InMemoryExceptionStore, SQLiteExceptionStore, VulnException
+
+        for store in (InMemoryExceptionStore(), SQLiteExceptionStore(str(tmp_path / "tenant-exceptions.db"))):
+            owner_record = VulnException(exception_id="shared", vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-a")
+            store.put(owner_record, tenant_id="tenant-a")
+            with pytest.raises(ValueError, match="different tenant"):
+                store.put(
+                    VulnException(exception_id="shared", vuln_id="CVE-2", package_name="pkg", tenant_id="tenant-b"),
+                    tenant_id="tenant-b",
+                )
+            assert store.get("shared", tenant_id="tenant-b") is None
+            loaded = store.get("shared", tenant_id="tenant-a")
+            assert loaded is not None
+            loaded.reason = "caller mutation"
+            assert store.get("shared", tenant_id="tenant-a").reason == ""
+
+    def test_exception_store_rejects_mismatched_authorized_tenant(self):
+        import pytest
+
+        from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
+
+        store = InMemoryExceptionStore()
+        exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-a")
+        with pytest.raises(ValueError, match="does not match"):
+            store.put(exc, tenant_id="tenant-b")
 
     def test_inmemory_store_find_matching(self):
         from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStore, VulnException
@@ -313,8 +342,8 @@ class TestExceptionStore:
             status=ExceptionStatus.ACTIVE,
             expires_at=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
         )
-        store.put(exc)
-        found = store.find_matching("CVE-1", "pkg")
+        store.put(exc, tenant_id=exc.tenant_id)
+        found = store.find_matching("CVE-1", "pkg", tenant_id=exc.tenant_id)
         assert found is not None
         assert found.exception_id == exc.exception_id
 
@@ -324,8 +353,8 @@ class TestExceptionStore:
         db = str(tmp_path / "exc.db")
         store = SQLiteExceptionStore(db)
         exc = VulnException(vuln_id="CVE-1", package_name="pkg", reason="test")
-        store.put(exc)
-        loaded = store.get(exc.exception_id)
+        store.put(exc, tenant_id=exc.tenant_id)
+        loaded = store.get(exc.exception_id, tenant_id=exc.tenant_id)
         assert loaded is not None
         assert loaded.vuln_id == "CVE-1"
 

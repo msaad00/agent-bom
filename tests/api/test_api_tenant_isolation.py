@@ -210,8 +210,8 @@ def test_pipeline_fleet_sync_uses_job_tenant_scope():
 async def test_schedule_routes_are_tenant_scoped():
     store = InMemoryScheduleStore()
     set_schedule_store(store)
-    store.put(_schedule("sched-alpha", "tenant-alpha"))
-    store.put(_schedule("sched-beta", "tenant-beta"))
+    store.put(_schedule("sched-alpha", "tenant-alpha"), tenant_id="tenant-alpha")
+    store.put(_schedule("sched-beta", "tenant-beta"), tenant_id="tenant-beta")
 
     req = _request("tenant-alpha")
 
@@ -236,8 +236,8 @@ async def test_schedule_routes_are_tenant_scoped():
 
 def test_schedule_store_list_all_accepts_tenant_scope():
     store = InMemoryScheduleStore()
-    store.put(_schedule("sched-alpha", "tenant-alpha"))
-    store.put(_schedule("sched-beta", "tenant-beta"))
+    store.put(_schedule("sched-alpha", "tenant-alpha"), tenant_id="tenant-alpha")
+    store.put(_schedule("sched-beta", "tenant-beta"), tenant_id="tenant-beta")
 
     assert [s.schedule_id for s in store.list_all(tenant_id="tenant-alpha")] == ["sched-alpha"]
 
@@ -709,7 +709,7 @@ async def test_schedule_routes_enforce_tenant_schedule_quota(monkeypatch):
     store = InMemoryScheduleStore()
     set_schedule_store(store)
     req = _request("tenant-alpha")
-    store.put(_schedule("sched-alpha", "tenant-alpha"))
+    store.put(_schedule("sched-alpha", "tenant-alpha"), tenant_id="tenant-alpha")
     monkeypatch.setattr(tenant_quota_module, "API_MAX_SCHEDULES_PER_TENANT", 1)
 
     with pytest.raises(HTTPException) as exc:

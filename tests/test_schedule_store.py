@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from threading import Event, Thread
 from unittest.mock import patch
 
+import pytest
+
 from agent_bom.api import stores as _stores
 from agent_bom.api.models import ScanJob, SourceKind, SourceRecord
 from agent_bom.api.schedule_store import (
@@ -47,54 +49,76 @@ class TestInMemoryScheduleStore:
     def test_put_and_get(self):
         store = InMemoryScheduleStore()
         s = _make_schedule()
-        store.put(s)
-        assert store.get("sched-1") is not None
-        assert store.get("sched-1").name == "nightly-scan"
+        store.put(s, tenant_id="default")
+        assert store.get("sched-1", tenant_id="default") is not None
+        assert store.get("sched-1", tenant_id="default").name == "nightly-scan"
 
     def test_get_missing(self):
         store = InMemoryScheduleStore()
-        assert store.get("nonexistent") is None
+        assert store.get("nonexistent", tenant_id="default") is None
 
     def test_delete(self):
         store = InMemoryScheduleStore()
-        store.put(_make_schedule())
-        assert store.delete("sched-1") is True
-        assert store.get("sched-1") is None
+        store.put(_make_schedule(), tenant_id="default")
+        assert store.delete("sched-1", tenant_id="default") is True
+        assert store.get("sched-1", tenant_id="default") is None
 
     def test_delete_missing(self):
         store = InMemoryScheduleStore()
-        assert store.delete("nonexistent") is False
+        assert store.delete("nonexistent", tenant_id="default") is False
 
     def test_list_all(self):
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1"))
-        store.put(_make_schedule("s2"))
-        assert len(store.list_all()) == 2
+        store.put(_make_schedule("s1"), tenant_id="default")
+        store.put(_make_schedule("s2"), tenant_id="default")
+        assert len(store.list_all(tenant_id="default")) == 2
 
     def test_list_all_empty(self):
         store = InMemoryScheduleStore()
-        assert store.list_all() == []
+        assert store.list_all(tenant_id="default") == []
 
     def test_list_due(self):
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2025-01-01T00:00:00+00:00", enabled=True))
-        store.put(_make_schedule("s2", next_run="2099-12-31T23:59:59+00:00", enabled=True))
-        store.put(_make_schedule("s3", next_run="2025-01-01T00:00:00+00:00", enabled=False))
+        store.put(_make_schedule("s1", next_run="2025-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
+        store.put(_make_schedule("s2", next_run="2099-12-31T23:59:59+00:00", enabled=True), tenant_id="default")
+        store.put(_make_schedule("s3", next_run="2025-01-01T00:00:00+00:00", enabled=False), tenant_id="default")
         due = store.list_due("2025-06-15T12:00:00+00:00")
         assert len(due) == 1
         assert due[0].schedule_id == "s1"
 
     def test_list_due_no_next_run(self):
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run=None))
+        store.put(_make_schedule("s1", next_run=None), tenant_id="default")
         assert store.list_due("2025-06-15T12:00:00+00:00") == []
 
     def test_upsert_overwrites(self):
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", name="original"))
-        store.put(_make_schedule("s1", name="updated"))
-        assert store.get("s1").name == "updated"
-        assert len(store.list_all()) == 1
+        store.put(_make_schedule("s1", name="original"), tenant_id="default")
+        store.put(_make_schedule("s1", name="updated"), tenant_id="default")
+        assert store.get("s1", tenant_id="default").name == "updated"
+        assert len(store.list_all(tenant_id="default")) == 1
+
+    def test_tenant_scope_is_required_and_schedule_ids_cannot_change_owner(self):
+        store = InMemoryScheduleStore()
+        schedule = _make_schedule("shared", tenant_id="tenant-alpha")
+        store.put(schedule, tenant_id="tenant-alpha")
+
+        with pytest.raises(TypeError):
+            store.get("shared")
+        with pytest.raises(ValueError, match="different tenant"):
+            store.put(_make_schedule("shared", tenant_id="tenant-beta"), tenant_id="tenant-beta")
+        assert store.get("shared", tenant_id="tenant-beta") is None
+        assert store.get("shared", tenant_id="tenant-alpha") == schedule
+
+    def test_memory_store_does_not_expose_mutable_schedule_config(self):
+        store = InMemoryScheduleStore()
+        schedule = _make_schedule("copy", tenant_id="tenant-alpha")
+        store.put(schedule, tenant_id="tenant-alpha")
+        schedule.scan_config["images"].append("attacker/input")
+        returned = store.get("copy", tenant_id="tenant-alpha")
+        assert returned is not None
+        returned.scan_config["images"].append("mutated/read")
+        assert store.get("copy", tenant_id="tenant-alpha").scan_config == {"images": ["nginx:latest"]}
 
 
 # ─── SQLiteScheduleStore ─────────────────────────────────────────────────────
@@ -103,61 +127,82 @@ class TestInMemoryScheduleStore:
 class TestSQLiteScheduleStore:
     def test_put_and_get(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        store.put(_make_schedule())
-        got = store.get("sched-1")
+        store.put(_make_schedule(), tenant_id="default")
+        got = store.get("sched-1", tenant_id="default")
         assert got is not None
         assert got.name == "nightly-scan"
         assert got.cron_expression == "0 */6 * * *"
 
     def test_get_missing(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        assert store.get("nonexistent") is None
+        assert store.get("nonexistent", tenant_id="default") is None
 
     def test_delete(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        store.put(_make_schedule())
-        assert store.delete("sched-1") is True
-        assert store.get("sched-1") is None
+        store.put(_make_schedule(), tenant_id="default")
+        assert store.delete("sched-1", tenant_id="default") is True
+        assert store.get("sched-1", tenant_id="default") is None
 
     def test_delete_missing(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        assert store.delete("nonexistent") is False
+        assert store.delete("nonexistent", tenant_id="default") is False
 
     def test_list_all(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        store.put(_make_schedule("s1"))
-        store.put(_make_schedule("s2"))
-        assert len(store.list_all()) == 2
+        store.put(_make_schedule("s1"), tenant_id="default")
+        store.put(_make_schedule("s2"), tenant_id="default")
+        assert len(store.list_all(tenant_id="default")) == 2
 
     def test_list_due(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        store.put(_make_schedule("s1", next_run="2025-01-01T00:00:00+00:00", enabled=True))
-        store.put(_make_schedule("s2", next_run="2099-12-31T23:59:59+00:00", enabled=True))
-        store.put(_make_schedule("s3", next_run="2025-01-01T00:00:00+00:00", enabled=False))
+        store.put(_make_schedule("s1", next_run="2025-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
+        store.put(_make_schedule("s2", next_run="2099-12-31T23:59:59+00:00", enabled=True), tenant_id="default")
+        store.put(_make_schedule("s3", next_run="2025-01-01T00:00:00+00:00", enabled=False), tenant_id="default")
         due = store.list_due("2025-06-15T12:00:00+00:00")
         assert len(due) == 1
         assert due[0].schedule_id == "s1"
 
     def test_upsert_overwrites(self, tmp_path):
         store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
-        store.put(_make_schedule("s1", name="original"))
-        store.put(_make_schedule("s1", name="updated"))
-        assert store.get("s1").name == "updated"
+        store.put(_make_schedule("s1", name="original"), tenant_id="default")
+        store.put(_make_schedule("s1", name="updated"), tenant_id="default")
+        assert store.get("s1", tenant_id="default").name == "updated"
+
+    def test_same_schedule_id_cannot_be_reassigned_to_another_tenant(self, tmp_path):
+        store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
+        store.put(_make_schedule("shared", tenant_id="tenant-alpha"), tenant_id="tenant-alpha")
+        with pytest.raises(ValueError, match="different tenant"):
+            store.put(_make_schedule("shared", tenant_id="tenant-beta"), tenant_id="tenant-beta")
+        assert store.get("shared", tenant_id="tenant-alpha") is not None
+        assert store.get("shared", tenant_id="tenant-beta") is None
+
+    def test_reads_and_due_scans_reject_tenant_mismatched_payloads(self, tmp_path):
+        store = SQLiteScheduleStore(str(tmp_path / "sched.db"))
+        schedule = _make_schedule("corrupt", tenant_id="tenant-alpha")
+        store.put(schedule, tenant_id="tenant-alpha")
+        tampered = schedule.model_copy(update={"tenant_id": "tenant-beta"})
+        store._conn.execute("UPDATE scan_schedules SET data = ? WHERE schedule_id = ?", (tampered.model_dump_json(), "corrupt"))
+        store._conn.commit()
+
+        with pytest.raises(ValueError, match="Stored schedule tenant"):
+            store.get("corrupt", tenant_id="tenant-alpha")
+        with pytest.raises(ValueError, match="Stored schedule tenant"):
+            store.list_due("2099-01-01T00:00:00+00:00")
 
     def test_idempotent_init(self, tmp_path):
         """Creating store twice on same DB is safe."""
         db = str(tmp_path / "sched.db")
         SQLiteScheduleStore(db)
         store2 = SQLiteScheduleStore(db)
-        store2.put(_make_schedule())
-        assert store2.get("sched-1") is not None
+        store2.put(_make_schedule(), tenant_id="default")
+        assert store2.get("sched-1", tenant_id="default") is not None
 
     def test_uses_scan_schedules_table_name(self, tmp_path):
         import sqlite3
 
         db = tmp_path / "sched.db"
         store = SQLiteScheduleStore(str(db))
-        store.put(_make_schedule())
+        store.put(_make_schedule(), tenant_id="default")
 
         with sqlite3.connect(db) as conn:
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -213,7 +258,8 @@ def test_source_schedule_resolves_canonical_source_request_and_links_job(monkeyp
             name="Repository schedule",
             cron_expression="* * * * *",
             scan_config={"source_id": "source-repo"},
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
     old_source_store = _stores._source_store
     old_schedule_store = _stores._schedule_store
@@ -289,7 +335,7 @@ def test_source_cohort_schedule_launches_one_exact_durable_cohort_per_occurrence
         cron_expression="0 * * * *",
         scan_config={"source_ids": ["source-repo", "source-image"], "max_age_hours": 24},
     )
-    schedule_store.put(schedule)
+    schedule_store.put(schedule, tenant_id=schedule.tenant_id)
     jobs = SQLiteJobStore(tmp_path / "jobs.db")
     old_source_store = _stores._source_store
     old_schedule_store = _stores._schedule_store
@@ -366,7 +412,7 @@ def test_source_schedule_resolution_and_enqueue_are_fenced_against_delete(monkey
         enabled=True,
     )
     source_store.put(source, tenant_id=source.tenant_id)
-    schedule_store.put(schedule)
+    schedule_store.put(schedule, tenant_id=schedule.tenant_id)
     old_source_store = _stores._source_store
     old_schedule_store = _stores._schedule_store
     old_job_store = _stores._store
@@ -511,7 +557,7 @@ class TestSchedulerLoop:
         from agent_bom.api.scheduler import scheduler_loop
 
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
 
         triggered = []
 
@@ -536,7 +582,7 @@ class TestSchedulerLoop:
         from agent_bom.api.scheduler import scheduler_loop
 
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
 
         triggered = []
@@ -570,7 +616,7 @@ class TestSchedulerLoop:
             yield
 
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
         monkeypatch.setattr(postgres_store, "bypass_tenant_rls", fail_if_called)
 
@@ -597,7 +643,7 @@ class TestSchedulerLoop:
         from agent_bom.api.scheduler import scheduler_loop
 
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=False))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=False), tenant_id="default")
 
         triggered = []
 
@@ -622,7 +668,7 @@ class TestSchedulerLoop:
         from agent_bom.api.scheduler import scheduler_loop
 
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
         triggered = []
 
         def mock_scan(config, **metadata):
@@ -639,7 +685,7 @@ class TestSchedulerLoop:
                 pass
 
         asyncio.run(_run())
-        updated = store.get("s1")
+        updated = store.get("s1", tenant_id="default")
         assert updated.last_run is not None
         assert updated.last_job_id == "job-456"
         assert triggered[0]["metadata"]["schedule_id"] == "s1"
@@ -651,7 +697,7 @@ class TestSchedulerLoop:
         from agent_bom.api.scheduler import scheduler_loop
 
         store = InMemoryScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
 
         def mock_scan(config, **metadata):
             store.delete(metadata["schedule_id"], tenant_id=metadata["tenant_id"])
@@ -667,7 +713,7 @@ class TestSchedulerLoop:
                 pass
 
         asyncio.run(_run())
-        assert store.get("s1") is None
+        assert store.get("s1", tenant_id="default") is None
 
     def test_postgres_scheduler_binds_tenant_before_dispatch(self, monkeypatch):
         """Maintenance discovery must not leave the dispatch callback on the default RLS tenant."""
@@ -684,7 +730,8 @@ class TestSchedulerLoop:
                 next_run="2020-01-01T00:00:00+00:00",
                 enabled=True,
                 tenant_id="tenant-alpha",
-            )
+            ),
+            tenant_id="tenant-alpha",
         )
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
         observed_tenants: list[str] = []
@@ -732,7 +779,7 @@ class TestSchedulerLoop:
             pass
 
         store = PostgresScheduleStore()
-        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True), tenant_id="default")
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
 
         triggered = []

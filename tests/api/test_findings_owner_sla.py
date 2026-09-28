@@ -94,7 +94,8 @@ def test_scan_spine_owner_reflects_triage_assignee(isolated_job_store, isolated_
             approved_by="secops@example.com",
             status=ExceptionStatus.ACTIVE,
             tenant_id="default",
-        )
+        ),
+        tenant_id="default",
     )
 
     from agent_bom.security import mask_email
@@ -118,7 +119,8 @@ def test_triage_owner_does_not_leak_across_tenants(isolated_job_store, isolated_
             approved_by="alpha-owner@example.com",
             status=ExceptionStatus.ACTIVE,
             tenant_id="tenant-alpha",
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
 
     from agent_bom.security import mask_email

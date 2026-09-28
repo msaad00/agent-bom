@@ -194,7 +194,7 @@ async def scheduler_loop(
                                 current.last_job_id = job_id
                                 current.next_run = next_run.isoformat() if next_run else None
                                 current.updated_at = now_iso
-                                schedule_store.put(current)
+                                schedule_store.put(current, tenant_id=schedule.tenant_id)
                     except Exception:
                         logger.error("Failed to trigger scheduled scan: %s", schedule.name)
 

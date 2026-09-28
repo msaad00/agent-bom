@@ -56,7 +56,7 @@ def schedule_add(name: str, cron: str, config: Optional[str]):
         created_at=now.isoformat(),
         updated_at=now.isoformat(),
     )
-    store.put(sched)
+    store.put(sched, tenant_id=sched.tenant_id)
     console.print(f"[green]Schedule created:[/green] {sched.schedule_id}")
     if next_run:
         console.print(f"  Next run: {next_run.isoformat()}")
@@ -75,7 +75,7 @@ def schedule_list():
     db_path = _os.environ.get("AGENT_BOM_DB")
     store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
 
-    schedules = store.list_all()
+    schedules = store.list_all(tenant_id="default")
     if not schedules:
         console.print("[dim]No schedules found.[/dim]")
         return
@@ -97,7 +97,7 @@ def schedule_remove(schedule_id: str):
     db_path = _os.environ.get("AGENT_BOM_DB")
     store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
 
-    if store.delete(schedule_id):
+    if store.delete(schedule_id, tenant_id="default"):
         console.print(f"[green]Deleted schedule {schedule_id}[/green]")
     else:
         console.print(f"[red]Schedule {schedule_id} not found[/red]")

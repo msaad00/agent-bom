@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent_bom.core.severity import evaluated_control_status as evaluated_control_status
+
 # Order used to collapse multiple evidence signals on one NIST control into a
 # single status. Higher wins: a real weakness (fail/warning) beats an
 # unevaluable check (error) which beats a clean pass; a control with no run
@@ -30,23 +32,6 @@ from typing import Any
 NIST_STATUS_RANK = {"not_evaluated": 0, "pass": 1, "error": 2, "warning": 3, "fail": 4}
 
 NIST_800_53_FRAMEWORK_LABEL = "NIST SP 800-53 Rev 5"
-
-
-def evaluated_control_status(sev_breakdown: dict[str, int]) -> str:
-    """Status of a control that HAS mapped findings, by worst severity.
-
-    Mirror of ``compliance_narrative._control_status`` so ``/v1/compliance``, the
-    narrative, and the CLI export agree: critical/high → fail, medium/low →
-    warning. The caller only reaches this with findings > 0, so an all-zero
-    breakdown means the mapped findings are all unrated-severity — evidence
-    exists but severity is ungraded, which is ``not_evaluated``, never a silent
-    pass (a false pass inflated overall_score). Keep in sync with that function.
-    """
-    if sev_breakdown.get("critical", 0) > 0 or sev_breakdown.get("high", 0) > 0:
-        return "fail"
-    if sev_breakdown.get("medium", 0) > 0 or sev_breakdown.get("low", 0) > 0:
-        return "warning"
-    return "not_evaluated"
 
 
 def build_nist_800_53_catalog_line(

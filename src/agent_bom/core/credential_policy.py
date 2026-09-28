@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, NamedTuple
+
+from agent_bom.core.timestamps import parse_identity_timestamp as _parse_timestamp
 
 DEFAULT_NEAR_EXPIRY_DAYS = 14
 
@@ -32,24 +34,6 @@ class CredentialPolicy(NamedTuple):
 
     def as_dict(self) -> dict[str, int | None]:
         return {"near_expiry_days": self.near_days, "rotation_days": self.rotation_days, "max_age_days": self.hard_max_age_days}
-
-
-def _parse_timestamp(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    text = raw.strip()
-    if not text:
-        return None
-    # Tolerate the trailing-Z form some IdPs emit.
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def _days_between(earlier: datetime, later: datetime) -> int:

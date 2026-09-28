@@ -359,3 +359,20 @@ __all__ = [
     "ubuntu_release_branch",
     "vulnerability_occurrence_key",
 ]
+
+
+def encode_go_module_path(module: str) -> str:
+    """Encode a Go module path for proxy.golang.org.
+
+    The Go module proxy uses case-encoding: uppercase letters become
+    ``!`` + lowercase (e.g., ``Azure`` → ``!azure``).
+    Forward slashes are literal path separators in the URL.
+    """
+    parts: list[str] = []
+    for ch in module:
+        if ch.isupper():
+            parts.append("!")
+            parts.append(ch.lower())
+        else:
+            parts.append(ch)
+    return "".join(parts)

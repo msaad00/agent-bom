@@ -23,6 +23,10 @@ OWNED_FUNCTIONS = {
     "normalize_package_name": "core/packages.py",
     "canonical_package_identity": "core/packages.py",
     "canonical_package_key": "core/packages.py",
+    "encode_go_module_path": "core/packages.py",
+    "_go_encode_module": "core/packages.py",
+    "evaluated_control_status": "core/severity.py",
+    "parse_identity_timestamp": "core/timestamps.py",
     "normalize_version": "core/versions/validation.py",
     "compare_version_order": "core/versions/ordering.py",
     "classify_credential_record": "core/credential_policy.py",
@@ -70,6 +74,10 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
     errors = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if path in {"core/credential_policy.py", "graph/nhi_governance.py"} and node.name == "_parse_timestamp":
+                errors.append(f"{path}:{node.lineno}: identity timestamp parsing belongs in core/timestamps.py")
+            if path == "output/compliance_narrative.py" and node.name == "_control_status":
+                errors.append(f"{path}:{node.lineno}: mapped-finding status belongs in core/severity.py")
             owner = OWNED_FUNCTIONS.get(node.name)
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")

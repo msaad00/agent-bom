@@ -1,0 +1,19 @@
+{
+ "document": {
+  "sha256": "423ba0e5ac33cad0e80625374ea3e0e791a30de1af694ee67f84ff091d239521",
+  "summary": {
+   "coverage_warnings": [],
+   "critical_findings": 0,
+   "critical_unified_findings": 0,
+   "high_unified_findings": 0,
+   "total_agents": 1,
+   "total_findings": 0,
+   "total_mcp_servers": 1,
+   "total_packages": 5,
+   "total_vulnerabilities": 0,
+   "unique_assets": 0,
+   "unique_packages": 5
+  }
+ },
+ "exit_code": 1
+}

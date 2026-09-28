@@ -1503,7 +1503,8 @@ jobs:
             tests/test_findings_sql_backfill.py \
             tests/test_findings_current_sql_contract.py \
             tests/test_jobs_tenant_key_contract.py \
-            tests/test_jobs_dispatch_postgres.py
+            tests/test_jobs_dispatch_postgres.py \
+            tests/test_findings_cursor_keyset_parity.py
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

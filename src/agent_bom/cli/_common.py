@@ -14,9 +14,10 @@ from rich.console import Console
 
 from agent_bom import __version__
 from agent_bom.core.severity import SEVERITY_POLICY_ORDER
-from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
+from agent_bom.inventory import build_agents_from_inventory as _build_agents_from_inventory  # noqa: F401 — compatibility re-export
+from agent_bom.inventory import coerce_agent_type_for_inventory as _coerce_agent_type_for_inventory  # noqa: F401
 from agent_bom.output.brand_tokens import cli_banner_plain
-from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload
+from agent_bom.security import sanitize_env_vars  # noqa: F401 — re-exported by agent_bom.cli
 
 logger = logging.getLogger(__name__)
 
@@ -113,142 +114,6 @@ def _sync_runtime_consoles(console: Console) -> None:
             continue
         if hasattr(module, "console"):
             setattr(module, "console", console)
-
-
-def _coerce_agent_type_for_inventory(raw_value: object, *, agent_name: str):
-    """Map unknown pushed-inventory agent types to custom without aborting scans."""
-    from agent_bom.models import AgentType
-
-    value = str(raw_value or "custom").strip() or "custom"
-    try:
-        return AgentType(value)
-    except ValueError:
-        logger.warning("Unknown inventory agent_type %r for %s; treating as custom", value, agent_name)
-        return AgentType.CUSTOM
-
-
-def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list:
-    """Build Agent objects from parsed inventory dict (JSON or CSV)."""
-    from agent_bom.asset_provenance import sanitize_discovery_provenance
-    from agent_bom.models import Agent, MCPServer, MCPTool, Package, TransportType
-
-    agents = []
-    inventory_provenance = sanitize_discovery_provenance(
-        inventory_data.get("discovery_provenance"),
-        defaults={
-            "source_type": "operator_pushed_inventory",
-            "observed_via": ["operator_inventory"],
-            "source": inventory_data.get("source"),
-            "collector": "inventory",
-            "confidence": "high",
-        },
-    )
-    for agent_data in inventory_data.get("agents", []):
-        mcp_servers = []
-        agent_provenance = sanitize_discovery_provenance(
-            agent_data.get("discovery_provenance"),
-            defaults={
-                **(inventory_provenance or {}),
-                "source": agent_data.get("source", inventory_data.get("source")),
-            },
-        )
-        for server_data in agent_data.get("mcp_servers", []):
-            # Parse pre-populated tools (e.g. from Snowflake/cloud inventory)
-            tools = []
-            for tool_data in server_data.get("tools", []):
-                if isinstance(tool_data, str):
-                    tools.append(MCPTool(name=tool_data, description=""))
-                elif isinstance(tool_data, dict):
-                    tools.append(
-                        MCPTool(
-                            name=tool_data.get("name", ""),
-                            description=tool_data.get("description", ""),
-                            input_schema=tool_data.get("input_schema"),
-                        )
-                    )
-
-            # Parse pre-known packages (e.g. from cloud asset scan)
-            packages = []
-            package_provenance = sanitize_discovery_provenance(
-                server_data.get("discovery_provenance"),
-                defaults=agent_provenance,
-            )
-            for pkg_data in server_data.get("packages", []):
-                if isinstance(pkg_data, str):
-                    if "@" in pkg_data:
-                        name, version = pkg_data.rsplit("@", 1)
-                    else:
-                        name, version = pkg_data, "unknown"
-                    packages.append(
-                        Package(
-                            name=name,
-                            version=version,
-                            ecosystem="unknown",
-                            discovery_provenance=package_provenance,
-                        )
-                    )
-                elif isinstance(pkg_data, dict):
-                    packages.append(
-                        Package(
-                            name=pkg_data.get("name", ""),
-                            version=pkg_data.get("version", "unknown"),
-                            ecosystem=pkg_data.get("ecosystem", "unknown"),
-                            purl=pkg_data.get("purl"),
-                            discovery_provenance=sanitize_discovery_provenance(
-                                pkg_data.get("discovery_provenance"),
-                                defaults=package_provenance,
-                            ),
-                        )
-                    )
-
-            server = MCPServer(
-                name=server_data.get("name", ""),
-                command=server_data.get("command", ""),
-                args=server_data.get("args", []),
-                env=sanitize_env_vars(server_data.get("env", {})),
-                transport=TransportType(server_data.get("transport", "stdio")),
-                url=server_data.get("url"),
-                config_path=agent_data.get("config_path"),
-                working_dir=server_data.get("working_dir"),
-                mcp_version=server_data.get("mcp_version"),
-                security_blocked=bool(server_data.get("security_blocked", False)),
-                security_warnings=list(server_data.get("security_warnings", []) or []),
-                security_intelligence=[
-                    sanitize_security_intelligence_entry(item)
-                    for item in (server_data.get("security_intelligence", []) or [])
-                    if isinstance(item, dict)
-                ],
-                discovery_provenance=package_provenance,
-                tools=tools,
-                packages=packages,
-            )
-            mcp_servers.append(server)
-
-        sanitized_metadata = {}
-        if isinstance(agent_data.get("metadata"), dict):
-            metadata_payload = sanitize_sensitive_payload(agent_data.get("metadata", {}))
-            sanitized_metadata = metadata_payload if isinstance(metadata_payload, dict) else {}
-
-        agent = Agent(
-            name=agent_data.get("name", "unknown"),
-            agent_type=_coerce_agent_type_for_inventory(
-                agent_data.get("agent_type", agent_data.get("type", "custom")),
-                agent_name=agent_data.get("name", "unknown"),
-            ),
-            config_path=agent_data.get("config_path", source_path),
-            mcp_servers=mcp_servers,
-            version=agent_data.get("version"),
-            source=agent_data.get("source", inventory_data.get("source")),
-            source_id=agent_data.get("source_id"),
-            device_fingerprint=agent_data.get("device_fingerprint"),
-            metadata=sanitized_metadata,
-            discovered_at=agent_data.get("discovered_at") or agent_data.get("first_seen") or "",
-            last_seen=agent_data.get("last_seen") or agent_data.get("last_seen_at"),
-            discovery_provenance=agent_provenance,
-        )
-        agents.append(agent)
-
-    return agents
 
 
 _update_check_result: str | None = None

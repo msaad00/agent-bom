@@ -12,9 +12,9 @@ from typing import Optional
 import click
 from rich.console import Console
 
-from agent_bom.cli._common import _build_agents_from_inventory, _make_console, read_json_file_for_cli
+from agent_bom.cli._common import _make_console, read_json_file_for_cli
 from agent_bom.discovery import discover_all
-from agent_bom.inventory import _inventory_payload_and_version, _inventory_schema_path, _inventory_validator
+from agent_bom.inventory import _inventory_payload_and_version, _inventory_schema_path, _inventory_validator, build_agents_from_inventory
 from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_agent_tree, print_summary
@@ -60,7 +60,7 @@ def inventory(
             from agent_bom.demo import DEMO_INVENTORY
 
             inventory_source = "agent-bom --demo"
-            agents = _build_agents_from_inventory(DEMO_INVENTORY, inventory_source)
+            agents = build_agents_from_inventory(DEMO_INVENTORY, inventory_source)
         elif config:
             config_path = Path(config)
             inventory_source = str(config_path)
@@ -96,7 +96,7 @@ def inventory(
                     inventory_data = load_inventory(str(project_inventory))
                 except (OSError, ValueError) as exc:
                     raise click.ClickException(f"Error loading project inventory {project_inventory}: {exc}") from exc
-                agents = _build_agents_from_inventory(inventory_data, str(project_inventory))
+                agents = build_agents_from_inventory(inventory_data, str(project_inventory))
             else:
                 agents = discover_all(project_dir=project)
 

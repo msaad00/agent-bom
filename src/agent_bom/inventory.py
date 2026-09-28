@@ -40,6 +40,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from agent_bom.asset_provenance import sanitize_discovery_provenance
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
+from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload
+
 logger = logging.getLogger(__name__)
 
 # Required CSV columns for package scanning.
@@ -418,3 +423,127 @@ def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
         )
 
     return _validate_inventory_payload({"agents": list(agents_by_name.values())})
+
+
+def coerce_agent_type_for_inventory(raw_value: object, *, agent_name: str) -> AgentType:
+    """Map unknown pushed-inventory agent types to custom without aborting scans."""
+    value = str(raw_value or "custom").strip() or "custom"
+    try:
+        return AgentType(value)
+    except ValueError:
+        logger.warning("Unknown inventory agent_type %r for %s; treating as custom", value, agent_name)
+        return AgentType.CUSTOM
+
+
+def _inventory_tools(server_data: dict) -> list[MCPTool]:
+    # Pre-populated tools, e.g. from Snowflake/cloud inventory.
+    tools = []
+    for tool_data in server_data.get("tools", []):
+        if isinstance(tool_data, str):
+            tools.append(MCPTool(name=tool_data, description=""))
+        elif isinstance(tool_data, dict):
+            tools.append(
+                MCPTool(
+                    name=tool_data.get("name", ""),
+                    description=tool_data.get("description", ""),
+                    input_schema=tool_data.get("input_schema"),
+                )
+            )
+    return tools
+
+
+def _inventory_packages(server_data: dict, package_provenance: dict[str, Any] | None) -> list[Package]:
+    # Pre-known packages, e.g. from a cloud asset scan.
+    packages = []
+    for pkg_data in server_data.get("packages", []):
+        if isinstance(pkg_data, str):
+            if "@" in pkg_data:
+                name, version = pkg_data.rsplit("@", 1)
+            else:
+                name, version = pkg_data, "unknown"
+            packages.append(Package(name=name, version=version, ecosystem="unknown", discovery_provenance=package_provenance))
+        elif isinstance(pkg_data, dict):
+            packages.append(
+                Package(
+                    name=pkg_data.get("name", ""),
+                    version=pkg_data.get("version", "unknown"),
+                    ecosystem=pkg_data.get("ecosystem", "unknown"),
+                    purl=pkg_data.get("purl"),
+                    discovery_provenance=sanitize_discovery_provenance(
+                        pkg_data.get("discovery_provenance"),
+                        defaults=package_provenance,
+                    ),
+                )
+            )
+    return packages
+
+
+def _inventory_server(server_data: dict, agent_data: dict, agent_provenance: dict[str, Any] | None) -> MCPServer:
+    package_provenance = sanitize_discovery_provenance(server_data.get("discovery_provenance"), defaults=agent_provenance)
+    return MCPServer(
+        name=server_data.get("name", ""),
+        command=server_data.get("command", ""),
+        args=server_data.get("args", []),
+        env=sanitize_env_vars(server_data.get("env", {})),
+        transport=TransportType(server_data.get("transport", "stdio")),
+        url=server_data.get("url"),
+        config_path=agent_data.get("config_path"),
+        working_dir=server_data.get("working_dir"),
+        mcp_version=server_data.get("mcp_version"),
+        security_blocked=bool(server_data.get("security_blocked", False)),
+        security_warnings=list(server_data.get("security_warnings", []) or []),
+        security_intelligence=[
+            sanitize_security_intelligence_entry(item)
+            for item in (server_data.get("security_intelligence", []) or [])
+            if isinstance(item, dict)
+        ],
+        discovery_provenance=package_provenance,
+        tools=_inventory_tools(server_data),
+        packages=_inventory_packages(server_data, package_provenance),
+    )
+
+
+def _inventory_agent(agent_data: dict, inventory_data: dict, inventory_provenance: dict[str, Any] | None, source_path: str) -> Agent:
+    agent_provenance = sanitize_discovery_provenance(
+        agent_data.get("discovery_provenance"),
+        defaults={**(inventory_provenance or {}), "source": agent_data.get("source", inventory_data.get("source"))},
+    )
+    mcp_servers = [_inventory_server(server_data, agent_data, agent_provenance) for server_data in agent_data.get("mcp_servers", [])]
+    sanitized_metadata = {}
+    if isinstance(agent_data.get("metadata"), dict):
+        metadata_payload = sanitize_sensitive_payload(agent_data.get("metadata", {}))
+        sanitized_metadata = metadata_payload if isinstance(metadata_payload, dict) else {}
+    return Agent(
+        name=agent_data.get("name", "unknown"),
+        agent_type=coerce_agent_type_for_inventory(
+            agent_data.get("agent_type", agent_data.get("type", "custom")),
+            agent_name=agent_data.get("name", "unknown"),
+        ),
+        config_path=agent_data.get("config_path", source_path),
+        mcp_servers=mcp_servers,
+        version=agent_data.get("version"),
+        source=agent_data.get("source", inventory_data.get("source")),
+        source_id=agent_data.get("source_id"),
+        device_fingerprint=agent_data.get("device_fingerprint"),
+        metadata=sanitized_metadata,
+        discovered_at=agent_data.get("discovered_at") or agent_data.get("first_seen") or "",
+        last_seen=agent_data.get("last_seen") or agent_data.get("last_seen_at"),
+        discovery_provenance=agent_provenance,
+    )
+
+
+def build_agents_from_inventory(inventory_data: dict, source_path: str) -> list[Agent]:
+    """Build Agent objects from a parsed inventory dict (JSON, NDJSON or CSV)."""
+    inventory_provenance = sanitize_discovery_provenance(
+        inventory_data.get("discovery_provenance"),
+        defaults={
+            "source_type": "operator_pushed_inventory",
+            "observed_via": ["operator_inventory"],
+            "source": inventory_data.get("source"),
+            "collector": "inventory",
+            "confidence": "high",
+        },
+    )
+    return [
+        _inventory_agent(agent_data, inventory_data, inventory_provenance, source_path) for agent_data in inventory_data.get("agents", [])
+    ]

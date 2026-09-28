@@ -1,8 +1,9 @@
 """Architecture debt cannot grow or move into a newly oversized function."""
 
 import ast
+from pathlib import Path
 
-from scripts.check_architecture import baseline_growth, boundary_errors, debt, function_spans, measure, regressions
+from scripts.check_architecture import baseline_growth, boundary_errors, debt, function_spans, measure, regressions, restrict_metrics
 
 
 def test_new_and_growing_debt_fails_but_reductions_pass():
@@ -199,7 +200,111 @@ def test_gateway_policy_reload_cannot_import_adapters():
     assert not boundary_errors("runtime/gateway_policy_reload.py", ast.parse("from agent_bom.security import sanitize_error"))
 
 
+def test_api_cannot_import_cli():
+    for source in (
+        "from agent_bom.cli._common import _build_agents_from_inventory",
+        "import agent_bom.cli",
+        "from agent_bom import cli",
+        "def f():\n from agent_bom.cli import main",
+    ):
+        assert boundary_errors("api/pipeline.py", ast.parse(source))
+    assert boundary_errors("api/routes/discovery.py", ast.parse("from ...cli import _common"))
+    assert not boundary_errors("api/pipeline.py", ast.parse("from agent_bom.inventory import build_agents_from_inventory"))
+    assert not boundary_errors("cli/_inventory.py", ast.parse("from agent_bom.cli._common import _make_console"))
+
+
+def _layer_metrics(tmp_path, files):
+    root = tmp_path / "src" / "agent_bom"
+    for relative, body in files.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+    metrics, errors = measure(tmp_path)
+    assert not errors
+    return metrics
+
+
+def test_deferred_imports_are_counted_per_file_excluding_optional_extras(tmp_path):
+    metrics = _layer_metrics(
+        tmp_path,
+        {
+            "lazy.py": (
+                "import json\n"
+                "def f():\n import os\n from agent_bom import models\n from . import other\n"
+                "class C:\n async def g(self):\n  import boto3\n  from azure.identity import DefaultAzureCredential\n"
+            ),
+            "eager.py": "import os\nif os:\n import json\nclass C:\n import re\n",
+        },
+    )
+    assert metrics["lazy.py"]["deferred_imports"] == 3
+    assert "deferred_imports" not in metrics["eager.py"]
+    assert regressions(metrics, {})
+    assert not regressions(metrics, {"lazy.py": {"deferred_imports": 3}})
+    assert regressions(metrics, {"lazy.py": {"deferred_imports": 2}})
+    assert debt(metrics)["lazy.py"] == {"deferred_imports": 3}
+
+
+def test_outer_layer_api_imports_are_ratcheted_separately_for_graph(tmp_path):
+    metrics = _layer_metrics(
+        tmp_path,
+        {
+            "graph/overlay.py": "from agent_bom.api import stores\ndef f():\n from ..api.auth import x\n",
+            "runtime/thing.py": "from agent_bom import api\nimport agent_bom.api.server\nfrom agent_bom import graph\n",
+            "api/routes/x.py": "from agent_bom.api import stores\n",
+            "graph/clean.py": "from agent_bom.graph.node import UnifiedNode\n",
+        },
+    )
+    assert metrics["graph/overlay.py"]["graph_api_imports"] == 2
+    assert "api_imports" not in metrics["graph/overlay.py"]
+    assert metrics["runtime/thing.py"]["api_imports"] == 2
+    assert "api_imports" not in metrics["api/routes/x.py"]
+    assert "graph_api_imports" not in metrics["graph/clean.py"]
+    baseline = {"graph/overlay.py": {"graph_api_imports": 2, "deferred_imports": 1}, "runtime/thing.py": {"api_imports": 2}}
+    assert not regressions(metrics, baseline)
+    assert regressions(metrics, {**baseline, "runtime/thing.py": {"api_imports": 1}})
+    assert regressions(metrics, {"runtime/thing.py": {"api_imports": 2}})
+
+
+def test_new_layer_categories_bootstrap_once_then_only_shrink():
+    previous = {"old.py": {"file_lines": 700}}
+    current = {"old.py": {"file_lines": 700, "deferred_imports": 5}, "graph/x.py": {"graph_api_imports": 1}}
+    assert not baseline_growth(current, previous, ratcheted_metrics={"file_lines"})
+    assert baseline_growth(current, previous, ratcheted_metrics={"file_lines", "deferred_imports", "graph_api_imports"})
+    assert baseline_growth({"old.py": {"file_lines": 701}}, previous, ratcheted_metrics={"file_lines"})
+    assert not baseline_growth(
+        {"old.py": {"deferred_imports": 4}}, {"old.py": {"deferred_imports": 5}}, ratcheted_metrics={"deferred_imports"}
+    )
+
+
+def test_write_baseline_bootstraps_only_categories_the_stored_baseline_lacks():
+    metrics = {"old.py": {"file_lines": 701, "deferred_imports": 5}}
+    stored = {"old.py": {"file_lines": 700}}
+    assert not regressions(restrict_metrics(metrics, {"complexity"}), stored)
+    assert regressions(restrict_metrics(metrics, {"file_lines"}), stored)
+    assert restrict_metrics(metrics, {"deferred_imports"}) == {"old.py": {"deferred_imports": 5}}
+
+
+def test_repository_has_no_api_to_cli_imports():
+    source = Path(__file__).resolve().parents[1] / "src" / "agent_bom"
+    offenders = [
+        error
+        for path in sorted((source / "api").rglob("*.py"))
+        for error in boundary_errors(path.relative_to(source).as_posix(), ast.parse(path.read_text()))
+        if "must not import the CLI" in error
+    ]
+    assert offenders == []
+
+
 def test_gateway_forwarding_has_one_owner_and_no_composition_import():
     assert boundary_errors("gateway_server.py", ast.parse("async def forward_authorized_request(context): pass"))
     assert boundary_errors("api/gateway_forward.py", ast.parse("from agent_bom.gateway_server import GatewaySettings"))
     assert not boundary_errors("api/gateway_forward.py", ast.parse("from agent_bom.runtime.gateway_contracts import AuditSink"))
+
+
+def test_import_debt_is_budgeted_per_category_so_splits_can_move_it():
+    baseline = {"big.py": {"deferred_imports": 3, "api_imports": 2}}
+    split = {"big.py": {"deferred_imports": 1, "api_imports": 1}, "big_part.py": {"deferred_imports": 2, "api_imports": 1}}
+    assert not regressions(split, baseline)
+    grown = {"big.py": {"deferred_imports": 1}, "big_part.py": {"deferred_imports": 3}}
+    assert regressions(grown, baseline) == ["deferred_imports: total 4 exceeds budget 3"]
+    assert regressions({"new.py": {"graph_api_imports": 1}}, {}) == ["graph_api_imports: total 1 exceeds budget 0"]

@@ -10,10 +10,10 @@ from typing import Any
 
 import click
 
-from agent_bom.cli._common import _build_agents_from_inventory
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.discovery import CONFIG_LOCATIONS
 from agent_bom.discovery import discover_all as _discover_all_default
+from agent_bom.inventory import build_agents_from_inventory
 from agent_bom.models import AgentType
 
 # Severity ordering for the aggregate SAST summary across multiple --code paths.
@@ -162,7 +162,7 @@ def run_local_discovery(
     if skill_only:
         ctx.agents = []  # skill-only: no agent discovery
     elif inventory:
-        ctx.agents = _build_agents_from_inventory(preloaded_inventory_data or {"agents": []}, inventory)
+        ctx.agents = build_agents_from_inventory(preloaded_inventory_data or {"agents": []}, inventory)
         con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {inventory_label or inventory}")
     elif no_discover and not config_dir:
         # --config-dir is an explicit artifact; it survives --no-discover.

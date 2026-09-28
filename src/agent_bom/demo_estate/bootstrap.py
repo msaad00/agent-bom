@@ -266,16 +266,16 @@ def _stamp_showcase_graph_reachability(blast_radii: list[Any], agents: list[Any]
 
 
 def _run_demo_scan_report(*, tenant_id: str) -> dict[str, Any]:
-    from agent_bom.cli._common import _build_agents_from_inventory
     from agent_bom.demo import DEMO_INVENTORY
     from agent_bom.finding import blast_radius_to_finding
+    from agent_bom.inventory import build_agents_from_inventory
     from agent_bom.mcp_auth_posture import evaluate_mcp_auth_posture
     from agent_bom.mcp_blocklist import blocklist_findings_for_agents
     from agent_bom.models import AIBOMReport
     from agent_bom.output import to_json
     from agent_bom.scanners import scan_agents_sync
 
-    agents = _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+    agents = build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
     blast_radii = scan_agents_sync(
         agents,
         compliance_enabled=True,

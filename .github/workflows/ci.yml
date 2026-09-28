@@ -1486,6 +1486,7 @@ jobs:
             tests/test_graph_traversal_budget_honesty.py \
             tests/test_graph_traverse_subgraph_completeness.py \
             tests/test_self_posture_postgres.py
+            tests/test_tenant_quota_store.py
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

@@ -14,6 +14,7 @@ runtime imports below break and this test catches it.
 from __future__ import annotations
 
 import importlib
+import inspect
 
 import agent_bom.api.postgres_common as postgres_common
 
@@ -27,7 +28,8 @@ _STORE_MODULES = [
     "agent_bom.api.postgres_cost",
     "agent_bom.api.postgres_runtime_event",
     "agent_bom.api.postgres_scim",
-    "agent_bom.api.postgres_tenant_quota",
+    "agent_bom.api.storage.sql",
+    "agent_bom.api.tenant_quota_store",
 ]
 
 
@@ -46,6 +48,8 @@ def test_store_modules_import_the_alias() -> None:
 def test_pool_argument_defaults_to_none() -> None:
     # The annotated ``pool: ConnectionPool | None = None`` keeps its default,
     # so constructing a store still lazily resolves the shared pool.
-    from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore
+    from agent_bom.api.storage.sql import PostgresBackend
+    from agent_bom.api.tenant_quota_store import PostgresTenantQuotaStore
 
-    assert PostgresTenantQuotaStore.__init__.__defaults__ == (None,)
+    assert PostgresBackend.__init__.__defaults__ == (None,)
+    assert inspect.signature(PostgresTenantQuotaStore).parameters["pool"].default is None

@@ -15,41 +15,30 @@ from typing import Any
 from agent_bom.api.compliance_hub_store import (
     _LEDGER_ORDINAL_SENTINEL,
     _SCHEMA_VERSION,
-    RECONCILE_ABSENT_CHUNK,
     FindingCursorPage,
     FindingPage,
-    _cvss_value,
-    _frameworks_csv,
     _now_utc_iso,
-    _postgres_current_order_clause,
-    _redact_finding,
     _redact_findings,
-    _severity_rank,
-    collect_scope_filtered_page,
-    compute_effective_reach_score,
-    scope_filter_batch_size,
     status_sql_predicate,
-)
-from agent_bom.api.finding_cursor import (
-    cursor_from_current_row,
-    postgres_keyset_clause,
 )
 from agent_bom.api.hub_current_payload import (
     batch_ledger_payloads,
-    current_state_overlay,
     hydrate_current_payload,
-    resolve_ledger_finding_id,
 )
-from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
+from agent_bom.api.hub_payload_codec import decode_hub_payload
 from agent_bom.api.hub_reference_store import (
     ensure_postgres_reference_tables,
     hydrate_finding_payloads_postgres,
-    persist_finding_references_postgres,
 )
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads
+from agent_bom.api.storage.finding_current_writes import reconcile_current, write_current_batch
+from agent_bom.api.storage.finding_ledger_writes import write_ledger_batch
 from agent_bom.api.storage.finding_reads import SqlFindingReads
+from agent_bom.api.storage.finding_write_session import finding_write_session
 from agent_bom.api.storage.sql import PostgresBackend
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 
 def _kev_json_cond_postgres(col: str) -> str:
@@ -195,28 +184,6 @@ def _resolve_current_ledger_ordinal_postgres(
     return int(row[0]) if row else _LEDGER_ORDINAL_SENTINEL
 
 
-def _fetch_ledger_ordinals_postgres(
-    conn: Any,
-    tenant_id: str,
-    finding_ids: Sequence[str],
-) -> dict[str, int]:
-    """Bulk variant of :func:`_resolve_current_ledger_ordinal_postgres`.
-
-    One ``= ANY`` lookup on the ledger primary key for a whole batch instead of a
-    per-row point SELECT, so the current-state bulk upsert resolves every ledger
-    ordinal in a single round-trip. Missing pointers simply stay out of the map;
-    the caller falls back to the sort sentinel.
-    """
-    ids = [str(fid) for fid in finding_ids if fid]
-    if not ids:
-        return {}
-    rows = conn.execute(
-        "SELECT finding_id, ordinal FROM compliance_hub_findings WHERE tenant_id = %s AND finding_id = ANY(%s)",
-        (tenant_id, ids),
-    ).fetchall()
-    return {str(finding_id): int(ordinal) for finding_id, ordinal in rows}
-
-
 def _fetch_ledger_payloads_postgres(
     conn: Any,
     tenant_id: str,
@@ -348,6 +315,10 @@ class PostgresComplianceHubStore:
     """Shared hub store backing multi-replica self-hosted deployments."""
 
     @property
+    def _current_reads(self) -> SqlCurrentFindingReads:
+        return SqlCurrentFindingReads(PostgresBackend(self._pool))
+
+    @property
     def _ledger_reads(self) -> SqlFindingReads:
         return SqlFindingReads(PostgresBackend(self._pool))
 
@@ -373,16 +344,6 @@ class PostgresComplianceHubStore:
             if tenant_id in self._finding_count_by_tenant:
                 return
             self._finding_count_by_tenant[tenant_id] = int(row[0]) if row else 0
-
-    @staticmethod
-    def _existing_finding_ids(conn: Any, tenant_id: str, finding_ids: list[str]) -> set[str]:
-        if not finding_ids:
-            return set()
-        rows = conn.execute(
-            "SELECT finding_id FROM compliance_hub_findings WHERE tenant_id = %s AND finding_id = ANY(%s)",
-            (tenant_id, finding_ids),
-        ).fetchall()
-        return {str(row[0]) for row in rows}
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
@@ -676,98 +637,9 @@ class PostgresComplianceHubStore:
         )
 
     def _write_ledger_batch(self, conn: Any, tenant_id: str, findings: list[dict[str, Any]]) -> int:
-        """Append/refresh ledger rows on ``conn`` — no commit, no stats bump.
-
-        Returns the count of genuinely-new rows so the caller can bump the
-        cached tenant total AFTER the shared transaction commits. Bootstraps the
-        ingest-stats counter (a read) inside the same connection. Shared by the
-        committing :meth:`add` and the single-transaction :meth:`ingest_batch_atomic`.
-        """
+        tx = finding_write_session(conn, "postgres", tenant_id)
         self._bootstrap_ingest_stats(conn, tenant_id)
-        if not findings:
-            return 0
-        from agent_bom.graph.sla import carry_finding_sla
-
-        previous_payloads = _fetch_ledger_payloads_postgres(
-            conn, tenant_id, [str(row["id"]) for row in findings if isinstance(row, dict) and row.get("id")], for_update=True
-        )
-        now = _now_utc_iso()
-        rows_to_insert: list[tuple[str, str, dict[str, Any]]] = []
-        for original in findings:
-            if not isinstance(original, dict):
-                continue
-            frameworks_csv = _frameworks_csv(original)
-            slim = persist_finding_references_postgres(conn, tenant_id, original, ensure_tables=False)
-            payload = _redact_finding(slim)
-            finding_id = str(payload.get("id") or f"hub-{now}-{id(original)}")
-            payload = carry_finding_sla(payload, previous_payloads.get(finding_id, {}))
-            previous_payloads[finding_id] = payload
-            rows_to_insert.append((finding_id, frameworks_csv, payload))
-        existing_ids = self._existing_finding_ids(conn, tenant_id, [row[0] for row in rows_to_insert])
-        # Count DISTINCT ids: ``ON CONFLICT … DO UPDATE`` collapses ids repeated
-        # WITHIN the batch into one row, so counting per-row overstated the
-        # tenant total permanently (the cached total then disagreed with
-        # ``COUNT(*)`` forever).
-        new_rows = len({finding_id for finding_id, _, _ in rows_to_insert} - existing_ids)
-        # Idempotent ingest: a resend of the same (tenant_id, finding_id) refreshes
-        # payload/metadata and keeps the original ``ordinal`` (the BIGSERIAL default
-        # only advances on genuine inserts). Batched via ``executemany`` (psycopg
-        # pipelines the round-trips) so a connector initial-sync of millions is not
-        # a per-row execute loop — same SQL, same ON CONFLICT idempotency, same
-        # tenant scope, ~10x the row/s of the per-row loop (wave-2 residual #2).
-        insert_params = [
-            (
-                tenant_id,
-                finding_id,
-                now,
-                str(payload.get("source") or ""),
-                frameworks_csv,
-                encode_hub_payload(payload),
-                compute_effective_reach_score(payload),
-                str(payload.get("origin") or ""),
-                str(payload.get("severity") or ""),
-                _severity_rank(payload),
-                _cvss_value(payload),
-                str(payload.get("batch_id") or payload.get("scan_id") or ""),
-            )
-            for finding_id, frameworks_csv, payload in rows_to_insert
-        ]
-        # Existing-row locks cannot cover concurrent first inserts. The conflict
-        # expression repeats the bounded assignment carry at the atomic write.
-        if insert_params:
-            with conn.cursor() as cur:
-                cur.executemany(
-                    """
-                    INSERT INTO compliance_hub_findings
-                        (tenant_id, finding_id, ingested_at, source, applicable_frameworks_csv, payload,
-                         effective_reach_score, origin, severity, severity_rank, cvss_score, scan_id)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (tenant_id, finding_id) DO UPDATE SET
-                        ingested_at = EXCLUDED.ingested_at,
-                        source = EXCLUDED.source,
-                        applicable_frameworks_csv = EXCLUDED.applicable_frameworks_csv,
-                        payload = EXCLUDED.payload || CASE
-                            WHEN compliance_hub_findings.payload->>'sla_due_at' IS NOT NULL
-                             AND COALESCE(compliance_hub_findings.payload->>'sla_due_at_source', 'unknown') != 'severity-kev/v1'
-                             AND COALESCE(EXCLUDED.payload->>'sla_due_at_source', 'unknown') != 'explicit'
-                            THEN jsonb_build_object(
-                                'sla_due_at', compliance_hub_findings.payload->'sla_due_at',
-                                'sla_due_at_source', CASE
-                                    WHEN compliance_hub_findings.payload->>'sla_due_at_source' = 'explicit' THEN 'explicit'
-                                    ELSE 'unknown'
-                                END
-                            )
-                            ELSE '{}'::jsonb
-                        END,
-                        effective_reach_score = EXCLUDED.effective_reach_score,
-                        origin = EXCLUDED.origin,
-                        severity = EXCLUDED.severity,
-                        severity_rank = EXCLUDED.severity_rank,
-                        cvss_score = EXCLUDED.cvss_score,
-                        scan_id = EXCLUDED.scan_id
-                    """,
-                    insert_params,
-                )
+        new_rows, _ = write_ledger_batch(tx, "postgres", tenant_id, findings)
         return new_rows
 
     def _bump_tenant_total(self, tenant_id: str, new_rows: int) -> int:
@@ -779,6 +651,7 @@ class PostgresComplianceHubStore:
         return self.count(tenant_id)
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             new_rows = self._write_ledger_batch(conn, tenant_id, findings)
             if findings:
@@ -809,6 +682,7 @@ class PostgresComplianceHubStore:
         tenant total is bumped only after the commit succeeds so a rolled-back
         batch does not inflate it. Returns ``(new_total, reconciled)``.
         """
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             new_rows = self._write_ledger_batch(conn, tenant_id, findings)
             self._write_current_batch(
@@ -1017,7 +891,9 @@ class PostgresComplianceHubStore:
         return self._ledger_reads.count(tenant_id)
 
     def clear(self, tenant_id: str) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
+            finding_write_session(conn, "postgres", tenant_id)
             cur = conn.execute(
                 "DELETE FROM compliance_hub_findings WHERE tenant_id = %s",
                 (tenant_id,),
@@ -1044,6 +920,7 @@ class PostgresComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             self._write_current_batch(
                 conn,
@@ -1069,245 +946,30 @@ class PostgresComplianceHubStore:
         batch_id: str,
         source: str = "",
     ) -> None:
-        """Upsert current-state rows on ``conn`` — no commit.
-
-        Shared by the committing :meth:`upsert_current_batch` and the
-        single-transaction :meth:`ingest_batch_atomic`.
-        """
-        from agent_bom.api.finding_lifecycle import (
-            apply_observation_to_current,
-            lifecycle_metrics,
-            resolve_canonical_id,
-        )
-
-        clean = _redact_findings(findings)
-        if not clean:
-            return
-        now = _now_utc_iso()
-        # observed_at is batch-level: verify its migration-owned monthly child
-        # once per batch. Runtime roles are intentionally DML-only; a stale
-        # deploy returns a sanitized 503 instead of attempting schema DDL.
         from agent_bom.api.hub_observations_partition import ensure_observation_partition_for
 
-        ensure_observation_partition_for(conn, observed_at)
-        # Probe the ledger column ONCE per batch/connection — the schema does
-        # not change mid-batch. It was previously an information_schema query
-        # per row, the dominant write-path amplifier at scale.
-        has_ledger_col = _postgres_current_has_ledger_col(conn)
-        payload_select = "payload, ledger_finding_id" if has_ledger_col else "payload"
-
-        # ── Bulk current-state upsert (wave-2 residual #2) ───────────────────
-        # The per-row loop issued up to four round-trips per finding (observation
-        # insert, existing-current SELECT, ledger-ordinal SELECT, current upsert),
-        # so a connector initial-sync of millions crawled. This batches each of
-        # those into ONE round-trip while preserving the EXACT lifecycle
-        # semantics: the observation ``ON CONFLICT DO NOTHING RETURNING`` yields
-        # precisely the canonicals newly observed this batch (idempotent replay of
-        # the same batch_id returns none), first-occurrence-per-canonical is kept
-        # (later in-batch duplicates were skipped by the observation dedup), the
-        # prior-batch current row still feeds ``apply_observation_to_current``, and
-        # the final upsert is byte-identical SQL.
-        row_meta: list[tuple[str, dict[str, Any], Any, str, dict[str, Any]]] = []
-        obs_params: list[tuple[str, str, str, str]] = []
-        for payload in clean:
-            canonical = resolve_canonical_id(payload, source=source)
-            metrics = lifecycle_metrics(payload)
-            ledger_finding_id = resolve_ledger_finding_id(payload, canonical_id=canonical)
-            overlay = current_state_overlay(payload) if ledger_finding_id else dict(payload)
-            row_meta.append((canonical, payload, metrics, ledger_finding_id or "", overlay))
-            obs_params.append((tenant_id, canonical, batch_id, observed_at))
-
-        inserted_canonicals: set[str] = set()
-        with conn.cursor() as obs_cur:
-            obs_cur.executemany(
-                """
-                INSERT INTO hub_findings_current_observations
-                    (tenant_id, canonical_id, scan_id, observed_at)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-                RETURNING canonical_id
-                """,
-                obs_params,
-                returning=True,
-            )
-            while True:
-                if obs_cur.pgresult is not None and obs_cur.pgresult.ntuples:
-                    inserted_canonicals.update(str(row[0]) for row in obs_cur.fetchall())
-                if not obs_cur.nextset():
-                    break
-        if not inserted_canonicals:
-            return
-
-        # First occurrence per newly-observed canonical, in ingest order — mirrors
-        # the per-row loop that processed the first and skipped later duplicates.
-        to_process: list[tuple[str, dict[str, Any], Any, str, dict[str, Any]]] = []
-        seen_canonical: set[str] = set()
-        for meta in row_meta:
-            canonical = meta[0]
-            if canonical not in inserted_canonicals or canonical in seen_canonical:
-                continue
-            seen_canonical.add(canonical)
-            to_process.append(meta)
-
-        # One SELECT for every prior-batch current row this batch touches, hydrated
-        # in bulk, so ``apply_observation_to_current`` merges against real history.
-        canonical_list = [meta[0] for meta in to_process]
-        existing_rows = conn.execute(
-            f"""
-            SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                   cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                   updated_at, {payload_select}
-            FROM hub_findings_current
-            WHERE tenant_id = %s AND canonical_id = ANY(%s)
-            """,  # nosec B608
-            (tenant_id, canonical_list),
-        ).fetchall()
-        existing_map: dict[str, dict[str, Any]] = {}
-        if existing_rows:
-            parsed = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in existing_rows]
-            for hydrated in _hydrate_postgres_current_rows(conn, tenant_id, parsed):
-                existing_map[str(hydrated["canonical_id"])] = hydrated
-
-        # One lookup for every ledger ordinal pointer.
-        ordinal_map: dict[str, int] = {}
-        if has_ledger_col:
-            ordinal_map = _fetch_ledger_ordinals_postgres(conn, tenant_id, [meta[3] for meta in to_process if meta[3]])
-
-        ledger_upsert_params: list[tuple[Any, ...]] = []
-        plain_upsert_params: list[tuple[Any, ...]] = []
-        for canonical, payload, metrics, ledger_finding_id, overlay in to_process:
-            existing = existing_map.get(canonical)
-            merged = apply_observation_to_current(
-                existing,
-                canonical_id=canonical,
-                observed_at=observed_at,
-                metrics=metrics,
-                payload=payload,
-                updated_at=now,
-            )
-            overlay = current_state_overlay(merged["payload"]) if ledger_finding_id else merged["payload"]
-            origin_val = str(payload.get("origin") or "")
-            # Canonical ``batch_id or scan_id`` scan filter key (#3926).
-            scan_id_val = str(payload.get("batch_id") or payload.get("scan_id") or "")
-            base = (
+        tx = finding_write_session(conn, "postgres", tenant_id)
+        clean = _redact_findings(findings)
+        if clean:
+            ensure_observation_partition_for(conn, observed_at)
+            write_current_batch(
+                tx,
+                "postgres",
                 tenant_id,
-                canonical,
-                merged["first_seen"],
-                merged["last_seen"],
-                merged["status"],
-                merged["severity"],
-                merged["severity_rank"],
-                merged["cvss_score"],
-                merged["effective_reach_score"],
-                merged["scan_count"],
-                merged["resolved_at"],
-                merged["reopened_at"],
-                merged["updated_at"],
-                encode_hub_payload(overlay),
+                clean,
+                observed_at=observed_at,
+                batch_id=batch_id,
+                source=source,
+                has_ledger=_postgres_current_has_ledger_col(conn),
             )
-            if has_ledger_col:
-                # Materialise the ledger ingest ordinal so ``sort=ordinal`` rides
-                # idx_hub_findings_current_tenant_ordinal instead of a per-row
-                # correlated ledger subquery (#3984).
-                ledger_ordinal_val = ordinal_map.get(ledger_finding_id, _LEDGER_ORDINAL_SENTINEL)
-                ledger_upsert_params.append((*base, ledger_finding_id or None, origin_val, scan_id_val, ledger_ordinal_val))
-            else:
-                plain_upsert_params.append((*base, origin_val, scan_id_val))
-
-        if ledger_upsert_params:
-            with conn.cursor() as up_cur:
-                up_cur.executemany(
-                    """
-                    INSERT INTO hub_findings_current
-                        (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                         cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                         updated_at, payload, ledger_finding_id, origin, scan_id, ledger_ordinal)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
-                    ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
-                        first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
-                        last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
-                        status = EXCLUDED.status,
-                        severity = EXCLUDED.severity,
-                        severity_rank = EXCLUDED.severity_rank,
-                        cvss_score = EXCLUDED.cvss_score,
-                        effective_reach_score = EXCLUDED.effective_reach_score,
-                        scan_count = EXCLUDED.scan_count,
-                        resolved_at = EXCLUDED.resolved_at,
-                        reopened_at = EXCLUDED.reopened_at,
-                        updated_at = EXCLUDED.updated_at,
-                        payload = EXCLUDED.payload,
-                        ledger_finding_id = EXCLUDED.ledger_finding_id,
-                        origin = EXCLUDED.origin,
-                        scan_id = EXCLUDED.scan_id,
-                        ledger_ordinal = EXCLUDED.ledger_ordinal
-                    """,
-                    ledger_upsert_params,
-                )
-        if plain_upsert_params:
-            with conn.cursor() as up_cur:
-                up_cur.executemany(
-                    """
-                    INSERT INTO hub_findings_current
-                        (tenant_id, canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                         cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                         updated_at, payload, origin, scan_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                    ON CONFLICT (tenant_id, canonical_id) DO UPDATE SET
-                        first_seen = LEAST(hub_findings_current.first_seen, EXCLUDED.first_seen),
-                        last_seen = GREATEST(hub_findings_current.last_seen, EXCLUDED.last_seen),
-                        status = EXCLUDED.status,
-                        severity = EXCLUDED.severity,
-                        severity_rank = EXCLUDED.severity_rank,
-                        cvss_score = EXCLUDED.cvss_score,
-                        effective_reach_score = EXCLUDED.effective_reach_score,
-                        scan_count = EXCLUDED.scan_count,
-                        resolved_at = EXCLUDED.resolved_at,
-                        reopened_at = EXCLUDED.reopened_at,
-                        updated_at = EXCLUDED.updated_at,
-                        payload = EXCLUDED.payload,
-                        origin = EXCLUDED.origin,
-                        scan_id = EXCLUDED.scan_id
-                    """,
-                    plain_upsert_params,
-                )
 
     def lookup_current_ids(
         self, tenant_id: str, canonical_ids: Sequence[str], *, scan_id: str | None = None, origin: str | None = None
     ) -> set[str]:
-        found: set[str] = set()
-        keys = list(dict.fromkeys(canonical_ids))
-        with _tenant_connection(self._pool) as conn:
-            for start in range(0, len(keys), 500):
-                predicates = ["tenant_id = %s", "canonical_id = ANY(%s)"]
-                params: list[Any] = [tenant_id, keys[start : start + 500]]
-                if scan_id is not None:
-                    predicates.append("scan_id = %s")
-                    params.append(scan_id)
-                if origin is not None:
-                    predicates.append("origin = %s")
-                    params.append(origin)
-                rows = conn.execute("SELECT canonical_id FROM hub_findings_current WHERE " + " AND ".join(predicates), params).fetchall()  # nosec B608 - predicates are fixed and values are bound.
-                found.update(str(row[0]) for row in rows)
-        return found
+        return self._current_reads.lookup(tenant_id, canonical_ids, scan_id=scan_id, origin=origin)
 
     def get_current(self, tenant_id: str, canonical_id: str) -> dict[str, Any] | None:
-        with _tenant_connection(self._pool) as conn:
-            has_ledger_col = _postgres_current_has_ledger_col(conn)
-            payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
-            row = conn.execute(
-                f"""
-                SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                       cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                       updated_at, {payload_select}
-                FROM hub_findings_current
-                WHERE tenant_id = %s AND canonical_id = %s
-                """,  # nosec B608
-                (tenant_id, canonical_id),
-            ).fetchone()
-            if row is None:
-                return None
-            current_row = _postgres_current_row_from_db(row, has_ledger_col=has_ledger_col)
-            return _hydrate_postgres_current_rows(conn, tenant_id, [current_row])[0]
+        return self._current_reads.get(tenant_id, canonical_id)
 
     def list_current_page(
         self,
@@ -1326,170 +988,21 @@ class PostgresComplianceHubStore:
         status: str | None = None,
         scope_metadata: dict[str, Any] | None = None,
     ) -> FindingCursorPage:
-        from agent_bom.api.finding_lifecycle import enriched_finding_payload
-
-        normalized_sort = sort if sort in ("effective_reach", "cvss", "severity", "ordinal") else "effective_reach"
-        where = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
-        if since:
-            # Default read-window: bound to findings last observed within the
-            # window so counts stay honestly "last Nd" at scale (#4009).
-            where.append("last_seen >= %s")
-            params.append(since)
-        if origin is not None:
-            # Materialised column (backfilled) so the exact COUNT(*) rides the
-            # (tenant_id, origin, …) index prefix instead of scanning every row
-            # through payload->>'origin' (#3641).
-            where.append("origin = %s")
-            params.append(origin)
-        if severity is not None:
-            # Match the materialised severity STRING (exact, lowercased) so all
-            # backends agree; ``severity_rank`` stays ORDER-BY-only (#3192). The
-            # ``severity <> ''`` guard lets the partial expression index
-            # idx_hub_findings_current_tenant_severity_ci serve the filter (#3926).
-            where.append("severity <> '' AND LOWER(severity) = %s")
-            params.append(severity.lower())
-        if scan_id is not None:
-            # Materialised column (backfilled from batch_id|scan_id) so the scan
-            # filter + COUNT(*) ride idx_hub_findings_current_tenant_scan instead
-            # of a per-row payload->> extract. The ``scan_id <> ''`` guard lets the
-            # partial index apply (a bound param is not provably non-empty) (#3926).
-            where.append("scan_id <> '' AND scan_id = %s")
-            params.append(scan_id)
-        # Lifecycle-status filter over the sargable ``status`` column. In the base
-        # predicate so it applies in BOTH the fast keyset path and the scoped
-        # batched path (base_where flows into the scope fetch_batch). The
-        # default-open path rides idx_hub_findings_current_tenant_open_reach.
-        status_sql, status_params = status_sql_predicate(status, placeholder="%s")
-        if status_sql:
-            where.append(status_sql)
-            params.extend(status_params)
-        if scope:
-            # provider/account_ref/environment/domain live in the JSON payload and
-            # ``domain`` is a computed overlapping-lens SET — not a single SQL
-            # predicate. Run the scope filter INSIDE the store on pre-enrichment
-            # current rows, batched + keyset-paged, so a scoped page never
-            # materializes the whole tenant. total is None (approximate) here.
-            return self._list_current_page_scoped(
-                base_where=list(where),
-                base_params=list(params),
-                tenant_id=tenant_id,
-                normalized_sort=normalized_sort,
-                limit=limit,
-                cursor=cursor,
-                scope=scope,
-                scope_metadata=scope_metadata,
-            )
-        if cursor:
-            keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, cursor)
-            where.append(keyset_sql.removeprefix(" AND "))
-            params.extend(keyset_params)
-        where_sql = " AND ".join(where)
-        order_sql = _postgres_current_order_clause(normalized_sort)
-        page_limit = max(0, int(limit))
-        fetch_limit = page_limit + 1 if page_limit >= 0 else page_limit
-
-        with _tenant_connection(self._pool) as conn:
-            total: int | None
-            if include_total and not cursor:
-                total_row = conn.execute(
-                    f"SELECT COUNT(*) FROM hub_findings_current WHERE {where_sql}",  # nosec B608
-                    tuple(params),
-                ).fetchone()
-                total = int(total_row[0]) if total_row else 0
-            else:
-                total = None
-            has_ledger_col = _postgres_current_has_ledger_col(conn)
-            payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
-            if cursor:
-                query_params: tuple[Any, ...] = (*params, fetch_limit)
-                limit_sql = "LIMIT %s"
-            else:
-                query_params = (*params, fetch_limit, int(offset))
-                limit_sql = "LIMIT %s OFFSET %s"
-            rows = conn.execute(
-                f"""
-                SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                       cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                       updated_at, {payload_select}
-                FROM hub_findings_current
-                WHERE {where_sql} {order_sql} {limit_sql}
-                """,  # nosec B608
-                query_params,
-            ).fetchall()
-            current_rows = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
-            has_more = page_limit >= 0 and len(current_rows) > page_limit
-            if has_more:
-                current_rows = current_rows[:page_limit]
-            hydrated_rows = _hydrate_postgres_current_rows(conn, tenant_id, current_rows)
-        out: list[dict[str, Any]] = []
-        for current_row in hydrated_rows:
-            out.append(enriched_finding_payload(current_row))
-        next_cursor = None
-        if has_more and hydrated_rows:
-            next_cursor = cursor_from_current_row(hydrated_rows[-1], sort=normalized_sort)
-        return out, total, next_cursor
-
-    def _list_current_page_scoped(
-        self,
-        *,
-        base_where: Sequence[str],
-        base_params: Sequence[Any],
-        tenant_id: str,
-        normalized_sort: str,
-        limit: int,
-        cursor: str | None,
-        scope: Mapping[str, str],
-        scope_metadata: dict[str, Any] | None = None,
-    ) -> FindingCursorPage:
-        from agent_bom.api.finding_lifecycle import enriched_finding_payload
-        from agent_bom.finding_scope import row_matches_scope
-
-        order_sql = _postgres_current_order_clause(normalized_sort)
-
-        with _tenant_connection(self._pool) as conn:
-            has_ledger_col = _postgres_current_has_ledger_col(conn)
-            payload_select = "payload, ledger_finding_id, ledger_ordinal" if has_ledger_col else "payload"
-
-            def fetch_batch(batch_cursor: str | None, batch_limit: int) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]:
-                where = list(base_where)
-                params = list(base_params)
-                if batch_cursor:
-                    keyset_sql, keyset_params = postgres_keyset_clause(normalized_sort, batch_cursor)
-                    where.append(keyset_sql.removeprefix(" AND "))
-                    params.extend(keyset_params)
-                where_sql = " AND ".join(where)
-                fetch_limit = batch_limit + 1
-                rows = conn.execute(
-                    f"""
-                    SELECT canonical_id, first_seen, last_seen, status, severity, severity_rank,
-                           cvss_score, effective_reach_score, scan_count, resolved_at, reopened_at,
-                           updated_at, {payload_select}
-                    FROM hub_findings_current
-                    WHERE {where_sql} {order_sql} LIMIT %s
-                    """,  # nosec B608
-                    (*params, fetch_limit),
-                ).fetchall()
-                current_rows = [_postgres_current_row_from_db(row, has_ledger_col=has_ledger_col) for row in rows]
-                more = len(current_rows) > batch_limit
-                if more:
-                    current_rows = current_rows[:batch_limit]
-                hydrated = _hydrate_postgres_current_rows(conn, tenant_id, current_rows)
-                pairs = [(row, enriched_finding_payload(row)) for row in hydrated]
-                batch_next = cursor_from_current_row(hydrated[-1], sort=normalized_sort) if more and hydrated else None
-                return pairs, batch_next
-
-            page_limit = max(0, int(limit))
-            payloads, next_cursor = collect_scope_filtered_page(
-                fetch_batch,
-                predicate=lambda payload: row_matches_scope(payload, scope),
-                page_limit=page_limit,
-                start_cursor=cursor,
-                sort=normalized_sort,
-                batch_size=scope_filter_batch_size(page_limit),
-                metadata=scope_metadata,
-            )
-        return payloads, None, next_cursor
+        return self._current_reads.list_page(
+            tenant_id,
+            limit=limit,
+            offset=offset,
+            sort=sort,
+            severity=severity,
+            scan_id=scan_id,
+            origin=origin,
+            include_total=include_total,
+            cursor=cursor,
+            since=since,
+            scope=scope,
+            status=status,
+            scope_metadata=scope_metadata,
+        )
 
     def reconcile_current_absent(
         self,
@@ -1499,6 +1012,7 @@ class PostgresComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             total = self._reconcile_current_absent_conn(
                 conn,
@@ -1523,37 +1037,7 @@ class PostgresComplianceHubStore:
         observed_at: str,
         scope_source: str | None = None,
     ) -> int:
-        """Resolve open findings absent from the batch on ``conn`` — no commit.
-
-        Shared by the committing :meth:`reconcile_current_absent` and the
-        single-transaction :meth:`ingest_batch_atomic`.
-        """
-        now = _now_utc_iso()
-        where = ["tenant_id = %s", "status IN ('open', 'reopened')"]
-        params: list[Any] = [tenant_id]
-        if scope_source is not None:
-            where.append("COALESCE(payload->>'ingest_source', payload->>'source') = %s")
-            params.append(scope_source)
-        where_sql = " AND ".join(where)
-        total = 0
-        rows = conn.execute(
-            f"SELECT canonical_id FROM hub_findings_current WHERE {where_sql}",  # nosec B608
-            tuple(params),
-        ).fetchall()
-        open_ids = {str(row[0]) for row in rows}
-        absent = sorted(open_ids - present_canonical_ids)
-        if not absent:
-            return 0
-        for offset in range(0, len(absent), RECONCILE_ABSENT_CHUNK):
-            chunk = absent[offset : offset + RECONCILE_ABSENT_CHUNK]
-            placeholders = ",".join("%s" for _ in chunk)
-            cur = conn.execute(
-                f"""
-                UPDATE hub_findings_current
-                SET status = 'resolved', resolved_at = %s, updated_at = %s
-                WHERE {where_sql} AND canonical_id IN ({placeholders})
-                """,  # nosec B608
-                (observed_at, now, *params, *chunk),
-            )
-            total += int(cur.rowcount or 0)
-        return total
+        tx = finding_write_session(conn, "postgres", tenant_id)
+        return reconcile_current(
+            tx, "postgres", tenant_id, present_canonical_ids=present_canonical_ids, observed_at=observed_at, scope_source=scope_source
+        )

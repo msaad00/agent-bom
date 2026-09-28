@@ -373,3 +373,18 @@ def test_borrowed_sqlite_snapshot_does_not_rollback_an_active_caller_transaction
     assert conn.execute("PRAGMA query_only").fetchone()[0] == 0
     conn.rollback()
     conn.close()
+
+
+def test_batched_returning_tracks_only_inserted_rows_and_rolls_back(backend: SqlBackend, prefix: str) -> None:
+    tenant = prefix + "returning"
+    statement = (
+        "INSERT INTO tenant_quota_overrides (tenant_id, updated_at, data) VALUES (?, ?, ?) ON CONFLICT DO NOTHING RETURNING tenant_id"
+    )
+    with as_tenant(tenant):
+        with pytest.raises(RuntimeError, match="rollback"):
+            with backend.transaction() as tx:
+                assert tx.executemany_returning(statement, [(tenant, "t1", "{}"), (tenant, "t2", "{}")]) == [(tenant,)]
+                assert tx.executemany_returning(statement, []) == []
+                raise RuntimeError("rollback")
+        with backend.transaction(read_only=True) as tx:
+            assert tx.execute("SELECT COUNT(*) FROM tenant_quota_overrides WHERE tenant_id = ?", (tenant,)).fetchone()[0] == 0

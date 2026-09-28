@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
+from agent_bom.api.hub_payload_codec import decode_hub_payload
 from agent_bom.api.hub_reference_payload import (
     batch_reference_keys,
     extract_reference_blobs,
     hydrate_reference_payload,
     resolve_cve_id,
 )
+from agent_bom.api.storage.finding_payloads import persist_references
+from agent_bom.api.storage.sql import connection_session
 from agent_bom.config import HUB_REFERENCE_NORMALIZE
 
 _HUB_CVE_INTEL_DDL = """
@@ -101,78 +102,18 @@ def normalize_finding_payload_for_store(tenant_id: str, payload: Mapping[str, An
 
 
 def persist_finding_references_sqlite(conn: sqlite3.Connection, tenant_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-    if not HUB_REFERENCE_NORMALIZE:
-        return dict(payload)
+
     ensure_sqlite_reference_tables(conn)
-    slim, intel_blob, framework_blob = extract_reference_blobs(payload)
-    now = _now_iso()
-    if intel_blob:
-        cve_id = resolve_cve_id(payload)
-        if cve_id:
-            conn.execute(
-                """
-                INSERT INTO hub_cve_intel (tenant_id, cve_id, payload, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(tenant_id, cve_id) DO UPDATE SET
-                    payload = excluded.payload,
-                    updated_at = excluded.updated_at
-                """,
-                (tenant_id, cve_id, encode_hub_payload(intel_blob), now),
-            )
-    if framework_blob:
-        fw_ref = str(slim.get("framework_ref") or "")
-        if fw_ref:
-            conn.execute(
-                """
-                INSERT INTO hub_framework_refs (tenant_id, framework_ref, payload, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(tenant_id, framework_ref) DO UPDATE SET
-                    payload = excluded.payload,
-                    updated_at = excluded.updated_at
-                """,
-                (tenant_id, fw_ref, encode_hub_payload(framework_blob), now),
-            )
-    return slim
+    return persist_references(connection_session(conn, "sqlite"), "sqlite", tenant_id, payload)
 
 
 def persist_finding_references_postgres(
     conn: Any, tenant_id: str, payload: Mapping[str, Any], *, ensure_tables: bool = False
 ) -> dict[str, Any]:
-    if not HUB_REFERENCE_NORMALIZE:
-        return dict(payload)
+
     if ensure_tables:
-        # Explicit isolated-development bootstrap only. Migrated deployments
-        # create these tables before the API starts and never request runtime DDL.
         ensure_postgres_reference_tables(conn)
-    slim, intel_blob, framework_blob = extract_reference_blobs(payload)
-    now = _now_iso()
-    if intel_blob:
-        cve_id = resolve_cve_id(payload)
-        if cve_id:
-            conn.execute(
-                """
-                INSERT INTO hub_cve_intel (tenant_id, cve_id, payload, updated_at)
-                VALUES (%s, %s, %s::jsonb, %s)
-                ON CONFLICT (tenant_id, cve_id) DO UPDATE SET
-                    payload = EXCLUDED.payload,
-                    updated_at = EXCLUDED.updated_at
-                """,
-                (tenant_id, cve_id, json.dumps(intel_blob, sort_keys=True), now),
-            )
-    if framework_blob:
-        fw_ref = str(slim.get("framework_ref") or "")
-        if fw_ref:
-            conn.execute(
-                """
-                INSERT INTO hub_framework_refs (tenant_id, framework_ref, payload, updated_at)
-                VALUES (%s, %s, %s::jsonb, %s)
-                ON CONFLICT (tenant_id, framework_ref) DO UPDATE SET
-                    payload = EXCLUDED.payload,
-                    updated_at = EXCLUDED.updated_at
-                """,
-                (tenant_id, fw_ref, json.dumps(framework_blob, sort_keys=True), now),
-            )
-    return slim
+    return persist_references(connection_session(conn, "postgres"), "postgres", tenant_id, payload)
 
 
 def _upsert_cve_intel_memory(tenant_id: str, cve_id: str, blob: dict[str, Any]) -> None:

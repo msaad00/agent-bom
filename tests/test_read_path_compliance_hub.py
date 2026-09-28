@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from starlette.testclient import TestClient
 
-from agent_bom.api.compliance_hub_store import reset_compliance_hub_store
+from agent_bom.api.compliance_hub_store import InMemoryComplianceHubStore, reset_compliance_hub_store, set_compliance_hub_store
 from agent_bom.api.server import app
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
@@ -55,6 +55,7 @@ def _reset(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_OVERVIEW_CACHE_TTL_SECONDS", "0")
     monkeypatch.setenv("AGENT_BOM_HUB_OVERVIEW_CACHE_TTL_SECONDS", "0")
     reset_compliance_hub_store()
+    set_compliance_hub_store(InMemoryComplianceHubStore())
     set_job_store(InMemoryJobStore())
     hub_overview_cache.reset_hub_overview_cache()
     overview_routes._reset_overview_cache()
@@ -569,6 +570,7 @@ class TestOrdinalKeyset:
 
         from agent_bom.api import postgres_compliance_hub as postgres_module
         from agent_bom.api.finding_cursor import encode_finding_cursor
+        from agent_bom.api.storage import sql as storage_sql
 
         class _Cursor:
             def __init__(self, rows):
@@ -584,6 +586,9 @@ class TestOrdinalKeyset:
             def __init__(self):
                 self.executed: list[tuple[str, object]] = []
 
+            def rollback(self):
+                pass
+
             def execute(self, sql, params=None):
                 self.executed.append((sql, params))
                 normalized = " ".join(sql.split()).lower()
@@ -596,10 +601,11 @@ class TestOrdinalKeyset:
         conn = _Conn()
 
         @contextmanager
-        def _connection(_pool):
+        def _connection(_pool, *, repeatable_read=False):
+            assert repeatable_read
             yield conn
 
-        monkeypatch.setattr(postgres_module, "_tenant_connection", _connection)
+        monkeypatch.setattr(storage_sql, "_tenant_connection", _connection)
         store = postgres_module.PostgresComplianceHubStore.__new__(postgres_module.PostgresComplianceHubStore)
         store._pool = object()
         cursor = encode_finding_cursor(

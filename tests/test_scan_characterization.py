@@ -14,11 +14,14 @@ Regenerate after an intentional behaviour change with::
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import re
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -107,27 +110,31 @@ CASES: dict[str, dict[str, Any]] = {
 }
 
 
-def _case_root(name: str) -> Path:
-    # Output redaction treats high-entropy path segments (such as macOS
-    # /var/folders temp directories) as secrets, so the fixture lives under a
-    # low-entropy root that renders the same on every machine.
-    root = Path("/tmp").resolve() / f"abom-scan-{os.getpid()}-{name}"
-    shutil.rmtree(root, ignore_errors=True)
-    root.mkdir(parents=True)
-    return root
+@contextlib.contextmanager
+def _case_root() -> Iterator[Path]:
+    # Output redaction scores stringified values for entropy, so any per-run
+    # digits in the fixture path (pids, temp names) can tip a project path into
+    # a redacted secret. Use one fixed path and serialize cases across processes.
+    base = Path("/tmp").resolve()
+    with open(base / "abom-scan.lock", "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        root = base / "abom-scan"
+        shutil.rmtree(root, ignore_errors=True)
+        root.mkdir(parents=True)
+        try:
+            yield root
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def run_case(name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr("agent_bom.db.local_analytics.record_scan_report_best_effort", lambda *_a, **_k: None)
-    root = _case_root(name)
-    try:
+    with _case_root() as root:
         project = _project_fixture(root)
         out = root / f"{name}{_EXTENSIONS[CASES[name]['fmt']]}"
         args = [a.replace("{project}", str(project)) for a in CASES[name]["args"]]
         result = CliRunner().invoke(main, [*_BASE, *args, "--output", str(out)], catch_exceptions=False)
         document = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
     normalized = normalize(document, str(root))
     if CASES[name].get("digest") and normalized is not None:
         # Large demo documents and gate variants pin a digest plus the summary;

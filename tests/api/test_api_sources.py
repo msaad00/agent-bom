@@ -938,7 +938,7 @@ def test_credential_update_explicit_null_purges_legacy_secret_reference(source_c
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    _stores._credential_ref_store.put(legacy)
+    _stores._credential_ref_store.put(legacy, tenant_id="tenant-alpha")
 
     cleared = source_client.put(
         "/v1/credentials/legacy-secret-reference",
@@ -964,7 +964,7 @@ def test_credential_retirement_purges_legacy_secret_reference_at_rest(source_cli
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    _stores._credential_ref_store.put(legacy)
+    _stores._credential_ref_store.put(legacy, tenant_id="tenant-alpha")
 
     retired = source_client.delete(
         "/v1/credentials/legacy-secret-retire",
@@ -1012,7 +1012,7 @@ def test_repeated_credential_retirement_purges_legacy_secret_reference_at_rest_a
         created_at="2026-08-27T00:00:00+00:00",
         updated_at="2026-08-27T00:00:00+00:00",
     )
-    credential_store.put(legacy)
+    credential_store.put(legacy, tenant_id="tenant-alpha")
 
     try:
         retired = source_client.delete(
@@ -1071,7 +1071,8 @@ def test_credential_retirement_purges_nested_encoded_legacy_secret_at_rest(
             external_ref=external_ref,
             created_at="2026-08-27T00:00:00+00:00",
             updated_at="2026-08-27T00:00:00+00:00",
-        )
+        ),
+        tenant_id="tenant-alpha",
     )
 
     retired = source_client.delete(f"/v1/credentials/{credential_ref_id}", headers=ADMIN_HEADERS)
@@ -1268,11 +1269,11 @@ def test_credential_retire_serializes_with_source_attachment(source_client: Test
     release_retirement = Event()
 
     class BlockingCredentialStore:
-        def put(self, credential):
+        def put(self, credential, *, tenant_id):
             if credential.status.value == "retired":
                 retirement_reached_put.set()
                 assert release_retirement.wait(timeout=5)
-            return base_store.put(credential)
+            return base_store.put(credential, tenant_id=tenant_id)
 
         def get(self, credential_ref_id, *, tenant_id):
             credential = base_store.get(credential_ref_id, tenant_id=tenant_id)
@@ -1281,7 +1282,7 @@ def test_credential_retire_serializes_with_source_attachment(source_client: Test
         def delete(self, credential_ref_id, *, tenant_id):
             return base_store.delete(credential_ref_id, tenant_id=tenant_id)
 
-        def list_all(self, tenant_id=None):
+        def list_all(self, tenant_id):
             return base_store.list_all(tenant_id=tenant_id)
 
     _stores.set_credential_ref_store(BlockingCredentialStore())

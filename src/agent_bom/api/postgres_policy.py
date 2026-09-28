@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.api.source_postgres import PostgresSourceStore as PostgresSourceStore
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 from .postgres_common import (
     _ensure_tenant_rls,
@@ -484,17 +485,18 @@ class PostgresCredentialRefStore:
             _ensure_tenant_rls(conn, "credential_refs", "tenant_id")
             conn.commit()
 
-    def put(self, credential: CredentialRefRecord) -> None:
+    def put(self, credential: CredentialRefRecord, *, tenant_id: str) -> None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        if credential.tenant_id != tenant:
+            raise ValueError("Credential tenant does not match the authorized tenant")
         data = credential.model_dump_json()
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO credential_refs (credential_ref_id, enabled, tenant_id, updated_at, data)
                    VALUES (%s, %s, %s, %s, %s)
                    ON CONFLICT (credential_ref_id) DO UPDATE SET
-                     enabled = EXCLUDED.enabled,
-                     tenant_id = EXCLUDED.tenant_id,
-                     updated_at = EXCLUDED.updated_at,
-                     data = EXCLUDED.data""",
+                     enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at, data = EXCLUDED.data
+                   WHERE credential_refs.tenant_id = EXCLUDED.tenant_id""",
                 (
                     credential.credential_ref_id,
                     int(credential.enabled),
@@ -504,14 +506,17 @@ class PostgresCredentialRefStore:
                 ),
             )
             conn.commit()
+            if cursor.rowcount == 0:
+                raise ValueError("Credential identity belongs to a different tenant")
 
     def get(self, credential_ref_id: str, *, tenant_id: str) -> CredentialRefRecord | None:
         from .models import CredentialRefRecord
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 "SELECT data FROM credential_refs WHERE credential_ref_id = %s AND tenant_id = %s",
-                (credential_ref_id, tenant_id),
+                (credential_ref_id, tenant),
             ).fetchone()
             if row is None:
                 return None
@@ -519,25 +524,24 @@ class PostgresCredentialRefStore:
             return CredentialRefRecord.model_validate_json(raw)
 
     def delete(self, credential_ref_id: str, *, tenant_id: str) -> bool:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 "DELETE FROM credential_refs WHERE credential_ref_id = %s AND tenant_id = %s",
-                (credential_ref_id, tenant_id),
+                (credential_ref_id, tenant),
             )
             conn.commit()
             return int(cursor.rowcount) > 0
 
-    def list_all(self, tenant_id: str | None = None) -> list:
+    def list_all(self, tenant_id: str) -> list:
         from .models import CredentialRefRecord
 
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                rows = conn.execute("SELECT data FROM credential_refs ORDER BY updated_at DESC, credential_ref_id").fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT data FROM credential_refs
-                       WHERE tenant_id = %s
-                       ORDER BY updated_at DESC, credential_ref_id""",
-                    (tenant_id,),
-                ).fetchall()
+            rows = conn.execute(
+                """SELECT data FROM credential_refs
+                   WHERE tenant_id = %s
+                   ORDER BY updated_at DESC, credential_ref_id""",
+                (tenant,),
+            ).fetchall()
             return [CredentialRefRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]

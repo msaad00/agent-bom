@@ -140,7 +140,8 @@ def tenant_stores():
                 display_name=f"Credential {tenant_id}",
                 provider="aws",
                 external_ref="secret/example",
-            )
+            ),
+            tenant_id=tenant_id,
         )
         keys.add(
             create_api_key_record(

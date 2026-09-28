@@ -1460,7 +1460,10 @@ for (const theme of ["light", "dark"] as const) {
     const sequence = detail.getByTestId("exposure-path-sequence");
     await expect(sequence.locator("li")).toHaveCount(10);
     await expect(sequence.locator("li").filter({ visible: true }).first()).toBeVisible();
-    expect((await sequence.locator("li").filter({ visible: true }).first().boundingBox())!.width).toBeGreaterThanOrEqual(180);
+    await expect.poll(async () => {
+      const box = await sequence.locator("li").filter({ visible: true }).first().boundingBox();
+      return box?.width ?? 0;
+    }).toBeGreaterThanOrEqual(180);
     await detail.getByRole("button", { name: "Graph", exact: true }).click();
     const canvas = page.getByTestId("security-graph-investigation");
     await expect(canvas.locator(".react-flow__node")).toHaveCount(10);

@@ -579,8 +579,12 @@ def reset_pool() -> None:
 atexit.register(reset_pool)
 
 
-def _apply_tenant_session(conn: Connection) -> None:
+def _apply_tenant_session(conn: Connection, *, repeatable_read: bool = False) -> None:
     """Attach tenant session settings used by Postgres RLS policies."""
+    if repeatable_read:
+        # Isolation must be set before the set_config SELECTs establish the
+        # read snapshot. The option is transaction-local and read-only.
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
     conn.execute("SELECT set_config('app.tenant_id', %s, true)", (_current_tenant.get(),))
     conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("1" if _bypass_tenant_rls.get() else "0",))
     if POSTGRES_STATEMENT_TIMEOUT_MS > 0:
@@ -645,16 +649,12 @@ def _tenant_connection(pool: ConnectionPool, *, repeatable_read: bool = False) -
             "Tenant RLS bypass requires an explicit _maintenance_connection(); the application pool cannot self-authorize maintenance."
         )
     with pool.connection() as conn:
-        if repeatable_read:
-            # Isolation must be set before tenant set_config SELECTs establish
-            # the read snapshot. The option is transaction-local and read-only.
-            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
-        _apply_tenant_session(conn)
+        _apply_tenant_session(conn, repeatable_read=repeatable_read)
         yield conn
 
 
 @contextmanager
-def _maintenance_connection(pool: ConnectionPool | None = None) -> Iterator[Connection]:
+def _maintenance_connection(pool: ConnectionPool | None = None, *, repeatable_read: bool = False) -> Iterator[Connection]:
     """Open the dedicated maintenance connection inside a scoped bypass context."""
     if not _bypass_tenant_rls.get():
         raise MaintenanceRoleConfigurationError("A Postgres maintenance connection is valid only inside bypass_tenant_rls().")
@@ -662,5 +662,5 @@ def _maintenance_connection(pool: ConnectionPool | None = None) -> Iterator[Conn
     if pool is not None and pool is _pool:
         raise MaintenanceRoleConfigurationError("The application pool cannot be used as a maintenance pool.")
     with maintenance_pool.connection() as conn:
-        _apply_tenant_session(conn)
+        _apply_tenant_session(conn, repeatable_read=repeatable_read)
         yield conn

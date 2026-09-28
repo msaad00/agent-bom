@@ -313,7 +313,7 @@ def _get_tenant_graph_retention_store() -> TenantGraphRetentionStore:
         with _store_lock:
             if _tenant_graph_retention_store is None:
                 if os.environ.get("AGENT_BOM_POSTGRES_URL"):
-                    from agent_bom.api.postgres_tenant_graph_retention import PostgresTenantGraphRetentionStore
+                    from agent_bom.api.tenant_graph_retention_store import PostgresTenantGraphRetentionStore
 
                     _tenant_graph_retention_store = PostgresTenantGraphRetentionStore()
                 elif os.environ.get("AGENT_BOM_DB"):

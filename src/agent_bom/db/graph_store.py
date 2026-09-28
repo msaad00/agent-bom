@@ -568,7 +568,7 @@ def purge_expired_graph_snapshots(
     ``attack_paths`` and ``interaction_risks`` for the same ``(scan_id,
     tenant_id)`` pair, plus the API search index when present.
     """
-    from agent_bom.api.tenant_graph_retention import resolve_graph_retention_days
+    from agent_bom.api.tenant_graph_retention import resolve_graph_retention_days_by_tenant as by_tenant
 
     fixed_days = None if retention_days is None else max(1, int(retention_days))
     now_dt = now or datetime.now(timezone.utc)
@@ -583,10 +583,10 @@ def purge_expired_graph_snapshots(
     rows = conn.execute(query, params).fetchall()
 
     expired: list[tuple[str, str]] = []
-    resolved_days: dict[str, int] = {}
+    resolved_days = {} if fixed_days is not None else by_tenant({str(row[1]) for row in rows}, all_tenants=tenant_id is None)
     for row in rows:
         tid = str(row[1])
-        days = fixed_days if fixed_days is not None else resolved_days.setdefault(tid, resolve_graph_retention_days(tid))
+        days = fixed_days if fixed_days is not None else resolved_days[tid]
         cutoff = now_dt - timedelta(days=days)
         created = _parse_iso_timestamp(row[2])
         if created is not None and created < cutoff:
@@ -1204,7 +1204,7 @@ def save_graph_streaming(
         result = purge_expired_graph_snapshots(conn)
         if result["purged_count"]:
             logger.info("Purged %d expired graph snapshot(s)", result["purged_count"])
-    except sqlite3.Error as exc:
+    except Exception as exc:  # noqa: BLE001 - includes retention-store errors; nothing is deleted before they raise
         logger.warning("Graph snapshot retention purge skipped: %s", sanitize_text(str(exc)))
 
     return {"nodes": node_count, "edges": edge_count}

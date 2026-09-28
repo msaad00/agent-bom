@@ -193,6 +193,8 @@ def test_delegation_sources_select_lifecycle_and_authority_contracts(tmp_path):
 def test_jit_grant_changes_select_store_lifecycle_and_runtime_callers(tmp_path):
     names = (
         "test_jit_grant_tenant_boundary.py",
+        "test_identity_policy_tenant_boundary.py",
+        "test_device_posture.py",
         "test_nhi_lifecycle_enforcement.py",
         "test_durable_store_default.py",
         "test_graph_governance_overlay.py",
@@ -201,5 +203,5 @@ def test_jit_grant_changes_select_store_lifecycle_and_runtime_callers(tmp_path):
     expected = sorted(tmp_path / "tests" / name for name in names)
     for path in expected:
         _write(path, 1)
-    for source in ("identity_grants.py", "agent_identity_store.py", "postgres_agent_identity.py"):
+    for source in ("identity_grants.py", "identity_policies.py", "agent_identity_store.py", "postgres_agent_identity.py"):
         assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == expected

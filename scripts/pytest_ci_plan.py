@@ -143,6 +143,7 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             "src/agent_bom/api/delegation_service.py",
             "src/agent_bom/api/agent_identity_store.py",
             "src/agent_bom/api/identity_grants.py",
+            "src/agent_bom/api/identity_policies.py",
             "src/agent_bom/api/postgres_agent_identity.py",
             "src/agent_bom/api/routes/identities.py",
         }:
@@ -154,6 +155,8 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                     "tests/test_agent_identity_lifecycle.py",
                     "tests/test_identity_governance_3687.py",
                     "tests/test_jit_grant_tenant_boundary.py",
+                    "tests/test_identity_policy_tenant_boundary.py",
+                    "tests/test_device_posture.py",
                     "tests/test_nhi_lifecycle_enforcement.py",
                     "tests/test_durable_store_default.py",
                     "tests/test_graph_governance_overlay.py",

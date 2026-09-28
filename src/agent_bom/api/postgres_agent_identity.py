@@ -30,6 +30,7 @@ from agent_bom.api.agent_identity_store import (
     ConditionalAccessPolicy,
 )
 from agent_bom.api.identity_grants import require_grant_tenant
+from agent_bom.api.identity_policies import require_policy_tenant
 from agent_bom.api.postgres_common import (
     ConnectionPool,
     _ensure_tenant_rls,
@@ -297,9 +298,10 @@ class PostgresAgentIdentityStore:
 
     # ── conditional-access policies ─────────────────────────────────────────
 
-    def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None:
+    def put_conditional_policy(self, policy: ConditionalAccessPolicy, *, tenant_id: str) -> None:
+        tenant = require_policy_tenant(policy, tenant_id)
         with _tenant_connection(self._pool) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO agent_conditional_access_policies
                     (policy_id, tenant_id, status, priority, created_at, data)
@@ -308,22 +310,33 @@ class PostgresAgentIdentityStore:
                     status = EXCLUDED.status,
                     priority = EXCLUDED.priority,
                     data = EXCLUDED.data
+                WHERE agent_conditional_access_policies.tenant_id = EXCLUDED.tenant_id
                 """,
                 (
                     policy.policy_id,
-                    policy.tenant_id,
+                    tenant,
                     policy.status,
                     int(policy.priority),
                     policy.created_at,
                     json.dumps(asdict(policy), sort_keys=True),
                 ),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("Conditional policy identity belongs to another tenant")
             conn.commit()
 
-    def get_conditional_policy(self, policy_id: str) -> ConditionalAccessPolicy | None:
+    def get_conditional_policy(self, policy_id: str, *, tenant_id: str) -> ConditionalAccessPolicy | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM agent_conditional_access_policies WHERE policy_id = %s", (policy_id,)).fetchone()
-        return ConditionalAccessPolicy(**json.loads(row[0])) if row else None
+            row = conn.execute(
+                "SELECT data FROM agent_conditional_access_policies WHERE policy_id = %s AND tenant_id = %s", (policy_id, tenant)
+            ).fetchone()
+        policy = ConditionalAccessPolicy(**json.loads(row[0])) if row else None
+        if policy is not None:
+            require_policy_tenant(policy, tenant)
+            if policy.policy_id != policy_id:
+                raise ValueError("Conditional policy record identity does not match")
+        return policy
 
     def list_conditional_policies(
         self,
@@ -332,6 +345,7 @@ class PostgresAgentIdentityStore:
         include_disabled: bool = False,
         limit: int = 200,
     ) -> builtins.list[ConditionalAccessPolicy]:
+        tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             if include_disabled:
                 rows = conn.execute(

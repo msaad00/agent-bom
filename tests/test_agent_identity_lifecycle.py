@@ -469,7 +469,7 @@ def test_deny_policy_wins_over_require():
 def test_disabled_policy_is_ignored():
     store = InMemoryAgentIdentityStore()
     policy = create_conditional_policy(store, tenant_id="t1", name="prod-only", effect="require", allowed_environments=["prod"])
-    set_conditional_policy_status(store, policy.policy_id, status="disabled")
+    set_conditional_policy_status(store, policy.policy_id, tenant_id=policy.tenant_id, status="disabled")
     active = store.list_conditional_policies("t1")
     assert active == []
     allowed, _, _ = evaluate_conditional_access(store.list_conditional_policies("t1"), AccessContext(environment="dev"))

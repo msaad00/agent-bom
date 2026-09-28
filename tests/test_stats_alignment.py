@@ -25,12 +25,10 @@ SRC = ROOT / "src" / "agent_bom"
 
 
 def _count_mcp_tools() -> int:
-    """Count @mcp.tool decorators across MCP server registration modules."""
-    total = 0
-    for path in sorted(SRC.glob("mcp_server*.py")):
-        text = path.read_text()
-        total += len(re.findall(r"@mcp\.tool", text))
-    return total
+    """Count registrations across top-level and package-owned tool modules."""
+    from agent_bom.mcp_tools.catalog import registered_mcp_tool_decorator_names
+
+    return len(registered_mcp_tool_decorator_names())
 
 
 def _count_server_card_tools() -> int:

@@ -305,6 +305,7 @@ def test_server_card_tools_expose_capability_classes():
         "approve_exception",
         # Assigns, tickets, and verifies persisted remediation campaigns.
         "risk_campaign_workflow",
+        "endpoint_sync",
     }
     process_execution_tools = {"tool_risk_assessment"}
     # Writes that tear down or invalidate state advertise destructiveHint; issuing
@@ -329,6 +330,7 @@ def test_server_card_tools_expose_capability_classes():
         "risk_campaign_workflow",
         "cloud_side_scan",
         "tool_risk_assessment",
+        "endpoint_sync",
     }
     card = build_server_card()
     for tool in card["tools"]:
@@ -395,6 +397,7 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
         "cloud_side_scan",
         "create_ticket",
         "diff",
+        "endpoint_sync",
         "findings_triage",
         "graph_correlate",
         "identity_grant_jit",
@@ -432,30 +435,14 @@ def test_mcp_docs_match_resource_and_prompt_catalog():
 
 
 def test_server_card_tool_count_matches_decorators():
-    """_SERVER_CARD_TOOLS must list every @mcp.tool across MCP tool surfaces."""
-    import inspect
-    import re
-
-    from agent_bom import (
-        mcp_server_operator_tools,
-        mcp_server_runtime_catalog,
-        mcp_server_specialized,
-        mcp_server_ticketing_tools,
-    )
+    """The card covers registrations in both server and tool-package modules."""
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
+    from agent_bom.mcp_tools.catalog import registered_mcp_tool_decorator_names
 
-    source = (
-        inspect.getsource(create_mcp_server)
-        + inspect.getsource(mcp_server_operator_tools)
-        + inspect.getsource(mcp_server_runtime_catalog)
-        + inspect.getsource(mcp_server_specialized)
-        + inspect.getsource(mcp_server_ticketing_tools)
-    )
-    decorator_count = len(re.findall(r"@mcp\.tool", source))
-    card_count = len(_SERVER_CARD_TOOLS)
-    assert card_count == decorator_count, (
-        f"_SERVER_CARD_TOOLS has {card_count} entries but MCP server surfaces define {decorator_count} @mcp.tool decorators"
-    )
+    names = {tool["name"] for tool in _SERVER_CARD_TOOLS}
+    assert len(names) == len(_SERVER_CARD_TOOLS)
+    assert names == registered_mcp_tool_decorator_names()
+    assert names == set(create_mcp_server(profile="full")._tool_manager._tools)
 
 
 def test_server_card_capabilities():

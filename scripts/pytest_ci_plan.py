@@ -29,6 +29,7 @@ AUTHORIZATION_SOURCES = frozenset(
     }
 )
 AUTHORIZATION_CONTRACTS = (
+    "tests/test_runtime_source_auth_contract.py",
     "tests/test_api_route_policy.py",
     "tests/api/test_operation_scope_coverage.py",
     "tests/api/test_session_authorization_backends.py",
@@ -38,6 +39,9 @@ AUTHORIZATION_CONTRACTS = (
     "tests/test_websocket_auth_fails_closed.py",
 )
 MCP_TOOL_CONTRACTS = (
+    "tests/test_deployment.py",
+    "tests/test_stats_alignment.py",
+    "tests/test_fleet_scan.py",
     "tests/test_mcp_tool_output_contract.py",
     "tests/test_mcp_strict_args.py",
 )

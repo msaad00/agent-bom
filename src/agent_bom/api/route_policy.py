@@ -17,6 +17,7 @@ class RoutePolicy:
     path_prefix: str
     minimum_role: Literal["admin", "analyst", "viewer"]
     scope: str | None = None
+    exact: bool = False
 
 
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
@@ -121,6 +122,8 @@ ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     RoutePolicy("PATCH", "/v1/endpoint-connectors/", "admin", "connectors:write"),
     RoutePolicy("PUT", "/v1/endpoint-connectors/", "admin", "connectors:write"),
     RoutePolicy("GET", "/v1/cloud/connections", "viewer", "cloud.connection:read"),
+    # The route additionally binds the exact source id and credential lifetime.
+    RoutePolicy("POST", "/v1/cloud/runtime-evidence/ingest", "admin", "runtime:ingest:*", exact=True),
     RoutePolicy("POST", "/v1/cloud/connections", "admin", "cloud.connection:write"),
     RoutePolicy("PATCH", "/v1/cloud/connections/", "admin", "cloud.connection:write"),
     RoutePolicy("DELETE", "/v1/cloud/connections/", "admin", "cloud.connection:write"),
@@ -232,7 +235,11 @@ def _matches(path: str, prefix: str) -> bool:
 
 def route_policy(method: str, path: str) -> RoutePolicy | None:
     normalized_method = _method(method)
-    candidates = (rule for rule in ROUTE_POLICIES if rule.method == normalized_method and _matches(path, rule.path_prefix))
+    candidates = (
+        rule
+        for rule in ROUTE_POLICIES
+        if rule.method == normalized_method and _matches(path, rule.path_prefix) and (not rule.exact or path == rule.path_prefix)
+    )
     return max(candidates, key=lambda rule: len(rule.path_prefix), default=None)
 
 
@@ -264,6 +271,10 @@ def request_scopes_allow(scopes: list[str], method: str, path: str) -> bool:
     if _method(method) == "GET" and path == "/v1/auth/me":
         return True
     scope = required_scope(method, path)
+    if scope == "runtime:ingest:*":
+        # Admission only: the handler checks the exact encoded source grant,
+        # registered tenant/provider/account, revocation and one-hour lifetime.
+        return any(value.startswith("runtime:ingest:") and value.removeprefix("runtime:ingest:") for value in scopes)
     return scope is not None and scopes_allow(scopes, scope)
 
 

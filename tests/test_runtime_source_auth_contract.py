@@ -75,7 +75,7 @@ def _payload(**overrides):
     return value
 
 
-@pytest.mark.parametrize("scopes", [[], ["*"], ["runtime:*"], ["runtime:ingest:other"]])
+@pytest.mark.parametrize("scopes", [[], ["*"], ["runtime:*"], ["runtime:ingest:*"], ["cloud:write"], ["runtime:ingest:other"]])
 def test_api_rejects_unbound_source_scope_before_storage(ingest_client, scopes):
     client, store = ingest_client
     with patch.object(store, "put_batch", wraps=store.put_batch) as persist:

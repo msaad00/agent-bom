@@ -73,7 +73,7 @@ def test_build_vulnerabilities_filters_invalid_cwe_ids():
     ]
 
     vulns = build_vulnerabilities(vuln_data, pkg)
-    assert vulns[0].cwe_ids == ["CWE-89", "CWE-79"]
+    assert vulns[0].cwe_ids == ["CWE-79", "CWE-89"]
 
 
 # ── CWE-based compliance tagging (no ecosystem guard) ───────────────────────

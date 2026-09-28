@@ -108,6 +108,19 @@ For upgrades, inspect the catalog and update narrowly scoped integration keys
 before switching traffic. Rolling back restores the earlier scope gaps; prefer
 correcting a missing explicit grant over reverting enforcement.
 
+## MCP gateway
+
+The gateway requires a non-empty string tenant on a verified API key. Missing,
+blank or non-string bindings fail closed with generic HTTP 401 before upstream
+lookup, policy evaluation or audit delivery. An explicit `default` is valid.
+Correct the stored key binding before retrying; rolling back restores the
+implicit default-tenant fallback.
+
+For static gateway tokens and explicitly permitted no-auth deployments,
+`AGENT_BOM_TENANT_ID` selects the tenant, with the existing `default` fallback
+when unset. Routing, identity revocation checks, policy and audit all retain that
+same selected tenant. Caller-supplied tenant headers do not change it.
+
 ## CLI
 
 The CLI runs out-of-band; there is no authenticated request to derive

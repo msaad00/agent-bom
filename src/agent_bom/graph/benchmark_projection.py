@@ -92,7 +92,7 @@ def _project_check(
             dimensions=NodeDimensions(cloud_provider=cloud_provider),
         )
     )
-    _project_resources(graph, resource_ids, section_key, cloud_provider, misconfig_id, cloud_resource_alias_index)
+    _project_resources(graph, resource_ids, section_key, cloud_provider, misconfig_id, cloud_resource_alias_index, cloud_account_id)
     _project_account(graph, resource_ids, section_key, cloud_provider, cloud_account_id, misconfig_id)
 
 
@@ -103,6 +103,7 @@ def _project_resources(
     cloud_provider: str,
     misconfig_id: str,
     cloud_resource_alias_index: _CloudResourceAliasIndex,
+    cloud_account_id: str,
 ) -> None:
     for resource_id in sorted(set(resource_ids)):
         resource_node_id = _resolve_cloud_resource_node_id(
@@ -110,6 +111,7 @@ def _project_resources(
             cloud_provider,
             resource_id,
             alias_index=cloud_resource_alias_index,
+            account_id=cloud_account_id,
         )
         canonical_resource = graph.get_node(resource_node_id) if resource_node_id else None
         resource_node_id = resource_node_id or f"cloud_resource:{cloud_provider or 'generic'}:{resource_id}"
@@ -139,7 +141,7 @@ def _project_resources(
         graph.add_node(
             UnifiedNode(
                 id=resource_node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
+                entity_type=canonical_resource.entity_type if canonical_resource is not None else EntityType.CLOUD_RESOURCE,
                 label=canonical_resource.label if canonical_resource is not None else resource_id,
                 attributes=attributes,
                 data_sources=[section_key],

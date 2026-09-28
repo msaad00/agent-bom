@@ -135,7 +135,21 @@ def test_gateway_http_helpers_cannot_depend_on_composition_root():
 
 
 def test_report_projections_cannot_depend_on_orchestration_or_api():
-    for module in ("package_projection", "runtime_projection", "projection_support"):
+    for module in (
+        "package_projection",
+        "runtime_projection",
+        "projection_support",
+        "agent_projection",
+        "credential_projection",
+        "blast_projection",
+        "benchmark_projection",
+        "finding_projection",
+        "training_projection",
+        "resource_aliases",
+        "build_indexes",
+        "build_input",
+        "build_analysis",
+    ):
         for source in ("from .builder import build_unified_graph_from_report", "from agent_bom.api import stores"):
             assert boundary_errors(f"graph/{module}.py", ast.parse(source))
         assert not boundary_errors(f"graph/{module}.py", ast.parse("from agent_bom.graph.node import UnifiedNode"))

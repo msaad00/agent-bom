@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import PurePath
 from typing import Any
 
 from agent_bom.graph.container import UnifiedGraph
@@ -63,3 +64,51 @@ def _add_rel_edge(
             evidence=evidence if evidence is not None else {},
         )
     )
+
+
+def _is_sbom_import(agent: Mapping[str, Any]) -> bool:
+    servers = agent.get("mcp_servers", [])
+    return (
+        bool(servers)
+        and all(srv.get("surface") == "sbom" for srv in servers)
+        and (agent.get("source") == "sbom" or str(agent.get("name") or "").startswith("sbom:"))
+    )
+
+
+def _is_repository_inventory(agent: Mapping[str, Any]) -> bool:
+    """Recognize the explicit manifest-collector wrappers, not arbitrary agents."""
+    servers = agent.get("mcp_servers", [])
+    if not servers:
+        return False
+    if agent.get("source") == "repo-lockfiles":
+        return all(srv.get("surface") == "filesystem" and not srv.get("command") for srv in servers)
+    if agent.get("source") == "project":
+        return all(srv.get("surface") == "other" and srv.get("command") in {"project", "github-actions"} for srv in servers)
+    return False
+
+
+def _repository_manifest_directory(agent: Mapping[str, Any], server: Mapping[str, Any]) -> str:
+    if agent.get("source") == "repo-lockfiles":
+        label = str(server.get("name") or "").removeprefix("repo-deps:")
+        return "" if label == "root" else label
+    args = server.get("args") or []
+    root = str(agent.get("config_path") or "")
+    if args and root:
+        try:
+            relative = str(PurePath(str(args[0])).relative_to(PurePath(root)))
+            return "" if relative == "." else relative
+        except ValueError:
+            pass
+    label = str(server.get("name") or "")
+    return "" if label == str(agent.get("name") or "").removeprefix("project:") else label
+
+
+def _normalized_environment(*candidates: object) -> str:
+    """Return the first non-empty environment label among candidates."""
+    for raw in candidates:
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            return text
+    return ""

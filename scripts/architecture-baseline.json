@@ -1761,7 +1761,7 @@
       "file_lines": 688
     },
     "graph/builder.py": {
-      "file_lines": 6645
+      "file_lines": 5276
     },
     "graph/builder.py::_add_agent_cloud_lineage": {
       "function_lines": 282
@@ -1839,10 +1839,6 @@
     "graph/builder.py::_wire_network_entry_exposure_paths": {
       "complexity": 28,
       "function_lines": 104
-    },
-    "graph/builder.py::build_unified_graph_from_report": {
-      "complexity": 96,
-      "function_lines": 1265
     },
     "graph/ci_graph_overlay.py::apply_ci_graph_overlay": {
       "complexity": 16,

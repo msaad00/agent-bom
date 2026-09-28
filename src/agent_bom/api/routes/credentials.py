@@ -100,7 +100,7 @@ def _apply_update(credential: CredentialRefRecord, body: CredentialRefUpdate) ->
 
 
 @router.post("/credentials", tags=["credentials"], status_code=201)
-async def create_credential_ref(request: Request, body: CredentialRefCreate) -> dict:
+def create_credential_ref(request: Request, body: CredentialRefCreate) -> dict:
     tenant_id = _tenant_id(request)
     require_body_tenant_match(body.tenant_id, tenant_id)
     _validate_external_ref(body.external_ref)
@@ -141,7 +141,7 @@ async def create_credential_ref(request: Request, body: CredentialRefCreate) -> 
 
 
 @router.get("/credentials", tags=["credentials"])
-async def list_credential_refs(
+def list_credential_refs(
     request: Request,
     limit: int = Query(1000, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -161,7 +161,7 @@ async def list_credential_refs(
 
 
 @router.get("/credentials/posture", tags=["credentials"], deprecated=True)
-async def get_credential_rotation_posture(request: Request) -> dict:
+def get_credential_rotation_posture(request: Request) -> dict:
     """Credential rotation posture rollup for the request tenant.
 
     Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
@@ -172,12 +172,12 @@ async def get_credential_rotation_posture(request: Request) -> dict:
 
 
 @router.get("/credentials/{credential_ref_id}", tags=["credentials"])
-async def get_credential_ref(request: Request, credential_ref_id: str) -> dict:
+def get_credential_ref(request: Request, credential_ref_id: str) -> dict:
     return _public_credential(_credential_for_request(request, credential_ref_id))
 
 
 @router.put("/credentials/{credential_ref_id}", tags=["credentials"])
-async def update_credential_ref(request: Request, credential_ref_id: str, body: CredentialRefUpdate) -> dict:
+def update_credential_ref(request: Request, credential_ref_id: str, body: CredentialRefUpdate) -> dict:
     tenant_id = _tenant_id(request)
     _validate_external_ref(body.external_ref if "external_ref" in body.model_fields_set else None)
     if body.status == CredentialRefStatus.RETIRED:
@@ -200,7 +200,7 @@ async def update_credential_ref(request: Request, credential_ref_id: str, body: 
 
 
 @router.post("/credentials/{credential_ref_id}/test", tags=["credentials"])
-async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
+def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
     tenant_id = _tenant_id(request)
     with tenant_quota_guard(tenant_id):
         credential = _credential_for_request(request, credential_ref_id)
@@ -229,7 +229,7 @@ async def test_credential_ref(request: Request, credential_ref_id: str) -> dict:
 
 
 @router.delete("/credentials/{credential_ref_id}", tags=["credentials"], status_code=204)
-async def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
+def delete_credential_ref(request: Request, credential_ref_id: str) -> None:
     tenant_id = _tenant_id(request)
     already_retired = False
     retired_legacy_secret_purged = False

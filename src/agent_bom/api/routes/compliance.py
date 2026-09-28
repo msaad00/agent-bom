@@ -467,7 +467,7 @@ def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/compliance", tags=["compliance"])
-async def get_compliance(
+def get_compliance(
     request: Request,
     scan_id: Annotated[str | None, Query(max_length=200)] = None,
 ) -> dict:
@@ -810,7 +810,7 @@ async def list_cis_benchmark_checks(
     cloud: str | None = None,
     status: str | None = None,
     priority: int | None = None,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: int = 0,
 ) -> dict:
     """List tenant-scoped CIS benchmark checks with indexed filters where available.
@@ -1193,7 +1193,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative", *, evidence: dict[str, 
 
 
 @router.get("/compliance/narrative", tags=["compliance"])
-async def get_compliance_narrative(request: Request) -> dict:
+def get_compliance_narrative(request: Request) -> dict:
     """Generate a review-ready compliance narrative from current tenant evidence.
 
     Produces human-readable stories for all supported framework mappings, a
@@ -1228,7 +1228,7 @@ async def get_compliance_narrative(request: Request) -> dict:
 
 
 @router.get("/compliance/narrative/{framework}", tags=["compliance"])
-async def get_compliance_narrative_by_framework(request: Request, framework: str) -> dict:
+def get_compliance_narrative_by_framework(request: Request, framework: str) -> dict:
     """Generate a single-framework compliance narrative.
 
     Supported framework slugs: owasp-llm, owasp-mcp, atlas, nist,
@@ -1274,7 +1274,7 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
 
 
 @router.get("/compliance/verification-key", tags=["compliance"])
-async def get_compliance_verification_key(request: Request) -> dict:
+def get_compliance_verification_key(request: Request) -> dict:
     """Return the key material — and the verifiability posture — for evidence bundles.
 
     Safe to expose: the only key it can return is a public key. Auditors and
@@ -1314,19 +1314,19 @@ async def get_compliance_verification_key(request: Request) -> dict:
 
 
 @router.get("/compliance/aisvs", tags=["compliance"])
-async def get_aisvs_compliance(request: Request) -> dict:
+def get_aisvs_compliance(request: Request) -> dict:
     """Return the latest tenant-scoped OWASP AISVS benchmark result from completed scans."""
     return _latest_aisvs_benchmark_from_jobs(_tenant_jobs(request))
 
 
 @router.get("/compliance/summary", tags=["compliance"])
-async def get_compliance_summary(request: Request) -> dict:
+def get_compliance_summary(request: Request) -> dict:
     """Return aggregate compliance score and per-framework status counts.
 
     Keep this literal route above /v1/compliance/{framework}; otherwise FastAPI
     correctly treats "summary" as a framework slug.
     """
-    full = await get_compliance(request)
+    full = get_compliance(request)
     summary_keys = {
         "overall_score",
         "overall_status",
@@ -1405,7 +1405,7 @@ async def get_compliance_summary(request: Request) -> dict:
 
 
 @router.get("/compliance/nist-800-53", tags=["compliance"])
-async def get_compliance_nist_800_53(
+def get_compliance_nist_800_53(
     request: Request,
     status: str | None = None,
     include_not_evaluated: bool = False,
@@ -1427,7 +1427,7 @@ async def get_compliance_nist_800_53(
     counts. Declared before ``/compliance/{framework}`` so FastAPI does not treat
     ``nist-800-53`` as a tag-mapped framework slug.
     """
-    full = await get_compliance(request)
+    full = get_compliance(request)
     return build_nist_800_53_drill(
         full["nist_800_53_catalog"],
         status=status,
@@ -1436,16 +1436,16 @@ async def get_compliance_nist_800_53(
 
 
 @router.get("/compliance/{framework}", tags=["compliance"])
-async def get_compliance_by_framework(request: Request, framework: str) -> dict:
+def get_compliance_by_framework(request: Request, framework: str) -> dict:
     """Get compliance posture for a single framework.
 
     Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
     nist-csf, iso-27001, soc2, cis, cmmc, aisvs
     """
     if framework.lower() == "aisvs":
-        return await get_aisvs_compliance(request)
+        return get_aisvs_compliance(request)
 
-    full = await get_compliance(request)
+    full = get_compliance(request)
 
     from agent_bom.compliance_coverage import framework_output_key_by_slug, normalize_framework_slug
 
@@ -1717,7 +1717,7 @@ def _enrich_controls_with_evidence(
 
 
 @router.get("/compliance/{framework}/report", tags=["compliance"], response_model=ComplianceReportBundle)
-async def export_compliance_report(
+def export_compliance_report(
     request: Request,
     framework: str,
     since: str | None = None,
@@ -2031,7 +2031,7 @@ async def export_compliance_report(
 
 
 @router.get("/compliance/report/pack", tags=["compliance"])
-async def export_compliance_pack(
+def export_compliance_pack(
     request: Request,
     since: str | None = None,
     until: str | None = None,
@@ -2321,7 +2321,7 @@ async def get_posture_scorecard(request: Request) -> dict:
 
 
 @router.get("/posture/enrichment", tags=["compliance"])
-async def get_enrichment_posture() -> dict:
+def get_enrichment_posture() -> dict:
     """Report runtime health for external vulnerability enrichment sources."""
 
     from agent_bom.enrichment_posture import describe_enrichment_posture
@@ -2330,7 +2330,7 @@ async def get_enrichment_posture() -> dict:
 
 
 @router.get("/posture/backpressure", tags=["compliance"], deprecated=True)
-async def get_backpressure_posture() -> dict:
+def get_backpressure_posture() -> dict:
     """Report adaptive runtime backpressure state for expensive paths.
 
     Soft-deprecated: no UI/CLI/MCP product consumer (#3666 Phase 2).
@@ -2483,7 +2483,7 @@ def _get_posture_counts_impl(request: Request) -> dict:
 
 
 @router.get("/posture/credentials", tags=["compliance"])
-async def get_credential_risk_ranking(request: Request) -> dict:
+def get_credential_risk_ranking(request: Request) -> dict:
     """Rank credentials by blast radius exposure from the latest scan.
 
     Returns credentials sorted by risk tier (critical to low) with
@@ -2506,7 +2506,7 @@ async def get_credential_risk_ranking(request: Request) -> dict:
 
 
 @router.get("/posture/incidents", tags=["compliance"])
-async def get_incident_correlation(request: Request) -> dict:
+def get_incident_correlation(request: Request) -> dict:
     """Group vulnerabilities by agent for SOC incident correlation.
 
     Returns agent-centric incident summaries with priority (P1-P4),
@@ -2795,7 +2795,7 @@ def _decode_hub_list_cursor(
 
 
 @router.get("/compliance/hub/findings", tags=["compliance"])
-async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0, cursor: str | None = None) -> dict:
+async def list_hub_findings(request: Request, limit: int = Query(200, ge=1, le=1000), offset: int = 0, cursor: str | None = None) -> dict:
     """List compliance-hub findings for the current tenant.
 
     Returns the canonical finding-list envelope (#3666) shared with

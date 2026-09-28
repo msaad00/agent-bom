@@ -17,9 +17,9 @@ import uuid
 from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import Response
 
@@ -800,7 +800,7 @@ def _nhi_by_credential_for_tenant(tenant_id: str) -> dict[str, list[dict[str, An
 
 
 @router.post("/traces/attack-paths", tags=["observability"], dependencies=[_dep("read")])
-async def correlate_trace_attack_paths(request: Request, body: dict, span_id: str | None = None) -> dict[str, object]:
+def correlate_trace_attack_paths(request: Request, body: dict, span_id: str | None = None) -> dict[str, object]:
     """Resolve each traced tool-call span to its exact attack path (#3898).
 
     Accepts an OTLP JSON trace and correlates every vulnerable tool-call span
@@ -835,7 +835,7 @@ async def correlate_trace_attack_paths(request: Request, body: dict, span_id: st
 
 
 @router.get("/traces/connectors", tags=["observability", "connectors"], dependencies=[_dep("read")])
-async def list_trace_connectors_route() -> dict[str, object]:
+def list_trace_connectors_route() -> dict[str, object]:
     """List native trace-pull connectors (Langfuse, LangSmith)."""
     from agent_bom.trace_connectors import list_trace_connectors
 
@@ -847,7 +847,7 @@ async def list_trace_connectors_route() -> dict[str, object]:
     tags=["observability", "connectors"],
     dependencies=[_dep("runtime_ingest")],
 )
-async def pull_trace_connector(request: Request, provider: str, body: dict) -> dict[str, object]:
+def pull_trace_connector(request: Request, provider: str, body: dict) -> dict[str, object]:
     """Pull traces from an LLM-observability platform and correlate them (#3899).
 
     Body: ``{"credentials": {...}, "limit": int, "screen_content": bool}``. The
@@ -1511,7 +1511,7 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
 
 
 @router.post("/runtime/events", tags=["runtime", "observability"], status_code=202, dependencies=[_dep("runtime_ingest")])
-async def ingest_runtime_events(request: Request, body: dict | list[dict]) -> dict[str, object]:
+def ingest_runtime_events(request: Request, body: dict | list[dict]) -> dict[str, object]:
     """Persist metadata-only runtime observations for tenant-scoped querying."""
     tenant_id = _tenant_id(request)
     if isinstance(body, list):
@@ -1533,9 +1533,9 @@ async def ingest_runtime_events(request: Request, body: dict | list[dict]) -> di
 
 
 @router.get("/runtime/sessions", tags=["runtime", "observability"], dependencies=[_dep("read")])
-async def list_runtime_sessions(
+def list_runtime_sessions(
     request: Request,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: int = 0,
 ) -> dict[str, object]:
     """List tenant-scoped runtime sessions derived from persisted observations."""
@@ -1554,10 +1554,10 @@ async def list_runtime_sessions(
 
 
 @router.get("/runtime/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
-async def list_runtime_observations(
+def list_runtime_observations(
     request: Request,
     session_id: str | None = None,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: int = 0,
 ) -> dict[str, object]:
     """List metadata-only runtime observations for the active tenant."""
@@ -1583,7 +1583,7 @@ async def list_runtime_observations(
 @router.get("/runtime/trace-explorer", tags=["runtime", "observability"], dependencies=[_dep("read")])
 async def trace_explorer(
     request: Request,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> dict[str, object]:
     """Langfuse-style trace explorer joined to findings and policy decisions (#3608).
 
@@ -1651,7 +1651,7 @@ async def _trace_explorer_payload_for_tenant(tenant_id: str, *, limit: int = 100
 async def runtime_approval_queue(
     request: Request,
     status: str | None = None,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> dict[str, object]:
     """List blocked runtime spans awaiting or after human approval (#3617)."""
     from agent_bom.api.hitl_approval_queue import build_hitl_queue_items
@@ -1742,10 +1742,10 @@ async def runtime_approval_decision(request: Request, item_id: str, body: _HitlD
 
 
 @router.get("/runtime/sessions/{session_id}/observations", tags=["runtime", "observability"], dependencies=[_dep("read")])
-async def list_runtime_session_observations(
+def list_runtime_session_observations(
     request: Request,
     session_id: str,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: int = 0,
 ) -> dict[str, object]:
     """List observations for one runtime session in the active tenant."""
@@ -1769,7 +1769,7 @@ async def list_runtime_session_observations(
 
 
 @router.post("/ui/errors", tags=["observability"], dependencies=[_dep("read")])
-async def ingest_ui_error(request: Request, body: dict) -> dict:
+def ingest_ui_error(request: Request, body: dict) -> dict:
     """Ingest a sanitized client-side dashboard error report."""
     from agent_bom.api.audit_log import log_action
 
@@ -1851,7 +1851,7 @@ async def get_llm_costs(
     agent: str | None = None,
     cost_center: str | None = None,
     tag: str | None = None,
-    limit: int = 1000,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
 ) -> dict[str, object]:
     """Per-agent / per-model / per-provider / per-cost-center LLM spend.
 
@@ -1930,9 +1930,7 @@ def _build_llm_costs_report_sync(
 
 
 @router.get("/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("read")])
-async def get_llm_cost_budget(
-    request: Request, agent: str = "", cost_center: str = "", owner: str = "", workflow: str = ""
-) -> dict[str, object]:
+def get_llm_cost_budget(request: Request, agent: str = "", cost_center: str = "", owner: str = "", workflow: str = "") -> dict[str, object]:
     """Return the configured spend budget and current utilization.
 
     Pass ``cost_center`` to read a chargeback budget scoped to one allocation
@@ -1958,7 +1956,7 @@ async def get_llm_cost_budget(
 
 
 @router.put("/observability/costs/budget", tags=["observability", "finops"], dependencies=[_dep("config")])
-async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]:
+def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]:
     """Set a USD spend cap. Body: {limit_usd, agent?, cost_center?, owner?, workflow?, mode?}.
 
     A ``cost_center`` scopes the cap to one chargeback unit (#2925); ``agent``
@@ -2025,7 +2023,9 @@ async def set_llm_cost_budget(request: Request, body: dict) -> dict[str, object]
 
 
 @router.get("/observability/costs/forecast", tags=["observability", "finops"], dependencies=[_dep("read")])
-async def get_llm_cost_forecast(request: Request, agent: str | None = None, limit: int = 10000) -> dict[str, object]:
+async def get_llm_cost_forecast(
+    request: Request, agent: str | None = None, limit: Annotated[int, Query(ge=1, le=10000)] = 10000
+) -> dict[str, object]:
     """Project LLM spend burn rate and budget runway for the active tenant.
 
     Derives a recent burn rate (trailing 24h / 7d) from ``observed_at`` on
@@ -2042,7 +2042,7 @@ async def get_llm_cost_forecast(request: Request, agent: str | None = None, limi
 
 
 @router.get("/observability/anomalies", tags=["observability", "finops"], dependencies=[_dep("read")])
-async def get_anomalies(request: Request, z_threshold: float = 3.0) -> dict[str, object]:
+def get_anomalies(request: Request, z_threshold: float = 3.0) -> dict[str, object]:
     """Detect cost and behavior anomalies (per-agent spend + per-session call-rate
     z-scores) for the active tenant. Proactive surfacing of runaway agents."""
     from agent_bom.api.anomaly import scan_anomalies

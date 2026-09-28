@@ -251,7 +251,7 @@ def test_create_connection_scan_on_create_queues_durable_job(monkeypatch):
         regions=["us-east-1"],
         auto_scan_on_create=True,
     )
-    result = asyncio.run(cloud_connections.create_connection(request=object(), body=body))
+    result = cloud_connections.create_connection(request=object(), body=body)
 
     assert result["status"] == "pending"
     assert result["last_scan_id"] == dispatched[0].job_id
@@ -288,7 +288,7 @@ def test_create_connection_scan_on_create_dispatch_failure_is_sanitized(monkeypa
         regions=["us-east-1"],
         auto_scan_on_create=True,
     )
-    result = asyncio.run(cloud_connections.create_connection(request=object(), body=body))
+    result = cloud_connections.create_connection(request=object(), body=body)
 
     assert result["status"] == "error"
     assert "synthetic dispatch credential" not in result["status_detail"]

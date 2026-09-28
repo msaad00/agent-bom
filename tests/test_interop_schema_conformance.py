@@ -7,16 +7,21 @@ Track, SPDX tooling) reject documents that drift from the spec, so this suite
 generates each format from one multi-entity report (agent -> MCP server -> tool
 -> vulnerable package -> CVE, plus a malicious package) and asserts:
 
-* SARIF 2.1.0 / CycloneDX 1.7 / SPDX 2.3 validate against their vendored
-  official JSON schemas (``jsonschema``);
+* SARIF 2.1.0 / CycloneDX 1.7 / SPDX 2.3 / SPDX 3.0.1 validate against their
+  vendored official JSON schemas (``jsonschema``);
 * SPDX 3.0 is emitted as canonical SPDX 3.0.1 JSON-LD (``@context`` + ``@graph``
-  with a ``CreationInfo`` blank node and ``SpdxDocument`` root) and is checked
-  structurally + round-tripped — see ``test_spdx_3_0_is_canonical_jsonld``;
+  with a ``CreationInfo`` blank node and ``SpdxDocument`` root) and is also
+  checked structurally + round-tripped — see ``test_spdx_3_0_is_canonical_jsonld``;
 * JSON package serializers surface ``is_malicious`` / ``malicious_reason``; and
 * two consecutive runs on identical input yield byte-identical bytes.
 
 Schemas are vendored under ``tests/fixtures/`` so the suite is hermetic/offline;
 if a schema file is unavailable the format falls back to structural assertions.
+
+``tests/fixtures/spdx-3.0.1.schema.json`` is the unmodified "SPDX 3.0.1 JSON
+Schema" published by the SPDX Project (Linux Foundation) at
+https://spdx.org/schema/3.0.1/spdx-json-schema.json (sha256 582c64e8...49234b1),
+used under the Community Specification License 1.0.
 """
 
 from __future__ import annotations
@@ -400,6 +405,176 @@ def test_cyclonedx_composition_and_metadata_reflect_partial_scan_run(report: AIB
 
 def test_spdx2_conforms_to_2_3_schema(report: AIBOMReport) -> None:
     _assert_schema_valid("SPDX 2.3", "spdx-2.3.schema.json", Draft201909Validator, to_spdx2(report))
+
+
+def _spdx3_rich_report() -> AIBOMReport:
+    """Exercise every optional SPDX 3 branch: MCP version, supplier, homepage,
+    download location, copyright, license, checksums, integrity verdict, a
+    malicious package, a CVSS v3 + a CVSS v4 + a vector-less + a GHSA finding,
+    KEV/EPSS enrichment, and an agent with discovery-source provenance."""
+    cvss3 = Vulnerability(
+        id="CVE-2026-0001",
+        summary="Remote code execution in flask",
+        severity=Severity.CRITICAL,
+        cvss_score=9.8,
+        cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        fixed_version="2.3.0",
+        cwe_ids=["CWE-94"],
+        is_kev=True,
+        kev_date_added="2026-01-02",
+        epss_score=0.91,
+        epss_percentile=0.99,
+        severity_source="cvss",
+    )
+    cvss4 = Vulnerability(
+        id="CVE-2026-0002",
+        summary="Path traversal",
+        severity=Severity.HIGH,
+        cvss_score=8.7,
+        cvss_vector="CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+    )
+    no_vector = Vulnerability(id="CVE-2026-0003", summary="", severity=Severity.MEDIUM, cvss_score=5.0)
+    ghsa = Vulnerability(id="GHSA-xxxx-yyyy-zzzz", summary="No fix yet", severity=Severity.LOW)
+    rich_pkg = Package(
+        name="flask",
+        version="0.12.2",
+        ecosystem="pypi",
+        purl="pkg:pypi/flask@0.12.2",
+        vulnerabilities=[cvss3, cvss4, no_vector, ghsa],
+        is_direct=True,
+        license_expression="BSD-3-Clause",
+        supplier="Pallets",
+        homepage="https://palletsprojects.com/p/flask/",
+        download_url="https://files.pythonhosted.org/packages/flask-0.12.2.tar.gz",
+        copyright_text="Copyright 2010 Pallets",
+        description="A micro web framework",
+        checksums={"SHA-256": "a" * 64},
+        integrity_verified=True,
+        provenance_attested=False,
+    )
+    malicious_pkg = Package(
+        name="reqquests",
+        version="1.0.0",
+        ecosystem="pypi",
+        is_direct=True,
+        is_malicious=True,
+        malicious_reason="MAL-2024-0001 typosquat of requests",
+        supplier="Pallets",
+    )
+    server = MCPServer(
+        name="db-server",
+        packages=[rich_pkg, malicious_pkg],
+        tools=[MCPTool(name="query", description="run sql")],
+        mcp_version="2025-06-18",
+    )
+    agent = Agent(
+        name="claude-desktop",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/claude-desktop.json",
+        mcp_servers=[server],
+        source="project",
+    )
+    return AIBOMReport(
+        agents=[agent],
+        scan_id="5d6a8a52-0e7f-4c1c-9d9c-2f0b1c1b7f10",
+        tool_version="0.0.0-test",
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def _spdx3_validator():
+    from jsonschema import Draft202012Validator
+
+    schema = _load_schema("spdx-3.0.1.schema.json")
+    assert schema is not None, "official SPDX 3.0.1 JSON schema must be vendored under tests/fixtures/"
+    return Draft202012Validator(schema)
+
+
+@pytest.mark.parametrize("builder", [_conformance_report, _spdx3_rich_report], ids=["baseline", "rich"])
+def test_spdx3_conforms_to_official_3_0_1_schema(builder) -> None:
+    """The default ``-f spdx`` output must validate against the official SPDX
+    3.0.1 JSON schema (no ad-hoc ``annotation``/``versionInfo`` properties,
+    spec-shaped CVSS + VEX assessment relationships)."""
+    doc = to_spdx(builder())
+    errors = list(_spdx3_validator().iter_errors(doc))
+    if errors:
+        rendered = "\n".join(f"  - {e.json_path}: {e.message[:200]}" for e in errors[:20])
+        pytest.fail(f"SPDX 3.0.1 output is not schema-valid ({len(errors)} error(s)):\n{rendered}")
+
+
+def test_spdx3_schema_rejects_legacy_inline_shape() -> None:
+    """Guard the guard: the vendored schema must actually reject the pre-fix
+    inline ``versionInfo`` shape, so a permissive schema can't mask a regression."""
+    doc = deepcopy(to_spdx(_conformance_report()))
+    pkg = next(n for n in doc["@graph"] if n.get("type") == "software_Package")
+    pkg["versionInfo"] = "1.0"
+    assert list(_spdx3_validator().iter_errors(doc)), "schema accepted a non-SPDX-3 property"
+
+
+def test_spdx3_rich_output_uses_spec_model() -> None:
+    """Spec-model shapes: package version/URLs are ``software_*`` properties,
+    annotations are standalone ``Annotation`` elements keyed by ``subject``,
+    CVSS assessments carry the vector, license and supplier are elements."""
+    graph = to_spdx(_spdx3_rich_report())["@graph"]
+    by_id = {n["spdxId"]: n for n in graph if "spdxId" in n}
+    flask = next(n for n in graph if n.get("type") == "software_Package" and n.get("name") == "flask")
+    assert flask["software_packageVersion"] == "0.12.2"
+    assert flask["software_packageUrl"] == "pkg:pypi/flask@0.12.2"
+    assert flask["software_homePage"] == "https://palletsprojects.com/p/flask/"
+    assert flask["software_downloadLocation"].endswith("flask-0.12.2.tar.gz")
+    assert flask["software_copyrightText"] == "Copyright 2010 Pallets"
+    assert "annotation" not in flask and "versionInfo" not in flask
+
+    statements = {n["statement"] for n in graph if n.get("type") == "Annotation" and n["subject"] == flask["spdxId"]}
+    assert "agent-bom:ecosystem=pypi" in statements
+
+    supplier = by_id[flask["suppliedBy"]]
+    assert supplier["type"] == "Organization" and supplier["name"] == "Pallets"
+    malicious = next(n for n in graph if n.get("type") == "software_Package" and n.get("name") == "reqquests")
+    assert malicious["suppliedBy"] == flask["suppliedBy"], "one Organization element per distinct supplier"
+
+    license_rel = next(n for n in graph if n.get("relationshipType") == "hasDeclaredLicense" and n["from"] == flask["spdxId"])
+    assert by_id[license_rel["to"][0]]["simplelicensing_licenseExpression"] == "BSD-3-Clause"
+
+    cvss = {n["type"]: n for n in graph if "Cvss" in str(n.get("type"))}
+    assert cvss["security_CvssV3VulnAssessmentRelationship"]["security_vectorString"].startswith("CVSS:3.1/")
+    assert cvss["security_CvssV3VulnAssessmentRelationship"]["security_severity"] == "critical"
+    assert cvss["security_CvssV4VulnAssessmentRelationship"]["security_vectorString"].startswith("CVSS:4.0/")
+    # A score without a vector can't form a spec-valid CVSS assessment; it is
+    # preserved as an annotation on the vulnerability instead of being dropped.
+    vuln3 = next(n for n in graph if n.get("type") == "security_Vulnerability" and n.get("name") == "CVE-2026-0003")
+    vuln3_statements = {n["statement"] for n in graph if n.get("type") == "Annotation" and n["subject"] == vuln3["spdxId"]}
+    assert "agent-bom:cvss-score=5.0" in vuln3_statements
+
+    affects = [n for n in graph if n.get("type") == "security_VexAffectedVulnAssessmentRelationship"]
+    assert len(affects) == 4
+    assert all(a["security_actionStatement"] for a in affects)
+    assert all(a.get("security_assessedElement") is None or a["security_assessedElement"] in by_id for a in affects)
+
+
+def test_spdx3_rich_output_round_trips_through_reader() -> None:
+    """Moving to the spec model must not lose data on re-ingest."""
+    from agent_bom.sbom import parse_sbom_document
+
+    packages, fmt, _name = parse_sbom_document(to_spdx(_spdx3_rich_report()))
+    assert fmt == "spdx-3"
+    flask = next(p for p in packages if p.name == "flask")
+    assert flask.version == "0.12.2"
+    assert flask.license == "BSD-3-Clause"
+    assert flask.supplier == "Pallets"
+    assert flask.homepage == "https://palletsprojects.com/p/flask/"
+    assert flask.download_url and flask.download_url.endswith("flask-0.12.2.tar.gz")
+    assert flask.copyright_text == "Copyright 2010 Pallets"
+    vulns = {v.id: v for v in flask.vulnerabilities}
+    assert set(vulns) == {"CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003", "GHSA-xxxx-yyyy-zzzz"}
+    assert vulns["CVE-2026-0001"].cvss_score == 9.8
+    assert vulns["CVE-2026-0001"].fixed_version == "2.3.0"
+    assert vulns["CVE-2026-0001"].is_kev is True
+    assert vulns["CVE-2026-0001"].epss_score == pytest.approx(0.91)
+    assert vulns["CVE-2026-0002"].cvss_score == 8.7
+    assert vulns["CVE-2026-0003"].cvss_score == 5.0
+    assert vulns["CVE-2026-0003"].severity == Severity.MEDIUM
+    assert vulns["GHSA-xxxx-yyyy-zzzz"].severity == Severity.LOW
 
 
 def test_spdx_3_0_is_canonical_jsonld(report: AIBOMReport) -> None:

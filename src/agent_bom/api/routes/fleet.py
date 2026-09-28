@@ -17,9 +17,9 @@ import json
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, TypeVar, cast
+from typing import Annotated, Any, TypeVar, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
@@ -124,7 +124,7 @@ async def list_fleet(
     min_trust: float | None = None,
     search: str | None = None,
     include_quarantined: bool = False,
-    limit: int = 50,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
     """List all agents in the fleet registry.
@@ -204,7 +204,7 @@ async def list_fleet_endpoints(
     request: Request,
     search: str | None = None,
     completeness: str | None = None,
-    limit: int = 50,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
     """List latest privacy-safe workstation evidence, one row per endpoint."""
@@ -344,7 +344,7 @@ def _persist_payload_observations(
 
 
 @router.post("/fleet/sync", tags=["fleet"])
-async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[str, Any]:
+def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[str, Any]:
     """Run discovery and sync results into the fleet registry.
 
     New agents -> state=DISCOVERED. Existing agents -> counts updated.
@@ -601,7 +601,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[
 
 
 @router.put("/fleet/{agent_id}/state", tags=["fleet"])
-async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate) -> dict[str, Any]:
+def update_fleet_state(request: Request, agent_id: str, body: StateUpdate) -> dict[str, Any]:
     """Update agent lifecycle state."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.fleet_store import FleetLifecycleState
@@ -664,7 +664,7 @@ def _disable_quarantine_policy(agent_id: str, *, tenant_id: str, actor: str) -> 
 
 
 @router.post("/fleet/{agent_id}/quarantine", tags=["fleet"], dependencies=[_dep("policy_write")])
-async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, Any]:
+def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, Any]:
     """Quarantine an agent and fail closed with a gateway DENY policy for its identity.
 
     One click performs two containment actions:
@@ -769,7 +769,7 @@ async def quarantine_fleet_agent(request: Request, agent_id: str) -> dict[str, A
 
 
 @router.put("/fleet/{agent_id}", tags=["fleet"])
-async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate) -> dict[str, Any]:
+def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate) -> dict[str, Any]:
     """Update agent metadata (owner, environment, tags, notes)."""
     from agent_bom.api.audit_log import log_action
 

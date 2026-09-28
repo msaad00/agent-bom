@@ -164,15 +164,15 @@ def test_admin_shield_write_emits_audit(impl: Any, action: str, extra: dict[str,
     # Stub the engine-backed routes so we exercise the MCP write path without
     # standing up a ProtectionEngine. break_glass audits inside the route via
     # the same log_action symbol, so the spy captures it either way.
-    async def _fake_shield_start(request: Any, *, session_id: str = "default", correlation_window: float = 30.0) -> dict:
+    def _fake_shield_start(request: Any, *, session_id: str = "default", correlation_window: float = 30.0) -> dict:
         del request
         return {"status": "started", "session_id": session_id}
 
-    async def _fake_shield_unblock(request: Any, *, session_id: str = "default") -> dict:
+    def _fake_shield_unblock(request: Any, *, session_id: str = "default") -> dict:
         del request
         return {"status": "unblocked", "session_id": session_id}
 
-    async def _fake_break_glass(request: Any, *, session_id: str = "default", reason: str = "") -> dict:
+    def _fake_break_glass(request: Any, *, session_id: str = "default", reason: str = "") -> dict:
         from agent_bom.api.audit_log import log_action
 
         log_action(

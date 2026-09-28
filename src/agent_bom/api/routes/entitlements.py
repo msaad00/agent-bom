@@ -31,7 +31,7 @@ def _audit_entitlement_read(request: Request, *, resource: str, details: dict[st
 
 
 @router.get("/entitlements", tags=["enterprise"])
-async def get_entitlements(request: Request) -> dict:
+def get_entitlements(request: Request) -> dict:
     """Return local entitlement metadata for self-hosted packaging.
 
     This endpoint is metadata-only.  Missing, invalid, or expired entitlement
@@ -53,7 +53,7 @@ async def get_entitlements(request: Request) -> dict:
 
 
 @router.get("/entitlements/check/{feature}", tags=["enterprise"])
-async def check_entitlement(feature: str, request: Request) -> dict:
+def check_entitlement(feature: str, request: Request) -> dict:
     """Evaluate one feature against local entitlement metadata."""
     state = load_entitlement_state()
     check = state.check(feature)

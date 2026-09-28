@@ -20,10 +20,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import anyio.to_thread
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent_bom.api.audit_log import log_action
@@ -304,7 +304,7 @@ def _bound_identity(*, tenant_id: str, identity_id: str, profile_id: str) -> Age
 
 
 @router.post("/mcp-config/assignments", status_code=201, dependencies=[_dep("config")])
-async def create_mcp_config_assignment(request: Request, body: McpConfigAssignmentCreate) -> dict[str, object]:
+def create_mcp_config_assignment(request: Request, body: McpConfigAssignmentCreate) -> dict[str, object]:
     """Assign a profile + connectors, yielding one distributable read-only config URL."""
     tenant_id = _tenant(request)
     _validate_references(
@@ -359,7 +359,7 @@ async def create_mcp_config_assignment(request: Request, body: McpConfigAssignme
 
 
 @router.put("/mcp-config/assignments/{config_id}", dependencies=[_dep("config")])
-async def update_mcp_config_assignment(
+def update_mcp_config_assignment(
     request: Request,
     config_id: str,
     body: McpConfigAssignmentUpdate,
@@ -420,7 +420,9 @@ async def update_mcp_config_assignment(
 
 
 @router.get("/mcp-config/assignments", dependencies=[_dep("read")])
-async def list_mcp_config_assignments(request: Request, include_revoked: bool = False, limit: int = 200) -> dict[str, object]:
+def list_mcp_config_assignments(
+    request: Request, include_revoked: bool = False, limit: Annotated[int, Query(ge=1, le=1000)] = 200
+) -> dict[str, object]:
     """List MCP-client-config assignments for the active tenant."""
     tenant_id = _tenant(request)
     bounded = max(1, min(limit, 1000))
@@ -441,7 +443,7 @@ def _assignment_for_tenant(request: Request, config_id: str) -> McpClientConfigA
 
 
 @router.get("/mcp-config/assignments/{config_id}", dependencies=[_dep("read")])
-async def get_mcp_config_assignment(request: Request, config_id: str) -> dict[str, object]:
+def get_mcp_config_assignment(request: Request, config_id: str) -> dict[str, object]:
     """Return one MCP-client-config assignment (metadata)."""
     assignment = _assignment_for_tenant(request, config_id)
     return {
@@ -452,7 +454,7 @@ async def get_mcp_config_assignment(request: Request, config_id: str) -> dict[st
 
 
 @router.post("/mcp-config/assignments/{config_id}/revoke", dependencies=[_dep("config")])
-async def revoke_mcp_config_assignment(request: Request, config_id: str) -> dict[str, object]:
+def revoke_mcp_config_assignment(request: Request, config_id: str) -> dict[str, object]:
     """Revoke an assignment; its served config URL then 404s."""
     _assignment_for_tenant(request, config_id)
     assignment = revoke_assignment(get_mcp_config_store(), tenant_id=_tenant(request), config_id=config_id)
@@ -468,7 +470,7 @@ async def revoke_mcp_config_assignment(request: Request, config_id: str) -> dict
 
 
 @router.get("/mcp-config/{config_id}/mcp.json", dependencies=[_dep("read")])
-async def serve_mcp_client_config(request: Request, config_id: str) -> dict[str, object]:
+def serve_mcp_client_config(request: Request, config_id: str) -> dict[str, object]:
     """Serve the composed, read-only ``.mcp.json`` document for a tenant + config.
 
     References connectors/secrets by handle only — never embeds secret material.

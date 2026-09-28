@@ -8,8 +8,9 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from agent_bom.api.tenancy import require_request_tenant_id
 
@@ -22,11 +23,11 @@ _ASSET_STATS_COUNT_DEFINITION = "tracked vulnerability-package records across li
 
 
 @router.get("/assets", tags=["assets"])
-async def list_assets(
+def list_assets(
     request: Request,
     status: str | None = None,
     severity: str | None = None,
-    limit: int = 500,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
 ) -> dict:
     """List tracked vulnerability assets with first_seen / last_seen / status.
 
@@ -66,7 +67,7 @@ async def list_assets(
 
 
 @router.get("/assets/stats", tags=["assets"])
-async def get_asset_stats(request: Request) -> dict:
+def get_asset_stats(request: Request) -> dict:
     """Return aggregate asset tracking statistics including MTTR."""
     try:
         from agent_bom.asset_tracker import AssetTracker

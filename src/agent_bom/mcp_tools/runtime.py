@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from agent_bom.api.route_offload import call_route as _call_route
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 from agent_bom.security import sanitize_error
@@ -122,7 +123,7 @@ async def runtime_production_index_impl(
     try:
         from agent_bom.api.routes.proxy import runtime_production_index
 
-        payload = await runtime_production_index(cast(Any, _request_for_tenant(tenant_id)))
+        payload = await _call_route(runtime_production_index, _request_for_tenant(tenant_id))
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP runtime production index error")
@@ -144,11 +145,11 @@ async def runtime_blueprints_impl(
         request = _request_for_tenant(tenant_id)
         if blueprint_id.strip():
             try:
-                payload = await get_runtime_blueprint(cast(Any, request), blueprint_id.strip())
+                payload = await _call_route(get_runtime_blueprint, request, blueprint_id.strip())
             except HTTPException as exc:
                 return json.dumps({"error": sanitize_error(exc.detail)})
         else:
-            payload = await list_runtime_blueprints(cast(Any, request))
+            payload = await _call_route(list_runtime_blueprints, request)
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP runtime blueprints error")
@@ -168,7 +169,7 @@ async def runtime_blueprint_drift_impl(
         from agent_bom.api.routes.runtime_blueprints import get_runtime_blueprint_drift
 
         try:
-            payload = await get_runtime_blueprint_drift(cast(Any, _request_for_tenant(tenant_id)), blueprint_id.strip())
+            payload = await _call_route(get_runtime_blueprint_drift, _request_for_tenant(tenant_id), blueprint_id.strip())
         except HTTPException as exc:
             return json.dumps({"error": sanitize_error(exc.detail)})
         return _truncate_response(json.dumps(payload, indent=2, default=str))
@@ -187,7 +188,7 @@ async def drift_incidents_impl(
     try:
         from agent_bom.api.routes.runtime_blueprints import list_drift_incidents
 
-        payload = await list_drift_incidents(cast(Any, _request_for_tenant(tenant_id)), include_resolved=include_resolved)
+        payload = await _call_route(list_drift_incidents, _request_for_tenant(tenant_id), include_resolved=include_resolved)
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP drift incidents error")
@@ -204,7 +205,7 @@ async def anomaly_scan_impl(
     try:
         from agent_bom.api.routes.observability import get_anomalies
 
-        payload = await get_anomalies(cast(Any, _request_for_tenant(tenant_id)), z_threshold=z_threshold)
+        payload = await _call_route(get_anomalies, _request_for_tenant(tenant_id), z_threshold=z_threshold)
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP anomaly scan error")
@@ -237,7 +238,7 @@ async def proxy_status_impl(
     try:
         from agent_bom.api.routes.proxy import proxy_status
 
-        payload = await proxy_status(cast(Any, _request_for_tenant(tenant_id)))
+        payload = await _call_route(proxy_status, _request_for_tenant(tenant_id))
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP proxy status error")
@@ -257,8 +258,9 @@ async def proxy_alerts_impl(
         from agent_bom.api.routes.proxy import proxy_alerts
 
         bounded_limit = max(1, min(int(limit), 1000))
-        payload = await proxy_alerts(
-            cast(Any, _request_for_tenant(tenant_id)),
+        payload = await _call_route(
+            proxy_alerts,
+            _request_for_tenant(tenant_id),
             severity=severity.strip() or None,
             detector=detector.strip() or None,
             limit=bounded_limit,
@@ -278,7 +280,7 @@ async def shield_status_impl(
     try:
         from agent_bom.api.routes.proxy import shield_status
 
-        payload = await shield_status(cast(Any, _request_for_tenant(None)), session_id=session_id or "default")
+        payload = await _call_route(shield_status, _request_for_tenant(None), session_id=session_id or "default")
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP shield status error")
@@ -312,10 +314,8 @@ async def shield_start_impl(
         from agent_bom.api.routes.proxy import shield_start
 
         bounded_window = max(1.0, min(float(correlation_window), 3600.0))
-        payload = await shield_start(
-            cast(Any, _request_for_tenant(context["tenant_id"])),
-            session_id=session_id or "default",
-            correlation_window=bounded_window,
+        payload = await _call_route(
+            shield_start, _request_for_tenant(context["tenant_id"]), session_id=session_id or "default", correlation_window=bounded_window
         )
         payload["mcp_write_policy"] = {
             "required_role": "admin",
@@ -357,7 +357,7 @@ async def shield_unblock_impl(
     try:
         from agent_bom.api.routes.proxy import shield_unblock
 
-        payload = await shield_unblock(cast(Any, _request_for_tenant(context["tenant_id"])), session_id=session_id or "default")
+        payload = await _call_route(shield_unblock, _request_for_tenant(context["tenant_id"]), session_id=session_id or "default")
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",
@@ -400,7 +400,7 @@ async def shield_break_glass_impl(
 
         request = _request_for_tenant(context["tenant_id"], context["actor"])
         request.state.api_key_role = context["actor_role"]
-        payload = await break_glass(cast(Any, request), session_id=session_id or "default", reason=context["reason"])
+        payload = await _call_route(break_glass, request, session_id=session_id or "default", reason=context["reason"])
         payload["mcp_write_policy"] = {
             "required_role": "admin",
             "required_scope": "shield:write",
@@ -429,7 +429,7 @@ async def gateway_status_impl(
         from agent_bom.api.routes.gateway import gateway_stats
 
         request = _request_for_tenant(tenant_id)
-        payload = await gateway_stats(cast(Any, request))
+        payload = await _call_route(gateway_stats, request)
         if include_activity:
             from agent_bom.api.routes.gateway_feed import gateway_feed
 
@@ -464,8 +464,9 @@ async def audit_query_impl(
 
         bounded_limit = max(1, min(int(limit), 1000))
         bounded_offset = max(0, int(offset))
-        payload = await list_audit_entries(
-            cast(Any, _request_for_tenant(tenant_id)),
+        payload = await _call_route(
+            list_audit_entries,
+            _request_for_tenant(tenant_id),
             action=action.strip() or None,
             resource=resource.strip() or None,
             since=since.strip() or None,
@@ -490,11 +491,7 @@ async def audit_integrity_impl(
         from agent_bom.api.routes.enterprise import audit_integrity
 
         bounded_limit = max(1, min(int(limit), 10_000))
-        payload = await audit_integrity(
-            cast(Any, _request_for_tenant(tenant_id)),
-            limit=bounded_limit,
-            include_runtime=include_runtime,
-        )
+        payload = await _call_route(audit_integrity, _request_for_tenant(tenant_id), limit=bounded_limit, include_runtime=include_runtime)
         return _truncate_response(json.dumps(payload, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP audit integrity error")

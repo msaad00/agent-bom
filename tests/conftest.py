@@ -803,11 +803,11 @@ def _is_stub_module(module: Any) -> bool:
 
 
 def _snapshot_stub_sdk_modules() -> dict[str, Any]:
-    return {name: module for name, module in sys.modules.items() if name.split(".", 1)[0] in _STUB_SDK_ROOTS}
+    return {name: module for name, module in list(sys.modules.items()) if name.split(".", 1)[0] in _STUB_SDK_ROOTS}
 
 
 def _restore_stub_sdk_modules(snapshot: dict[str, Any]) -> None:
-    for name in [name for name in sys.modules if name.split(".", 1)[0] in _STUB_SDK_ROOTS]:
+    for name in [name for name in list(sys.modules) if name.split(".", 1)[0] in _STUB_SDK_ROOTS]:
         current = sys.modules[name]
         if name not in snapshot:
             if _is_stub_module(current):

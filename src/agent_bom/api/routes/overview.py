@@ -1815,7 +1815,7 @@ def _compose_overview(
 
 
 @router.get("/overview/score-config", tags=["overview"])
-async def get_overview_score_config(request: Request) -> dict[str, Any]:
+def get_overview_score_config(request: Request) -> dict[str, Any]:
     """Return the tenant's effective exec risk-score model + display config (#3940).
 
     Read-only view of the documented default weighting model, any tenant
@@ -1827,7 +1827,7 @@ async def get_overview_score_config(request: Request) -> dict[str, Any]:
 
 
 @router.put("/overview/score-config", tags=["overview"])
-async def update_overview_score_config(request: Request, req: ExecScoreConfigUpdateRequest) -> dict[str, Any]:
+def update_overview_score_config(request: Request, req: ExecScoreConfigUpdateRequest) -> dict[str, Any]:
     """Update the tenant's exec risk-score weights, thresholds, or display format.
 
     Admin-gated (mutating ``/v1`` verb). The body is canonicalized and clamped
@@ -1859,7 +1859,7 @@ async def update_overview_score_config(request: Request, req: ExecScoreConfigUpd
 
 
 @router.delete("/overview/score-config", tags=["overview"], status_code=204)
-async def reset_overview_score_config(request: Request) -> None:
+def reset_overview_score_config(request: Request) -> None:
     """Clear the tenant's exec risk-score overrides (revert to defaults)."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exec_score_config import clear_exec_score_config

@@ -64,9 +64,7 @@ def test_auth_debug_reports_resolved_method_and_role() -> None:
     class _FakeRequest:
         state = _FakeState()
 
-    import asyncio
-
-    result = asyncio.run(auth_debug(_FakeRequest()))  # type: ignore[arg-type]
+    result = auth_debug(_FakeRequest())  # type: ignore[arg-type]
     assert result == {
         "authenticated": True,
         "auth_required": False,
@@ -108,10 +106,9 @@ def test_auth_debug_never_leaks_raw_key_or_token() -> None:
     class _FakeRequest:
         state = _FakeState()
 
-    import asyncio
     import json
 
-    body = asyncio.run(auth_debug(_FakeRequest()))  # type: ignore[arg-type]
+    body = auth_debug(_FakeRequest())  # type: ignore[arg-type]
     serialized = json.dumps(body)
     assert secret not in serialized, "raw key/token must never appear in /v1/auth/debug output"
 
@@ -134,9 +131,7 @@ def test_auth_debug_distinguishes_saml_from_api_key() -> None:
     class _FakeRequest:
         state = _FakeState()
 
-    import asyncio
-
-    result = asyncio.run(auth_debug(_FakeRequest()))  # type: ignore[arg-type]
+    result = auth_debug(_FakeRequest())  # type: ignore[arg-type]
     assert result["auth_method"] == "saml"
     assert result["subject"].startswith("saml:")
 
@@ -159,8 +154,6 @@ def test_auth_debug_key_id_only_exposes_prefix() -> None:
     class _FakeRequest:
         state = _FakeState()
 
-    import asyncio
-
-    result = asyncio.run(auth_debug(_FakeRequest()))  # type: ignore[arg-type]
+    result = auth_debug(_FakeRequest())  # type: ignore[arg-type]
     assert result["api_key_id_prefix"] == "01234567"
     assert len(result["api_key_id_prefix"]) == 8

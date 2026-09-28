@@ -11,9 +11,9 @@ with no accountable owner is a 400), independent of the RBAC gate.
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.blueprint_store import (
@@ -99,7 +99,7 @@ class DecisionBody(BaseModel):
 
 
 @router.get("/governance/blueprints", dependencies=[_dep("read")])
-async def list_blueprints(request: Request, limit: int = 50, offset: int = 0) -> dict[str, object]:
+def list_blueprints(request: Request, limit: Annotated[int, Query(ge=1, le=200)] = 50, offset: int = 0) -> dict[str, object]:
     """List persisted AI-system blueprints for the active tenant (paginated)."""
     tenant_id = _tenant(request)
     bounded = max(1, min(limit, 200))
@@ -114,7 +114,7 @@ async def list_blueprints(request: Request, limit: int = 50, offset: int = 0) ->
 
 
 @router.post("/governance/blueprints", dependencies=[_dep("scan")], status_code=201)
-async def create_blueprint_route(request: Request, body: CreateBlueprintBody) -> dict[str, object]:
+def create_blueprint_route(request: Request, body: CreateBlueprintBody) -> dict[str, object]:
     """Create a new AI-system blueprint with an initial draft version 1."""
     tenant_id = _tenant(request)
     blueprint, version = create_blueprint(
@@ -136,7 +136,7 @@ async def create_blueprint_route(request: Request, body: CreateBlueprintBody) ->
 
 
 @router.post("/governance/blueprints/seed", dependencies=[_dep("scan")])
-async def seed_blueprints_route(request: Request) -> dict[str, object]:
+def seed_blueprints_route(request: Request) -> dict[str, object]:
     """Seed the tenant's blueprints from the canonical role archetypes (idempotent)."""
     tenant_id = _tenant(request)
     created = seed_blueprints_from_archetypes(get_blueprint_store(), tenant_id=tenant_id)
@@ -149,7 +149,7 @@ async def seed_blueprints_route(request: Request) -> dict[str, object]:
 
 
 @router.get("/governance/blueprints/{blueprint_id}", dependencies=[_dep("read")])
-async def get_blueprint_route(request: Request, blueprint_id: str) -> dict[str, object]:
+def get_blueprint_route(request: Request, blueprint_id: str) -> dict[str, object]:
     """Return one blueprint plus its full version history and approval state."""
     tenant_id = _tenant(request)
     store = get_blueprint_store()
@@ -166,7 +166,7 @@ async def get_blueprint_route(request: Request, blueprint_id: str) -> dict[str, 
 
 
 @router.get("/governance/blueprints/{blueprint_id}/versions", dependencies=[_dep("read")])
-async def list_versions_route(request: Request, blueprint_id: str, limit: int = 200) -> dict[str, object]:
+def list_versions_route(request: Request, blueprint_id: str, limit: Annotated[int, Query(ge=1, le=500)] = 200) -> dict[str, object]:
     """List a blueprint's immutable versions, newest first."""
     tenant_id = _tenant(request)
     store = get_blueprint_store()
@@ -183,7 +183,7 @@ async def list_versions_route(request: Request, blueprint_id: str, limit: int = 
 
 
 @router.get("/governance/blueprints/{blueprint_id}/versions/{version}", dependencies=[_dep("read")])
-async def get_version_route(request: Request, blueprint_id: str, version: int) -> dict[str, object]:
+def get_version_route(request: Request, blueprint_id: str, version: int) -> dict[str, object]:
     """Return one blueprint version (its composition snapshot + approval state)."""
     tenant_id = _tenant(request)
     record = get_blueprint_store().get_version(tenant_id, blueprint_id, version)
@@ -193,7 +193,7 @@ async def get_version_route(request: Request, blueprint_id: str, version: int) -
 
 
 @router.get("/governance/blueprints/{blueprint_id}/diff", dependencies=[_dep("read")])
-async def diff_versions_route(request: Request, blueprint_id: str, from_version: int, to_version: int) -> dict[str, object]:
+def diff_versions_route(request: Request, blueprint_id: str, from_version: int, to_version: int) -> dict[str, object]:
     """Diff two versions' compositions (added / removed / persistent per axis)."""
     tenant_id = _tenant(request)
     diff = diff_versions(
@@ -209,7 +209,7 @@ async def diff_versions_route(request: Request, blueprint_id: str, from_version:
 
 
 @router.post("/governance/blueprints/{blueprint_id}/versions", dependencies=[_dep("scan")], status_code=201)
-async def create_draft_version_route(request: Request, blueprint_id: str, body: DraftVersionBody) -> dict[str, object]:
+def create_draft_version_route(request: Request, blueprint_id: str, body: DraftVersionBody) -> dict[str, object]:
     """Open a new draft version from an edited composition (approved versions are immutable)."""
     tenant_id = _tenant(request)
     version = create_draft_version(
@@ -225,7 +225,7 @@ async def create_draft_version_route(request: Request, blueprint_id: str, body: 
 
 
 @router.post("/governance/blueprints/{blueprint_id}/versions/{version}/submit", dependencies=[_dep("scan")])
-async def submit_version_route(request: Request, blueprint_id: str, version: int) -> dict[str, object]:
+def submit_version_route(request: Request, blueprint_id: str, version: int) -> dict[str, object]:
     """Submit a draft version for approval (draft → pending)."""
     tenant_id = _tenant(request)
     try:
@@ -244,7 +244,7 @@ async def submit_version_route(request: Request, blueprint_id: str, version: int
 
 
 @router.post("/governance/blueprints/{blueprint_id}/versions/{version}/approve", dependencies=[_dep("config")])
-async def approve_version_route(request: Request, blueprint_id: str, version: int, body: DecisionBody | None = None) -> dict[str, object]:
+def approve_version_route(request: Request, blueprint_id: str, version: int, body: DecisionBody | None = None) -> dict[str, object]:
     """Approve a pending version (admin only). Records the accountable approver."""
     tenant_id = _tenant(request)
     note = (body.note if body else "") or ""
@@ -268,7 +268,7 @@ async def approve_version_route(request: Request, blueprint_id: str, version: in
 
 
 @router.post("/governance/blueprints/{blueprint_id}/versions/{version}/reject", dependencies=[_dep("config")])
-async def reject_version_route(request: Request, blueprint_id: str, version: int, body: DecisionBody | None = None) -> dict[str, object]:
+def reject_version_route(request: Request, blueprint_id: str, version: int, body: DecisionBody | None = None) -> dict[str, object]:
     """Reject a pending version (admin only). Records the accountable reviewer."""
     tenant_id = _tenant(request)
     note = (body.note if body else "") or ""

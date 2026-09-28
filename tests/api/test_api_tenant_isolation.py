@@ -126,11 +126,11 @@ async def test_fleet_routes_are_tenant_scoped():
     assert exc.value.status_code == 404
 
     with pytest.raises(HTTPException) as exc:
-        await fleet_routes.update_fleet_state(req, "beta-1", StateUpdate(state="approved"))
+        fleet_routes.update_fleet_state(req, "beta-1", StateUpdate(state="approved"))
     assert exc.value.status_code == 404
 
     with pytest.raises(HTTPException) as exc:
-        await fleet_routes.update_fleet_agent(req, "beta-1", FleetAgentUpdate(owner="alice"))
+        fleet_routes.update_fleet_agent(req, "beta-1", FleetAgentUpdate(owner="alice"))
     assert exc.value.status_code == 404
 
 
@@ -148,7 +148,7 @@ async def test_fleet_sync_assigns_request_tenant():
         version = "1.0"
 
     with patch("agent_bom.discovery.discover_all", return_value=[_Discovered()]):
-        resp = await fleet_routes.sync_fleet(req)
+        resp = fleet_routes.sync_fleet(req)
 
     assert resp["synced"] == 1
     agents = store.list_by_tenant("tenant-alpha")
@@ -175,7 +175,7 @@ async def test_fleet_sync_audit_logs_request_tenant(isolated_audit_log):
         ],
     )
 
-    resp = await fleet_routes.sync_fleet(req, payload)
+    resp = fleet_routes.sync_fleet(req, payload)
 
     assert resp["synced"] == 1
     entries = isolated_audit_log.list_entries()
@@ -215,22 +215,22 @@ async def test_schedule_routes_are_tenant_scoped():
 
     req = _request("tenant-alpha")
 
-    items = await schedule_routes.list_schedules(req)
+    items = schedule_routes.list_schedules(req)
     assert [s["schedule_id"] for s in items] == ["sched-alpha"]
 
-    got = await schedule_routes.get_schedule(req, "sched-alpha")
+    got = schedule_routes.get_schedule(req, "sched-alpha")
     assert got["schedule_id"] == "sched-alpha"
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.get_schedule(req, "sched-beta")
+        schedule_routes.get_schedule(req, "sched-beta")
     assert exc.value.status_code == 404
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.delete_schedule(req, "sched-beta")
+        schedule_routes.delete_schedule(req, "sched-beta")
     assert exc.value.status_code == 404
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.toggle_schedule(req, "sched-beta")
+        schedule_routes.toggle_schedule(req, "sched-beta")
     assert exc.value.status_code == 404
 
 
@@ -249,7 +249,7 @@ async def test_schedule_create_uses_authenticated_tenant():
     req = _request("tenant-alpha")
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.create_schedule(
+        schedule_routes.create_schedule(
             req,
             ScheduleCreate(
                 name="alpha-scan",
@@ -260,7 +260,7 @@ async def test_schedule_create_uses_authenticated_tenant():
         )
     assert exc.value.status_code == 403
 
-    created = await schedule_routes.create_schedule(
+    created = schedule_routes.create_schedule(
         req,
         ScheduleCreate(
             name="alpha-scan",
@@ -277,7 +277,7 @@ async def test_schedule_create_audit_logs_authenticated_tenant(isolated_audit_lo
     set_schedule_store(store)
     req = _request("tenant-alpha")
 
-    await schedule_routes.create_schedule(
+    schedule_routes.create_schedule(
         req,
         ScheduleCreate(
             name="alpha-scan",
@@ -297,7 +297,7 @@ async def test_schedule_create_rejects_invalid_cron(isolated_audit_log):
     set_schedule_store(store)
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.create_schedule(
+        schedule_routes.create_schedule(
             _request("tenant-alpha"),
             ScheduleCreate(
                 name="bad-scan",
@@ -318,7 +318,7 @@ async def test_schedule_create_rejects_enabled_missing_source(isolated_audit_log
     set_source_store(InMemorySourceStore())
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.create_schedule(
+        schedule_routes.create_schedule(
             _request("tenant-alpha"),
             ScheduleCreate(
                 name="orphaned-source",
@@ -348,7 +348,7 @@ async def test_schedule_create_accepts_enabled_runnable_source(isolated_audit_lo
         )
     )
 
-    created = await schedule_routes.create_schedule(
+    created = schedule_routes.create_schedule(
         _request("tenant-alpha"),
         ScheduleCreate(
             name="source-schedule",
@@ -712,7 +712,7 @@ async def test_schedule_routes_enforce_tenant_schedule_quota(monkeypatch):
     monkeypatch.setattr(tenant_quota_module, "API_MAX_SCHEDULES_PER_TENANT", 1)
 
     with pytest.raises(HTTPException) as exc:
-        await schedule_routes.create_schedule(
+        schedule_routes.create_schedule(
             req,
             ScheduleCreate(
                 name="alpha-scan",
@@ -829,7 +829,7 @@ async def test_compliance_routes_are_tenant_scoped():
 
     req = _request("tenant-alpha")
 
-    compliance = await compliance_routes.get_compliance(req)
+    compliance = compliance_routes.get_compliance(req)
     assert compliance["scan_count"] == 1
     llm01 = next(control for control in compliance["owasp_llm_top10"] if control["code"] == "LLM01")
     assert llm01["affected_agents"] == ["alpha-agent"]
@@ -837,19 +837,25 @@ async def test_compliance_routes_are_tenant_scoped():
     scorecard = await compliance_routes.get_posture_scorecard(req)
     from agent_bom.api.routes.overview import _build_overview
 
-    assert scorecard["scan_scorecard"]["score"] == 97
+    assert scorecard["scan_scorecard"] == {"grade": "A", "score": 97}
     assert scorecard["basis"] == "exec_posture"
     assert scorecard["score"] == _build_overview(req)["posture"]["score"]
     assert scorecard["score"] != _build_overview(_request("tenant-beta"))["posture"]["score"]
+    alpha_store = InMemoryJobStore()
+    alpha_store.put(alpha_job)
+    set_job_store(alpha_store)
+    alpha_only = await compliance_routes.get_posture_scorecard(req)
+    set_job_store(store)
+    assert scorecard["score"] == alpha_only["score"]
 
     counts = await compliance_routes.get_posture_counts(req)
     assert counts["critical"] == 1
     assert counts["high"] == 0
 
-    creds = await compliance_routes.get_credential_risk_ranking(req)
+    creds = compliance_routes.get_credential_risk_ranking(req)
     assert creds["credentials"] == [{"name": "ALPHA_KEY"}]
 
-    incidents = await compliance_routes.get_incident_correlation(req)
+    incidents = compliance_routes.get_incident_correlation(req)
     assert incidents["incidents"] == [{"agent": "alpha-agent"}]
 
 
@@ -893,7 +899,7 @@ async def test_findings_and_incidents_redact_replay_only_fields_on_read():
     req = _request("tenant-alpha")
 
     findings = await scan_routes.list_findings(req)
-    incidents = await compliance_routes.get_incident_correlation(req)
+    incidents = compliance_routes.get_incident_correlation(req)
     encoded = f"{findings}{incidents}"
 
     assert "CVE-2026-0001" in encoded
@@ -1072,14 +1078,14 @@ async def test_asset_routes_are_tenant_scoped(tmp_path, monkeypatch):
         )
 
         req = _request("tenant-alpha")
-        data = await asset_routes.list_assets(req)
+        data = asset_routes.list_assets(req)
         assert data["schema_version"] == "vulnerability-assets.v1"
         assert data["scope"] == "vulnerability_asset_lifecycle"
         assert data["count_definition"] == ("tracked vulnerability-package records after lifecycle filters; not unified estate assets")
         assert data["count"] == 1
         assert [asset["vuln_id"] for asset in data["assets"]] == ["CVE-alpha"]
 
-        stats = await asset_routes.get_asset_stats(req)
+        stats = asset_routes.get_asset_stats(req)
         assert stats["schema_version"] == "vulnerability-assets.stats.v1"
         assert stats["scope"] == "vulnerability_asset_lifecycle"
         assert stats["count_definition"] == ("tracked vulnerability-package records across lifecycle states; not unified estate assets")

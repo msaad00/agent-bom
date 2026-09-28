@@ -84,7 +84,7 @@ async def test_create_key_auto_binds_scim_subject_from_request_state(isolated_ke
             scim_user_id="scim-user-42",
         )
     )
-    created = await enterprise.create_key(request, CreateKeyRequest(name="ci-deploy", role="analyst"))
+    created = enterprise.create_key(request, CreateKeyRequest(name="ci-deploy", role="analyst"))
     key = isolated_key_store.get(created["key_id"])
     assert key is not None
     assert key.name == "ci-deploy"

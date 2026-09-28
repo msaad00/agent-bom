@@ -99,7 +99,7 @@ def isolated_issue_mapping_store():
 
 @pytest.mark.asyncio
 async def test_create_key_uses_authenticated_tenant(isolated_key_store):
-    created = await enterprise.create_key(
+    created = enterprise.create_key(
         _request("tenant-alpha"),
         CreateKeyRequest(name="alpha-analyst", role="analyst"),
     )
@@ -118,7 +118,7 @@ async def test_list_keys_only_returns_current_tenant(isolated_key_store):
     isolated_key_store.add(alpha)
     isolated_key_store.add(beta)
 
-    result = await enterprise.list_keys(_request("tenant-alpha"))
+    result = enterprise.list_keys(_request("tenant-alpha"))
 
     assert [k["name"] for k in result["keys"]] == ["alpha"]
     assert result["keys"][0]["tenant_id"] == "tenant-alpha"
@@ -130,7 +130,7 @@ async def test_delete_key_returns_404_for_cross_tenant_key(isolated_key_store):
     isolated_key_store.add(beta)
 
     with pytest.raises(HTTPException) as exc:
-        await enterprise.delete_key(_request("tenant-alpha"), beta.key_id)
+        enterprise.delete_key(_request("tenant-alpha"), beta.key_id)
 
     assert exc.value.status_code == 404
     assert isolated_key_store.get(beta.key_id) is not None
@@ -141,7 +141,7 @@ async def test_rotate_key_replaces_old_key_and_preserves_overlap_window(isolated
     raw, alpha = create_api_key("alpha", Role.ADMIN, tenant_id="tenant-alpha")
     isolated_key_store.add(alpha)
 
-    result = await enterprise.rotate_key(
+    result = enterprise.rotate_key(
         _request("tenant-alpha", "alice-admin"),
         alpha.key_id,
         RotateKeyRequest(overlap_seconds=300),
@@ -167,7 +167,7 @@ async def test_rotate_key_accepts_missing_body(isolated_key_store):
     isolated_key_store.add(alpha)
 
     # Missing body (req=None) -> defaults applied silently.
-    result = await enterprise.rotate_key(
+    result = enterprise.rotate_key(
         _request("tenant-alpha", "alice-admin"),
         alpha.key_id,
     )
@@ -181,7 +181,7 @@ async def test_rotate_key_returns_404_for_cross_tenant_key(isolated_key_store):
     isolated_key_store.add(beta)
 
     with pytest.raises(HTTPException) as exc:
-        await enterprise.rotate_key(_request("tenant-alpha"), beta.key_id, RotateKeyRequest())
+        enterprise.rotate_key(_request("tenant-alpha"), beta.key_id, RotateKeyRequest())
 
     assert exc.value.status_code == 404
     assert isolated_key_store.get(beta.key_id) is not None
@@ -193,14 +193,14 @@ async def test_get_exception_returns_404_for_cross_tenant(isolated_exception_sto
     isolated_exception_store.put(exc)
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.get_exception(_request("tenant-alpha"), exc.exception_id)
+        enterprise.get_exception(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_create_exception_uses_authenticated_actor_not_body(isolated_exception_store, isolated_audit_log):
-    created = await enterprise.create_exception(
+    created = enterprise.create_exception(
         _request("tenant-alpha", "alice-admin"),
         ExceptionRequest(
             vuln_id="CVE-2026-9999",
@@ -225,7 +225,7 @@ async def test_approve_exception_uses_request_actor_and_tenant(isolated_exceptio
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
     isolated_exception_store.put(exc)
 
-    approved = await enterprise.approve_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
+    approved = enterprise.approve_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
 
     assert approved["approved_by"] == "alice-admin"
     assert approved["status"] == "active"
@@ -237,7 +237,7 @@ async def test_revoke_exception_uses_authenticated_actor(isolated_exception_stor
     exc.status = ExceptionStatus.ACTIVE
     isolated_exception_store.put(exc)
 
-    revoked = await enterprise.revoke_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
+    revoked = enterprise.revoke_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
 
     assert revoked["status"] == "revoked"
 
@@ -248,7 +248,7 @@ async def test_revoke_exception_returns_404_for_cross_tenant(isolated_exception_
     isolated_exception_store.put(exc)
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.revoke_exception(_request("tenant-alpha"), exc.exception_id)
+        enterprise.revoke_exception(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
 
@@ -259,7 +259,7 @@ async def test_delete_exception_returns_404_for_cross_tenant(isolated_exception_
     isolated_exception_store.put(exc)
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.delete_exception(_request("tenant-alpha"), exc.exception_id)
+        enterprise.delete_exception(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
     assert isolated_exception_store.get(exc.exception_id) is not None
@@ -270,7 +270,7 @@ async def test_delete_exception_audit_logs_actor_and_tenant(isolated_exception_s
     exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
     isolated_exception_store.put(exc)
 
-    await enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
+    enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
 
     entries = isolated_audit_log.list_entries()
     assert entries[0].action == "exception_delete"
@@ -308,7 +308,7 @@ async def test_delete_exception_passes_tenant_to_store(monkeypatch):
     store = RecordingExceptionStore()
     monkeypatch.setattr(enterprise, "_get_exception_store", lambda: store)
 
-    await enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), store.exc.exception_id)
+    enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), store.exc.exception_id)
 
     assert store.get_calls == [(store.exc.exception_id, "tenant-alpha")]
     assert store.delete_calls == [(store.exc.exception_id, "tenant-alpha")]
@@ -333,7 +333,7 @@ async def test_issue_mapping_status_update_is_tenant_scoped(isolated_issue_mappi
         external_url="https://example.atlassian.net/browse/SEC-43",
     )
 
-    result = await enterprise.update_issue_mapping_status(
+    result = enterprise.update_issue_mapping_status(
         _request("tenant-alpha"),
         alpha.mapping_id,
         IssueStatusUpdateRequest(status="done"),
@@ -343,7 +343,7 @@ async def test_issue_mapping_status_update_is_tenant_scoped(isolated_issue_mappi
     assert isolated_issue_mapping_store.get(alpha.mapping_id, tenant_id="tenant-alpha").status == "done"
     assert isolated_issue_mapping_store.get(beta.mapping_id, tenant_id="tenant-beta").status == "open"
     with pytest.raises(HTTPException) as error:
-        await enterprise.update_issue_mapping_status(_request("tenant-beta"), alpha.mapping_id, IssueStatusUpdateRequest(status="done"))
+        enterprise.update_issue_mapping_status(_request("tenant-beta"), alpha.mapping_id, IssueStatusUpdateRequest(status="done"))
     assert error.value.status_code == 404
 
 
@@ -381,7 +381,7 @@ async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_excep
     isolated_exception_store.put(exc)
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.remove_false_positive(_request("tenant-alpha"), exc.exception_id)
+        enterprise.remove_false_positive(_request("tenant-alpha"), exc.exception_id)
 
     assert error.value.status_code == 404
     assert isolated_exception_store.get(exc.exception_id) is not None
@@ -389,7 +389,7 @@ async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_excep
 
 @pytest.mark.asyncio
 async def test_finding_feedback_uses_authenticated_actor_and_tenant(isolated_exception_store, isolated_audit_log):
-    result = await enterprise.create_finding_feedback(
+    result = enterprise.create_finding_feedback(
         _request("tenant-alpha", "alice-admin"),
         FindingFeedbackRequest(
             vulnerability_id="CVE-2026-0001",
@@ -417,7 +417,7 @@ async def test_finding_feedback_uses_authenticated_actor_and_tenant(isolated_exc
 
 @pytest.mark.asyncio
 async def test_finding_feedback_accepts_not_affected_and_needs_review(isolated_exception_store):
-    not_affected = await enterprise.create_finding_feedback(
+    not_affected = enterprise.create_finding_feedback(
         _request("tenant-alpha", "alice-admin"),
         FindingFeedbackRequest(
             vulnerability_id="CVE-2026-0001",
@@ -426,7 +426,7 @@ async def test_finding_feedback_accepts_not_affected_and_needs_review(isolated_e
             reason="not deployed",
         ),
     )
-    needs_review = await enterprise.create_finding_feedback(
+    needs_review = enterprise.create_finding_feedback(
         _request("tenant-alpha", "alice-admin"),
         FindingFeedbackRequest(
             vulnerability_id="CVE-2026-0002",
@@ -464,7 +464,7 @@ async def test_finding_feedback_list_is_tenant_scoped(isolated_exception_store):
     isolated_exception_store.put(alpha)
     isolated_exception_store.put(beta)
 
-    result = await enterprise.list_finding_feedback(_request("tenant-alpha"), state="false_positive")
+    result = enterprise.list_finding_feedback(_request("tenant-alpha"), state="false_positive")
 
     assert result["total"] == 1
     assert result["feedback"][0]["id"] == alpha.exception_id
@@ -473,7 +473,7 @@ async def test_finding_feedback_list_is_tenant_scoped(isolated_exception_store):
 
 @pytest.mark.asyncio
 async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isolated_exception_store, isolated_audit_log):
-    created = await enterprise.create_finding_triage(
+    created = enterprise.create_finding_triage(
         _request("tenant-alpha", "alice-admin"),
         FindingTriageRequest(
             vulnerability_id="CVE-2026-0101",
@@ -485,7 +485,7 @@ async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isola
             expires_at="2026-12-31T00:00:00Z",
         ),
     )
-    await enterprise.create_finding_triage(
+    enterprise.create_finding_triage(
         _request("tenant-beta", "bob-admin"),
         FindingTriageRequest(
             vulnerability_id="CVE-2026-0202",
@@ -499,7 +499,7 @@ async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isola
     assert created["assignee"] == "secops@example.com"
     assert created["tenant_id"] == "tenant-alpha"
 
-    decided = await enterprise.update_finding_triage_decision(
+    decided = enterprise.update_finding_triage_decision(
         _request("tenant-alpha", "alice-reviewer"),
         created["id"],
         FindingTriageDecisionRequest(
@@ -513,8 +513,8 @@ async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isola
     assert decided["vex_eligible"] is True
     assert decided["reviewed_at"]
 
-    alpha = await enterprise.list_finding_triage(_request("tenant-alpha"), decision="not_affected")
-    beta = await enterprise.list_finding_triage(_request("tenant-beta"))
+    alpha = enterprise.list_finding_triage(_request("tenant-alpha"), decision="not_affected")
+    beta = enterprise.list_finding_triage(_request("tenant-beta"))
 
     assert alpha["schema_version"] == "findings.triage.v1"
     assert alpha["total"] == 1
@@ -530,7 +530,7 @@ async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isola
 @pytest.mark.asyncio
 async def test_finding_triage_requires_justification_for_not_affected(isolated_exception_store):
     with pytest.raises(HTTPException) as error:
-        await enterprise.create_finding_triage(
+        enterprise.create_finding_triage(
             _request("tenant-alpha"),
             FindingTriageRequest(
                 vulnerability_id="CVE-2026-0101",
@@ -544,7 +544,7 @@ async def test_finding_triage_requires_justification_for_not_affected(isolated_e
 
 @pytest.mark.asyncio
 async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isolated_exception_store):
-    await enterprise.create_finding_triage(
+    enterprise.create_finding_triage(
         _request("tenant-alpha", "alice-admin"),
         FindingTriageRequest(
             vulnerability_id="CVE-2026-0101",
@@ -555,7 +555,7 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
             decision_reason="not in the executable path for this tenant",
         ),
     )
-    await enterprise.create_finding_triage(
+    enterprise.create_finding_triage(
         _request("tenant-alpha", "alice-admin"),
         FindingTriageRequest(
             vulnerability_id="CVE-2026-0102",
@@ -564,7 +564,7 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
             decision_reason="reachable endpoint",
         ),
     )
-    await enterprise.create_finding_triage(
+    enterprise.create_finding_triage(
         _request("tenant-beta", "bob-admin"),
         FindingTriageRequest(
             vulnerability_id="CVE-2026-0202",
@@ -574,7 +574,7 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
         ),
     )
 
-    exported = await enterprise.export_finding_triage_vex(_request("tenant-alpha"))
+    exported = enterprise.export_finding_triage_vex(_request("tenant-alpha"))
 
     assert exported["schema_version"] == "findings.triage.vex.v1"
     assert exported["tenant_id"] == "tenant-alpha"
@@ -599,7 +599,7 @@ async def test_finding_triage_openvex_current_scope_matches_canonical_finding_fi
         ("CVE-2026-0101", "pkg:pypi/requests@2.31.0"),
         ("CVE-2026-0102", "pkg:pypi/flask@3.0.0"),
     ):
-        await enterprise.create_finding_triage(
+        enterprise.create_finding_triage(
             _request("tenant-alpha", "alice-admin"),
             FindingTriageRequest(
                 vulnerability_id=vulnerability_id,
@@ -629,7 +629,7 @@ async def test_finding_triage_openvex_current_scope_matches_canonical_finding_fi
 
     monkeypatch.setattr(scan_routes, "current_findings_snapshot", _current_snapshot)
 
-    exported = await enterprise.export_finding_triage_vex(
+    exported = enterprise.export_finding_triage_vex(
         _request("tenant-alpha"),
         view_scope="current",
         severity="critical",
@@ -740,7 +740,7 @@ async def test_ingest_finding_triage_vex_applies_and_roundtrips(isolated_excepti
             },
         ]
     )
-    result = await enterprise.ingest_finding_triage_vex(
+    result = enterprise.ingest_finding_triage_vex(
         _request("tenant-alpha", "alice-admin"),
         FindingTriageVexIngestRequest(vex=doc),
     )
@@ -749,12 +749,12 @@ async def test_ingest_finding_triage_vex_applies_and_roundtrips(isolated_excepti
     assert any(s["reason"] == "status_affected" for s in result["skipped"])
 
     # not_affected round-trips back through the VEX export
-    exported = await enterprise.export_finding_triage_vex(_request("tenant-alpha"))
+    exported = enterprise.export_finding_triage_vex(_request("tenant-alpha"))
     assert exported["count"] == 1
     assert exported["vex"]["statements"][0]["vulnerability"]["name"] == "CVE-2026-7001"
 
     # tenant isolation: nothing leaks to another tenant
-    other = await enterprise.export_finding_triage_vex(_request("tenant-beta"))
+    other = enterprise.export_finding_triage_vex(_request("tenant-beta"))
     assert other["count"] == 0
 
     actions = [entry.action for entry in isolated_audit_log.list_entries()]
@@ -773,8 +773,8 @@ async def test_ingest_finding_triage_vex_is_idempotent(isolated_exception_store)
             }
         ]
     )
-    first = await enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
-    second = await enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
+    first = enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
+    second = enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
     assert first["applied"] == 1
     assert second["applied"] == 1
     # Re-ingest updates in place — no duplicate exceptions accumulate.
@@ -792,7 +792,7 @@ async def test_ingest_finding_triage_vex_skips_not_affected_without_justificatio
             }
         ]
     )
-    result = await enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
+    result = enterprise.ingest_finding_triage_vex(_request("tenant-alpha"), FindingTriageVexIngestRequest(vex=doc))
     assert result["applied"] == 0
     assert result["skipped"][0]["reason"] == "missing_justification"
     assert isolated_exception_store.list_all(tenant_id="tenant-alpha") == []
@@ -801,7 +801,7 @@ async def test_ingest_finding_triage_vex_skips_not_affected_without_justificatio
 @pytest.mark.asyncio
 async def test_ingest_finding_triage_vex_rejects_invalid_document(isolated_exception_store):
     with pytest.raises(HTTPException) as error:
-        await enterprise.ingest_finding_triage_vex(
+        enterprise.ingest_finding_triage_vex(
             _request("tenant-alpha"),
             FindingTriageVexIngestRequest(vex={"statements": [{"status": "banana"}]}),
         )
@@ -819,7 +819,7 @@ async def test_remove_finding_feedback_returns_404_for_wrong_tenant(isolated_exc
     isolated_exception_store.put(feedback)
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.remove_finding_feedback(_request("tenant-alpha"), feedback.exception_id)
+        enterprise.remove_finding_feedback(_request("tenant-alpha"), feedback.exception_id)
 
     assert error.value.status_code == 404
     assert isolated_exception_store.get(feedback.exception_id) is not None
@@ -827,7 +827,7 @@ async def test_remove_finding_feedback_returns_404_for_wrong_tenant(isolated_exc
 
 @pytest.mark.asyncio
 async def test_false_positive_ignores_client_marked_by(isolated_exception_store):
-    result = await enterprise.mark_false_positive(
+    result = enterprise.mark_false_positive(
         _request("tenant-alpha", "alice-admin"),
         enterprise.FalsePositiveRequest(
             vulnerability_id="CVE-2026-0001",
@@ -850,7 +850,7 @@ async def test_export_audit_entries_returns_signed_json(monkeypatch):
     store.append(AuditEntry(action="scan", actor="bob", resource="job/2", details={"packages": 7, "tenant_id": "tenant-beta"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
-    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
+    response = enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
 
     payload = json.loads(response.body.decode())
     assert payload["tenant_id"] == "tenant-alpha"
@@ -867,11 +867,11 @@ async def test_verify_audit_export_accepts_signed_json(monkeypatch):
     store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"tenant_id": "tenant-alpha"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
-    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
+    response = enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
     payload = json.loads(response.body.decode())
     signature = response.headers["x-agent-bom-audit-export-signature"]
 
-    verified = await enterprise.verify_audit_export(
+    verified = enterprise.verify_audit_export(
         _request("tenant-alpha", "alice-admin"),
         enterprise.AuditExportVerifyRequest(payload=payload, signature=signature),
     )
@@ -886,11 +886,11 @@ async def test_verify_audit_export_rejects_tampered_payload(monkeypatch):
     store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"tenant_id": "tenant-alpha"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
-    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
+    response = enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
     payload = json.loads(response.body.decode())
     payload["tenant_id"] = "tenant-beta"
 
-    verified = await enterprise.verify_audit_export(
+    verified = enterprise.verify_audit_export(
         _request("tenant-alpha", "alice-admin"),
         enterprise.AuditExportVerifyRequest(payload=payload, signature=response.headers["x-agent-bom-audit-export-signature"]),
     )
@@ -905,7 +905,7 @@ async def test_export_audit_entries_supports_jsonl(monkeypatch):
     store.append(AuditEntry(action="scan", actor="bob", resource="job/2", details={"tenant_id": "tenant-beta"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
-    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"), format="jsonl")
+    response = enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"), format="jsonl")
 
     lines = [line for line in response.body.decode().splitlines() if line]
     assert len(lines) == 1
@@ -921,8 +921,8 @@ async def test_list_audit_entries_and_integrity_are_tenant_scoped(monkeypatch):
     store.append(AuditEntry(action="scan", actor="bob", resource="job/beta", details={"tenant_id": "tenant-beta"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
-    listed = await enterprise.list_audit_entries(_request("tenant-alpha"))
-    integrity = await enterprise.audit_integrity(_request("tenant-alpha"))
+    listed = enterprise.list_audit_entries(_request("tenant-alpha"))
+    integrity = enterprise.audit_integrity(_request("tenant-alpha"))
 
     assert listed["total"] == 1
     assert [entry["resource"] for entry in listed["entries"]] == ["job/alpha"]
@@ -963,7 +963,7 @@ async def test_audit_integrity_includes_runtime_aes_cmac_chain(monkeypatch, tmp_
     runtime_log.write_text("\n".join(lines) + "\n")
     monkeypatch.setenv("AGENT_BOM_LOG", str(runtime_log))
 
-    integrity = await enterprise.audit_integrity(_request("tenant-alpha"))
+    integrity = enterprise.audit_integrity(_request("tenant-alpha"))
 
     assert integrity["verified"] == 3
     assert integrity["tampered"] == 0
@@ -978,7 +978,7 @@ async def test_audit_integrity_includes_runtime_aes_cmac_chain(monkeypatch, tmp_
 @pytest.mark.asyncio
 async def test_export_audit_entries_rejects_unknown_format():
     with pytest.raises(HTTPException) as error:
-        await enterprise.export_audit_entries(_request("tenant-alpha"), format="csv")
+        enterprise.export_audit_entries(_request("tenant-alpha"), format="csv")
 
     assert error.value.status_code == 400
 
@@ -1016,7 +1016,7 @@ async def test_compare_baseline_is_tenant_scoped(isolated_job_store):
     isolated_job_store.put(alpha_current_job)
     isolated_job_store.put(beta_job)
 
-    diff = await enterprise.compare_baseline(
+    diff = enterprise.compare_baseline(
         _request("tenant-alpha"),
         previous_job_id="job-alpha",
         current_job_id="job-alpha-current",
@@ -1025,7 +1025,7 @@ async def test_compare_baseline_is_tenant_scoped(isolated_job_store):
     assert diff["resolved_count"] == 1
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.compare_baseline(
+        enterprise.compare_baseline(
             _request("tenant-alpha"),
             previous_job_id="job-beta",
             current_job_id="job-alpha-current",
@@ -1063,6 +1063,6 @@ async def test_get_trends_is_tenant_scoped(isolated_trend_store):
         )
     )
 
-    result = await enterprise.get_trends(_request("tenant-alpha"), limit=30)
+    result = enterprise.get_trends(_request("tenant-alpha"), limit=30)
     assert result["count"] == 1
     assert result["data_points"][0]["total_vulns"] == 5

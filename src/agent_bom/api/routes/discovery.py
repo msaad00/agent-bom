@@ -552,7 +552,7 @@ async def list_agents(
 
 
 @router.get("/discovery/providers", tags=["discovery"])
-async def list_discovery_providers() -> dict:
+def list_discovery_providers() -> dict:
     """Return registered discovery provider capability and trust contracts."""
 
     from agent_bom.cloud import provider_contracts

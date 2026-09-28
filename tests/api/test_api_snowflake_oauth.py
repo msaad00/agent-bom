@@ -7,7 +7,6 @@ https://docs.snowflake.com/en/user-guide/oauth-custom.
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import patch
 
 import pytest
@@ -159,14 +158,14 @@ def test_login_requires_config(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(var, raising=False)
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(enterprise.snowflake_oauth_login(_request()))
+        enterprise.snowflake_oauth_login(_request())
     assert exc.value.status_code == 503
 
 
 def test_login_redirects_with_pkce(monkeypatch: pytest.MonkeyPatch) -> None:
     _configure(monkeypatch)
     with patch("agent_bom.api.snowflake_oauth.validate_url"):
-        response = asyncio.run(enterprise.snowflake_oauth_login(_request()))
+        response = enterprise.snowflake_oauth_login(_request())
     assert response.status_code == 302
     location = response.headers["location"]
     assert location.startswith("https://myorg-acct.snowflakecomputing.com/oauth/authorize?")
@@ -183,12 +182,10 @@ def test_callback_rejects_bad_state(monkeypatch: pytest.MonkeyPatch) -> None:
     _configure(monkeypatch)
     sealed = seal_pkce_cookie(code_verifier="v", nonce="n")
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(
-            enterprise.snowflake_oauth_callback(
-                _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
-                code="abc",
-                state="unknown",
-            )
+        enterprise.snowflake_oauth_callback(
+            _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
+            code="abc",
+            state="unknown",
         )
     assert exc.value.status_code == 401
 
@@ -197,12 +194,10 @@ def test_callback_missing_pkce_cookie_fails_closed(monkeypatch: pytest.MonkeyPat
     _configure(monkeypatch)
     state = enterprise._new_snowflake_login_state()
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(
-            enterprise.snowflake_oauth_callback(
-                _request(path="/v1/auth/snowflake/callback"),
-                code="abc",
-                state=state,
-            )
+        enterprise.snowflake_oauth_callback(
+            _request(path="/v1/auth/snowflake/callback"),
+            code="abc",
+            state=state,
         )
     assert exc.value.status_code == 401
 
@@ -216,12 +211,10 @@ def test_callback_missing_username_fails_closed(monkeypatch: pytest.MonkeyPatch)
         return_value={"access_token": "opaque"},  # no username
     ):
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(
-                enterprise.snowflake_oauth_callback(
-                    _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
-                    code="auth-code",
-                    state=state,
-                )
+            enterprise.snowflake_oauth_callback(
+                _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
+                code="auth-code",
+                state=state,
             )
     assert exc.value.status_code == 401
 
@@ -234,12 +227,10 @@ def test_callback_happy_path_mints_session(monkeypatch: pytest.MonkeyPatch) -> N
         "agent_bom.api.snowflake_oauth.exchange_code_for_tokens",
         return_value={"access_token": "opaque", "username": "ANALYST@CO"},
     ):
-        response = asyncio.run(
-            enterprise.snowflake_oauth_callback(
-                _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
-                code="auth-code",
-                state=state,
-            )
+        response = enterprise.snowflake_oauth_callback(
+            _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
+            code="auth-code",
+            state=state,
         )
     assert response.status_code == 302
     assert response.headers["location"] == "/"
@@ -265,12 +256,10 @@ def test_callback_defaults_to_least_privilege_viewer(monkeypatch: pytest.MonkeyP
         ),
         patch.object(enterprise, "_set_browser_session_cookie", _capture),
     ):
-        asyncio.run(
-            enterprise.snowflake_oauth_callback(
-                _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
-                code="auth-code",
-                state=state,
-            )
+        enterprise.snowflake_oauth_callback(
+            _request(path="/v1/auth/snowflake/callback", cookies={"agent_bom_oidc_pkce": sealed}),
+            code="auth-code",
+            state=state,
         )
     assert captured["role"] == "viewer"
     assert captured["auth_method"] == "snowflake_oauth"

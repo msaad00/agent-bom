@@ -1163,7 +1163,7 @@ async def test_gateway_status_can_include_cursor_activity_and_self_posture(monke
 
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-runtime")
 
-    async def fake_gateway_stats(request):
+    def fake_gateway_stats(request):
         return {"tenant_id": request.state.tenant_id, "policy_runtime": {}, "firewall_runtime": {}}
 
     async def fake_gateway_feed(request, *, limit, cursor):
@@ -1264,7 +1264,7 @@ async def test_mcp_runtime_tools_use_server_bound_tenant(monkeypatch):
 
     captured: dict[str, str] = {}
 
-    async def _fake_proxy_status(request):
+    def _fake_proxy_status(request):
         captured["tenant_id"] = request.state.tenant_id
         return {"tenant_id": request.state.tenant_id, "status": "ok"}
 
@@ -1287,12 +1287,12 @@ async def test_shield_routes_isolate_same_session_id_by_tenant():
     request_b = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-b"))
 
     try:
-        started = await proxy_routes.shield_start(request_a, session_id="shared-session", correlation_window=1.0)
+        started = proxy_routes.shield_start(request_a, session_id="shared-session", correlation_window=1.0)
         assert started["status"] == "started"
         assert started["tenant_id"] == "tenant-a"
 
-        status_a = await proxy_routes.shield_status(request_a, session_id="shared-session")
-        status_b = await proxy_routes.shield_status(request_b, session_id="shared-session")
+        status_a = proxy_routes.shield_status(request_a, session_id="shared-session")
+        status_b = proxy_routes.shield_status(request_b, session_id="shared-session")
 
         assert status_a["active"] is True
         assert status_a["tenant_id"] == "tenant-a"

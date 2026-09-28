@@ -3,7 +3,6 @@
 Uses a mock psycopg_pool to avoid needing a real PostgreSQL instance.
 """
 
-import asyncio
 import json
 import sys
 import types
@@ -1681,8 +1680,8 @@ def test_retired_legacy_credential_purge_audits_once_with_postgres_store(mock_po
     )
 
     try:
-        asyncio.run(delete_credential_ref(request, "legacy-secret-already-retired"))
-        asyncio.run(delete_credential_ref(request, "legacy-secret-already-retired"))
+        delete_credential_ref(request, "legacy-secret-already-retired")
+        delete_credential_ref(request, "legacy-secret-already-retired")
 
         persisted = credential_store.get("legacy-secret-already-retired", tenant_id="tenant-alpha")
         assert persisted is not None

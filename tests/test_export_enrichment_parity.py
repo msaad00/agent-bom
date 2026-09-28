@@ -518,7 +518,7 @@ def _spdx3_package_statements(report: AIBOMReport) -> list[str]:
 
     doc = to_spdx(report)
     pkg = next(node for node in doc["@graph"] if node.get("name") == "flask")
-    return [str(a.get("statement") or "") for a in pkg.get("annotation", [])]
+    return [str(n.get("statement") or "") for n in doc["@graph"] if n.get("type") == "Annotation" and n["subject"] == pkg["spdxId"]]
 
 
 def _spdx2_package_comments(report: AIBOMReport) -> list[str]:

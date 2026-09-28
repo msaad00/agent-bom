@@ -137,8 +137,8 @@ async def test_fleet_payload_sync_preserves_distinct_scanner_canonical_ids() -> 
         ],
     )
 
-    first = await fleet_routes.sync_fleet(_request("default"), body)
-    second = await fleet_routes.sync_fleet(_request("default"), body)
+    first = fleet_routes.sync_fleet(_request("default"), body)
+    second = fleet_routes.sync_fleet(_request("default"), body)
 
     rows = store.list_by_tenant("default")
     assert first["new"] == 2
@@ -167,7 +167,7 @@ async def test_fleet_sync_discovery_keys_existing_by_canonical_id() -> None:
     local = _local_claude()
 
     with patch("agent_bom.discovery.discover_all", return_value=[local]):
-        resp = await fleet_routes.sync_fleet(_request("default"))
+        resp = fleet_routes.sync_fleet(_request("default"))
 
     # A genuinely new identity -> one record created, MDM record untouched.
     assert resp["new"] == 1

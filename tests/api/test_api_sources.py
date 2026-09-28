@@ -1524,7 +1524,7 @@ def test_source_test_cannot_resurrect_source_deleted_during_health_probe(
     test_thread = Thread(target=_test_source)
     test_thread.start()
     assert health_started.wait(timeout=5)
-    asyncio.run(source_routes.delete_source(request, source_id))
+    source_routes.delete_source(request, source_id)
     release_health.set()
     test_thread.join(timeout=5)
 
@@ -1578,7 +1578,7 @@ def test_source_run_cannot_enqueue_or_resurrect_after_concurrent_delete(
 
     def _run_source() -> None:
         try:
-            outcomes["run"] = asyncio.run(source_routes.run_source(request, source_id))
+            outcomes["run"] = source_routes.run_source(request, source_id)
         except HTTPException as exc:
             outcomes["run_error"] = exc
 
@@ -1587,7 +1587,7 @@ def test_source_run_cannot_enqueue_or_resurrect_after_concurrent_delete(
     run_thread = Thread(target=_run_source)
     run_thread.start()
     assert request_started.wait(timeout=5)
-    asyncio.run(source_routes.delete_source(request, source_id))
+    source_routes.delete_source(request, source_id)
     release_request.set()
     run_thread.join(timeout=5)
 

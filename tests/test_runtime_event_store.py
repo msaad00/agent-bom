@@ -27,7 +27,7 @@ def isolated_runtime_store():
 async def test_runtime_event_ingest_persists_metadata_only_sessions():
     req = _request("tenant-alpha")
 
-    result = await observability_routes.ingest_runtime_events(
+    result = observability_routes.ingest_runtime_events(
         req,
         {
             "events": [
@@ -57,7 +57,7 @@ async def test_runtime_event_ingest_persists_metadata_only_sessions():
     assert result["persisted"] == 1
     assert result["raw_payload_stored"] is False
 
-    sessions = await observability_routes.list_runtime_sessions(req)
+    sessions = observability_routes.list_runtime_sessions(req)
     assert sessions["count"] == 1
     session = sessions["sessions"][0]
     assert session["session_id"] == "sess-1"
@@ -66,7 +66,7 @@ async def test_runtime_event_ingest_persists_metadata_only_sessions():
     assert session["verdicts"] == {"blocked": 1}
     assert session["tools"] == ["read_file"]
 
-    observations = await observability_routes.list_runtime_observations(req, session_id="sess-1")
+    observations = observability_routes.list_runtime_observations(req, session_id="sess-1")
     observation = observations["observations"][0]
     assert observation["trace_id"] == "trace-1"
     assert observation["span_id"] == "span-1"
@@ -84,30 +84,30 @@ async def test_runtime_observation_queries_are_tenant_scoped_and_paginated():
     alpha = _request("tenant-alpha")
     beta = _request("tenant-beta")
 
-    await observability_routes.ingest_runtime_events(
+    observability_routes.ingest_runtime_events(
         alpha,
         [
             {"event_id": "alpha-1", "session_id": "sess-alpha", "event_type": "allow", "observed_at": "2026-01-01T00:00:00Z"},
             {"event_id": "alpha-2", "session_id": "sess-alpha", "event_type": "block", "observed_at": "2026-01-02T00:00:00Z"},
         ],
     )
-    await observability_routes.ingest_runtime_events(
+    observability_routes.ingest_runtime_events(
         beta,
         {"event_id": "beta-1", "session_id": "sess-beta", "event_type": "allow", "observed_at": "2026-01-03T00:00:00Z"},
     )
 
-    alpha_page = await observability_routes.list_runtime_observations(alpha, limit=1)
+    alpha_page = observability_routes.list_runtime_observations(alpha, limit=1)
     assert alpha_page["count"] == 1
     assert alpha_page["observations"][0]["observation_id"] == "alpha-2"
 
-    alpha_sessions = await observability_routes.list_runtime_sessions(alpha)
+    alpha_sessions = observability_routes.list_runtime_sessions(alpha)
     assert [session["session_id"] for session in alpha_sessions["sessions"]] == ["sess-alpha"]
 
-    beta_sessions = await observability_routes.list_runtime_sessions(beta)
+    beta_sessions = observability_routes.list_runtime_sessions(beta)
     assert [session["session_id"] for session in beta_sessions["sessions"]] == ["sess-beta"]
 
     with pytest.raises(HTTPException) as exc:
-        await observability_routes.list_runtime_session_observations(alpha, "sess-beta")
+        observability_routes.list_runtime_session_observations(alpha, "sess-beta")
     assert exc.value.status_code == 404
 
 
@@ -170,7 +170,7 @@ async def test_ocsf_idless_event_dedups_across_retries():
         await observability_routes.ingest_ocsf(req, payload)
         await observability_routes.ingest_ocsf(req, payload)
 
-    observations = await observability_routes.list_runtime_observations(req)
+    observations = observability_routes.list_runtime_observations(req)
     assert observations["count"] == 1
 
 

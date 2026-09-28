@@ -50,7 +50,7 @@ def _match_payload(match: Any) -> dict[str, Any]:
 
 
 @router.get("/estate/correlations", tags=["estate"], deprecated=True)
-async def get_estate_correlations(
+def get_estate_correlations(
     request: Request,
     scan_id: str | None = Query(None, description="Scan job ID; latest completed scan if omitted"),
 ) -> dict[str, Any]:

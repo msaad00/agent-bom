@@ -217,7 +217,7 @@ jobs:
 
     spdx = to_spdx(report)
     spdx_package = next(element for element in spdx["@graph"] if element.get("name") == "actions/checkout")
-    spdx_statements = {annotation["statement"] for annotation in spdx_package["annotation"]}
+    spdx_statements = {n["statement"] for n in spdx["@graph"] if n.get("type") == "Annotation" and n["subject"] == spdx_package["spdxId"]}
     assert "agent-bom:ecosystem=github-action" in spdx_statements
     assert "agent-bom:discovery-provenance-source-type=local_discovery" in spdx_statements
     assert "agent-bom:discovery-provenance-collector=github_actions" in spdx_statements

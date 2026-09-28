@@ -59,6 +59,7 @@ from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitSt
 from agent_bom.api.oauth_as import OAuthAuthorizationServer
 from agent_bom.api.oidc_discovery_shim import OIDCDiscoveryShimConfig, build_oidc_discovery_shim_router
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
+from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.firewall import (
     AgentFirewallPolicy,
     FirewallDecision,
@@ -1008,10 +1009,7 @@ def _parse_gateway_token_expiry(value: str | None) -> datetime:
 
 
 def _request_has_expected_token(request: Request, expected_token: str) -> bool:
-    auth = request.headers.get("authorization", "")
-    if auth.startswith("Bearer "):
-        return hmac.compare_digest(auth[len("Bearer ") :].strip().encode(), expected_token.encode())
-    return hmac.compare_digest(request.headers.get("x-api-key", "").strip().encode(), expected_token.encode())
+    return hmac.compare_digest(_extract_request_token(request).encode(), expected_token.encode())
 
 
 def _extract_request_token(request: Request) -> str:
@@ -1160,7 +1158,10 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
         allowed, reason = _api_key_allows_gateway_relay(api_key)
         if not allowed:
             raise HTTPException(status_code=403, detail=reason)
-        return api_key.tenant_id or "default", "api_key"
+        try:
+            return require_explicit_tenant_id(getattr(api_key, "tenant_id", None)), "api_key"
+        except ValueError:
+            raise HTTPException(status_code=401, detail="gateway authentication required") from None
 
     return _configured_gateway_tenant_id(), "none"
 
@@ -2522,8 +2523,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         auth_method = "none"
         if _gateway_requires_auth(settings):
             tenant_id, auth_method = _authenticate_gateway_request(request, settings)
-            request.state.tenant_id = tenant_id
-            request.state.auth_method = auth_method
+        request.state.tenant_id = tenant_id
+        request.state.auth_method = auth_method
 
         upstream = settings.registry.get(server_name, tenant_id=tenant_id)
         if upstream is None:
@@ -2554,7 +2555,6 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         await _bind_authenticated_audit_tenant(request, tenant_id, auth_method)
 
         # Inline policy check — reuse the exact evaluator the per-MCP proxy uses.
-        tenant_id = getattr(request.state, "tenant_id", None) or "default"
         async with policy_lock:
             current_policy = dict(policy_state["policy"])
             policy_load_failed = bool(policy_state["load_failed"])

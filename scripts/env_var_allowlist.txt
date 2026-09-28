@@ -584,3 +584,4 @@ AGENT_BOM_CONNECTION_WORKLOAD_BINDINGS_FILE
 AGENT_BOM_DEPLOYMENT_BEARER_TOKEN
 
 AGENT_BOM_GATEWAY_TRUSTED_CONTEXT_PROXY_CIDRS  # opt-in transport peers authorized to assert gateway conditional-access headers
+AGENT_BOM_POSTURE_PRECOMPUTE  # kill switch for posture precompute on evidence writes; read per call so tests and operators can toggle it live

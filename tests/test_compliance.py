@@ -1787,8 +1787,8 @@ def test_posture_has_proxy_flips_on_proxy_alert_ingest():
 
 
 def test_posture_counts_warm_read_reuses_the_evidence_revision_aggregates(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api import exec_posture
     from agent_bom.api.posture_counts_cache import clear_posture_counts_cache
-    from agent_bom.api.routes import compliance as compliance_routes
     from agent_bom.api.routes import overview as overview_routes
 
     _clear_jobs()
@@ -1801,7 +1801,7 @@ def test_posture_counts_warm_read_reuses_the_evidence_revision_aggregates(monkey
     cold = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
 
     real_exec = overview_routes.exec_severity_counts
-    real_compound = compliance_routes._compound_issue_count
+    real_compound = exec_posture.compound_issue_count
     calls = {"exec": 0, "compound": 0}
 
     def counting_exec(*args, **kwargs):
@@ -1813,7 +1813,7 @@ def test_posture_counts_warm_read_reuses_the_evidence_revision_aggregates(monkey
         return real_compound(*args, **kwargs)
 
     monkeypatch.setattr(overview_routes, "exec_severity_counts", counting_exec)
-    monkeypatch.setattr(compliance_routes, "_compound_issue_count", counting_compound)
+    monkeypatch.setattr(exec_posture, "compound_issue_count", counting_compound)
 
     warm = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
     assert warm == cold

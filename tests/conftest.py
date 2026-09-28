@@ -119,6 +119,9 @@ def _isolate_home_and_state_dir():
 # own tests, which construct the backends explicitly. Production never sets this.
 os.environ.setdefault("AGENT_BOM_EPHEMERAL_STORE", "1")
 os.environ.setdefault("AGENT_BOM_DEMO_STORY_PREWARM", "0")
+# Write-time posture precompute runs on a background thread; tests that count
+# read-time computations opt in explicitly.
+os.environ.setdefault("AGENT_BOM_POSTURE_PRECOMPUTE", "0")
 
 
 @pytest.fixture(autouse=True)

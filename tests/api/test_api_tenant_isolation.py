@@ -40,6 +40,7 @@ from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import (
     _jobs,
+    _jobs_put,
     set_credential_ref_store,
     set_fleet_store,
     set_graph_store,
@@ -384,7 +385,6 @@ async def test_scan_routes_are_tenant_scoped():
     )
     store.put(alpha_job)
     store.put(beta_job)
-    _jobs_put = _jobs.__setitem__
     _jobs_put(alpha_job.job_id, alpha_job)
     _jobs_put(beta_job.job_id, beta_job)
 

@@ -442,7 +442,12 @@ def test_readme_contracts_run_for_ui_and_documentation_only_changes() -> None:
         if "uses" in step or step.get("name") in {"Install dependencies", "Run changed-domain and cross-surface smoke"}:
             assert step.get("if") is None
     run = next(step["run"] for step in steps if step.get("name") == "Run changed-domain and cross-surface smoke")
-    for contract in ("test_doc_architecture_svgs.py", "test_public_frontdoor_contract.py", "test_public_docs_cli_alignment.py"):
+    for contract in (
+        "test_doc_architecture_svgs.py",
+        "test_public_frontdoor_contract.py",
+        "test_public_docs_cli_alignment.py",
+        "test_readme_demo_excerpt.py",
+    ):
         assert f"tests/{contract}" in run
 
 

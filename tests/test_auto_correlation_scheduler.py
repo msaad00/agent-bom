@@ -213,6 +213,11 @@ async def test_cross_tenant_or_incomplete_batch_is_durably_skipped(tmp_path: Pat
             parent_job_id=parent.job_id,
         )
     )
+    # The same foreign ID no longer replaces this tenant's child. Model a
+    # genuinely missing local child before checking the membership failure.
+    assert jobs.get(parent.child_job_ids[1], tenant_id="tenant-a") is not None
+    assert jobs.delete(parent.child_job_ids[1], tenant_id="tenant-a")
+    assert jobs.get(parent.child_job_ids[1], tenant_id="tenant-b") is not None
     graph_store.save_graph(_graph(parent.child_job_ids[0]))
 
     service = GraphCorrelationService(graph_store, now=lambda: NOW)

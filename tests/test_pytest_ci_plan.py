@@ -231,3 +231,15 @@ def test_shared_sql_changes_select_finding_and_storage_contracts(tmp_path):
         "postgres_compliance_hub.py",
     ):
         assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == expected
+
+
+def test_job_storage_changes_select_tenant_lifecycle_and_correlation_callers(tmp_path: Path) -> None:
+    expected = [
+        tmp_path / "tests/api/test_api_tenant_isolation.py",
+        tmp_path / "tests/test_agent_lifecycle_history.py",
+        tmp_path / "tests/test_auto_correlation_scheduler.py",
+    ]
+    for path in [*expected, tmp_path / "tests/test_other.py"]:
+        _write(path, 1)
+    for source in ["store.py", "stores.py", "postgres_job_store.py", "scan_queue.py", "storage/jobs.py", "storage/job_cache.py"]:
+        assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == sorted(expected)

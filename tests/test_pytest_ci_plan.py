@@ -172,3 +172,19 @@ def test_shared_judgments_select_caller_parity(tmp_path: Path) -> None:
         _write(path, 1)
     for name in ("packages", "severity", "timestamps"):
         assert select_targeted_tests(changed_files=[Path(f"src/agent_bom/core/{name}.py")], root=tmp_path) == expected
+
+
+def test_delegation_sources_select_lifecycle_and_authority_contracts(tmp_path):
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_delegation_identity_authority.py",
+            "test_governance_abac_delegation.py",
+            "test_agent_identity_lifecycle.py",
+            "test_identity_governance_3687.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    for source in ("delegation_token.py", "delegation_service.py", "agent_identity_store.py", "routes/identities.py"):
+        assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == expected

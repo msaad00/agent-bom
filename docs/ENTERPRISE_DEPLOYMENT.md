@@ -414,6 +414,32 @@ Production deployments must keep cryptographic keys separated by purpose:
 
 Do not reuse the API key or audit HMAC key as a rate-limit, browser-session, or proxy-attestation secret. Set `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` when the upstream proxy can inject a stable issuer identifier; the API will then reject trusted-proxy requests from any other issuer.
 
+#### Delegation source lifecycle
+
+Issue a delegation with `POST /v1/identities/{identity_id}/delegations`, then
+check it with `POST /v1/delegations/verify` before using its capabilities.
+The signed token and response record `source_identity_id`. The source must be
+in the authenticated tenant, active (or within rotation overlap), unexpired,
+and permitted to use every requested tool. Token expiry is capped by source
+expiry. Empty source tool allowlists and `*` retain their existing meaning:
+any tool that the runtime policy permits.
+
+Verification and propagation reload that exact source identity. Revocation,
+expiry, ended rotation overlap, or a narrower tool allowlist invalidates both
+the original token and descendants that exceed current authority. Missing
+source records and storage errors fail closed; verification returns
+`valid: false`, and no child token is returned. No source lookup uses agent
+names or another tenant as a fallback. Previously issued tokens without a
+signed source identity must be reissued; cryptographic verification alone
+cannot establish current identity authority.
+
+These endpoints retain their existing operator role/scope requirements.
+A delegatee name and a caller-supplied chain are metadata, not proof that a
+receiver authenticated as that agent. Receivers still need their own
+authentication and runtime policy enforcement. Use shared Postgres identity
+storage and the dedicated delegation signing key across replicas; SQLite
+restart coverage does not establish distributed failover qualification.
+
 #### Finding and scan payload encryption at rest (deployment prerequisite)
 
 Finding, scan, and graph payloads are **not** application-layer encrypted. This

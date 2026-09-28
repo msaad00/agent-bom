@@ -138,6 +138,22 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(root / path for path in MCP_TOOL_CONTRACTS if root / path in available)
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
+        if normalized.as_posix() in {
+            "src/agent_bom/api/delegation_token.py",
+            "src/agent_bom/api/delegation_service.py",
+            "src/agent_bom/api/agent_identity_store.py",
+            "src/agent_bom/api/routes/identities.py",
+        }:
+            selected.update(
+                root / path
+                for path in (
+                    "tests/test_delegation_identity_authority.py",
+                    "tests/test_governance_abac_delegation.py",
+                    "tests/test_agent_identity_lifecycle.py",
+                    "tests/test_identity_governance_3687.py",
+                )
+                if root / path in available
+            )
         if normalized.as_posix() == "src/agent_bom/api/tenant_worker.py":
             selected.update(
                 candidate

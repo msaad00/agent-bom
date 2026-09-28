@@ -12,6 +12,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from agent_bom.api.tenant_worker import tenant_bound_context
+
 logger = logging.getLogger(__name__)
 _SCHEDULER_LEADER_LOCK_ID = 4_197_042_001
 
@@ -172,42 +174,29 @@ async def scheduler_loop(
                     if not schedule.enabled:
                         continue
                     logger.info("Triggering scheduled scan: %s (%s)", schedule.name, schedule.schedule_id)
-                    tenant_token = None
                     try:
-                        # ``list_due`` is a maintenance/bypass read. Restore the
-                        # schedule tenant before the callback performs any
-                        # RLS-bound schedule, source, credential, or job-store
-                        # access.
-                        if uses_postgres_store:
-                            from agent_bom.api.postgres_store import set_current_tenant
+                        with tenant_bound_context(schedule.tenant_id):
+                            job_id = run_scan_fn(
+                                schedule.scan_config,
+                                schedule_id=schedule.schedule_id,
+                                tenant_id=schedule.tenant_id,
+                                scheduled_for=schedule.next_run or now_iso,
+                            )
+                            # Compute next run
+                            next_run = parse_cron_next(schedule.cron_expression, now)
+                            from agent_bom.api.tenant_quota import tenant_quota_guard
 
-                            tenant_token = set_current_tenant(schedule.tenant_id)
-                        job_id = run_scan_fn(
-                            schedule.scan_config,
-                            schedule_id=schedule.schedule_id,
-                            tenant_id=schedule.tenant_id,
-                            scheduled_for=schedule.next_run or now_iso,
-                        )
-                        # Compute next run
-                        next_run = parse_cron_next(schedule.cron_expression, now)
-                        from agent_bom.api.tenant_quota import tenant_quota_guard
-
-                        with tenant_quota_guard(schedule.tenant_id):
-                            current = schedule_store.get(schedule.schedule_id, tenant_id=schedule.tenant_id)
-                            if current is None or not current.enabled:
-                                continue
-                            current.last_run = now_iso
-                            current.last_job_id = job_id
-                            current.next_run = next_run.isoformat() if next_run else None
-                            current.updated_at = now_iso
-                            schedule_store.put(current)
+                            with tenant_quota_guard(schedule.tenant_id):
+                                current = schedule_store.get(schedule.schedule_id, tenant_id=schedule.tenant_id)
+                                if current is None or not current.enabled:
+                                    continue
+                                current.last_run = now_iso
+                                current.last_job_id = job_id
+                                current.next_run = next_run.isoformat() if next_run else None
+                                current.updated_at = now_iso
+                                schedule_store.put(current)
                     except Exception:
                         logger.error("Failed to trigger scheduled scan: %s", schedule.name)
-                    finally:
-                        if tenant_token is not None:
-                            from agent_bom.api.postgres_store import reset_current_tenant
-
-                            reset_current_tenant(tenant_token)
 
                 # Success — reset backoff counter
                 consecutive_failures = 0

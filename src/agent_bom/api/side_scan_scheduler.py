@@ -44,7 +44,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agent_bom.api.tenant_worker import run_tenant_bound, tenant_bound_context
 from agent_bom.config import SIDESCAN_SCHEDULER_MAX_CONCURRENCY, SIDESCAN_SCHEDULER_POLL_SECONDS
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +119,17 @@ def _coerce_target(raw: Any) -> ScheduledSideScanTarget | None:
     if provider not in _SCHEDULABLE_PROVIDERS:
         logger.warning("Skipping side-scan scheduler target: unsupported provider %r", provider)
         return None
+    try:
+        tenant_id = require_explicit_tenant_id(raw.get("tenant_id"))
+    except ValueError:
+        logger.warning("Skipping side-scan scheduler target: invalid tenant_id")
+        return None
     fields = {
         "target_id": str(raw.get("target_id") or "").strip(),
         "account_id": str(raw.get("account_id") or "").strip(),
         "location": str(raw.get("location") or "").strip(),
         "collector_id": str(raw.get("collector_id") or "").strip(),
-        "tenant_id": str(raw.get("tenant_id") or "").strip(),
+        "tenant_id": tenant_id,
     }
     missing = [name for name, value in fields.items() if not value]
     if missing:
@@ -203,7 +210,8 @@ def run_scheduled_side_scan_once(
     fresh event loop — this function is meant to be dispatched into a worker
     thread, and the executor's snapshot lifecycle is blocking.
 
-    Never raises. Honest terminal envelopes:
+    Invalid tenant authority raises before lifecycle or provider access. Other
+    outcomes use honest terminal envelopes:
     - executor OFF (``AGENT_BOM_SIDESCAN`` unset) → ``status=disabled``
     - provider extra / scoped lifecycle credentials unavailable → ``status=unavailable``
     - unexpected failure → ``status=failed`` (executor still ran teardown)
@@ -214,48 +222,49 @@ def run_scheduled_side_scan_once(
     from agent_bom.cloud.side_scan_lifecycle import get_side_scan_state_store, new_side_scan_execution
     from agent_bom.cloud.side_scan_targets import run_provider_side_scan
 
-    idem = target.idempotency_key or uuid.uuid4().hex
-    execution_id = new_side_scan_execution(
-        tenant_id=target.tenant_id,
-        provider=target.provider,  # type: ignore[arg-type]
-        account_id=target.account_id,
-        target_id=target.target_id,
-        collector_id=target.collector_id,
-        idempotency_key=idem,
-    ).execution_id
+    with tenant_bound_context(target.tenant_id):
+        idem = target.idempotency_key or uuid.uuid4().hex
+        execution_id = new_side_scan_execution(
+            tenant_id=target.tenant_id,
+            provider=target.provider,  # type: ignore[arg-type]
+            account_id=target.account_id,
+            target_id=target.target_id,
+            collector_id=target.collector_id,
+            idempotency_key=idem,
+        ).execution_id
 
-    base: dict[str, Any] = {
-        "provider": target.provider,
-        "target_id": target.target_id,
-        "tenant_id": target.tenant_id,
-        "execution_id": execution_id,
-    }
+        base: dict[str, Any] = {
+            "provider": target.provider,
+            "target_id": target.target_id,
+            "tenant_id": target.tenant_id,
+            "execution_id": execution_id,
+        }
 
-    run_kwargs = target.run_kwargs(idempotency_key=idem)
-    if state_db_path is not None:
-        run_kwargs["state_db_path"] = state_db_path
-    try:
-        results = asyncio.run(run_provider_side_scan(**run_kwargs))
-    except SideScanDisabledError:
-        logger.info("Scheduled side-scan skipped: executor disabled (target %s)", target.target_id)
-        return {**base, "status": "disabled"}
-    except SideScanConfigError:
-        logger.warning("Scheduled side-scan unavailable for %s target %s", target.provider, target.target_id)
-        return {**base, "status": "unavailable"}
-    except Exception:  # noqa: BLE001 - one bad target never raises to the loop
-        logger.error("Scheduled side-scan failed for %s target %s", target.provider, target.target_id)
-        return {**base, "status": "failed"}
+        run_kwargs = target.run_kwargs(idempotency_key=idem)
+        if state_db_path is not None:
+            run_kwargs["state_db_path"] = state_db_path
+        try:
+            results = asyncio.run(run_provider_side_scan(**run_kwargs))
+        except SideScanDisabledError:
+            logger.info("Scheduled side-scan skipped: executor disabled (target %s)", target.target_id)
+            return {**base, "status": "disabled"}
+        except SideScanConfigError:
+            logger.warning("Scheduled side-scan unavailable for %s target %s", target.provider, target.target_id)
+            return {**base, "status": "unavailable"}
+        except Exception:  # noqa: BLE001 - one bad target never raises to the loop
+            logger.error("Scheduled side-scan failed for %s target %s", target.provider, target.target_id)
+            return {**base, "status": "failed"}
 
-    record = get_side_scan_state_store(state_db_path=state_db_path).get(
-        tenant_id=target.tenant_id,
-        execution_id=execution_id,
-    )
-    cleaned_up = bool(results) and all(getattr(r, "cleaned_up", False) for r in results)
-    return {
-        **base,
-        "status": record.status.value if record is not None else "unknown",
-        "cleaned_up": cleaned_up,
-    }
+        record = get_side_scan_state_store(state_db_path=state_db_path).get(
+            tenant_id=target.tenant_id,
+            execution_id=execution_id,
+        )
+        cleaned_up = bool(results) and all(getattr(r, "cleaned_up", False) for r in results)
+        return {
+            **base,
+            "status": record.status.value if record is not None else "unknown",
+            "cleaned_up": cleaned_up,
+        }
 
 
 async def schedule_provider_side_scans(
@@ -286,7 +295,7 @@ async def schedule_provider_side_scans(
     async def _guarded(target: ScheduledSideScanTarget) -> dict[str, Any]:
         async with semaphore:
             try:
-                return await asyncio.to_thread(runner, target)
+                return await asyncio.to_thread(run_tenant_bound, target.tenant_id, runner, target)
             except Exception:  # noqa: BLE001 - isolate a raising runner (e.g. injected fake)
                 logger.error("Scheduled side-scan runner raised for target %s", target.target_id)
                 return {

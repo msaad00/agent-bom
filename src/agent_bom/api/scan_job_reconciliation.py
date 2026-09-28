@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 ACTIVE_SCAN_JOB_STATUSES = frozenset({JobStatus.PENDING, JobStatus.RUNNING})
 
@@ -52,13 +53,9 @@ def _parse_created_at(job: ScanJob) -> datetime | None:
 
 def _put_in_job_tenant(store: Any, job: ScanJob) -> None:
     """Persist a globally discovered job through its own tenant-bound app path."""
-    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.tenant_worker import run_tenant_bound
 
-    token = set_current_tenant(job.tenant_id or "default")
-    try:
-        store.put(job)
-    finally:
-        reset_current_tenant(token)
+    run_tenant_bound(job.tenant_id, store.put, job)
 
 
 def fail_stale_active_scan_jobs(
@@ -79,6 +76,7 @@ def fail_stale_active_scan_jobs(
             continue
         if (current - created).total_seconds() <= timeout_seconds:
             continue
+        require_explicit_tenant_id(job.tenant_id)
         job.status = JobStatus.FAILED
         job.error = reason
         job.completed_at = current.isoformat()
@@ -107,6 +105,7 @@ def fail_orphaned_active_scan_jobs(
     for job in store.list_all(all_tenants=True):
         if not is_active_scan_job(job):
             continue
+        require_explicit_tenant_id(job.tenant_id)
         job.status = JobStatus.FAILED
         job.error = reason
         job.completed_at = now.isoformat()

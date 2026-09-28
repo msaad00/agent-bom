@@ -85,6 +85,17 @@ def test_explicit_tenant_validation_has_one_domain_owner():
     assert not boundary_errors("core/tenancy.py", tree)
 
 
+def test_dispatch_cannot_restore_unchecked_tenant_binding():
+    from scripts.check_architecture import TENANT_DISPATCH_ADAPTERS
+
+    for path in TENANT_DISPATCH_ADAPTERS:
+        assert boundary_errors(path, ast.parse("from agent_bom.api.postgres_common import set_current_tenant"))
+        assert not boundary_errors(path, ast.parse("from agent_bom.api.tenant_worker import tenant_bound_context"))
+    definition = ast.parse("def tenant_bound_context(tenant): pass")
+    assert boundary_errors("api/scheduler.py", definition)
+    assert not boundary_errors("api/tenant_worker.py", definition)
+
+
 def test_gateway_relay_cannot_import_http_app_or_api_adapters():
     for source in (
         "import agent_bom.gateway_server",

@@ -225,10 +225,11 @@ def _write_snapshot(
     write_generation: str,
 ) -> tuple[dict[str, int], PriorSnapshotDigest | None]:
     """Scope the store and prior digest to the tenant; never load a full prior graph."""
-    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+    from agent_bom.api.tenant_worker import tenant_bound_context
 
-    tenant_token = set_current_tenant(tenant_id)
-    try:
+    if graph.tenant_id != tenant_id:
+        raise ValueError("Graph tenant must match the persistence tenant")
+    with tenant_bound_context(tenant_id):
         prior_digest = None
         graph_store = store_factory()
         previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan")
@@ -250,8 +251,6 @@ def _write_snapshot(
                 **({"write_generation": write_generation} if write_generation else {}),
             )
         return counts, prior_digest
-    finally:
-        reset_current_tenant(tenant_token)
 
 
 def _notify_after_commit(
@@ -332,34 +331,37 @@ def persist_graph_snapshot(
     handler. Optional enrichment and delta notification failures are best-effort;
     neither suppresses a successful write nor marks missing evidence as clean.
     """
+    from agent_bom.api.tenant_worker import tenant_bound_context
+    from agent_bom.core.tenancy import require_explicit_tenant_id
     from agent_bom.graph.builder import build_unified_graph_from_report
 
-    tenant_id = job.tenant_id or "default"
-    scan_id = report_json.get("scan_id") or job.job_id
-    graph_input = _with_cost_records(report_json, tenant_id)
-    store_backed = _graph_store_backed_build_enabled(report_json)
-    with _build_container(store_backed=store_backed, tenant_id=tenant_id, scan_id=scan_id) as container:
-        graph = build_unified_graph_from_report(graph_input, scan_id=scan_id, tenant_id=tenant_id, container=container)
-        _enrich_before_persist(report_json, graph, tenant_id)
-        counts, prior_digest = _write_snapshot(
-            graph,
-            tenant_id=tenant_id,
-            scan_id=scan_id,
-            store_factory=store_factory,
-            store_backed=store_backed,
-            write_generation=write_generation,
-        )
-        node_count = counts.get("nodes", len(graph.nodes))
-        edge_count = counts.get("edges", len(graph.edges))
-        _record_graph_persistence(job, status="persisted", scan_id=scan_id, nodes=node_count, edges=edge_count, lock=lock)
-        alerts, delivery = _notify_after_commit(job, graph, prior_digest, tenant_id=tenant_id, scan_id=scan_id, lock=lock)
-        _record_completion(
-            job,
-            tenant_id=tenant_id,
-            scan_id=scan_id,
-            node_count=node_count,
-            edge_count=edge_count,
-            alerts=alerts,
-            delivery=delivery,
-            lock=lock,
-        )
+    tenant_id = require_explicit_tenant_id(job.tenant_id)
+    with tenant_bound_context(tenant_id):
+        scan_id = report_json.get("scan_id") or job.job_id
+        graph_input = _with_cost_records(report_json, tenant_id)
+        store_backed = _graph_store_backed_build_enabled(report_json)
+        with _build_container(store_backed=store_backed, tenant_id=tenant_id, scan_id=scan_id) as container:
+            graph = build_unified_graph_from_report(graph_input, scan_id=scan_id, tenant_id=tenant_id, container=container)
+            _enrich_before_persist(report_json, graph, tenant_id)
+            counts, prior_digest = _write_snapshot(
+                graph,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                store_factory=store_factory,
+                store_backed=store_backed,
+                write_generation=write_generation,
+            )
+            node_count = counts.get("nodes", len(graph.nodes))
+            edge_count = counts.get("edges", len(graph.edges))
+            _record_graph_persistence(job, status="persisted", scan_id=scan_id, nodes=node_count, edges=edge_count, lock=lock)
+            alerts, delivery = _notify_after_commit(job, graph, prior_digest, tenant_id=tenant_id, scan_id=scan_id, lock=lock)
+            _record_completion(
+                job,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                node_count=node_count,
+                edge_count=edge_count,
+                alerts=alerts,
+                delivery=delivery,
+                lock=lock,
+            )

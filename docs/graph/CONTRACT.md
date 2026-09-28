@@ -31,6 +31,27 @@ The graph subsystem has one source of truth in code: enums in `src/agent_bom/gra
 | `provider`, `environment`, `fleet`, `cluster` | Fleet sync, cloud discovery | Organisational hierarchy nodes (no security state of their own) |
 | `iam_role` (legacy `NodeKind` only) | Cloud agent metadata `cloud_principal` | Workload identity attached to an agent — bridged onto `EntityType.SERVICE_ACCOUNT` |
 
+### Cloud identity correlation and governance
+
+Azure role assignments join collected managed identities and service principals
+by native directory object ID. GCP service accounts also accept the collected
+email and typed `serviceAccount:` member form. Display names, incompatible
+identity types and ambiguous aliases never select an existing principal for an
+authorization grant. An unresolved binding retains a separate native-ID node;
+it does not inherit another identity's inventory or usage.
+
+Governance covers Azure service principals as well as managed identities, AWS
+roles and GCP service accounts. For cloud inventory, missing ownership or usage
+telemetry remains unknown: it cannot establish an orphan, dormancy or unused
+permission. Explicit evidence can produce those findings. AWS Access Advisor
+right-sizing findings retain their own provenance and are not duplicated by
+NHI over-grant findings. Configured grants remain distinct from effective
+permissions, observed execution and successful access.
+
+Rescan or rebuild existing snapshots to apply corrected identity joins and
+verdicts. Stored historical snapshots are preserved; rolling back the binary
+restores the previous derivation behavior.
+
 ### Edge kinds
 
 `RelationshipType` (`src/agent_bom/graph/types.py:40`) is a closed enum. The legacy `EdgeKind` (`src/agent_bom/context_graph.py:66`) maps onto it through `EDGE_KIND_TO_RELATIONSHIP`.

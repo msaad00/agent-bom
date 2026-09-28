@@ -5931,6 +5931,8 @@ def _add_inventory_group(
             label=group_name,
             attributes={
                 "principal_id": group_id,
+                "principal_resource_id": _clean_graph_part(group.get("arn")),
+                "directory_principal_id": _clean_graph_part(group.get("principal_id")),
                 "principal_name": group_name,
                 "principal_type": "group",
                 "cloud_provider": provider,
@@ -5966,8 +5968,7 @@ def _add_inventory_group(
             graph, group_node_id, policy_node_id, RelationshipType.ATTACHED, {"source": "cloud-inventory", "principal_type": "group"}
         )
 
-    # Admin/write group → baseline same-account CAN_ACCESS, so the overlay can
-    # inherit it to members via MEMBER_OF (mirrors the user/role baseline).
+    # Legacy privilege inference remains separate from authoritative grants.
     if allow_heuristic_authorization and privilege in ("admin", "write"):
         for resource_id in resource_ids:
             _add_rel_edge(
@@ -5978,9 +5979,7 @@ def _add_inventory_group(
                 {"source": "cloud-inventory", "basis": f"{privilege}_privilege"},
             )
 
-    # Members → MEMBER_OF the group. Each member may be a user / service principal
-    # / nested group; create a thin node when the member was not separately
-    # inventoried so the membership edge always lands on a real node.
+    # Preserve native member IDs even when only directory membership was collected.
     for member in group.get("members", []) or []:
         if not isinstance(member, dict):
             continue
@@ -5998,6 +5997,7 @@ def _add_inventory_group(
                 data_sources,
                 label=_clean_graph_part(member.get("name")) or member_id,
                 principal_id=member_id,
+                directory_principal_id=member_id,
                 principal_name=_clean_graph_part(member.get("name")) or member_id,
                 principal_type=_clean_graph_part(member.get("type")) or "user",
                 cloud_provider=provider,

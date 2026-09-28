@@ -27,7 +27,7 @@ the three core NHI governance analytics that close the 2026-06-19 audit gap:
 
 The verdict covers every non-human identity type in the graph — Azure/
 discovered ``managed_identity`` nodes plus AWS IAM ``role`` and GCP
-``service_account`` nodes — so CIEM over-grant / dormant / orphan findings span
+``service_account`` nodes and Azure ``service_principal`` nodes — so CIEM over-grant / dormant / orphan findings span
 all three clouds. For the cloud-inventory role/service-account types, which do
 not carry owner or last-used as a first-class contract, absent evidence is
 fail-closed: it is never turned into a dormant / over-grant / orphan verdict.
@@ -57,18 +57,17 @@ _OVERLAY_SOURCE = "nhi-governance"
 
 DEFAULT_DORMANT_DAYS = 90
 
-# Identity node types that carry a governance verdict. MANAGED_IDENTITY (Azure /
-# discovered NHIs) is the original; ROLE (AWS IAM roles, Snowflake roles) and
-# SERVICE_ACCOUNT (GCP service accounts) are governed too so CIEM over-grant /
-# dormant findings cover AWS and GCP, not just Azure.
-_GOVERNED_ENTITY_TYPES = frozenset({EntityType.MANAGED_IDENTITY, EntityType.ROLE, EntityType.SERVICE_ACCOUNT})
+# Inventory roles, service accounts and Azure service principals share the NHI
+# governance evaluator with discovered managed identities.
+_GOVERNED_ENTITY_TYPES = frozenset({EntityType.MANAGED_IDENTITY, EntityType.ROLE, EntityType.SERVICE_ACCOUNT, EntityType.SERVICE_PRINCIPAL})
 
 # For these types the base cloud inventory does NOT carry owner / last-used as a
 # first-class contract, so ABSENT evidence must never be turned into a dormant /
 # over-grant / orphan verdict (fail-closed). MANAGED_IDENTITY keeps its legacy
 # "no timestamp == dormant" / "no owner == orphaned" semantics because the NHI
-# discovery overlay always supplies those fields.
-_STRICT_EVIDENCE_TYPES = frozenset({EntityType.ROLE, EntityType.SERVICE_ACCOUNT})
+# discovery overlay always supplies those fields. Cloud-inventory managed
+# identities do not supply that contract and also require explicit evidence.
+_STRICT_EVIDENCE_TYPES = frozenset({EntityType.ROLE, EntityType.SERVICE_ACCOUNT, EntityType.SERVICE_PRINCIPAL})
 
 # Permission/scope edges that count as a *granted* capability for right-sizing.
 _GRANT_RELS = frozenset({RelationshipType.HAS_PERMISSION, RelationshipType.SCOPED_TO})
@@ -233,7 +232,7 @@ def evaluate_identity_governance(
     results: list[IdentityGovernance] = []
     for node in identities[:_MAX_IDENTITIES]:
         attrs = node.attributes
-        strict = node.entity_type in _STRICT_EVIDENCE_TYPES
+        strict = node.entity_type in _STRICT_EVIDENCE_TYPES or attrs.get("source") == "cloud-inventory"
         identity_id = str(attrs.get("identity_id") or node.id)
         owner = attrs.get("owner")
         owner_str = str(owner).strip() if isinstance(owner, str) and str(owner).strip() else None
@@ -246,7 +245,7 @@ def evaluate_identity_governance(
         observed = mapped_usage | edge_usage
         has_observed_signal = bool(mapped_usage or edge_usage)
         if strict and not has_observed_signal:
-            # Fail-closed: without a per-target usage signal for an AWS/GCP
+            # Fail-closed: without a per-target usage signal for a cloud
             # identity we cannot claim any grant is unused — never fabricate an
             # over-grant from absent evidence.
             unused: list[str] = []
@@ -261,7 +260,7 @@ def evaluate_identity_governance(
             dormancy_days = max(0, _days_since(last_used_dt, now))
             is_dormant = dormancy_days >= window
         elif strict:
-            # No real last-used telemetry for an AWS/GCP identity → not
+            # No real last-used telemetry for a cloud identity → not
             # assessable. Fail-closed: absence of evidence is never dormancy.
             is_dormant = False
         else:
@@ -269,7 +268,7 @@ def evaluate_identity_governance(
             is_dormant = True
         # Orphan detection needs an owner *contract*: MANAGED_IDENTITY always
         # carries an ``owner`` attribute (empty when unowned), so a missing owner
-        # is a real orphan. Cloud-inventory ROLE/SERVICE_ACCOUNT nodes carry no
+        # is a real orphan. Cloud-inventory role, service account and service principal nodes carry no
         # owner key, so their absence is "not tracked", not "orphaned".
         is_orphaned = ("owner" in attrs) and owner_str is None if strict else owner_str is None
 

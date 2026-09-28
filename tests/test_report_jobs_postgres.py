@@ -113,3 +113,31 @@ def test_tenant_worker_uses_rls_inside_maintenance_dispatch(report_stores):
         assert is_tenant_rls_bypassed()
         assert _current_tenant.get() == before
     assert not is_tenant_rls_bypassed()
+
+
+def test_connection_scheduler_callback_uses_real_tenant_rls(report_stores, monkeypatch):
+    from types import SimpleNamespace
+
+    from agent_bom.api import connection_scheduler
+    from agent_bom.api.postgres_common import _tenant_connection, bypass_tenant_rls, is_tenant_rls_bypassed
+    from agent_bom.api.routes import cloud_connections
+
+    first, second, tenant = report_stores
+    job = new_job(tenant)
+    assert run_tenant_bound(tenant, first.enqueue, job, 2)
+    observed = []
+
+    def queue(*args, **kwargs):
+        with _tenant_connection(second._pool) as conn:
+            assert conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone() == (False, False)
+            assert conn.execute("SELECT current_setting('app.bypass_rls')").fetchone() == ("0",)
+            observed.append(conn.execute("SELECT job_id FROM report_jobs WHERE job_id = %s", (job.job_id,)).fetchall())
+        return SimpleNamespace(job_id="queued")
+
+    monkeypatch.setattr(cloud_connections, "queue_connection_scan_record", queue)
+    monkeypatch.setattr(connection_scheduler, "_persist_scan_outcome", lambda *a, **kw: True)
+    with bypass_tenant_rls(audit=False, warn=False):
+        for owner in (tenant, "foreign-" + tenant):
+            assert connection_scheduler.execute_connection_scan(SimpleNamespace(tenant_id=owner, id="connection", provider="aws"))
+        assert is_tenant_rls_bypassed()
+    assert observed == [[(job.job_id,)], []]

@@ -547,8 +547,7 @@
       "function_lines": 105
     },
     "api/scheduler.py::scheduler_loop": {
-      "complexity": 17,
-      "function_lines": 120
+      "function_lines": 107
     },
     "api/scim.py::describe_scim_posture": {
       "function_lines": 110

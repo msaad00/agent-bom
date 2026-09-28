@@ -52,6 +52,21 @@ def test_route_and_shared_auth_edits_always_select_mounted_operation_matrix(tmp_
         assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
 
 
+def test_tenant_worker_edits_select_scheduler_and_persistence_callers(tmp_path):
+    names = (
+        "test_connection_scheduler.py",
+        "test_side_scan_scheduler.py",
+        "test_auto_correlation_scheduler.py",
+        "test_scan_jobs_active_gauge.py",
+        "test_graph_persistence_characterization.py",
+        "test_tenant_dispatch_boundaries.py",
+    )
+    expected = sorted(tmp_path / "tests" / name for name in names)
+    for path in expected:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path("src/agent_bom/api/tenant_worker.py")], root=tmp_path) == expected
+
+
 def test_mcp_registration_edits_select_tool_contracts(tmp_path: Path) -> None:
     expected = sorted(
         tmp_path / "tests" / name

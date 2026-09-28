@@ -29,7 +29,7 @@ Design notes:
 * **Tenant-bound.** Global store *reads* use the dedicated maintenance pool
   inside ``bypass_tenant_rls()`` because the loop polls every tenant's
   connections, but each per-connection unit of work binds
-  ``set_current_tenant(record.tenant_id)`` before touching an app write path.
+  an explicit tenant without inherited maintenance authority before touching an app write path.
   On Postgres the ``WITH CHECK`` half of each tenant-isolation policy compares
   the written row against ``app.tenant_id``, so an unbound tenant makes every
   scheduled write for a non-``default`` tenant fail closed.
@@ -70,10 +70,7 @@ from agent_bom.api.connection_store import (
     ConnectionStore,
     get_connection_store,
 )
-
-# ``postgres_common`` imports psycopg lazily, so this stays safe on the SQLite
-# default deployment where the driver is not installed.
-from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+from agent_bom.api.tenant_worker import tenant_bound_context
 from agent_bom.config import (
     CONNECTIONS_SCHEDULER_MAX_CONCURRENCY,
     CONNECTIONS_SCHEDULER_MIN_INTERVAL_MINUTES,
@@ -212,17 +209,15 @@ def _consume_continuous_events(
     kwargs: dict[str, Any] = {"tenant_id": record.tenant_id, "store": store}
     if (record.provider or "").strip().lower() == "aws":
         kwargs["wait_seconds"] = max(0, int(wait_seconds))
-    token = set_current_tenant(record.tenant_id)
     try:
-        consume(record, **kwargs)
+        with tenant_bound_context(record.tenant_id):
+            consume(record, **kwargs)
     except Exception:  # noqa: BLE001 - one bad consume never sinks the tick
         logger.error(
             "Continuous event drain failed for connection %s (provider=%s)",
             record.id,
             record.provider,
         )
-    finally:
-        reset_current_tenant(token)
 
 
 def _select_continuous_drain_targets(store: ConnectionStore) -> list[CloudConnectionRecord]:
@@ -438,39 +433,37 @@ def execute_connection_scan(record: CloudConnectionRecord) -> bool:
     """
     from agent_bom.api.routes.cloud_connections import _now, queue_connection_scan_record
 
-    token = set_current_tenant(record.tenant_id)
     try:
-        try:
-            job = queue_connection_scan_record(record, actor="scheduler")
-        except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
-            logger.error(
-                "Scheduled cloud connection enqueue failed for connection %s: %s",
-                record.id,
-                sanitize_text(sanitize_error(exc, generic=True)),
-            )
-            _persist_scan_outcome(
+        with tenant_bound_context(record.tenant_id):
+            try:
+                job = queue_connection_scan_record(record, actor="scheduler")
+            except Exception as exc:  # noqa: BLE001 - broker / discovery / persistence failure
+                logger.error(
+                    "Scheduled cloud connection enqueue failed for connection %s: %s",
+                    record.id,
+                    sanitize_text(sanitize_error(exc, generic=True)),
+                )
+                _persist_scan_outcome(
+                    record,
+                    status=STATUS_ERROR,
+                    status_detail="Scheduled scan could not be queued. Retry after checking worker and database health.",
+                    outcome="failure",
+                )
+                return False
+            return _persist_scan_outcome(
                 record,
-                status=STATUS_ERROR,
-                status_detail="Scheduled scan could not be queued. Retry after checking worker and database health.",
-                outcome="failure",
+                status=STATUS_PENDING,
+                status_detail="",
+                last_scan_at=_now(),
+                outcome="accepted",
+                scan_id=job.job_id,
             )
-            return False
-        return _persist_scan_outcome(
-            record,
-            status=STATUS_PENDING,
-            status_detail="",
-            last_scan_at=_now(),
-            outcome="accepted",
-            scan_id=job.job_id,
-        )
     except Exception:  # noqa: BLE001 - contract: this function never raises
         logger.error(
             "Scheduled cloud connection scan bookkeeping failed for connection %s",
             record.id,
         )
         return False
-    finally:
-        reset_current_tenant(token)
 
 
 async def run_due_scans_once(

@@ -77,9 +77,10 @@ def test_write_is_tenant_bound_and_receipt_precedes_notifications(persistence):
         assert _current_tenant.get() == "outer"
     finally:
         reset_current_tenant(token)
-    assert p.events == [(s, "outer") for s in ["cost", "build", "link", "runtime", "enrich"]] + [
-        (s, "tenant-a") for s in ["store", "latest", "digest", "save"]
-    ] + [(s, "outer") for s in ["delta", "dispatch"]]
+    assert p.events == [
+        (stage, "tenant-a")
+        for stage in ("cost", "build", "link", "runtime", "enrich", "store", "latest", "digest", "save", "delta", "dispatch")
+    ]
     assert p.report == {"scan_id": "scan", "agents": []}
     assert p.build.call_args.args[0] == {**p.report, "llm_cost_records": [{"cost_usd": 2}]}
     assert p.build.call_args.args[0]["agents"] is p.report["agents"]

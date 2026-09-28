@@ -212,6 +212,14 @@ worker cannot open a maintenance connection using inherited authority;
 such attempts fail closed before pool access. Cross-tenant
 dispatch remains an explicit maintenance operation outside the tenant callback.
 
+Recurring scans, connection event drains, side scans, automatic correlations and
+job reconciliation use that same scope, including SQLite deployments. A malformed
+tenant is rejected before dispatch; it never selects the default tenant. Async
+scopes restore authority on cancellation as well as errors. Graph persistence
+binds enrichment, writes and post-commit notifications to the job tenant and
+rejects a graph with a different owner before opening its store. Existing explicit
+`default` tenants remain supported; global maintenance discovery stays separate.
+
 ---
 
 ## 1e. Auth & Connections

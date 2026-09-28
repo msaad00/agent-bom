@@ -1648,8 +1648,8 @@ def test_graph_export_mermaid_limit_zero_renders_full_graph(mock_pipeline):
     )
     mock_pipeline.return_value = ([agent], [], [], ["agent_discovery"])
 
-    server = create_mcp_server(profile="full")
     with patch("agent_bom.output.graph_export.to_mermaid", return_value="graph LR") as mermaid_mock:
+        server = create_mcp_server(profile="full")
         content_blocks, _meta = _run(server.call_tool("graph_export", {"format": "mermaid", "mermaid_limit": 0}))
 
     assert content_blocks[0].text == "graph LR"

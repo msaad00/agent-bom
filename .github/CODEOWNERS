@@ -4,7 +4,7 @@
 # previous root-level CODEOWNERS.
 
 # Default owner for day-to-day changes (no auto-requested co-review).
-* @msaad00
+* @msaad00 @andres-linero
 
 # Release and supply-chain control surfaces.
 /.github/workflows/release.yml @msaad00 @andres-linero

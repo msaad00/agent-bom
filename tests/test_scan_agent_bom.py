@@ -142,7 +142,7 @@ def api_client(monkeypatch):
             ScanJob(job_id=job_id, tenant_id=tenant, status=status, request=ScanRequest(), created_at="2026-09-26T12:00:00Z", result=scan())
         )
     monkeypatch.setattr(routes, "_get_store", lambda: store)
-    monkeypatch.setattr(routes, "_jobs_get", lambda job_id: None)
+    monkeypatch.setattr(routes, "_jobs_get", lambda job_id, **kwargs: None)
     monkeypatch.setattr(
         "agent_bom.api.middleware.get_auth_runtime_status", lambda: {"auth_required": True, "unauthenticated_allowed": False}
     )

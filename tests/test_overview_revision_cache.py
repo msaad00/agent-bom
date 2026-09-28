@@ -68,9 +68,10 @@ def test_revision_is_tenant_scoped_and_survives_reopen(setup):
     assert SQLiteJobStore(store._db_path).overview_evidence_revision("acme") == initial
     store.put(job(value=2))
     assert store.overview_evidence_revision("acme") != initial
-    before_move = store.overview_evidence_revision("acme")
+    before_other_tenant = store.overview_evidence_revision("acme")
     store.put(job(tenant="other"))
-    assert store.overview_evidence_revision("acme") != before_move
+    assert store.overview_evidence_revision("acme") == before_other_tenant
+    assert store.get("j1", tenant_id="acme").result == {"value": 2}
     before_delete = store.overview_evidence_revision("other")
     store.delete("j1", tenant_id="other")
     assert store.overview_evidence_revision("other") != before_delete

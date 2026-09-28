@@ -117,7 +117,7 @@ def refresh_batch_parent(parent_job_id: str, *, tenant_id: str | None = None) ->
     """Refresh a batch parent from its children and return the parent job."""
 
     store = _get_store()
-    parent = _jobs_get(parent_job_id)
+    parent = _jobs_get(parent_job_id, tenant_id=tenant_id)
     if parent is None or _jobs_is_compacted(parent):
         parent = store.get(parent_job_id, tenant_id=tenant_id)
     if parent is None:
@@ -131,7 +131,7 @@ def refresh_batch_parent(parent_job_id: str, *, tenant_id: str | None = None) ->
     for child_id in parent.child_job_ids:
         child = store.get(child_id, tenant_id=parent.tenant_id)
         if child is None:
-            child = _jobs_get(child_id)
+            child = _jobs_get(child_id, tenant_id=parent.tenant_id)
         if child is not None and child.tenant_id == parent.tenant_id:
             children.append(child)
 

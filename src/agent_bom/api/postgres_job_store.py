@@ -24,6 +24,9 @@ from agent_bom.api.postgres_common import (
     reset_current_tenant,
     set_current_tenant,
 )
+from agent_bom.api.storage.jobs import get_job, put_job, require_job_tenant
+from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, POSTGRES_TENANT_KEYS
+from agent_bom.api.storage.sql import connection_session
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, _literal_like_pattern, _require_tenant_scope
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
@@ -63,7 +66,7 @@ class PostgresJobStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "scan_jobs"):
+            if not ensure_postgres_schema_version(conn, "scan_jobs", version=JOBS_SCHEMA_VERSION):
                 return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_jobs (
@@ -177,9 +180,7 @@ class PostgresJobStore:
                 "ON cis_benchmark_checks(team_id, cloud, status, priority, measured_at DESC)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cis_checks_scan ON cis_benchmark_checks(scan_id)")
-            # Shared dispatch queue for multi-replica work-stealing. Ordinary
-            # app sessions remain tenant-bound; only the distinct maintenance
-            # principal may claim routing rows across tenants.
+            # Only the maintenance principal claims routing rows across tenants.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_dispatch_queue (
                     job_id           TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
@@ -191,6 +192,7 @@ class PostgresJobStore:
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_dispatch_pending ON scan_dispatch_queue(status, created_at)")
+            conn.execute(POSTGRES_TENANT_KEYS)
             _ensure_tenant_rls(conn, "scan_jobs", "team_id")
             _ensure_tenant_rls(conn, "cis_benchmark_checks", "team_id")
             _ensure_tenant_rls(conn, "scan_dispatch_queue", "tenant_id")
@@ -203,56 +205,12 @@ class PostgresJobStore:
         job_status_count_cache.invalidate_tenant(job.tenant_id)
 
     def _put_on_connection(self, conn: Connection, job: ScanJob, *, if_absent: bool = False) -> int:
-        data = job.model_dump_json()
-        # scan_jobs.team_id references the teams registry (FK root) in the
-        # migration-owned schema; tenants are created dynamically, so the
-        # tenant's team row is provisioned on first write (idempotent).
+        require_job_tenant(job.tenant_id)
         conn.execute(
             "INSERT INTO teams (team_id, name, slug) VALUES (%s, %s, %s) ON CONFLICT (team_id) DO NOTHING",
             (job.tenant_id, job.tenant_id, job.tenant_id),
         )
-        conflict = (
-            "ON CONFLICT (job_id) DO NOTHING"
-            if if_absent
-            else """ON CONFLICT (job_id) DO UPDATE SET
-                 status = EXCLUDED.status,
-                 completed_at = EXCLUDED.completed_at,
-                 team_id = EXCLUDED.team_id,
-                 batch_id = EXCLUDED.batch_id,
-                 parent_job_id = EXCLUDED.parent_job_id,
-                 child_job_ids = EXCLUDED.child_job_ids,
-                 target = EXCLUDED.target,
-                 target_index = EXCLUDED.target_index,
-                 target_count = EXCLUDED.target_count,
-                 schedule_id = EXCLUDED.schedule_id,
-                 triggered_by = EXCLUDED.triggered_by,
-                 data = EXCLUDED.data"""
-        )
-        cursor = conn.execute(
-            f"""INSERT INTO scan_jobs (
-                   job_id, status, created_at, completed_at, team_id, batch_id, parent_job_id,
-                   child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
-               )
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
-               {conflict}""",  # nosec B608 - conflict is selected from static SQL literals
-            (
-                job.job_id,
-                job.status.value,
-                job.created_at,
-                job.completed_at,
-                job.tenant_id,
-                getattr(job, "batch_id", None),
-                getattr(job, "parent_job_id", None),
-                json.dumps(getattr(job, "child_job_ids", []) or []),
-                json.dumps(getattr(job, "target", None)) if getattr(job, "target", None) is not None else None,
-                getattr(job, "target_index", None),
-                getattr(job, "target_count", None),
-                getattr(job, "schedule_id", None),
-                getattr(job, "triggered_by", None),
-                data,
-            ),
-        )
-        inserted = int(cursor.rowcount or 0)
+        inserted = put_job(connection_session(conn, "postgres"), "postgres", job, if_absent=if_absent)
         if not if_absent or inserted == 1:
             self._replace_cis_checks(conn, job)
         return inserted
@@ -305,7 +263,7 @@ class PostgresJobStore:
                 conn.execute(
                     """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
                        VALUES (%s, %s, %s, 'pending')
-                       ON CONFLICT (job_id) DO NOTHING""",
+                       ON CONFLICT (tenant_id, job_id) DO NOTHING""",
                     (job.job_id, job.tenant_id, job.created_at),
                 )
             conn.commit()
@@ -328,7 +286,7 @@ class PostgresJobStore:
                 conn.execute(
                     """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
                        VALUES (%s, %s, %s, 'pending')
-                       ON CONFLICT (job_id) DO NOTHING""",
+                       ON CONFLICT (tenant_id, job_id) DO NOTHING""",
                     (job.job_id, job.tenant_id, job.created_at),
                 )
             conn.commit()
@@ -336,21 +294,9 @@ class PostgresJobStore:
         return inserted
 
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
-        from .server import ScanJob
-
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
         with self._scope_connection(all_tenants=all_tenants) as conn:
-            if tenant_id is None:
-                row = conn.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,)).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT data FROM scan_jobs WHERE job_id = %s AND team_id = %s",
-                    (job_id, tenant_id),
-                ).fetchone()
-            if row is None:
-                return None
-            raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
-            return ScanJob.model_validate_json(raw)
+            return get_job(connection_session(conn, "postgres"), "postgres", job_id, tenant_id)
 
     def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.delete()")
@@ -671,14 +617,14 @@ class PostgresJobStore:
 
     def enqueue_for_dispatch(self, job: ScanJob) -> None:
         """Register a persisted job in the shared queue for work-stealing."""
-        tenant_id = job.tenant_id or "default"
+        tenant_id = require_job_tenant(job.tenant_id)
         token = set_current_tenant(tenant_id)
         try:
             with _tenant_connection(self._pool) as conn:
                 conn.execute(
                     """INSERT INTO scan_dispatch_queue (job_id, tenant_id, created_at, status)
                        VALUES (%s, %s, %s, 'pending')
-                       ON CONFLICT (job_id) DO NOTHING""",
+                       ON CONFLICT (tenant_id, job_id) DO NOTHING""",
                     (job.job_id, tenant_id, job.created_at),
                 )
                 conn.commit()
@@ -716,8 +662,8 @@ class PostgresJobStore:
                 conn.execute(
                     f"""UPDATE scan_dispatch_queue
                         SET status = 'running', claimed_by = %s, lease_expires_at = {self._LEASE_ISO}
-                        WHERE job_id = %s""",  # nosec B608 - _LEASE_ISO is a fixed SQL fragment
-                    (claim_owner, int(lease_seconds), job_id),
+                        WHERE job_id = %s AND tenant_id = %s""",  # nosec B608 - _LEASE_ISO is a fixed SQL fragment
+                    (claim_owner, int(lease_seconds), job_id, tenant_id),
                 )
                 conn.commit()
         # Load the full job under its own tenant context so the RLS-scoped read
@@ -731,9 +677,16 @@ class PostgresJobStore:
         finally:
             reset_current_tenant(token)
 
-    def renew_leases(self, claims: Mapping[str, str], lease_seconds: int) -> None:
+    def renew_leases(self, claims: Mapping[tuple[str, str], str], lease_seconds: int) -> None:
         """Heartbeat only exact claim owners; stale workers cannot renew successors."""
-        if not isinstance(claims, Mapping) or any(not isinstance(owner, str) or not owner for owner in claims.values()):
+        if not isinstance(claims, Mapping) or any(
+            not isinstance(key, tuple)
+            or len(key) != 2
+            or any(not isinstance(part, str) or not part.strip() for part in key)
+            or not isinstance(owner, str)
+            or not owner
+            for key, owner in claims.items()
+        ):
             raise ValueError("Dispatch lease renewal requires claim ownership")
         if not claims:
             return
@@ -742,19 +695,23 @@ class PostgresJobStore:
                 conn.execute(
                     f"""UPDATE scan_dispatch_queue
                         SET lease_expires_at = {self._LEASE_ISO}
-                        WHERE status = 'running' AND (job_id, claimed_by) IN
-                            (SELECT * FROM unnest(%s::text[], %s::text[]))""",  # nosec B608 - fixed fragment
-                    (int(lease_seconds), list(claims), list(claims.values())),
+                        WHERE status = 'running' AND (tenant_id, job_id, claimed_by) IN
+                            (SELECT * FROM unnest(%s::text[], %s::text[], %s::text[]))""",  # nosec B608 - fixed fragment
+                    (int(lease_seconds), [key[0] for key in claims], [key[1] for key in claims], list(claims.values())),
                 )
                 conn.commit()
 
-    def complete_dispatch(self, job_id: str, *, claim_owner: str) -> None:
+    def complete_dispatch(self, job_id: str, *, tenant_id: str, claim_owner: str) -> None:
         """Remove only the finished claim, leaving any successor claim intact."""
+        require_job_tenant(tenant_id)
         if not isinstance(claim_owner, str) or not claim_owner:
             raise ValueError("Dispatch completion requires claim ownership")
         with bypass_tenant_rls(audit=False, warn=False):
             with _maintenance_connection(self._maintenance_pool) as conn:
-                conn.execute("DELETE FROM scan_dispatch_queue WHERE job_id = %s AND claimed_by = %s", (job_id, claim_owner))
+                conn.execute(
+                    "DELETE FROM scan_dispatch_queue WHERE job_id = %s AND claimed_by = %s AND tenant_id = %s",
+                    (job_id, claim_owner, tenant_id),
+                )
                 conn.commit()
 
     def requeue_expired_leases(self) -> int:

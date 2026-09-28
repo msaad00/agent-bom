@@ -312,6 +312,33 @@ spec:
 
 For the maintained Helm chart in `deploy/helm/agent-bom/`, the runtime monitor DaemonSet now includes liveness, readiness, and startup probes by default when enabled, can optionally expose a Prometheus Operator `ServiceMonitor` for `/metrics`, can optionally create an `Ingress` and `PodDisruptionBudget` for the monitor service, and ships with an explicit `NetworkPolicy` egress baseline for DNS plus outbound web traffic instead of `allow-all` egress.
 
+The jobs schema upgrade `20260928_01` requires a maintenance window. Drain scan
+submissions and all distributed workers, stop old API replicas, and take a database
+backup before upgrading. This replaces the global job key with `(team_id, job_id)`
+and all five dependent references, including the dispatch queue's
+`(tenant_id, job_id)` key. Existing job JSON, child IDs, queue claim tokens and lease
+expiries are retained. Inconsistent child ownership aborts the entire migration;
+review the affected records before retrying. Do not rewrite tenant ownership to
+force an upgrade through.
+
+Run `alembic -c deploy/supabase/postgres/alembic.ini upgrade head` using the
+configured migration identity, or allow the Helm migration hook below to run after
+draining the old replicas. Verify `control_plane_schema_versions` reports
+`scan_jobs` version `2`, then start the new replicas and workers. Their lease
+heartbeats and completion calls include both tenant and claim owner. Repeating
+`upgrade head` is supported. Old PostgreSQL writers using `ON CONFLICT (job_id)`
+are incompatible with the new key; mixed-version workers are unsupported. Rollback
+requires restoring the pre-upgrade backup and matching application version while
+writers remain stopped; the migration has no destructive downgrade.
+
+SQLite performs the equivalent transactional key upgrade at startup and retains
+its deployed `jobs.tenant_id` and JSON-text columns. Stop old processes and back up
+the database before starting the new version. PostgreSQL retains
+`scan_jobs.team_id` and JSONB; shared job SQL maps those physical names. This
+contract applies to SQLite, PostgreSQL and the in-memory job store. The retained
+Snowflake adapter has not been qualified for tenant-colliding job IDs or PostgreSQL
+dispatch leases; this upgrade makes no such claim for it.
+
 Postgres schema migrations for the control plane run automatically on Helm
 `pre-install` / `pre-upgrade` when `controlPlane.migrations.enabled` is true
 (the default). Operators do not run Alembic manually before routine chart

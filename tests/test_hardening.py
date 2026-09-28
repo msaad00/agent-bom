@@ -171,7 +171,7 @@ def test_jobs_bounded_eviction():
         # Cleanup
         with _jobs_lock:
             for k in list(_jobs.keys()):
-                if k.startswith("evict-"):
+                if k[1].startswith("evict-"):
                     del _jobs[k]
 
 
@@ -203,14 +203,14 @@ def test_jobs_bounded_eviction_keeps_none_completed_at_until_real_oldest_removed
         _jobs_put("evict-new", newest)
 
         with _jobs_lock:
-            assert "evict-old" not in _jobs
-            assert "evict-missing" in _jobs
-            assert "evict-new" in _jobs
+            assert ("default", "evict-old") not in _jobs
+            assert ("default", "evict-missing") in _jobs
+            assert ("default", "evict-new") in _jobs
     finally:
         _stores._MAX_IN_MEMORY_JOBS = original_max
         with _jobs_lock:
             for k in list(_jobs.keys()):
-                if k.startswith("evict-"):
+                if k[1].startswith("evict-"):
                     del _jobs[k]
 
 
@@ -238,13 +238,13 @@ def test_jobs_bounded_eviction_removes_evicted_job_locks():
         _jobs_put("lock-new", new)
 
         with _jobs_lock:
-            assert "lock-old" not in _jobs
+            assert ("default", "lock-old") not in _jobs
             assert "lock-old" not in _stores._job_locks
     finally:
         _stores._MAX_IN_MEMORY_JOBS = original_max
         with _jobs_lock:
             for k in list(_jobs.keys()):
-                if k.startswith("lock-"):
+                if k[1].startswith("lock-"):
                     del _jobs[k]
             for k in list(_stores._job_locks.keys()):
                 if k.startswith("lock-"):

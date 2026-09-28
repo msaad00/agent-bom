@@ -1389,6 +1389,11 @@ jobs:
           test -z "$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc "SELECT current_setting('init.app_password', true)")"
           test "$(PGPASSWORD=psqlpass psql -h 127.0.0.1 -U agentbom_psql_owner -d agent_bom -Atc "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")" = "f"
 
+      - name: Verify populated tenant job key upgrades
+        env:
+          AGENT_BOM_TEST_ADMIN_URL: postgresql://postgres:testpass@127.0.0.1:5432/postgres
+        run: uv run pytest tests/test_jobs_key_migration.py -q --tb=short
+
       - name: Postgres schema parity — both bootstrap paths must render one schema
         # Matching `alembic_version` proves the two paths RAN the same revisions,
         # not that they PRODUCED the same schema. The convention here is that a
@@ -1493,7 +1498,9 @@ jobs:
             tests/test_identity_policy_tenant_boundary.py \
             tests/test_findings_sql_read_contract.py \
             tests/test_findings_sql_backfill.py \
-            tests/test_findings_current_sql_contract.py
+            tests/test_findings_current_sql_contract.py \
+            tests/test_jobs_tenant_key_contract.py \
+            tests/test_jobs_dispatch_postgres.py
 
   # 3b. Alpine/musl compatibility test
   # Runs the test suite inside an Alpine Linux container (musl libc) to catch

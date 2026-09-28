@@ -1548,7 +1548,7 @@ def queue_connection_scan_record(record: CloudConnectionRecord, *, actor: str) -
         except Exception:
             if job is not None:
                 _get_store().delete(job.job_id, tenant_id=record.tenant_id)
-                _jobs_pop(job.job_id)
+                _jobs_pop(job.job_id, tenant_id=job.tenant_id)
             raise
     assert job is not None
     scan_routes.dispatch_scan_job(job)
@@ -1756,12 +1756,12 @@ async def scan_connection(
         except HTTPException:
             if job is not None:
                 _get_store().delete(job.job_id, tenant_id=tenant_id)
-                _jobs_pop(job.job_id)
+                _jobs_pop(job.job_id, tenant_id=job.tenant_id)
             raise
         except Exception as exc:  # noqa: BLE001 - durable admission boundary
             if job is not None:
                 _get_store().delete(job.job_id, tenant_id=tenant_id)
-                _jobs_pop(job.job_id)
+                _jobs_pop(job.job_id, tenant_id=job.tenant_id)
             _logger.error(
                 "Cloud connection scan reservation failed connection=%s: %s",
                 record.id,

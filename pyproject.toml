@@ -471,6 +471,8 @@ module = [
     "agent_bom.api.secret_rotation_adapters",
     "agent_bom.api.source_store",
     "agent_bom.api.storage.sql",
+    "agent_bom.api.storage.jobs",
+    "agent_bom.api.storage.jobs_schema",
     "agent_bom.api.storage.finding_reads",
     "agent_bom.api.storage.finding_ledger_writes",
     "agent_bom.api.storage.finding_current",

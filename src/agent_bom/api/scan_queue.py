@@ -114,7 +114,7 @@ class DistributedScanWorker:
         self._lease = max(30, int(lease_seconds))
         self._poll = max(1, int(poll_seconds))
         self._max = max(1, int(max_concurrent))
-        self._inflight: dict[str, str] = {}
+        self._inflight: dict[tuple[str, str], str] = {}
         self._inflight_lock = threading.Lock()
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
@@ -174,25 +174,29 @@ class DistributedScanWorker:
             if not claim_owner:
                 _logger.error("Dispatch claim has no ownership token; refusing unfenced handoff job=%s", job.job_id)
                 break
+            key = (job.tenant_id, job.job_id)
             with self._inflight_lock:
-                self._inflight[job.job_id] = claim_owner
+                self._inflight[key] = claim_owner
             _logger.info("Claimed scan job=%s tenant=%s worker=%s", job.job_id, job.tenant_id, self._worker_id)
             try:
-                submit_claimed_scan_job(job, lambda job_id, owner=claim_owner: self._on_complete(job_id, owner))
+                submit_claimed_scan_job(
+                    job, lambda job_id, owner=claim_owner, tenant=job.tenant_id: self._on_complete(job_id, owner, tenant)
+                )
             except Exception:  # noqa: BLE001
                 # Could not hand off locally (e.g. executor draining): drop the
                 # claim so another tick/replica can reclaim it after lease expiry.
                 with self._inflight_lock:
-                    if self._inflight.get(job.job_id) == claim_owner:
-                        self._inflight.pop(job.job_id)
+                    if self._inflight.get(key) == claim_owner:
+                        self._inflight.pop(key)
                 _logger.error("Failed to submit claimed job=%s; will be reclaimed", job.job_id)
                 break
 
-    def _on_complete(self, job_id: str, claim_owner: str) -> None:
+    def _on_complete(self, job_id: str, claim_owner: str, tenant_id: str) -> None:
+        key = (tenant_id, job_id)
         with self._inflight_lock:
-            if self._inflight.get(job_id) == claim_owner:
-                self._inflight.pop(job_id)
+            if self._inflight.get(key) == claim_owner:
+                self._inflight.pop(key)
         try:
-            self._store.complete_dispatch(job_id, claim_owner=claim_owner)
+            self._store.complete_dispatch(job_id, tenant_id=tenant_id, claim_owner=claim_owner)
         except Exception:  # noqa: BLE001
             _logger.error("Failed to clear dispatch row job=%s", job_id)

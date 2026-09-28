@@ -213,7 +213,7 @@ def test_completed_scan_refreshes_bounded_hot_cache(monkeypatch):
 
     assert len(store.list_all(all_tenants=True)) == 3
     assert len(stores._jobs) == 3
-    assert sorted(stores._jobs) == ["job-2", "job-3", "job-4"]
+    assert sorted(stores._jobs) == [("default", "job-2"), ("default", "job-3"), ("default", "job-4")]
     assert all(stores._jobs_is_compacted(job) for job in stores._jobs.values())
     assert all(store.get(job_id, all_tenants=True).result for job_id in ["job-2", "job-3", "job-4"])
 
@@ -287,7 +287,7 @@ def test_compacted_hot_cache_job_hydrates_full_scan_response(monkeypatch):
     stores._jobs_put(job.job_id, job)
     _run_scan_sync(job)
 
-    cached = stores._jobs["full-job"]
+    cached = stores._jobs[("default", "full-job")]
     assert stores._jobs_is_compacted(cached)
     assert cached.result != store.get("full-job", all_tenants=True).result
 

@@ -14,6 +14,9 @@ from datetime import datetime, timezone
 from typing import Any, Protocol, cast
 
 from agent_bom.api.posture_counts_cache import announce_scan_evidence
+from agent_bom.api.storage.jobs import get_job, put_job, require_job_tenant
+from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, migrate_sqlite_job_key
+from agent_bom.api.storage.sql import connection_session
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
@@ -90,6 +93,8 @@ def _require_tenant_scope(tenant_id: str | None, all_tenants: bool, method: str)
     background reconciliation passes ``all_tenants=True``; anything else with a
     missing tenant is rejected.
     """
+    if tenant_id is not None:
+        require_job_tenant(tenant_id)
     if tenant_id is None and not all_tenants:
         raise ValueError(f"{method} requires a tenant_id; pass all_tenants=True for background reconciliation")
 
@@ -141,13 +146,13 @@ class InMemoryJobStore:
     retains_job_objects_in_memory = True
 
     def __init__(self, *, max_retained_jobs: int | None = API_MAX_IN_MEMORY_JOBS) -> None:
-        self._jobs: dict[str, ScanJob] = {}
+        self._jobs: dict[tuple[str, str], ScanJob] = {}
         self._lock = threading.Lock()
         self._max_retained_jobs = max_retained_jobs
 
     def put(self, job: ScanJob) -> None:
         with self._lock:
-            self._jobs[job.job_id] = job
+            self._jobs[(require_job_tenant(job.tenant_id), job.job_id)] = job
             self._evict_completed_locked()
         announce_scan_evidence([job])
 
@@ -159,7 +164,7 @@ class InMemoryJobStore:
         if len(tenants) != 1:
             raise ValueError("atomic job batches must belong to one tenant")
         with self._lock:
-            self._jobs.update({job.job_id: job for job in jobs})
+            self._jobs.update({(require_job_tenant(job.tenant_id), job.job_id): job for job in jobs})
             self._evict_completed_locked()
         announce_scan_evidence(jobs)
 
@@ -169,9 +174,9 @@ class InMemoryJobStore:
         if len({job.tenant_id for job in jobs}) != 1:
             raise ValueError("atomic job batches must belong to one tenant")
         with self._lock:
-            inserted = [job.job_id for job in jobs if job.job_id not in self._jobs]
+            inserted = [job.job_id for job in jobs if (require_job_tenant(job.tenant_id), job.job_id) not in self._jobs]
             for job in jobs:
-                self._jobs.setdefault(job.job_id, job)
+                self._jobs.setdefault((require_job_tenant(job.tenant_id), job.job_id), job)
             self._evict_completed_locked()
             return inserted
 
@@ -194,7 +199,10 @@ class InMemoryJobStore:
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.get()")
         with self._lock:
-            job = self._jobs.get(job_id)
+            matches = [job for (owner, ident), job in self._jobs.items() if ident == job_id and (tenant_id is None or owner == tenant_id)]
+            if len(matches) > 1:
+                raise ValueError("Ambiguous job identity requires a tenant_id")
+            job = matches[0] if matches else None
             if job is None:
                 return None
             if tenant_id is not None and job.tenant_id != tenant_id:
@@ -204,13 +212,12 @@ class InMemoryJobStore:
     def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
         _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.delete()")
         with self._lock:
-            job = self._jobs.get(job_id)
-            if job is None:
-                return False
-            if tenant_id is not None and job.tenant_id != tenant_id:
-                return False
-            del self._jobs[job_id]
-            return True
+            if tenant_id is not None:
+                return self._jobs.pop((tenant_id, job_id), None) is not None
+            matches = [key for key in self._jobs if key[1] == job_id]
+            for key in matches:
+                del self._jobs[key]
+            return bool(matches)
 
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list[ScanJob]:
         _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.list_all()")
@@ -373,7 +380,8 @@ class SQLiteJobStore:
 
     def _init_db(self) -> None:
         try:
-            ensure_sqlite_schema_version(self._conn, "scan_jobs")
+            self._conn.execute("BEGIN IMMEDIATE")
+            ensure_sqlite_schema_version(self._conn, "scan_jobs", version=JOBS_SCHEMA_VERSION)
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS jobs (
                     job_id TEXT PRIMARY KEY,
@@ -398,6 +406,11 @@ class SQLiteJobStore:
             for name, sql_type in added:
                 if name not in columns:
                     self._conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {sql_type}")  # nosec B608 - static literals
+                    self._conn.execute(
+                        f"UPDATE jobs SET {name}=json_extract(data, '$.{name}') WHERE json_valid(data)"  # nosec B608 - static column names
+                    )
+            migrate_sqlite_job_key(self._conn)
+            self._conn.execute("DROP TRIGGER IF EXISTS jobs_overview_replace")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
@@ -414,11 +427,6 @@ class SQLiteJobStore:
             self._conn.execute("CREATE TABLE IF NOT EXISTS job_overview_revisions (tenant_id TEXT PRIMARY KEY, revision INTEGER NOT NULL)")
             self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_insert AFTER INSERT ON jobs BEGIN
                 INSERT INTO job_overview_revisions VALUES (NEW.tenant_id, 1)
-                ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
-            END""")
-            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_replace BEFORE INSERT ON jobs BEGIN
-                INSERT INTO job_overview_revisions SELECT tenant_id, 1 FROM jobs
-                WHERE job_id=NEW.job_id AND tenant_id!=NEW.tenant_id
                 ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;
             END""")
             self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_update AFTER UPDATE ON jobs BEGIN
@@ -466,31 +474,7 @@ class SQLiteJobStore:
         return ScanJob.model_validate_json(data)
 
     def _put_on_connection(self, job: ScanJob, *, if_absent: bool = False) -> int:
-        verb = "INSERT OR IGNORE" if if_absent else "INSERT OR REPLACE"
-        cursor = self._conn.execute(
-            f"""{verb} INTO jobs (
-                   job_id, status, created_at, completed_at, tenant_id, batch_id, parent_job_id,
-                   child_job_ids, target, target_index, target_count, schedule_id, triggered_by, data
-               )
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (  # nosec B608 - verb is selected from two static SQL literals
-                job.job_id,
-                job.status.value,
-                job.created_at,
-                job.completed_at,
-                job.tenant_id,
-                job.batch_id,
-                job.parent_job_id,
-                json.dumps(job.child_job_ids),
-                json.dumps(job.target) if job.target is not None else None,
-                job.target_index,
-                job.target_count,
-                job.schedule_id,
-                job.triggered_by,
-                self._serialize(job),
-            ),
-        )
-        return int(cursor.rowcount or 0)
+        return put_job(connection_session(self._conn, "sqlite"), "sqlite", job, if_absent=if_absent)
 
     def put(self, job: ScanJob) -> None:
         try:
@@ -544,16 +528,7 @@ class SQLiteJobStore:
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         _require_tenant_scope(tenant_id, all_tenants, "SQLiteJobStore.get()")
         try:
-            if tenant_id is None:
-                row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
-            else:
-                row = self._conn.execute(
-                    "SELECT data FROM jobs WHERE job_id = ? AND tenant_id = ?",
-                    (job_id, tenant_id),
-                ).fetchone()
-            if row is None:
-                return None
-            return self._deserialize(row[0])
+            return get_job(connection_session(self._conn, "sqlite"), "sqlite", job_id, tenant_id)
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

@@ -2428,27 +2428,31 @@ class TestGraphStoreBackendSelection:
 
     def test_scan_pipeline_persists_via_graph_store(self, monkeypatch, recording_graph_store):
         from agent_bom.api.pipeline import _persist_graph_snapshot
+        from agent_bom.api.postgres_common import _bypass_tenant_rls, _current_tenant, reset_current_tenant, set_current_tenant
 
         persisted = UnifiedGraph(scan_id="job-123", tenant_id="default")
         persisted.add_node(UnifiedNode(id="agent:scan", entity_type=EntityType.AGENT, label="scan-agent"))
-        tenant_context: list[tuple[str, str]] = []
+        tenant_context: list[tuple[str, bool]] = []
 
-        monkeypatch.setattr("agent_bom.api.pipeline._get_graph_store", lambda: recording_graph_store)
+        def scoped_store():
+            tenant_context.append((_current_tenant.get(), _bypass_tenant_rls.get()))
+            return recording_graph_store
+
+        monkeypatch.setattr("agent_bom.api.pipeline._get_graph_store", scoped_store)
         monkeypatch.setattr(
             "agent_bom.graph.builder.build_unified_graph_from_report", lambda report_json, scan_id, tenant_id, container=None: persisted
         )
         monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts", lambda previous, current: [])
-        monkeypatch.setattr(
-            "agent_bom.api.postgres_store.set_current_tenant",
-            lambda tenant_id: tenant_context.append(("set", tenant_id)) or "tenant-token",
-        )
-        monkeypatch.setattr(
-            "agent_bom.api.postgres_store.reset_current_tenant",
-            lambda token: tenant_context.append(("reset", token)),
-        )
-
         job = SimpleNamespace(job_id="job-123", tenant_id="default", progress=[], result={})
-        _persist_graph_snapshot(job, {"scan_id": "job-123"})
+        tenant_token = set_current_tenant("outer-tenant")
+        bypass_token = _bypass_tenant_rls.set(True)
+        try:
+            _persist_graph_snapshot(job, {"scan_id": "job-123"})
+            assert _current_tenant.get() == "outer-tenant"
+            assert _bypass_tenant_rls.get() is True
+        finally:
+            _bypass_tenant_rls.reset(bypass_token)
+            reset_current_tenant(tenant_token)
 
         # Write path now streams node/edge iterables into the store instead of
         # handing over a fully built graph, and derives the prior-snapshot delta
@@ -2457,7 +2461,8 @@ class TestGraphStoreBackendSelection:
         assert not any(call[0] == "save_graph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
         assert ("prior_delta_digest", "default", "store-scan") in recording_graph_store.calls
-        assert tenant_context == [("set", "default"), ("reset", "tenant-token")]
+        assert tenant_context
+        assert set(tenant_context) == {("default", False)}
         assert job.result["graph_persistence"] == {
             "status": "persisted",
             "scan_id": "job-123",

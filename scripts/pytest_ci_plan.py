@@ -56,6 +56,10 @@ GRAPH_PROJECTION_SOURCES = frozenset(
         "src/agent_bom/graph/runtime_projection.py",
         "src/agent_bom/graph/projection_support.py",
         "src/agent_bom/graph/ports.py",
+        "src/agent_bom/graph/identity_nodes.py",
+        "src/agent_bom/graph/authorization_evidence.py",
+        "src/agent_bom/graph/cloud_rbac.py",
+        "src/agent_bom/graph/nhi_governance.py",
     }
 )
 

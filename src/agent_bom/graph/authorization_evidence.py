@@ -27,6 +27,7 @@ from agent_bom.cloud.gcp_iam_evidence import normalize_gcp_iam_inventory
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
+from agent_bom.graph.identity_nodes import find_native_principal, unresolved_principal_node_id
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
 
@@ -43,15 +44,6 @@ _PRINCIPAL_TYPES: dict[str, EntityType] = {
     "serviceprincipal": EntityType.SERVICE_PRINCIPAL,
     "service-principal": EntityType.SERVICE_PRINCIPAL,
     "user": EntityType.USER,
-}
-
-_PRINCIPAL_PREFIX: dict[EntityType, str] = {
-    EntityType.GROUP: "group",
-    EntityType.MANAGED_IDENTITY: "managed_identity",
-    EntityType.FEDERATED_IDENTITY: "federated_identity",
-    EntityType.SERVICE_ACCOUNT: "service_account",
-    EntityType.SERVICE_PRINCIPAL: "service_principal",
-    EntityType.USER: "user",
 }
 
 
@@ -86,19 +78,12 @@ def _principal_type(binding: AuthorizationBinding) -> EntityType:
 
 def _principal_node(graph: UnifiedGraph, binding: AuthorizationBinding, provider: str) -> str:
     principal_id = binding.principal_id.strip()
-    normalized = _principal_aliases(principal_id)
-    for node in graph.nodes.values():
-        if str(node.attributes.get("cloud_provider") or "").casefold() != provider:
-            continue
-        candidates: set[str] = set()
-        for key in ("principal_id", "principal_name", "directory_principal_id", "principal_email"):
-            candidates.update(_principal_aliases(str(node.attributes.get(key) or "")))
-        if normalized & candidates:
-            return node.id
-
     entity_type = _principal_type(binding)
-    prefix = _PRINCIPAL_PREFIX.get(entity_type, "identity")
-    node_id = f"{prefix}:{provider}:{principal_id}"
+    matched = find_native_principal(graph, provider, entity_type, principal_id)
+    if matched is not None:
+        return matched
+
+    node_id = unresolved_principal_node_id(graph, provider, entity_type, principal_id)
     graph.add_node(
         UnifiedNode(
             id=node_id,
@@ -115,17 +100,6 @@ def _principal_node(graph: UnifiedGraph, binding: AuthorizationBinding, provider
         )
     )
     return node_id
-
-
-def _principal_aliases(value: str) -> set[str]:
-    normalized = value.strip().casefold()
-    if not normalized:
-        return set()
-    aliases = {normalized}
-    prefix, separator, suffix = normalized.partition(":")
-    if separator and prefix in {"group", "serviceaccount", "user"} and suffix:
-        aliases.add(suffix)
-    return aliases
 
 
 def _canonical_resource(node: UnifiedNode, bundle: AuthorizationEvidenceBundle) -> str:

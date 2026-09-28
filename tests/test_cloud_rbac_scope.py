@@ -57,7 +57,14 @@ def test_group_grant_preserves_member_evidence_without_inventing_other_members()
         ("user:azure:alice", EntityType.USER),
         ("user:azure:bob", EntityType.USER),
     ]:
-        graph.add_node(UnifiedNode(id=node_id, entity_type=entity, label=node_id))
+        graph.add_node(
+            UnifiedNode(
+                id=node_id,
+                entity_type=entity,
+                label=node_id,
+                attributes={"cloud_provider": "azure", "principal_id": node_id.rsplit(":", 1)[-1]},
+            )
+        )
     graph.add_edge(UnifiedEdge(source="user:azure:alice", target="group:azure:operators", relationship=RelationshipType.MEMBER_OF))
     inventory = _inventory("sub-a", "/subscriptions/sub-a", principal="operators")
     inventory["role_assignments"][0]["principal_type"] = "group"
@@ -67,3 +74,43 @@ def test_group_grant_preserves_member_evidence_without_inventing_other_members()
     member = next(edge for edge in edges if edge.source == "user:azure:alice")
     assert member.evidence["via_group"] == "operators"
     assert member.evidence["roles"] == ["Reader"]
+
+
+def test_managed_identity_role_assignment_joins_directory_id_without_duplicate():
+    inventory = _inventory("sub-a", "/subscriptions/sub-a", principal="NATIVE-ID")
+    inventory["role_assignments"][0]["principal_type"] = "ServicePrincipal"
+    inventory["managed_identities"] = [
+        {
+            "name": "scanner",
+            "arn": "/subscriptions/sub-a/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/scanner",
+            "principal_id": "native-id",
+            "principal_type": "managed-identity",
+            "privilege_level": "unknown",
+        }
+    ]
+    graph = build_unified_graph_from_report({"cloud_inventory": inventory})
+    managed = next(n for n in graph.nodes.values() if n.entity_type == EntityType.MANAGED_IDENTITY)
+    edges = [e for e in graph.edges if e.evidence.get("source") == "cloud-rbac"]
+    assert len(edges) == 1
+    assert edges[0].source == managed.id
+    assert not [n for n in graph.nodes.values() if n.entity_type == EntityType.SERVICE_PRINCIPAL]
+    assert managed.label == "scanner"
+    assert managed.attributes["nhi_is_dormant"] is False
+    assert managed.attributes["nhi_is_orphaned"] is False
+
+
+def test_collected_group_native_id_preserves_role_and_member_join():
+    inventory = _inventory("sub-a", "/subscriptions/sub-a", principal="operators-id")
+    inventory["role_assignments"][0]["principal_type"] = "group"
+    inventory["entra_groups"] = [
+        {
+            "name": "operators",
+            "arn": "operators-id",
+            "principal_id": "operators-id",
+            "members": [{"id": "alice-id", "type": "user", "name": "Alice"}],
+        }
+    ]
+    graph = build_unified_graph_from_report({"cloud_inventory": inventory})
+    edges = [e for e in graph.edges if e.evidence.get("source") == "cloud-rbac"]
+    assert {e.source for e in edges} == {"group:azure:operators-id", "user:azure:alice-id"}
+    assert graph.nodes["group:azure:operators-id"].label == "operators"

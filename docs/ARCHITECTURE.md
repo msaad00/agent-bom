@@ -419,7 +419,7 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 | OWASP | Agentic Top 10 (2026) | 10 / 10 | 10 | Applicability overlay (not scored): risks evidenced by observed agentic findings |
 | OWASP | AISVS v1.0 | 9 checks | ~50 verification reqs | Programmatically verifiable subset (AI-4/5/6/7/8 categories) |
 | NIST / FedRAMP | AI RMF 1.0 | 14 subcategories | ~70 | Govern / Map / Measure / Manage controls relevant to AI supply chain + MCP |
-| NIST / FedRAMP | CSF 2.0 | 14 categories | ~108 | Supply-chain, identity, asset, monitoring categories |
+| NIST / FedRAMP | CSF 2.0 | 15 categories | ~108 | Supply-chain, identity, asset, monitoring categories |
 | NIST / FedRAMP | 800-53 Rev 5 | 29 controls | ~1,006 | Vulnerability-driven mapping (RA-5, SI-2, etc.); not a complete catalog |
 | NIST / FedRAMP | FedRAMP Moderate | 25 controls | ~325 | Subset of 800-53 controls in the Moderate baseline |
 | MITRE | ATLAS | 65 techniques | ~90 | Applicability overlay (not scored): LLM/AI techniques — prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse — that the observed findings make applicable |

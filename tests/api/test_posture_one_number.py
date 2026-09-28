@@ -116,4 +116,3 @@ def test_grade_summary_and_tiles_use_the_issue_counts() -> None:
     assert "3 critical" not in summary
     # Occurrence counts remain available and still reconcile with /v1/findings.
     assert overview["finding_counts"]["critical"] == counts["critical"] == 3
-

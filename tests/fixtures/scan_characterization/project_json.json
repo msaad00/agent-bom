@@ -38,7 +38,7 @@
        "source_type": "local_discovery"
       },
       "discovery_sources": [
-       "***REDACTED***"
+       "project-config:<TMP>/proj/.mcp.json"
       ],
       "fingerprint": "<UUID>",
       "has_credentials": true,
@@ -164,7 +164,7 @@
      },
      {
       "args": [
-       "<redacted>"
+       "<path:proj>"
       ],
       "auth_mode": "local-stdio",
       "canonical_id": "<UUID>",
@@ -1178,7 +1178,7 @@
       },
       {
        "args": [
-        "<redacted>"
+        "<path:proj>"
        ],
        "command": "project",
        "discovery_provenance": {

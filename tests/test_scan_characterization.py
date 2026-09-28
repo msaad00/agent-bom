@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -106,14 +107,28 @@ CASES: dict[str, dict[str, Any]] = {
 }
 
 
+def _case_root(name: str) -> Path:
+    # Output redaction treats high-entropy path segments (such as macOS
+    # /var/folders temp directories) as secrets, so the fixture lives under a
+    # low-entropy root that renders the same on every machine.
+    root = Path("/tmp").resolve() / f"abom-scan-{os.getpid()}-{name}"
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True)
+    return root
+
+
 def run_case(name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr("agent_bom.db.local_analytics.record_scan_report_best_effort", lambda *_a, **_k: None)
-    project = _project_fixture(tmp_path)
-    out = tmp_path / f"{name}{_EXTENSIONS[CASES[name]['fmt']]}"
-    args = [a.replace("{project}", str(project)) for a in CASES[name]["args"]]
-    result = CliRunner().invoke(main, [*_BASE, *args, "--output", str(out)], catch_exceptions=False)
-    document = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
-    normalized = normalize(document, str(tmp_path.resolve()))
+    root = _case_root(name)
+    try:
+        project = _project_fixture(root)
+        out = root / f"{name}{_EXTENSIONS[CASES[name]['fmt']]}"
+        args = [a.replace("{project}", str(project)) for a in CASES[name]["args"]]
+        result = CliRunner().invoke(main, [*_BASE, *args, "--output", str(out)], catch_exceptions=False)
+        document = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    normalized = normalize(document, str(root))
     if CASES[name].get("digest") and normalized is not None:
         # Large demo documents and gate variants pin a digest plus the summary;
         # the small project documents keep full goldens for readable diffs.
@@ -122,6 +137,7 @@ def run_case(name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict
     return {"exit_code": result.exit_code, "document": normalized, "_output": result.output}
 
 
+@pytest.mark.skipif(os.name == "nt", reason="fixture root is a POSIX path")
 @pytest.mark.parametrize("name", sorted(CASES))
 def test_scan_characterization(name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     actual = run_case(name, tmp_path, monkeypatch)

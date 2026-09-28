@@ -94,7 +94,7 @@
     "properties": [
      {
       "name": "agent-bom:command",
-      "value": "project <redacted>"
+      "value": "project <TMP>/proj"
      },
      {
       "name": "agent-bom:discovery-provenance:confidence",

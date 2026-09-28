@@ -55,6 +55,26 @@ GRAPH_PROJECTION_SOURCES = frozenset(
     }
 )
 
+SHARED_JUDGMENT_SOURCES = frozenset(
+    {
+        "src/agent_bom/core/packages.py",
+        "src/agent_bom/core/severity.py",
+        "src/agent_bom/core/timestamps.py",
+    }
+)
+SHARED_JUDGMENT_PREFIXES = (
+    "test_shared_semantic_hygiene",
+    "test_version_utils",
+    "test_transitive",
+    "test_compliance_nist_catalog",
+    "test_compliance_unrated_false_pass",
+    "test_compliance_narrative",
+    "test_credential_expiry",
+    "test_credential_policy",
+    "test_graph_nhi_governance",
+    "test_nhi_governance_aws_gcp_parity",
+)
+
 
 def discover_test_files(root: Path) -> list[Path]:
     """Return every pytest module below *root* in stable path order."""
@@ -97,13 +117,14 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(root / path for path in MCP_TOOL_CONTRACTS if root / path in available)
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
-        if (
-            normalized.as_posix().startswith(("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_", "src/agent_bom/api/gateway_"))
-            or normalized.as_posix() == "src/agent_bom/runtime/trace_metadata.py"
-        ):
+        if normalized.as_posix().startswith(
+            ("src/agent_bom/gateway", "src/agent_bom/runtime/gateway_", "src/agent_bom/api/gateway_")
+        ) or normalized.as_posix() in {"src/agent_bom/runtime/trace_metadata.py", "src/agent_bom/runtime/risk_conditions.py"}:
             selected.update(candidate for candidate in available if candidate.stem.startswith(("test_gateway", "test_api_gateway")))
-        if normalized.as_posix() == "src/agent_bom/runtime/trace_metadata.py":
+        if normalized.as_posix() in {"src/agent_bom/runtime/trace_metadata.py", "src/agent_bom/runtime/risk_conditions.py"}:
             selected.update(candidate for candidate in available if candidate.stem.startswith("test_proxy"))
+        if normalized.as_posix() in SHARED_JUDGMENT_SOURCES:
+            selected.update(candidate for candidate in available if candidate.stem.startswith(SHARED_JUDGMENT_PREFIXES))
         direct = root / normalized
         if normalized.parts and normalized.parts[0] == "tests" and direct in available:
             selected.add(direct)

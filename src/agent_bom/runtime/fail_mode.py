@@ -107,7 +107,8 @@ GATEWAY_FAIL_MODE_MATRIX: tuple[SubsystemFailMode, ...] = (
         on_failure=(
             "A conditional-access evaluation error denies the request "
             "whenever any conditional-access policy exists for the tenant, "
-            "or when the policy store cannot be read to prove none exist."
+            "or when the policy store cannot be read to prove none exist. "
+            "Untrusted or missing required context denies; risk bounds require finite evidence."
         ),
     ),
     SubsystemFailMode(

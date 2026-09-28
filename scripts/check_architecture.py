@@ -23,6 +23,10 @@ OWNED_FUNCTIONS = {
     "normalize_package_name": "core/packages.py",
     "canonical_package_identity": "core/packages.py",
     "canonical_package_key": "core/packages.py",
+    "encode_go_module_path": "core/packages.py",
+    "_go_encode_module": "core/packages.py",
+    "evaluated_control_status": "core/severity.py",
+    "parse_identity_timestamp": "core/timestamps.py",
     "normalize_version": "core/versions/validation.py",
     "compare_version_order": "core/versions/ordering.py",
     "classify_credential_record": "core/credential_policy.py",
@@ -38,6 +42,8 @@ OWNED_FUNCTIONS = {
     "_add_agentic_identity_graph_projections": "graph/runtime_projection.py",
     "_add_runtime_incident_feedback": "graph/runtime_projection.py",
     "_agent_node_id": "graph/projection_support.py",
+    "evaluate_risk_conditions": "runtime/risk_conditions.py",
+    "authorized_context_headers": "api/gateway_context.py",
 }
 
 
@@ -68,12 +74,20 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
     errors = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if path in {"core/credential_policy.py", "graph/nhi_governance.py"} and node.name == "_parse_timestamp":
+                errors.append(f"{path}:{node.lineno}: identity timestamp parsing belongs in core/timestamps.py")
+            if path == "output/compliance_narrative.py" and node.name == "_control_status":
+                errors.append(f"{path}:{node.lineno}: mapped-finding status belongs in core/severity.py")
             owner = OWNED_FUNCTIONS.get(node.name)
             if owner and path != owner:
                 errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
         if isinstance(node, ast.ClassDef) and node.name == "GraphStoreProtocol" and path != "graph/ports.py":
             errors.append(f"{path}:{node.lineno}: GraphStoreProtocol belongs in graph/ports.py")
         for module in _import_modules(path, node):
+            if path == "runtime/risk_conditions.py" and (
+                module == "agent_bom.proxy_policy" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
+            ):
+                errors.append(f"{path}:{node.lineno}: risk conditions must not import policy orchestration or API adapters")
             if path.startswith(("runtime/gateway_", "api/gateway_")) and module == "agent_bom.gateway_server":
                 errors.append(f"{path}:{node.lineno}: gateway services must not import their HTTP composition root")
             if path == "runtime/gateway_relay.py" and (

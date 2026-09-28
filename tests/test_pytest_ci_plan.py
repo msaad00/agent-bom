@@ -99,6 +99,8 @@ def test_gateway_modules_select_cross_surface_enforcement_contracts(tmp_path: Pa
         "src/agent_bom/runtime/gateway_settings.py",
         "src/agent_bom/api/gateway_auth.py",
         "src/agent_bom/api/gateway_request.py",
+        "src/agent_bom/api/gateway_context.py",
+        "src/agent_bom/runtime/risk_conditions.py",
         "src/agent_bom/api/gateway_rate_limit.py",
         "src/agent_bom/runtime/trace_metadata.py",
     ):
@@ -119,3 +121,21 @@ def test_report_projection_edits_select_builder_store_and_runtime_contracts(tmp_
         _write(path, 1)
     for module in ("builder", "package_projection", "runtime_projection", "projection_support", "ports"):
         assert select_targeted_tests(changed_files=[Path(f"src/agent_bom/graph/{module}.py")], root=tmp_path) == expected
+
+
+def test_shared_judgments_select_caller_parity(tmp_path: Path) -> None:
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_transitive.py",
+            "test_version_utils.py",
+            "test_compliance_narrative.py",
+            "test_credential_policy_kernel.py",
+            "test_graph_nhi_governance.py",
+            "test_shared_semantic_hygiene.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    for name in ("packages", "severity", "timestamps"):
+        assert select_targeted_tests(changed_files=[Path(f"src/agent_bom/core/{name}.py")], root=tmp_path) == expected

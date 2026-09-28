@@ -16,6 +16,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from agent_bom.permissions import classify_tool
+from agent_bom.runtime.risk_conditions import evaluate_risk_conditions
 from agent_bom.runtime.text_normalize import normalize_identifier
 
 logger = logging.getLogger(__name__)
@@ -550,15 +551,9 @@ def evaluate_conditions(conditions: dict[str, Any], ctx: DecisionContext) -> tup
         if allowed_days and ctx.weekday not in allowed_days:
             return False, "request on a day outside the permitted weekday window"
 
-    min_risk = conditions.get("min_risk_score")
-    if isinstance(min_risk, (int, float)):
-        if ctx.risk_score is None or ctx.risk_score < min_risk:
-            return False, f"risk score below required minimum {min_risk}"
-
-    max_risk = conditions.get("max_risk_score")
-    if isinstance(max_risk, (int, float)):
-        if ctx.risk_score is not None and ctx.risk_score > max_risk:
-            return False, f"risk score above permitted maximum {max_risk}"
+    risk_allowed, risk_reason = evaluate_risk_conditions(conditions, ctx.risk_score)
+    if not risk_allowed:
+        return False, risk_reason
 
     required = conditions.get("required_attributes")
     if isinstance(required, dict) and required:

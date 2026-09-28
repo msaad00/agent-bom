@@ -767,7 +767,7 @@ def serve_cmd(
         )
     emit_cli_runtime_summary("agent-bom gateway", rows)
     emit_runtime_status_strip("gateway", calls=0, blocked=0, last_decision="listening")
-    uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
+    uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower(), proxy_headers=False)
 
 
 __all__ = ["gateway_group", "init_policy_cmd", "serve_cmd"]

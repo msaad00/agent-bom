@@ -77,3 +77,98 @@ def test_sqlite_scoped_upsert_survives_reopen_and_rejected_write(tmp_path):
     second = SQLiteAgentIdentityStore(path)
     assert second.get_jit_grant(grant.grant_id, tenant_id="a") == approved
     assert second.get_jit_grant(grant.grant_id, tenant_id="b") is None
+
+
+def test_service_rejects_wrong_record_from_adapter():
+    from agent_bom.api.identity_grants import AgentJITGrant
+
+    class WrongStore:
+        def get_jit_grant(self, grant_id, *, tenant_id):
+            return AgentJITGrant("foreign", "id", "agent", "b", "read_repo", "requested", "")
+
+        def put_jit_grant(self, grant, *, tenant_id):
+            pytest.fail("foreign grant reached write")
+
+    with pytest.raises(ValueError):
+        approve_jit_grant(WrongStore(), "foreign", tenant_id="a", ttl_seconds=300)
+
+
+def test_sqlite_payload_ownership_cannot_override_scoped_row(tmp_path):
+    import json
+    from dataclasses import asdict
+
+    store = SQLiteAgentIdentityStore(str(tmp_path / "corrupt.db"))
+    grant = pending(store)
+    store._conn.execute(
+        "UPDATE agent_identity_jit_grants SET data = ? WHERE grant_id = ?",
+        (json.dumps(asdict(replace(grant, tenant_id="b"))), grant.grant_id),
+    )
+    store._conn.commit()
+    with pytest.raises(ValueError):
+        store.get_jit_grant(grant.grant_id, tenant_id="a")
+
+
+def test_live_postgres_exact_id_authority_and_rls():
+    import os
+    from uuid import uuid4
+
+    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        pytest.skip("requires an isolated, migrated Postgres contract database")
+    from psycopg.errors import InsufficientPrivilege
+
+    from agent_bom.api.postgres_agent_identity import PostgresAgentIdentityStore
+    from agent_bom.api.postgres_common import _new_application_pool, reset_current_tenant, set_current_tenant
+
+    tenant_a, tenant_b = f"jit-a-{uuid4()}", f"jit-b-{uuid4()}"
+    pool = _new_application_pool(min_size=1, max_size=2)
+    store = PostgresAgentIdentityStore(pool)
+    context = set_current_tenant(tenant_a)
+    try:
+        with pool.connection() as conn:
+            is_super, bypass = conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone()
+        assert not is_super and not bypass
+        grant = request_jit_grant(store, tenant_id=tenant_a, identity_id="id", agent_id="agent", tool_name="read_repo")
+        assert store.get_jit_grant(grant.grant_id, tenant_id=tenant_b) is None
+        assert approve_jit_grant(store, grant.grant_id, tenant_id=tenant_b, ttl_seconds=300) is None
+        other_context = set_current_tenant(tenant_b)
+        try:
+            assert store.get_jit_grant(grant.grant_id, tenant_id=tenant_a) is None
+            with pytest.raises((ValueError, InsufficientPrivilege)):
+                store.put_jit_grant(replace(grant, tenant_id=tenant_b), tenant_id=tenant_b)
+        finally:
+            reset_current_tenant(other_context)
+        assert store.get_jit_grant(grant.grant_id, tenant_id=tenant_a).status == "requested"
+        assert approve_jit_grant(store, grant.grant_id, tenant_id=tenant_a, ttl_seconds=300).status == "active"
+        assert revoke_jit_grant(store, grant.grant_id, tenant_id=tenant_a).status == "revoked"
+    finally:
+        reset_current_tenant(context)
+        pool.close()
+
+
+def test_concurrent_tenants_cannot_claim_the_same_grant_id(store):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from uuid import uuid4
+
+    from agent_bom.api.identity_grants import AgentJITGrant
+
+    barrier = Barrier(2)
+    grant_id = f"jit-race-{uuid4()}"
+
+    def claim(tenant):
+        grant = AgentJITGrant(grant_id, "id", "agent", tenant, "read_repo", "requested", "")
+        barrier.wait(timeout=5)
+        try:
+            store.put_jit_grant(grant, tenant_id=tenant)
+        except ValueError:
+            return None
+        return tenant
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(claim, ["a", "b"]))
+    winners = [tenant for tenant in results if tenant is not None]
+    assert len(winners) == 1
+    winner = winners[0]
+    loser = "b" if winner == "a" else "a"
+    assert store.get_jit_grant(grant_id, tenant_id=winner).tenant_id == winner
+    assert store.get_jit_grant(grant_id, tenant_id=loser) is None

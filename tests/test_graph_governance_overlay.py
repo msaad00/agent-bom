@@ -305,7 +305,7 @@ def test_jit_lifecycle_remains_consistent_with_live_grant_filter(state):
         grant.status = "revoked" if state == "revoked" else "active"
         grant.starts_at = (now + timedelta(hours=1) if state == "future" else now - timedelta(hours=1)).isoformat()
         grant.expires_at = (now - timedelta(minutes=30) if state == "expired" else now + timedelta(hours=2)).isoformat()
-        store.put_jit_grant(grant)
+        store.put_jit_grant(grant, tenant_id=grant.tenant_id)
     graph = _base_graph()
     apply_governance_overlay(
         graph, tenant_id="default", identity_store=store, drift_store=_FakeDriftStore([]), blueprint_store=_EmptyBlueprintStore()

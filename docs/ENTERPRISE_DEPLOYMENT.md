@@ -440,6 +440,14 @@ authentication and runtime policy enforcement. Use shared Postgres identity
 storage and the dedicated delegation signing key across replicas; SQLite
 restart coverage does not establish distributed failover qualification.
 
+JIT grant reads, writes, approval, denial, and revocation also require an
+explicit tenant in the service/store API. Unknown or foreign grant IDs cannot
+be mutated, and a write cannot transfer an existing grant ID to another tenant.
+SQLite enforces this in the upsert itself; Postgres retains both the SQL tenant
+predicate and FORCE RLS. In-memory reads return copies so changing a fetched
+grant cannot change authorization until a validated write succeeds. Integrations
+calling these Python methods must pass `tenant_id` from verified context.
+
 #### Finding and scan payload encryption at rest (deployment prerequisite)
 
 Finding, scan, and graph payloads are **not** application-layer encrypted. This

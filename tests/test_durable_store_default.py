@@ -116,7 +116,7 @@ def test_jit_grant_survives_restart(durable_state_dir):
     set_agent_identity_store(None)
 
     store2 = get_agent_identity_store()
-    fetched = store2.get_jit_grant(grant.grant_id)
+    fetched = store2.get_jit_grant(grant.grant_id, tenant_id=grant.tenant_id)
     assert fetched is not None
     assert fetched.tool_name == "deploy"
     assert fetched.status == "active"

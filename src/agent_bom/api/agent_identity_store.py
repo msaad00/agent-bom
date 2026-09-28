@@ -19,11 +19,36 @@ import os
 import secrets
 import sqlite3
 import threading
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from agent_bom.api.identity_grants import (
+    AgentJITGrant as AgentJITGrant,
+)
+from agent_bom.api.identity_grants import (
+    approve_jit_grant as approve_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    deny_jit_grant as deny_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    identity_expiry as _ttl_to_expiry,
+)
+from agent_bom.api.identity_grants import (
+    issue_jit_grant as issue_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    request_jit_grant as request_jit_grant,
+)
+from agent_bom.api.identity_grants import (
+    require_grant_tenant,
+)
+from agent_bom.api.identity_grants import (
+    revoke_jit_grant as revoke_jit_grant,
+)
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.core.tenancy import require_explicit_tenant_id
 
 TOKEN_PREFIX = "abi"
 
@@ -122,46 +147,6 @@ class AgentIdentity:
         except ValueError:
             return False
         return self.status in ("active", "rotating")
-
-
-@dataclass
-class AgentJITGrant:
-    """A time-bound access grant for one identity and one tool."""
-
-    grant_id: str
-    identity_id: str
-    agent_id: str
-    tenant_id: str
-    tool_name: str
-    status: str  # requested | active | denied | revoked
-    requested_at: str
-    requested_by: str = ""
-    approved_at: str = ""
-    approved_by: str = ""
-    starts_at: str = ""
-    expires_at: str = ""
-    reason: str = ""
-    ticket_id: str = ""
-    revoked_at: str = ""
-    revoked_reason: str = ""
-    denied_at: str = ""
-    denied_reason: str = ""
-
-    def is_live(self, *, at: datetime | None = None) -> bool:
-        if self.status != "active":
-            return False
-        now = at or _now()
-        try:
-            if self.starts_at and now < datetime.fromisoformat(self.starts_at):
-                return False
-            if not self.expires_at or now > datetime.fromisoformat(self.expires_at):
-                return False
-        except ValueError:
-            return False
-        return True
-
-    def to_public_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
 
 @dataclass
@@ -343,9 +328,9 @@ class AgentIdentityStore(Protocol):
 
     def list_by_agent(self, tenant_id: str, agent_id: str, *, limit: int = 200) -> builtins.list[AgentIdentity]: ...
 
-    def put_jit_grant(self, grant: AgentJITGrant) -> None: ...
+    def put_jit_grant(self, grant: AgentJITGrant, *, tenant_id: str) -> None: ...
 
-    def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None: ...
+    def get_jit_grant(self, grant_id: str, *, tenant_id: str) -> AgentJITGrant | None: ...
 
     def list_jit_grants(
         self,
@@ -380,11 +365,6 @@ class AgentIdentityStore(Protocol):
         include_disabled: bool = False,
         limit: int = 200,
     ) -> builtins.list[ConditionalAccessPolicy]: ...
-
-
-def _ttl_to_expiry(ttl_seconds: int, *, at: datetime | None = None) -> str:
-    base = at or _now()
-    return _iso(base + timedelta(seconds=max(60, int(ttl_seconds))))
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -436,13 +416,19 @@ class InMemoryAgentIdentityStore:
             rows = [i for i in self._by_id.values() if i.tenant_id == tenant_id and (i.agent_id or "").strip() == agent_id]
             return sorted(rows, key=lambda i: i.issued_at, reverse=True)[:limit]
 
-    def put_jit_grant(self, grant: AgentJITGrant) -> None:
+    def put_jit_grant(self, grant: AgentJITGrant, *, tenant_id: str) -> None:
+        tenant = require_grant_tenant(grant, tenant_id)
         with self._lock:
-            self._jit_by_id[grant.grant_id] = grant
+            previous = self._jit_by_id.get(grant.grant_id)
+            if previous is not None and previous.tenant_id != tenant:
+                raise ValueError("JIT grant identity belongs to another tenant")
+            self._jit_by_id[grant.grant_id] = replace(grant)
 
-    def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None:
+    def get_jit_grant(self, grant_id: str, *, tenant_id: str) -> AgentJITGrant | None:
+        tenant = require_explicit_tenant_id(tenant_id)
         with self._lock:
-            return self._jit_by_id.get(grant_id)
+            grant = self._jit_by_id.get(grant_id)
+            return replace(grant) if grant is not None and grant.tenant_id == tenant else None
 
     def list_jit_grants(
         self,
@@ -458,7 +444,7 @@ class InMemoryAgentIdentityStore:
                 rows = [g for g in rows if g.identity_id == identity_id]
             if not include_inactive:
                 rows = [g for g in rows if g.is_live()]
-            return sorted(rows, key=lambda g: g.requested_at, reverse=True)[:limit]
+            return [replace(g) for g in sorted(rows, key=lambda g: g.requested_at, reverse=True)[:limit]]
 
     def active_jit_grant(
         self,
@@ -474,7 +460,7 @@ class InMemoryAgentIdentityStore:
                 for g in self._jit_by_id.values()
                 if g.tenant_id == tenant_id and g.identity_id == identity_id and g.tool_name == tool_name and g.is_live(at=at)
             ]
-            return sorted(candidates, key=lambda g: g.expires_at, reverse=True)[0] if candidates else None
+            return replace(sorted(candidates, key=lambda g: g.expires_at, reverse=True)[0]) if candidates else None
 
     def iter_all_identities(self, *, limit: int = 10000) -> builtins.list[AgentIdentity]:
         with self._lock:
@@ -482,7 +468,7 @@ class InMemoryAgentIdentityStore:
 
     def iter_all_jit_grants(self, *, limit: int = 10000) -> builtins.list[AgentJITGrant]:
         with self._lock:
-            return list(self._jit_by_id.values())[:limit]
+            return [replace(g) for g in list(self._jit_by_id.values())[:limit]]
 
     def put_conditional_policy(self, policy: ConditionalAccessPolicy) -> None:
         with self._lock:
@@ -647,27 +633,41 @@ class SQLiteAgentIdentityStore:
         ).fetchall()
         return [AgentIdentity(**json.loads(r[0])) for r in rows]
 
-    def put_jit_grant(self, grant: AgentJITGrant) -> None:
-        self._conn.execute(
-            "INSERT OR REPLACE INTO agent_identity_jit_grants "
-            "(grant_id, tenant_id, identity_id, tool_name, status, requested_at, expires_at, data) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                grant.grant_id,
-                grant.tenant_id,
-                grant.identity_id,
-                grant.tool_name,
-                grant.status,
-                grant.requested_at,
-                grant.expires_at,
-                json.dumps(asdict(grant), sort_keys=True),
-            ),
-        )
-        self._conn.commit()
+    def put_jit_grant(self, grant: AgentJITGrant, *, tenant_id: str) -> None:
+        tenant = require_grant_tenant(grant, tenant_id)
+        with self._conn:
+            cursor = self._conn.execute(
+                "INSERT INTO agent_identity_jit_grants "
+                "(grant_id, tenant_id, identity_id, tool_name, status, requested_at, expires_at, data) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (grant_id) DO UPDATE SET "
+                "identity_id = excluded.identity_id, tool_name = excluded.tool_name, requested_at = excluded.requested_at, "
+                "status = excluded.status, expires_at = excluded.expires_at, data = excluded.data "
+                "WHERE agent_identity_jit_grants.tenant_id = excluded.tenant_id",
+                (
+                    grant.grant_id,
+                    tenant,
+                    grant.identity_id,
+                    grant.tool_name,
+                    grant.status,
+                    grant.requested_at,
+                    grant.expires_at,
+                    json.dumps(asdict(grant), sort_keys=True),
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("JIT grant identity belongs to another tenant")
 
-    def get_jit_grant(self, grant_id: str) -> AgentJITGrant | None:
-        row = self._conn.execute("SELECT data FROM agent_identity_jit_grants WHERE grant_id = ?", (grant_id,)).fetchone()
-        return AgentJITGrant(**json.loads(row[0])) if row else None
+    def get_jit_grant(self, grant_id: str, *, tenant_id: str) -> AgentJITGrant | None:
+        tenant = require_explicit_tenant_id(tenant_id)
+        row = self._conn.execute(
+            "SELECT data FROM agent_identity_jit_grants WHERE grant_id = ? AND tenant_id = ?", (grant_id, tenant)
+        ).fetchone()
+        grant = AgentJITGrant(**json.loads(row[0])) if row else None
+        if grant is not None:
+            require_grant_tenant(grant, tenant)
+            if grant.grant_id != grant_id:
+                raise ValueError("JIT grant record identity does not match")
+        return grant
 
     def list_jit_grants(
         self,
@@ -921,108 +921,6 @@ def agent_identity_revoked(store: AgentIdentityStore, tenant_id: str, agent_id: 
     return not any(i.is_live() for i in identities), False
 
 
-def request_jit_grant(
-    store: AgentIdentityStore,
-    *,
-    identity_id: str,
-    agent_id: str,
-    tenant_id: str,
-    tool_name: str,
-    requested_by: str = "",
-    reason: str = "",
-    ticket_id: str = "",
-) -> AgentJITGrant:
-    """Create a pending JIT request. It does not authorize a tool call."""
-    now = _now()
-    grant = AgentJITGrant(
-        grant_id=f"jit_{secrets.token_hex(8)}",
-        identity_id=identity_id,
-        agent_id=agent_id,
-        tenant_id=tenant_id,
-        tool_name=tool_name,
-        status="requested",
-        requested_at=_iso(now),
-        requested_by=requested_by[:120],
-        reason=reason[:1000],
-        ticket_id=ticket_id[:120],
-    )
-    store.put_jit_grant(grant)
-    return grant
-
-
-def approve_jit_grant(
-    store: AgentIdentityStore,
-    grant_id: str,
-    *,
-    ttl_seconds: int,
-    approved_by: str = "",
-    starts_at: datetime | None = None,
-) -> AgentJITGrant | None:
-    """Activate a pending JIT request for a bounded TTL."""
-    grant = store.get_jit_grant(grant_id)
-    if grant is None or grant.status in {"revoked", "denied"}:
-        return None
-    now = _now()
-    start = starts_at or now
-    grant.status = "active"
-    grant.approved_at = _iso(now)
-    grant.approved_by = approved_by[:120]
-    grant.starts_at = _iso(start)
-    grant.expires_at = _ttl_to_expiry(ttl_seconds, at=start)
-    store.put_jit_grant(grant)
-    return grant
-
-
-def issue_jit_grant(
-    store: AgentIdentityStore,
-    *,
-    identity_id: str,
-    agent_id: str,
-    tenant_id: str,
-    tool_name: str,
-    ttl_seconds: int,
-    approved_by: str = "",
-    reason: str = "",
-    ticket_id: str = "",
-) -> AgentJITGrant:
-    """Create and immediately approve a time-bound JIT grant."""
-    grant = request_jit_grant(
-        store,
-        identity_id=identity_id,
-        agent_id=agent_id,
-        tenant_id=tenant_id,
-        tool_name=tool_name,
-        requested_by=approved_by,
-        reason=reason,
-        ticket_id=ticket_id,
-    )
-    approved = approve_jit_grant(store, grant.grant_id, ttl_seconds=ttl_seconds, approved_by=approved_by)
-    assert approved is not None
-    return approved
-
-
-def deny_jit_grant(store: AgentIdentityStore, grant_id: str, *, reason: str = "") -> AgentJITGrant | None:
-    grant = store.get_jit_grant(grant_id)
-    if grant is None or grant.status in {"revoked", "denied"}:
-        return None
-    grant.status = "denied"
-    grant.denied_at = _iso(_now())
-    grant.denied_reason = reason[:500]
-    store.put_jit_grant(grant)
-    return grant
-
-
-def revoke_jit_grant(store: AgentIdentityStore, grant_id: str, *, reason: str = "") -> AgentJITGrant | None:
-    grant = store.get_jit_grant(grant_id)
-    if grant is None or grant.status in {"revoked", "denied"}:
-        return None
-    grant.status = "revoked"
-    grant.revoked_at = _iso(_now())
-    grant.revoked_reason = reason[:500]
-    store.put_jit_grant(grant)
-    return grant
-
-
 def active_jit_grant_for_tool(
     store: AgentIdentityStore,
     *,
@@ -1151,11 +1049,11 @@ def _put_grant_any_tenant(store: AgentIdentityStore, grant: AgentJITGrant) -> No
 
         token = set_current_tenant(grant.tenant_id)
         try:
-            store.put_jit_grant(grant)
+            store.put_jit_grant(grant, tenant_id=grant.tenant_id)
         finally:
             reset_current_tenant(token)
         return
-    store.put_jit_grant(grant)
+    store.put_jit_grant(grant, tenant_id=grant.tenant_id)
 
 
 def _export_audit_to_otlp(record: Any) -> None:

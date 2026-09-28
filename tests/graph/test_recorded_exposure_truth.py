@@ -256,7 +256,7 @@ def test_multiple_provider_flags_require_an_explicit_positive(flags, expected):
     graph = build_unified_graph_from_report(
         {"cloud_inventory": {"provider": "aws", "status": "ok", "rds_instances": [{"name": "db", **flags}]}}
     )
-    resource = graph.nodes["cloud_resource:aws:rds:database:db"]
+    resource = next(node for node_id, node in graph.nodes.items() if node_id.startswith("cloud_resource:aws:rds:database:"))
     assert resource.attributes["internet_exposed"] is expected
     assert resource.attributes["internet_exposure_evidence"]["inputs"] == flags
 

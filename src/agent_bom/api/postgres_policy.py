@@ -435,9 +435,7 @@ class PostgresScheduleStore:
                     (now_iso,),
                 ).fetchall()
                 return [
-                    schedule_record_for_tenant(
-                        ScanSchedule.model_validate_json(r[1] if isinstance(r[1], str) else json.dumps(r[1])), r[0]
-                    )
+                    schedule_record_for_tenant(ScanSchedule.model_validate_json(r[1] if isinstance(r[1], str) else json.dumps(r[1])), r[0])
                     for r in rows
                 ]
 

@@ -95,9 +95,7 @@ class InMemoryScheduleStore:
 
     def list_due(self, now_iso: str) -> list[ScanSchedule]:
         """Return due rows for the privileged scheduler, which binds each tenant before work."""
-        return [
-            s.model_copy(deep=True) for s in self._schedules.values() if s.enabled and s.next_run and s.next_run <= now_iso
-        ]
+        return [s.model_copy(deep=True) for s in self._schedules.values() if s.enabled and s.next_run and s.next_run <= now_iso]
 
 
 class SQLiteScheduleStore:

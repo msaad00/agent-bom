@@ -33,7 +33,7 @@ def _capture_allow_private(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     monkeypatch.setattr(egress_transport, "build_pinned_async_client", _fake_builder)
 
-    import agent_bom.gateway_server as gateway_server
+    from agent_bom.runtime import gateway_relay as gateway_server
 
     async def _fake_post(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         return {"jsonrpc": "2.0", "result": {}}

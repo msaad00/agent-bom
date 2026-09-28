@@ -33,6 +33,26 @@ Non-goals (explicitly):
 
 ## User-visible surface
 
+### Runtime ownership
+
+`gateway_server.py` composes the HTTP application. Its public settings, relay and
+audit imports remain compatible while the runtime package owns their behavior:
+
+- `runtime/gateway_settings.py`: caller-supplied settings, without environment
+  reads during construction; CLI/environment precedence remains in the CLI.
+- `runtime/gateway_relay.py`: pooled upstream clients and tenant-specific circuit
+  state, consuming the bounded `RelaySettings` protocol.
+- `runtime/gateway_audit.py`: bounded delivery queues, acknowledgements, retries
+  and shutdown; `gateway_audit_registry.py` owns secret-free recovery markers.
+- `runtime/gateway_audit_local.py`: local HMAC/SQLite persistence and unavailable
+  state. `gateway_contracts.py` owns callback and audit-failure contracts.
+
+Cancellation restores the unacknowledged batch for replay. A reconstructed queue
+keeps its batch identity and requires a current credential before remote delivery.
+Failure to retain an event or obtain required pre-execution acknowledgement remains
+fail-closed. Local HMAC chaining does not establish independently retained evidence
+against an actor controlling both records and keys.
+
 ### CLI
 
 ```bash

@@ -45,6 +45,7 @@ from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_li
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_jsonrpc_response, scan_tool_call
+from agent_bom.runtime.trace_metadata import inject_jsonrpc_trace_meta as _inject_jsonrpc_trace_meta
 from agent_bom.security import (
     redact_secret_url,
     require_recognized_launcher,
@@ -474,29 +475,6 @@ def _extract_jsonrpc_trace_meta(message: dict[str, object]) -> dict[str, str]:
     if baggage:
         trace_meta["baggage"] = baggage
     return trace_meta
-
-
-def _inject_jsonrpc_trace_meta(
-    message: dict[str, object],
-    *,
-    traceparent: str | None = None,
-    tracestate: str | None = None,
-    baggage: str | None = None,
-) -> dict[str, object]:
-    """Return a JSON-RPC message with bounded W3C trace context in `_meta`."""
-    if not traceparent and not tracestate and not baggage:
-        return message
-    enriched = dict(message)
-    raw_meta = message.get("_meta")
-    meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
-    if traceparent:
-        meta["traceparent"] = traceparent
-    if tracestate:
-        meta["tracestate"] = tracestate
-    if baggage:
-        meta["baggage"] = baggage
-    enriched["_meta"] = meta
-    return enriched
 
 
 def _stitch_jsonrpc_trace_meta(

@@ -28,6 +28,7 @@ from agent_bom.asset_provenance import agent_discovery_provenance, package_disco
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.constants import is_credential_key
 from agent_bom.core.severity import normalize_severity
+from agent_bom.inventory import build_agents_from_inventory
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
     sanitize_command_args,
@@ -64,10 +65,9 @@ def _discover_agents_with_demo_fallback() -> list[Any]:
 
         return discover_all()
 
-    from agent_bom.cli._common import _build_agents_from_inventory
     from agent_bom.demo import DEMO_INVENTORY
 
-    return _build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
+    return build_agents_from_inventory(DEMO_INVENTORY, "agent-bom --demo")
 
 
 def _host_agents_for_tenant(tenant_id: str) -> list[Any] | None:

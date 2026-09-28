@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Ratchet Python size/complexity debt and enforce the shared-kernel boundary."""
+"""Ratchet Python size/complexity and layering debt; enforce hard layer boundaries.
+
+Hard rules (always zero): core imports only core, api/ never imports the CLI,
+plus the targeted service boundaries in ``boundary_errors``.
+
+Ratcheted per file (existing counts may only shrink, new files start at zero):
+``graph_api_imports`` (graph/ -> api), ``api_imports`` (any other non-api
+module -> api) and ``deferred_imports`` (imports inside function bodies, not
+counting optional-extra SDKs that must stay lazy).
+"""
 
 from __future__ import annotations
 
@@ -9,9 +18,63 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
-LIMITS = {"file_lines": 600, "function_lines": 80, "complexity": 15}
+LIMITS = {
+    "file_lines": 600,
+    "function_lines": 80,
+    "complexity": 15,
+    "deferred_imports": 0,
+    "api_imports": 0,
+    "graph_api_imports": 0,
+}
+# Top-level import names that ship only in optional extras (pyproject
+# optional-dependencies) or are probed at runtime. Importing them inside a
+# function keeps a base install working, so they do not count as deferred debt.
+OPTIONAL_EXTRA_MODULES = frozenset(
+    {
+        "PIL",
+        "aiohttp",
+        "alembic",
+        "azure",
+        "boto3",
+        "botocore",
+        "databricks",
+        "dotenv",
+        "fastapi",
+        "google",
+        "googleapiclient",
+        "gremlin_python",
+        "huggingface_hub",
+        "litellm",
+        "mlflow",
+        "networkx",
+        "numpy",
+        "onelogin",
+        "openai",
+        "opentelemetry",
+        "pandas",
+        "plotly",
+        "prompt_toolkit",
+        "psycopg",
+        "psycopg_pool",
+        "pyarrow",
+        "pyiceberg",
+        "pytesseract",
+        "scipy",
+        "smithery",
+        "snowflake",
+        "sqlalchemy",
+        "sse_starlette",
+        "starlette",
+        "streamlit",
+        "uvicorn",
+        "wandb",
+        "watchdog",
+        "zstandard",
+    }
+)
 BASELINE = Path("scripts/architecture-baseline.json")
 OWNED_FUNCTIONS = {
     "require_explicit_tenant_id": "core/tenancy.py",
@@ -95,36 +158,74 @@ def _import_modules(path: str, node: ast.AST) -> list[str]:
     return [module, *(f"{module}.{alias.name}" for alias in node.names)]
 
 
+def _imports_package(modules: list[str], package: str) -> bool:
+    return any(module == package or module.startswith(f"{package}.") for module in modules)
+
+
+def _counts_as_deferred(node: ast.Import | ast.ImportFrom) -> bool:
+    if isinstance(node, ast.ImportFrom):
+        return bool(node.level) or (node.module or "").split(".")[0] not in OPTIONAL_EXTRA_MODULES
+    return any(alias.name.split(".")[0] not in OPTIONAL_EXTRA_MODULES for alias in node.names)
+
+
+def _import_statements(statements: list[ast.stmt], in_function: bool = False) -> Iterator[tuple[ast.Import | ast.ImportFrom, bool]]:
+    # Imports are statements, so only statement bodies are walked, not expressions.
+    for statement in statements:
+        if isinstance(statement, (ast.Import, ast.ImportFrom)):
+            yield statement, in_function
+            continue
+        nested = in_function or isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        blocks = [getattr(statement, field, None) for field in ("body", "orelse", "finalbody")]
+        blocks += [child.body for child in [*getattr(statement, "handlers", []), *getattr(statement, "cases", [])]]
+        for block in blocks:
+            if isinstance(block, list):
+                yield from _import_statements(block, nested)
+
+
+def layer_metrics(path: str, tree: ast.Module) -> dict[str, int]:
+    """Per-file layering debt, counted in import statements."""
+    metric = "graph_api_imports" if path.startswith("graph/") else "api_imports"
+    metrics = {"deferred_imports": 0, metric: 0}
+    for node, in_function in _import_statements(tree.body):
+        metrics["deferred_imports"] += in_function and _counts_as_deferred(node)
+        metrics[metric] += not path.startswith("api/") and _imports_package(_import_modules(path, node), "agent_bom.api")
+    return {name: value for name, value in metrics.items() if value}
+
+
 def boundary_errors(path: str, tree: ast.AST) -> list[str]:
     errors = []
     for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if path in {"core/credential_policy.py", "graph/nhi_governance.py"} and node.name == "_parse_timestamp":
-                errors.append(f"{path}:{node.lineno}: identity timestamp parsing belongs in core/timestamps.py")
+                errors.append(f"{path}:{line}: identity timestamp parsing belongs in core/timestamps.py")
             if path == "output/compliance_narrative.py" and node.name == "_control_status":
-                errors.append(f"{path}:{node.lineno}: mapped-finding status belongs in core/severity.py")
+                errors.append(f"{path}:{line}: mapped-finding status belongs in core/severity.py")
             owner = OWNED_FUNCTIONS.get(node.name)
             if owner and path != owner:
-                errors.append(f"{path}:{node.lineno}: {node.name} belongs in {owner}")
+                errors.append(f"{path}:{line}: {node.name} belongs in {owner}")
         if isinstance(node, ast.ClassDef) and node.name == "GraphStoreProtocol" and path != "graph/ports.py":
-            errors.append(f"{path}:{node.lineno}: GraphStoreProtocol belongs in graph/ports.py")
-        for module in _import_modules(path, node):
+            errors.append(f"{path}:{line}: GraphStoreProtocol belongs in graph/ports.py")
+        modules = _import_modules(path, node)
+        if path.startswith("api/") and _imports_package(modules, "agent_bom.cli"):
+            errors.append(f"{path}:{line}: api must not import the CLI; move shared logic below both layers")
+        for module in modules:
             if path in TENANT_DISPATCH_ADAPTERS and module.rsplit(".", 1)[-1] in {"set_current_tenant", "reset_current_tenant"}:
-                errors.append(f"{path}:{node.lineno}: tenant dispatch must use api/tenant_worker.py to suspend maintenance authority")
+                errors.append(f"{path}:{line}: tenant dispatch must use api/tenant_worker.py to suspend maintenance authority")
             if path == "runtime/risk_conditions.py" and (
                 module == "agent_bom.proxy_policy" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):
-                errors.append(f"{path}:{node.lineno}: risk conditions must not import policy orchestration or API adapters")
+                errors.append(f"{path}:{line}: risk conditions must not import policy orchestration or API adapters")
             if path.startswith(("runtime/gateway_", "api/gateway_")) and module == "agent_bom.gateway_server":
-                errors.append(f"{path}:{node.lineno}: gateway services must not import their HTTP composition root")
+                errors.append(f"{path}:{line}: gateway services must not import their HTTP composition root")
             if path == "runtime/gateway_relay.py" and (
                 module == "agent_bom.gateway_server" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
             ):
-                errors.append(f"{path}:{node.lineno}: upstream relay must not import HTTP application or API adapters")
+                errors.append(f"{path}:{line}: upstream relay must not import HTTP application or API adapters")
             if path == "runtime/gateway_policy_reload.py" and (
                 module == "agent_bom.api" or module.startswith("agent_bom.api.") or module == "agent_bom.gateway_server"
             ):
-                errors.append(f"{path}:{node.lineno}: policy reload state must receive adapters through typed callables")
+                errors.append(f"{path}:{line}: policy reload state must receive adapters through typed callables")
 
             if path in {"graph/ports.py", "graph/correlation_service.py"} and (
                 module == "agent_bom.api"
@@ -132,7 +233,7 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
                 or module == "agent_bom.db"
                 or module.startswith("agent_bom.db.")
             ):
-                errors.append(f"{path}:{node.lineno}: graph services and ports must not import storage adapters")
+                errors.append(f"{path}:{line}: graph services and ports must not import storage adapters")
             if path in {
                 "graph/package_projection.py",
                 "graph/runtime_projection.py",
@@ -148,20 +249,20 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
                 "graph/build_input.py",
                 "graph/build_analysis.py",
             } and (module == "agent_bom.graph.builder" or module == "agent_bom.api" or module.startswith("agent_bom.api.")):
-                errors.append(f"{path}:{node.lineno}: report projections must not import builder orchestration or API adapters")
+                errors.append(f"{path}:{line}: report projections must not import builder orchestration or API adapters")
             if path == "api/graph_persistence.py" and module in {
                 "agent_bom.api.pipeline",
                 "agent_bom.api.server",
                 "agent_bom.api.stores",
             }:
-                errors.append(f"{path}:{node.lineno}: graph persistence must receive its store factory, not import orchestration")
+                errors.append(f"{path}:{line}: graph persistence must receive its store factory, not import orchestration")
             if path.startswith("graph/") and module == "agent_bom.api.credential_expiry":
-                errors.append(f"{path}:{node.lineno}: graph credential decisions must not import the API adapter")
+                errors.append(f"{path}:{line}: graph credential decisions must not import the API adapter")
             if path.startswith("core/") and (
                 module == "agent_bom"
                 or (module.startswith("agent_bom.") and module != "agent_bom.core" and not module.startswith("agent_bom.core."))
             ):
-                errors.append(f"{path}:{node.lineno}: core must not depend on {module}")
+                errors.append(f"{path}:{line}: core must not depend on {module}")
     return errors
 
 
@@ -176,7 +277,7 @@ def measure(root: Path) -> tuple[dict[str, dict[str, int]], list[str]]:
         relative = path.relative_to(source).as_posix()
         text = path.read_text()
         tree = ast.parse(text, filename=str(path))
-        metrics[relative] = {"file_lines": len(text.splitlines())}
+        metrics[relative] = {"file_lines": len(text.splitlines()), **layer_metrics(relative, tree)}
         errors.extend(boundary_errors(relative, tree))
         for name, start, end in function_spans(tree):
             key = f"{relative}::{name}"
@@ -212,13 +313,24 @@ def measure(root: Path) -> tuple[dict[str, dict[str, int]], list[str]]:
     return metrics, errors
 
 
+# Import-direction debt is budgeted per category, not per file, so splitting a
+# large module can move its imports into new files without growing the total.
+BUDGETED_METRICS = frozenset({"deferred_imports", "api_imports", "graph_api_imports"})
+
+
 def regressions(metrics: dict[str, dict[str, int]], baseline: dict[str, dict[str, int]]) -> list[str]:
-    return [
+    errors = [
         f"{key}: {metric} {value} exceeds {max(LIMITS[metric], baseline.get(key, {}).get(metric, 0))}"
         for key, values in metrics.items()
         for metric, value in values.items()
-        if value > max(LIMITS[metric], baseline.get(key, {}).get(metric, 0))
+        if metric not in BUDGETED_METRICS and value > max(LIMITS[metric], baseline.get(key, {}).get(metric, 0))
     ]
+    for metric in sorted(BUDGETED_METRICS):
+        total = sum(values.get(metric, 0) for values in metrics.values())
+        budget = sum(values.get(metric, 0) for values in baseline.values())
+        if total > budget:
+            errors.append(f"{metric}: total {total} exceeds budget {budget}")
+    return errors
 
 
 def debt(metrics: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
@@ -229,19 +341,35 @@ def debt(metrics: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
     }
 
 
-def baseline_growth(current: dict[str, dict[str, int]], previous: dict[str, dict[str, int]]) -> list[str]:
-    """An edited allowance cannot bypass the source ratchet."""
+def baseline_growth(
+    current: dict[str, dict[str, int]],
+    previous: dict[str, dict[str, int]],
+    ratcheted_metrics: set[str] | None = None,
+) -> list[str]:
+    """An edited allowance cannot bypass the source ratchet.
+
+    A metric missing from the trusted baseline's ``limits`` is a category being
+    introduced: it is recorded once at today's values and ratchets afterwards.
+    """
+    if ratcheted_metrics is not None:
+        current = restrict_metrics(current, ratcheted_metrics)
     return regressions(current, previous)
 
 
-def trusted_baseline(root: Path, ref: str) -> dict[str, dict[str, int]] | None:
+def restrict_metrics(metrics: dict[str, dict[str, int]], names: set[str]) -> dict[str, dict[str, int]]:
+    return {
+        key: kept for key, values in metrics.items() if (kept := {metric: value for metric, value in values.items() if metric in names})
+    }
+
+
+def trusted_baseline(root: Path, ref: str) -> dict | None:
     # A missing commit is an error; a missing file permits the initial rollout.
     subprocess.run(["git", "cat-file", "-e", f"{ref}^{{commit}}"], cwd=root, check=True, capture_output=True)
     exists = subprocess.run(["git", "cat-file", "-e", f"{ref}:{BASELINE.as_posix()}"], cwd=root, capture_output=True)
     if exists.returncode:
         return None
     content = subprocess.check_output(["git", "show", f"{ref}:{BASELINE.as_posix()}"], cwd=root, text=True)
-    return json.loads(content)["debt"]
+    return json.loads(content)
 
 
 def main() -> int:
@@ -253,12 +381,16 @@ def main() -> int:
     path = root / BASELINE
     metrics, errors = measure(root)
     if path.exists():
-        baseline = json.loads(path.read_text())["debt"]
-        errors.extend(regressions(metrics, baseline))
+        stored = json.loads(path.read_text())
+        baseline = stored["debt"]
+        # Writing may record a category the stored baseline has never tracked;
+        # every category it already tracks still has to hold its ratchet.
+        checked = restrict_metrics(metrics, set(stored.get("limits", LIMITS))) if args.write_baseline else metrics
+        errors.extend(regressions(checked, baseline))
         if args.base_ref:
             previous = trusted_baseline(root, args.base_ref)
             if previous is not None:
-                errors.extend(baseline_growth(baseline, previous))
+                errors.extend(baseline_growth(baseline, previous["debt"], set(previous.get("limits", {}))))
     elif not args.write_baseline:
         errors.append("Architecture baseline missing; initialize with --write-baseline")
     if errors:

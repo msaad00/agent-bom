@@ -10,9 +10,10 @@ from pathlib import Path
 import click
 
 from agent_bom.agent_manifest import build_local_agent_manifest
-from agent_bom.cli._common import _build_agents_from_inventory, read_json_file_for_cli
+from agent_bom.cli._common import read_json_file_for_cli
 from agent_bom.cli._inventory import _project_inventory_path
 from agent_bom.discovery import discover_all
+from agent_bom.inventory import build_agents_from_inventory
 
 
 def _discover_manifest_agents(config: str | None, project: str | None):
@@ -41,7 +42,7 @@ def _discover_manifest_agents(config: str | None, project: str | None):
         from agent_bom.inventory import load_inventory
 
         inventory_data = load_inventory(str(project_inventory))
-        return _build_agents_from_inventory(inventory_data, str(project_inventory))
+        return build_agents_from_inventory(inventory_data, str(project_inventory))
 
     return discover_all(project_dir=project)
 

@@ -935,14 +935,13 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         if req.inventory:
             pipeline.update_step("discovery", f"Loading inventory: {req.inventory}")
-            from agent_bom.cli._common import _build_agents_from_inventory
-            from agent_bom.inventory import load_inventory
+            from agent_bom.inventory import build_agents_from_inventory, load_inventory
 
             try:
                 inv_data = load_inventory(req.inventory)
             except (OSError, RuntimeError, ValueError) as parse_err:
                 raise RuntimeError(f"Failed to load inventory file: {parse_err}") from parse_err
-            agents.extend(_build_agents_from_inventory(inv_data, req.inventory))
+            agents.extend(build_agents_from_inventory(inv_data, req.inventory))
 
         for image_ref in req.images:
             pipeline.update_step("discovery", f"Scanning image: {image_ref}")

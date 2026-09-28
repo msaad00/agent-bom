@@ -48,9 +48,9 @@ const contextEdgeTypes = { smoothstep: ContextRecordedEdge };
 
 function ContextOverviewNode({ data, selected, targetPosition, sourcePosition }: NodeProps<Node<LineageNodeData>>) {
   const Icon = entityIcon(data.nodeType);
-  return <div className={`h-[72px] w-[180px] rounded-xl border bg-surface px-3 py-2 shadow-sm ${selected ? "ring-2 ring-[var(--foreground)] ring-offset-2 ring-offset-[var(--surface)]" : ""}`} style={{ borderColor: NODE_COLOR_MAP[data.nodeType] ?? "var(--border-strong)" }}>
+  return <div className={`h-[80px] w-[208px] rounded-xl border bg-surface px-3 py-3 shadow-sm ${selected ? "ring-2 ring-[var(--foreground)] ring-offset-2 ring-offset-[var(--surface)]" : ""}`} style={{ borderColor: NODE_COLOR_MAP[data.nodeType] ?? "var(--border-strong)" }}>
     <Handle type="target" position={targetPosition ?? Position.Left} className="!h-1.5 !w-1.5" />
-    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 line-clamp-2 break-normal [overflow-wrap:anywhere] text-[16px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
+    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-normal text-[16px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
     <p className="mt-1 truncate text-[11px] text-ink-secondary">{data.entityType?.replaceAll("_", " ") ?? data.nodeType}</p>
     <Handle type="source" position={sourcePosition ?? Position.Right} className="!h-1.5 !w-1.5" />
   </div>;
@@ -188,7 +188,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
   const overviewNodes = useMemo(() => flow.nodes.map(node => ({ ...node, selected: node.id === selectedId, ...(!focusId ? { type: "contextOverview" } : {}) })), [flow.nodes, focusId, selectedId]);
   const layout = useGraphLayout("dagre", overviewNodes, directedEdges, { dagre: focusId
     ? { direction: mobile ? "TB" : "LR", nodeWidth: 260, nodeHeight: 130, rankSep: mobile ? 64 : 128, nodeSep: 32, minSeparation: { width: 260, height: 130, gap: 32 } }
-    : { direction: mobile ? "TB" : "LR", nodeWidth: 180, nodeHeight: 72, rankSep: 64, nodeSep: 16, minSeparation: { width: 180, height: 72, gap: 16 } } });
+    : { direction: mobile ? "TB" : "LR", nodeWidth: 208, nodeHeight: 80, rankSep: 32, nodeSep: 20, minSeparation: { width: 208, height: 80, gap: 20 } } });
   const selected = graph.nodes.find(node => node.id === (selectedId || focus));
   const incident = graph.edges.filter(edge => edge.source === selected?.id || edge.target === selected?.id);
   const pages = graph.pages.filter(page => page.node_id === selected?.id);
@@ -196,7 +196,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
   const edge = graph.edges.find(item => JSON.stringify([item.source, item.target, item.relationship]) === selectedEdge);
   const label = (id: string) => graph.nodes.find(node => node.id === id)?.label || id;
   return <>
-    <div className="flex flex-wrap items-center gap-2" aria-label="Neighborhood toolbar">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-outline bg-surface p-3" aria-label="Neighborhood toolbar">
       <label className="min-w-0 max-w-full text-sm">Agent <select aria-label="Agent scope" className="context-action max-w-full" value={rootId} disabled={selectorBusy} onChange={event => { setRootId(event.target.value); setSelectedId(null); setSelectedEdge(null); setFocusId(null); setExpandedCanvas(false); }}>
         {!selector?.agents.length && <option value={rootId}>{rootId || "No persisted agents"}</option>}
         {rootId && selector?.agents.length && !selector.agents.some(agent => agent.id === rootId) ? <option value={rootId}>{rootId}</option> : null}
@@ -216,7 +216,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     {selectorError && <p role="alert">{selectorError}</p>}
     {!selectorBusy && !selector?.agents.length && !selectorError && <p>No persisted agent nodes match this search. Repository and SBOM evidence remains available in Repository or Lineage.</p>}
     {graph.error && <p role="alert">{graph.error}</p>}
-    <p role="status" className="text-sm text-ink-secondary">{graph.busy ? "Loading relationships… " : ""}{graph.nodes.length} loaded entities · {graph.edges.length} loaded relationships · total unknown. Canvas: {display.nodes.length} entities, {display.edges.length} relationships.</p>
+    <p role="status" className="rounded-lg bg-surface-muted px-3 py-2 text-xs leading-5 text-ink-secondary">{graph.busy ? "Loading relationships… " : ""}{graph.nodes.length} loaded entities · {graph.edges.length} loaded relationships · total unknown. Canvas: {display.nodes.length} entities, {display.edges.length} relationships.</p>
     {graph.pages.some(page => page.completeness.missing_endpoint_count > 0) && <p>Some recorded endpoints are unavailable; this neighborhood is incomplete.</p>}
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">

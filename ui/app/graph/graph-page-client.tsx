@@ -3681,7 +3681,7 @@ function GraphPageInner() {
                 return (
                   <div
                     key={key}
-                    className={`min-w-[360px] rounded-2xl transition ${isActive ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-[var(--background)]" : ""}`}
+                    className={`min-w-0 sm:min-w-[360px] rounded-2xl transition ${isActive ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-[var(--background)]" : ""}`}
                   >
                     <AttackPathCard
                       nodes={pathNodes}

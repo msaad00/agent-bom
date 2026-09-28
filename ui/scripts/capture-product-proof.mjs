@@ -3300,6 +3300,8 @@ async function main() {
       assertNoHorizontalOverflow: true,
     });
     await capture(page, "/jobs?capture=1", "jobs-pipeline-live.png", async (jobsPage) => {
+      // Start a fresh canvas after the scan page unmounts its React Flow tree.
+      await jobsPage.reload({ waitUntil: "load" });
       const pipeline = jobsPage.getByTestId(`job-pipeline-${SCAN_ID}`);
       await pipeline.waitFor({ state: "visible", timeout: 20_000 });
       // The container appears before React Flow finishes measuring its DAG.

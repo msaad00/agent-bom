@@ -598,7 +598,7 @@ body {
 .graph-evidence-item { @apply flex min-w-0 items-baseline gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/70 px-2.5 py-1; }
 .graph-evidence-label { @apply flex shrink-0 items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]; }
 .graph-evidence-value { @apply truncate text-xs font-medium text-[var(--foreground)]; }
-.graph-evidence-detail { @apply shrink-0 text-[10px] capitalize text-[var(--text-tertiary)]; }
+.graph-evidence-detail { @apply min-w-0 text-[10px] capitalize text-[var(--text-tertiary)]; }
 .attack-flow-node { @apply min-w-[140px] max-w-[220px] rounded-lg border-2 px-3 py-2 shadow-lg backdrop-blur; }
 .attack-flow-handle { @apply !h-2 !w-2 !border-[var(--border-strong)] !bg-[var(--text-tertiary)]; }
 .attack-flow-node-label { @apply truncate text-xs font-semibold text-[var(--foreground)]; }
@@ -887,7 +887,7 @@ main > div {
 .react-flow, .context-canvas { background-color: var(--graph-canvas); }
 .context-inspector { @apply w-full shrink-0 overflow-y-auto border-t border-[var(--border-subtle)] bg-[var(--surface)] p-4 text-[15px] text-[var(--foreground)] md:w-80 md:border-l md:border-t-0; max-height: 44vh; }
 @media (min-width: 768px) { .context-inspector { max-height: none; } }
-.context-action { @apply min-h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-sm font-medium text-[var(--foreground)] disabled:opacity-50; }
+.context-action { @apply min-h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-elevated)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-50; }
 .context-connection { @apply block w-full rounded-md px-2 py-2 text-left text-sm break-words hover:bg-[var(--surface-elevated)] focus-visible:outline-2 focus-visible:outline-emerald-500; }
 .context-evidence-badge { @apply inline-block rounded-full border border-[var(--border-strong)] bg-[var(--surface-elevated)] px-3 py-1 text-xs text-[var(--text-secondary)]; }
 .context-facts { @apply space-y-2 rounded-lg border border-[var(--border-subtle)] p-3 text-sm; }

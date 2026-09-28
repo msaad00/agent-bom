@@ -221,7 +221,7 @@ def client(monkeypatch, store):
     identities = InMemoryAgentIdentityStore()
     identity, _ = issue_identity(identities, agent_id="agent-a", tenant_id="t", role="agent", blueprint_id="", ttl_seconds=3600)
     monkeypatch.setattr(routes, "_get_store", lambda: jobs)
-    monkeypatch.setattr(routes, "_jobs_get", lambda _: None)
+    monkeypatch.setattr(routes, "_jobs_get", lambda _, *, tenant_id: None)
     monkeypatch.setattr(agent_lifecycle, "get_lifecycle_store", lambda: store)
     monkeypatch.setattr(agent_lifecycle, "get_agent_identity_store", lambda: identities)
     monkeypatch.setattr(

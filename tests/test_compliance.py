@@ -1784,3 +1784,104 @@ def test_posture_has_proxy_flips_on_proxy_alert_ingest():
 
     _proxy_alerts.clear()
     _clear_jobs()
+
+
+def test_posture_counts_warm_read_reuses_the_evidence_revision_aggregates(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.api.posture_counts_cache import clear_posture_counts_cache
+    from agent_bom.api.routes import compliance as compliance_routes
+    from agent_bom.api.routes import overview as overview_routes
+
+    _clear_jobs()
+    clear_posture_counts_cache()
+    _add_done_job(
+        [{"vulnerability_id": "CVE-2026-0001", "package": "a@1", "severity": "critical", "is_kev": True, "exposed_credentials": ["K"]}],
+        job_id="first",
+    )
+    client = TestClient(app)
+    cold = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+
+    real_exec = overview_routes.exec_severity_counts
+    real_compound = compliance_routes._compound_issue_count
+    calls = {"exec": 0, "compound": 0}
+
+    def counting_exec(*args, **kwargs):
+        calls["exec"] += 1
+        return real_exec(*args, **kwargs)
+
+    def counting_compound(*args, **kwargs):
+        calls["compound"] += 1
+        return real_compound(*args, **kwargs)
+
+    monkeypatch.setattr(overview_routes, "exec_severity_counts", counting_exec)
+    monkeypatch.setattr(compliance_routes, "_compound_issue_count", counting_compound)
+
+    warm = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    assert warm == cold
+    assert calls == {"exec": 0, "compound": 0}
+
+    _add_done_job(
+        [{"vulnerability_id": "CVE-2026-0002", "package": "b@1", "severity": "high"}],
+        job_id="second",
+    )
+    refreshed = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    assert calls == {"exec": 1, "compound": 1}
+    assert refreshed["total"] >= cold["total"]
+    assert refreshed != cold
+
+    clear_posture_counts_cache()
+    _clear_jobs()
+
+
+def test_control_rollup_matches_a_per_control_scan_of_every_row() -> None:
+    """Indexed control rollups equal the naive every-control x every-row scan."""
+    from agent_bom.api.routes.compliance import _build_compliance
+    from agent_bom.api.server import ScanJob, ScanRequest
+    from agent_bom.compliance_coverage import control_key_for_tag
+
+    rows = []
+    severities = ["critical", "high", "medium", "low", "unknown", None]
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        codes = sorted(metadata.catalog)
+        for index, code in enumerate(codes[:6]):
+            prefixed = f"NIST-{code}" if index % 3 == 0 else code
+            rows.append(
+                {
+                    "id": f"{metadata.tag_field}-{index}",
+                    "vulnerability_id": f"CVE-2026-{index:04d}",
+                    "package": f"pkg-{index % 4}@1.{index}",
+                    "severity": severities[index % len(severities)],
+                    "affected_agents": [f"agent-{index % 3}", "agent-shared"],
+                    metadata.tag_field: [prefixed, code, "unmapped-tag"],
+                }
+            )
+    job = ScanJob(
+        job_id="indexed-rollup",
+        tenant_id="default",
+        created_at=_recent_iso(hours=1),
+        completed_at=_recent_iso(),
+        status=JobStatus.DONE,
+        request=ScanRequest(repo_url="https://example.test/acme/rollup.git"),
+    )
+    job.result = {"scan_run": {"outcome": "complete"}, "findings": rows, "blast_radius": []}
+
+    posture = _build_compliance([job])
+
+    checked = 0
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        catalog = dict(metadata.catalog)
+        for control in posture[metadata.output_key]:
+            code = control["code"]
+            matched = [
+                row for row in rows if any(control_key_for_tag(str(tag), catalog) == code for tag in row.get(metadata.tag_field, []))
+            ]
+            assert control["findings"] == len(matched), (metadata.output_key, code)
+            expected_sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+            for row in matched:
+                sev = (row.get("severity") or "").lower()
+                if sev in expected_sev:
+                    expected_sev[sev] += 1
+            assert control["severity_breakdown"] == expected_sev
+            assert control["affected_packages"] == sorted({row["package"] for row in matched})
+            assert control["affected_agents"] == sorted({agent for row in matched for agent in row["affected_agents"]})
+            checked += bool(matched)
+    assert checked >= len(TAG_MAPPED_FRAMEWORKS)

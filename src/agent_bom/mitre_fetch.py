@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -130,9 +131,35 @@ def get_catalog_metadata() -> dict:
     return _catalog_metadata(build_catalog())
 
 
+_PARSED_CATALOGS: dict[tuple[str, int, int, bool], dict] = {}
+_PARSED_CATALOGS_LOCK = threading.Lock()
+
+
 def _load_catalog_file(path: Path) -> Optional[dict]:
-    if not path.exists():
+    """Parsed catalog at ``path``, reused while its mtime and size are unchanged.
+
+    The bundled catalog is several MB; per-finding enrichment would otherwise
+    re-read and re-parse it once per vulnerability.
+    """
+    try:
+        stat = path.stat()
+    except OSError:
         return None
+    key = (str(path), stat.st_mtime_ns, stat.st_size, path == _sync_catalog_path())
+    with _PARSED_CATALOGS_LOCK:
+        cached = _PARSED_CATALOGS.get(key)
+    if cached is None:
+        cached = _parse_catalog_file(path)
+        if cached is None:
+            return None
+        with _PARSED_CATALOGS_LOCK:
+            for stale in [k for k in _PARSED_CATALOGS if k[0] == key[0]]:
+                del _PARSED_CATALOGS[stale]
+            _PARSED_CATALOGS[key] = cached
+    return dict(cached)
+
+
+def _parse_catalog_file(path: Path) -> Optional[dict]:
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:

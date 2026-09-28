@@ -38,6 +38,8 @@ OWNED_FUNCTIONS = {
     "_add_agentic_identity_graph_projections": "graph/runtime_projection.py",
     "_add_runtime_incident_feedback": "graph/runtime_projection.py",
     "_agent_node_id": "graph/projection_support.py",
+    "evaluate_risk_conditions": "runtime/risk_conditions.py",
+    "authorized_context_headers": "api/gateway_context.py",
 }
 
 
@@ -74,6 +76,10 @@ def boundary_errors(path: str, tree: ast.AST) -> list[str]:
         if isinstance(node, ast.ClassDef) and node.name == "GraphStoreProtocol" and path != "graph/ports.py":
             errors.append(f"{path}:{node.lineno}: GraphStoreProtocol belongs in graph/ports.py")
         for module in _import_modules(path, node):
+            if path == "runtime/risk_conditions.py" and (
+                module == "agent_bom.proxy_policy" or module == "agent_bom.api" or module.startswith("agent_bom.api.")
+            ):
+                errors.append(f"{path}:{node.lineno}: risk conditions must not import policy orchestration or API adapters")
             if path.startswith(("runtime/gateway_", "api/gateway_")) and module == "agent_bom.gateway_server":
                 errors.append(f"{path}:{node.lineno}: gateway services must not import their HTTP composition root")
             if path == "runtime/gateway_relay.py" and (

@@ -59,6 +59,8 @@ class GatewaySettings:
     upstream_http_max_keepalive_connections: int = 20
     listener_host: str = "127.0.0.1"
     allow_insecure_no_auth: bool = False
+    # None resolves the environment at app startup; () explicitly disables trust.
+    trusted_context_proxy_cidrs: tuple[str, ...] | None = None
     # Caller-identity fail-closed posture (mirrors ``allow_insecure_no_auth``
     # for incoming transport auth). An INVALID or REVOKED agent-identity token
     # ALWAYS fails closed regardless of this flag. A fully-MISSING identity is

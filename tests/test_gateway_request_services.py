@@ -25,6 +25,7 @@ def test_request_context_is_bounded_and_cost_center_precedence_is_stable():
             **{f"x-agent-ctx-{n}": "v" * 250 for n in range(40)},
         }
     )
+    req.state.gateway_context_authorized = True
     assert gateway._request_environment(req) == "e" * 60
     assert gateway._request_device_id(req) == "d" * 200
     assert gateway._request_client_id(req) == "c" * 200

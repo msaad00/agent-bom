@@ -49,96 +49,37 @@ from agent_bom.agent_identity import (
     extract_identity_token,
     identity_token_scopes,
 )
-from agent_bom.api.gateway_auth import (
-    _api_key_allows_gateway_relay as _api_key_allows_gateway_relay,
-)
-from agent_bom.api.gateway_auth import (
-    _authenticate_gateway_request as _authenticate_gateway_request,
-)
-from agent_bom.api.gateway_auth import (
-    _configured_gateway_tenant_id as _configured_gateway_tenant_id,
-)
-from agent_bom.api.gateway_auth import (
-    _enforce_gateway_anonymous_agents_posture as _enforce_gateway_anonymous_agents_posture,
-)
-from agent_bom.api.gateway_auth import (
-    _enforce_gateway_auth_posture as _enforce_gateway_auth_posture,
-)
-from agent_bom.api.gateway_auth import (
-    _env_flag_enabled as _env_flag_enabled,
-)
-from agent_bom.api.gateway_auth import (
-    _extract_request_token as _extract_request_token,
-)
-from agent_bom.api.gateway_auth import (
-    _gateway_allows_anonymous_agents as _gateway_allows_anonymous_agents,
-)
-from agent_bom.api.gateway_auth import (
-    _gateway_requires_auth as _gateway_requires_auth,
-)
-from agent_bom.api.gateway_auth import (
-    _is_loopback_host as _is_loopback_host,
-)
-from agent_bom.api.gateway_auth import (
-    _parse_gateway_token_expiry as _parse_gateway_token_expiry,
-)
-from agent_bom.api.gateway_auth import (
-    _request_has_expected_token as _request_has_expected_token,
-)
-from agent_bom.api.gateway_auth import (
-    _role_allows_gateway_relay as _role_allows_gateway_relay,
-)
-from agent_bom.api.gateway_auth import (
-    _validate_runtime_profile_posture as _validate_runtime_profile_posture,
-)
-from agent_bom.api.gateway_rate_limit import (
-    _build_gateway_rate_limit_store as _build_gateway_rate_limit_store,
-)
-from agent_bom.api.gateway_rate_limit import (
-    _gateway_configured_replicas as _gateway_configured_replicas,
-)
-from agent_bom.api.gateway_rate_limit import (
-    _gateway_rate_limit_runtime_status as _gateway_rate_limit_runtime_status,
-)
-from agent_bom.api.gateway_rate_limit import (
-    _gateway_shared_rate_limit_required as _gateway_shared_rate_limit_required,
-)
-from agent_bom.api.gateway_rate_limit import (
-    _rate_limit_bucket_component as _rate_limit_bucket_component,
-)
-from agent_bom.api.gateway_request import (
-    _read_bounded_gateway_body as _read_bounded_gateway_body,
-)
-from agent_bom.api.gateway_request import (
-    _request_client_id as _request_client_id,
-)
-from agent_bom.api.gateway_request import (
-    _request_context_attributes as _request_context_attributes,
-)
-from agent_bom.api.gateway_request import (
-    _request_cost_center as _request_cost_center,
-)
-from agent_bom.api.gateway_request import (
-    _request_device_id as _request_device_id,
-)
-from agent_bom.api.gateway_request import (
-    _request_environment as _request_environment,
-)
-from agent_bom.api.gateway_request import (
-    _request_groups as _request_groups,
-)
-from agent_bom.api.gateway_request import (
-    _request_risk_score as _request_risk_score,
-)
-from agent_bom.api.gateway_request import (
-    _request_source_ip as _request_source_ip,
-)
-from agent_bom.api.gateway_request import (
-    _sanitize_for_log as _sanitize_for_log,
-)
-from agent_bom.api.gateway_request import (
-    _strip_gateway_identity_metadata as _strip_gateway_identity_metadata,
-)
+from agent_bom.api.gateway_auth import _api_key_allows_gateway_relay as _api_key_allows_gateway_relay
+from agent_bom.api.gateway_auth import _authenticate_gateway_request as _authenticate_gateway_request
+from agent_bom.api.gateway_auth import _configured_gateway_tenant_id as _configured_gateway_tenant_id
+from agent_bom.api.gateway_auth import _enforce_gateway_anonymous_agents_posture as _enforce_gateway_anonymous_agents_posture
+from agent_bom.api.gateway_auth import _enforce_gateway_auth_posture as _enforce_gateway_auth_posture
+from agent_bom.api.gateway_auth import _env_flag_enabled as _env_flag_enabled
+from agent_bom.api.gateway_auth import _extract_request_token as _extract_request_token
+from agent_bom.api.gateway_auth import _gateway_allows_anonymous_agents as _gateway_allows_anonymous_agents
+from agent_bom.api.gateway_auth import _gateway_requires_auth as _gateway_requires_auth
+from agent_bom.api.gateway_auth import _is_loopback_host as _is_loopback_host
+from agent_bom.api.gateway_auth import _parse_gateway_token_expiry as _parse_gateway_token_expiry
+from agent_bom.api.gateway_auth import _request_has_expected_token as _request_has_expected_token
+from agent_bom.api.gateway_auth import _role_allows_gateway_relay as _role_allows_gateway_relay
+from agent_bom.api.gateway_auth import _validate_runtime_profile_posture as _validate_runtime_profile_posture
+from agent_bom.api.gateway_context import create_gateway_http_app
+from agent_bom.api.gateway_rate_limit import _build_gateway_rate_limit_store as _build_gateway_rate_limit_store
+from agent_bom.api.gateway_rate_limit import _gateway_configured_replicas as _gateway_configured_replicas
+from agent_bom.api.gateway_rate_limit import _gateway_rate_limit_runtime_status as _gateway_rate_limit_runtime_status
+from agent_bom.api.gateway_rate_limit import _gateway_shared_rate_limit_required as _gateway_shared_rate_limit_required
+from agent_bom.api.gateway_rate_limit import _rate_limit_bucket_component as _rate_limit_bucket_component
+from agent_bom.api.gateway_request import _read_bounded_gateway_body as _read_bounded_gateway_body
+from agent_bom.api.gateway_request import _request_client_id as _request_client_id
+from agent_bom.api.gateway_request import _request_context_attributes as _request_context_attributes
+from agent_bom.api.gateway_request import _request_cost_center as _request_cost_center
+from agent_bom.api.gateway_request import _request_device_id as _request_device_id
+from agent_bom.api.gateway_request import _request_environment as _request_environment
+from agent_bom.api.gateway_request import _request_groups as _request_groups
+from agent_bom.api.gateway_request import _request_risk_score as _request_risk_score
+from agent_bom.api.gateway_request import _request_source_ip as _request_source_ip
+from agent_bom.api.gateway_request import _sanitize_for_log as _sanitize_for_log
+from agent_bom.api.gateway_request import _strip_gateway_identity_metadata as _strip_gateway_identity_metadata
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.oidc_discovery_shim import build_oidc_discovery_shim_router
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
@@ -185,21 +126,11 @@ from agent_bom.runtime.gateway_events import (
     GatewayRuntimeEventType,
     build_gateway_runtime_event,
 )
-from agent_bom.runtime.gateway_relay import (
-    GatewayCircuitBreaker as GatewayCircuitBreaker,
-)
-from agent_bom.runtime.gateway_relay import (
-    GatewayCircuitOpenError as GatewayCircuitOpenError,
-)
-from agent_bom.runtime.gateway_relay import (
-    GatewayUpstreamRelay as GatewayUpstreamRelay,
-)
-from agent_bom.runtime.gateway_relay import (
-    _default_upstream_caller as _default_upstream_caller,
-)
-from agent_bom.runtime.gateway_relay import (
-    _post_upstream_jsonrpc as _post_upstream_jsonrpc,
-)
+from agent_bom.runtime.gateway_relay import GatewayCircuitBreaker as GatewayCircuitBreaker
+from agent_bom.runtime.gateway_relay import GatewayCircuitOpenError as GatewayCircuitOpenError
+from agent_bom.runtime.gateway_relay import GatewayUpstreamRelay as GatewayUpstreamRelay
+from agent_bom.runtime.gateway_relay import _default_upstream_caller as _default_upstream_caller
+from agent_bom.runtime.gateway_relay import _post_upstream_jsonrpc as _post_upstream_jsonrpc
 from agent_bom.runtime.gateway_relay_contract import MAX_GATEWAY_RELAY_MESSAGE_BYTES
 from agent_bom.runtime.gateway_settings import GatewaySettings as GatewaySettings
 from agent_bom.runtime.graph_reachability import ReachabilityMap, load_reachability_map
@@ -903,7 +834,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             if isinstance(settings.audit_sink, ControlPlaneAuditSink):
                 await settings.audit_sink.aclose()
 
-    app = FastAPI(title="agent-bom gateway", version="1", lifespan=_lifespan)
+    app = create_gateway_http_app(settings, _lifespan)
 
     def _audit_unavailable_response(message_id: object, *, headers: dict[str, str] | None = None) -> JSONResponse:
         return JSONResponse(

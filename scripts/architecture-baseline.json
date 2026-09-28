@@ -1715,7 +1715,7 @@
       "file_lines": 681
     },
     "gateway_server.py": {
-      "file_lines": 2919
+      "file_lines": 2850
     },
     "gateway_server.py::create_gateway_app": {
       "complexity": 235,
@@ -2800,7 +2800,7 @@
       "function_lines": 96
     },
     "proxy_policy.py": {
-      "file_lines": 956
+      "file_lines": 951
     },
     "proxy_policy.py::check_policy_detail": {
       "complexity": 25,
@@ -2810,7 +2810,7 @@
       "function_lines": 88
     },
     "proxy_policy.py::evaluate_conditions": {
-      "complexity": 20
+      "complexity": 17
     },
     "push.py::_push_async": {
       "function_lines": 104

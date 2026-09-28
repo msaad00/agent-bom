@@ -38,7 +38,7 @@
        "source_type": "local_discovery"
       },
       "discovery_sources": [
-       "project-config:<TMP>/proj/.mcp.json"
+       "project-config:<path:.mcp.json>"
       ],
       "fingerprint": "<UUID>",
       "has_credentials": true,

@@ -1,0 +1,5 @@
+Resources:
+  Pol:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument: just-a-string

@@ -1,0 +1,4 @@
+FROM python:3.12
+EXPOSE 22
+USER app
+HEALTHCHECK CMD true

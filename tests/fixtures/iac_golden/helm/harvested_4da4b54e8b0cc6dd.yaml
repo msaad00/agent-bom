@@ -1,0 +1,4 @@
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http

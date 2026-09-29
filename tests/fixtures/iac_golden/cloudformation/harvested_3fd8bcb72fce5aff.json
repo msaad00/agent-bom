@@ -1,0 +1,12 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "MyDB": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "Engine": "mysql",
+        "DBInstanceClass": "db.t3.micro"
+      }
+    }
+  }
+}

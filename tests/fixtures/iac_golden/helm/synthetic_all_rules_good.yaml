@@ -1,0 +1,29 @@
+replicas: 3
+image:
+  repository: example/app
+  tag: 1.2.3
+service:
+  type: ClusterIP
+  externalTrafficPolicy: Local
+networkPolicy:
+  enabled: true
+rbac:
+  create: true
+serviceAccount:
+  create: true
+ingress:
+  enabled: true
+  tls:
+    - secretName: app-tls
+persistence:
+  enabled: true
+  storageClassName: encrypted-gp3
+resources:
+  limits:
+    memory: 256Mi
+podSecurityContext:
+  runAsNonRoot: true
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http

@@ -1,0 +1,4 @@
+Resources:
+  B:
+    Type: AWS::S3::Bucket
+    Properties: [1, 2]

@@ -1,0 +1,10 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "ApiKey": {
+      "Type": "String",
+      "Default": "CHANGE_ME"
+    }
+  },
+  "Resources": {}
+}

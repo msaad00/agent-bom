@@ -1,0 +1,4 @@
+app:
+  apiKey: "{{ .Values.global.apiKey }}"
+  password: "{{ .Values.db.password }}"
+  token: "{{ .Values.auth.token | default '' }}"

@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  DbPassword:
+    Type: String
+    Default: hunter2-not-a-real-value
+  ApiTokenPlaceholder:
+    Type: String
+    Default: CHANGE_ME
+  AuthResolved:
+    Type: String
+    Default: "{{resolve:ssm:/app/auth}}"
+  PlainName:
+    Type: String
+    Default: demo
+  SecretList: notadict
+Resources:
+  OpenBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicReadWrite
+      VersioningConfiguration:
+        Status: Suspended
+  ReadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      VersioningConfiguration:
+        Status: 1
+  NoPropsBucket:
+    Type: AWS::S3::Bucket
+  WideOpenSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          ToPort: 22
+        - CidrIpv6: ::/0
+          FromPort: abc
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          FromPort: 443
+          ToPort: 443
+        - notarule
+        - CidrIp: 10.0.0.0/8
+          FromPort: 0
+          ToPort: 65535
+  AdminPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+          - Effect: Allow
+            Action: ["*"]
+            Resource: ["arn:aws:s3:::x"]
+  ResourceWildcardPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - notastatement
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource: "*"
+  InlineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: inline
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: ["ec2:*", "*"]
+                Resource: 42
+        - notapolicy
+  PublicDb:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      PubliclyAccessible: true
+  BareInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-12345678
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      IsLogging: true
+  Volume:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 10
+  Func:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+  ClassicElb:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      AccessLoggingPolicy:
+        Enabled: false
+  AlbNoLogs:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      LoadBalancerAttributes:
+        - Key: access_logs.s3.enabled
+          Value: "false"
+        - notanattr
+  Topic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: alerts
+  Untyped:
+    Properties:
+      Foo: bar

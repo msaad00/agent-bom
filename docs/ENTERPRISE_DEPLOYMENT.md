@@ -238,6 +238,15 @@ Fleet trust scoring is advisory and evidence-backed. The score combines registry
 | Browser session cookie | Minted server-side after OIDC/SAML/proxy login | UI | Derived — not a standalone configured path |
 | mTLS (client cert) | `AGENT_BOM_TLS_REQUIRE_CLIENT_CERT=1` | Transport | No — transport posture, not RBAC identity |
 
+Keys configured through `AGENT_BOM_API_KEYS` (including its `_FILE` source) are
+seeded into the key store at startup. The runtime WebSocket streams
+(`/ws/proxy/metrics` and `/ws/proxy/alerts`) use that store's current identity,
+role, scope, and lifecycle checks. Revoked, expired, or rotated-out keys fail
+closed on reconnect, even while their original configuration remains present.
+Setting the environment variable after startup does not bypass store enrollment.
+Remove retired credentials from deployment configuration as part of rotation;
+an in-memory store does not retain revocation across process restarts.
+
 A SAML-only deployment is a valid, fail-closed posture: browser users authenticate against the IdP and receive a short-lived session API key, while anonymous requests are still rejected (401) by the API-key middleware, which stays installed whenever any auth path is configured.
 
 **Dashboard OIDC auth-code + PKCE:** when the control plane has an OIDC issuer plus a confidential or public client (`AGENT_BOM_OIDC_CLIENT_ID`, `AGENT_BOM_OIDC_REDIRECT_URI`, optional file-first `AGENT_BOM_OIDC_CLIENT_SECRET_FILE` / legacy `AGENT_BOM_OIDC_CLIENT_SECRET` / `AGENT_BOM_OIDC_SCOPES`), the dashboard shows **Sign in with SSO**. That CTA navigates same-origin to `GET /v1/auth/oidc/login`, completes the IdP authorize + callback with PKCE S256, and mints the usual httpOnly browser session + CSRF cookies. Role and tenant claims map through the same OIDC claim contract as bearer JWT verification. Reverse-proxy SSO remains preferred when `AGENT_BOM_TRUST_PROXY_AUTH=1` is set. Laptop-to-gateway MCP PKCE is a separate later surface — not this dashboard path. mTLS remains transport only and never substitutes for user identity. For a guided 5-minute "Sign in with Google" / OIDC walkthrough that emits this configuration for you, run `agent-bom auth setup-oidc` (see [`AUTH_SSO.md`](AUTH_SSO.md)).

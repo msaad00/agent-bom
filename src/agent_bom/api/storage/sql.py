@@ -45,6 +45,7 @@ from agent_bom.api.postgres_common import (
     _tenant_connection,
     bypass_tenant_rls,
 )
+from agent_bom.api.storage.sqlite_connection import open_wal_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version, ensure_sqlite_schema_version
 
 Dialect = Literal["sqlite", "postgres"]
@@ -368,8 +369,7 @@ class SQLiteBackend:
             return self._connection_factory()
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
         if conn is None:
-            conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            conn.execute("PRAGMA journal_mode=WAL")
+            conn = open_wal_connection(self._db_path)
             self._local.conn = conn
         return conn
 

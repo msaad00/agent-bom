@@ -1,0 +1,3606 @@
+{
+  "factory": [
+    {
+      "op": "explicit_path",
+      "result": "SQLiteSideScanStateStore"
+    },
+    {
+      "op": "env_path",
+      "result": "SQLiteSideScanStateStore"
+    },
+    {
+      "op": "env_path.not_cached",
+      "result": false
+    },
+    {
+      "op": "default_sqlite",
+      "result": "SQLiteSideScanStateStore"
+    },
+    {
+      "op": "default_sqlite.file",
+      "result": true
+    },
+    {
+      "op": "default.cached",
+      "result": true
+    },
+    {
+      "op": "default.global",
+      "result": true
+    },
+    {
+      "op": "reset.global",
+      "result": true
+    },
+    {
+      "op": "ephemeral",
+      "result": "InMemorySideScanStateStore"
+    },
+    {
+      "op": "ephemeral.cached",
+      "result": true
+    },
+    {
+      "op": "ephemeral.reset_new",
+      "result": true
+    },
+    {
+      "op": "postgres",
+      "result": "PostgresSideScanStateStore"
+    },
+    {
+      "op": "patched_global.honored",
+      "result": true
+    }
+  ],
+  "model": [
+    {
+      "op": "capabilities",
+      "result": {
+        "aws": {
+          "cli_available": true,
+          "credentialed_smoke": false,
+          "executor": "shipped",
+          "lifecycle_contract": true,
+          "provider": "aws",
+          "target_discovery": true
+        },
+        "azure": {
+          "cli_available": true,
+          "credentialed_smoke": false,
+          "executor": "shipped",
+          "lifecycle_contract": true,
+          "provider": "azure",
+          "target_discovery": true
+        },
+        "gcp": {
+          "cli_available": true,
+          "credentialed_smoke": false,
+          "executor": "shipped",
+          "lifecycle_contract": true,
+          "provider": "gcp",
+          "target_discovery": true
+        }
+      }
+    },
+    {
+      "op": "new",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:00Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:00Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "owns.exact",
+      "result": true
+    },
+    {
+      "op": "owns.partial",
+      "result": false
+    },
+    {
+      "op": "noop.transition.is_same",
+      "result": true
+    },
+    {
+      "op": "exec.queued->queued",
+      "result": "queued"
+    },
+    {
+      "op": "exec.queued->running",
+      "result": "running"
+    },
+    {
+      "message": "invalid execution transition: queued -> scan_complete",
+      "op": "exec.queued->scan_complete",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: queued -> partial",
+      "op": "exec.queued->partial",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.queued->disabled",
+      "result": "disabled"
+    },
+    {
+      "op": "exec.queued->denied",
+      "result": "denied"
+    },
+    {
+      "op": "exec.queued->failed",
+      "result": "failed"
+    },
+    {
+      "message": "invalid execution transition: running -> queued",
+      "op": "exec.running->queued",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.running->running",
+      "result": "running"
+    },
+    {
+      "op": "exec.running->scan_complete",
+      "result": "scan_complete"
+    },
+    {
+      "op": "exec.running->partial",
+      "result": "partial"
+    },
+    {
+      "message": "invalid execution transition: running -> disabled",
+      "op": "exec.running->disabled",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.running->denied",
+      "result": "denied"
+    },
+    {
+      "op": "exec.running->failed",
+      "result": "failed"
+    },
+    {
+      "message": "invalid execution transition: scan_complete -> queued",
+      "op": "exec.scan_complete->queued",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: scan_complete -> running",
+      "op": "exec.scan_complete->running",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.scan_complete->scan_complete",
+      "result": "scan_complete"
+    },
+    {
+      "op": "exec.scan_complete->partial",
+      "result": "partial"
+    },
+    {
+      "message": "invalid execution transition: scan_complete -> disabled",
+      "op": "exec.scan_complete->disabled",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: scan_complete -> denied",
+      "op": "exec.scan_complete->denied",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: scan_complete -> failed",
+      "op": "exec.scan_complete->failed",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: partial -> queued",
+      "op": "exec.partial->queued",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: partial -> running",
+      "op": "exec.partial->running",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: partial -> scan_complete",
+      "op": "exec.partial->scan_complete",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.partial->partial",
+      "result": "partial"
+    },
+    {
+      "message": "invalid execution transition: partial -> disabled",
+      "op": "exec.partial->disabled",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: partial -> denied",
+      "op": "exec.partial->denied",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: partial -> failed",
+      "op": "exec.partial->failed",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: disabled -> queued",
+      "op": "exec.disabled->queued",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: disabled -> running",
+      "op": "exec.disabled->running",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: disabled -> scan_complete",
+      "op": "exec.disabled->scan_complete",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: disabled -> partial",
+      "op": "exec.disabled->partial",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.disabled->disabled",
+      "result": "disabled"
+    },
+    {
+      "message": "invalid execution transition: disabled -> denied",
+      "op": "exec.disabled->denied",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: disabled -> failed",
+      "op": "exec.disabled->failed",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: denied -> queued",
+      "op": "exec.denied->queued",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: denied -> running",
+      "op": "exec.denied->running",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: denied -> scan_complete",
+      "op": "exec.denied->scan_complete",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: denied -> partial",
+      "op": "exec.denied->partial",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: denied -> disabled",
+      "op": "exec.denied->disabled",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.denied->denied",
+      "result": "denied"
+    },
+    {
+      "message": "invalid execution transition: denied -> failed",
+      "op": "exec.denied->failed",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: failed -> queued",
+      "op": "exec.failed->queued",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: failed -> running",
+      "op": "exec.failed->running",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: failed -> scan_complete",
+      "op": "exec.failed->scan_complete",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: failed -> partial",
+      "op": "exec.failed->partial",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: failed -> disabled",
+      "op": "exec.failed->disabled",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid execution transition: failed -> denied",
+      "op": "exec.failed->denied",
+      "raises": "ValueError"
+    },
+    {
+      "op": "exec.failed->failed",
+      "result": "failed"
+    },
+    {
+      "op": "cleanup.not_started->not_started",
+      "result": "not_started"
+    },
+    {
+      "op": "cleanup.not_started->pending",
+      "result": "pending"
+    },
+    {
+      "op": "cleanup.not_started->in_progress",
+      "result": "in_progress"
+    },
+    {
+      "op": "cleanup.not_started->complete",
+      "result": "complete"
+    },
+    {
+      "message": "invalid cleanup transition: not_started -> partial",
+      "op": "cleanup.not_started->partial",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid cleanup transition: pending -> not_started",
+      "op": "cleanup.pending->not_started",
+      "raises": "ValueError"
+    },
+    {
+      "op": "cleanup.pending->pending",
+      "result": "pending"
+    },
+    {
+      "op": "cleanup.pending->in_progress",
+      "result": "in_progress"
+    },
+    {
+      "op": "cleanup.pending->complete",
+      "result": "complete"
+    },
+    {
+      "op": "cleanup.pending->partial",
+      "result": "partial"
+    },
+    {
+      "message": "invalid cleanup transition: in_progress -> not_started",
+      "op": "cleanup.in_progress->not_started",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid cleanup transition: in_progress -> pending",
+      "op": "cleanup.in_progress->pending",
+      "raises": "ValueError"
+    },
+    {
+      "op": "cleanup.in_progress->in_progress",
+      "result": "in_progress"
+    },
+    {
+      "op": "cleanup.in_progress->complete",
+      "result": "complete"
+    },
+    {
+      "op": "cleanup.in_progress->partial",
+      "result": "partial"
+    },
+    {
+      "message": "invalid cleanup transition: complete -> not_started",
+      "op": "cleanup.complete->not_started",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid cleanup transition: complete -> pending",
+      "op": "cleanup.complete->pending",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid cleanup transition: complete -> in_progress",
+      "op": "cleanup.complete->in_progress",
+      "raises": "ValueError"
+    },
+    {
+      "op": "cleanup.complete->complete",
+      "result": "complete"
+    },
+    {
+      "message": "invalid cleanup transition: complete -> partial",
+      "op": "cleanup.complete->partial",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid cleanup transition: partial -> not_started",
+      "op": "cleanup.partial->not_started",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid cleanup transition: partial -> pending",
+      "op": "cleanup.partial->pending",
+      "raises": "ValueError"
+    },
+    {
+      "op": "cleanup.partial->in_progress",
+      "result": "in_progress"
+    },
+    {
+      "op": "cleanup.partial->complete",
+      "result": "complete"
+    },
+    {
+      "op": "cleanup.partial->partial",
+      "result": "partial"
+    },
+    {
+      "op": "run",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "running",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:04Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "snapshot",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 2,
+          "status": "running",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:04Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "message": "unsupported side-scan phase: teleport",
+      "op": "bad.phase",
+      "raises": "ValueError"
+    },
+    {
+      "op": "register.snap",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "running",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:05Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "snapshot",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [
+            {
+              "kind": "snapshot",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "snap-1",
+              "status": "created"
+            }
+          ],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 3,
+          "status": "running",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:05Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "register.snap.retry.is_same",
+      "result": true
+    },
+    {
+      "message": "temporary resource identity already has different state",
+      "op": "register.snap.conflict",
+      "raises": "ValueError"
+    },
+    {
+      "message": "temporary resource does not match cleanup ownership",
+      "op": "register.foreign",
+      "raises": "ValueError"
+    },
+    {
+      "message": "only cleanup ownership tags may be persisted",
+      "op": "register.extra_tags",
+      "raises": "ValueError"
+    },
+    {
+      "op": "register.disk",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "running",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:07Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "snapshot",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [
+            {
+              "kind": "snapshot",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "snap-1",
+              "status": "created"
+            },
+            {
+              "kind": "volume",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "vol-1",
+              "status": "created"
+            }
+          ],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 4,
+          "status": "running",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:07Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "candidates",
+      "result": [
+        {
+          "kind": "snapshot",
+          "ownership_tags": {
+            "agent-bom-sidescan": "true",
+            "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+            "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+          },
+          "resource_id": "snap-1",
+          "status": "created"
+        },
+        {
+          "kind": "volume",
+          "ownership_tags": {
+            "agent-bom-sidescan": "true",
+            "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+            "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+          },
+          "resource_id": "vol-1",
+          "status": "created"
+        }
+      ]
+    },
+    {
+      "message": "'nope'",
+      "op": "mark.missing",
+      "raises": "KeyError"
+    },
+    {
+      "op": "resource.created->created",
+      "result": [
+        "created",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.created->cleanup_pending",
+      "result": [
+        "cleanup_pending",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.created->deleted",
+      "result": [
+        "deleted",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.created->cleanup_failed",
+      "result": [
+        "cleanup_failed",
+        "created"
+      ]
+    },
+    {
+      "message": "invalid resource cleanup transition: cleanup_pending -> created",
+      "op": "resource.cleanup_pending->created",
+      "raises": "ValueError"
+    },
+    {
+      "op": "resource.cleanup_pending->cleanup_pending",
+      "result": [
+        "cleanup_pending",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.cleanup_pending->deleted",
+      "result": [
+        "deleted",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.cleanup_pending->cleanup_failed",
+      "result": [
+        "cleanup_failed",
+        "created"
+      ]
+    },
+    {
+      "message": "invalid resource cleanup transition: deleted -> created",
+      "op": "resource.deleted->created",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid resource cleanup transition: deleted -> cleanup_pending",
+      "op": "resource.deleted->cleanup_pending",
+      "raises": "ValueError"
+    },
+    {
+      "op": "resource.deleted->deleted",
+      "result": [
+        "deleted",
+        "created"
+      ]
+    },
+    {
+      "message": "invalid resource cleanup transition: deleted -> cleanup_failed",
+      "op": "resource.deleted->cleanup_failed",
+      "raises": "ValueError"
+    },
+    {
+      "message": "invalid resource cleanup transition: cleanup_failed -> created",
+      "op": "resource.cleanup_failed->created",
+      "raises": "ValueError"
+    },
+    {
+      "op": "resource.cleanup_failed->cleanup_pending",
+      "result": [
+        "cleanup_pending",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.cleanup_failed->deleted",
+      "result": [
+        "deleted",
+        "created"
+      ]
+    },
+    {
+      "op": "resource.cleanup_failed->cleanup_failed",
+      "result": [
+        "cleanup_failed",
+        "created"
+      ]
+    },
+    {
+      "op": "scan_complete",
+      "result": {
+        "disposition": "partial",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "pending",
+          "config_finding_count": 2,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "partial",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "scan_complete",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 12,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 1,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:09Z",
+          "vulnerability_count": 3,
+          "warning_codes": [
+            "partial_fs"
+          ]
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "pending",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 2,
+            "ioc_finding_count": 0,
+            "package_count": 12,
+            "secret_count": 1,
+            "vulnerability_count": 3
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "cleanup",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [
+            {
+              "kind": "snapshot",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "snap-1",
+              "status": "created"
+            },
+            {
+              "kind": "volume",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "vol-1",
+              "status": "created"
+            }
+          ],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 5,
+          "status": "scan_complete",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:09Z",
+          "warning_codes": [
+            "partial_fs"
+          ]
+        }
+      }
+    },
+    {
+      "message": "cleanup cannot complete while owned temporary resources remain",
+      "op": "complete.blocked",
+      "raises": "ValueError"
+    },
+    {
+      "op": "complete",
+      "result": {
+        "disposition": "complete",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "complete",
+          "config_finding_count": 2,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "complete",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "scan_complete",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "scanned_disk_only",
+          "package_count": 12,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 1,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:12Z",
+          "vulnerability_count": 3,
+          "warning_codes": [
+            "partial_fs"
+          ]
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "complete",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 2,
+            "ioc_finding_count": 0,
+            "package_count": 12,
+            "secret_count": 1,
+            "vulnerability_count": 3
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "finished",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [
+            {
+              "kind": "snapshot",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "snap-1",
+              "status": "deleted"
+            },
+            {
+              "kind": "volume",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+                "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "vol-1",
+              "status": "deleted"
+            }
+          ],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 8,
+          "status": "scan_complete",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:12Z",
+          "warning_codes": [
+            "partial_fs"
+          ]
+        }
+      }
+    },
+    {
+      "op": "roundtrip",
+      "result": true
+    },
+    {
+      "message": "cleanup ownership execution id must be a UUID",
+      "op": "ownership.bad_uuid",
+      "raises": "ValueError"
+    },
+    {
+      "message": "cleanup owner and scope ids must be 24-character lowercase hex",
+      "op": "ownership.bad_hex",
+      "raises": "ValueError"
+    },
+    {
+      "message": "temporary resource kind and id are required",
+      "op": "resource.blank",
+      "raises": "ValueError"
+    },
+    {
+      "message": "side-scan execution scope and timestamps are required",
+      "op": "record.blank_scope",
+      "raises": "ValueError"
+    },
+    {
+      "message": "request_fingerprint must be a SHA-256 hex digest",
+      "op": "record.bad_fingerprint",
+      "raises": "ValueError"
+    },
+    {
+      "message": "side-scan counts and state version must be non-negative integers",
+      "op": "record.negative_count",
+      "raises": "ValueError"
+    },
+    {
+      "message": "side-scan counts and state version must be non-negative integers",
+      "op": "record.bool_count",
+      "raises": "ValueError"
+    },
+    {
+      "message": "state_version must be at least 1",
+      "op": "record.zero_version",
+      "raises": "ValueError"
+    },
+    {
+      "message": "cleanup ownership must match the execution id",
+      "op": "record.owner_mismatch",
+      "raises": "ValueError"
+    },
+    {
+      "message": "unsupported side-scan provider",
+      "op": "record.bad_provider",
+      "raises": "ValueError"
+    },
+    {
+      "message": "failure_code must be a bounded machine-readable code",
+      "op": "record.bad_failure_code",
+      "raises": "ValueError"
+    },
+    {
+      "message": "warning_codes must be bounded machine-readable codes",
+      "op": "record.bad_warning",
+      "raises": "ValueError"
+    },
+    {
+      "message": "unsupported side-scan lifecycle schema",
+      "op": "from_dict.schema",
+      "raises": "ValueError"
+    },
+    {
+      "message": "side-scan cleanup ownership is required",
+      "op": "from_dict.owner",
+      "raises": "ValueError"
+    },
+    {
+      "message": "unsupported side-scan provider",
+      "op": "from_dict.provider",
+      "raises": "ValueError"
+    },
+    {
+      "message": "'bogus' is not a valid ExecutionStatus",
+      "op": "from_dict.status",
+      "raises": "ValueError"
+    },
+    {
+      "op": "from_dict.version_str",
+      "result": 7
+    },
+    {
+      "message": "state_version must be at least 1",
+      "op": "from_dict.version_bad",
+      "raises": "ValueError"
+    },
+    {
+      "message": "state_version must be at least 1",
+      "op": "from_dict.version_bool",
+      "raises": "ValueError"
+    },
+    {
+      "op": "from_dict.sparse",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0abc",
+          "updated_at": "2026-01-01T00:00:00Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+            "owner_id": "5e8cccbe2bfbaeb0f3682053",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+              "agent-bom-sidescan-owner": "5e8cccbe2bfbaeb0f3682053",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:00Z",
+          "execution_id": "dfeb0c41-fae6-5d53-9915-4453c7d14228",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0abc",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:00Z",
+          "warning_codes": []
+        }
+      }
+    }
+  ],
+  "store.memory": [
+    {
+      "op": "create.a1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.a2",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "sub-1",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "azure",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0002",
+          "updated_at": "2026-01-01T00:00:02Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "sub-1",
+          "cleanup_ownership": {
+            "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+            "owner_id": "29c8192825a1bbeb6caafde5",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "daf40d98-e566-5fed-a29e-ca189efd7912",
+              "agent-bom-sidescan-owner": "29c8192825a1bbeb6caafde5",
+              "agent-bom-sidescan-scope": "6660d192b43ef3d09e7dbf52"
+            },
+            "scope_hash": "6660d192b43ef3d09e7dbf52"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:02Z",
+          "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "azure",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0002",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:02Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.a3",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "proj-1",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "gcp",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "vm-0003",
+          "updated_at": "2026-01-01T00:00:03Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "proj-1",
+          "cleanup_ownership": {
+            "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+            "owner_id": "da4063813f932ed7757d8b8d",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+              "agent-bom-sidescan-owner": "da4063813f932ed7757d8b8d",
+              "agent-bom-sidescan-scope": "d24d4fdf9bdeabb8b4ca4c02"
+            },
+            "scope_hash": "d24d4fdf9bdeabb8b4ca4c02"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:03Z",
+          "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "gcp",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "vm-0003",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:03Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.b1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+            "owner_id": "d7b8735bbf3d1158510d26d7",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+              "agent-bom-sidescan-owner": "d7b8735bbf3d1158510d26d7",
+              "agent-bom-sidescan-scope": "020bf200d56aad9c5fec7da6"
+            },
+            "scope_hash": "020bf200d56aad9c5fec7da6"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-b",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.a1.dup",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "get.a1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "get.a1.as_b",
+      "result": null
+    },
+    {
+      "op": "get.b1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+            "owner_id": "d7b8735bbf3d1158510d26d7",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+              "agent-bom-sidescan-owner": "d7b8735bbf3d1158510d26d7",
+              "agent-bom-sidescan-scope": "020bf200d56aad9c5fec7da6"
+            },
+            "scope_hash": "020bf200d56aad9c5fec7da6"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-b",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "save.run",
+      "result": null
+    },
+    {
+      "message": "side-scan execution was updated by another worker",
+      "op": "save.run.stale",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "message": "side-scan state version must advance by exactly one",
+      "op": "save.skip_version",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "message": "side-scan execution was updated by another worker",
+      "op": "save.cross_tenant",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "op": "save.register",
+      "result": null
+    },
+    {
+      "op": "save.pending",
+      "result": null
+    },
+    {
+      "op": "save.a2",
+      "result": null
+    },
+    {
+      "op": "save.b1",
+      "result": null
+    },
+    {
+      "op": "recent.a",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912",
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+        "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+      ]
+    },
+    {
+      "op": "recent.b",
+      "result": [
+        "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e"
+      ]
+    },
+    {
+      "op": "recent.none",
+      "result": []
+    },
+    {
+      "op": "page.0.list",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912",
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "op": "page.0.with_total",
+      "result": [
+        [
+          "daf40d98-e566-5fed-a29e-ca189efd7912",
+          "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+        ],
+        3
+      ]
+    },
+    {
+      "op": "page.1.list",
+      "result": [
+        "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+      ]
+    },
+    {
+      "op": "page.1.with_total",
+      "result": [
+        [
+          "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+        ],
+        3
+      ]
+    },
+    {
+      "op": "page.past.list",
+      "result": []
+    },
+    {
+      "op": "page.past.with_total",
+      "result": [
+        [],
+        3
+      ]
+    },
+    {
+      "op": "page.provider.list",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912"
+      ]
+    },
+    {
+      "op": "page.provider.with_total",
+      "result": [
+        [
+          "daf40d98-e566-5fed-a29e-ca189efd7912"
+        ],
+        1
+      ]
+    },
+    {
+      "op": "page.status.list",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "op": "page.status.with_total",
+      "result": [
+        [
+          "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+        ],
+        1
+      ]
+    },
+    {
+      "op": "page.query.list",
+      "result": [
+        "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+      ]
+    },
+    {
+      "op": "page.query.with_total",
+      "result": [
+        [
+          "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+        ],
+        1
+      ]
+    },
+    {
+      "op": "page.query_account.list",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912"
+      ]
+    },
+    {
+      "op": "page.query_account.with_total",
+      "result": [
+        [
+          "daf40d98-e566-5fed-a29e-ca189efd7912"
+        ],
+        1
+      ]
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_limit.list",
+      "raises": "ValueError"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_limit.with_total",
+      "raises": "ValueError"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_offset.list",
+      "raises": "ValueError"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_offset.with_total",
+      "raises": "ValueError"
+    },
+    {
+      "op": "count.all",
+      "result": 3
+    },
+    {
+      "op": "count.aws",
+      "result": 1
+    },
+    {
+      "op": "count.failed",
+      "result": 1
+    },
+    {
+      "op": "count.q",
+      "result": 2
+    },
+    {
+      "op": "count.b",
+      "result": 1
+    },
+    {
+      "op": "cleanup_due.a",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+        "daf40d98-e566-5fed-a29e-ca189efd7912"
+      ]
+    },
+    {
+      "op": "cleanup_due.a.limit1",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "op": "cleanup_due.b",
+      "result": [
+        "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e"
+      ]
+    },
+    {
+      "op": "cleanup_due.bad",
+      "result": []
+    },
+    {
+      "op": "final.a1",
+      "result": {
+        "disposition": "partial",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "pending",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "partial",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "scan_complete",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 4,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:12Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "pending",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 4,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "cleanup",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [
+            {
+              "kind": "snapshot",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "snap-1",
+              "status": "created"
+            }
+          ],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 4,
+          "status": "scan_complete",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:12Z",
+          "warning_codes": []
+        }
+      }
+    }
+  ],
+  "store.postgres_fake": [
+    {
+      "op": "init",
+      "result": "PostgresSideScanStateStore"
+    },
+    {
+      "op": "create",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "tenant-a",
+            "aws",
+            "111122223333",
+            "i-0001",
+            "job-1",
+            1,
+            "not_started",
+            "2026-01-01T00:00:01Z",
+            {
+              "json": {
+                "account_id": "111122223333",
+                "cleanup_ownership": {
+                  "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                  "owner_id": "f6b70d21c8152ba383024af8",
+                  "required_tags": {
+                    "agent-bom-sidescan": "true",
+                    "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                    "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                    "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+                  },
+                  "scope_hash": "c5bf910210e239927fcfac5e"
+                },
+                "cleanup_status": "not_started",
+                "collector_id": "collector-1",
+                "counts": {
+                  "config_finding_count": 0,
+                  "ioc_finding_count": 0,
+                  "package_count": 0,
+                  "secret_count": 0,
+                  "vulnerability_count": 0
+                },
+                "created_at": "2026-01-01T00:00:01Z",
+                "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "failure_code": "",
+                "idempotency_key": "job-1",
+                "phase": "requested",
+                "provider": "aws",
+                "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "resources": [],
+                "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+                "state_version": 1,
+                "status": "queued",
+                "target_id": "i-0001",
+                "tenant_id": "tenant-a",
+                "updated_at": "2026-01-01T00:00:01Z",
+                "warning_codes": []
+              }
+            }
+          ],
+          "sql": "INSERT INTO side_scan_execution_state (execution_id, tenant_id, provider, account_id, target_id, idempotency_key, state_version, cleanup_status, updated_at, payload_json) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (tenant_id, provider, account_id, target_id, idempotency_key) DO NOTHING"
+        },
+        {
+          "params": [
+            "tenant-a",
+            "aws",
+            "111122223333",
+            "i-0001",
+            "job-1"
+          ],
+          "sql": "SELECT payload_json FROM side_scan_execution_state WHERE tenant_id = %s AND provider = %s AND account_id = %s AND target_id = %s AND idempotency_key = %s"
+        },
+        "commit"
+      ],
+      "op": "create.sql"
+    },
+    {
+      "message": "side-scan lifecycle record could not be persisted",
+      "op": "create.lost",
+      "raises": "RuntimeError"
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "tenant-a",
+            "aws",
+            "111122223333",
+            "i-0001",
+            "job-1",
+            1,
+            "not_started",
+            "2026-01-01T00:00:01Z",
+            {
+              "json": {
+                "account_id": "111122223333",
+                "cleanup_ownership": {
+                  "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                  "owner_id": "f6b70d21c8152ba383024af8",
+                  "required_tags": {
+                    "agent-bom-sidescan": "true",
+                    "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                    "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                    "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+                  },
+                  "scope_hash": "c5bf910210e239927fcfac5e"
+                },
+                "cleanup_status": "not_started",
+                "collector_id": "collector-1",
+                "counts": {
+                  "config_finding_count": 0,
+                  "ioc_finding_count": 0,
+                  "package_count": 0,
+                  "secret_count": 0,
+                  "vulnerability_count": 0
+                },
+                "created_at": "2026-01-01T00:00:01Z",
+                "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "failure_code": "",
+                "idempotency_key": "job-1",
+                "phase": "requested",
+                "provider": "aws",
+                "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "resources": [],
+                "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+                "state_version": 1,
+                "status": "queued",
+                "target_id": "i-0001",
+                "tenant_id": "tenant-a",
+                "updated_at": "2026-01-01T00:00:01Z",
+                "warning_codes": []
+              }
+            }
+          ],
+          "sql": "INSERT INTO side_scan_execution_state (execution_id, tenant_id, provider, account_id, target_id, idempotency_key, state_version, cleanup_status, updated_at, payload_json) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (tenant_id, provider, account_id, target_id, idempotency_key) DO NOTHING"
+        },
+        {
+          "params": [
+            "tenant-a",
+            "aws",
+            "111122223333",
+            "i-0001",
+            "job-1"
+          ],
+          "sql": "SELECT payload_json FROM side_scan_execution_state WHERE tenant_id = %s AND provider = %s AND account_id = %s AND target_id = %s AND idempotency_key = %s"
+        },
+        "commit"
+      ],
+      "op": "create.lost.sql"
+    },
+    {
+      "op": "get.hit",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a",
+            "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+          ],
+          "sql": "SELECT payload_json FROM side_scan_execution_state WHERE tenant_id = %s AND execution_id = %s"
+        }
+      ],
+      "op": "get.hit.sql"
+    },
+    {
+      "op": "get.miss",
+      "result": null
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-b"
+        },
+        {
+          "params": [
+            "tenant-b",
+            "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+          ],
+          "sql": "SELECT payload_json FROM side_scan_execution_state WHERE tenant_id = %s AND execution_id = %s"
+        }
+      ],
+      "op": "get.miss.sql"
+    },
+    {
+      "op": "save.ok",
+      "result": null
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            2,
+            "not_started",
+            "2026-01-01T00:00:10Z",
+            {
+              "json": {
+                "account_id": "111122223333",
+                "cleanup_ownership": {
+                  "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                  "owner_id": "f6b70d21c8152ba383024af8",
+                  "required_tags": {
+                    "agent-bom-sidescan": "true",
+                    "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                    "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                    "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+                  },
+                  "scope_hash": "c5bf910210e239927fcfac5e"
+                },
+                "cleanup_status": "not_started",
+                "collector_id": "collector-1",
+                "counts": {
+                  "config_finding_count": 0,
+                  "ioc_finding_count": 0,
+                  "package_count": 0,
+                  "secret_count": 0,
+                  "vulnerability_count": 0
+                },
+                "created_at": "2026-01-01T00:00:01Z",
+                "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "failure_code": "",
+                "idempotency_key": "job-1",
+                "phase": "snapshot",
+                "provider": "aws",
+                "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "resources": [],
+                "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+                "state_version": 2,
+                "status": "running",
+                "target_id": "i-0001",
+                "tenant_id": "tenant-a",
+                "updated_at": "2026-01-01T00:00:10Z",
+                "warning_codes": []
+              }
+            },
+            "tenant-a",
+            "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            1
+          ],
+          "sql": "UPDATE side_scan_execution_state SET state_version = %s, cleanup_status = %s, updated_at = %s, payload_json = %s WHERE tenant_id = %s AND execution_id = %s AND state_version = %s"
+        },
+        "commit"
+      ],
+      "op": "save.ok.sql"
+    },
+    {
+      "message": "side-scan execution was updated by another worker",
+      "op": "save.conflict",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            2,
+            "not_started",
+            "2026-01-01T00:00:10Z",
+            {
+              "json": {
+                "account_id": "111122223333",
+                "cleanup_ownership": {
+                  "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                  "owner_id": "f6b70d21c8152ba383024af8",
+                  "required_tags": {
+                    "agent-bom-sidescan": "true",
+                    "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                    "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                    "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+                  },
+                  "scope_hash": "c5bf910210e239927fcfac5e"
+                },
+                "cleanup_status": "not_started",
+                "collector_id": "collector-1",
+                "counts": {
+                  "config_finding_count": 0,
+                  "ioc_finding_count": 0,
+                  "package_count": 0,
+                  "secret_count": 0,
+                  "vulnerability_count": 0
+                },
+                "created_at": "2026-01-01T00:00:01Z",
+                "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "failure_code": "",
+                "idempotency_key": "job-1",
+                "phase": "snapshot",
+                "provider": "aws",
+                "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "resources": [],
+                "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+                "state_version": 2,
+                "status": "running",
+                "target_id": "i-0001",
+                "tenant_id": "tenant-a",
+                "updated_at": "2026-01-01T00:00:10Z",
+                "warning_codes": []
+              }
+            },
+            "tenant-a",
+            "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            1
+          ],
+          "sql": "UPDATE side_scan_execution_state SET state_version = %s, cleanup_status = %s, updated_at = %s, payload_json = %s WHERE tenant_id = %s AND execution_id = %s AND state_version = %s"
+        },
+        "rollback"
+      ],
+      "op": "save.conflict.sql"
+    },
+    {
+      "message": "side-scan state version must advance by exactly one",
+      "op": "save.skip",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "calls": [],
+      "op": "save.skip.sql"
+    },
+    {
+      "op": "recent",
+      "result": [
+        2,
+        1
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a",
+            50,
+            0
+          ],
+          "sql": "WITH filtered AS ( SELECT payload_json, updated_at, execution_id FROM side_scan_execution_state WHERE tenant_id = %s ), page AS ( SELECT payload_json FROM filtered ORDER BY updated_at DESC, execution_id DESC LIMIT %s OFFSET %s ) SELECT page.payload_json, totals.total FROM (SELECT COUNT(*) AS total FROM filtered) AS totals LEFT JOIN page ON TRUE"
+        }
+      ],
+      "op": "recent.sql"
+    },
+    {
+      "op": "page.filtered",
+      "result": [
+        [],
+        3
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a",
+            "aws",
+            "running",
+            "%I-0%",
+            "%I-0%",
+            "%I-0%",
+            5,
+            10
+          ],
+          "sql": "WITH filtered AS ( SELECT payload_json, updated_at, execution_id FROM side_scan_execution_state WHERE tenant_id = %s AND provider = %s AND payload_json::jsonb ->> 'status' = %s AND (target_id ILIKE %s OR account_id ILIKE %s OR execution_id ILIKE %s) ), page AS ( SELECT payload_json FROM filtered ORDER BY updated_at DESC, execution_id DESC LIMIT %s OFFSET %s ) SELECT page.payload_json, totals.total FROM (SELECT COUNT(*) AS total FROM filtered) AS totals LEFT JOIN page ON TRUE"
+        }
+      ],
+      "op": "page.filtered.sql"
+    },
+    {
+      "op": "page.empty",
+      "result": [
+        [],
+        0
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a",
+            5,
+            0
+          ],
+          "sql": "WITH filtered AS ( SELECT payload_json, updated_at, execution_id FROM side_scan_execution_state WHERE tenant_id = %s ), page AS ( SELECT payload_json FROM filtered ORDER BY updated_at DESC, execution_id DESC LIMIT %s OFFSET %s ) SELECT page.payload_json, totals.total FROM (SELECT COUNT(*) AS total FROM filtered) AS totals LEFT JOIN page ON TRUE"
+        }
+      ],
+      "op": "page.empty.sql"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad",
+      "raises": "ValueError"
+    },
+    {
+      "calls": [],
+      "op": "page.bad.sql"
+    },
+    {
+      "op": "count",
+      "result": 7
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a",
+            "gcp",
+            "failed",
+            "%x%",
+            "%x%",
+            "%x%"
+          ],
+          "sql": "SELECT COUNT(*) FROM side_scan_execution_state WHERE tenant_id = %s AND provider = %s AND payload_json::jsonb ->> 'status' = %s AND (target_id ILIKE %s OR account_id ILIKE %s OR execution_id ILIKE %s)"
+        }
+      ],
+      "op": "count.sql"
+    },
+    {
+      "op": "count.none",
+      "result": 0
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a"
+          ],
+          "sql": "SELECT COUNT(*) FROM side_scan_execution_state WHERE tenant_id = %s"
+        }
+      ],
+      "op": "count.none.sql"
+    },
+    {
+      "op": "cleanup_due",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tenant_bound": "tenant-a"
+        },
+        {
+          "params": [
+            "tenant-a",
+            "pending",
+            "in_progress",
+            "partial",
+            3
+          ],
+          "sql": "SELECT payload_json FROM side_scan_execution_state WHERE tenant_id = %s AND cleanup_status IN (%s, %s, %s) ORDER BY updated_at, execution_id LIMIT %s"
+        }
+      ],
+      "op": "cleanup_due.sql"
+    },
+    {
+      "message": "limit must be at least 1",
+      "op": "cleanup_due.bad",
+      "raises": "ValueError"
+    },
+    {
+      "calls": [],
+      "op": "cleanup_due.bad.sql"
+    }
+  ],
+  "store.sqlite": [
+    {
+      "op": "create.a1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.a2",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "sub-1",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "azure",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0002",
+          "updated_at": "2026-01-01T00:00:02Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "sub-1",
+          "cleanup_ownership": {
+            "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+            "owner_id": "29c8192825a1bbeb6caafde5",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "daf40d98-e566-5fed-a29e-ca189efd7912",
+              "agent-bom-sidescan-owner": "29c8192825a1bbeb6caafde5",
+              "agent-bom-sidescan-scope": "6660d192b43ef3d09e7dbf52"
+            },
+            "scope_hash": "6660d192b43ef3d09e7dbf52"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:02Z",
+          "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "azure",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0002",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:02Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.a3",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "proj-1",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "gcp",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "vm-0003",
+          "updated_at": "2026-01-01T00:00:03Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "proj-1",
+          "cleanup_ownership": {
+            "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+            "owner_id": "da4063813f932ed7757d8b8d",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+              "agent-bom-sidescan-owner": "da4063813f932ed7757d8b8d",
+              "agent-bom-sidescan-scope": "d24d4fdf9bdeabb8b4ca4c02"
+            },
+            "scope_hash": "d24d4fdf9bdeabb8b4ca4c02"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:03Z",
+          "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "gcp",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "vm-0003",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:03Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.b1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+            "owner_id": "d7b8735bbf3d1158510d26d7",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+              "agent-bom-sidescan-owner": "d7b8735bbf3d1158510d26d7",
+              "agent-bom-sidescan-scope": "020bf200d56aad9c5fec7da6"
+            },
+            "scope_hash": "020bf200d56aad9c5fec7da6"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-b",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "create.a1.dup",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "get.a1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "get.a1.as_b",
+      "result": null
+    },
+    {
+      "op": "get.b1",
+      "result": {
+        "disposition": "unevaluable",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "not_started",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "unevaluable",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "execution_status": "queued",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 0,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+            "owner_id": "d7b8735bbf3d1158510d26d7",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+              "agent-bom-sidescan-owner": "d7b8735bbf3d1158510d26d7",
+              "agent-bom-sidescan-scope": "020bf200d56aad9c5fec7da6"
+            },
+            "scope_hash": "020bf200d56aad9c5fec7da6"
+          },
+          "cleanup_status": "not_started",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 0,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "requested",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 1,
+          "status": "queued",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-b",
+          "updated_at": "2026-01-01T00:00:01Z",
+          "warning_codes": []
+        }
+      }
+    },
+    {
+      "op": "save.run",
+      "result": null
+    },
+    {
+      "message": "side-scan execution was updated by another worker",
+      "op": "save.run.stale",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "message": "side-scan state version must advance by exactly one",
+      "op": "save.skip_version",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "message": "side-scan execution was updated by another worker",
+      "op": "save.cross_tenant",
+      "raises": "SideScanStateConflictError"
+    },
+    {
+      "op": "save.register",
+      "result": null
+    },
+    {
+      "op": "save.pending",
+      "result": null
+    },
+    {
+      "op": "save.a2",
+      "result": null
+    },
+    {
+      "op": "save.b1",
+      "result": null
+    },
+    {
+      "op": "recent.a",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912",
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+        "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+      ]
+    },
+    {
+      "op": "recent.b",
+      "result": [
+        "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e"
+      ]
+    },
+    {
+      "op": "recent.none",
+      "result": []
+    },
+    {
+      "op": "page.0.list",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912",
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "op": "page.0.with_total",
+      "result": [
+        [
+          "daf40d98-e566-5fed-a29e-ca189efd7912",
+          "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+        ],
+        3
+      ]
+    },
+    {
+      "op": "page.1.list",
+      "result": [
+        "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+      ]
+    },
+    {
+      "op": "page.1.with_total",
+      "result": [
+        [
+          "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+        ],
+        3
+      ]
+    },
+    {
+      "op": "page.past.list",
+      "result": []
+    },
+    {
+      "op": "page.past.with_total",
+      "result": [
+        [],
+        3
+      ]
+    },
+    {
+      "op": "page.provider.list",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912"
+      ]
+    },
+    {
+      "op": "page.provider.with_total",
+      "result": [
+        [
+          "daf40d98-e566-5fed-a29e-ca189efd7912"
+        ],
+        1
+      ]
+    },
+    {
+      "op": "page.status.list",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "op": "page.status.with_total",
+      "result": [
+        [
+          "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+        ],
+        1
+      ]
+    },
+    {
+      "op": "page.query.list",
+      "result": [
+        "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+      ]
+    },
+    {
+      "op": "page.query.with_total",
+      "result": [
+        [
+          "f77e4c82-cba3-5fa3-8787-10fcb11c1321"
+        ],
+        1
+      ]
+    },
+    {
+      "op": "page.query_account.list",
+      "result": [
+        "daf40d98-e566-5fed-a29e-ca189efd7912"
+      ]
+    },
+    {
+      "op": "page.query_account.with_total",
+      "result": [
+        [
+          "daf40d98-e566-5fed-a29e-ca189efd7912"
+        ],
+        1
+      ]
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_limit.list",
+      "raises": "ValueError"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_limit.with_total",
+      "raises": "ValueError"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_offset.list",
+      "raises": "ValueError"
+    },
+    {
+      "message": "limit must be at least 1 and offset cannot be negative",
+      "op": "page.bad_offset.with_total",
+      "raises": "ValueError"
+    },
+    {
+      "op": "count.all",
+      "result": 3
+    },
+    {
+      "op": "count.aws",
+      "result": 1
+    },
+    {
+      "op": "count.failed",
+      "result": 1
+    },
+    {
+      "op": "count.q",
+      "result": 2
+    },
+    {
+      "op": "count.b",
+      "result": 1
+    },
+    {
+      "op": "cleanup_due.a",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+        "daf40d98-e566-5fed-a29e-ca189efd7912"
+      ]
+    },
+    {
+      "op": "cleanup_due.a.limit1",
+      "result": [
+        "98e441d8-b6b0-5abd-954a-9a213cb9df9b"
+      ]
+    },
+    {
+      "op": "cleanup_due.b",
+      "result": [
+        "c2848f4c-6ce3-5442-8635-9d8b0b2b7a3e"
+      ]
+    },
+    {
+      "message": "limit must be at least 1",
+      "op": "cleanup_due.bad",
+      "raises": "ValueError"
+    },
+    {
+      "op": "final.a1",
+      "result": {
+        "disposition": "partial",
+        "evidence": {
+          "account_id": "111122223333",
+          "clean_workload_assertion": false,
+          "cleanup_status": "pending",
+          "config_finding_count": 0,
+          "data_boundary": "customer_account_metadata_only",
+          "disposition": "partial",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "execution_status": "scan_complete",
+          "failure_code": "",
+          "ioc_finding_count": 0,
+          "negative_result_scope": "unavailable",
+          "package_count": 4,
+          "provider": "aws",
+          "redaction": "raw block bytes, file contents, and secret values are not persisted",
+          "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+          "secret_count": 0,
+          "target_id": "i-0001",
+          "updated_at": "2026-01-01T00:00:12Z",
+          "vulnerability_count": 0,
+          "warning_codes": []
+        },
+        "record": {
+          "account_id": "111122223333",
+          "cleanup_ownership": {
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "owner_id": "f6b70d21c8152ba383024af8",
+            "required_tags": {
+              "agent-bom-sidescan": "true",
+              "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+              "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+            },
+            "scope_hash": "c5bf910210e239927fcfac5e"
+          },
+          "cleanup_status": "pending",
+          "collector_id": "collector-1",
+          "counts": {
+            "config_finding_count": 0,
+            "ioc_finding_count": 0,
+            "package_count": 4,
+            "secret_count": 0,
+            "vulnerability_count": 0
+          },
+          "created_at": "2026-01-01T00:00:01Z",
+          "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+          "failure_code": "",
+          "idempotency_key": "job-1",
+          "phase": "cleanup",
+          "provider": "aws",
+          "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "resources": [
+            {
+              "kind": "snapshot",
+              "ownership_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "resource_id": "snap-1",
+              "status": "created"
+            }
+          ],
+          "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+          "state_version": 4,
+          "status": "scan_complete",
+          "target_id": "i-0001",
+          "tenant_id": "tenant-a",
+          "updated_at": "2026-01-01T00:00:12Z",
+          "warning_codes": []
+        }
+      }
+    }
+  ],
+  "store.sqlite.restart": [
+    {
+      "op": "reopen",
+      "result": [
+        {
+          "disposition": "unevaluable",
+          "evidence": {
+            "account_id": "sub-1",
+            "clean_workload_assertion": false,
+            "cleanup_status": "in_progress",
+            "config_finding_count": 0,
+            "data_boundary": "customer_account_metadata_only",
+            "disposition": "unevaluable",
+            "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+            "execution_status": "failed",
+            "failure_code": "",
+            "ioc_finding_count": 0,
+            "negative_result_scope": "unavailable",
+            "package_count": 0,
+            "provider": "azure",
+            "redaction": "raw block bytes, file contents, and secret values are not persisted",
+            "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+            "secret_count": 0,
+            "target_id": "i-0002",
+            "updated_at": "2026-01-01T00:00:13Z",
+            "vulnerability_count": 0,
+            "warning_codes": []
+          },
+          "record": {
+            "account_id": "sub-1",
+            "cleanup_ownership": {
+              "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+              "owner_id": "29c8192825a1bbeb6caafde5",
+              "required_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "daf40d98-e566-5fed-a29e-ca189efd7912",
+                "agent-bom-sidescan-owner": "29c8192825a1bbeb6caafde5",
+                "agent-bom-sidescan-scope": "6660d192b43ef3d09e7dbf52"
+              },
+              "scope_hash": "6660d192b43ef3d09e7dbf52"
+            },
+            "cleanup_status": "in_progress",
+            "collector_id": "collector-1",
+            "counts": {
+              "config_finding_count": 0,
+              "ioc_finding_count": 0,
+              "package_count": 0,
+              "secret_count": 0,
+              "vulnerability_count": 0
+            },
+            "created_at": "2026-01-01T00:00:02Z",
+            "execution_id": "daf40d98-e566-5fed-a29e-ca189efd7912",
+            "failure_code": "",
+            "idempotency_key": "job-1",
+            "phase": "requested",
+            "provider": "azure",
+            "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": [],
+            "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+            "state_version": 2,
+            "status": "failed",
+            "target_id": "i-0002",
+            "tenant_id": "tenant-a",
+            "updated_at": "2026-01-01T00:00:13Z",
+            "warning_codes": []
+          }
+        },
+        {
+          "disposition": "partial",
+          "evidence": {
+            "account_id": "111122223333",
+            "clean_workload_assertion": false,
+            "cleanup_status": "pending",
+            "config_finding_count": 0,
+            "data_boundary": "customer_account_metadata_only",
+            "disposition": "partial",
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "execution_status": "scan_complete",
+            "failure_code": "",
+            "ioc_finding_count": 0,
+            "negative_result_scope": "unavailable",
+            "package_count": 4,
+            "provider": "aws",
+            "redaction": "raw block bytes, file contents, and secret values are not persisted",
+            "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+            "secret_count": 0,
+            "target_id": "i-0001",
+            "updated_at": "2026-01-01T00:00:12Z",
+            "vulnerability_count": 0,
+            "warning_codes": []
+          },
+          "record": {
+            "account_id": "111122223333",
+            "cleanup_ownership": {
+              "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+              "owner_id": "f6b70d21c8152ba383024af8",
+              "required_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+              },
+              "scope_hash": "c5bf910210e239927fcfac5e"
+            },
+            "cleanup_status": "pending",
+            "collector_id": "collector-1",
+            "counts": {
+              "config_finding_count": 0,
+              "ioc_finding_count": 0,
+              "package_count": 4,
+              "secret_count": 0,
+              "vulnerability_count": 0
+            },
+            "created_at": "2026-01-01T00:00:01Z",
+            "execution_id": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+            "failure_code": "",
+            "idempotency_key": "job-1",
+            "phase": "cleanup",
+            "provider": "aws",
+            "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": [
+              {
+                "kind": "snapshot",
+                "ownership_tags": {
+                  "agent-bom-sidescan": "true",
+                  "agent-bom-sidescan-execution": "98e441d8-b6b0-5abd-954a-9a213cb9df9b",
+                  "agent-bom-sidescan-owner": "f6b70d21c8152ba383024af8",
+                  "agent-bom-sidescan-scope": "c5bf910210e239927fcfac5e"
+                },
+                "resource_id": "snap-1",
+                "status": "created"
+              }
+            ],
+            "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+            "state_version": 4,
+            "status": "scan_complete",
+            "target_id": "i-0001",
+            "tenant_id": "tenant-a",
+            "updated_at": "2026-01-01T00:00:12Z",
+            "warning_codes": []
+          }
+        },
+        {
+          "disposition": "unevaluable",
+          "evidence": {
+            "account_id": "proj-1",
+            "clean_workload_assertion": false,
+            "cleanup_status": "not_started",
+            "config_finding_count": 0,
+            "data_boundary": "customer_account_metadata_only",
+            "disposition": "unevaluable",
+            "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+            "execution_status": "queued",
+            "failure_code": "",
+            "ioc_finding_count": 0,
+            "negative_result_scope": "unavailable",
+            "package_count": 0,
+            "provider": "gcp",
+            "redaction": "raw block bytes, file contents, and secret values are not persisted",
+            "schema_version": "agent-bom.cwpp.side_scan.evidence.v1",
+            "secret_count": 0,
+            "target_id": "vm-0003",
+            "updated_at": "2026-01-01T00:00:03Z",
+            "vulnerability_count": 0,
+            "warning_codes": []
+          },
+          "record": {
+            "account_id": "proj-1",
+            "cleanup_ownership": {
+              "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+              "owner_id": "da4063813f932ed7757d8b8d",
+              "required_tags": {
+                "agent-bom-sidescan": "true",
+                "agent-bom-sidescan-execution": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+                "agent-bom-sidescan-owner": "da4063813f932ed7757d8b8d",
+                "agent-bom-sidescan-scope": "d24d4fdf9bdeabb8b4ca4c02"
+              },
+              "scope_hash": "d24d4fdf9bdeabb8b4ca4c02"
+            },
+            "cleanup_status": "not_started",
+            "collector_id": "collector-1",
+            "counts": {
+              "config_finding_count": 0,
+              "ioc_finding_count": 0,
+              "package_count": 0,
+              "secret_count": 0,
+              "vulnerability_count": 0
+            },
+            "created_at": "2026-01-01T00:00:03Z",
+            "execution_id": "f77e4c82-cba3-5fa3-8787-10fcb11c1321",
+            "failure_code": "",
+            "idempotency_key": "job-1",
+            "phase": "requested",
+            "provider": "gcp",
+            "request_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "resources": [],
+            "schema_version": "agent-bom.cwpp.side_scan.lifecycle.v1",
+            "state_version": 1,
+            "status": "queued",
+            "target_id": "vm-0003",
+            "tenant_id": "tenant-a",
+            "updated_at": "2026-01-01T00:00:03Z",
+            "warning_codes": []
+          }
+        }
+      ]
+    }
+  ]
+}

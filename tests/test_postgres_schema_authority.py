@@ -296,6 +296,7 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
     )
     runtime_paths.extend(_sql_layer_bootstrap_modules())
     runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "runtime_workload_evidence_store.py")
+    runtime_paths.append(ROOT / "src" / "agent_bom" / "cloud" / "side_scan_lifecycle_postgres.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "ticketing" / "postgres_store.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "mcp_tools" / "result_store.py")
     runtime_paths.append(ROOT / "src" / "agent_bom" / "connectors" / "endpoints" / "store.py")

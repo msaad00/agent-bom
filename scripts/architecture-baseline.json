@@ -140,7 +140,7 @@
     "api/compliance_hub_store.py": {
       "broad_except": 1,
       "deferred_imports": 21,
-      "file_lines": 2259,
+      "file_lines": 2260,
       "raw_env_reads": 5
     },
     "api/compliance_hub_store.py::collect_scope_filtered_page": {

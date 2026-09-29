@@ -147,32 +147,71 @@ def like_clause(dialect: Dialect, expression: str) -> str:
 
 
 @dataclass(frozen=True)
+class Col:
+    """One keyset sort column: its direction and whether it is an integer/real key."""
+
+    name: str
+    desc: bool = False
+    numeric: bool = False
+
+
+@dataclass(frozen=True, init=False)
 class Keyset:
     """Keyset (seek) pagination with the same order on SQLite and Postgres.
 
-    ``columns`` are the sort key, most significant first. They must be NOT
-    NULL (the engines order NULLs differently) and together unique, and they
-    must be the first columns of the SELECT so :meth:`page` can read the
-    cursor. ``directions`` optionally supplies one descending flag per column
-    for mixed orders; otherwise ``descending`` applies to every column.
-    Text columns are compared by code point: ``COLLATE BINARY`` on
-    SQLite and ``COLLATE "C"`` on a UTF-8 Postgres, which agree, whereas a
-    locale collation such as ``en_US`` would not. On Postgres an index serves
-    this order only if it is built with ``COLLATE "C"`` (or the database
-    collation is ``C``). List integer columns in ``numeric``; Postgres rejects a
-    collation on them.
+    Build it from :class:`Col` entries, most significant first, for a
+    per-column direction: ``Keyset([Col("rank", desc=True, numeric=True),
+    Col("last_seen", desc=True), Col("id")])``. Plain names still work, with
+    ``descending`` applying to every column (or ``directions`` giving one flag
+    per column) and ``numeric`` naming the number columns.
+
+    The columns must be NOT NULL (the engines order NULLs differently) and
+    together unique, and they must be the first columns of the SELECT so
+    :meth:`page` can read the cursor. Text columns are compared by code point:
+    ``COLLATE BINARY`` on SQLite and ``COLLATE "C"`` on a UTF-8 Postgres, which
+    agree, whereas a locale collation such as ``en_US`` would not. On Postgres
+    an index serves this order only if its text columns are built with
+    ``COLLATE "C"`` (or the database collation is ``C``); on SQLite the default
+    column collation is already ``BINARY``. Numeric columns take no collation;
+    Postgres rejects one on them.
     """
 
     columns: tuple[str, ...]
-    descending: bool = False
-    numeric: frozenset[str] = frozenset()
-    directions: tuple[bool, ...] | None = None
+    descending: bool
+    numeric: frozenset[str]
+    directions: tuple[bool, ...] | None
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        columns: Sequence[str | Col],
+        descending: bool = False,
+        numeric: frozenset[str] = frozenset(),
+        directions: tuple[bool, ...] | None = None,
+    ) -> None:
+        entries = tuple(columns)
+        if any(isinstance(entry, Col) for entry in entries):
+            if descending or directions is not None or numeric:
+                raise ValueError("Col entries carry their own direction and type; do not also pass descending, directions or numeric")
+            cols = tuple(entry if isinstance(entry, Col) else Col(entry) for entry in entries)
+            names = tuple(col.name for col in cols)
+            numeric = frozenset(col.name for col in cols if col.numeric)
+            directions = tuple(col.desc for col in cols) if len({col.desc for col in cols}) > 1 else None
+            descending = bool(cols) and cols[0].desc and directions is None
+        else:
+            names = tuple(str(entry) for entry in entries)
+        object.__setattr__(self, "columns", names)
+        object.__setattr__(self, "descending", descending)
+        object.__setattr__(self, "numeric", numeric)
+        object.__setattr__(self, "directions", directions)
+        self._validate()
+
+    def _validate(self) -> None:
         if not self.columns:
             raise ValueError("keyset needs at least one column")
         for column in self.columns:
             _identifier(column)
+        if len(set(self.columns)) != len(self.columns):
+            raise ValueError("keyset columns must be distinct")
         if not self.numeric <= set(self.columns):
             raise ValueError("numeric columns must be keyset columns")
         if self.directions is not None:
@@ -180,6 +219,13 @@ class Keyset:
                 raise ValueError("keyset directions must provide one boolean per column")
             if self.descending:
                 raise ValueError("use descending or per-column directions, not both")
+
+    @property
+    def cols(self) -> tuple[Col, ...]:
+        """The key as :class:`Col` entries, whichever constructor form built it."""
+        return tuple(
+            Col(column, desc=descending, numeric=column in self.numeric) for column, descending in zip(self.columns, self._directions())
+        )
 
     def _directions(self) -> tuple[bool, ...]:
         return self.directions if self.directions is not None else (self.descending,) * len(self.columns)
@@ -197,7 +243,14 @@ class Keyset:
         )
 
     def after(self, dialect: Dialect, cursor: Sequence[Any] | None) -> tuple[str, tuple[Any, ...]]:
-        """Predicate selecting rows strictly after ``cursor``, or ``("", ())`` for the first page."""
+        """Predicate selecting rows strictly after ``cursor``, or ``("", ())`` for the first page.
+
+        One direction compiles to a row-value comparison. Mixed directions
+        cannot, so they expand to ``(a < ?) OR (a = ? AND b > ?) OR ...`` with
+        each column's own operator, behind a redundant ``a <= ?`` (or ``>=``)
+        bound on the leading column that lets an index seek to the cursor
+        instead of filtering every row before it.
+        """
         if cursor is None:
             return "", ()
         if len(cursor) != len(self.columns):
@@ -206,12 +259,13 @@ class Keyset:
         expressions = [self._term(dialect, column) for column in self.columns]
         if len(set(directions)) > 1:
             clauses = []
-            params: list[Any] = []
+            params: list[Any] = [cursor[0]]
             for index, (term, descending) in enumerate(zip(expressions, directions)):
                 prefix = [f"{prior} = ?" for prior in expressions[:index]]
                 clauses.append("(" + " AND ".join([*prefix, f"{term} {'<' if descending else '>'} ?"]) + ")")
                 params.extend(cursor[: index + 1])
-            return "(" + " OR ".join(clauses) + ")", tuple(params)
+            bound = f"{expressions[0]} {'<=' if directions[0] else '>='} ?"
+            return f"({bound} AND (" + " OR ".join(clauses) + "))", tuple(params)
         terms = ", ".join(expressions)
         placeholders = ", ".join("?" for _ in self.columns)
         operator = "<" if directions[0] else ">"

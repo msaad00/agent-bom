@@ -256,6 +256,30 @@ CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity
     ON hub_findings_current(tenant_id, severity_rank DESC, last_seen DESC, canonical_id ASC);
 """
 
+# Findings pages order text tie-breakers by code point (``finding_keyset``), and
+# a default-collation index cannot serve ``COLLATE "C"`` ordering. These twins of
+# the sort indexes keep every sorted page an ordered index scan. Created with the
+# sort indexes below, after the ordinal and origin columns exist.
+_COLLATED_TIE = 'last_seen COLLATE "C" DESC, canonical_id COLLATE "C" ASC'
+_CURRENT_LIFECYCLE_COLLATED_SORT_INDEXES_POSTGRES = (
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_reach_c "
+    f"ON hub_findings_current(tenant_id, effective_reach_score DESC, {_COLLATED_TIE})",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_cvss_c "
+    f"ON hub_findings_current(tenant_id, cvss_score DESC, {_COLLATED_TIE})",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_c "
+    f"ON hub_findings_current(tenant_id, severity_rank DESC, {_COLLATED_TIE})",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_origin_cvss_c "
+    f"ON hub_findings_current(tenant_id, origin, cvss_score DESC, {_COLLATED_TIE})",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_ordinal_c "
+    'ON hub_findings_current(tenant_id, ledger_ordinal ASC, first_seen COLLATE "C" ASC, canonical_id COLLATE "C" ASC)',
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_reach_c "
+    f"ON hub_findings_current(tenant_id, LOWER(severity), effective_reach_score DESC, {_COLLATED_TIE}) WHERE severity <> ''",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_severity_cvss_c "
+    f"ON hub_findings_current(tenant_id, LOWER(severity), cvss_score DESC, {_COLLATED_TIE}) WHERE severity <> ''",
+    "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_open_reach_c "
+    f"ON hub_findings_current(tenant_id, effective_reach_score DESC, {_COLLATED_TIE}) WHERE status IN ('open', 'reopened')",
+)
+
 # Ordinal + severity-composite sort indexes for hub_findings_current, created
 # after the ``ledger_ordinal`` column migration (the column post-dates the base
 # DDL for pre-existing Postgres deployments, so these cannot live in the CREATE
@@ -275,6 +299,7 @@ _CURRENT_LIFECYCLE_SORT_INDEXES_POSTGRES = (
     "CREATE INDEX IF NOT EXISTS idx_hub_findings_current_tenant_open_reach "
     "ON hub_findings_current(tenant_id, effective_reach_score DESC, last_seen DESC, canonical_id ASC) "
     "WHERE status IN ('open', 'reopened')",
+    *_CURRENT_LIFECYCLE_COLLATED_SORT_INDEXES_POSTGRES,
 )
 
 # Origin-scoped composite index — created after the ``origin`` column migration

@@ -43,6 +43,7 @@ ATTACK_PATH_EVIDENCE = VERSIONS_DIR / "20260830_02_graph_correlation_mechanical.
 CLOUD_CONNECTION_CAPABILITY_EVIDENCE = VERSIONS_DIR / "20260830_03_cloud_connection_capability_evidence.py"
 OBSERVATION_PARTITION_RETENTION_WINDOW = VERSIONS_DIR / "20260901_01_observation_partition_retention_window.py"
 EXECUTION_LEASES = VERSIONS_DIR / "20260903_01_execution_leases.py"
+FINDINGS_COLLATED_SORT_INDEXES = VERSIONS_DIR / "20260929_03_findings_current_collated_sort_indexes.py"
 
 # The fork-guard UNIQUE index is spelled differently in its two schema sources:
 # the dedicated migration concatenates two quoted Python string literals, while
@@ -54,7 +55,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20260929_02"
+ALEMBIC_HEAD = "20260929_03"
 
 
 def _canonical_sql(text: str) -> str:
@@ -865,3 +866,57 @@ def test_identity_lookup_migration_marks_ready_after_backfill(monkeypatch) -> No
     assert statements[1].startswith("UPDATE agent_identities")
     assert statements[2].startswith("CREATE INDEX IF NOT EXISTS idx_agent_identities_agent")
     assert "('agent_identities', 2, NOW())" in statements[-1]
+
+
+def _findings_collated_migration(monkeypatch, name: str):
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
+    return _load_module(FINDINGS_COLLATED_SORT_INDEXES, name)
+
+
+def test_findings_collated_sort_indexes_are_chained_concurrent_and_additive(monkeypatch) -> None:
+    sql = FINDINGS_COLLATED_SORT_INDEXES.read_text()
+    assert re.search(r'revision\s*=\s*"20260929_03"', sql)
+    assert re.search(r'down_revision\s*=\s*"20260929_02"', sql)
+    assert "SELECT to_regclass('public.hub_findings_current')" in sql
+    assert "autocommit_block" in sql and "CREATE INDEX CONCURRENTLY IF NOT EXISTS" in sql
+    assert "DROP TABLE" not in sql
+    migration = _findings_collated_migration(monkeypatch, "findings_collated_sort_indexes_shape")
+    statements = migration.COLLATED_SORT_INDEXES
+    assert len(statements) == 8
+    for statement in statements:
+        name = migration._index_name(statement)
+        assert name.startswith("idx_hub_findings_current_tenant_") and name.endswith("_c"), name
+        assert statement.count('COLLATE "C"') == 2, statement
+
+
+def test_findings_collated_sort_indexes_match_runtime_schema_and_runtime_ddl(monkeypatch) -> None:
+    from agent_bom.api.finding_lifecycle import _CURRENT_LIFECYCLE_COLLATED_SORT_INDEXES_POSTGRES
+
+    migration = _findings_collated_migration(monkeypatch, "findings_collated_sort_indexes_parity")
+    expected = {_canonical_sql(statement) for statement in migration.COLLATED_SORT_INDEXES}
+    assert {_canonical_sql(statement) for statement in _CURRENT_LIFECYCLE_COLLATED_SORT_INDEXES_POSTGRES} == expected
+    runtime_lines = [line for line in RUNTIME_SCHEMA_SQL.read_text().splitlines() if "_c ON hub_findings_current" in line]
+    assert {_canonical_sql(line).rstrip(";") for line in runtime_lines} == expected
+
+
+def test_findings_collated_sort_indexes_skip_a_schema_without_the_current_table(monkeypatch) -> None:
+    migration = _findings_collated_migration(monkeypatch, "findings_collated_sort_indexes_legacy")
+    statements: list[str] = []
+
+    class _Missing:
+        @staticmethod
+        def scalar():
+            return None
+
+    class _Bind:
+        @staticmethod
+        def exec_driver_sql(statement: str):
+            statements.append(statement)
+            return _Missing()
+
+    def _unexpected(*_args):
+        raise AssertionError("no index DDL is valid without the current-state table")
+
+    migration.op = SimpleNamespace(get_bind=lambda: _Bind(), get_context=_unexpected, execute=_unexpected)
+    migration.upgrade()
+    assert statements == ["SELECT to_regclass('public.hub_findings_current')"]

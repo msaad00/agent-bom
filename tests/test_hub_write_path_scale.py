@@ -188,10 +188,6 @@ def _run_init(spy: _InitConnSpy, monkeypatch) -> None:
 
     store = PostgresComplianceHubStore.__new__(PostgresComplianceHubStore)
     store._pool = pool
-    import threading
-
-    store._ingest_stats_lock = threading.Lock()
-    store._finding_count_by_tenant = {}
     store._init_tables()
 
 

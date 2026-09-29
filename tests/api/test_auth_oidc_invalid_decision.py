@@ -74,7 +74,7 @@ def _app() -> Starlette:
             }
         )
 
-    app = Starlette(routes=[Route("/v1/test", secure)])
+    app = Starlette(routes=[Route("/v1/fleet", secure)])
     app.add_middleware(APIKeyMiddleware, api_key=None)
     return app
 
@@ -110,7 +110,7 @@ def test_invalid_signature_oidc_bearer_is_401_and_not_tried_as_key(monkeypatch) 
     bad_jwt = _jwt_shaped({"iss": "https://corp.okta.com", "sub": "attacker"})
     try:
         client = TestClient(_app())
-        resp = client.get("/v1/test", headers={"Authorization": f"Bearer {bad_jwt}"})
+        resp = client.get("/v1/fleet", headers={"Authorization": f"Bearer {bad_jwt}"})
         assert resp.status_code == 401
         # The invalid OIDC token must never have been offered to the key store.
         assert bad_jwt not in verify_calls
@@ -141,7 +141,7 @@ def test_raw_api_key_sent_as_bearer_still_authenticates(monkeypatch) -> None:
     try:
         client = TestClient(_app())
         resp = client.get(
-            "/v1/test",
+            "/v1/fleet",
             headers={"Authorization": "Bearer abk_live_realopaquekey_1234567890"},
         )
         assert resp.status_code == 200
@@ -166,7 +166,7 @@ def test_valid_oidc_bearer_still_authenticates(monkeypatch) -> None:
     good_jwt = _jwt_shaped({"iss": "https://corp.okta.com", "sub": "u1"})
     try:
         client = TestClient(_app())
-        resp = client.get("/v1/test", headers={"Authorization": f"Bearer {good_jwt}"})
+        resp = client.get("/v1/fleet", headers={"Authorization": f"Bearer {good_jwt}"})
         assert resp.status_code == 200
         assert resp.json()["auth_method"] == "oidc"
     finally:

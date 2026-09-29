@@ -27,7 +27,7 @@ def test_scope_normalizes_http_method_like_role_resolution():
     assert policy._required_scope("head", "/v1/auth/keys") == "auth.keys:read"
 
 
-@pytest.mark.parametrize("role,expected", [("viewer", 403), ("analyst", 403), ("admin", 200)])
+@pytest.mark.parametrize("role,expected", [("viewer", 403), ("analyst", 403), ("admin", 403)])
 def test_sibling_mutation_rule_is_enforced_at_http_boundary(monkeypatch, role, expected):
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse
@@ -73,3 +73,75 @@ def test_source_bound_ingest_admission_does_not_require_cloud_write():
     for other in (path + "/child", path + "-other"):
         assert required_scope("POST", other) == "cloud:write"
         assert not request_scopes_allow(["runtime:ingest:edr-1"], "POST", other)
+
+
+@pytest.mark.parametrize("mode", ["key", "session", "proxy", "static", "oidc", "anonymous"])
+@pytest.mark.parametrize("method", ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def test_unclassified_operation_denied_after_every_authentication_path(monkeypatch, mode, method):
+    from types import SimpleNamespace
+
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, SESSION_COOKIE_NAME, create_browser_session_token
+    from agent_bom.api.oidc import OIDCConfig
+
+    for name in ("AGENT_BOM_API_KEY", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_TRUST_PROXY_AUTH", "AGENT_BOM_DEMO_ESTATE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTH_ROLE", "admin")
+    secret = "unclassified-test-proxy-attestation-32-characters"
+    if mode == "proxy":
+        monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+        monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", secret)
+    if mode == "oidc":
+        config = SimpleNamespace(
+            enabled=True, verify=lambda token: ({"sub": "operator"}, "admin"), resolve_tenant=lambda claims: "tenant-a"
+        )
+        monkeypatch.setattr(OIDCConfig, "from_env", classmethod(lambda cls: config))
+    reached = []
+
+    async def handler(request):
+        reached.append(request.url.path)
+        return JSONResponse({"accepted": True})
+
+    previous = get_key_store()
+    set_key_store(KeyStore())
+    try:
+        app = Starlette(routes=[Route("/{path:path}", handler, methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])])
+        app.add_middleware(
+            APIKeyMiddleware, api_key="static-test-key" if mode == "static" else "", allow_unauthenticated=mode == "anonymous"
+        )
+        client = TestClient(app)
+        if mode in {"key", "session"}:
+            raw, key = create_api_key(name="operator", role=Role.ADMIN, tenant_id="tenant-a", scopes=[])
+            get_key_store().add(key)
+            if mode == "key":
+                client.headers["X-API-Key"] = raw
+            else:
+                token, csrf = create_browser_session_token(
+                    subject=key.name,
+                    role="admin",
+                    tenant_id=key.tenant_id,
+                    auth_method="api_key",
+                    key_id=key.key_id,
+                    scopes=[],
+                    max_age_seconds=300,
+                )
+                client.cookies.set(SESSION_COOKIE_NAME, token)
+                client.cookies.set(CSRF_COOKIE_NAME, csrf)
+                client.headers[CSRF_HEADER_NAME] = csrf
+        elif mode == "proxy":
+            client.headers.update({"X-Agent-Bom-Role": "admin", "X-Agent-Bom-Tenant-ID": "tenant-a", "X-Agent-Bom-Proxy-Secret": secret})
+        elif mode == "static":
+            client.headers["X-API-Key"] = "static-test-key"
+        elif mode == "oidc":
+            client.headers["Authorization"] = "Bearer test.token.value"
+        assert client.get("/v1/fleet").status_code == 200
+        reached.clear()
+        assert client.request(method, "/v1/unclassified-operation").status_code == 403
+        assert reached == []
+    finally:
+        set_key_store(previous)

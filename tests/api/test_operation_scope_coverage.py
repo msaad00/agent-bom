@@ -89,10 +89,11 @@ def test_matching_scope_reaches_handler(mode, method, path, scope):
 
 @pytest.mark.parametrize("mode", ["key", "session"])
 @pytest.mark.parametrize("method", ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-def test_unclassified_operation_fails_closed_for_scoped_identity(mode, method):
+@pytest.mark.parametrize("scopes", [[], ["*"], ["scan:write"]])
+def test_unclassified_operation_fails_closed_for_scoped_identity(mode, method, scopes):
     path = "/v1/unclassified-operation"
     client = client_for(method, path)
-    authenticate(client, mode, scopes=["scan:write"])
+    authenticate(client, mode, scopes=scopes)
     assert client.request(method, path).status_code == 403
 
 

@@ -6,6 +6,7 @@ Tests mock catalog helpers so they work offline and stay deterministic.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -98,19 +99,39 @@ _MOCK_CWE_TO_ATTACK: dict[str, list[str]] = {
 }
 
 
+@contextmanager
 def _mock_catalog():
-    """Patches mitre_fetch functions with test catalog."""
-    return patch.multiple(
-        "agent_bom.mitre_fetch",
-        get_techniques=lambda: _MOCK_TECHNIQUES,
-        get_cwe_to_attack=lambda: _MOCK_CWE_TO_ATTACK,
-        build_catalog=lambda **kw: {
-            "techniques": _MOCK_TECHNIQUES,
-            "cwe_to_attack": _MOCK_CWE_TO_ATTACK,
-            "attack_version": "ATT&CK vTEST",
-            "fetched_at": 9999999999,
-        },
-    )
+    """Scope the mock catalog and its lazy cache to this context."""
+    with (
+        patch.object(ATTACK_TECHNIQUES, "_data", None),
+        patch.multiple(
+            "agent_bom.mitre_fetch",
+            get_techniques=lambda: _MOCK_TECHNIQUES,
+            get_cwe_to_attack=lambda: _MOCK_CWE_TO_ATTACK,
+            build_catalog=lambda **kw: {
+                "techniques": _MOCK_TECHNIQUES,
+                "cwe_to_attack": _MOCK_CWE_TO_ATTACK,
+                "attack_version": "ATT&CK vTEST",
+                "fetched_at": 9999999999,
+            },
+        ),
+    ):
+        yield
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_mock_catalog_restores_prior_cache(monkeypatch, raises):
+    prior = {"T0000": {"name": "Prior catalog", "tactics": []}}
+    monkeypatch.setattr(ATTACK_TECHNIQUES, "_data", prior)
+    try:
+        with _mock_catalog():
+            assert "Command and Scripting Interpreter" in attack_label("T1059")
+            assert ATTACK_TECHNIQUES._data is not prior
+            if raises:
+                raise RuntimeError("test context exit")
+    except RuntimeError:
+        assert raises
+    assert ATTACK_TECHNIQUES._data is prior
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -494,7 +515,6 @@ def test_empty_catalog_returns_empty_tags():
 
 def test_attack_label_known():
     with _mock_catalog():
-        ATTACK_TECHNIQUES._data = None
         label = attack_label("T1059")
     assert "T1059" in label
     assert "Command and Scripting Interpreter" in label
@@ -502,7 +522,6 @@ def test_attack_label_known():
 
 def test_attack_label_unknown():
     with _mock_catalog():
-        ATTACK_TECHNIQUES._data = None
         label = attack_label("T9999")
     assert "T9999" in label
     assert "Unknown" in label
@@ -510,7 +529,6 @@ def test_attack_label_unknown():
 
 def test_attack_labels_list():
     with _mock_catalog():
-        ATTACK_TECHNIQUES._data = None
         result = attack_labels(["T1059", "T1552"])
     assert len(result) == 2
     assert all(isinstance(s, str) for s in result)

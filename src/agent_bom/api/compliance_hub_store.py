@@ -56,6 +56,7 @@ from agent_bom.api.storage.finding_ledger_writes import write_ledger_batch
 from agent_bom.api.storage.finding_reads import SqlFindingReads
 from agent_bom.api.storage.finding_write_session import finding_write_session
 from agent_bom.api.storage.sql import SQLiteBackend
+from agent_bom.api.storage.sqlite_connection import open_wal_connection
 from agent_bom.core.severity import severity_policy_rank
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
@@ -1599,14 +1600,7 @@ class SQLiteComplianceHubStore:
     @property
     def _conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-            # Without a busy timeout, concurrent writers hit "database is locked"
-            # immediately and their writes are silently lost. Mirror the primary
-            # schema (db/schema.py): wait up to 30s for the write lock and use
-            # NORMAL sync, which is durable enough under WAL.
-            self._local.conn.execute("PRAGMA busy_timeout=30000")
-            self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn = open_wal_connection(self._db_path, normal_sync=True)
         conn: sqlite3.Connection = self._local.conn
         return conn
 

@@ -50,3 +50,27 @@ def test_float_typo_falls_back_to_default(monkeypatch: pytest.MonkeyPatch, caplo
 
     assert HTTP_INITIAL_BACKOFF == 1.0
     assert "unparseable float env AGENT_BOM_HTTP_INITIAL_BACKOFF" in caplog.text
+
+
+def test_non_finite_float_falls_back_to_default(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("AGENT_BOM_HTTP_INITIAL_BACKOFF", "nan")
+    with caplog.at_level(logging.WARNING, logger="agent_bom.config"):
+        _reload_config(monkeypatch)
+    from agent_bom.config import HTTP_INITIAL_BACKOFF
+
+    assert HTTP_INITIAL_BACKOFF == 1.0
+    assert "unparseable float env AGENT_BOM_HTTP_INITIAL_BACKOFF" in caplog.text
+
+
+def test_valid_values_and_blank_parse_identically_through_the_kernel(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bom.config import _bool, _float, _int
+
+    for raw, expected in (("7", 7), (" 7 ", 7), ("-1", -1), ("", 3)):
+        monkeypatch.setenv("AGENT_BOM_TEST_KNOB", raw)
+        assert _int("AGENT_BOM_TEST_KNOB", 3) == expected
+    for raw, expected_float in (("0.5", 0.5), ("1e2", 100.0), ("", 2.0)):
+        monkeypatch.setenv("AGENT_BOM_TEST_KNOB", raw)
+        assert _float("AGENT_BOM_TEST_KNOB", 2.0) == expected_float
+    for raw, expected_bool in (("on", True), ("NO", False), ("", True), ("garbage", True)):
+        monkeypatch.setenv("AGENT_BOM_TEST_KNOB", raw)
+        assert _bool("AGENT_BOM_TEST_KNOB", True) is expected_bool

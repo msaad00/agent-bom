@@ -12,7 +12,7 @@ import logging
 import os
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -22,9 +22,14 @@ from rich.console import Console
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
+from agent_bom.core.errors import DegradedCoverage, UpstreamError, UpstreamInvalidResponseError, UpstreamRateLimitedError
 from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability, compute_confidence
+from agent_bom.scanners.enrichment_apply import apply_intel, apply_kev_entry, vuln_cve_ids
+from agent_bom.scanners.enrichment_apply import calculate_exploitability as calculate_exploitability
+from agent_bom.scanners.state import record_degraded_coverage, record_scan_warning
+from agent_bom.scanners.upstream import upstream_request
 from agent_bom.storage import state_home
 
 
@@ -97,6 +102,9 @@ def _warn_low_disk_once(target: Path, exc: OSError) -> None:
     )
 
 
+# NVD throttles with 403 (documented) as well as 429.
+_NVD_RATE_LIMIT_STATUSES = frozenset({403, 429})
+
 # Module-level in-memory mirrors (loaded lazily from disk)
 _nvd_file_cache: dict[str, dict] = {}
 _epss_file_cache: dict[str, dict] = {}
@@ -107,12 +115,7 @@ def _record_enrichment_backpressure(exc: BackpressureRejectedError) -> None:
     """Record adaptive shedding without failing the whole scan."""
     message = f"adaptive backpressure: {exc.reason}; retry after {exc.retry_after_seconds}s"
     record_enrichment_source("runtime_backpressure", "failure", error=message)
-    try:
-        from agent_bom.scanners.state import record_scan_warning
-
-        record_scan_warning("external enrichment skipped by adaptive backpressure")
-    except Exception as warning_exc:  # pragma: no cover - defensive against import cycles
-        _logger.debug("Failed to record enrichment backpressure scan warning: %s", warning_exc)
+    record_scan_warning("external enrichment skipped by adaptive backpressure")
     _logger.warning("External enrichment skipped by adaptive backpressure: %s", message)
 
 
@@ -272,6 +275,27 @@ def _load_enrichment_cache() -> None:
             _logger.warning("Failed to load enrichment cache %s: %s", name, exc)
 
 
+def _atomic_write_bytes(target: Path, payload: bytes) -> None:
+    """Temp file + rename, so an interrupted or failed write never leaves a partial file."""
+    fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+    fd_closed = False
+    replaced = False
+    try:
+        os.write(fd, payload)
+        os.close(fd)
+        fd_closed = True
+        os.replace(tmp_path, str(target))
+        replaced = True
+    finally:
+        if not fd_closed:
+            os.close(fd)
+        if not replaced:
+            try:
+                os.unlink(tmp_path)
+            except OSError as cleanup_exc:
+                _logger.debug("Failed to remove temp cache file %s: %s", tmp_path, cleanup_exc)
+
+
 def _save_enrichment_cache() -> None:
     """Persist NVD + EPSS caches to disk (atomic write to prevent corruption).
 
@@ -289,21 +313,7 @@ def _save_enrichment_cache() -> None:
     for name, data in [("nvd_cache.json", _nvd_file_cache), ("epss_cache.json", _epss_file_cache)]:
         target = _ENRICHMENT_CACHE_DIR / name
         try:
-            fd, tmp_path = tempfile.mkstemp(dir=str(_ENRICHMENT_CACHE_DIR), suffix=".tmp")
-            fd_closed = False
-            try:
-                os.write(fd, json.dumps(data).encode("utf-8"))
-                os.close(fd)
-                fd_closed = True
-                os.replace(tmp_path, str(target))
-            except BaseException:
-                if not fd_closed:
-                    os.close(fd)
-                try:
-                    os.unlink(tmp_path)
-                except OSError as cleanup_exc:
-                    _logger.debug("Failed to remove temp cache file %s: %s", tmp_path, cleanup_exc)
-                raise
+            _atomic_write_bytes(target, json.dumps(data).encode("utf-8"))
         except OSError as exc:
             if _is_enospc(exc):
                 _warn_low_disk_once(target, exc)
@@ -394,16 +404,17 @@ def _cached_kev_catalog(*, allow_stale: bool = False, offline: bool = False) -> 
     return {}
 
 
-async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Optional[str] = None) -> Optional[dict]:
+async def fetch_nvd_data(
+    cve_id: str,
+    client: httpx.AsyncClient,
+    api_key: Optional[str] = None,
+    *,
+    errors: list[UpstreamError] | None = None,
+) -> Optional[dict]:
     """Fetch CVE data from NVD API (with persistent file cache).
 
-    Args:
-        cve_id: CVE identifier (e.g., "CVE-2024-1234")
-        client: HTTP client
-        api_key: Optional NVD API key (recommended for higher rate limits)
-
-    Returns:
-        NVD vulnerability data or None if not found
+    Returns the NVD record, or None when NVD has none (an answer) or could not
+    answer; the typed cause of the latter is appended to ``errors``.
     """
     _load_enrichment_cache()
 
@@ -419,54 +430,76 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
             return data if data else None
         # Stale — fall through to refetch
 
-    headers = {}
-    if api_key:
-        headers["apiKey"] = api_key
+    headers = {"apiKey": api_key} if api_key else {}
+    try:
+        response = await upstream_request(
+            "nvd",
+            request_with_retry,
+            client,
+            "GET",
+            NVD_API_URL,
+            ok_statuses=frozenset({200, 404}),
+            rate_limit_statuses=_NVD_RATE_LIMIT_STATUSES,
+            params={"cveId": cve_id},
+            headers=headers,
+        )
+        if response.status_code == 404:
+            return None
+        data = response.json()
+        vulnerabilities = data.get("vulnerabilities", [])
+        if not vulnerabilities:
+            return None
+        result = vulnerabilities[0].get("cve", {})
+    except UpstreamError as failure:
+        _record_failure("nvd", failure, errors)
+        if isinstance(failure, UpstreamRateLimitedError):
+            _logger.warning("NVD rate limited for %s — consider using NVD_API_KEY", cve_id)
+        return None
+    except (ValueError, KeyError, AttributeError, TypeError, IndexError) as e:
+        _record_failure("nvd", UpstreamInvalidResponseError("nvd", f"parse error: {type(e).__name__}"), errors)
+        console.print(f"  [dim yellow]NVD parse error for {cve_id}: {e}[/dim yellow]")
+        return None
+    _nvd_file_cache[cve_id] = {**result, "_cached_at": time.time()}
+    _evict_oldest(_nvd_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
+    record_enrichment_source("nvd", "success")
+    return result
 
-    response = await request_with_retry(
-        client,
-        "GET",
-        NVD_API_URL,
-        params={"cveId": cve_id},
-        headers=headers,
-    )
 
-    if response and response.status_code == 200:
-        try:
-            data = response.json()
-            vulnerabilities = data.get("vulnerabilities", [])
-            if vulnerabilities:
-                result = vulnerabilities[0].get("cve", {})
-                # Store in persistent cache
-                _nvd_file_cache[cve_id] = {**result, "_cached_at": time.time()}
-                _evict_oldest(_nvd_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
-                record_enrichment_source("nvd", "success")
-                return result
-        except (ValueError, KeyError) as e:
-            record_enrichment_source("nvd", "failure", error=f"parse error: {e}")
-            console.print(f"  [dim yellow]NVD parse error for {cve_id}: {e}[/dim yellow]")
-    elif response and response.status_code == 403:
-        record_enrichment_source("nvd", "failure", error="HTTP 403 rate limited")
-        _logger.warning("NVD rate limited (HTTP 403) for %s — consider using NVD_API_KEY", cve_id)
-    elif response and response.status_code not in (200, 404):
-        record_enrichment_source("nvd", "failure", error=f"HTTP {response.status_code}")
-        _logger.warning("NVD returned HTTP %d for %s", response.status_code, cve_id)
-
-    return None
+def _record_failure(source: str, failure: UpstreamError, errors: list[UpstreamError] | None) -> None:
+    record_enrichment_source(source, "failure", error=failure.detail)
+    if errors is not None:
+        errors.append(failure)
 
 
-async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> dict[str, dict]:
+def _parse_epss_items(data: dict, scores: dict[str, dict]) -> None:
+    """Parse into ``scores`` item by item, so entries before a malformed one are kept."""
+    for item in data.get("data", []):
+        cve = item.get("cve")
+        if not cve:
+            continue
+        raw_epss = item.get("epss")
+        raw_pct = item.get("percentile")
+        parsed_score = float(raw_epss) if raw_epss is not None else None
+        parsed_pct = float(raw_pct) if raw_pct is not None else None
+        # Validate EPSS ranges — reject out-of-bounds values
+        if parsed_score is not None and not (0.0 <= parsed_score <= 1.0):
+            parsed_score = None
+        if parsed_pct is not None and not (0.0 <= parsed_pct <= 100.0):
+            parsed_pct = None
+        scores[cve] = {"score": parsed_score, "percentile": parsed_pct, "date": item.get("date")}
+
+
+async def fetch_epss_scores(
+    cve_ids: list[str],
+    client: httpx.AsyncClient,
+    *,
+    errors: list[UpstreamError] | None = None,
+) -> dict[str, dict]:
     """Fetch EPSS scores for multiple CVEs (with persistent file cache).
 
     EPSS (Exploit Prediction Scoring System) provides probability that a CVE
-    will be exploited in the wild within the next 30 days.
-
-    Args:
-        cve_ids: List of CVE identifiers
-        client: HTTP client
-
-    Returns:
-        Dictionary mapping CVE ID to EPSS data
+    will be exploited in the wild within the next 30 days. Each batch EPSS
+    could not answer appends one typed error (``affected`` = batch size).
     """
     if not cve_ids:
         return {}
@@ -474,13 +507,8 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     _load_enrichment_cache()
 
     scores: dict[str, dict] = {}
-    uncached: list[str] = []
-
     scores.update(_cached_epss_scores(cve_ids))
-    for cve_id in cve_ids:
-        if cve_id not in scores:
-            uncached.append(cve_id)
-
+    uncached = [cve_id for cve_id in cve_ids if cve_id not in scores]
     if not uncached:
         return scores
 
@@ -488,53 +516,24 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     epss_batch_size = 100
     for batch_start in range(0, len(uncached), epss_batch_size):
         batch = uncached[batch_start : batch_start + epss_batch_size]
-        cve_param = ",".join(batch)
-
-        response = await request_with_retry(
-            client,
-            "GET",
-            EPSS_API_URL,
-            params={"cve": cve_param},
-        )
-
-        if response and response.status_code == 200:
-            try:
-                data = response.json()
-                record_enrichment_source("epss", "success")
-                for item in data.get("data", []):
-                    cve = item.get("cve")
-                    if cve:
-                        raw_epss = item.get("epss")
-                        raw_pct = item.get("percentile")
-                        parsed_score = float(raw_epss) if raw_epss is not None else None
-                        parsed_pct = float(raw_pct) if raw_pct is not None else None
-                        # Validate EPSS ranges — reject out-of-bounds values
-                        if parsed_score is not None and not (0.0 <= parsed_score <= 1.0):
-                            parsed_score = None
-                        if parsed_pct is not None and not (0.0 <= parsed_pct <= 100.0):
-                            parsed_pct = None
-                        entry = {
-                            "score": parsed_score,
-                            "percentile": parsed_pct,
-                            "date": item.get("date"),
-                        }
-                        scores[cve] = entry
-                        _epss_file_cache[cve] = {**entry, "_cached_at": time.time()}
-            except (ValueError, KeyError) as e:
-                record_enrichment_source("epss", "failure", error=f"parse error: {e}")
-                _logger.warning("EPSS parse error for batch starting at %d: %s", batch_start, e)
-        else:
-            record_enrichment_source(
-                "epss",
-                "failure",
-                error=f"HTTP {response.status_code}" if response else "unreachable after retries",
-            )
-            _logger.warning(
-                "EPSS API request failed for %d CVEs (batch %d–%d)",
-                len(batch),
-                batch_start,
-                batch_start + len(batch),
-            )
+        batch_scores: dict[str, dict] = {}
+        try:
+            response = await upstream_request("epss", request_with_retry, client, "GET", EPSS_API_URL, params={"cve": ",".join(batch)})
+            record_enrichment_source("epss", "success")
+            _parse_epss_items(response.json(), batch_scores)
+        except UpstreamError as failure:
+            failure.affected = len(batch)
+            _record_failure("epss", failure, errors)
+            _logger.warning("EPSS API request failed for %d CVEs (batch %d–%d)", len(batch), batch_start, batch_start + len(batch))
+            continue
+        except (ValueError, KeyError, AttributeError, TypeError) as e:
+            invalid = UpstreamInvalidResponseError("epss", f"parse error: {type(e).__name__}", affected=len(batch))
+            _record_failure("epss", invalid, errors)
+            _logger.warning("EPSS parse error for batch starting at %d: %s", batch_start, type(e).__name__)
+        scores.update(batch_scores)
+        now = time.time()
+        for cve, entry in batch_scores.items():
+            _epss_file_cache[cve] = {**entry, "_cached_at": now}
 
     _evict_oldest(_epss_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
     return scores
@@ -545,21 +544,7 @@ def _persist_kev_cache(kev_dict: dict) -> None:
     payload = json.dumps({"_cached_at": time.time(), "data": kev_dict}).encode("utf-8")
     try:
         _KEV_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(dir=str(_KEV_CACHE_FILE.parent), suffix=".tmp")
-        fd_closed = False
-        try:
-            os.write(fd, payload)
-            os.close(fd)
-            fd_closed = True
-            os.replace(tmp_path, str(_KEV_CACHE_FILE))
-        except BaseException:
-            if not fd_closed:
-                os.close(fd)
-            try:
-                os.unlink(tmp_path)
-            except OSError as cleanup_exc:
-                _logger.debug("Failed to remove temp KEV cache %s: %s", tmp_path, cleanup_exc)
-            raise
+        _atomic_write_bytes(_KEV_CACHE_FILE, payload)
     except OSError as exc:
         if _is_enospc(exc):
             _warn_low_disk_once(_KEV_CACHE_FILE, exc)
@@ -567,17 +552,37 @@ def _persist_kev_cache(kev_dict: dict) -> None:
             _logger.warning("Failed to persist KEV cache to disk: %s", exc)
 
 
-async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
-    """Fetch CISA Known Exploited Vulnerabilities catalog.
+def _stale_kev_catalog() -> dict:
+    """Serve the last persisted KEV catalog when the API is down; ``{}`` if none."""
+    global _kev_cache, _kev_cache_time
 
-    CISA maintains a catalog of CVEs known to be actively exploited.
-    These represent the highest priority vulnerabilities.
+    if not _KEV_CACHE_FILE.exists():
+        return {}
+    try:
+        disk_data = json.loads(_KEV_CACHE_FILE.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        _logger.warning("Failed to read stale KEV cache: %s", exc)
+        return {}
+    stale_data = disk_data.get("data", {})
+    if not stale_data:
+        return {}
+    stale_age_hours = (time.time() - disk_data.get("_cached_at", 0)) / 3600
+    _logger.warning("CISA KEV API unreachable — serving stale cache (%.0fh old, %d entries)", stale_age_hours, len(stale_data))
+    console.print("  [dim yellow]⚠ Using stale CISA KEV cache (API unreachable)[/dim yellow]")
+    record_enrichment_source("cisa_kev", "failure", error=f"using stale cache {stale_age_hours:.0f}h old")
+    _kev_cache = stale_data
+    # Cache in memory for 1h before retrying API — prevents hitting disk on
+    # every call within this session while still retrying on the next scan.
+    _kev_cache_time = datetime.now(timezone.utc) - timedelta(seconds=_KEV_CACHE_TTL_SECONDS - 3600)
+    return stale_data
 
-    Args:
-        client: HTTP client
 
-    Returns:
-        Dictionary of KEV data indexed by CVE ID
+async def fetch_cisa_kev_catalog(client: httpx.AsyncClient, *, errors: list[UpstreamError] | None = None) -> dict:
+    """Fetch the CISA Known Exploited Vulnerabilities catalog, indexed by CVE ID.
+
+    Falls back to a stale persisted catalog when the API is down. When neither
+    is available the typed cause is appended to ``errors``, so an empty result
+    is never mistaken for "no actively exploited CVEs".
     """
     global _kev_cache, _kev_cache_time
 
@@ -593,55 +598,39 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
     if disk_cache:
         return disk_cache
 
-    response = await request_with_retry(client, "GET", CISA_KEV_URL)
+    try:
+        response = await upstream_request("cisa_kev", request_with_retry, client, "GET", CISA_KEV_URL)
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError(f"unexpected payload type: {type(data).__name__}")
+        kev_dict = _parse_kev_feed(data)
+    except UpstreamError as upstream_failure:
+        failure = upstream_failure
+    except (ValueError, KeyError, AttributeError, TypeError) as e:
+        failure = UpstreamInvalidResponseError("cisa_kev", f"parse error: {type(e).__name__}")
+        record_enrichment_source("cisa_kev", "failure", error=failure.detail)
+        console.print(f"  [dim yellow]CISA KEV parse error: {e}[/dim yellow]")
+    else:
+        _kev_cache = kev_dict
+        _kev_cache_time = datetime.now(timezone.utc)
+        record_enrichment_source("cisa_kev", "success")
+        # Persist to disk for cross-session resilience (atomic temp+rename).
+        _persist_kev_cache(kev_dict)
+        return kev_dict
 
-    if response and response.status_code == 200:
-        try:
-            data = response.json()
-            if not isinstance(data, dict):
-                raise ValueError(f"unexpected payload type: {type(data).__name__}")
-            kev_dict = _parse_kev_feed(data)
-
-            _kev_cache = kev_dict
-            _kev_cache_time = datetime.now(timezone.utc)
-            record_enrichment_source("cisa_kev", "success")
-
-            # Persist to disk for cross-session resilience. Atomic temp+rename so
-            # a mid-write ENOSPC never leaves a half-written (corrupt) cache.
-            _persist_kev_cache(kev_dict)
-
-            return kev_dict
-        except (ValueError, KeyError) as e:
-            record_enrichment_source("cisa_kev", "failure", error=f"parse error: {e}")
-            console.print(f"  [dim yellow]CISA KEV parse error: {e}[/dim yellow]")
-
-    # Fallback: serve stale disk cache if API is down
-    if _KEV_CACHE_FILE.exists():
-        try:
-            disk_data = json.loads(_KEV_CACHE_FILE.read_text())
-            stale_data = disk_data.get("data", {})
-            if stale_data:
-                stale_age_hours = (time.time() - disk_data.get("_cached_at", 0)) / 3600
-                _logger.warning(
-                    "CISA KEV API unreachable — serving stale cache (%.0fh old, %d entries)",
-                    stale_age_hours,
-                    len(stale_data),
-                )
-                console.print("  [dim yellow]⚠ Using stale CISA KEV cache (API unreachable)[/dim yellow]")
-                record_enrichment_source("cisa_kev", "failure", error=f"using stale cache {stale_age_hours:.0f}h old")
-                _kev_cache = stale_data
-                # Cache in memory for 1h before retrying API — prevents
-                # hitting disk on every call within this session while still
-                # retrying the API on the next scan (~1h later).
-                from datetime import timedelta
-
-                _kev_cache_time = datetime.now(timezone.utc) - timedelta(seconds=_KEV_CACHE_TTL_SECONDS - 3600)
-                return stale_data
-        except (OSError, json.JSONDecodeError) as exc:
-            _logger.warning("Failed to read stale KEV cache: %s", exc)
-
+    stale = _stale_kev_catalog()
+    if stale:
+        return stale
     record_enrichment_source("cisa_kev", "failure", error="unreachable and no usable cache")
+    if errors is not None:
+        errors.append(failure)
     return {}
+
+
+def _task_failure(source: str, exc: BaseException, *, affected: int = 1) -> UpstreamError:
+    """An enrichment task died instead of returning; keep the gap, drop the message."""
+    _logger.warning("%s enrichment task failed: %s", source, type(exc).__name__)
+    return UpstreamError(source, f"task failed ({type(exc).__name__})", affected=affected)
 
 
 def extract_cve_ids(vulnerabilities: list[Vulnerability]) -> list[str]:
@@ -654,42 +643,6 @@ def extract_cve_ids(vulnerabilities: list[Vulnerability]) -> list[str]:
             if alias.startswith("CVE-"):
                 cve_ids.add(alias)
     return list(cve_ids)
-
-
-def calculate_exploitability(epss_score: Optional[float]) -> Optional[str]:
-    """Calculate exploitability level from EPSS score.
-
-    Thresholds configurable via ``AGENT_BOM_EPSS_CRITICAL_THRESHOLD``
-    and ``AGENT_BOM_EPSS_HIGH_THRESHOLD``.
-    """
-    if epss_score is None:
-        return None
-
-    from agent_bom.config import EPSS_CRITICAL_THRESHOLD, EPSS_HIGH_LIKELY_THRESHOLD
-
-    if epss_score >= EPSS_CRITICAL_THRESHOLD:
-        return "HIGH"
-    elif epss_score >= EPSS_HIGH_LIKELY_THRESHOLD:
-        return "MEDIUM"
-    else:
-        return "LOW"
-
-
-def _vuln_cve_ids(vuln: Vulnerability) -> list[str]:
-    ids = [vuln.id] if vuln.id.startswith("CVE-") else []
-    ids.extend(alias for alias in vuln.aliases if alias.startswith("CVE-"))
-    return ids
-
-
-def _apply_kev_entry(vuln: Vulnerability, cve_ids: list[str], kev_data: dict) -> bool:
-    for cve in cve_ids:
-        if cve in kev_data:
-            kev = kev_data[cve]
-            vuln.is_kev = True
-            vuln.kev_date_added = kev.get("date_added")
-            vuln.kev_due_date = kev.get("due_date")
-            return True
-    return False
 
 
 async def join_kev_catalog(vulnerabilities: list[Vulnerability], *, offline: bool = False) -> int:
@@ -708,7 +661,7 @@ async def join_kev_catalog(vulnerabilities: list[Vulnerability], *, offline: boo
             kev_data = await fetch_cisa_kev_catalog(client)
     if not kev_data:
         return 0
-    return sum(1 for vuln in vulnerabilities if _apply_kev_entry(vuln, _vuln_cve_ids(vuln), kev_data))
+    return sum(1 for vuln in vulnerabilities if apply_kev_entry(vuln, vuln_cve_ids(vuln), kev_data))
 
 
 def join_kev_catalog_sync(vulnerabilities: list[Vulnerability], *, offline: bool = False) -> int:
@@ -746,7 +699,6 @@ async def enrich_vulnerabilities(
 
     console.print(f"\n[bold blue]🔬 Enriching {len(cve_ids)} CVE(s) with external data...[/bold blue]\n")
 
-    enriched_count = 0
     offline_enrichment = offline or _offline_enrichment_enabled()
 
     async with create_client(timeout=30.0) as client:
@@ -758,12 +710,16 @@ async def enrich_vulnerabilities(
         else:
             console.print("  [cyan]→[/cyan] Fetching EPSS + KEV + NVD in parallel...")
 
+        epss_errors: list[UpstreamError] = []
+        kev_errors: list[UpstreamError] = []
+        nvd_errors: list[UpstreamError] = []
+
         async def _fetch_epss() -> dict:
             if not enable_epss:
                 return {}
             if offline_enrichment:
                 return _cached_epss_scores(cve_ids, allow_stale=True, offline=True)
-            data = await fetch_epss_scores(cve_ids, client)
+            data = await fetch_epss_scores(cve_ids, client, errors=epss_errors)
             return data or {}
 
         async def _fetch_kev() -> dict:
@@ -773,7 +729,7 @@ async def enrich_vulnerabilities(
                 # Use the same freshness rule as the strict KEV gate. An expired
                 # cache must not turn unknown coverage into current KEV evidence.
                 return _cached_kev_catalog(offline=True)
-            return await fetch_cisa_kev_catalog(client)
+            return await fetch_cisa_kev_catalog(client, errors=kev_errors)
 
         async def _fetch_nvd() -> tuple[dict[str, dict], int, int]:
             if offline_enrichment or not enable_nvd or not cve_ids:
@@ -799,10 +755,12 @@ async def enrich_vulnerabilities(
 
             for batch_start in range(0, len(nvd_needed), batch_size):
                 batch = nvd_needed[batch_start : batch_start + batch_size]
-                tasks = [fetch_nvd_data(cve_id, client, nvd_api_key) for cve_id in batch]
+                tasks = [fetch_nvd_data(cve_id, client, nvd_api_key, errors=nvd_errors) for cve_id in batch]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for cve_id, result in zip(batch, results):
-                    if result and not isinstance(result, BaseException):
+                    if isinstance(result, BaseException):
+                        nvd_errors.append(_task_failure("nvd", result))
+                    elif result:
                         result_data[cve_id] = result
                 if batch_start + batch_size < len(nvd_needed):
                     await asyncio.sleep(sleep_secs)
@@ -823,12 +781,28 @@ async def enrich_vulnerabilities(
             console.print("  [yellow]⚠[/yellow] External enrichment skipped by adaptive backpressure")
             return 0
         epss_raw, kev_raw, nvd_raw = outcomes
-        epss_data = {} if isinstance(epss_raw, BaseException) else epss_raw
-        kev_data = {} if isinstance(kev_raw, BaseException) else kev_raw
+        if isinstance(epss_raw, BaseException):
+            epss_errors.append(_task_failure("epss", epss_raw, affected=len(cve_ids)))
+            epss_data = {}
+        else:
+            epss_data = epss_raw
+        if isinstance(kev_raw, BaseException):
+            kev_errors.append(_task_failure("cisa_kev", kev_raw))
+            kev_data = {}
+        else:
+            kev_data = kev_raw
         if isinstance(nvd_raw, BaseException):
-            nvd_data, nvd_skipped, nvd_total = {}, 0, 0
+            nvd_errors.append(_task_failure("nvd", nvd_raw, affected=len(cve_ids)))
+            nvd_data, nvd_skipped, nvd_total = {}, 0, len(cve_ids)
         else:
             nvd_data, nvd_skipped, nvd_total = nvd_raw
+        kev_unavailable = enable_kev and not kev_data and bool(kev_errors)
+        for degraded in (
+            DegradedCoverage.from_errors("EPSS", epss_errors, requested=len(cve_ids), unit="CVE(s)"),
+            DegradedCoverage.from_errors("CISA KEV", kev_errors, requested=1, unit="catalog(s)") if kev_unavailable else None,
+            DegradedCoverage.from_errors("NVD", nvd_errors, requested=max(nvd_total, 1), unit="CVE(s)"),
+        ):
+            record_degraded_coverage(degraded)
 
         # Report results
         if epss_data:
@@ -839,6 +813,8 @@ async def enrich_vulnerabilities(
         kev_count = sum(1 for vuln in vulnerabilities if vuln.id in kev_data) if kev_data else 0
         if kev_count:
             console.print(f"  [red]⚠[/red] KEV: {kev_count} actively exploited CVE(s)!")
+        elif kev_unavailable:
+            console.print("  [yellow]⚠[/yellow] KEV data unavailable — actively exploited CVEs cannot be ruled out")
         elif enable_kev:
             console.print("  [green]✓[/green] KEV: no actively exploited CVEs")
 
@@ -849,78 +825,9 @@ async def enrich_vulnerabilities(
         elif enable_nvd and nvd_total:
             console.print("  [yellow]⚠[/yellow] NVD data unavailable")
 
-        # Enrich each vulnerability — match by primary ID or CVE aliases
-        for vuln in vulnerabilities:
-            # Collect all CVE IDs this vuln maps to (primary + aliases)
-            vuln_cve_ids = []
-            if vuln.id.startswith("CVE-"):
-                vuln_cve_ids.append(vuln.id)
-            for alias in vuln.aliases:
-                if alias.startswith("CVE-"):
-                    vuln_cve_ids.append(alias)
-
-            if not vuln_cve_ids:
-                continue
-
-            # Apply EPSS data (use first matching CVE)
-            vuln_was_enriched = False
-            for cve in vuln_cve_ids:
-                if cve in epss_data:
-                    epss = epss_data[cve]
-                    vuln.epss_score = epss["score"]
-                    vuln.epss_percentile = epss["percentile"]
-                    vuln.exploitability = calculate_exploitability(epss["score"])
-                    vuln_was_enriched = True
-                    break
-
-            # Apply CISA KEV data
-            if _apply_kev_entry(vuln, vuln_cve_ids, kev_data):
-                vuln_was_enriched = True
-
-            # Apply NVD data
-            if enable_nvd:
-                for cve in vuln_cve_ids:
-                    if cve in nvd_data:
-                        nvd = nvd_data[cve]
-
-                        # Extract CWE IDs (deduplicated)
-                        weaknesses = nvd.get("weaknesses", [])
-                        existing_cwes = set(vuln.cwe_ids)
-                        for weakness in weaknesses:
-                            for desc in weakness.get("description", []):
-                                cwe_val = desc.get("value", "")
-                                if cwe_val.startswith("CWE-") and cwe_val not in existing_cwes:
-                                    vuln.cwe_ids.append(cwe_val)
-                                    existing_cwes.add(cwe_val)
-
-                        # Extract dates
-                        vuln.nvd_published = nvd.get("published")
-                        vuln.nvd_modified = nvd.get("lastModified")
-
-                        # Extract NVD vulnerability review status
-                        vuln.nvd_status = nvd.get("vulnStatus")
-
-                        # Merge NVD references with existing OSV references (deduplicated)
-                        nvd_refs = nvd.get("references", [])
-                        existing_urls = set(vuln.references)
-                        for ref in nvd_refs:
-                            url = ref.get("url")
-                            if url and url not in existing_urls:
-                                vuln.references.append(url)
-                                existing_urls.add(url)
-
-                        # Always include canonical NVD link as first reference
-                        if cve.startswith("CVE-"):
-                            canonical = f"https://nvd.nist.gov/vuln/detail/{cve}"
-                            if canonical not in existing_urls:
-                                vuln.references.insert(0, canonical)
-
-                        vuln_was_enriched = True
-                        break
-
-            # Count each vulnerability only once regardless of how many sources enriched it
-            if vuln_was_enriched:
-                enriched_count += 1
+        # Enrich each vulnerability — match by primary ID or CVE aliases; count
+        # each vulnerability once regardless of how many sources enriched it.
+        enriched_count = sum(1 for vuln in vulnerabilities if apply_intel(vuln, epss_data, kev_data, nvd_data if enable_nvd else {}))
 
     # Persist enrichment caches to disk
     _save_enrichment_cache()

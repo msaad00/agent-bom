@@ -12,64 +12,44 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
+from typing import TypeVar
+
+from agent_bom.core.settings import SettingError, env_bool, env_float, env_int
+
+_T = TypeVar("_T")
 
 logger = logging.getLogger(__name__)
 
-_TRUTHY_BOOLS = frozenset({"1", "true", "yes", "on"})
-_FALSY_BOOLS = frozenset({"0", "false", "no", "off"})
 
-
-def _float(env_key: str, default: float) -> float:
-    """Read a float from *env_key*, falling back to *default*."""
-    raw = os.environ.get(env_key)
-    if raw is None:
-        return default
+def _lenient(parse: Callable[[], _T], kind: str, env_key: str, default: _T) -> _T:
+    """Module-level knobs keep their historical rule: warn and use the default."""
     try:
-        return float(raw)
-    except ValueError:
+        return parse()
+    except SettingError:
         logger.warning(
-            "Ignoring unparseable float env %s=%r; using default %s",
+            "Ignoring unparseable %s env %s=%r; using default %s",
+            kind,
             env_key,
-            raw,
+            os.environ.get(env_key),
             default,
         )
         return default
+
+
+def _float(env_key: str, default: float) -> float:
+    """Read a finite float from *env_key*, falling back to *default*."""
+    return _lenient(lambda: env_float(env_key, default), "float", env_key, default)
 
 
 def _int(env_key: str, default: int) -> int:
     """Read an int from *env_key*, falling back to *default*."""
-    raw = os.environ.get(env_key)
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        logger.warning(
-            "Ignoring unparseable int env %s=%r; using default %s",
-            env_key,
-            raw,
-            default,
-        )
-        return default
+    return _lenient(lambda: env_int(env_key, default), "int", env_key, default)
 
 
 def _bool(env_key: str, default: bool) -> bool:
-    """Read a boolean from *env_key*, falling back to *default*."""
-    raw = os.environ.get(env_key)
-    if raw is None:
-        return default
-    normalized = raw.strip().lower()
-    if normalized in _TRUTHY_BOOLS:
-        return True
-    if normalized in _FALSY_BOOLS:
-        return False
-    logger.warning(
-        "Ignoring unparseable boolean env %s=%r; using default %s",
-        env_key,
-        raw,
-        default,
-    )
-    return default
+    """Read a boolean (1/true/yes/on, 0/false/no/off) from *env_key*, falling back to *default*."""
+    return _lenient(lambda: env_bool(env_key, default), "boolean", env_key, default)
 
 
 def _str(env_key: str, default: str) -> str:

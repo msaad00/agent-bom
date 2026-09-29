@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 
 from agent_bom.config import SCANNER_MAX_CONCURRENT as MAX_CONCURRENT_REQUESTS
+from agent_bom.core.errors import DegradedCoverage
+
+_logger = logging.getLogger(__name__)
 
 _scan_state_local = threading.local()
 _SCAN_PERF_TEMPLATE = {
@@ -72,6 +76,14 @@ def record_scan_warning(message: str) -> None:
     warnings = _scan_warnings_state()
     if message not in warnings:
         warnings.append(message)
+
+
+def record_degraded_coverage(degraded: DegradedCoverage | None) -> None:
+    """Surface a partial upstream answer on the scan's warning channel."""
+    if degraded is None:
+        return
+    _logger.warning("%s", degraded.message())
+    record_scan_warning(degraded.message())
 
 
 def consume_scan_warnings() -> list[str]:

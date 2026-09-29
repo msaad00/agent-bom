@@ -1,6 +1,7 @@
 {
   "debt": {
     "__init__.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "a2a_auth_posture.py": {
@@ -8,6 +9,7 @@
       "file_lines": 667
     },
     "agent_identity.py": {
+      "broad_except": 3,
       "deferred_imports": 4
     },
     "agent_identity.py::_verify_jwt_signature": {
@@ -32,6 +34,7 @@
       "file_lines": 808
     },
     "ai_components/scanner.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "ai_components/scanner.py::_scan_file": {
@@ -39,6 +42,7 @@
       "function_lines": 148
     },
     "ai_enrich.py": {
+      "broad_except": 4,
       "deferred_imports": 7,
       "file_lines": 2086
     },
@@ -53,6 +57,7 @@
     },
     "alerts/dispatcher.py": {
       "api_imports": 2,
+      "broad_except": 4,
       "deferred_imports": 6
     },
     "alerts/scan_alerts.py::alerts_from_scan_result": {
@@ -63,14 +68,18 @@
       "deferred_imports": 1
     },
     "analytics_retention.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "api/access_review.py": {
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 3
     },
     "api/agent_identity_store.py": {
+      "broad_except": 11,
       "deferred_imports": 7,
-      "file_lines": 1310
+      "file_lines": 1310,
+      "raw_env_reads": 1
     },
     "api/agent_identity_store.py::cleanup_expired_grants": {
       "function_lines": 85
@@ -85,14 +94,20 @@
       "function_lines": 89
     },
     "api/audit_log.py": {
+      "broad_except": 2,
       "deferred_imports": 4,
-      "file_lines": 1021
+      "file_lines": 1021,
+      "raw_env_reads": 12
     },
     "api/audit_log.py::_describe_rotation_posture": {
       "function_lines": 91
     },
     "api/auth.py": {
-      "deferred_imports": 4
+      "deferred_imports": 4,
+      "raw_env_reads": 5
+    },
+    "api/auto_correlation.py": {
+      "broad_except": 1
     },
     "api/auto_correlation.py::_reconcile_parent": {
       "function_lines": 179
@@ -102,14 +117,19 @@
       "file_lines": 898
     },
     "api/browser_session.py": {
-      "deferred_imports": 3
+      "broad_except": 2,
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "api/campaign_store.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "api/clickhouse_store.py": {
+      "broad_except": 2,
       "deferred_imports": 5,
-      "file_lines": 1183
+      "file_lines": 1183,
+      "raw_env_reads": 1
     },
     "api/clickhouse_store.py::BufferedAnalyticsStore._flush_pending": {
       "complexity": 21
@@ -118,26 +138,35 @@
       "deferred_imports": 1
     },
     "api/compliance_hub_store.py": {
+      "broad_except": 1,
       "deferred_imports": 21,
-      "file_lines": 2293
+      "file_lines": 2260,
+      "raw_env_reads": 5
     },
     "api/compliance_hub_store.py::collect_scope_filtered_page": {
       "function_lines": 88
     },
     "api/compliance_signing.py": {
-      "deferred_imports": 11
+      "broad_except": 1,
+      "deferred_imports": 11,
+      "raw_env_reads": 2
     },
     "api/connection_crypto.py": {
-      "deferred_imports": 6
+      "broad_except": 7,
+      "deferred_imports": 6,
+      "raw_env_reads": 7
     },
     "api/connection_scheduler.py": {
-      "deferred_imports": 5
+      "broad_except": 8,
+      "deferred_imports": 5,
+      "raw_env_reads": 1
     },
     "api/connection_store.py": {
       "deferred_imports": 4,
       "file_lines": 617
     },
     "api/correlation_cohort_ingest.py": {
+      "broad_except": 3,
       "deferred_imports": 1
     },
     "api/correlation_cohort_receipts.py": {
@@ -151,7 +180,8 @@
     },
     "api/cost_store.py": {
       "deferred_imports": 3,
-      "file_lines": 869
+      "file_lines": 869,
+      "raw_env_reads": 1
     },
     "api/cost_store.py::SQLiteCostStore._init_db": {
       "function_lines": 82
@@ -162,26 +192,56 @@
     "api/credential_rotation.py::build_credential_rotation_governance": {
       "function_lines": 107
     },
+    "api/dashboard_csp.py": {
+      "raw_env_reads": 1
+    },
+    "api/dataset_version_store.py": {
+      "raw_env_reads": 2
+    },
+    "api/delegation_service.py": {
+      "broad_except": 1
+    },
     "api/delegation_token.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "api/demo_refresh.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
+    "api/drift_incident_store.py": {
+      "raw_env_reads": 2
+    },
+    "api/durable_store.py": {
+      "raw_env_reads": 4
+    },
+    "api/evaluation_store.py": {
+      "raw_env_reads": 2
+    },
     "api/exec_posture.py": {
+      "broad_except": 1,
       "deferred_imports": 8
     },
     "api/export_destination_store.py": {
-      "deferred_imports": 9
+      "deferred_imports": 5
     },
     "api/export_schedule_store.py": {
-      "deferred_imports": 3
+      "deferred_imports": 1,
+      "raw_env_reads": 2
     },
     "api/export_scheduler.py": {
-      "deferred_imports": 2
+      "broad_except": 2,
+      "deferred_imports": 2,
+      "raw_env_reads": 1
+    },
+    "api/finding_cursor.py": {
+      "broad_except": 3
     },
     "api/finding_lifecycle.py": {
       "deferred_imports": 1
+    },
+    "api/findings_count_cache.py": {
+      "raw_env_reads": 1
     },
     "api/findings_current.py": {
       "deferred_imports": 4
@@ -189,29 +249,50 @@
     "api/fleet_store.py": {
       "file_lines": 853
     },
+    "api/forwarded_identity.py": {
+      "raw_env_reads": 2
+    },
     "api/gateway_activity_store.py": {
+      "broad_except": 1,
       "deferred_imports": 2,
       "file_lines": 1114
     },
     "api/gateway_activity_store.py::SQLiteGatewayActivityStore.append_batch": {
       "function_lines": 114
     },
+    "api/gateway_auth.py": {
+      "broad_except": 3,
+      "raw_env_reads": 2
+    },
+    "api/gateway_context.py": {
+      "raw_env_reads": 1
+    },
     "api/gateway_forward.py": {
+      "broad_except": 3,
       "deferred_imports": 1
     },
     "api/gateway_policy.py": {
+      "broad_except": 7,
       "deferred_imports": 11
+    },
+    "api/gateway_rate_limit.py": {
+      "broad_except": 1,
+      "raw_env_reads": 3
     },
     "api/governance_audit_log.py": {
       "deferred_imports": 2
     },
     "api/graph_persistence.py": {
-      "deferred_imports": 12
+      "broad_except": 4,
+      "deferred_imports": 12,
+      "raw_env_reads": 3
     },
     "api/graph_scan_ids.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "api/graph_store.py": {
+      "broad_except": 1,
       "deferred_imports": 7,
       "file_lines": 2614
     },
@@ -242,7 +323,8 @@
       "deferred_imports": 1
     },
     "api/hitl_approval_store.py": {
-      "deferred_imports": 4
+      "deferred_imports": 4,
+      "raw_env_reads": 1
     },
     "api/hub_ingest.py": {
       "deferred_imports": 2
@@ -251,28 +333,42 @@
       "function_lines": 90
     },
     "api/hub_observations_partition.py": {
+      "broad_except": 3,
       "deferred_imports": 3,
-      "file_lines": 618
+      "file_lines": 618,
+      "raw_env_reads": 1
     },
     "api/hub_overview_cache.py": {
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 1
     },
     "api/hub_reference_store.py": {
       "deferred_imports": 1
     },
     "api/idempotency_store.py": {
-      "file_lines": 1254
+      "broad_except": 5,
+      "file_lines": 1254,
+      "raw_env_reads": 2
     },
     "api/inventory_service.py::build_asset_list": {
       "function_lines": 131
     },
+    "api/job_status_count_cache.py": {
+      "raw_env_reads": 1
+    },
     "api/lifecycle_store.py": {
+      "broad_except": 1,
       "deferred_imports": 6
     },
+    "api/managed_trial.py": {
+      "raw_env_reads": 1
+    },
     "api/managed_trial_invitation.py": {
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 1
     },
     "api/mcp_config_store.py": {
+      "broad_except": 2,
       "deferred_imports": 2,
       "file_lines": 671
     },
@@ -281,8 +377,10 @@
       "function_lines": 91
     },
     "api/middleware.py": {
+      "broad_except": 4,
       "deferred_imports": 44,
-      "file_lines": 2610
+      "file_lines": 2574,
+      "raw_env_reads": 21
     },
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
       "function_lines": 84
@@ -314,29 +412,42 @@
     },
     "api/neptune_graph.py": {
       "deferred_imports": 1,
-      "file_lines": 674
+      "file_lines": 674,
+      "raw_env_reads": 3
     },
     "api/neptune_graph.py::NeptuneGraphStore.save_graph": {
       "function_lines": 86
     },
     "api/oauth_as.py": {
+      "broad_except": 4,
       "deferred_imports": 9,
-      "file_lines": 803
+      "file_lines": 803,
+      "raw_env_reads": 1
     },
     "api/oidc.py": {
+      "broad_except": 1,
       "deferred_imports": 9,
-      "file_lines": 720
+      "file_lines": 720,
+      "raw_env_reads": 13
     },
     "api/oidc.py::verify_oidc_token": {
       "function_lines": 87
     },
     "api/oidc_browser.py": {
-      "deferred_imports": 8
+      "broad_except": 1,
+      "deferred_imports": 8,
+      "raw_env_reads": 4
+    },
+    "api/oidc_discovery_shim.py": {
+      "raw_env_reads": 1
     },
     "api/partition_maintenance.py": {
-      "deferred_imports": 3
+      "broad_except": 2,
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "api/pipeline.py": {
+      "broad_except": 36,
       "deferred_imports": 80,
       "file_lines": 1790
     },
@@ -348,28 +459,43 @@
       "function_lines": 92
     },
     "api/postgres_audit.py": {
+      "broad_except": 2,
       "file_lines": 702
     },
+    "api/postgres_auth.py": {
+      "broad_except": 1,
+      "raw_env_reads": 3
+    },
     "api/postgres_common.py": {
+      "broad_except": 5,
       "deferred_imports": 11,
-      "file_lines": 666
+      "file_lines": 666,
+      "raw_env_reads": 5
     },
     "api/postgres_compliance_hub.py": {
       "deferred_imports": 8,
-      "file_lines": 1043
+      "file_lines": 1022
     },
     "api/postgres_compliance_hub.py::PostgresComplianceHubStore._init_tables": {
-      "function_lines": 223
+      "function_lines": 221
     },
     "api/postgres_fleet_store.py": {
       "deferred_imports": 8
     },
+    "api/postgres_gateway_activity.py": {
+      "broad_except": 1
+    },
     "api/postgres_gateway_activity.py::PostgresGatewayActivityStore.append_batch": {
       "function_lines": 122
     },
+    "api/postgres_governance_audit.py": {
+      "broad_except": 1
+    },
     "api/postgres_graph.py": {
+      "broad_except": 2,
       "deferred_imports": 19,
-      "file_lines": 3751
+      "file_lines": 3751,
+      "raw_env_reads": 1
     },
     "api/postgres_graph.py::PostgresGraphStore._init_tables": {
       "function_lines": 279
@@ -408,7 +534,11 @@
     "api/postgres_job_store.py::PostgresJobStore._init_tables": {
       "function_lines": 133
     },
+    "api/postgres_mcp_config.py": {
+      "broad_except": 2
+    },
     "api/postgres_policy.py": {
+      "broad_except": 1,
       "deferred_imports": 5
     },
     "api/postgres_policy.py::PostgresPolicyStore._init_tables": {
@@ -417,19 +547,27 @@
     "api/postgres_report_jobs.py": {
       "deferred_imports": 1
     },
+    "api/postgres_tenant_lifecycle.py": {
+      "broad_except": 1
+    },
     "api/posture_counts_cache.py": {
+      "broad_except": 3,
       "deferred_imports": 5
     },
     "api/proxy_provenance.py": {
       "deferred_imports": 1
     },
     "api/proxy_replay_store.py": {
-      "deferred_imports": 11
+      "deferred_imports": 11,
+      "raw_env_reads": 1
     },
     "api/readiness.py": {
-      "deferred_imports": 3
+      "broad_except": 2,
+      "deferred_imports": 3,
+      "raw_env_reads": 1
     },
     "api/repo_tree_scan.py": {
+      "broad_except": 3,
       "deferred_imports": 16
     },
     "api/repo_tree_scan.py::scan_cloned_repo_tree": {
@@ -437,16 +575,22 @@
       "function_lines": 363
     },
     "api/report_artifact_store.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "api/report_job_store.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "api/report_queue.py": {
-      "deferred_imports": 4
+      "broad_except": 3,
+      "deferred_imports": 4,
+      "raw_env_reads": 3
     },
     "api/report_worker.py": {
-      "deferred_imports": 6
+      "broad_except": 2,
+      "deferred_imports": 6,
+      "raw_env_reads": 1
     },
     "api/risk_campaigns.py::derive_campaigns": {
       "function_lines": 115
@@ -455,15 +599,19 @@
       "deferred_imports": 1
     },
     "api/routes/agent_lifecycle.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "api/routes/assets.py": {
+      "broad_except": 2,
       "deferred_imports": 2
     },
     "api/routes/blueprints.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "api/routes/campaigns.py": {
+      "broad_except": 5,
       "deferred_imports": 7,
       "file_lines": 948
     },
@@ -471,8 +619,10 @@
       "function_lines": 143
     },
     "api/routes/cloud.py": {
+      "broad_except": 6,
       "deferred_imports": 21,
-      "file_lines": 1488
+      "file_lines": 1488,
+      "raw_env_reads": 1
     },
     "api/routes/cloud.py::_build_account_summary": {
       "function_lines": 141
@@ -495,6 +645,7 @@
       "function_lines": 129
     },
     "api/routes/cloud_connections.py": {
+      "broad_except": 11,
       "deferred_imports": 66,
       "file_lines": 1800
     },
@@ -517,8 +668,10 @@
       "function_lines": 103
     },
     "api/routes/compliance.py": {
+      "broad_except": 5,
       "deferred_imports": 59,
-      "file_lines": 3002
+      "file_lines": 3002,
+      "raw_env_reads": 2
     },
     "api/routes/compliance.py::_build_compliance": {
       "complexity": 22,
@@ -552,9 +705,11 @@
       "deferred_imports": 7
     },
     "api/routes/demo_estate.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 1
     },
     "api/routes/discovery.py": {
+      "broad_except": 3,
       "deferred_imports": 17,
       "file_lines": 955
     },
@@ -568,8 +723,10 @@
       "deferred_imports": 3
     },
     "api/routes/enterprise.py": {
+      "broad_except": 7,
       "deferred_imports": 133,
-      "file_lines": 3216
+      "file_lines": 3216,
+      "raw_env_reads": 14
     },
     "api/routes/enterprise.py::auth_policy": {
       "function_lines": 97
@@ -585,7 +742,11 @@
       "complexity": 20,
       "function_lines": 142
     },
+    "api/routes/entitlements.py": {
+      "broad_except": 1
+    },
     "api/routes/exports.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "api/routes/fleet.py": {
@@ -600,22 +761,29 @@
       "function_lines": 254
     },
     "api/routes/gateway.py": {
+      "broad_except": 1,
       "deferred_imports": 17,
-      "file_lines": 669
+      "file_lines": 669,
+      "raw_env_reads": 2
     },
     "api/routes/gateway.py::evaluate_gateway": {
       "function_lines": 93
     },
     "api/routes/gateway_feed.py": {
+      "broad_except": 6,
       "deferred_imports": 4,
       "file_lines": 1279
     },
     "api/routes/governance.py": {
-      "deferred_imports": 19
+      "broad_except": 8,
+      "deferred_imports": 19,
+      "raw_env_reads": 6
     },
     "api/routes/graph.py": {
-      "deferred_imports": 33,
-      "file_lines": 4098
+      "broad_except": 3,
+      "deferred_imports": 29,
+      "file_lines": 3925,
+      "raw_env_reads": 1
     },
     "api/routes/graph.py::get_graph": {
       "function_lines": 183
@@ -632,7 +800,11 @@
     "api/routes/graph.py::query_graph": {
       "function_lines": 114
     },
+    "api/routes/graph_correlations.py": {
+      "broad_except": 1
+    },
     "api/routes/graph_scenarios.py": {
+      "broad_except": 4,
       "deferred_imports": 1,
       "file_lines": 779
     },
@@ -647,15 +819,19 @@
       "file_lines": 1066
     },
     "api/routes/kspm.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "api/routes/mcp_config.py": {
+      "broad_except": 2,
       "deferred_imports": 4
     },
     "api/routes/mitre.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "api/routes/observability.py": {
+      "broad_except": 19,
       "deferred_imports": 43,
       "file_lines": 2051
     },
@@ -673,8 +849,10 @@
       "function_lines": 83
     },
     "api/routes/overview.py": {
+      "broad_except": 12,
       "deferred_imports": 47,
-      "file_lines": 1894
+      "file_lines": 1894,
+      "raw_env_reads": 2
     },
     "api/routes/overview.py::_build_overview": {
       "function_lines": 81
@@ -689,8 +867,10 @@
       "function_lines": 87
     },
     "api/routes/proxy.py": {
+      "broad_except": 6,
       "deferred_imports": 17,
-      "file_lines": 1324
+      "file_lines": 1324,
+      "raw_env_reads": 1
     },
     "api/routes/proxy.py::_gateway_activity_record_from_alert": {
       "function_lines": 89
@@ -700,14 +880,19 @@
       "function_lines": 223
     },
     "api/routes/reports.py": {
-      "deferred_imports": 3
+      "broad_except": 1,
+      "deferred_imports": 3,
+      "raw_env_reads": 1
     },
     "api/routes/runtime_blueprints.py": {
+      "broad_except": 2,
       "deferred_imports": 3
     },
     "api/routes/scan.py": {
+      "broad_except": 17,
       "deferred_imports": 93,
-      "file_lines": 4851
+      "file_lines": 4851,
+      "raw_env_reads": 4
     },
     "api/routes/scan.py::_finding_facets_bounded": {
       "function_lines": 189
@@ -765,12 +950,14 @@
       "complexity": 17
     },
     "api/routes/self_posture.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "api/routes/skills.py": {
       "deferred_imports": 3
     },
     "api/routes/sources.py": {
+      "broad_except": 1,
       "deferred_imports": 1,
       "file_lines": 721
     },
@@ -778,7 +965,11 @@
       "complexity": 19,
       "function_lines": 167
     },
+    "api/routes/ticketing.py": {
+      "broad_except": 1
+    },
     "api/routes/webhooks.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "api/runtime_event_store.py": {
@@ -787,37 +978,54 @@
     "api/runtime_source_auth.py": {
       "deferred_imports": 1
     },
+    "api/saml.py": {
+      "raw_env_reads": 10
+    },
     "api/scan_batches.py::refresh_batch_parent": {
       "complexity": 17,
       "function_lines": 105
+    },
+    "api/scan_boundary.py": {
+      "raw_env_reads": 3
     },
     "api/scan_job_reconciliation.py": {
       "deferred_imports": 3
     },
     "api/scan_queue.py": {
-      "deferred_imports": 2
+      "broad_except": 4,
+      "deferred_imports": 2,
+      "raw_env_reads": 2
     },
     "api/scheduler.py": {
-      "deferred_imports": 4
+      "broad_except": 4,
+      "deferred_imports": 4,
+      "raw_env_reads": 1
     },
     "api/scheduler.py::scheduler_loop": {
       "function_lines": 107
     },
     "api/scim.py": {
-      "deferred_imports": 4
+      "deferred_imports": 4,
+      "raw_env_reads": 14
     },
     "api/scim.py::describe_scim_posture": {
       "function_lines": 110
     },
     "api/secret_lifecycle.py": {
-      "deferred_imports": 7
+      "deferred_imports": 7,
+      "raw_env_reads": 9
     },
     "api/secret_lifecycle.py::_rotation_posture": {
       "function_lines": 89
     },
+    "api/secret_source.py": {
+      "raw_env_reads": 4
+    },
     "api/server.py": {
+      "broad_except": 15,
       "deferred_imports": 83,
-      "file_lines": 1800
+      "file_lines": 1800,
+      "raw_env_reads": 32
     },
     "api/server.py::_cleanup_tick": {
       "function_lines": 136
@@ -837,17 +1045,27 @@
       "deferred_imports": 2
     },
     "api/shared_auth_state.py": {
+      "broad_except": 9,
       "deferred_imports": 12
     },
     "api/side_scan_scheduler.py": {
-      "deferred_imports": 4
+      "broad_except": 3,
+      "deferred_imports": 4,
+      "raw_env_reads": 2
+    },
+    "api/skills_scan_store.py": {
+      "raw_env_reads": 3
     },
     "api/snowflake_oauth.py": {
-      "deferred_imports": 1
+      "broad_except": 1,
+      "deferred_imports": 1,
+      "raw_env_reads": 6
     },
     "api/snowflake_store.py": {
+      "broad_except": 3,
       "deferred_imports": 1,
-      "file_lines": 1170
+      "file_lines": 1170,
+      "raw_env_reads": 10
     },
     "api/source_postgres.py": {
       "deferred_imports": 2
@@ -870,38 +1088,62 @@
     "api/storage/jobs.py": {
       "deferred_imports": 1
     },
+    "api/storage/sql.py": {
+      "broad_except": 2
+    },
+    "api/storage_schema.py": {
+      "raw_env_reads": 2
+    },
     "api/store.py": {
+      "broad_except": 2,
       "file_lines": 678
     },
     "api/stores.py": {
-      "deferred_imports": 37
+      "deferred_imports": 37,
+      "raw_env_reads": 26
+    },
+    "api/stream_authorization.py": {
+      "broad_except": 1
     },
     "api/tenancy.py": {
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 1
     },
     "api/tenant_graph_retention.py": {
-      "deferred_imports": 5
+      "deferred_imports": 5,
+      "raw_env_reads": 1
     },
     "api/tenant_lifecycle.py": {
-      "deferred_imports": 7
+      "broad_except": 1,
+      "deferred_imports": 7,
+      "raw_env_reads": 1
     },
     "api/tenant_quota.py": {
-      "deferred_imports": 10
+      "broad_except": 4,
+      "deferred_imports": 10,
+      "raw_env_reads": 1
     },
     "api/tenant_quota.py::get_tenant_quota_runtime": {
       "function_lines": 97
     },
     "api/tracing.py": {
-      "deferred_imports": 1
+      "broad_except": 1,
+      "deferred_imports": 1,
+      "raw_env_reads": 4
     },
     "api/trend_recording.py": {
+      "broad_except": 1,
       "deferred_imports": 3
     },
     "api/webhook_store.py": {
-      "deferred_imports": 3
+      "broad_except": 2,
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "api/websocket_auth.py": {
-      "deferred_imports": 19
+      "broad_except": 3,
+      "deferred_imports": 19,
+      "raw_env_reads": 2
     },
     "asset_tracker.py::AssetTracker.record_scan": {
       "function_lines": 119
@@ -988,7 +1230,8 @@
       "function_lines": 88
     },
     "ast_python_analysis.py": {
-      "file_lines": 2447
+      "file_lines": 2447,
+      "raw_env_reads": 1
     },
     "ast_python_analysis.py::_analyze_file": {
       "complexity": 53,
@@ -1063,11 +1306,14 @@
       "function_lines": 135
     },
     "atlas_fetch.py": {
-      "deferred_imports": 1
+      "broad_except": 1,
+      "deferred_imports": 1,
+      "raw_env_reads": 2
     },
     "audit_integrity.py": {
       "api_imports": 2,
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 1
     },
     "audit_replay.py": {
       "deferred_imports": 4,
@@ -1081,36 +1327,47 @@
       "function_lines": 109
     },
     "autodiscover.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "backpressure.py": {
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 2
     },
     "baseline.py": {
       "api_imports": 1,
       "deferred_imports": 1
     },
     "capabilities.py": {
-      "deferred_imports": 2
+      "broad_except": 2,
+      "deferred_imports": 2,
+      "raw_env_reads": 3
     },
     "capabilities.py::_build_registry": {
       "function_lines": 117
+    },
+    "ci_detect.py": {
+      "raw_env_reads": 2
     },
     "cis_controls.py": {
       "deferred_imports": 1
     },
     "cli/__init__.py": {
+      "broad_except": 1,
       "deferred_imports": 9,
-      "file_lines": 631
+      "file_lines": 631,
+      "raw_env_reads": 1
     },
     "cli/_agent_manifest.py": {
       "deferred_imports": 7
     },
     "cli/_agent_mode.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 1
     },
     "cli/_analysis.py": {
       "api_imports": 1,
+      "broad_except": 1,
       "deferred_imports": 21,
       "file_lines": 775
     },
@@ -1145,6 +1402,7 @@
       "deferred_imports": 2
     },
     "cli/_check.py": {
+      "broad_except": 1,
       "deferred_imports": 9
     },
     "cli/_check.py::_exit_model_verification": {
@@ -1155,15 +1413,19 @@
       "function_lines": 219
     },
     "cli/_check_command.py": {
+      "broad_except": 1,
       "deferred_imports": 9
     },
     "cli/_check_support.py": {
+      "broad_except": 2,
       "deferred_imports": 4
     },
     "cli/_cloud_group.py": {
       "api_imports": 1,
+      "broad_except": 2,
       "deferred_imports": 40,
-      "file_lines": 1108
+      "file_lines": 1108,
+      "raw_env_reads": 1
     },
     "cli/_cloud_group.py::_run_cloud_scan": {
       "function_lines": 101
@@ -1172,13 +1434,16 @@
       "function_lines": 111
     },
     "cli/_common.py": {
-      "deferred_imports": 11
+      "broad_except": 3,
+      "deferred_imports": 11,
+      "raw_env_reads": 5
     },
     "cli/_cost_group.py": {
       "api_imports": 2,
       "deferred_imports": 6
     },
     "cli/_db.py": {
+      "broad_except": 1,
       "deferred_imports": 29
     },
     "cli/_db.py::db_framework_status": {
@@ -1194,18 +1459,25 @@
       "deferred_imports": 1
     },
     "cli/_doctor.py": {
-      "deferred_imports": 15
+      "broad_except": 9,
+      "deferred_imports": 14
     },
     "cli/_doctor.py::doctor_cmd": {
       "complexity": 34,
-      "function_lines": 301
+      "function_lines": 300
+    },
+    "cli/_endpoint_connectors.py": {
+      "raw_env_reads": 2
     },
     "cli/_entry.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "cli/_entry_points.py": {
+      "broad_except": 1,
       "deferred_imports": 18,
-      "file_lines": 850
+      "file_lines": 850,
+      "raw_env_reads": 1
     },
     "cli/_entry_points.py::_connect_options": {
       "function_lines": 124
@@ -1228,6 +1500,7 @@
     },
     "cli/_gateway.py": {
       "api_imports": 2,
+      "broad_except": 2,
       "deferred_imports": 13,
       "file_lines": 773
     },
@@ -1236,6 +1509,7 @@
       "function_lines": 322
     },
     "cli/_history.py": {
+      "broad_except": 5,
       "deferred_imports": 17,
       "file_lines": 794
     },
@@ -1258,9 +1532,11 @@
       "deferred_imports": 5
     },
     "cli/_interactive.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "cli/_inventory.py": {
+      "broad_except": 2,
       "deferred_imports": 17
     },
     "cli/_inventory.py::inventory": {
@@ -1281,6 +1557,7 @@
       "deferred_imports": 1
     },
     "cli/_quickstart.py": {
+      "broad_except": 1,
       "deferred_imports": 3
     },
     "cli/_quickstart.py::_run_quickstart": {
@@ -1288,9 +1565,10 @@
     },
     "cli/_registry.py": {
       "api_imports": 4,
-      "deferred_imports": 34
+      "deferred_imports": 31
     },
     "cli/_remediate.py": {
+      "broad_except": 1,
       "deferred_imports": 3
     },
     "cli/_remediate.py::remediate_cmd": {
@@ -1299,6 +1577,7 @@
     },
     "cli/_report_group.py": {
       "api_imports": 2,
+      "broad_except": 2,
       "deferred_imports": 5
     },
     "cli/_runtime.py": {
@@ -1318,6 +1597,9 @@
     "cli/_runtime.py::proxy_configure_cmd": {
       "function_lines": 88
     },
+    "cli/_runtime_status.py": {
+      "broad_except": 1
+    },
     "cli/_scan_runner.py": {
       "deferred_imports": 14
     },
@@ -1332,6 +1614,7 @@
     },
     "cli/_server.py": {
       "api_imports": 19,
+      "broad_except": 2,
       "deferred_imports": 32,
       "file_lines": 1286
     },
@@ -1345,15 +1628,18 @@
       "function_lines": 168
     },
     "cli/_skills_group.py": {
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 2
     },
     "cli/_skills_group.py::skills_scan_cmd": {
       "complexity": 30,
       "function_lines": 182
     },
     "cli/agents/_cloud.py": {
+      "broad_except": 5,
       "deferred_imports": 39,
-      "file_lines": 756
+      "file_lines": 756,
+      "raw_env_reads": 2
     },
     "cli/agents/_cloud.py::run_benchmarks": {
       "complexity": 59,
@@ -1365,7 +1651,8 @@
     },
     "cli/agents/_discovery.py": {
       "deferred_imports": 52,
-      "file_lines": 1295
+      "file_lines": 1295,
+      "raw_env_reads": 2
     },
     "cli/agents/_discovery.py::run_local_discovery": {
       "complexity": 149,
@@ -1375,6 +1662,7 @@
       "deferred_imports": 1
     },
     "cli/agents/_output.py": {
+      "broad_except": 2,
       "deferred_imports": 29,
       "file_lines": 675
     },
@@ -1391,6 +1679,7 @@
     },
     "cli/agents/_post.py": {
       "api_imports": 1,
+      "broad_except": 7,
       "deferred_imports": 20
     },
     "cli/agents/_post.py::compute_exit_code": {
@@ -1416,42 +1705,54 @@
       "function_lines": 160
     },
     "cli/agents/scan_pipeline/discovery.py": {
+      "broad_except": 1,
       "deferred_imports": 5
     },
     "cli/agents/scan_pipeline/enrichment.py": {
+      "broad_except": 3,
       "deferred_imports": 11
     },
     "cli/agents/scan_pipeline/gates.py": {
       "deferred_imports": 1
     },
     "cli/agents/scan_pipeline/graph.py": {
+      "broad_except": 1,
       "deferred_imports": 19
     },
     "cli/agents/scan_pipeline/helpers.py": {
-      "deferred_imports": 11
+      "broad_except": 1,
+      "deferred_imports": 9
     },
     "cli/agents/scan_pipeline/inventory.py": {
+      "broad_except": 1,
       "deferred_imports": 17
     },
     "cli/agents/scan_pipeline/late.py": {
+      "broad_except": 2,
       "deferred_imports": 19
     },
     "cli/agents/scan_pipeline/matching.py": {
+      "broad_except": 1,
       "deferred_imports": 5
     },
     "cli/agents/scan_pipeline/output.py": {
+      "broad_except": 2,
       "deferred_imports": 15
     },
     "cli/agents/scan_pipeline/policy.py": {
-      "deferred_imports": 14
+      "broad_except": 2,
+      "deferred_imports": 14,
+      "raw_env_reads": 1
     },
     "cli/agents/scan_pipeline/preflight.py": {
+      "broad_except": 5,
       "deferred_imports": 7
     },
     "cli/agents/scan_pipeline/prepare.py": {
       "deferred_imports": 12
     },
     "cli/agents/scan_pipeline/report.py": {
+      "broad_except": 1,
       "deferred_imports": 14
     },
     "cli/claw.py": {
@@ -1490,25 +1791,35 @@
       "deferred_imports": 1
     },
     "cloud/aisvs_benchmark.py": {
+      "broad_except": 11,
       "deferred_imports": 11,
       "file_lines": 674
     },
+    "cloud/ambient_credentials.py": {
+      "raw_env_reads": 2
+    },
     "cloud/audit_trail.py": {
-      "file_lines": 679
+      "broad_except": 6,
+      "file_lines": 679,
+      "raw_env_reads": 4
     },
     "cloud/audit_trail.py::read_aws_cloudtrail": {
       "complexity": 18
     },
     "cloud/auth_probe.py": {
-      "deferred_imports": 1
+      "broad_except": 4,
+      "deferred_imports": 1,
+      "raw_env_reads": 14
     },
     "cloud/authorization_evaluator.py::evaluate_authorization": {
       "complexity": 24,
       "function_lines": 99
     },
     "cloud/aws.py": {
+      "broad_except": 18,
       "deferred_imports": 3,
-      "file_lines": 1627
+      "file_lines": 1627,
+      "raw_env_reads": 1
     },
     "cloud/aws.py::_discover_ec2_instances": {
       "function_lines": 82
@@ -1533,8 +1844,10 @@
       "function_lines": 275
     },
     "cloud/aws_cis_benchmark.py": {
+      "broad_except": 51,
       "deferred_imports": 12,
-      "file_lines": 3449
+      "file_lines": 3449,
+      "raw_env_reads": 2
     },
     "cloud/aws_cis_benchmark.py::_check_3_10": {
       "complexity": 17
@@ -1554,6 +1867,9 @@
       "complexity": 19,
       "function_lines": 123
     },
+    "cloud/aws_iam_collector.py": {
+      "broad_except": 8
+    },
     "cloud/aws_iam_collector.py::_collect_policies": {
       "complexity": 17
     },
@@ -1561,8 +1877,10 @@
       "function_lines": 120
     },
     "cloud/aws_inventory.py": {
+      "broad_except": 59,
       "deferred_imports": 5,
-      "file_lines": 2744
+      "file_lines": 2744,
+      "raw_env_reads": 7
     },
     "cloud/aws_inventory.py::_discover_iam": {
       "function_lines": 90
@@ -1582,6 +1900,10 @@
       "complexity": 27,
       "function_lines": 219
     },
+    "cloud/aws_organizations.py": {
+      "broad_except": 7,
+      "raw_env_reads": 5
+    },
     "cloud/aws_organizations.py::_derive_findings": {
       "function_lines": 93
     },
@@ -1590,8 +1912,10 @@
       "function_lines": 165
     },
     "cloud/azure.py": {
+      "broad_except": 17,
       "deferred_imports": 1,
-      "file_lines": 829
+      "file_lines": 829,
+      "raw_env_reads": 1
     },
     "cloud/azure.py::_discover_ai_foundry": {
       "function_lines": 85
@@ -1612,13 +1936,23 @@
     "cloud/azure.py::discover": {
       "function_lines": 103
     },
+    "cloud/azure_authorization_collector.py": {
+      "broad_except": 3,
+      "raw_env_reads": 1
+    },
     "cloud/azure_authorization_collector.py::collect_azure_authorization": {
       "complexity": 24,
       "function_lines": 170
     },
+    "cloud/azure_blob_data_classifier.py": {
+      "broad_except": 3,
+      "raw_env_reads": 1
+    },
     "cloud/azure_cis_benchmark.py": {
+      "broad_except": 102,
       "deferred_imports": 11,
-      "file_lines": 4090
+      "file_lines": 4090,
+      "raw_env_reads": 1
     },
     "cloud/azure_cis_benchmark.py::run_benchmark": {
       "complexity": 20,
@@ -1626,7 +1960,9 @@
     },
     "cloud/azure_event_ingest.py": {
       "api_imports": 2,
-      "deferred_imports": 7
+      "broad_except": 5,
+      "deferred_imports": 7,
+      "raw_env_reads": 2
     },
     "cloud/azure_event_ingest.py::consume_azure_events": {
       "function_lines": 131
@@ -1635,11 +1971,14 @@
       "function_lines": 147
     },
     "cloud/azure_graph.py": {
+      "broad_except": 3,
       "deferred_imports": 2
     },
     "cloud/azure_inventory.py": {
+      "broad_except": 43,
       "deferred_imports": 6,
-      "file_lines": 2433
+      "file_lines": 2433,
+      "raw_env_reads": 8
     },
     "cloud/azure_inventory.py::_discover_databases": {
       "function_lines": 104
@@ -1661,23 +2000,37 @@
     "cloud/benchmark_provenance.py::evaluate_drift": {
       "complexity": 17
     },
+    "cloud/capability_probe.py": {
+      "broad_except": 2
+    },
     "cloud/clickhouse.py": {
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 3
     },
     "cloud/connection_broker.py": {
       "api_imports": 2,
+      "broad_except": 6,
       "deferred_imports": 4
     },
     "cloud/connection_request.py": {
       "api_imports": 3,
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "cloud/connection_workload.py": {
       "api_imports": 1,
-      "deferred_imports": 3
+      "broad_except": 2,
+      "deferred_imports": 3,
+      "raw_env_reads": 2
+    },
+    "cloud/container_sbom.py": {
+      "broad_except": 1
     },
     "cloud/container_sbom.py::scan_container_image": {
       "function_lines": 123
+    },
+    "cloud/coreweave.py": {
+      "broad_except": 4
     },
     "cloud/coreweave.py::_discover_gpu_pods": {
       "function_lines": 91
@@ -1692,19 +2045,38 @@
       "complexity": 16,
       "function_lines": 94
     },
+    "cloud/crusoe.py": {
+      "broad_except": 1,
+      "raw_env_reads": 2
+    },
     "cloud/crusoe.py::discover": {
       "function_lines": 104
+    },
+    "cloud/databricks.py": {
+      "broad_except": 4,
+      "raw_env_reads": 1
     },
     "cloud/databricks.py::discover": {
       "function_lines": 176
     },
     "cloud/databricks_security.py": {
+      "broad_except": 15,
       "deferred_imports": 4,
-      "file_lines": 605
+      "file_lines": 605,
+      "raw_env_reads": 1
+    },
+    "cloud/db_content_scan.py": {
+      "broad_except": 3
+    },
+    "cloud/db_data_classifier.py": {
+      "broad_except": 1,
+      "raw_env_reads": 1
     },
     "cloud/event_ingest.py": {
       "api_imports": 3,
-      "deferred_imports": 8
+      "broad_except": 5,
+      "deferred_imports": 8,
+      "raw_env_reads": 2
     },
     "cloud/event_ingest.py::consume_aws_events": {
       "function_lines": 141
@@ -1713,8 +2085,10 @@
       "function_lines": 139
     },
     "cloud/gcp.py": {
+      "broad_except": 8,
       "deferred_imports": 1,
-      "file_lines": 613
+      "file_lines": 613,
+      "raw_env_reads": 1
     },
     "cloud/gcp.py::_discover_cloud_functions": {
       "function_lines": 133
@@ -1731,20 +2105,28 @@
     "cloud/gcp.py::discover": {
       "function_lines": 93
     },
+    "cloud/gcp_authorization_collector.py": {
+      "broad_except": 7,
+      "raw_env_reads": 1
+    },
     "cloud/gcp_authorization_collector.py::collect_gcp_authorization": {
       "complexity": 45,
       "function_lines": 327
     },
     "cloud/gcp_cis_benchmark.py": {
+      "broad_except": 62,
       "deferred_imports": 7,
-      "file_lines": 2949
+      "file_lines": 2949,
+      "raw_env_reads": 2
     },
     "cloud/gcp_cis_benchmark.py::run_benchmark": {
       "function_lines": 135
     },
     "cloud/gcp_event_ingest.py": {
       "api_imports": 2,
-      "deferred_imports": 7
+      "broad_except": 5,
+      "deferred_imports": 7,
+      "raw_env_reads": 2
     },
     "cloud/gcp_event_ingest.py::consume_gcp_events": {
       "function_lines": 132
@@ -1760,8 +2142,10 @@
       "function_lines": 126
     },
     "cloud/gcp_inventory.py": {
+      "broad_except": 30,
       "deferred_imports": 2,
-      "file_lines": 2032
+      "file_lines": 2032,
+      "raw_env_reads": 6
     },
     "cloud/gcp_inventory.py::_discover_load_balancers": {
       "function_lines": 111
@@ -1770,10 +2154,19 @@
       "complexity": 24,
       "function_lines": 274
     },
+    "cloud/gcp_organizations.py": {
+      "broad_except": 6,
+      "raw_env_reads": 2
+    },
     "cloud/gcp_organizations.py::_derive_findings": {
       "function_lines": 86
     },
+    "cloud/gcs_data_classifier.py": {
+      "broad_except": 2,
+      "raw_env_reads": 1
+    },
     "cloud/gpu_infra.py": {
+      "broad_except": 7,
       "file_lines": 942
     },
     "cloud/gpu_infra.py::discover_docker_gpu_containers": {
@@ -1783,11 +2176,21 @@
     "cloud/gpu_infra.py::gpu_infra_to_agents": {
       "function_lines": 101
     },
+    "cloud/huggingface.py": {
+      "broad_except": 6,
+      "raw_env_reads": 1
+    },
+    "cloud/lambda_labs.py": {
+      "broad_except": 1,
+      "raw_env_reads": 1
+    },
     "cloud/lambda_labs.py::discover": {
       "function_lines": 91
     },
     "cloud/mlflow_provider.py": {
-      "deferred_imports": 1
+      "broad_except": 4,
+      "deferred_imports": 1,
+      "raw_env_reads": 1
     },
     "cloud/mlflow_provider.py::_discover_experiments": {
       "function_lines": 81
@@ -1796,14 +2199,18 @@
       "function_lines": 100
     },
     "cloud/model_provenance.py": {
-      "deferred_imports": 3
+      "broad_except": 2,
+      "deferred_imports": 3,
+      "raw_env_reads": 2
     },
     "cloud/model_provenance.py::check_hf_model": {
       "complexity": 18,
       "function_lines": 141
     },
     "cloud/nebius.py": {
-      "file_lines": 666
+      "broad_except": 10,
+      "file_lines": 666,
+      "raw_env_reads": 2
     },
     "cloud/nebius.py::_discover_gpu_instances": {
       "function_lines": 104
@@ -1818,10 +2225,13 @@
       "function_lines": 88
     },
     "cloud/normalization.py": {
-      "deferred_imports": 1
+      "broad_except": 1,
+      "deferred_imports": 1,
+      "raw_env_reads": 1
     },
     "cloud/ollama.py": {
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 1
     },
     "cloud/ollama.py::discover": {
       "function_lines": 126
@@ -1832,6 +2242,10 @@
     "cloud/onboarding.py::aws_cloudformation_template": {
       "function_lines": 94
     },
+    "cloud/openai_provider.py": {
+      "broad_except": 4,
+      "raw_env_reads": 2
+    },
     "cloud/openai_provider.py::_discover_assistants": {
       "function_lines": 109
     },
@@ -1839,51 +2253,75 @@
       "function_lines": 94
     },
     "cloud/registry_sweep.py": {
+      "broad_except": 13,
       "deferred_imports": 1,
-      "file_lines": 636
+      "file_lines": 636,
+      "raw_env_reads": 5
     },
     "cloud/registry_sweep.py::sweep_registry": {
       "function_lines": 91
     },
     "cloud/runpod.py": {
-      "deferred_imports": 1
+      "broad_except": 3,
+      "deferred_imports": 1,
+      "raw_env_reads": 1
     },
     "cloud/runpod.py::discover": {
       "function_lines": 147
     },
+    "cloud/runtime_evidence_client.py": {
+      "raw_env_reads": 4
+    },
     "cloud/runtime_workload_evidence.py": {
+      "broad_except": 1,
       "deferred_imports": 2,
-      "file_lines": 941
+      "file_lines": 941,
+      "raw_env_reads": 2
     },
     "cloud/runtime_workload_evidence_store.py": {
       "api_imports": 5,
       "deferred_imports": 8,
-      "file_lines": 682
+      "file_lines": 682,
+      "raw_env_reads": 2
     },
     "cloud/runtime_workload_evidence_store.py::PostgresRuntimeWorkloadEvidenceStore._create_schema": {
       "function_lines": 153
+    },
+    "cloud/s3_data_classifier.py": {
+      "broad_except": 2,
+      "raw_env_reads": 1
+    },
+    "cloud/sbom_pull.py": {
+      "broad_except": 4
     },
     "cloud/sbom_pull.py::_pull_ecr": {
       "function_lines": 103
     },
     "cloud/serverless_zip.py": {
+      "broad_except": 3,
       "deferred_imports": 4
     },
     "cloud/side_scan.py": {
+      "broad_except": 10,
       "deferred_imports": 1,
-      "file_lines": 734
+      "file_lines": 734,
+      "raw_env_reads": 1
     },
     "cloud/side_scan_lifecycle.py": {
       "api_imports": 4,
       "deferred_imports": 4,
-      "file_lines": 1282
+      "file_lines": 1282,
+      "raw_env_reads": 1
     },
     "cloud/side_scan_provider_adapters.py": {
+      "broad_except": 16,
       "file_lines": 783
     },
     "cloud/side_scan_targets.py": {
+      "broad_except": 10,
       "deferred_imports": 3,
-      "file_lines": 645
+      "file_lines": 645,
+      "raw_env_reads": 1
     },
     "cloud/side_scan_targets.py::run_cloud_side_scan_targets": {
       "complexity": 23,
@@ -1893,8 +2331,10 @@
       "function_lines": 194
     },
     "cloud/snowflake.py": {
+      "broad_except": 70,
       "deferred_imports": 5,
-      "file_lines": 4219
+      "file_lines": 4219,
+      "raw_env_reads": 8
     },
     "cloud/snowflake.py::_discover_snowflake_notebooks": {
       "function_lines": 164
@@ -1952,8 +2392,10 @@
       "complexity": 17
     },
     "cloud/snowflake_cis_benchmark.py": {
+      "broad_except": 5,
       "deferred_imports": 4,
-      "file_lines": 890
+      "file_lines": 890,
+      "raw_env_reads": 2
     },
     "cloud/snowflake_cis_benchmark.py::run_benchmark": {
       "function_lines": 116
@@ -1961,14 +2403,21 @@
     "cloud/snowflake_observability.py": {
       "deferred_imports": 1
     },
+    "cloud/snowflake_spcs_auth.py": {
+      "raw_env_reads": 4
+    },
     "cloud/vastai.py": {
-      "deferred_imports": 1
+      "broad_except": 2,
+      "deferred_imports": 1,
+      "raw_env_reads": 1
     },
     "cloud/vastai.py::discover": {
       "function_lines": 104
     },
     "cloud/vector_db.py": {
-      "deferred_imports": 6
+      "broad_except": 6,
+      "deferred_imports": 6,
+      "raw_env_reads": 1
     },
     "cloud/vector_db.py::check_pinecone": {
       "function_lines": 83
@@ -1976,7 +2425,12 @@
     "cloud/vector_db.py::check_vector_db": {
       "function_lines": 106
     },
+    "cloud/wandb_provider.py": {
+      "broad_except": 5,
+      "raw_env_reads": 2
+    },
     "cloud_sdk_freshness.py": {
+      "broad_except": 10,
       "deferred_imports": 6,
       "file_lines": 852
     },
@@ -2004,23 +2458,37 @@
       "function_lines": 123
     },
     "config.py": {
-      "file_lines": 971
+      "file_lines": 951
     },
     "connectors/endpoints/service.py": {
       "api_imports": 1
     },
     "connectors/endpoints/store.py": {
       "api_imports": 5,
+      "broad_except": 2,
       "deferred_imports": 4
+    },
+    "connectors/jira_connector.py": {
+      "broad_except": 4,
+      "raw_env_reads": 3
+    },
+    "connectors/servicenow_connector.py": {
+      "broad_except": 4,
+      "raw_env_reads": 1
     },
     "connectors/servicenow_connector.py::_discover_async": {
       "function_lines": 86
+    },
+    "connectors/slack_connector.py": {
+      "broad_except": 2,
+      "raw_env_reads": 1
     },
     "constants.py": {
       "deferred_imports": 2,
       "file_lines": 767
     },
     "context_graph.py": {
+      "broad_except": 1,
       "deferred_imports": 6,
       "file_lines": 1105
     },
@@ -2037,25 +2505,37 @@
       "function_lines": 152
     },
     "core/cvss.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "core/packages.py": {
+      "broad_except": 3,
       "deferred_imports": 3
     },
     "core/versions/go.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "core/versions/ordering.py": {
+      "broad_except": 4,
       "deferred_imports": 4
     },
     "core/versions/validation.py": {
+      "broad_except": 2,
       "deferred_imports": 2
     },
+    "cost_model.py": {
+      "raw_env_reads": 1
+    },
     "coverage.py": {
+      "broad_except": 4,
       "deferred_imports": 8
     },
     "coverage.py::detect_release_coverage_gaps": {
       "function_lines": 99
+    },
+    "cpe_match.py": {
+      "broad_except": 1
     },
     "cross_env_correlation.py": {
       "file_lines": 877
@@ -2066,10 +2546,15 @@
     "data_boundaries.py::describe_data_access_boundaries": {
       "function_lines": 171
     },
+    "db/adoption_events.py": {
+      "raw_env_reads": 4
+    },
     "db/graph_store.py": {
       "api_imports": 2,
+      "broad_except": 2,
       "deferred_imports": 4,
-      "file_lines": 2373
+      "file_lines": 2373,
+      "raw_env_reads": 4
     },
     "db/graph_store.py::_init_db": {
       "complexity": 21
@@ -2086,6 +2571,7 @@
       "function_lines": 380
     },
     "db/local_analytics.py": {
+      "broad_except": 1,
       "file_lines": 741
     },
     "db/local_analytics.py::LocalAnalyticsStore.record_scan_report": {
@@ -2100,11 +2586,15 @@
       "function_lines": 111
     },
     "db/schema.py": {
-      "deferred_imports": 2
+      "broad_except": 2,
+      "deferred_imports": 2,
+      "raw_env_reads": 1
     },
     "db/sync.py": {
+      "broad_except": 8,
       "deferred_imports": 29,
-      "file_lines": 2132
+      "file_lines": 2132,
+      "raw_env_reads": 5
     },
     "db/sync.py::_ingest_ghsa_advisory": {
       "function_lines": 116
@@ -2132,23 +2622,29 @@
       "function_lines": 83
     },
     "delivery.py": {
+      "broad_except": 1,
       "deferred_imports": 2,
-      "file_lines": 888
+      "file_lines": 888,
+      "raw_env_reads": 3
     },
     "delivery.py::DeliveryClient.deliver": {
       "function_lines": 156
     },
     "delta_stream.py": {
       "api_imports": 1,
-      "deferred_imports": 4
+      "deferred_imports": 4,
+      "raw_env_reads": 2
     },
     "demo_estate/boot_seed.py": {
       "api_imports": 1,
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "demo_estate/bootstrap.py": {
       "api_imports": 7,
-      "deferred_imports": 30
+      "broad_except": 14,
+      "deferred_imports": 30,
+      "raw_env_reads": 2
     },
     "demo_estate/bootstrap.py::maybe_bootstrap_demo_estate": {
       "complexity": 18,
@@ -2226,6 +2722,7 @@
     },
     "demo_estate/showcase_graph.py": {
       "api_imports": 6,
+      "broad_except": 2,
       "deferred_imports": 13,
       "file_lines": 1007
     },
@@ -2245,7 +2742,11 @@
     "demo_estate/showcase_surfaces.py::_seed_skills_scan": {
       "function_lines": 85
     },
+    "deploy_k8s_cleanup.py": {
+      "raw_env_reads": 3
+    },
     "deploy_profiles.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "deploy_profiles.py::helm_validation_profiles": {
@@ -2253,6 +2754,9 @@
     },
     "deploy_teardown.py::build_reference_teardown_plan": {
       "function_lines": 88
+    },
+    "deployment_probe.py": {
+      "raw_env_reads": 1
     },
     "deployment_probe.py::verify_mcp_auth": {
       "complexity": 16,
@@ -2263,6 +2767,7 @@
       "deferred_imports": 4
     },
     "discovery/__init__.py": {
+      "broad_except": 3,
       "deferred_imports": 7,
       "file_lines": 1366
     },
@@ -2290,6 +2795,7 @@
       "function_lines": 85
     },
     "discovery/config_parsers.py": {
+      "broad_except": 2,
       "deferred_imports": 4,
       "file_lines": 695
     },
@@ -2298,15 +2804,18 @@
       "function_lines": 143
     },
     "discovery/coverage.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "discovery/dynamic.py": {
+      "broad_except": 3,
       "deferred_imports": 4
     },
     "effective_reach.py": {
       "deferred_imports": 1
     },
     "endpoint/inventory.py": {
+      "broad_except": 2,
       "deferred_imports": 1,
       "file_lines": 700
     },
@@ -2336,15 +2845,19 @@
       "function_lines": 170
     },
     "enrichment.py": {
-      "deferred_imports": 4,
-      "file_lines": 951
+      "deferred_imports": 1,
+      "file_lines": 858,
+      "raw_env_reads": 2
     },
     "enrichment.py::enrich_vulnerabilities": {
-      "complexity": 50,
-      "function_lines": 213
+      "complexity": 36,
+      "function_lines": 167
     },
-    "enrichment.py::fetch_epss_scores": {
-      "function_lines": 83
+    "enrichment_posture.py": {
+      "raw_env_reads": 3
+    },
+    "entitlements.py": {
+      "raw_env_reads": 1
     },
     "event_normalization.py::build_agentic_identity_graph_projection": {
       "function_lines": 109
@@ -2358,11 +2871,17 @@
     "evidence/control_modes.py": {
       "deferred_imports": 1
     },
+    "evidence/policy.py": {
+      "raw_env_reads": 1
+    },
     "evidence/scan_agent_bom.py::build_scan_agent_bom": {
       "function_lines": 112
     },
     "evidence/scan_run.py": {
       "deferred_imports": 2
+    },
+    "exec_score.py": {
+      "raw_env_reads": 2
     },
     "exec_score.py::compute_exec_score": {
       "function_lines": 142
@@ -2374,6 +2893,7 @@
       "complexity": 18
     },
     "export/destinations.py": {
+      "broad_except": 17,
       "deferred_imports": 4,
       "file_lines": 1171
     },
@@ -2392,9 +2912,15 @@
     },
     "export/runner.py": {
       "api_imports": 4,
+      "broad_except": 3,
       "deferred_imports": 5
     },
+    "extensions.py": {
+      "broad_except": 2,
+      "raw_env_reads": 1
+    },
     "filesystem.py": {
+      "broad_except": 2,
       "deferred_imports": 4,
       "file_lines": 624
     },
@@ -2405,6 +2931,7 @@
       "function_lines": 95
     },
     "finding.py": {
+      "broad_except": 1,
       "deferred_imports": 37,
       "file_lines": 1859
     },
@@ -2440,10 +2967,12 @@
       "deferred_imports": 2
     },
     "firewall_client.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "fleet/sync_client.py": {
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 2
     },
     "fleet/trust_scoring.py::compute_trust_score": {
       "function_lines": 108
@@ -2463,12 +2992,14 @@
     },
     "gateway_server.py": {
       "api_imports": 56,
+      "broad_except": 16,
       "deferred_imports": 16,
-      "file_lines": 2233
+      "file_lines": 2230,
+      "raw_env_reads": 1
     },
     "gateway_server.py::create_gateway_app": {
-      "complexity": 191,
-      "function_lines": 1906
+      "complexity": 190,
+      "function_lines": 1902
     },
     "gateway_server.py::create_gateway_app.firewall_check": {
       "function_lines": 116
@@ -2478,7 +3009,8 @@
       "function_lines": 1464
     },
     "gateway_upstreams.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 3
     },
     "github_actions.py::_extract_workflow_info": {
       "complexity": 16,
@@ -2507,6 +3039,7 @@
       "function_lines": 174
     },
     "graph/asset_entity.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "graph/asset_entity.py::link_findings_to_graph_nodes": {
@@ -2539,16 +3072,19 @@
       "function_lines": 174
     },
     "graph/blast_reach.py": {
+      "broad_except": 5,
       "deferred_imports": 5,
       "graph_api_imports": 1
     },
     "graph/build_analysis.py": {
+      "broad_except": 18,
       "deferred_imports": 10
     },
     "graph/build_workspace.py": {
       "deferred_imports": 1,
       "file_lines": 688,
-      "graph_api_imports": 1
+      "graph_api_imports": 1,
+      "raw_env_reads": 3
     },
     "graph/builder.py": {
       "deferred_imports": 20,
@@ -2668,6 +3204,7 @@
       "deferred_imports": 1
     },
     "graph/correlation_service.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "graph/correlation_service.py::GraphCorrelationService._execute": {
@@ -2700,7 +3237,11 @@
     "graph/endpoint_overlay.py": {
       "graph_api_imports": 1
     },
+    "graph/exposure.py": {
+      "deferred_imports": 4
+    },
     "graph/governance_overlay.py": {
+      "broad_except": 5,
       "deferred_imports": 3,
       "graph_api_imports": 4
     },
@@ -2715,9 +3256,11 @@
       "complexity": 18
     },
     "graph/nhi_governance.py": {
+      "broad_except": 2,
       "deferred_imports": 2,
       "file_lines": 794,
-      "graph_api_imports": 1
+      "graph_api_imports": 1,
+      "raw_env_reads": 1
     },
     "graph/nhi_governance.py::build_nhi_governance_findings": {
       "function_lines": 87
@@ -2726,12 +3269,16 @@
       "complexity": 16,
       "function_lines": 145
     },
+    "graph/nhi_overlay.py": {
+      "broad_except": 1
+    },
     "graph/observation_scope.py::comparable_observation_sql": {
       "function_lines": 83
     },
     "graph/path_derivation.py": {
+      "broad_except": 2,
       "deferred_imports": 7,
-      "file_lines": 702
+      "file_lines": 671
     },
     "graph/path_derivation.py::_derived_attack_paths": {
       "complexity": 31,
@@ -2788,6 +3335,7 @@
       "function_lines": 162
     },
     "graph/scan_findings.py": {
+      "broad_except": 6,
       "deferred_imports": 6
     },
     "graph/scope.py::_repository_subgraph": {
@@ -2800,16 +3348,19 @@
       "deferred_imports": 1
     },
     "graph/toxic_findings.py": {
+      "broad_except": 1,
       "deferred_imports": 3,
       "file_lines": 765
     },
     "graph/webhooks.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 8
     },
     "graph/webhooks.py::compute_delta_alerts": {
       "function_lines": 188
     },
     "guard.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "hardware_evidence.py::_ingest_host": {
@@ -2817,7 +3368,9 @@
     },
     "history.py": {
       "api_imports": 1,
-      "deferred_imports": 4
+      "broad_except": 2,
+      "deferred_imports": 4,
+      "raw_env_reads": 2
     },
     "history.py::_diff_inventory": {
       "function_lines": 103
@@ -2827,7 +3380,8 @@
       "function_lines": 94
     },
     "http_client.py": {
-      "deferred_imports": 5
+      "deferred_imports": 5,
+      "raw_env_reads": 1
     },
     "http_client.py::request_with_retry": {
       "function_lines": 122
@@ -2843,6 +3397,7 @@
       "function_lines": 170
     },
     "iac/cloudformation.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "iac/dbt_security.py::_scan_profiles": {
@@ -2851,8 +3406,13 @@
     "iac/terraform_ai.py::scan_terraform_ai": {
       "function_lines": 90
     },
+    "identity/credential_policy.py": {
+      "raw_env_reads": 1
+    },
     "identity/entra_nhi.py": {
-      "deferred_imports": 2
+      "broad_except": 3,
+      "deferred_imports": 2,
+      "raw_env_reads": 3
     },
     "identity/entra_nhi.py::discover_entra_non_human_identities": {
       "function_lines": 82
@@ -2865,17 +3425,22 @@
       "function_lines": 169
     },
     "identity/okta_nhi.py": {
-      "deferred_imports": 1
+      "broad_except": 3,
+      "deferred_imports": 1,
+      "raw_env_reads": 3
     },
     "identity/okta_nhi.py::discover_okta_non_human_identities": {
       "function_lines": 85
     },
     "ignores.py": {
+      "broad_except": 1,
       "deferred_imports": 5
     },
     "image.py": {
+      "broad_except": 6,
       "deferred_imports": 6,
-      "file_lines": 940
+      "file_lines": 940,
+      "raw_env_reads": 2
     },
     "image.py::_packages_from_tar": {
       "complexity": 58,
@@ -2889,7 +3454,8 @@
     },
     "integrity.py": {
       "deferred_imports": 2,
-      "file_lines": 788
+      "file_lines": 788,
+      "raw_env_reads": 2
     },
     "integrity.py::check_pypi_provenance": {
       "complexity": 16,
@@ -2897,7 +3463,8 @@
     },
     "intel_lookup.py": {
       "deferred_imports": 2,
-      "file_lines": 1067
+      "file_lines": 1067,
+      "raw_env_reads": 1
     },
     "intel_lookup.py::build_daily_brief": {
       "function_lines": 121
@@ -2906,6 +3473,7 @@
       "function_lines": 93
     },
     "inventory.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "inventory.py::_load_csv_inventory": {
@@ -2937,12 +3505,19 @@
       "complexity": 28,
       "function_lines": 321
     },
+    "k8s_transport.py": {
+      "raw_env_reads": 2
+    },
     "license_policy.py": {
+      "broad_except": 1,
       "deferred_imports": 3
     },
     "license_policy.py::evaluate_license_policy": {
       "complexity": 17,
       "function_lines": 149
+    },
+    "logging_config.py": {
+      "raw_env_reads": 3
     },
     "mcp_auth_posture.py": {
       "deferred_imports": 7,
@@ -2962,6 +3537,7 @@
       "function_lines": 180
     },
     "mcp_introspect.py": {
+      "broad_except": 6,
       "deferred_imports": 9,
       "file_lines": 850
     },
@@ -2972,6 +3548,7 @@
       "complexity": 17
     },
     "mcp_official_registry.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "mcp_official_registry.py::sync_from_official_registry": {
@@ -2996,7 +3573,8 @@
     "mcp_server.py": {
       "api_imports": 1,
       "deferred_imports": 18,
-      "file_lines": 1494
+      "file_lines": 1494,
+      "raw_env_reads": 3
     },
     "mcp_server.py::create_mcp_server": {
       "complexity": 21,
@@ -3006,6 +3584,7 @@
       "function_lines": 194
     },
     "mcp_server_catalog.py": {
+      "broad_except": 1,
       "deferred_imports": 3
     },
     "mcp_server_catalog.py::attach_resources_and_prompts": {
@@ -3013,12 +3592,14 @@
       "function_lines": 201
     },
     "mcp_server_factory.py": {
-      "deferred_imports": 5
+      "deferred_imports": 5,
+      "raw_env_reads": 2
     },
     "mcp_server_helpers.py": {
       "deferred_imports": 1
     },
     "mcp_server_metadata.py": {
+      "broad_except": 2,
       "deferred_imports": 5,
       "file_lines": 742
     },
@@ -3026,8 +3607,10 @@
       "deferred_imports": 2
     },
     "mcp_server_runtime.py": {
+      "broad_except": 3,
       "deferred_imports": 6,
-      "file_lines": 865
+      "file_lines": 865,
+      "raw_env_reads": 1
     },
     "mcp_server_runtime.py::execute_tool_async": {
       "function_lines": 132
@@ -3043,6 +3626,7 @@
     },
     "mcp_server_scan.py": {
       "api_imports": 1,
+      "broad_except": 4,
       "deferred_imports": 16
     },
     "mcp_server_scan.py::run_scan_pipeline": {
@@ -3050,7 +3634,9 @@
       "function_lines": 182
     },
     "mcp_server_specialized.py": {
-      "deferred_imports": 8
+      "broad_except": 1,
+      "deferred_imports": 8,
+      "raw_env_reads": 4
     },
     "mcp_server_specialized.py::register_specialized_ai_tools": {
       "complexity": 20,
@@ -3062,20 +3648,26 @@
     "mcp_strict_args.py": {
       "deferred_imports": 1
     },
+    "mcp_tenant.py": {
+      "raw_env_reads": 2
+    },
     "mcp_tool_rules.py": {
       "deferred_imports": 1
     },
     "mcp_tools/analysis.py": {
       "api_imports": 1,
+      "broad_except": 3,
       "deferred_imports": 7
     },
     "mcp_tools/analysis.py::blast_radius_impl": {
       "function_lines": 101
     },
     "mcp_tools/cloud.py": {
+      "broad_except": 3,
       "deferred_imports": 3
     },
     "mcp_tools/compliance.py": {
+      "broad_except": 5,
       "deferred_imports": 22
     },
     "mcp_tools/compliance.py::cis_benchmark_impl": {
@@ -3086,6 +3678,7 @@
     },
     "mcp_tools/endpoint_connectors.py": {
       "api_imports": 1,
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "mcp_tools/exceptions.py": {
@@ -3094,47 +3687,56 @@
     },
     "mcp_tools/graph.py": {
       "api_imports": 6,
-      "deferred_imports": 8,
-      "file_lines": 627
+      "broad_except": 3,
+      "deferred_imports": 7
     },
     "mcp_tools/graph.py::deploy_decision_for_tenant": {
       "function_lines": 93
     },
     "mcp_tools/graph.py::exposure_paths_for_tenant": {
       "complexity": 20,
-      "function_lines": 195
+      "function_lines": 191
     },
     "mcp_tools/graph.py::graph_correlate_impl": {
       "function_lines": 83
     },
     "mcp_tools/identity.py": {
       "api_imports": 5,
+      "broad_except": 1,
       "deferred_imports": 5
     },
     "mcp_tools/intel.py": {
-      "deferred_imports": 1
+      "broad_except": 5,
+      "deferred_imports": 1,
+      "raw_env_reads": 2
     },
     "mcp_tools/intel.py::youcom_search_impl": {
       "function_lines": 120
     },
     "mcp_tools/inventory.py": {
       "api_imports": 4,
+      "broad_except": 3,
       "deferred_imports": 4
     },
     "mcp_tools/kspm.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "mcp_tools/oauth.py": {
-      "deferred_imports": 8
+      "broad_except": 1,
+      "deferred_imports": 8,
+      "raw_env_reads": 2
     },
     "mcp_tools/operator/bindings.py": {
       "deferred_imports": 15
     },
     "mcp_tools/posture.py": {
       "api_imports": 5,
+      "broad_except": 6,
       "deferred_imports": 12
     },
     "mcp_tools/registry.py": {
+      "broad_except": 7,
       "deferred_imports": 4
     },
     "mcp_tools/registry.py::marketplace_check_impl": {
@@ -3150,6 +3752,7 @@
     },
     "mcp_tools/risk_campaigns.py": {
       "api_imports": 3,
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "mcp_tools/risk_campaigns.py::risk_campaign_workflow_impl": {
@@ -3158,6 +3761,7 @@
     },
     "mcp_tools/runtime.py": {
       "api_imports": 20,
+      "broad_except": 27,
       "deferred_imports": 39,
       "file_lines": 919
     },
@@ -3166,15 +3770,19 @@
     },
     "mcp_tools/runtime_evidence.py": {
       "api_imports": 1,
+      "broad_except": 2,
       "deferred_imports": 4
     },
     "mcp_tools/sbom.py": {
+      "broad_except": 3,
       "deferred_imports": 7
     },
     "mcp_tools/scan_response.py": {
-      "deferred_imports": 3
+      "deferred_imports": 3,
+      "raw_env_reads": 1
     },
     "mcp_tools/scanning.py": {
+      "broad_except": 9,
       "deferred_imports": 40,
       "file_lines": 746
     },
@@ -3190,19 +3798,23 @@
       "function_lines": 112
     },
     "mcp_tools/side_scan.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "mcp_tools/side_scan.py::cloud_side_scan_impl": {
       "function_lines": 114
     },
     "mcp_tools/specialized.py": {
+      "broad_except": 7,
       "deferred_imports": 19
     },
     "mcp_tools/ticketing.py": {
+      "broad_except": 2,
       "deferred_imports": 2
     },
     "mcp_tools/triage.py": {
       "api_imports": 2,
+      "broad_except": 1,
       "deferred_imports": 3
     },
     "mitre_attack.py": {
@@ -3211,12 +3823,21 @@
     "mitre_coverage.py": {
       "deferred_imports": 4
     },
+    "mitre_fetch.py": {
+      "broad_except": 2,
+      "raw_env_reads": 2
+    },
     "mitre_fetch.py::_parse_capec_stix": {
       "complexity": 23
     },
+    "model_advisories.py": {
+      "raw_env_reads": 1
+    },
     "model_files.py": {
+      "broad_except": 3,
       "deferred_imports": 6,
-      "file_lines": 1049
+      "file_lines": 1049,
+      "raw_env_reads": 2
     },
     "model_files.py::check_huggingface_provenance": {
       "function_lines": 90
@@ -3236,19 +3857,23 @@
       "function_lines": 91
     },
     "model_hash.py": {
+      "broad_except": 3,
       "deferred_imports": 2
     },
     "model_hash.py::verify_model_hashes": {
       "function_lines": 125
     },
     "model_pickle_scan.py": {
-      "file_lines": 622
+      "broad_except": 2,
+      "file_lines": 622,
+      "raw_env_reads": 1
     },
     "model_pickle_scan.py::_scan_opcode_stream": {
       "complexity": 26,
       "function_lines": 135
     },
     "models.py": {
+      "broad_except": 1,
       "deferred_imports": 31,
       "file_lines": 1711
     },
@@ -3278,7 +3903,9 @@
       "function_lines": 87
     },
     "oci_parser.py": {
-      "file_lines": 1826
+      "broad_except": 7,
+      "file_lines": 1826,
+      "raw_env_reads": 1
     },
     "oci_parser.py::_parse_layers_from_tarball": {
       "function_lines": 126
@@ -3320,6 +3947,7 @@
       "deferred_imports": 2
     },
     "output/compact.py": {
+      "broad_except": 1,
       "deferred_imports": 29,
       "file_lines": 937
     },
@@ -3428,6 +4056,7 @@
       "deferred_imports": 3
     },
     "output/graph.py": {
+      "broad_except": 1,
       "deferred_imports": 12,
       "file_lines": 2037
     },
@@ -3450,6 +4079,7 @@
       "complexity": 16
     },
     "output/graph_export.py": {
+      "broad_except": 1,
       "deferred_imports": 2,
       "file_lines": 858
     },
@@ -3491,6 +4121,9 @@
     },
     "output/html/styles.py::render_styles": {
       "function_lines": 230
+    },
+    "output/iceberg_catalog.py": {
+      "raw_env_reads": 8
     },
     "output/json_fmt.py": {
       "deferred_imports": 23,
@@ -3546,6 +4179,7 @@
       "complexity": 16
     },
     "output/prometheus.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "output/prometheus.py::push_otlp": {
@@ -3601,8 +4235,9 @@
       "function_lines": 85
     },
     "parsers/__init__.py": {
+      "broad_except": 3,
       "deferred_imports": 4,
-      "file_lines": 966
+      "file_lines": 965
     },
     "parsers/__init__.py::extract_packages": {
       "complexity": 17,
@@ -3619,14 +4254,18 @@
       "function_lines": 93
     },
     "parsers/beam_parsers.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "parsers/browser_extensions.py": {
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 3
     },
     "parsers/compiled_parsers.py": {
+      "broad_except": 6,
       "deferred_imports": 10,
-      "file_lines": 1539
+      "file_lines": 1539,
+      "raw_env_reads": 1
     },
     "parsers/compiled_parsers.py::_parse_pom_modules": {
       "complexity": 16,
@@ -3634,7 +4273,7 @@
     },
     "parsers/compiled_parsers.py::parse_conda_packages": {
       "complexity": 36,
-      "function_lines": 227
+      "function_lines": 226
     },
     "parsers/compiled_parsers.py::parse_conda_packages._parse_env_file": {
       "complexity": 22,
@@ -3668,9 +4307,14 @@
       "deferred_imports": 13,
       "file_lines": 792
     },
+    "parsers/file_limits.py": {
+      "raw_env_reads": 1
+    },
     "parsers/node_parsers.py": {
+      "broad_except": 8,
       "deferred_imports": 2,
-      "file_lines": 793
+      "file_lines": 793,
+      "raw_env_reads": 1
     },
     "parsers/node_parsers.py::_workspace_package_versions": {
       "complexity": 17
@@ -3687,6 +4331,7 @@
       "complexity": 20
     },
     "parsers/os_parsers.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "parsers/os_parsers.py::parse_apk_packages": {
@@ -3699,6 +4344,7 @@
       "function_lines": 82
     },
     "parsers/prompt_scanner.py": {
+      "broad_except": 1,
       "deferred_imports": 2,
       "file_lines": 748
     },
@@ -3706,6 +4352,7 @@
       "function_lines": 117
     },
     "parsers/python_parsers.py": {
+      "broad_except": 4,
       "deferred_imports": 9,
       "file_lines": 695
     },
@@ -3728,6 +4375,7 @@
       "function_lines": 86
     },
     "parsers/skill_audit.py": {
+      "broad_except": 4,
       "deferred_imports": 6
     },
     "parsers/skill_audit.py::_check_server": {
@@ -3737,6 +4385,7 @@
       "function_lines": 99
     },
     "parsers/skill_audit_behavior.py": {
+      "broad_except": 2,
       "deferred_imports": 3,
       "file_lines": 1252
     },
@@ -3794,10 +4443,16 @@
     "permissions.py": {
       "deferred_imports": 1
     },
+    "plugin_activation.py": {
+      "broad_except": 5,
+      "raw_env_reads": 1
+    },
     "plugin_entrypoints.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "policy.py": {
+      "broad_except": 1,
       "deferred_imports": 10,
       "file_lines": 760
     },
@@ -3813,7 +4468,8 @@
     },
     "posture.py": {
       "deferred_imports": 1,
-      "file_lines": 783
+      "file_lines": 783,
+      "raw_env_reads": 2
     },
     "posture.py::compute_credential_risk_ranking": {
       "complexity": 17,
@@ -3826,13 +4482,20 @@
       "complexity": 41,
       "function_lines": 347
     },
+    "posture_streaming.py": {
+      "broad_except": 1,
+      "raw_env_reads": 2
+    },
     "project_config.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "proxy.py": {
       "api_imports": 5,
+      "broad_except": 10,
       "deferred_imports": 27,
-      "file_lines": 2222
+      "file_lines": 2222,
+      "raw_env_reads": 11
     },
     "proxy.py::_maybe_block_on_firewall": {
       "function_lines": 89
@@ -3855,8 +4518,12 @@
     },
     "proxy_audit.py": {
       "api_imports": 2,
+      "broad_except": 2,
       "deferred_imports": 7,
-      "file_lines": 809
+      "file_lines": 807
+    },
+    "proxy_configure.py": {
+      "broad_except": 1
     },
     "proxy_configure.py::apply_proxy_configs": {
       "complexity": 17,
@@ -3867,6 +4534,7 @@
       "function_lines": 96
     },
     "proxy_policy.py": {
+      "broad_except": 4,
       "deferred_imports": 2,
       "file_lines": 951
     },
@@ -3887,6 +4555,7 @@
       "function_lines": 104
     },
     "python_agents.py": {
+      "broad_except": 2,
       "deferred_imports": 1,
       "file_lines": 708
     },
@@ -3902,7 +4571,8 @@
     },
     "rbac.py": {
       "api_imports": 5,
-      "deferred_imports": 4
+      "deferred_imports": 4,
+      "raw_env_reads": 6
     },
     "rbac.py::require_authenticated_permission": {
       "function_lines": 88
@@ -3923,14 +4593,18 @@
       "deferred_imports": 1
     },
     "red_team_governance.py": {
+      "broad_except": 1,
       "deferred_imports": 1
     },
     "red_team_llm.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "registry.py": {
+      "broad_except": 1,
       "deferred_imports": 9,
-      "file_lines": 887
+      "file_lines": 887,
+      "raw_env_reads": 1
     },
     "registry.py::enrich_registry_entries": {
       "complexity": 20,
@@ -3944,6 +4618,7 @@
       "function_lines": 92
     },
     "registry_enrichment.py": {
+      "broad_except": 3,
       "deferred_imports": 1
     },
     "registry_enrichment.py::enrich_registry": {
@@ -3955,6 +4630,9 @@
     "remediation.py": {
       "deferred_imports": 2
     },
+    "remediation_apply.py": {
+      "raw_env_reads": 2
+    },
     "remediation_apply.py::apply_remediation_plan": {
       "function_lines": 91
     },
@@ -3962,7 +4640,9 @@
       "deferred_imports": 3
     },
     "repo_scan.py": {
-      "deferred_imports": 8
+      "broad_except": 4,
+      "deferred_imports": 8,
+      "raw_env_reads": 4
     },
     "repo_scan.py::_clone_into_tempdir": {
       "function_lines": 89
@@ -3971,6 +4651,7 @@
       "function_lines": 105
     },
     "resolver.py": {
+      "broad_except": 6,
       "deferred_imports": 9,
       "file_lines": 880
     },
@@ -3997,9 +4678,11 @@
       "function_lines": 93
     },
     "runtime/audit_delivery.py": {
+      "broad_except": 2,
       "file_lines": 613
     },
     "runtime/correlation_facts.py": {
+      "broad_except": 1,
       "deferred_imports": 4,
       "file_lines": 623
     },
@@ -4017,18 +4700,33 @@
     "runtime/detectors.py::ResponseInspector.check": {
       "function_lines": 117
     },
+    "runtime/egress_transport.py": {
+      "broad_except": 1
+    },
     "runtime/gateway_audit.py": {
+      "broad_except": 8,
       "deferred_imports": 2
     },
     "runtime/gateway_audit_local.py": {
       "api_imports": 2,
+      "broad_except": 1,
       "deferred_imports": 2
     },
+    "runtime/gateway_policy_reload.py": {
+      "broad_except": 1
+    },
     "runtime/gateway_relay.py": {
+      "broad_except": 1,
       "deferred_imports": 4
     },
     "runtime/gateway_settings.py": {
       "api_imports": 2
+    },
+    "runtime/graph_reachability.py": {
+      "broad_except": 1
+    },
+    "runtime/incident_feedback.py": {
+      "raw_env_reads": 1
     },
     "runtime/profile_resolution.py": {
       "api_imports": 2
@@ -4038,6 +4736,7 @@
       "function_lines": 82
     },
     "runtime/protection.py": {
+      "broad_except": 1,
       "file_lines": 914
     },
     "runtime/protection.py::ProtectionEngine.assess_threat": {
@@ -4046,14 +4745,26 @@
     "runtime/protection.py::ProtectionEngine.process_tool_call": {
       "function_lines": 90
     },
+    "runtime/server.py": {
+      "raw_env_reads": 2
+    },
     "runtime/server.py::run_http_mode": {
       "function_lines": 103
+    },
+    "runtime/visual_leak_detector.py": {
+      "raw_env_reads": 1
     },
     "runtime_blueprints.py::evaluate_runtime_blueprint_drift": {
       "function_lines": 126
     },
     "runtime_correlation.py::correlate": {
       "function_lines": 97
+    },
+    "runtime_smoke_mcp.py": {
+      "raw_env_reads": 1
+    },
+    "sast.py": {
+      "broad_except": 1
     },
     "sast.py::_resolve_sast_configs": {
       "complexity": 19
@@ -4078,6 +4789,7 @@
     },
     "sbom_attestation.py": {
       "api_imports": 1,
+      "broad_except": 1,
       "deferred_imports": 1,
       "file_lines": 992
     },
@@ -4089,26 +4801,42 @@
       "function_lines": 206
     },
     "scan_cache.py": {
-      "deferred_imports": 2
+      "deferred_imports": 2,
+      "raw_env_reads": 2
     },
     "scan_enrichment.py": {
-      "deferred_imports": 14
+      "broad_except": 11,
+      "deferred_imports": 14,
+      "raw_env_reads": 2
     },
     "scan_enrichment.py::enrich_report_with_estate_discovery": {
       "function_lines": 81
     },
     "scanners/amd_advisory.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "scanners/amd_advisory_fetch.py": {
+      "broad_except": 2,
       "deferred_imports": 4
+    },
+    "scanners/aws_secret_validation.py": {
+      "broad_except": 2
     },
     "scanners/blast_radius.py::expand_blast_radius_hops": {
       "complexity": 18,
       "function_lines": 82
     },
+    "scanners/enrichment_apply.py": {
+      "deferred_imports": 1
+    },
+    "scanners/executor.py": {
+      "broad_except": 2
+    },
     "scanners/ghsa_advisory.py": {
-      "deferred_imports": 4
+      "broad_except": 1,
+      "deferred_imports": 4,
+      "raw_env_reads": 2
     },
     "scanners/ghsa_advisory.py::check_github_advisories": {
       "complexity": 32,
@@ -4132,16 +4860,14 @@
       "function_lines": 103
     },
     "scanners/osv.py::query_osv_batch_impl": {
-      "complexity": 53,
-      "function_lines": 315
-    },
-    "scanners/osv.py::query_osv_batch_impl._process_batch": {
-      "complexity": 23,
-      "function_lines": 99
+      "complexity": 39,
+      "function_lines": 267
     },
     "scanners/package_scan.py": {
+      "broad_except": 17,
       "deferred_imports": 43,
-      "file_lines": 2196
+      "file_lines": 2187,
+      "raw_env_reads": 1
     },
     "scanners/package_scan.py::_db_covered_ecosystems": {
       "complexity": 16,
@@ -4159,14 +4885,17 @@
       "function_lines": 253
     },
     "scanners/package_scan.py::scan_packages": {
-      "complexity": 74,
-      "function_lines": 479
+      "complexity": 72,
+      "function_lines": 469
     },
     "scanners/registry.py": {
       "file_lines": 625
     },
     "scanners/registry.py::builtin_scanner_registrations": {
       "function_lines": 401
+    },
+    "scanners/repo_ignore.py": {
+      "broad_except": 1
     },
     "scanners/risk.py::osv_severity_basis": {
       "complexity": 20
@@ -4190,39 +4919,53 @@
       "function_lines": 104
     },
     "security.py": {
+      "broad_except": 1,
       "deferred_imports": 5,
-      "file_lines": 1314
+      "file_lines": 1314,
+      "raw_env_reads": 5
     },
     "security.py::validate_url": {
       "complexity": 19,
       "function_lines": 91
     },
     "self_posture.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "sidecar_injector.py": {
       "api_imports": 1
     },
     "siem/__init__.py": {
+      "broad_except": 4,
       "deferred_imports": 7
+    },
+    "siem/ocsf.py": {
+      "broad_except": 3
     },
     "siem/otlp_logs.py": {
       "api_imports": 1,
+      "broad_except": 4,
       "deferred_imports": 3
+    },
+    "skill_intel.py": {
+      "broad_except": 1
     },
     "skills_policy.py::evaluate_skills_policy": {
       "function_lines": 121
     },
     "skills_service.py": {
       "api_imports": 1,
+      "broad_except": 1,
       "deferred_imports": 1,
-      "file_lines": 633
+      "file_lines": 633,
+      "raw_env_reads": 1
     },
     "skills_service.py::_rescan_skill_catalog_async": {
       "function_lines": 120
     },
     "smithery.py": {
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 1
     },
     "smithery.py::sync_from_smithery": {
       "function_lines": 127
@@ -4232,11 +4975,17 @@
     },
     "storage/factory.py": {
       "api_imports": 1,
-      "deferred_imports": 1
+      "deferred_imports": 1,
+      "raw_env_reads": 2
     },
     "storage/postgres_capabilities.py": {
       "api_imports": 1,
-      "deferred_imports": 1
+      "broad_except": 1,
+      "deferred_imports": 1,
+      "raw_env_reads": 2
+    },
+    "storage/state_home.py": {
+      "raw_env_reads": 5
     },
     "suppression_rules.py": {
       "api_imports": 1
@@ -4249,26 +4998,33 @@
       "deferred_imports": 3
     },
     "ticketing/jira_rest.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "ticketing/mcp_transport.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "ticketing/oauth.py": {
       "api_imports": 3,
-      "deferred_imports": 6
+      "broad_except": 2,
+      "deferred_imports": 6,
+      "raw_env_reads": 1
     },
     "ticketing/postgres_store.py": {
       "api_imports": 2
     },
     "ticketing/service.py": {
       "api_imports": 2,
+      "broad_except": 3,
       "deferred_imports": 2
     },
     "trace_connectors.py": {
+      "broad_except": 1,
       "deferred_imports": 2
     },
     "trace_content.py": {
+      "broad_except": 2,
       "deferred_imports": 1
     },
     "transitive.py": {
@@ -4293,8 +5049,7 @@
       "file_lines": 682
     },
     "vex.py::generate_vex": {
-      "complexity": 16,
-      "function_lines": 114
+      "function_lines": 113
     },
     "vuln_compliance.py": {
       "deferred_imports": 1
@@ -4304,21 +5059,26 @@
       "function_lines": 168
     },
     "vuln_freshness.py": {
-      "deferred_imports": 4
+      "broad_except": 2,
+      "deferred_imports": 4,
+      "raw_env_reads": 4
     },
     "vuln_freshness.py::compute_freshness": {
       "function_lines": 104
     },
     "watch.py": {
+      "broad_except": 3,
       "deferred_imports": 11
     }
   },
   "limits": {
     "api_imports": 0,
+    "broad_except": 0,
     "complexity": 15,
     "deferred_imports": 0,
     "file_lines": 600,
     "function_lines": 80,
-    "graph_api_imports": 0
+    "graph_api_imports": 0,
+    "raw_env_reads": 0
   }
 }

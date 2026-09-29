@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from agent_bom.core.settings import env_flag, env_str
+
 logger = logging.getLogger(__name__)
 
 
@@ -163,7 +165,7 @@ class DatadogLogs:
         payload = {
             "ddsource": "agent-bom",
             "ddtags": f"source:agent-bom,type:{event.get('type', 'scan_alert')}",
-            "hostname": os.environ.get("HOSTNAME", "agent-bom"),
+            "hostname": env_str("HOSTNAME", "agent-bom"),
             "message": json.dumps(event),
         }
 
@@ -304,15 +306,15 @@ def create_from_env() -> SIEMConnector | None:
         AGENT_BOM_SIEM_TOKEN: auth token
         AGENT_BOM_SIEM_INDEX: index/sourcetype (optional)
     """
-    siem_type = os.environ.get("AGENT_BOM_SIEM_TYPE", "")
+    siem_type = env_str("AGENT_BOM_SIEM_TYPE")
     if not siem_type:
         return None
 
     config = SIEMConfig(
         name=siem_type,
-        url=os.environ.get("AGENT_BOM_SIEM_URL", ""),
-        token=os.environ.get("AGENT_BOM_SIEM_TOKEN", ""),
-        index=os.environ.get("AGENT_BOM_SIEM_INDEX", ""),
-        allow_private_networks=os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {"1", "true", "yes", "on"},
+        url=env_str("AGENT_BOM_SIEM_URL"),
+        token=env_str("AGENT_BOM_SIEM_TOKEN"),
+        index=env_str("AGENT_BOM_SIEM_INDEX"),
+        allow_private_networks=env_flag("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS"),
     )
     return create_connector(siem_type, config)

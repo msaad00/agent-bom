@@ -12,6 +12,7 @@ import click
 
 from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.cli._tenant import TENANT_ENV_VAR
+from agent_bom.core.settings import env_is_set, env_opt, env_path, env_raw
 
 CONFIG_ENV_VAR = "AGENT_BOM_CONFIG"
 PROFILE_ENV_VAR = "AGENT_BOM_PROFILE"
@@ -29,8 +30,7 @@ _INLINE_SECRET_KEYS = {
 
 def default_config_path() -> Path:
     """Return the operator config path, honoring the explicit env override."""
-    configured = os.environ.get(CONFIG_ENV_VAR)
-    return Path(configured).expanduser() if configured else DEFAULT_CONFIG_PATH.expanduser()
+    return env_path(CONFIG_ENV_VAR) or DEFAULT_CONFIG_PATH.expanduser()
 
 
 def load_profiles_config(path: Path | None = None) -> dict[str, Any]:
@@ -89,7 +89,7 @@ def _reject_inline_secrets(name: str, profile: dict[str, Any]) -> None:
 
 def resolve_profile_name(explicit: str | None = None, data: dict[str, Any] | None = None) -> str | None:
     """Resolve the active profile name from explicit input, env, then config."""
-    for candidate in (explicit, os.environ.get(PROFILE_ENV_VAR), (data or {}).get("current_profile")):
+    for candidate in (explicit, env_opt(PROFILE_ENV_VAR), (data or {}).get("current_profile")):
         if isinstance(candidate, str) and candidate.strip():
             name = candidate.strip()
             if not _PROFILE_NAME_RE.match(name):
@@ -116,7 +116,7 @@ def load_active_profile(explicit: str | None = None) -> tuple[str | None, dict[s
 def apply_profile_environment(profile: dict[str, Any]) -> None:
     """Apply environment-only profile values without overriding the process env."""
     tenant_id = _string_value(profile, "tenant_id", "tenant")
-    if tenant_id and not os.environ.get(TENANT_ENV_VAR):
+    if tenant_id and not env_raw(TENANT_ENV_VAR):
         os.environ[TENANT_ENV_VAR] = tenant_id
 
 
@@ -156,7 +156,7 @@ def profile_env_default(
     env_name = _string_value(profile, env_ref_key)
     if not env_name:
         return current
-    return os.environ.get(env_name) or current
+    return env_opt(env_name) or current
 
 
 def _string_value(profile: dict[str, Any], *keys: str) -> str | None:
@@ -246,10 +246,10 @@ def apply_scan_profile_defaults(
     # but stays quiet in agent-mode to keep automation logs clean).
     from agent_bom.cli._agent_mode import AGENT_MODE_ENV_VAR
 
-    auto_active = not (os.environ.get(PROFILE_ENV_VAR) or "").strip()
+    auto_active = not env_is_set(PROFILE_ENV_VAR)
     user_chose = explicit_output or explicit_format or caller_supplied_output or caller_supplied_format
     quiet = bool(ctx.params.get("quiet")) if ctx is not None else False
-    agent_mode_active = agent_mode or bool((os.environ.get(AGENT_MODE_ENV_VAR) or "").strip())
+    agent_mode_active = agent_mode or env_is_set(AGENT_MODE_ENV_VAR)
     banner = active_profile_banner(
         name,
         profile_format,

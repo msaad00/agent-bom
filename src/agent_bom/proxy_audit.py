@@ -23,6 +23,7 @@ from agent_bom.audit_integrity import (
     compute_audit_record_mac,
     persist_ephemeral_chain_key,
 )
+from agent_bom.core.settings import SettingError, env_int, env_str
 from agent_bom.event_normalization import build_agentic_identity_graph_projection, build_proxy_event_relationships
 from agent_bom.runtime import audit_delivery as _audit_delivery
 
@@ -42,17 +43,14 @@ _AUDIT_CHAIN_LOCK = threading.Lock()
 
 
 def _env_flag_enabled(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
+    return env_str(name).lower() in {"1", "true", "yes", "on", "enabled"}
 
 
 def _env_positive_int(name: str, default: int) -> int:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
     try:
-        return max(1, int(raw))
-    except ValueError:
-        logger.warning("Invalid %s=%r; using %d", name, raw, default)
+        return max(1, env_int(name, default))
+    except SettingError as exc:
+        logger.warning("%s; using %d", exc, default)
         return default
 
 

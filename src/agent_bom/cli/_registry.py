@@ -11,6 +11,7 @@ import click
 from rich.console import Console
 
 from agent_bom.cli._grouped_help import SuggestingGroup
+from agent_bom.core.settings import env_raw
 
 
 @click.group(cls=SuggestingGroup)
@@ -35,7 +36,6 @@ def schedule_add(name: str, cron: str, config: Optional[str]):
     if config:
         scan_config = json.loads(Path(config).read_text())
 
-    import os as _os
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
@@ -43,7 +43,7 @@ def schedule_add(name: str, cron: str, config: Optional[str]):
         raise click.ClickException("Invalid cron expression")
     next_run = parse_cron_next(cron, now)
 
-    db_path = _os.environ.get("AGENT_BOM_DB")
+    db_path = env_raw("AGENT_BOM_DB")
     store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
 
     sched = ScanSchedule(
@@ -67,12 +67,11 @@ def schedule_add(name: str, cron: str, config: Optional[str]):
 @schedule.command("list")
 def schedule_list():
     """List all scan schedules."""
-    import os as _os
 
     from agent_bom.api.schedule_store import InMemoryScheduleStore, SQLiteScheduleStore
 
     console = Console()
-    db_path = _os.environ.get("AGENT_BOM_DB")
+    db_path = env_raw("AGENT_BOM_DB")
     store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
 
     schedules = store.list_all(tenant_id="default")
@@ -89,12 +88,11 @@ def schedule_list():
 @click.argument("schedule_id")
 def schedule_remove(schedule_id: str):
     """Remove a scan schedule by ID."""
-    import os as _os
 
     from agent_bom.api.schedule_store import InMemoryScheduleStore, SQLiteScheduleStore
 
     console = Console()
-    db_path = _os.environ.get("AGENT_BOM_DB")
+    db_path = env_raw("AGENT_BOM_DB")
     store = SQLiteScheduleStore(db_path) if db_path else InMemoryScheduleStore()
 
     if store.delete(schedule_id, tenant_id="default"):

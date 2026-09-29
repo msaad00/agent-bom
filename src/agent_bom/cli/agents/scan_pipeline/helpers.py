@@ -10,6 +10,7 @@ import click
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._output import render_output
 from agent_bom.cli.agents._posture import render_posture_summary
+from agent_bom.core.settings import env_first, env_raw, env_str
 from agent_bom.models import AIBOMReport
 from agent_bom.scanners import IncompleteScanError
 
@@ -199,10 +200,9 @@ def _is_null_device(output: Any) -> bool:
 
 def _reproducible_generated_at(enabled: bool):
     """Return a pinned report timestamp when reproducible output is requested."""
-    import os
     from datetime import datetime, timezone
 
-    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    raw_epoch = env_raw("SOURCE_DATE_EPOCH")
     if raw_epoch is None and not enabled:
         return None
     epoch = 0 if raw_epoch is None else raw_epoch
@@ -229,15 +229,13 @@ def _cloud_scan_scope(
     collectors use are recorded, so two scans of different accounts never share
     an identity.
     """
-    import os
-
     candidates: dict[str, dict[str, str]] = {
         "aws": {
-            "region": aws_region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "",
-            "profile": aws_profile or os.environ.get("AWS_PROFILE") or "",
+            "region": aws_region or env_first("AWS_REGION", "AWS_DEFAULT_REGION"),
+            "profile": aws_profile or env_str("AWS_PROFILE"),
         },
-        "azure": {"subscription": azure_subscription or os.environ.get("AZURE_SUBSCRIPTION_ID") or ""},
-        "gcp": {"project": gcp_project or os.environ.get("GOOGLE_CLOUD_PROJECT") or ""},
+        "azure": {"subscription": azure_subscription or env_str("AZURE_SUBSCRIPTION_ID")},
+        "gcp": {"project": gcp_project or env_str("GOOGLE_CLOUD_PROJECT")},
     }
     scope: dict[str, dict[str, str]] = {}
     for provider in sorted(set(providers)):

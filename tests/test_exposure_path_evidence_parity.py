@@ -470,3 +470,91 @@ def test_runtime_hop_references_and_node_identity_survive_sqlite_reopen(tmp_path
         assert payload["target"]["entityType"] == "data_store"
         assert payload["hopEvidence"][0]["runtime_references"] == [{"event_id": "evt-123", "trace_id": "trace-456"}]
         assert payload["hopEvidence"][0]["runtime_observed_state"] == "blocked"
+
+
+def test_exposure_projection_matches_occurrences_unknown_risk_and_parallel_edges():
+    nodes = [
+        UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="assistant"),
+        UnifiedNode(id="pkg:p", entity_type=EntityType.PACKAGE, label="library"),
+        UnifiedNode(id="vuln:v", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1", attributes={"finding_id": "occurrence-a"}),
+    ]
+    path = AttackPath(
+        source="agent:a", target="vuln:v", hops=[n.id for n in nodes], edges=["depends_on", "vulnerable_to"], vuln_ids=["CVE-2026-1"]
+    )
+    selected = [
+        UnifiedEdge(source="agent:a", target="pkg:p", relationship=RelationshipType.DEPENDS_ON),
+        UnifiedEdge(source="pkg:p", target="vuln:v", relationship=RelationshipType.VULNERABLE_TO),
+    ]
+    parallel = UnifiedEdge(source="agent:a", target="pkg:p", relationship=RelationshipType.INVOKED)
+    mcp, api = _serialize_both(path, nodes=nodes, edges=[selected[1], parallel, selected[0]])
+    for payload in (mcp, api):
+        assert payload["findings"] == ["occurrence-a", "CVE-2026-1"]
+        assert "riskScore" not in payload["source"]  # unassessed is not zero risk
+        assert payload["target"]["role"] == "finding"
+        assert payload["target"]["entityType"] == "vulnerability"
+        assert payload["edgeIds"] == [edge.id for edge in selected]
+    assert {k: v for k, v in mcp.items() if k != "provenance"} == {k: v for k, v in api.items() if k != "provenance"}
+
+
+def test_reverse_bidirectional_relationship_preserves_stored_endpoints():
+    edge = UnifiedEdge(
+        source="agent:b", target="agent:a", relationship=RelationshipType.SHARES_SERVER, direction="bidirectional", traversable=False
+    )
+    path = AttackPath(source="agent:a", target="agent:b", hops=["agent:a", "agent:b"], edges=["shares_server"])
+    for payload in _serialize_both(path, nodes=[], edges=[edge]):
+        assert len(payload["relationships"]) == 1
+        assert payload["relationships"][0]["source"] == edge.source
+        assert payload["relationships"][0]["target"] == edge.target
+        assert payload["relationships"][0]["traversable"] is False
+
+
+@pytest.mark.asyncio
+async def test_reopened_snapshot_keeps_asset_occurrences_scoped_across_surfaces(tmp_path):
+    import json
+
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.graph import UnifiedGraph
+    from agent_bom.mcp_tools.graph import exposure_paths_for_tenant
+
+    database = tmp_path / "exposure.db"
+    for tenant in ("tenant-a", "tenant-b"):
+        graph = UnifiedGraph(scan_id="shared-scan", tenant_id=tenant)
+        graph.add_node(UnifiedNode(id="pkg:a", entity_type=EntityType.PACKAGE, label="library"))
+        graph.add_node(UnifiedNode(id="pkg:b", entity_type=EntityType.PACKAGE, label="library"))
+        graph.add_node(
+            UnifiedNode(
+                id="vuln:v",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                attributes={
+                    "finding_ids_by_asset": {"pkg:a": [tenant + "-occurrence-a"], "pkg:b": [tenant + "-occurrence-b"]},
+                },
+            )
+        )
+        graph.add_edge(UnifiedEdge(source="pkg:a", target="vuln:v", relationship=RelationshipType.VULNERABLE_TO))
+        graph.attack_paths = [AttackPath(source="pkg:a", target="vuln:v", hops=["pkg:a", "vuln:v"], edges=["vulnerable_to"])]
+        SQLiteGraphStore(database).save_graph(graph)
+
+    store = SQLiteGraphStore(database)
+    loaded = store.load_graph(tenant_id="tenant-a", scan_id="shared-scan")
+    assert loaded is not None
+    api = _exposure_path_for_attack_path(
+        loaded.attack_paths[0], nodes_by_id=loaded.nodes, edges=loaded.edges, rank=1, scan_id=loaded.scan_id
+    )
+    payload = json.loads(await exposure_paths_for_tenant(tenant_id="tenant-a", scan_id="shared-scan", _get_graph_store=lambda: store))
+    assert payload["count"] == 1
+    mcp = payload["paths"][0]
+    assert mcp["findings"] == ["tenant-a-occurrence-a"]
+    assert {k: v for k, v in mcp.items() if k != "provenance"} == {k: v for k, v in api.items() if k != "provenance"}
+    assert "tenant-b" not in json.dumps(payload)
+    assert "tenant-a-occurrence-b" not in json.dumps(mcp)
+
+
+def test_deploy_candidate_matches_precise_entity_type_after_role_normalization():
+    from agent_bom.mcp_tools.graph import _candidate_matches_path
+
+    node = UnifiedNode(id="resource:r", entity_type=EntityType.CLOUD_RESOURCE, label="database")
+    path = AttackPath(source=node.id, target=node.id, hops=[node.id])
+    payload = _exposure_path_payload(path, nodes_by_id={node.id: node}, edges=[], rank=1, scan_id="scan-1")
+    assert payload["source"]["role"] == "server"
+    assert _candidate_matches_path("cloud_resource", payload)

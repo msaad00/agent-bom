@@ -287,6 +287,17 @@ The CLI accepts `agent-bom graph-paths exposure --cursor <cursor> --format json`
 the Python client accepts `exposure_paths(cursor=...)`, and the TypeScript
 client accepts `exposurePaths({ cursor, scanId })`.
 
+Exposure references use the same projection as REST graph investigations:
+`role` is the canonical display role (for example, `finding` or `server`),
+while `entityType` retains the precise graph type (`vulnerability`,
+`misconfiguration`, `container`, and so on). Clients that previously inspected
+an MCP reference's `role` for the graph type should use `entityType` instead.
+Unassessed nodes omit `riskScore`; `risk_assessment` describes the unknown.
+`findings` includes asset-scoped occurrence IDs when available, retaining
+advisory aliases for compatibility. Relationships follow hop order and select
+the recorded relationship for each hop; bidirectional edges retain their
+stored endpoints and do not become directed evidence.
+
 Inspect `evidenceDimensions` for reachability, exploitability, impact,
 actionability, and completeness. Relationship `direction` and `traversable`
 describe the recorded connection, not proof of exploitation. The dashboard

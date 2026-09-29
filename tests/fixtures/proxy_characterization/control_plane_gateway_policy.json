@@ -1,0 +1,456 @@
+{
+  "audit": [
+    {
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "ts": "<volatile>",
+      "type": "mcp_execution_posture"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "bb48c09131c796fc80ddbdf5f0e4c06a43e76263ed3274cac672c02ac08bf08e",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          },
+          {
+            "evidence": {
+              "event_id": "bb48c09131c796fc80ddbdf5f0e4c06a43e76263ed3274cac672c02ac08bf08e",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "accessed",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "resource",
+            "id": "resource:path:path:referenced_input:<path_hosts>",
+            "label": "<path:hosts>",
+            "source_ref": {
+              "id": "<path:hosts>",
+              "role": "referenced_input",
+              "source_field": "path",
+              "type": "path"
+            }
+          },
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:read_file",
+            "label": "read_file",
+            "source_ref": {
+              "id": "read_file",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "bb48c09131c796fc80ddbdf5f0e4c06a43e76263ed3274cac672c02ac08bf08e",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "resources": [
+          {
+            "id": "<path:hosts>",
+            "role": "referenced_input",
+            "source_field": "path",
+            "type": "path"
+          }
+        ],
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "read_file",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 1,
+      "payload_sha256": "bb48c09131c796fc80ddbdf5f0e4c06a43e76263ed3274cac672c02ac08bf08e",
+      "policy": "blocked",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "read_file",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "1210e2fafd19d576d2246e615969414a5548e929e57402126929a59d678da42e",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "tool_call:proxy_tool_call_1210e2fafd19d576d2246e615969414a5548e929e57402126929a59d678da42e_anonymous_tool_invoked_tool_tool_"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:echo",
+            "label": "echo",
+            "source_ref": {
+              "id": "echo",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "1210e2fafd19d576d2246e615969414a5548e929e57402126929a59d678da42e",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "tool_call:proxy_tool_call_1210e2fafd19d576d2246e615969414a5548e929e57402126929a59d678da42e_anonymous_tool_invoked_tool_tool_",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "echo",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 2,
+      "payload_sha256": "1210e2fafd19d576d2246e615969414a5548e929e57402126929a59d678da42e",
+      "policy": "allowed",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "echo",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "details": {
+        "tool": "echo"
+      },
+      "detector": "argument_analyzer",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "severity": "high",
+      "ts": "<volatile>",
+      "type": "runtime_alert"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "a7f474cc77a31bcaaa31985f8c6c932bfe24070931f567023cb1f4abeb7ddb35",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          },
+          {
+            "evidence": {
+              "event_id": "a7f474cc77a31bcaaa31985f8c6c932bfe24070931f567023cb1f4abeb7ddb35",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "accessed",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "resource",
+            "id": "resource:path:path:referenced_input:../../../../etc/shadow",
+            "label": "../../../../etc/shadow",
+            "source_ref": {
+              "id": "../../../../etc/shadow",
+              "role": "referenced_input",
+              "source_field": "path",
+              "type": "path"
+            }
+          },
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:echo",
+            "label": "echo",
+            "source_ref": {
+              "id": "echo",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "a7f474cc77a31bcaaa31985f8c6c932bfe24070931f567023cb1f4abeb7ddb35",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "resources": [
+          {
+            "id": "../../../../etc/shadow",
+            "role": "referenced_input",
+            "source_field": "path",
+            "type": "path"
+          }
+        ],
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "echo",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 3,
+      "payload_sha256": "a7f474cc77a31bcaaa31985f8c6c932bfe24070931f567023cb1f4abeb7ddb35",
+      "policy": "allowed",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "echo",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "audit_buffer_bytes": 373,
+      "audit_circuit_open": 0,
+      "audit_dlq_bytes": 0,
+      "audit_push_backoff_seconds": 10,
+      "audit_push_failures": 0,
+      "audit_spillover_bytes": 0,
+      "blocked_by_reason": {
+        "gateway_policy": 1
+      },
+      "blocked_runtime_alerts": 0,
+      "calls_by_tool": {
+        "echo": 2
+      },
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "last_decision": "allowed:echo",
+      "latency": {
+        "avg_ms": "<volatile>",
+        "count": 2,
+        "max_ms": "<volatile>",
+        "min_ms": "<volatile>",
+        "p50_ms": "<volatile>",
+        "p95_ms": "<volatile>"
+      },
+      "latest_runtime_alert_at": "<volatile>",
+      "messages_client_to_server": 4,
+      "messages_server_to_client": 2,
+      "policy_fetch_failures": 0,
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "relay_errors": 0,
+      "replay_rejections": 0,
+      "runtime_alerts": 1,
+      "runtime_alerts_by_detector": {
+        "argument_analyzer": 1
+      },
+      "runtime_alerts_by_severity": {
+        "high": 1
+      },
+      "total_blocked": 1,
+      "total_tool_calls": 2,
+      "ts": "<volatile>",
+      "type": "proxy_summary",
+      "uptime_seconds": "<volatile>"
+    }
+  ],
+  "client_frames": [
+    {
+      "error": {
+        "code": -32600,
+        "message": "Tool 'read_file' is blocked by rule 'r1'"
+      },
+      "id": 1,
+      "jsonrpc": "2.0"
+    },
+    {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "ok:echo",
+            "type": "text"
+          }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "ok:echo",
+            "type": "text"
+          }
+        ]
+      }
+    }
+  ],
+  "control_plane_pushes": [
+    {
+      "alerts": [
+        {
+          "details": {
+            "argument": "path",
+            "pattern": "Path traversal",
+            "tool": "echo",
+            "value_preview": "../../../../etc/shadow"
+          },
+          "detector": "argument_analyzer",
+          "message": "Dangerous argument pattern 'Path traversal' in echo.path",
+          "session_id": "<volatile>",
+          "severity": "high",
+          "source_id": "<volatile>",
+          "ts": "<volatile>",
+          "type": "runtime_alert"
+        }
+      ],
+      "base_url": "https://control.example.test",
+      "summary": {
+        "audit_buffer_bytes": 373,
+        "audit_circuit_open": 0,
+        "audit_dlq_bytes": 0,
+        "audit_push_backoff_seconds": 10,
+        "audit_push_failures": 0,
+        "audit_spillover_bytes": 0,
+        "blocked_by_reason": {
+          "gateway_policy": 1
+        },
+        "blocked_runtime_alerts": 0,
+        "calls_by_tool": {
+          "echo": 2
+        },
+        "execution_posture": {
+          "mode": "observation_only",
+          "sandbox_evidence": {
+            "enabled": false
+          }
+        },
+        "last_decision": "allowed:echo",
+        "latency": {
+          "avg_ms": "<volatile>",
+          "count": 2,
+          "max_ms": "<volatile>",
+          "min_ms": "<volatile>",
+          "p50_ms": "<volatile>",
+          "p95_ms": "<volatile>"
+        },
+        "latest_runtime_alert_at": "<volatile>",
+        "messages_client_to_server": 4,
+        "messages_server_to_client": 2,
+        "policy_fetch_failures": 0,
+        "relay_errors": 0,
+        "replay_rejections": 0,
+        "runtime_alerts": 1,
+        "runtime_alerts_by_detector": {
+          "argument_analyzer": 1
+        },
+        "runtime_alerts_by_severity": {
+          "high": 1
+        },
+        "total_blocked": 1,
+        "total_tool_calls": 2,
+        "ts": "<volatile>",
+        "type": "proxy_summary",
+        "uptime_seconds": "<volatile>"
+      },
+      "token": "tok"
+    }
+  ],
+  "exit_code": 0,
+  "server_frames": [
+    {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "arguments": {
+          "text": "ok"
+        },
+        "name": "echo"
+      }
+    },
+    {
+      "id": 3,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "arguments": {
+          "path": "../../../../etc/shadow"
+        },
+        "name": "echo"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "test/exit"
+    }
+  ]
+}

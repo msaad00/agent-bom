@@ -1,0 +1,223 @@
+{
+  "audit": [
+    {
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "ts": "<volatile>",
+      "type": "mcp_execution_posture"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "0ff4f747640c305b0bae6421b0e0e1c564c809b68854a078bc3e6594aecb66ba",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:echo",
+            "label": "echo",
+            "source_ref": {
+              "id": "echo",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "0ff4f747640c305b0bae6421b0e0e1c564c809b68854a078bc3e6594aecb66ba",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "echo",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 1,
+      "payload_sha256": "0ff4f747640c305b0bae6421b0e0e1c564c809b68854a078bc3e6594aecb66ba",
+      "policy": "allowed",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "echo",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "595a2e512acbb4bf694a7a617d70cfa4b5e67642c5be8536fce7284b3b90910f",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:crash",
+            "label": "crash",
+            "source_ref": {
+              "id": "crash",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "595a2e512acbb4bf694a7a617d70cfa4b5e67642c5be8536fce7284b3b90910f",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "crash",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 2,
+      "payload_sha256": "595a2e512acbb4bf694a7a617d70cfa4b5e67642c5be8536fce7284b3b90910f",
+      "policy": "allowed",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "crash",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "audit_buffer_bytes": 0,
+      "audit_circuit_open": 0,
+      "audit_dlq_bytes": 0,
+      "audit_push_backoff_seconds": 0,
+      "audit_push_failures": 0,
+      "audit_spillover_bytes": 0,
+      "blocked_by_reason": {},
+      "blocked_runtime_alerts": 0,
+      "calls_by_tool": {
+        "crash": 1,
+        "echo": 1
+      },
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "last_decision": "allowed:crash",
+      "latency": {
+        "avg_ms": "<volatile>",
+        "count": 1,
+        "max_ms": "<volatile>",
+        "min_ms": "<volatile>",
+        "p50_ms": "<volatile>",
+        "p95_ms": "<volatile>"
+      },
+      "latest_runtime_alert_at": "<volatile>",
+      "messages_client_to_server": 2,
+      "messages_server_to_client": 1,
+      "policy_fetch_failures": 0,
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "relay_errors": 0,
+      "replay_rejections": 0,
+      "runtime_alerts": 0,
+      "runtime_alerts_by_detector": {},
+      "runtime_alerts_by_severity": {},
+      "total_blocked": 0,
+      "total_tool_calls": 2,
+      "ts": "<volatile>",
+      "type": "proxy_summary",
+      "uptime_seconds": "<volatile>"
+    }
+  ],
+  "client_frames": [
+    {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "ok:echo",
+            "type": "text"
+          }
+        ]
+      }
+    }
+  ],
+  "control_plane_pushes": [],
+  "exit_code": 3,
+  "server_frames": [
+    {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "arguments": {},
+        "name": "echo"
+      }
+    },
+    {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "arguments": {},
+        "name": "crash"
+      }
+    }
+  ]
+}

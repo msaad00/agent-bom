@@ -1,0 +1,80 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "agent-bom",
+          "version": "0.0.0-golden",
+          "informationUri": "https://github.com/msaad00/agent-bom",
+          "rules": [
+            {
+              "id": "CVE-2023-36258",
+              "shortDescription": {
+                "text": "CRITICAL: CVE-2023-36258 in langchain@0.0.150"
+              },
+              "fullDescription": {
+                "text": "LangChain arbitrary code execution via PALChain prompt-to-Python evaluation"
+              },
+              "helpUri": "https://osv.dev/vulnerability/CVE-2023-36258",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "9.8",
+                "attack_vector": null,
+                "attack_complexity": null,
+                "privileges_required": null,
+                "user_interaction": null,
+                "network_exploitable": false,
+                "exploit_likelihood": "unassessed",
+                "tags": [
+                  "CWE-94"
+                ]
+              },
+              "help": {
+                "text": "LangChain arbitrary code execution via PALChain prompt-to-Python evaluation Remediation: Upgrade langchain to 0.0.247. Reference: https://osv.dev/vulnerability/CVE-2023-36258",
+                "markdown": "LangChain arbitrary code execution via PALChain prompt-to-Python evaluation **Remediation:** Upgrade langchain to 0.0.247. [Reference](https://osv.dev/vulnerability/CVE-2023-36258)"
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "94",
+                    "guid": "9419a3ff-e820-5c47-8ef0-548a64590908",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+                    }
+                  },
+                  "kinds": [
+                    "relevant"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "CVE-2020-14343",
+              "shortDescription": {
+                "text": "CRITICAL: CVE-2020-14343 in pyyaml@5.3"
+              },
+              "fullDescription": {
+                "text": "PyYAML arbitrary code execution via yaml.full_load on untrusted input"
+              },
+              "helpUri": "https://osv.dev/vulnerability/CVE-2020-14343",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "9.8",
+                "attack_vector": null,
+                "attack_complexity": null,
+                "privileges_required": null,
+                "user_interaction": null,
+                "network_exploitable": false,
+                "exploit_likelihood": "unassessed",
+                "tags": [
+                  "CWE-20"
+                ]
+              },
+              "help": {

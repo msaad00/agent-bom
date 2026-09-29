@@ -3489,12 +3489,6 @@
     "output/html/document.py::to_html": {
       "function_lines": 318
     },
-    "output/html/scripts.py": {
-      "file_lines": 1362
-    },
-    "output/html/scripts.py::render_graph_script": {
-      "function_lines": 1151
-    },
     "output/html/sections.py": {
       "deferred_imports": 16,
       "file_lines": 1582
@@ -3589,16 +3583,12 @@
       "function_lines": 179
     },
     "output/sarif.py": {
-      "deferred_imports": 5,
-      "file_lines": 1409
+      "deferred_imports": 3,
+      "file_lines": 1256
     },
     "output/sarif.py::_cve_sarif_result": {
       "complexity": 18,
       "function_lines": 142
-    },
-    "output/sarif.py::to_sarif": {
-      "complexity": 33,
-      "function_lines": 520
     },
     "output/scan_document.py": {
       "deferred_imports": 6

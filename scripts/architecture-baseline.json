@@ -30,7 +30,6 @@
     "ast/js_ts/facade.py": 1099,
     "ast_go.py": 1093,
     "ast_python_analysis.py": 2447,
-    "cli/_check.py": 1394,
     "cli/_cloud_group.py": 1108,
     "cli/_server.py": 1286,
     "cli/agents/_discovery.py": 1295,

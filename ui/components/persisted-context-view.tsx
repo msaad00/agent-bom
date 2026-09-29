@@ -17,7 +17,8 @@ import { entityIcon } from "@/lib/entity-icons";
 import { contextRelationshipLabel } from "@/lib/context-graph";
 import { GRAPH_LAYER_ENTITY_TYPES } from "@/lib/graph-entity-mapping";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
-import { useGraphLayout } from "@/lib/use-graph-layout";
+import { useContextLayout } from "@/lib/use-context-layout";
+import type { ContextLayoutMode } from "@/lib/context-layout";
 import { BACKGROUND_COLOR, BACKGROUND_GAP, CONTROLS_CLASS, NODE_COLOR_MAP } from "@/lib/graph-utils";
 import { useAuthState } from "@/components/auth-provider";
 import { useIncidentNeighborhood, type IncidentDirection } from "@/hooks/use-incident-neighborhood";
@@ -121,13 +122,6 @@ function OwnedContextView({ owner }: { owner: string }) {
 }
 
 export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { scanId: string; owner: string; initialRootId?: string }) {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setMobile(media.matches);
-    update(); media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState<string | undefined>();
   const [selector, setSelector] = useState<GraphAgentsResponse | null>(null);
@@ -187,12 +181,8 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     return directed;
   }), [flow.edges, display.edges, selectedEdge, selectedId, focusId]);
   const overviewNodes = useMemo(() => flow.nodes.map(node => ({ ...node, selected: !selectedEdge && node.id === (selectedId || focus), ...(!focusId ? { type: "contextOverview" } : {}) })), [flow.nodes, focusId, selectedId, selectedEdge, focus]);
-  // Long relationship chains read at full size vertically. A broad hub uses
-  // horizontal ranks so its fan-out can use the taller canvas instead.
-  const wideHub = !mobile && display.nodes.some(node => display.edges.filter(edge => edge.source === node.id || edge.target === node.id).length >= 5);
-  const layout = useGraphLayout("dagre", overviewNodes, directedEdges, { dagre: focusId
-    ? { direction: "TB", nodeWidth: 260, nodeHeight: 130, rankSep: 40, nodeSep: 24, minSeparation: { width: 260, height: 130, gap: 24 } }
-    : { direction: wideHub ? "LR" : "TB", nodeWidth: 208, nodeHeight: 80, rankSep: 40, nodeSep: wideHub ? 8 : 24, minSeparation: { width: 208, height: 80, gap: wideHub ? 8 : 16 } } });
+  const layout = useContextLayout(overviewNodes, directedEdges, !!focusId,
+    JSON.stringify([scanId, rootId, direction, focusId]), !graph.busy && graph.pages.length > 0);
   const selected = graph.nodes.find(node => node.id === (selectedId || focus));
   const incident = graph.edges.filter(edge => edge.source === selected?.id || edge.target === selected?.id);
   const pages = graph.pages.filter(page => page.node_id === selected?.id);
@@ -214,6 +204,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
       <label className="min-w-0 text-sm">Agent search<input aria-label="Agent search" className="context-action mt-1 block w-full" value={query} onChange={event => { setQuery(event.target.value); setCursor(undefined); }} placeholder="Search recorded agent names or IDs" /></label>
       <label className="text-sm">Direction<select aria-label="Relationship direction" className="context-action ml-2" value={direction} onChange={event => { setDirection(event.target.value as IncidentDirection); setSelectedId(null); setSelectedEdge(null); setFocusId(null); setExpandedCanvas(false); }}><option value="both">Incoming + outgoing</option><option value="in">Incoming</option><option value="out">Outgoing</option></select></label>
       </div></details>
+      <fieldset className="context-field" aria-label="Graph layout"><legend>Layout</legend><div className="flex gap-1">{(["auto", "horizontal", "vertical"] as ContextLayoutMode[]).map(mode => <button key={mode} className="context-action aria-pressed:border-[var(--text-secondary)] aria-pressed:bg-[var(--surface)]" aria-pressed={layout.mode === mode} onClick={() => layout.selectMode(mode)} title={mode === "auto" ? "Choose the best canvas fit and keep it stable as you explore" : undefined}>{mode === "auto" ? "Auto" : mode === "horizontal" ? "Horizontal" : "Vertical"}</button>)}</div></fieldset>
       {focusId && <button className="context-action" onClick={() => { setFocusId(null); setSelectedEdge(null); }}>Back to neighborhood</button>}
       <button className="context-action context-icon-action" aria-label="Restart neighborhood" title="Restart neighborhood" disabled={graph.busy || !rootId} onClick={() => { setSelectedId(null); setSelectedEdge(null); setFocusId(null); graph.restart(); }}><RotateCcw size={16} aria-hidden="true" /></button>
       <button className="context-action inline-flex items-center gap-2" aria-pressed={expandedCanvas} onClick={() => setExpandedCanvas(value => !value)}>{expandedCanvas ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}{expandedCanvas ? "Compact canvas" : "Expand canvas"}</button>
@@ -231,8 +222,8 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     {graph.pages.some(page => page.completeness.missing_endpoint_count > 0) && <p>Some recorded endpoints are unavailable; this neighborhood is incomplete.</p>}
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="context-map-panels">
-      <div aria-label="Persisted neighborhood canvas" className="context-map-canvas">
-        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, mobile, layout.nodes.map(node => node.id), layout.pending])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
+      <div ref={layout.canvasRef} aria-label="Persisted neighborhood canvas" data-layout-direction={layout.direction} className="context-map-canvas">
+        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP * 1.5} size={0.5} /><Controls className={CONTROLS_CLASS} />
         </ReactFlow>}

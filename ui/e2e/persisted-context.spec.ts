@@ -52,6 +52,19 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     await expect(viewMenu.getByRole("button", { name: /Cloud/ })).toBeVisible();
     await views.click();
     await expect(page.getByText("Coverage unknown", { exact: true })).toBeVisible();
+    const layouts = page.getByRole("group", { name: "Graph layout" });
+    const auto = layouts.getByRole("button", { name: "Auto", exact: true });
+    const canvas = page.getByLabel("Persisted neighborhood canvas");
+    await expect(auto).toHaveAttribute("aria-pressed", "true");
+    await layouts.getByRole("button", { name: "Horizontal", exact: true }).click();
+    await expect(canvas).toHaveAttribute("data-layout-direction", "LR");
+    await layouts.getByRole("button", { name: "Vertical", exact: true }).click();
+    await expect(canvas).toHaveAttribute("data-layout-direction", "TB");
+    await auto.focus();
+    await expect(auto).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(auto).toHaveAttribute("aria-pressed", "true");
+
     await inspector.getByRole("button", { name: /Bidirectional.*Recorded connection.*File server/ }).click();
     await expect(inspector).toContainText("Evidence basis: configured");
     await expect(inspector).toContainText("Runtime outcome: unknown");

@@ -6,6 +6,7 @@ import base64
 import json
 from typing import Any
 
+from agent_bom.api.storage.sql import Col, Dialect, Keyset
 from agent_bom.core.cvss import normalize_cvss_score
 from agent_bom.core.severity import severity_policy_rank
 
@@ -190,36 +191,50 @@ def cursor_from_current_row(row: dict[str, Any], *, sort: str) -> str:
     )
 
 
-def _cvss_keyset_expr() -> str:
-    # Bare column (not COALESCE) so the keyset range predicate rides the
-    # cvss sort index; safe because cvss_score is NOT NULL DEFAULT 0 (#3641).
-    return "cvss_score"
+def finding_keyset(sort: str) -> Keyset:
+    """Sort key of a ``hub_findings_current`` page, shared by both engines.
+
+    Risk sorts order by the materialised score descending, then ``last_seen``
+    descending, then ``canonical_id`` ascending; ``ordinal`` orders by the
+    ledger ordinal, ``first_seen`` and ``canonical_id``, all ascending. Score
+    columns are bare NOT NULL columns (``cvss_score`` defaults to 0, #3641) so
+    the order and the cursor bound ride the sort indexes. Text tie-breakers
+    compare by code point on both engines, which Postgres serves from the
+    ``COLLATE "C"`` sort indexes.
+    """
+    normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
+    if normalized == "ordinal":
+        return Keyset([Col("ledger_ordinal", numeric=True), Col("first_seen"), Col("canonical_id")])
+    primary = {"cvss": "cvss_score", "severity": "severity_rank"}.get(normalized, "effective_reach_score")
+    return Keyset([Col(primary, desc=True, numeric=True), Col("last_seen", desc=True), Col("canonical_id")])
+
+
+def finding_order_clause(dialect: Dialect, sort: str) -> str:
+    """``ORDER BY`` clause for a ``hub_findings_current`` page."""
+    return f"ORDER BY {finding_keyset(sort).order_by(dialect)}"
+
+
+def finding_keyset_clause(dialect: Dialect, sort: str, cursor: str) -> tuple[str, list[Any]]:
+    """`` AND <predicate>`` with ``?`` placeholders selecting rows after ``cursor``.
+
+    The predicate carries each engine's collation, so it must be built for the
+    dialect that runs it (a :class:`~agent_bom.api.storage.sql.SqlBackend`
+    session rewrites the placeholders for Postgres).
+    """
+    normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
+    position = decode_finding_cursor(cursor, expected_sort=normalized)
+    predicate, params = finding_keyset(normalized).after(dialect, position)
+    return f" AND {predicate}", list(params)
 
 
 def sqlite_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
     """Return extra WHERE SQL + params for keyset pagination after ``cursor``."""
-    normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
-    if normalized == "ordinal":
-        primary, first_seen, canonical_id = decode_finding_cursor(cursor, expected_sort=normalized)
-        return (
-            " AND (ledger_ordinal > ? OR (ledger_ordinal = ? AND (first_seen > ? OR (first_seen = ? AND canonical_id > ?))))",
-            [primary, primary, first_seen, first_seen, canonical_id],
-        )
-    primary, last_seen, canonical_id = decode_finding_cursor(cursor, expected_sort=normalized)
-    if normalized == "cvss":
-        col = _cvss_keyset_expr()
-    elif normalized == "severity":
-        col = "severity_rank"
-    else:
-        col = "effective_reach_score"
-    return (
-        f" AND ({col} < ? OR ({col} = ? AND (last_seen < ? OR (last_seen = ? AND canonical_id > ?))))",
-        [primary, primary, last_seen, last_seen, canonical_id],
-    )
+    return finding_keyset_clause("sqlite", sort, cursor)
 
 
 def postgres_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
-    clause, params = sqlite_keyset_clause(sort, cursor)
+    """Postgres form of :func:`sqlite_keyset_clause` with ``%s`` placeholders for a raw psycopg connection."""
+    clause, params = finding_keyset_clause("postgres", sort, cursor)
     return clause.replace("?", "%s"), params
 
 

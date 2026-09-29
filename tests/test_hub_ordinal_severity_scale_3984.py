@@ -60,7 +60,7 @@ def _seed(tmp_path, *, a: int = 40, b: int = 60) -> SQLiteComplianceHubStore:
 
 def test_ordinal_order_clause_has_no_correlated_subquery() -> None:
     clause = _sqlite_current_order_clause("ordinal")
-    assert clause == "ORDER BY ledger_ordinal ASC, first_seen ASC, canonical_id ASC"
+    assert clause == "ORDER BY ledger_ordinal ASC, first_seen COLLATE BINARY ASC, canonical_id COLLATE BINARY ASC"
     # The old per-row ledger subquery is gone.
     assert "SELECT" not in clause.upper()
     assert "compliance_hub_findings" not in clause

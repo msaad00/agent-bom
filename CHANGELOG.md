@@ -13,6 +13,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Authenticated read-only Jamf Pro and CrowdStrike Falcon inventory sync with encrypted credentials, resumable collection, tenant-isolated SQLite/Postgres evidence and explicit freshness/collection gaps. Manage connections through the API, CLI and a bounded Connections → Endpoints tab; inspect inventory and run authorized syncs through MCP. Sensor health remains distinct from policy compliance.
 
+### Changed
+
+- Findings pages (`/v1/findings`, `/v1/compliance/hub/findings`) order findings that tie on score and timestamp by code point of `canonical_id` (and `last_seen` / `first_seen`) on Postgres, matching SQLite. Previously a Postgres database with a locale collation such as `en_US.UTF-8` could order those ties differently. Existing cursors keep working. The Postgres migration `20260928_01` adds `COLLATE "C"` versions of the findings sort indexes, built concurrently, so every sorted page stays an index scan; a cursor page now seeks directly to its position instead of filtering the rows before it.
+
 ### Fixed
 
 - `POST /v1/scan` now runs the same secret scan as `agent-bom scan -p` for `agent_projects` and `filesystem_paths`, not only for `repo_url` clones.

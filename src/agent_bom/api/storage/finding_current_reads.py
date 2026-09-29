@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from agent_bom.api.finding_cursor import cursor_from_current_row, sqlite_keyset_clause
+from agent_bom.api.finding_cursor import cursor_from_current_row, finding_keyset, finding_keyset_clause
 from agent_bom.api.storage.finding_current import columns, hydrate_rows, parse_row
 from agent_bom.api.storage.sql import Dialect, SqlBackend, SqlSession
 from agent_bom.core.tenancy import require_explicit_tenant_id
@@ -24,12 +24,9 @@ def has_ledger_column(tx: SqlSession, dialect: Dialect) -> bool:
     )
 
 
-def current_order(sort: str) -> str:
-    # Preserve deployed index collations and existing opaque-cursor ordering.
-    if sort == "ordinal":
-        return "ledger_ordinal ASC, first_seen ASC, canonical_id ASC"
-    column = {"cvss": "cvss_score", "severity": "severity_rank"}.get(sort, "effective_reach_score")
-    return f"{column} DESC, last_seen DESC, canonical_id ASC"
+def current_order(sort: str, dialect: Dialect = "sqlite") -> str:
+    """Use the same collated sort key as the opaque cursor predicate."""
+    return finding_keyset(sort).order_by(dialect)
 
 
 def filters(
@@ -66,10 +63,11 @@ def fetch_page(
     offset: int,
     cursor: str | None,
     has_ledger: bool,
+    dialect: Dialect,
 ) -> tuple[list[dict[str, Any]], str | None]:
     predicates, values = list(where), list(params)
     if cursor:
-        clause, extra = sqlite_keyset_clause(sort, cursor)
+        clause, extra = finding_keyset_clause(dialect, sort, cursor)
         predicates.append(clause.removeprefix(" AND "))
         values.extend(extra)
     predicate = " AND ".join(predicates)
@@ -79,7 +77,7 @@ def fetch_page(
         limit_sql += " OFFSET ?"
         values.append(offset)
     rows = tx.execute(
-        f"SELECT {columns(has_ledger)} FROM hub_findings_current WHERE {predicate} ORDER BY {current_order(sort)} {limit_sql}",  # nosec B608
+        f"SELECT {columns(has_ledger)} FROM hub_findings_current WHERE {predicate} ORDER BY {current_order(sort, dialect)} {limit_sql}",  # nosec B608
         values,
     ).fetchall()  # nosec B608
     parsed = [parse_row(row, has_ledger_col=has_ledger) for row in rows[:limit]]
@@ -98,6 +96,7 @@ def scoped_page(
     limit: int,
     cursor: str | None,
     has_ledger: bool,
+    dialect: Dialect,
     scope: Mapping[str, str],
     metadata: dict[str, Any] | None,
 ) -> Page:
@@ -107,7 +106,16 @@ def scoped_page(
 
     def fetch(batch_cursor: str | None, batch_limit: int) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], str | None]:
         rows, next_cursor = fetch_page(
-            tx, tenant, where=where, params=params, sort=sort, limit=batch_limit, offset=0, cursor=batch_cursor, has_ledger=has_ledger
+            tx,
+            tenant,
+            where=where,
+            params=params,
+            sort=sort,
+            limit=batch_limit,
+            offset=0,
+            cursor=batch_cursor,
+            has_ledger=has_ledger,
+            dialect=dialect,
         )
         return [(row, enriched_finding_payload(row)) for row in rows], next_cursor
 
@@ -189,6 +197,7 @@ class SqlCurrentFindingReads:
                     limit=limit,
                     cursor=cursor,
                     has_ledger=has_ledger,
+                    dialect=self._backend.dialect,
                     scope=scope,
                     metadata=scope_metadata,
                 )
@@ -206,5 +215,6 @@ class SqlCurrentFindingReads:
                 offset=int(offset),
                 cursor=cursor,
                 has_ledger=has_ledger,
+                dialect=self._backend.dialect,
             )
             return [enriched_finding_payload(row) for row in rows], total, next_cursor

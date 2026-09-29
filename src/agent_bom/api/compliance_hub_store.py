@@ -33,6 +33,7 @@ from agent_bom.api.finding_cursor import (
     cursor_from_current_row,
     cvss_sort_value,
     decode_finding_cursor,
+    finding_order_clause,
     row_is_after_cursor,
 )
 from agent_bom.api.hub_current_payload import (
@@ -48,7 +49,7 @@ from agent_bom.api.hub_reference_store import (
     hydrate_finding_payloads_sqlite,
     normalize_finding_payload_for_store,
 )
-from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads, current_order
+from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads
 from agent_bom.api.storage.finding_current_writes import reconcile_current, write_current_batch
 from agent_bom.api.storage.finding_ingest_state import LedgerIngestState, ensure_sqlite_ingest_state, read_ingest_state, write_ingest_state
 from agent_bom.api.storage.finding_ledger_writes import write_ledger_batch
@@ -1508,12 +1509,12 @@ def resolve_current_ledger_ordinal_sqlite(
 
 def _sqlite_current_order_clause(sort: str) -> str:
     """Compatibility export for the shared indexed current-state order."""
-    return "ORDER BY " + current_order(sort)
+    return finding_order_clause("sqlite", sort)
 
 
 def _postgres_current_order_clause(sort: str) -> str:
-    """Postgres ORDER BY for ``hub_findings_current``."""
-    return _sqlite_current_order_clause(sort)
+    """Postgres ORDER BY for ``hub_findings_current``, served by the ``COLLATE "C"`` sort indexes."""
+    return finding_order_clause("postgres", sort)
 
 
 def _desc_tie_break(value: str) -> tuple[int, ...]:

@@ -622,7 +622,7 @@ class TestOrdinalKeyset:
             (sql, params) for sql, params in conn.executed if "SELECT canonical_id" in sql and "FROM hub_findings_current" in sql
         )
         normalized = " ".join(page_sql.split())
-        assert "ledger_ordinal > %s" in normalized
-        assert "ORDER BY ledger_ordinal ASC, first_seen ASC, canonical_id ASC" in normalized
+        assert '(ledger_ordinal, first_seen COLLATE "C", canonical_id COLLATE "C") > (%s, %s, %s)' in normalized
+        assert 'ORDER BY ledger_ordinal ASC, first_seen COLLATE "C" ASC, canonical_id COLLATE "C" ASC' in normalized
         assert "OFFSET" not in normalized.upper()
-        assert page_params == ("tenant-pg", 25, 25, "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "finding-25", 11)
+        assert page_params == ("tenant-pg", 25, "2026-01-01T00:00:00Z", "finding-25", 11)

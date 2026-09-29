@@ -111,3 +111,43 @@ def test_postgres_receipt_restart_and_induced_query():
         assert store.edges_for_node_ids(tenant_id="other", scan_id=scan_id, node_ids=ids, induced_only=True) == []
     finally:
         reset_current_tenant(token)
+
+
+@pytest.mark.asyncio
+async def test_large_page_indexes_relationships_once_and_retains_complete_records(tmp_path, monkeypatch):
+    """Bound edge visits by input size, not paths times hydrated edges."""
+    from agent_bom.mcp_tools import graph as mcp_graph
+
+    store = SQLiteGraphStore(tmp_path / "large-page.db")
+    graph = star("large-page", size=1000)
+    # The alternate connection must not be attributed to CAN_ACCESS paths.
+    for index in range(100):
+        graph.add_edge(UnifiedEdge(source="agent:hub", target=f"resource:{index}", relationship=RelationshipType.INVOKED))
+    store.save_graph(graph)
+    original = store.edges_for_node_ids
+    visits = 0
+    hydrated_count = 0
+
+    class CountedEdges(list):
+        def __iter__(self):
+            nonlocal visits
+            for edge in super().__iter__():
+                visits += 1
+                yield edge
+
+    def read_edges(**kwargs):
+        nonlocal hydrated_count
+        result = CountedEdges(original(**kwargs))
+        hydrated_count = len(result)
+        return result
+
+    monkeypatch.setattr(store, "edges_for_node_ids", read_edges)
+    monkeypatch.setattr(mcp_graph, "MCP_MAX_RESPONSE_CHARS", 2_000_000)
+    response = json.loads(await exposure_paths_impl(scan_id="large-page", limit=100, _get_graph_store=lambda: store))
+    assert response["count"] == 100
+    assert response["total"] == 1000
+    assert response["pagination"]["next_cursor"]
+    assert all(len(path["relationships"]) == 1 for path in response["paths"])
+    assert all(path["relationships"][0]["relationship"] == "can_access" for path in response["paths"])
+    assert len(response["nodes"]) == 101 and len(response["edges"]) == 100
+    assert visits <= 3 * hydrated_count

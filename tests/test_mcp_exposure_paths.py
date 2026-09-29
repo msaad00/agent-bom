@@ -74,7 +74,8 @@ async def test_exposure_paths_impl_returns_agent_native_contract():
     assert path["riskScore"] == 88.0
     assert path["severity"] == "high"
     assert path["source"]["role"] == "agent"
-    assert path["target"]["role"] == "vulnerability"
+    assert path["target"]["role"] == "finding"
+    assert path["target"]["entityType"] == "vulnerability"
     assert path["findings"] == ["CVE-2026-0001"]
     assert path["reachableTools"] == ["read_file"]
     assert path["exposedCredentials"] == ["AWS_TOKEN"]

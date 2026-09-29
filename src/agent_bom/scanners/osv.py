@@ -6,19 +6,27 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable, Optional
 
-import httpx
 from rich.console import Console
 
 from agent_bom.config import SCANNER_BATCH_SIZE as _BATCH_SIZE
 from agent_bom.config import SCANNER_OSV_BATCH_CONCURRENCY as OSV_BATCH_CONCURRENCY
+from agent_bom.core.errors import (
+    UpstreamError,
+    UpstreamInvalidResponseError,
+    UpstreamRateLimitedError,
+)
 from agent_bom.enrichment_posture import enrichment_source_available, record_enrichment_source
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.models import Package
 from agent_bom.package_utils import normalize_package_name
+from agent_bom.scanners.osv_details import OSV_API_URL as OSV_API_URL
+from agent_bom.scanners.osv_details import enrich_results_if_needed as enrich_results_if_needed
+from agent_bom.scanners.osv_details import enrich_vuln_details as enrich_vuln_details
+from agent_bom.scanners.osv_details import vuln_needs_enrichment as vuln_needs_enrichment
+from agent_bom.scanners.upstream import upstream_request
 
 _logger = logging.getLogger(__name__)
 
-OSV_API_URL = "https://api.osv.dev/v1"
 OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
 # Max pipeline-level pause when OSV returns persistent 429 after all per-request retries.
 # Separate from per-request exponential backoff (http_client.py) — this pauses the
@@ -167,7 +175,7 @@ def parse_fixed_version(
                             )
                             continue
                     prerelease = is_prerelease_version(fixed, ecosystem)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001  # broad-except: per-ecosystem version grammars raise heterogeneous errors; falls back to plain ordering
                     _logger.debug("Version parse failed for %r: %s", fixed, exc)
                     if has_current:
                         current_cmp = compare_version_order(current_version, fixed, ecosystem)
@@ -195,92 +203,42 @@ def parse_fixed_version(
     return None
 
 
-async def enrich_vuln_details(
-    client: httpx.AsyncClient,
-    vuln_ids: list[str],
-    *,
-    request_with_retry_fn: Callable[..., Awaitable[Any]] = request_with_retry,
-) -> dict[str, dict]:
-    """Fetch full vulnerability details from OSV /v1/vulns/{id}."""
-    if not vuln_ids:
-        return {}
-
-    sem = asyncio.Semaphore(10)
-
-    async def _fetch_one(vid: str) -> tuple[str, dict]:
-        async with sem:
-            resp = await request_with_retry_fn(client, "GET", f"{OSV_API_URL}/vulns/{vid}")
-            if resp and resp.status_code == 200:
-                try:
-                    return vid, resp.json()
-                except (ValueError, KeyError):
-                    pass
-        return vid, {}
-
-    pairs = await asyncio.gather(*[_fetch_one(vid) for vid in vuln_ids])
-    return dict(pairs)
-
-
-def vuln_needs_enrichment(vuln: dict) -> bool:
-    """Whether an OSV record must be enriched before fix/version resolution.
-
-    The OSV ``/v1/querybatch`` endpoint returns minimal ``{id, modified}``
-    stubs, and a partially-enriched record (e.g. one carrying only a
-    ``summary`` from a prior run) can still be missing the ``affected`` block.
-    Both ``parse_fixed_version`` and version-range matching need ``affected``
-    with at least one ranges/versions entry, so gate enrichment on the presence
-    of that resolution data rather than on the ``summary`` field. Keying off
-    ``summary`` alone dropped fixes for records that had a summary but no
-    ``affected`` and, because ``summary``-less advisories (e.g. PYSEC) were
-    re-fetched every run, made the null-fix count nondeterministic across
-    cache-cold and cache-warm runs.
-    """
-    if not vuln.get("id"):
-        return False
-    affected = vuln.get("affected")
-    if not affected:
-        return True
-    return not any(isinstance(entry, dict) and (entry.get("ranges") or entry.get("versions")) for entry in affected)
-
-
-async def enrich_results_if_needed(
-    results: dict[str, list[dict]],
-    *,
+def _collect_batch_vulns(
+    data: Any,
+    batch_start: int,
+    batch_len: int,
+    pkg_index: dict[int, tuple[Package, str]],
+    partial: dict[str, list[dict]],
     console: Console,
-    record_scan_warning: Callable[[str], None],
-    create_client_fn: Callable[..., Any] = create_client,
-    request_with_retry_fn: Callable[..., Awaitable[Any]] = request_with_retry,
-) -> dict[str, list[dict]]:
-    """Enrich minimal OSV batch results with full vuln details where missing."""
-    if not results:
-        return results
-    all_vuln_ids: list[str] = []
-    for vuln_list in results.values():
-        for vuln in vuln_list:
-            if vuln_needs_enrichment(vuln):
-                all_vuln_ids.append(vuln["id"])
-    # Deterministic order/dedup: the same set of ids is enriched regardless of
-    # cache-cold vs cache-warm runs, so fix-version resolution is reproducible.
-    unique_ids = sorted(dict.fromkeys(all_vuln_ids))
-    if not unique_ids:
-        return results
-    try:
-        async with create_client_fn(timeout=20.0) as detail_client:
-            details_map = await enrich_vuln_details(
-                detail_client,
-                unique_ids,
-                request_with_retry_fn=request_with_retry_fn,
-            )
-        for key, vuln_list in results.items():
-            results[key] = [{**v, **details_map.get(v.get("id", ""), {})} for v in vuln_list]
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning("OSV detail enrichment skipped (vulnerability summaries may be incomplete): %s", exc)
-        console.print(
-            "  [yellow]⚠[/yellow] OSV detail enrichment skipped — vulnerability summaries may be incomplete."
-            " [dim]Use --verbose for details.[/dim]"
+) -> None:
+    """Merge one ``/v1/querybatch`` payload into ``partial``; raise on a malformed shape."""
+    if not isinstance(data, dict):
+        raise ValueError(f"unexpected payload type: {type(data).__name__}")
+    osv_results = data.get("results", [])
+    if len(osv_results) != batch_len:
+        _logger.warning(
+            "OSV batch response length mismatch: sent %d queries, got %d results. Some packages may have missed vulnerability detection.",
+            batch_len,
+            len(osv_results),
         )
-        record_scan_warning("OSV detail enrichment skipped")
-    return results
+        console.print(
+            f"  [yellow]⚠[/yellow] OSV batch response length mismatch:"
+            f" sent {batch_len} queries, got {len(osv_results)} results."
+            f" [dim]Some packages may have missed vulnerability detection.[/dim]"
+        )
+    for index, result in enumerate(osv_results[:batch_len]):
+        vulns = result.get("vulns", [])
+        pkg_match = pkg_index.get(batch_start + index)
+        if not vulns or not pkg_match:
+            continue
+        pkg_obj = pkg_match[0]
+        key = f"{pkg_obj.ecosystem.lower()}:{normalize_package_name(pkg_obj.name, pkg_obj.ecosystem)}@{pkg_obj.version}"
+        existing = partial.setdefault(key, [])
+        seen_ids = {item.get("id") for item in existing}
+        for vuln in vulns:
+            if vuln.get("id") not in seen_ids:
+                existing.append(vuln)
+                seen_ids.add(vuln.get("id"))
 
 
 async def query_osv_batch_impl(
@@ -403,7 +361,7 @@ async def query_osv_batch_impl(
         record_scan_warning("OSV enrichment circuit open")
         return await enrich_results_if_needed_fn(results)
 
-    lookup_errors: list[tuple[str, str, str]] = []
+    lookup_errors: list[tuple[str, str, UpstreamError]] = []
     batch_size = min(_BATCH_SIZE, 1000)
     semaphore = get_api_semaphore()
     try:
@@ -426,109 +384,60 @@ async def query_osv_batch_impl(
         rate_gate = asyncio.Event()
         rate_gate.set()
 
-        async def _process_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, str]]]:
+        async def _handle_batch_failure(failure: UpstreamError) -> None:
+            record_enrichment_source("osv", "failure", error=failure.detail)
+            if not isinstance(failure, UpstreamRateLimitedError):
+                console.print(f"  [red]✗[/red] OSV API error: {failure.detail}")
+                return
+            pipeline_wait = min(failure.retry_after, _PIPELINE_429_BACKOFF) if failure.retry_after is not None else _PIPELINE_429_BACKOFF
+            # Close the gate so every other batch holds before its next request;
+            # only the first batch to hit 429 owns the sleep, concurrent 429s
+            # just wait the pause out. The batch itself stays unenriched and is
+            # reported as a lookup error, never silently dropped.
+            if rate_gate.is_set():
+                rate_gate.clear()
+                console.print(f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing the OSV pipeline {pipeline_wait:.0f}s")
+                _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
+                try:
+                    await asyncio.sleep(pipeline_wait)
+                finally:
+                    rate_gate.set()
+            else:
+                await rate_gate.wait()
+
+        async def _process_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, UpstreamError]]]:
             batch = queries[batch_start : batch_start + batch_size]
             partial: dict[str, list[dict]] = {}
-            batch_errors: list[tuple[str, str, str]] = []
+            batch_errors: list[tuple[str, str, UpstreamError]] = []
             bump_scan_perf("osv_batches", 1)
+
+            def _fail_batch(failure: UpstreamError) -> None:
+                for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
+                    pkg_err = pkg_index.get(idx)
+                    if pkg_err:
+                        batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, failure))
 
             async with semaphore:
                 await rate_gate.wait()
-                response = await request_with_retry_fn(client, "POST", OSV_BATCH_URL, json={"queries": batch})
+                try:
+                    response = await upstream_request("osv", request_with_retry_fn, client, "POST", OSV_BATCH_URL, json={"queries": batch})
+                except UpstreamError as failure:
+                    await _handle_batch_failure(failure)
+                    _fail_batch(failure)
+                    return partial, batch_errors
 
-                if response and response.status_code == 200:
-                    try:
-                        data = response.json()
-                        record_enrichment_source("osv", "success")
-                        osv_results = data.get("results", [])
-                        if len(osv_results) != len(batch):
-                            _logger.warning(
-                                "OSV batch response length mismatch: sent %d queries, got %d results. "
-                                "Some packages may have missed vulnerability detection.",
-                                len(batch),
-                                len(osv_results),
-                            )
-                            console.print(
-                                f"  [yellow]⚠[/yellow] OSV batch response length mismatch:"
-                                f" sent {len(batch)} queries, got {len(osv_results)} results."
-                                f" [dim]Some packages may have missed vulnerability detection.[/dim]"
-                            )
-                        for index, result in enumerate(osv_results):
-                            if index >= len(batch):
-                                break
-                            vulns = result.get("vulns", [])
-                            if not vulns:
-                                continue
-                            actual_idx = batch_start + index
-                            pkg_match = pkg_index.get(actual_idx)
-                            if not pkg_match:
-                                continue
-                            pkg_obj, _queried_name = pkg_match
-                            norm = normalize_package_name(pkg_obj.name, pkg_obj.ecosystem)
-                            key = f"{pkg_obj.ecosystem.lower()}:{norm}@{pkg_obj.version}"
-                            existing = partial.setdefault(key, [])
-                            seen_ids = {item.get("id") for item in existing}
-                            for vuln in vulns:
-                                if vuln.get("id") not in seen_ids:
-                                    existing.append(vuln)
-                                    seen_ids.add(vuln.get("id"))
-                    except (ValueError, KeyError) as exc:
-                        record_enrichment_source("osv", "failure", error=f"parse error: {exc}")
-                        console.print(f"  [red]✗[/red] OSV response parse error: {exc}")
-                        for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                            pkg_err = pkg_index.get(idx)
-                            if pkg_err:
-                                batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"parse error: {exc}"))
-                elif response and response.status_code == 429:
-                    record_enrichment_source("osv", "failure", error="HTTP 429 rate limited")
-                    retry_after_hdr = response.headers.get("Retry-After")
-                    pipeline_wait = _PIPELINE_429_BACKOFF
-                    if retry_after_hdr:
-                        try:
-                            pipeline_wait = min(float(retry_after_hdr), _PIPELINE_429_BACKOFF)
-                        except ValueError:
-                            pass
-                    # Close the gate so every other batch holds before its next
-                    # request; only the first batch to hit 429 owns the sleep,
-                    # concurrent 429s just wait the pause out.
-                    if rate_gate.is_set():
-                        rate_gate.clear()
-                        console.print(f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing the OSV pipeline {pipeline_wait:.0f}s")
-                        _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
-                        try:
-                            await asyncio.sleep(pipeline_wait)
-                        finally:
-                            rate_gate.set()
-                    else:
-                        await rate_gate.wait()
-                    # The batch stays unenriched: OSV kept rate-limiting after
-                    # request_with_retry exhausted its retries. Surface the gap
-                    # as a lookup error so coverage loss is visible to the caller
-                    # (logged + recorded as a scan warning) instead of silently
-                    # dropping the batch's vulnerability data.
-                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                        pkg_err = pkg_index.get(idx)
-                        if pkg_err:
-                            batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "rate limited (HTTP 429) after retries"))
-                elif response:
-                    record_enrichment_source("osv", "failure", error=f"HTTP {response.status_code}")
-                    console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")
-                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                        pkg_err = pkg_index.get(idx)
-                        if pkg_err:
-                            batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"HTTP {response.status_code}"))
-                else:
-                    record_enrichment_source("osv", "failure", error="unreachable after retries")
-                    console.print("  [red]✗[/red] OSV API unreachable after retries")
-                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                        pkg_err = pkg_index.get(idx)
-                        if pkg_err:
-                            batch_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "unreachable"))
+                try:
+                    _collect_batch_vulns(response.json(), batch_start, len(batch), pkg_index, partial, console)
+                    record_enrichment_source("osv", "success")
+                except (ValueError, KeyError, AttributeError, TypeError) as exc:
+                    record_enrichment_source("osv", "failure", error=f"parse error: {exc}")
+                    console.print(f"  [red]✗[/red] OSV response parse error: {exc}")
+                    _fail_batch(UpstreamInvalidResponseError("osv", f"parse error: {type(exc).__name__}"))
             return partial, batch_errors
 
         batch_sem = asyncio.Semaphore(batch_concurrency)
 
-        async def _guarded_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, str]]]:
+        async def _guarded_batch(batch_start: int) -> tuple[dict[str, list[dict]], list[tuple[str, str, UpstreamError]]]:
             async with batch_sem:
                 return await _process_batch(batch_start)
 
@@ -593,8 +502,9 @@ async def query_osv_batch_impl(
                 "release": "remote:osv",
                 "ecosystems": sorted({eco.lower() for _name, eco, _err in lookup_errors if eco}),
                 "package_count": len(lookup_errors),
+                "reasons": sorted({err.kind for _name, _eco, err in lookup_errors}),
             }
         )
         for pkg_name, eco, err in lookup_errors:
-            _logger.info("  Lookup error: %s/%s — %s", eco, pkg_name, err)
+            _logger.info("  Lookup error: %s/%s — %s", eco, pkg_name, err.detail)
     return results

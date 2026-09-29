@@ -183,6 +183,30 @@ def _exposure_path_payload(
     return payload
 
 
+def _project_exposure_page(
+    paths: list[Any],
+    *,
+    nodes: list[Any],
+    edges: list[Any],
+    offset: int,
+    scan_id: str,
+) -> list[dict[str, Any]]:
+    """Index hydrated evidence once, then project only each path's hop edges."""
+    nodes_by_id = {node.id: node for node in nodes}
+    edge_lookup = _build_edge_lookup(edges)
+    return [
+        _exposure_path_payload(
+            path,
+            nodes_by_id=nodes_by_id,
+            edges=edges,
+            rank=offset + index + 1,
+            scan_id=scan_id,
+            edge_lookup=edge_lookup,
+        )
+        for index, path in enumerate(paths)
+    ]
+
+
 def _candidate_matches_path(candidate: str, path: dict[str, Any]) -> bool:
     needle = candidate.strip().lower()
     if not needle:
@@ -365,8 +389,6 @@ async def exposure_paths_for_tenant(
         final_identity = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=pinned_scan_id)
         if final_identity != (pinned_scan_id, generation) or (paths and not generation):
             return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
-        nodes_by_id = {node.id: node for node in nodes}
-        edge_lookup = _build_edge_lookup(edges)
         payload = {
             "schema_version": "v1",
             "tool": "exposure_paths",
@@ -377,17 +399,7 @@ async def exposure_paths_for_tenant(
             "total": total,
             "count_metadata": {"source": path_source, "total_is_lower_bound": derivation_truncated},
             "filters": {"limit": limit, "min_risk": min_risk},
-            "paths": [
-                _exposure_path_payload(
-                    path,
-                    nodes_by_id=nodes_by_id,
-                    edges=edges,
-                    rank=offset + index + 1,
-                    scan_id=effective_scan_id,
-                    edge_lookup=edge_lookup,
-                )
-                for index, path in enumerate(ranked_paths)
-            ],
+            "paths": _project_exposure_page(ranked_paths, nodes=nodes, edges=edges, offset=offset, scan_id=effective_scan_id),
             "nodes": [node.to_dict() for node in nodes],
             "edges": [edge.to_dict() for edge in edges],
             "stats": stats,

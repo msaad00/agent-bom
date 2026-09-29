@@ -13,7 +13,7 @@ interface State { scope: string; pages: GraphIncidentPage[]; busy: boolean; erro
 const empty = (scope: string): State => ({ scope, pages: [], busy: false, error: null, stale: false });
 
 /** One snapshot generation per workspace, including first pages of other nodes. */
-export function useIncidentNeighborhood(scanId: string, rootId: string, direction: IncidentDirection, owner: string) {
+export function useIncidentNeighborhood(scanId: string, rootId: string, direction: IncidentDirection, owner: string, enabled = true) {
   const scope = JSON.stringify([owner, scanId, rootId, direction]);
   const current = useRef(empty(scope));
   const request = useRef<{ controller: AbortController; sequence: number } | null>(null);
@@ -52,9 +52,9 @@ export function useIncidentNeighborhood(scanId: string, rootId: string, directio
   }, [scope, scanId, direction, publish]);
   useEffect(() => {
     publish(empty(scope));
-    void load(rootId, undefined, true);
+    if (enabled) void load(rootId, undefined, true);
     return cancel;
-  }, [scope, rootId, load, publish, cancel]);
+  }, [scope, rootId, load, publish, cancel, enabled]);
   const visible = state.scope === scope ? state : empty(scope);
   const graph = useMemo(() => {
     const nodes = new Map<string, UnifiedNode>();

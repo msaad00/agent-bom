@@ -2,9 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
-import type { GraphNodeDetailResponse } from "@/lib/api-types";
+import type { GraphIncidentPage, GraphNodeDetailResponse } from "@/lib/api-types";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import type { LineageNodeData } from "@/components/lineage-nodes";
+
+vi.mock("@/components/auth-provider", () => ({ useAuthState: () => ({ loading: false, session: { tenant_id: "test", role: "analyst" } }) }));
 
 const noop = () => {};
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -193,10 +195,18 @@ describe("graph entity drawer tabs", () => {
       edges_out: [], neighbors: ["package:sample"], sources: ["scan"],
       impact: { affected_count: 1, affected_by_type: { package: 1 }, max_depth_reached: 1 },
     } as unknown as GraphNodeDetailResponse);
+    vi.spyOn(api, "getGraphIncidentEdges").mockResolvedValue({
+      scan_id: "scan-proof", node_id: "vuln:cve-2024-9999", found: true, direction: "both", snapshot_generation: "a".repeat(32),
+      node: { id: "vuln:cve-2024-9999", entity_type: "vulnerability", attributes: {} },
+      nodes: [{ id: "package:sample", label: "Recorded package", entity_type: "package", attributes: {} }],
+      edges: [{ id: "e1", source: "package:sample", target: "vuln:cve-2024-9999", relationship: "vulnerable_to", direction: "directed" }],
+      next_cursor: null,
+    } as unknown as GraphIncidentPage);
     const inspect = vi.fn();
     render(<GraphEntityDrawer data={richNode()} scanId="scan-proof" onClose={noop} onInspectNode={inspect} />);
     fireEvent.click(screen.getByTestId("graph-drawer-tab-relationships"));
-    const relationship = await screen.findByRole("button", { name: "Incoming · vulnerable to · package:sample" });
+    const relationship = await screen.findByRole("button", { name: "Recorded package" });
+    expect(screen.getByText("← Incoming · Package vulnerability")).toBeVisible();
     const counts = screen.getByText("Relationship counts");
     expect(counts.closest("details")?.open).toBe(false);
     expect(relationship.compareDocumentPosition(counts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

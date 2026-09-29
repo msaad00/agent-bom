@@ -762,3 +762,55 @@ for (const theme of ["light", "dark"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`recorded relationships show labels and bounded scope ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.setViewportSize({ width, height: 1000 });
+      const graph = buildDenseGraph();
+      graph.nodes = [node("agent:one", "agent", "Analyst agent"), node("server:opaque", "server", "Recorded production MCP")];
+      graph.edges = [edge("agent:one", "server:opaque", "uses")];
+      graph.attack_paths = [];
+      graph.stats.total_nodes = 2; graph.stats.total_edges = 1;
+      await routeGraphPage(page, graph);
+      await page.route("**/v1/graph/node/*?**", route => route.fulfill({ json: {
+        node: graph.nodes[0], edges_out: graph.edges, edges_in: [], neighbors: ["server:opaque"], sources: [], impact: { upstream_agents: [], affected_count: 0 },
+      } }));
+      const requests: URL[] = [];
+      await page.route("**/v1/graph/incident-edges?**", route => {
+        const url = new URL(route.request().url()); requests.push(url);
+        const continuation = url.searchParams.has("cursor");
+        const neighbor = continuation ? node("server:second", "server", "Second recorded MCP") : graph.nodes[1]!;
+        return route.fulfill({ json: {
+          scan_id: scanId, node_id: "agent:one", snapshot_generation: "a".repeat(32), direction: "both", found: true, limit: 24,
+          node: graph.nodes[0], nodes: [neighbor], edges: [edge("agent:one", neighbor.id, "uses")], next_cursor: continuation ? null : "page-2",
+          completeness: { status: "complete", complete: true, total: null, returned: 1, scope: "incident_edge_page", missing_endpoint_count: 0 },
+        } });
+      });
+      await page.goto(`/graph?scan=${scanId}&rollup=0`);
+      await page.locator('.react-flow__node[data-id="agent:one"]').click();
+      const drawer = page.getByTestId("graph-entity-drawer");
+      await expect(drawer).toBeVisible();
+      expect(requests).toHaveLength(0);
+      await drawer.getByRole("tab", { name: "Relationships", exact: true }).click();
+      await expect(drawer.getByRole("button", { name: "Recorded production MCP", exact: true })).toBeVisible();
+      await expect(drawer.getByRole("status")).toContainText("1 loaded relationships · total unknown");
+      await drawer.getByRole("button", { name: "Load more recorded relationships" }).click();
+      await expect(drawer.getByRole("button", { name: "Second recorded MCP" })).toBeVisible();
+      await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
+      expect(requests[1]!.searchParams.get("snapshot_generation")).toBe("a".repeat(32));
+      await drawer.getByText("Canonical identifiers", { exact: true }).first().click();
+      await expect(drawer.getByText("server:opaque", { exact: true })).toBeVisible();
+      expect(await drawer.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      // Crossing the mobile portal boundary must retain pages and their generation.
+      await page.setViewportSize({ width: width === 390 ? 1440 : 390, height: 1000 });
+      await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
+      await page.setViewportSize({ width, height: 1000 });
+      await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
+      await page.screenshot({ path: testInfo.outputPath(`relationships-${theme}-${width}.png`), fullPage: true });
+      await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
+      expect(requests).toHaveLength(2);
+    });
+  }
+}

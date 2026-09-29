@@ -225,6 +225,30 @@ def _run_quickstart(
     else:
         click.echo("[3/3] Skipped gateway baseline policy (--no-gateway-policy)")
 
+    _print_quickstart_handoff(
+        report_path=report_path,
+        offline=offline,
+        graph_receipt=graph_receipt,
+        control_plane_db=control_plane_db,
+        graph_db=graph_db,
+        port=port,
+        policy_path=policy_path,
+        gateway_mode=gateway_mode,
+    )
+
+
+def _print_quickstart_handoff(
+    *,
+    report_path: Path,
+    offline: bool,
+    graph_receipt: _GraphReceipt,
+    control_plane_db: Path,
+    graph_db: Path,
+    port: int,
+    policy_path: Path | None,
+    gateway_mode: str,
+) -> None:
+    """Show evidence and next actions only after exact snapshot verification."""
     # Handoff ---------------------------------------------------------------
     click.echo("")
     click.echo("Onboarding complete. The security graph was read back from the configured local database.")

@@ -24,6 +24,7 @@ from agent_bom.api.finding_cursor import (
     decode_finding_cursor,
     encode_finding_cursor,
     finding_keyset,
+    finding_keyset_clause,
     postgres_keyset_clause,
     sqlite_keyset_clause,
 )
@@ -245,8 +246,8 @@ def test_postgres_collated_order_is_served_by_a_collated_index(sort: str, status
     from agent_bom.api.storage.sql import PostgresBackend
 
     cursor = encode_finding_cursor(sort=sort, primary=5, last_seen="2026-09-01T00:00:00Z", canonical_id="f-B")
-    predicate, params = postgres_keyset_clause(sort, cursor)
-    predicate = predicate.replace("%s", "?")
+    predicate, params = finding_keyset_clause("postgres", sort, cursor)
+    assert postgres_keyset_clause(sort, cursor) == (predicate.replace("?", "%s"), params)
     where = "tenant_id = ?" + (" AND status IN ('open', 'reopened')" if status else "")
     tenant = "cursor-plan-" + uuid4().hex
     token = set_current_tenant(tenant)

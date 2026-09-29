@@ -1,0 +1,1804 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "agent-bom",
+          "version": "0.0.0-golden",
+          "informationUri": "https://github.com/msaad00/agent-bom",
+          "rules": [
+            {
+              "id": "CVE-2026-1001",
+              "shortDescription": {
+                "text": "CRITICAL: CVE-2026-1001 in express@4.17.1"
+              },
+              "fullDescription": {
+                "text": "CVE-2026-1001 summary"
+              },
+              "helpUri": "https://osv.dev/vulnerability/CVE-2026-1001",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "9.8",
+                "epss-score": 0.91,
+                "kev": true,
+                "kev_date_added": "2026-01-01",
+                "kev_due_date": "2026-01-22",
+                "attack_vector": null,
+                "attack_complexity": null,
+                "privileges_required": null,
+                "user_interaction": null,
+                "network_exploitable": false,
+                "exploit_likelihood": "actively_exploited",
+                "tags": [
+                  "CWE-94"
+                ]
+              },
+              "help": {
+                "text": "CVE-2026-1001 summary Remediation: Upgrade express to 4.18.0. Reference: https://osv.dev/vulnerability/CVE-2026-1001",
+                "markdown": "CVE-2026-1001 summary **Remediation:** Upgrade express to 4.18.0. [Reference](https://osv.dev/vulnerability/CVE-2026-1001)"
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "94",
+                    "guid": "9419a3ff-e820-5c47-8ef0-548a64590908",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+                    }
+                  },
+                  "kinds": [
+                    "relevant"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "CVE-2026-1002",
+              "shortDescription": {
+                "text": "HIGH: CVE-2026-1002 in express@4.17.1"
+              },
+              "fullDescription": {
+                "text": "CVE-2026-1002 summary"
+              },
+              "helpUri": "https://osv.dev/vulnerability/CVE-2026-1002",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "attack_vector": null,
+                "attack_complexity": null,
+                "privileges_required": null,
+                "user_interaction": null,
+                "network_exploitable": false,
+                "exploit_likelihood": "unassessed",
+                "tags": [
+                  "CWE-400"
+                ]
+              },
+              "help": {
+                "text": "CVE-2026-1002 summary Remediation: Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control. Reference: https://osv.dev/vulnerability/CVE-2026-1002",
+                "markdown": "CVE-2026-1002 summary **Remediation:** Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control. [Reference](https://osv.dev/vulnerability/CVE-2026-1002)"
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "400",
+                    "guid": "1ff4ea35-d014-53e1-bb2b-dc340ef111ac",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+                    }
+                  },
+                  "kinds": [
+                    "relevant"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "GHSA-aaaa-bbbb-cccc",
+              "shortDescription": {
+                "text": "MEDIUM: GHSA-aaaa-bbbb-cccc in requests@2.19.0"
+              },
+              "fullDescription": {
+                "text": "GHSA-aaaa-bbbb-cccc summary"
+              },
+              "helpUri": "https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "5.3",
+                "attack_vector": null,
+                "attack_complexity": null,
+                "privileges_required": null,
+                "user_interaction": null,
+                "network_exploitable": false,
+                "exploit_likelihood": "unassessed"
+              },
+              "help": {
+                "text": "GHSA-aaaa-bbbb-cccc summary Remediation: Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control. Reference: https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc",
+                "markdown": "GHSA-aaaa-bbbb-cccc summary **Remediation:** Review the advisory and apply the vendor-recommended mitigation, upgrade path, or compensating control. [Reference](https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc)"
+              }
+            },
+            {
+              "id": "finding/CREDENTIAL_EXPOSURE",
+              "shortDescription": {
+                "text": "Hardcoded AWS secret key"
+              },
+              "fullDescription": {
+                "text": "Hardcoded AWS secret key"
+              },
+              "helpUri": "https://github.com/msaad00/agent-bom",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "source": "FILESYSTEM",
+                "finding_type": "CREDENTIAL_EXPOSURE"
+              },
+              "help": {
+                "text": "Hardcoded AWS secret key",
+                "markdown": "Hardcoded AWS secret key"
+              }
+            },
+            {
+              "id": "finding/SAST/AB-SAST-002",
+              "shortDescription": {
+                "text": "SQL string construction"
+              },
+              "fullDescription": {
+                "text": "SQL string construction"
+              },
+              "helpUri": "https://github.com/msaad00/agent-bom",
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "5.5",
+                "source": "SAST",
+                "finding_type": "SAST"
+              },
+              "help": {
+                "text": "SQL string construction",
+                "markdown": "SQL string construction"
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "89",
+                    "guid": "a3bee1aa-59c0-557b-9d9e-6256f4a5cd4b",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+                    }
+                  },
+                  "kinds": [
+                    "relevant"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "finding/CREDENTIAL_EXPOSURE/agent_credential_exposure",
+              "shortDescription": {
+                "text": "Agent exposes a production credential"
+              },
+              "fullDescription": {
+                "text": "Agent exposes a production credential"
+              },
+              "helpUri": "https://github.com/msaad00/agent-bom",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "9.5",
+                "source": "MCP_SCAN",
+                "finding_type": "CREDENTIAL_EXPOSURE"
+              },
+              "help": {
+                "text": "Agent exposes a production credential",
+                "markdown": "Agent exposes a production credential"
+              }
+            },
+            {
+              "id": "finding/CVE",
+              "shortDescription": {
+                "text": "Imported advisory without a package"
+              },
+              "fullDescription": {
+                "text": "Imported advisory without a package"
+              },
+              "helpUri": "https://github.com/msaad00/agent-bom",
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "source": "SBOM",
+                "finding_type": "CVE"
+              },
+              "help": {
+                "text": "Imported advisory without a package",
+                "markdown": "Imported advisory without a package"
+              }
+            },
+            {
+              "id": "finding/CIS_FAIL",
+              "shortDescription": {
+                "text": "Databricks CIS check"
+              },
+              "fullDescription": {
+                "text": "Databricks CIS check"
+              },
+              "helpUri": "https://github.com/msaad00/agent-bom",
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "2.5",
+                "source": "CLOUD_CIS",
+                "finding_type": "CIS_FAIL"
+              },
+              "help": {
+                "text": "Databricks CIS check",
+                "markdown": "Databricks CIS check"
+              }
+            },
+            {
+              "id": "iac/DKR-001",
+              "shortDescription": {
+                "text": "Container runs as root"
+              },
+              "fullDescription": {
+                "text": "No USER directive; container runs as root."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "category": "iac",
+                "compliance": [
+                  "CIS-Docker-4.1"
+                ]
+              },
+              "help": {
+                "text": "No USER directive; container runs as root. Remediation: Add a non-root USER directive.",
+                "markdown": "No USER directive; container runs as root. **Remediation:** Add a non-root USER directive."
+              }
+            },
+            {
+              "id": "iac/K8S-010",
+              "shortDescription": {
+                "text": "Pod lacks resource limits"
+              },
+              "fullDescription": {
+                "text": "Pod lacks resource limits"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "2.5",
+                "category": "iac",
+                "compliance": []
+              },
+              "help": {
+                "text": "Pod lacks resource limits",
+                "markdown": "Pod lacks resource limits"
+              }
+            },
+            {
+              "id": "ai-inventory/deprecated_model/text-davinci-003",
+              "shortDescription": {
+                "text": "MEDIUM: deprecated model - text-davinci-003"
+              },
+              "fullDescription": {
+                "text": "Deprecated model in use."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "5.5"
+              },
+              "help": {
+                "text": "Deprecated model in use. Remediation: Migrate to a supported model.",
+                "markdown": "Deprecated model in use. **Remediation:** Migrate to a supported model."
+              }
+            },
+            {
+              "id": "ai-inventory/api_key/[REDACTED]",
+              "shortDescription": {
+                "text": "CRITICAL: api key - [REDACTED]"
+              },
+              "fullDescription": {
+                "text": "AI component finding: [REDACTED]"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "9.5"
+              },
+              "help": {
+                "text": "AI component finding: [REDACTED]",
+                "markdown": "AI component finding: [REDACTED]"
+              }
+            },
+            {
+              "id": "cis/aws/1.4",
+              "shortDescription": {
+                "text": "HIGH: CIS AWS 1.4 - Ensure no root account access key exists"
+              },
+              "fullDescription": {
+                "text": "Remove the root access key."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "tags": [
+                  "cis",
+                  "aws",
+                  "compliance"
+                ],
+                "cis_section": "1.4"
+              },
+              "helpUri": "https://docs.aws.amazon.com/iam",
+              "help": {
+                "text": "Remove the root access key. Reference: https://docs.aws.amazon.com/iam",
+                "markdown": "Remove the root access key. [Reference](https://docs.aws.amazon.com/iam)"
+              }
+            },
+            {
+              "id": "cis/azure/2.1",
+              "shortDescription": {
+                "text": "UNKNOWN: CIS AZURE 2.1 - Defender plan off"
+              },
+              "fullDescription": {
+                "text": "Defender plan off"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "cis",
+                  "azure",
+                  "compliance"
+                ],
+                "cis_section": ""
+              },
+              "help": {
+                "text": "Defender plan off",
+                "markdown": "Defender plan off"
+              }
+            }
+          ],
+          "supportedTaxonomies": [
+            {
+              "name": "CWE",
+              "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+            }
+          ]
+        },
+        "extensions": [
+          {
+            "name": "owasp-llm-top10",
+            "fullName": "OWASP Top 10 for Large Language Model Applications",
+            "informationUri": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+            "taxa": [
+              {
+                "id": "LLM05"
+              }
+            ]
+          },
+          {
+            "name": "mitre-attack",
+            "fullName": "MITRE ATT&CK",
+            "informationUri": "https://attack.mitre.org/",
+            "taxa": [
+              {
+                "id": "T1190"
+              }
+            ]
+          }
+        ]
+      },
+      "results": [
+        {
+          "ruleId": "CVE-2026-1001",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "CVE-2026-1001 (critical) in express@4.17.1. Affects agents: claude-desktop. Fix: upgrade to 4.18.0. Exposure path: claude-desktop \u2192 filesystem \u2192 express@4.17.1 \u2192 CVE-2026-1001 \u2192 read_file. Blast radius: 1 cred(s), 1 tool(s) reachable."
+          },
+          "fingerprints": {
+            "agent-bom/v1": "f4287b06918c3a3624046de6cd647692b0574048cfc38adcfad252e9d00f4248"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "e44001a4fd6fa931b668931b7857a8ca803b7061a499f613cbb6198b10257c54"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "claude.json",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 0,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "agent:claude-desktop",
+                  "kind": "agent"
+                }
+              ],
+              "message": {
+                "text": "claude-desktop"
+              }
+            },
+            {
+              "id": 1,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "server:filesystem",
+                  "kind": "server"
+                }
+              ],
+              "message": {
+                "text": "filesystem"
+              }
+            },
+            {
+              "id": 2,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "pkg:npm:express@4.17.1",
+                  "kind": "pkg"
+                }
+              ],
+              "message": {
+                "text": "npm:express@4.17.1"
+              }
+            },
+            {
+              "id": 3,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "finding:CVE-2026-1001",
+                  "kind": "finding"
+                }
+              ],
+              "message": {
+                "text": "CVE-2026-1001"
+              }
+            },
+            {
+              "id": 4,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "tool:read_file",
+                  "kind": "tool"
+                }
+              ],
+              "message": {
+                "text": "read_file"
+              }
+            },
+            {
+              "id": 5,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "credential:API_TOKEN",
+                  "kind": "credential"
+                }
+              ],
+              "message": {
+                "text": "API_TOKEN"
+              }
+            }
+          ],
+          "properties": {
+            "advisory_id": "CVE-2026-1001",
+            "asset_canonical_id": "3299765d-a493-5ba7-aa95-0da62719b03b",
+            "occurrence_id": "2e04de4c-5ac1-58ee-807e-102186f3fa2c",
+            "canonical_id": "2e04de4c-5ac1-58ee-807e-102186f3fa2c",
+            "owner": null,
+            "sla_due_at": "2026-01-09T03:04:05+00:00",
+            "sla_due_at_source": "severity-kev/v1",
+            "blast_score": 10.0,
+            "match_confidence_tier": "",
+            "cve_ids": [
+              "CVE-2026-1001"
+            ],
+            "cwe_ids": [
+              "CWE-94"
+            ],
+            "exposure_path": {
+              "id": "finding:cve-2026-1001:npm:express:4.17.1",
+              "rank": 1,
+              "label": "express@4.17.1 -> CVE-2026-1001",
+              "summary": "CVE-2026-1001 affects express@4.17.1 with confirmed reachability.",
+              "riskScore": 10.0,
+              "severity": "critical",
+              "source": "agent:claude-desktop",
+              "target": "finding:CVE-2026-1001",
+              "hops": [
+                "agent:claude-desktop",
+                "server:filesystem",
+                "pkg:npm:express@4.17.1",
+                "finding:CVE-2026-1001"
+              ],
+              "relationships": [
+                {
+                  "id": "agent:claude-desktop->uses->server:filesystem",
+                  "type": "uses",
+                  "source": "agent:claude-desktop",
+                  "target": "server:filesystem"
+                },
+                {
+                  "id": "server:filesystem->depends_on->pkg:npm:express@4.17.1",
+                  "type": "depends_on",
+                  "source": "server:filesystem",
+                  "target": "pkg:npm:express@4.17.1"
+                },
+                {
+                  "id": "pkg:npm:express@4.17.1->vulnerable_to->finding:CVE-2026-1001",
+                  "type": "vulnerable_to",
+                  "source": "pkg:npm:express@4.17.1",
+                  "target": "finding:CVE-2026-1001"
+                },
+                {
+                  "id": "server:filesystem->provides_tool->tool:read_file",
+                  "type": "provides_tool",
+                  "source": "server:filesystem",
+                  "target": "tool:read_file"
+                },
+                {
+                  "id": "server:filesystem->exposes_credential->credential:API_TOKEN",
+                  "type": "exposes_credential",
+                  "source": "server:filesystem",
+                  "target": "credential:API_TOKEN"
+                }
+              ],
+              "nodeIds": [
+                "agent:claude-desktop",
+                "server:filesystem",
+                "pkg:npm:express@4.17.1",
+                "finding:CVE-2026-1001",
+                "tool:read_file",
+                "credential:API_TOKEN"
+              ],
+              "edgeIds": [
+                "agent:claude-desktop->uses->server:filesystem",
+                "server:filesystem->depends_on->pkg:npm:express@4.17.1",
+                "pkg:npm:express@4.17.1->vulnerable_to->finding:CVE-2026-1001",
+                "server:filesystem->provides_tool->tool:read_file",
+                "server:filesystem->exposes_credential->credential:API_TOKEN"
+              ],
+              "findings": [
+                "CVE-2026-1001"
+              ],
+              "affectedAgents": [
+                "claude-desktop"
+              ],
+              "affectedServers": [
+                "filesystem"
+              ],
+              "reachableTools": [
+                "read_file"
+              ],
+              "exposedCredentials": [
+                "API_TOKEN"
+              ],
+              "dependencyContext": {
+                "package": "express",
+                "version": "4.17.1",
+                "ecosystem": "npm",
+                "direct": true,
+                "dependencyDepth": 0,
+                "reachabilityEvidence": "runtime_dependency"
+              },
+              "fix": "Upgrade express to 4.18.0",
+              "evidence": [
+                "1 affected agent(s)",
+                "1 affected server(s)",
+                "1 reachable tool(s)",
+                "1 exposed credential reference(s)",
+                "CISA KEV",
+                "EPSS 0.9100"
+              ],
+              "provenance": {
+                "source": "blast_radius_output",
+                "graphPersistence": false
+              }
+            },
+            "exposure_chain": "claude-desktop \u2192 filesystem \u2192 express@4.17.1 \u2192 CVE-2026-1001 \u2192 read_file",
+            "epss_score": 0.91,
+            "is_kev": true,
+            "kev_date_added": "2026-01-01",
+            "kev_due_date": "2026-01-22",
+            "cvss_vector": null,
+            "attack_vector": null,
+            "attack_complexity": null,
+            "privileges_required": null,
+            "user_interaction": null,
+            "network_exploitable": false,
+            "exploit_likelihood": "actively_exploited",
+            "exposed_credentials": [
+              "API_TOKEN"
+            ],
+            "impact_category": "unknown",
+            "attack_vector_summary": null,
+            "reachability": "confirmed",
+            "symbol_reachability": "function_reachable",
+            "reachable_affected_symbols": [
+              "express.static"
+            ],
+            "symbol_reachability_reason": "",
+            "runtime_dependency_chain": [],
+            "affected_servers": [
+              "filesystem"
+            ],
+            "affected_agents": [
+              "claude-desktop"
+            ],
+            "exposed_tools": [
+              "read_file"
+            ],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "suppressed": false,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "fixed_version": "4.18.0",
+            "package_discovery_provenance": {
+              "source_type": "unknown",
+              "version_source": "detected",
+              "resolved_from_registry": false
+            },
+            "package_version_provenance": {
+              "declared_name": "express",
+              "resolved_version": "4.17.1",
+              "version_source": "unknown",
+              "confidence": "unknown",
+              "resolved_from_registry": false
+            },
+            "agent_discovery_provenance": [
+              {
+                "source_type": "local_discovery",
+                "observed_via": [
+                  "local_discovery"
+                ],
+                "confidence": "medium"
+              }
+            ],
+            "owasp_tags": [
+              "LLM05"
+            ],
+            "attack_tags": [
+              "T1190"
+            ]
+          },
+          "taxa": [
+            {
+              "index": 0,
+              "toolComponent": {
+                "index": 0
+              }
+            },
+            {
+              "index": 0,
+              "toolComponent": {
+                "index": 1
+              }
+            },
+            {
+              "id": "94",
+              "guid": "9419a3ff-e820-5c47-8ef0-548a64590908",
+              "toolComponent": {
+                "name": "CWE",
+                "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "CVE-2026-1002",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "CVE-2026-1002 (high) in express@4.17.1. Affects agents: claude-desktop. Exposure path: claude-desktop \u2192 filesystem \u2192 express@4.17.1 \u2192 CVE-2026-1002. Blast radius: 0 cred(s), 0 tool(s) reachable."
+          },
+          "fingerprints": {
+            "agent-bom/v1": "00a39ddc89c8c7af2b50cd5856f50e0508262ff7b1fcaa1c9f9bdcbfefc46243"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "e44001a4fd6fa931b668931b7857a8ca803b7061a499f613cbb6198b10257c54"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "claude.json",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 0,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "agent:claude-desktop",
+                  "kind": "agent"
+                }
+              ],
+              "message": {
+                "text": "claude-desktop"
+              }
+            },
+            {
+              "id": 1,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "server:filesystem",
+                  "kind": "server"
+                }
+              ],
+              "message": {
+                "text": "filesystem"
+              }
+            },
+            {
+              "id": 2,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "pkg:npm:express@4.17.1",
+                  "kind": "pkg"
+                }
+              ],
+              "message": {
+                "text": "npm:express@4.17.1"
+              }
+            },
+            {
+              "id": 3,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "finding:CVE-2026-1002",
+                  "kind": "finding"
+                }
+              ],
+              "message": {
+                "text": "CVE-2026-1002"
+              }
+            }
+          ],
+          "properties": {
+            "advisory_id": "CVE-2026-1002",
+            "asset_canonical_id": "3299765d-a493-5ba7-aa95-0da62719b03b",
+            "occurrence_id": "60123401-7f01-53eb-937f-b4486757d568",
+            "canonical_id": "60123401-7f01-53eb-937f-b4486757d568",
+            "owner": null,
+            "sla_due_at": "2026-02-01T03:04:05+00:00",
+            "sla_due_at_source": "severity-kev/v1",
+            "blast_score": 6.5,
+            "match_confidence_tier": "",
+            "cve_ids": [
+              "CVE-2026-1002"
+            ],
+            "cwe_ids": [
+              "CWE-400"
+            ],
+            "exposure_path": {
+              "id": "finding:cve-2026-1002:npm:express:4.17.1",
+              "rank": 2,
+              "label": "express@4.17.1 -> CVE-2026-1002",
+              "summary": "CVE-2026-1002 affects express@4.17.1 with likely reachability.",
+              "riskScore": 6.5,
+              "severity": "high",
+              "source": "agent:claude-desktop",
+              "target": "finding:CVE-2026-1002",
+              "hops": [
+                "agent:claude-desktop",
+                "server:filesystem",
+                "pkg:npm:express@4.17.1",
+                "finding:CVE-2026-1002"
+              ],
+              "relationships": [
+                {
+                  "id": "agent:claude-desktop->uses->server:filesystem",
+                  "type": "uses",
+                  "source": "agent:claude-desktop",
+                  "target": "server:filesystem"
+                },
+                {
+                  "id": "server:filesystem->depends_on->pkg:npm:express@4.17.1",
+                  "type": "depends_on",
+                  "source": "server:filesystem",
+                  "target": "pkg:npm:express@4.17.1"
+                },
+                {
+                  "id": "pkg:npm:express@4.17.1->vulnerable_to->finding:CVE-2026-1002",
+                  "type": "vulnerable_to",
+                  "source": "pkg:npm:express@4.17.1",
+                  "target": "finding:CVE-2026-1002"
+                }
+              ],
+              "nodeIds": [
+                "agent:claude-desktop",
+                "server:filesystem",
+                "pkg:npm:express@4.17.1",
+                "finding:CVE-2026-1002"
+              ],
+              "edgeIds": [
+                "agent:claude-desktop->uses->server:filesystem",
+                "server:filesystem->depends_on->pkg:npm:express@4.17.1",
+                "pkg:npm:express@4.17.1->vulnerable_to->finding:CVE-2026-1002"
+              ],
+              "findings": [
+                "CVE-2026-1002"
+              ],
+              "affectedAgents": [
+                "claude-desktop"
+              ],
+              "affectedServers": [
+                "filesystem"
+              ],
+              "reachableTools": [],
+              "exposedCredentials": [],
+              "dependencyContext": {
+                "package": "express",
+                "version": "4.17.1",
+                "ecosystem": "npm",
+                "direct": true,
+                "dependencyDepth": 0,
+                "reachabilityEvidence": "runtime_dependency"
+              },
+              "fix": "No upstream fix recorded; monitor advisory source",
+              "evidence": [
+                "1 affected agent(s)",
+                "1 affected server(s)"
+              ],
+              "provenance": {
+                "source": "blast_radius_output",
+                "graphPersistence": false
+              }
+            },
+            "exposure_chain": "claude-desktop \u2192 filesystem \u2192 express@4.17.1 \u2192 CVE-2026-1002",
+            "epss_score": null,
+            "is_kev": false,
+            "cvss_vector": null,
+            "attack_vector": null,
+            "attack_complexity": null,
+            "privileges_required": null,
+            "user_interaction": null,
+            "network_exploitable": false,
+            "exploit_likelihood": "unassessed",
+            "exposed_credentials": [],
+            "impact_category": "unknown",
+            "attack_vector_summary": null,
+            "reachability": "likely",
+            "symbol_reachability": "",
+            "reachable_affected_symbols": [],
+            "symbol_reachability_reason": "",
+            "runtime_dependency_chain": [],
+            "affected_servers": [
+              "filesystem"
+            ],
+            "affected_agents": [
+              "claude-desktop"
+            ],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "suppressed": false,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "package_discovery_provenance": {
+              "source_type": "unknown",
+              "version_source": "detected",
+              "resolved_from_registry": false
+            },
+            "package_version_provenance": {
+              "declared_name": "express",
+              "resolved_version": "4.17.1",
+              "version_source": "unknown",
+              "confidence": "unknown",
+              "resolved_from_registry": false
+            },
+            "agent_discovery_provenance": [
+              {
+                "source_type": "local_discovery",
+                "observed_via": [
+                  "local_discovery"
+                ],
+                "confidence": "medium"
+              }
+            ]
+          },
+          "taxa": [
+            {
+              "id": "400",
+              "guid": "1ff4ea35-d014-53e1-bb2b-dc340ef111ac",
+              "toolComponent": {
+                "name": "CWE",
+                "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "GHSA-aaaa-bbbb-cccc",
+          "level": "warning",
+          "kind": "fail",
+          "message": {
+            "text": "GHSA-aaaa-bbbb-cccc (medium) in requests@2.19.0. Affects agents: cursor. Exposure path: cursor \u2192 fetcher \u2192 requests@2.19.0 \u2192 GHSA-aaaa-bbbb-cccc. Blast radius: 0 cred(s), 0 tool(s) reachable."
+          },
+          "fingerprints": {
+            "agent-bom/v1": "cccbe7e608f3ebcc0c61e14ed8da8468c9b7d16981c0a1733ad3bd170bdf799e"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "a1c46626f21e5fc552f95349e1919d7dcb6b271ddb1cdd080031e42273f58a0d"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cursor.json",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 0,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "agent:cursor",
+                  "kind": "agent"
+                }
+              ],
+              "message": {
+                "text": "cursor"
+              }
+            },
+            {
+              "id": 1,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "server:fetcher",
+                  "kind": "server"
+                }
+              ],
+              "message": {
+                "text": "fetcher"
+              }
+            },
+            {
+              "id": 2,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "pkg:pypi:requests@2.19.0",
+                  "kind": "pkg"
+                }
+              ],
+              "message": {
+                "text": "pypi:requests@2.19.0"
+              }
+            },
+            {
+              "id": 3,
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "finding:GHSA-aaaa-bbbb-cccc",
+                  "kind": "finding"
+                }
+              ],
+              "message": {
+                "text": "GHSA-aaaa-bbbb-cccc"
+              }
+            }
+          ],
+          "properties": {
+            "advisory_id": "GHSA-aaaa-bbbb-cccc",
+            "asset_canonical_id": "faaab13b-8361-52cf-9569-b07fb5f94df5",
+            "occurrence_id": "f6500310-056b-582d-a77d-9b0b0f63281c",
+            "canonical_id": "f6500310-056b-582d-a77d-9b0b0f63281c",
+            "owner": null,
+            "sla_due_at": "2026-04-02T03:04:05+00:00",
+            "sla_due_at_source": "severity-kev/v1",
+            "blast_score": 0.0,
+            "match_confidence_tier": "",
+            "cve_ids": [],
+            "cwe_ids": [],
+            "exposure_path": {
+              "id": "finding:ghsa-aaaa-bbbb-cccc:pypi:requests:2.19.0",
+              "rank": 3,
+              "label": "requests@2.19.0 -> GHSA-aaaa-bbbb-cccc",
+              "summary": "GHSA-aaaa-bbbb-cccc affects requests@2.19.0 with likely reachability.",
+              "riskScore": 0.0,
+              "severity": "medium",
+              "source": "agent:cursor",
+              "target": "finding:GHSA-aaaa-bbbb-cccc",
+              "hops": [
+                "agent:cursor",
+                "server:fetcher",
+                "pkg:pypi:requests@2.19.0",
+                "finding:GHSA-aaaa-bbbb-cccc"
+              ],
+              "relationships": [
+                {
+                  "id": "agent:cursor->uses->server:fetcher",
+                  "type": "uses",
+                  "source": "agent:cursor",
+                  "target": "server:fetcher"
+                },
+                {
+                  "id": "server:fetcher->depends_on->pkg:pypi:requests@2.19.0",
+                  "type": "depends_on",
+                  "source": "server:fetcher",
+                  "target": "pkg:pypi:requests@2.19.0"
+                },
+                {
+                  "id": "pkg:pypi:requests@2.19.0->vulnerable_to->finding:GHSA-aaaa-bbbb-cccc",
+                  "type": "vulnerable_to",
+                  "source": "pkg:pypi:requests@2.19.0",
+                  "target": "finding:GHSA-aaaa-bbbb-cccc"
+                }
+              ],
+              "nodeIds": [
+                "agent:cursor",
+                "server:fetcher",
+                "pkg:pypi:requests@2.19.0",
+                "finding:GHSA-aaaa-bbbb-cccc"
+              ],
+              "edgeIds": [
+                "agent:cursor->uses->server:fetcher",
+                "server:fetcher->depends_on->pkg:pypi:requests@2.19.0",
+                "pkg:pypi:requests@2.19.0->vulnerable_to->finding:GHSA-aaaa-bbbb-cccc"
+              ],
+              "findings": [
+                "GHSA-aaaa-bbbb-cccc"
+              ],
+              "affectedAgents": [
+                "cursor"
+              ],
+              "affectedServers": [
+                "fetcher"
+              ],
+              "reachableTools": [],
+              "exposedCredentials": [],
+              "dependencyContext": {
+                "package": "requests",
+                "version": "2.19.0",
+                "ecosystem": "pypi",
+                "direct": true,
+                "dependencyDepth": 0,
+                "reachabilityEvidence": "runtime_dependency"
+              },
+              "fix": "No upstream fix recorded; monitor advisory source",
+              "evidence": [
+                "1 affected agent(s)",
+                "1 affected server(s)"
+              ],
+              "provenance": {
+                "source": "blast_radius_output",
+                "graphPersistence": false
+              }
+            },
+            "exposure_chain": "cursor \u2192 fetcher \u2192 requests@2.19.0 \u2192 GHSA-aaaa-bbbb-cccc",
+            "epss_score": null,
+            "is_kev": false,
+            "cvss_vector": null,
+            "attack_vector": null,
+            "attack_complexity": null,
+            "privileges_required": null,
+            "user_interaction": null,
+            "network_exploitable": false,
+            "exploit_likelihood": "unassessed",
+            "exposed_credentials": [],
+            "impact_category": "unknown",
+            "attack_vector_summary": null,
+            "reachability": "likely",
+            "symbol_reachability": "",
+            "reachable_affected_symbols": [],
+            "symbol_reachability_reason": "",
+            "runtime_dependency_chain": [],
+            "affected_servers": [
+              "fetcher"
+            ],
+            "affected_agents": [
+              "cursor"
+            ],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "suppressed": true,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "vex_status": "not_affected",
+            "vex_justification": "vulnerable_code_not_in_execute_path",
+            "package_discovery_provenance": {
+              "source_type": "unknown",
+              "version_source": "detected",
+              "resolved_from_registry": false
+            },
+            "package_version_provenance": {
+              "declared_name": "requests",
+              "resolved_version": "2.19.0",
+              "version_source": "unknown",
+              "confidence": "unknown",
+              "resolved_from_registry": false
+            },
+            "agent_discovery_provenance": [
+              {
+                "source_type": "local_discovery",
+                "observed_via": [
+                  "local_discovery"
+                ],
+                "confidence": "medium"
+              }
+            ]
+          },
+          "suppressions": [
+            {
+              "kind": "external",
+              "guid": "3f1c2b4a-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+              "justification": "Not reachable in production",
+              "properties": {
+                "suppression_id": "3f1c2b4a-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+                "suppression_state": "accepted_risk",
+                "unsuppressed_risk_score": 5.1
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "finding/CREDENTIAL_EXPOSURE",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "Hardcoded AWS secret key"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "d3cb6dad4554c58ec3581b12be78cb49d63c105c3006c89dc648381ca35ab333"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "897da58c5dc46e143bd2f776f243f819fbf54ef23f96ffec38b4d316f03d7ac8"
+          },
+          "properties": {
+            "advisory_id": "finding/CREDENTIAL_EXPOSURE",
+            "cwe_ids": [],
+            "asset_canonical_id": "ff4e768d-3fe7-5172-a062-f5ef0a52d5e3",
+            "occurrence_id": "549c548f-d4d2-563a-8b9b-0d145714b172",
+            "canonical_id": "549c548f-d4d2-563a-8b9b-0d145714b172",
+            "risk_score": 8.0,
+            "asset_type": "package",
+            "asset_name": "config.env",
+            "evidence": {},
+            "remediation_guidance": null,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "affected_servers": [],
+            "affected_agents": [],
+            "exposed_credentials": [],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "attack_vector_summary": null,
+            "suppressed": false
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "config.env",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "finding/SAST/AB-SAST-002",
+          "level": "warning",
+          "kind": "fail",
+          "message": {
+            "text": "SQL string construction"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "6048ee5085968db0a4fdf311beed39cb54123a6ae50212ef1cee0fb8d7c991a9"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "5dca059b276d25d5982f27206746e245e420fe6810693b4e268c55c4a7252d86"
+          },
+          "properties": {
+            "advisory_id": "finding/SAST/AB-SAST-002",
+            "cwe_ids": [
+              "CWE-89"
+            ],
+            "asset_canonical_id": "02b31146-02c2-53ca-b3cb-88a04e3bb0f7",
+            "occurrence_id": "106c203b-4e7e-5eb8-a727-83c0fb29cdca",
+            "canonical_id": "106c203b-4e7e-5eb8-a727-83c0fb29cdca",
+            "risk_score": 5.0,
+            "asset_type": "source_file",
+            "asset_name": "db.py",
+            "evidence": {
+              "rule_id": "AB-SAST-002",
+              "category": "sql_injection",
+              "source": "request.args"
+            },
+            "remediation_guidance": null,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "affected_servers": [],
+            "affected_agents": [],
+            "exposed_credentials": [],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "attack_vector_summary": null,
+            "suppressed": false,
+            "category": "sql_injection",
+            "entrypoint": "handler",
+            "sink": "cursor.execute",
+            "source": "request.args",
+            "call_path": [
+              "handler",
+              "build_query",
+              "cursor.execute"
+            ],
+            "detector_categories": [
+              "taint"
+            ]
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/db.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 41,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "taxa": [
+            {
+              "id": "89",
+              "guid": "a3bee1aa-59c0-557b-9d9e-6256f4a5cd4b",
+              "toolComponent": {
+                "name": "CWE",
+                "guid": "ec480a2c-8267-5d90-affc-401687cd64b0"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "finding/CREDENTIAL_EXPOSURE/agent_credential_exposure",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "Agent exposes a production credential"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "e3f2c61409c2dd2274a4ba1336b0753f60593a465ae6f2e7f46f6d8fc9eeded1"
+          },
+          "properties": {
+            "advisory_id": "finding/CREDENTIAL_EXPOSURE/agent_credential_exposure",
+            "cwe_ids": [],
+            "asset_canonical_id": "eda96777-6e13-53bf-828f-d20fb8d80c3e",
+            "occurrence_id": "710bd0c0-4d8b-51d9-8db5-71e24ba7fbda",
+            "canonical_id": "710bd0c0-4d8b-51d9-8db5-71e24ba7fbda",
+            "risk_score": 0.0,
+            "asset_type": "agent",
+            "asset_name": "payments-agent",
+            "evidence": {
+              "category": "agent_credential_exposure"
+            },
+            "remediation_guidance": null,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "affected_servers": [],
+            "affected_agents": [],
+            "exposed_credentials": [],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "attack_vector_summary": null,
+            "suppressed": true
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "payments-agent",
+                  "kind": "agent"
+                }
+              ]
+            }
+          ],
+          "suppressions": [
+            {
+              "kind": "external",
+              "justification": "Credential is a test fixture",
+              "properties": {
+                "suppression_id": "not-a-guid",
+                "suppression_state": "false_positive"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "finding/CVE",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "Imported advisory without a package"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "851e9ed084c8b350af8d500e689b2f03abe2a1413be2adc0afcc39e3a3ddc17d"
+          },
+          "properties": {
+            "advisory_id": "finding/CVE",
+            "cwe_ids": [],
+            "asset_canonical_id": "7762e995-9518-5067-9818-5d4d5418d790",
+            "occurrence_id": "9f54fa9f-280e-5739-8c26-fb59fa7388ea",
+            "canonical_id": "9f54fa9f-280e-5739-8c26-fb59fa7388ea",
+            "risk_score": 0.0,
+            "asset_type": "package",
+            "asset_name": "imported-advisory",
+            "evidence": {},
+            "remediation_guidance": null,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "affected_servers": [],
+            "affected_agents": [],
+            "exposed_credentials": [],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "attack_vector_summary": null,
+            "suppressed": false
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "imported-advisory",
+                  "kind": "package"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "finding/CIS_FAIL",
+          "level": "note",
+          "kind": "informational",
+          "message": {
+            "text": "Databricks CIS check"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "e7709b3b07f9bd2166f00cbe1beadc353f888f63fc74a2d044db3f287cccd091"
+          },
+          "properties": {
+            "advisory_id": "finding/CIS_FAIL",
+            "cwe_ids": [],
+            "asset_canonical_id": "d0382446-fdf3-524f-87de-d1ddadfc47dd",
+            "occurrence_id": "d0a4d7fe-9c27-572d-ac4d-7d7d00e5730f",
+            "canonical_id": "d0a4d7fe-9c27-572d-ac4d-7d7d00e5730f",
+            "risk_score": 0.0,
+            "asset_type": "cloud_resource",
+            "asset_name": "workspace",
+            "evidence": {
+              "provider": "databricks"
+            },
+            "remediation_guidance": null,
+            "is_malicious": false,
+            "malicious_reason": null,
+            "affected_servers": [],
+            "affected_agents": [],
+            "exposed_credentials": [],
+            "exposed_tools": [],
+            "ai_risk_context": null,
+            "ai_summary": null,
+            "attack_vector_summary": null,
+            "suppressed": false
+          },
+          "locations": [
+            {
+              "logicalLocations": [
+                {
+                  "name": "workspace",
+                  "kind": "cloud_resource"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "iac/DKR-001",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "No USER directive; container runs as root."
+          },
+          "fingerprints": {
+            "agent-bom/v1": "71ed8dc0af25e29b4351dc7141e5e7e97f68859254e03c755f12ded838582788"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "543d122c9c49b4ef31f02b9400fad91476dfd4ebe669838d31c748a4621a4d96"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "iac/DKR-001",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "Container runs as root"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "17ca5150d081457a7264fb3e1926d7c41d933ade540c296d81a69d477481c5c0"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "03a7f2bb82e0570cf7de0c0c55bbeb4886d8525e8735fd880c3951693086c4b5"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "iac/K8S-010",
+          "level": "note",
+          "kind": "fail",
+          "message": {
+            "text": "Pod lacks resource limits"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "302edbfaa80607bf25d2d29a2d08dfdc64d09fd894e0c716bef400dec5b6b916"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "6c6dead756e33d34cd6a4a9ddcaaec23e1ba9e9f1ff73c8924211f471d410736"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "unknown",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "ai-inventory/deprecated_model/text-davinci-003",
+          "level": "warning",
+          "kind": "fail",
+          "message": {
+            "text": "Deprecated model in use."
+          },
+          "fingerprints": {
+            "agent-bom/v1": "f6901527b0efb72326a768c0f0fd6f7f3c59fcc661486dc821d39daac9c1ebbe"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "40db31dbd0f93104082db50de301a336fa928b400d2e43b5a84fb19d59b9a4f5"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "llm.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 12,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "ai-inventory/api_key/[REDACTED]",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "api key: <redacted>"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "d944496de8983bd9d6d0f2fdf10aa905669d8e6aa261f2fcf0765a0f5ba83a38"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "ae4eb3b0c9679ba932f3a6d202449d8720e135e54c9740c686a2f1f759821beb"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "keys.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "cis/aws/1.4",
+          "level": "error",
+          "kind": "fail",
+          "message": {
+            "text": "CIS AWS 1.4 failed: Ensure no root account access key exists"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "5800682275341f6a9f3cea6490febc6619c4a418b27e30d381080e68392e3a27"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "611d74562f9004905610817ea09cbf0d8f15c4e2c05a6c47e469f891429cc58d"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cis-aws-benchmark",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "remediation": {
+              "docs": "https://docs.aws.amazon.com/iam",
+              "fix_cli": null,
+              "effort": "manual",
+              "priority": 1,
+              "guardrails": [
+                "confirm break-glass access"
+              ],
+              "requires_human_review": true
+            },
+            "cis_section": "1.4",
+            "evidence": null,
+            "resource_ids": [
+              "arn:aws:iam::123456789012:root"
+            ],
+            "fix_cli": null,
+            "fix_console": "",
+            "effort": "manual",
+            "priority": 1,
+            "guardrails": [
+              "confirm break-glass access"
+            ],
+            "requires_human_review": true
+          }
+        },
+        {
+          "ruleId": "cis/azure/2.1",
+          "level": "note",
+          "kind": "fail",
+          "message": {
+            "text": "CIS AZURE 2.1 failed: Defender plan off"
+          },
+          "fingerprints": {
+            "agent-bom/v1": "3de46e2f8728e010384f3442d5bc4a05f112a5ad7952c926eb37d8004e057cad"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "41fa6c2bc4fc9540312277d47256cb0e7e34b89e764c417b034dcbcfe8476585"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "cis-azure-benchmark",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "remediation": {
+              "fix_cli": null,
+              "effort": "manual",
+              "requires_human_review": true
+            },
+            "cis_section": "",
+            "evidence": null,
+            "resource_ids": [],
+            "fix_cli": null,
+            "fix_console": "",
+            "effort": "manual",
+            "priority": 3,
+            "guardrails": [],
+            "requires_human_review": true
+          }
+        }
+      ],
+      "properties": {
+        "scan_outcome": "partial",
+        "trust_assessment": {
+          "verdict": "review",
+          "confidence": "medium"
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "descriptor": {
+                "id": "registry_timeout"
+              },
+              "level": "warning",
+              "message": {
+                "text": "Registry lookup timed out"
+              },
+              "properties": {
+                "stage": "enrichment",
+                "source": "registry",
+                "affectsCoverage": true
+              }
+            },
+            {
+              "descriptor": {
+                "id": "vulnerability_coverage_gap"
+              },
+              "level": "warning",
+              "message": {
+                "text": "osv-2026-01: Partial advisory coverage"
+              },
+              "properties": {
+                "stage": "scanning",
+                "source": "pypi",
+                "affectsCoverage": true
+              }
+            }
+          ]
+        }
+      ],
+      "automationDetails": {
+        "id": "agent-bom/golden-rich"
+      },
+      "taxonomies": [
+        {
+          "name": "owasp-llm-top10",
+          "fullName": "OWASP Top 10 for Large Language Model Applications",
+          "informationUri": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+          "properties": {
+            "agent-bom:mappingProvenance": "vendor-asserted",
+            "agent-bom:mappingProvenanceNote": "Finding-to-control mappings are agent-bom's own asserted judgment of which control a finding evidences, not an authority-published crosswalk."
+          },
+          "taxa": [
+            {
+              "id": "LLM05",
+              "name": "LLM05"
+            }
+          ]
+        },
+        {
+          "name": "mitre-attack",
+          "fullName": "MITRE ATT&CK",
+          "informationUri": "https://attack.mitre.org/",
+          "properties": {
+            "agent-bom:mappingProvenance": "vendor-asserted",
+            "agent-bom:mappingProvenanceNote": "Finding-to-control mappings are agent-bom's own asserted judgment of which control a finding evidences, not an authority-published crosswalk."
+          },
+          "taxa": [
+            {
+              "id": "T1190",
+              "name": "T1190"
+            }
+          ]
+        },
+        {
+          "name": "CWE",
+          "guid": "ec480a2c-8267-5d90-affc-401687cd64b0",
+          "fullName": "Common Weakness Enumeration",
+          "informationUri": "https://cwe.mitre.org/",
+          "organization": "MITRE",
+          "isComprehensive": false,
+          "taxa": [
+            {
+              "id": "89",
+              "guid": "a3bee1aa-59c0-557b-9d9e-6256f4a5cd4b",
+              "name": "CWE-89",
+              "helpUri": "https://cwe.mitre.org/data/definitions/89.html"
+            },
+            {
+              "id": "94",
+              "guid": "9419a3ff-e820-5c47-8ef0-548a64590908",
+              "name": "CWE-94",
+              "helpUri": "https://cwe.mitre.org/data/definitions/94.html"
+            },
+            {
+              "id": "400",
+              "guid": "1ff4ea35-d014-53e1-bb2b-dc340ef111ac",
+              "name": "CWE-400",
+              "helpUri": "https://cwe.mitre.org/data/definitions/400.html"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

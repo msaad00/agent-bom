@@ -1,0 +1,167 @@
+{
+  "audit": [
+    {
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "ts": "<volatile>",
+      "type": "mcp_execution_posture"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "7acebc5ec91ef87e48a2c8b20885dff31e4537581501da6cd15018db129adbe5",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:echo",
+            "label": "echo",
+            "source_ref": {
+              "id": "echo",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "7acebc5ec91ef87e48a2c8b20885dff31e4537581501da6cd15018db129adbe5",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "echo",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 1,
+      "payload_sha256": "7acebc5ec91ef87e48a2c8b20885dff31e4537581501da6cd15018db129adbe5",
+      "policy": "allowed",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "echo",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "hmac_sha256": "f1ee1eafe8541b18f19dd37560ef87e39de4fce164b3c5ac7ea86e440d083629",
+      "id": 1,
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "response_sha256": "8881ac40246767566d84cb4f159716b45048ac1a415a8225047b9f9ab6b4cf55",
+      "ts": "<volatile>",
+      "type": "response_hmac"
+    },
+    {
+      "audit_buffer_bytes": 0,
+      "audit_circuit_open": 0,
+      "audit_dlq_bytes": 0,
+      "audit_push_backoff_seconds": 0,
+      "audit_push_failures": 0,
+      "audit_spillover_bytes": 0,
+      "blocked_by_reason": {},
+      "blocked_runtime_alerts": 0,
+      "calls_by_tool": {
+        "echo": 1
+      },
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "last_decision": "allowed:echo",
+      "latency": {
+        "avg_ms": "<volatile>",
+        "count": 1,
+        "max_ms": "<volatile>",
+        "min_ms": "<volatile>",
+        "p50_ms": "<volatile>",
+        "p95_ms": "<volatile>"
+      },
+      "latest_runtime_alert_at": "<volatile>",
+      "messages_client_to_server": 2,
+      "messages_server_to_client": 1,
+      "policy_fetch_failures": 0,
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "relay_errors": 0,
+      "replay_rejections": 0,
+      "runtime_alerts": 0,
+      "runtime_alerts_by_detector": {},
+      "runtime_alerts_by_severity": {},
+      "total_blocked": 0,
+      "total_tool_calls": 1,
+      "ts": "<volatile>",
+      "type": "proxy_summary",
+      "uptime_seconds": "<volatile>"
+    }
+  ],
+  "client_frames": [
+    {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "ok:echo",
+            "type": "text"
+          }
+        ]
+      }
+    }
+  ],
+  "control_plane_pushes": [],
+  "exit_code": 0,
+  "server_frames": [
+    {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "arguments": {
+          "text": "sign me"
+        },
+        "name": "echo"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "test/exit"
+    }
+  ]
+}

@@ -23,6 +23,7 @@ import httpx
 
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
+from agent_bom.package_utils import package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -1393,8 +1394,7 @@ def parse_conda_packages(directory: Path) -> list[Package]:
             manager = (entry.get("manager") or "conda").strip().lower()
             if not name or not version:
                 continue
-            key = (name, version, manager)
-            if key in seen:
+            if (key := (name, version, manager)) in seen:
                 continue
             seen.add(key)
             ecosystem = "pypi" if manager == "pip" else "conda"
@@ -1403,7 +1403,7 @@ def parse_conda_packages(directory: Path) -> list[Package]:
                     name=name,
                     version=version,
                     ecosystem=ecosystem,
-                    purl=f"pkg:{ecosystem}/{name}@{version}",
+                    purl=package_purl(name, version, ecosystem),
                     is_direct=True,
                 )
             )

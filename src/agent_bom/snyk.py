@@ -16,11 +16,15 @@ from typing import Optional
 
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.package_utils import package_purl
 
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://api.snyk.io"
 _API_VERSION = "2024-01-23"
+
+# Package ecosystems Snyk's package-issues API is queried for.
+_SNYK_ECOSYSTEMS = frozenset({"npm", "pypi", "PyPI", "go", "cargo", "maven", "nuget", "gem"})
 
 
 def _purl_for_package(pkg: Package) -> str | None:
@@ -29,23 +33,10 @@ def _purl_for_package(pkg: Package) -> str | None:
         return pkg.purl
     if not pkg.name or not pkg.ecosystem:
         return None
-    eco_map = {
-        "npm": "npm",
-        "pypi": "pypi",
-        "PyPI": "pypi",
-        "go": "golang",
-        "cargo": "cargo",
-        "maven": "maven",
-        "nuget": "nuget",
-        "gem": "gem",
-    }
-    eco = eco_map.get(pkg.ecosystem)
-    if not eco:
+    if pkg.ecosystem not in _SNYK_ECOSYSTEMS:
         return None
-    version = pkg.version if pkg.version not in ("unknown", "latest", "") else None
-    if version:
-        return f"pkg:{eco}/{pkg.name}@{version}"
-    return f"pkg:{eco}/{pkg.name}"
+    version = pkg.version if pkg.version not in ("unknown", "latest", "") else ""
+    return package_purl(pkg.name, version, pkg.ecosystem)
 
 
 def _severity_from_snyk(sev_str: str) -> Severity:

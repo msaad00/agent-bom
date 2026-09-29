@@ -32,6 +32,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from agent_bom.core.severity import severity_fix_priority
+
 if TYPE_CHECKING:  # avoid a runtime import cycle (finding imports nothing here)
     from agent_bom.finding import Finding
 
@@ -258,18 +260,8 @@ def _runbook_artifact_for_cis(
     )
 
 
-_SEVERITY_PRIORITY: dict[str, int] = {
-    "critical": 1,
-    "high": 1,
-    "medium": 2,
-    "low": 3,
-    "info": 4,
-    "informational": 4,
-}
-
-
 def _priority_for(severity: str) -> int:
-    return _SEVERITY_PRIORITY.get((severity or "").lower(), 3)
+    return severity_fix_priority(severity)
 
 
 def _build_cis_remediation(finding: "Finding") -> Remediation:

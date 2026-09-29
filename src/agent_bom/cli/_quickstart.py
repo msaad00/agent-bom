@@ -11,6 +11,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypedDict, cast
+from urllib.parse import urlencode
 
 import click
 
@@ -228,12 +229,24 @@ def _run_quickstart(
     click.echo("")
     click.echo("Onboarding complete. The security graph was read back from the configured local database.")
     click.echo("")
+    click.echo("Sample evidence; this does not assess your environment.")
+    click.echo(f"  JSON report: {report_path.resolve()}")
+    if offline:
+        click.echo("  Package-CVE lookup: skipped (offline inventory); zero CVEs is not a clean verdict.")
+    else:
+        click.echo("  Package-CVE lookup: requested; inspect scan_run and coverage_warnings in the JSON report.")
+    click.echo("")
     click.echo("Open the cockpit:")
     click.echo(f"  {_control_plane_command(control_plane_db=control_plane_db, graph_db=graph_db, port=port)}")
     click.echo("  # the explicit local analyst role permits scans in this loopback-only workflow;")
     click.echo("  # on a shared host use --api-key <key> or configure OIDC authentication instead.")
-    click.echo(f"  Security graph: http://127.0.0.1:{port}/security-graph")
+    graph_query = urlencode({"lens": "lineage", "scan": graph_receipt["scan_id"]})
+    click.echo(f"  Security graph: http://127.0.0.1:{port}/security-graph?{graph_query}")
     click.echo(f"  Dashboard:      http://127.0.0.1:{port}/")
+    click.echo("")
+    click.echo("Next, scan your own repository from its root (uses network advisory lookup):")
+    click.echo("  agent-bom scan . -f json -o agent-bom-report.json")
+    click.echo("  # review scan_run and coverage_warnings before interpreting finding counts.")
     if policy_path is not None:
         click.echo("")
         click.echo(f"Run the gateway baseline ({gateway_mode.lower()}):")

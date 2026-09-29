@@ -517,7 +517,12 @@ test("root investigations expose depth and direction controls with bounded reque
   const reverse = page.waitForRequest((request) => request.url().endsWith("/v1/graph/query") && request.postDataJSON().direction === "reverse");
   await page.getByText("Traversal options", { exact: true }).click();
   await page.getByRole("combobox", { name: "Traversal direction" }).selectOption("reverse");
-  expect((await reverse).postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
+  const reverseRequest = await reverse;
+  expect(reverseRequest.postDataJSON()).toMatchObject({ roots: ["pkg:42"], max_depth: 2 });
+  const reverseResponse = await reverseRequest.response();
+  expect(reverseResponse?.ok()).toBe(true);
+  await reverseResponse!.finished();
+  await expect(page.getByText("Loading related assets · current view retained", { exact: true })).toBeHidden();
   const canvas = page.locator(".react-flow");
   const top = (await canvas.boundingBox())!.y;
   await page.locator(".graph-legend-dock-summary:visible").click();

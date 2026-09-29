@@ -169,6 +169,12 @@ def test_final_totals_include_project_ast_findings(tmp_path, monkeypatch):
     runner = CliRunner()
     generated = runner.invoke(main, ["samples", "first-run", "-o", str(project)], catch_exceptions=False)
     assert generated.exit_code == 0
+    # The safe first-run helper is not a SAST finding. Supply an actual
+    # dangerous capability so this test exercises late-arriving AST evidence.
+    (project / "unsafe-command.js").write_text(
+        "import { execSync } from 'node:child_process';\nexecSync(process.env.USER_COMMAND);\n",
+        encoding="utf-8",
+    )
     result = runner.invoke(
         main,
         ["scan", "--demo", "-p", str(project), "--offline", "--no-auto-update-db", "-f", "json", "-o", str(output)],

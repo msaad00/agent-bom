@@ -214,7 +214,13 @@ def finding_order_clause(dialect: Dialect, sort: str) -> str:
     return f"ORDER BY {finding_keyset(sort).order_by(dialect)}"
 
 
-def _keyset_clause(dialect: Dialect, sort: str, cursor: str) -> tuple[str, list[Any]]:
+def finding_keyset_clause(dialect: Dialect, sort: str, cursor: str) -> tuple[str, list[Any]]:
+    """`` AND <predicate>`` with ``?`` placeholders selecting rows after ``cursor``.
+
+    The predicate carries each engine's collation, so it must be built for the
+    dialect that runs it (a :class:`~agent_bom.api.storage.sql.SqlBackend`
+    session rewrites the placeholders for Postgres).
+    """
     normalized = sort if sort in _ALLOWED_SORTS else "effective_reach"
     position = decode_finding_cursor(cursor, expected_sort=normalized)
     predicate, params = finding_keyset(normalized).after(dialect, position)
@@ -223,12 +229,12 @@ def _keyset_clause(dialect: Dialect, sort: str, cursor: str) -> tuple[str, list[
 
 def sqlite_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
     """Return extra WHERE SQL + params for keyset pagination after ``cursor``."""
-    return _keyset_clause("sqlite", sort, cursor)
+    return finding_keyset_clause("sqlite", sort, cursor)
 
 
 def postgres_keyset_clause(sort: str, cursor: str) -> tuple[str, list[Any]]:
-    """Postgres form of :func:`sqlite_keyset_clause` with ``%s`` placeholders."""
-    clause, params = _keyset_clause("postgres", sort, cursor)
+    """Postgres form of :func:`sqlite_keyset_clause` with ``%s`` placeholders for a raw psycopg connection."""
+    clause, params = finding_keyset_clause("postgres", sort, cursor)
     return clause.replace("?", "%s"), params
 
 

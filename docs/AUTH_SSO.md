@@ -172,7 +172,10 @@ scoped API operations; use it when assigning narrowly scoped service keys.
 
 The catalog and middleware share `api/route_policy.py`. Rules match path
 segments, with the most specific subpath winning; `HEAD` inherits `GET`.
-Unclassified `/v1` and `/scim` mutations require admin. Authentication remains
+Unclassified protected operations return `403` after authentication, including
+for administrators, static keys, OIDC/proxy sessions and explicitly enabled
+anonymous access. Empty or wildcard key scopes apply only to classified
+operations. Custom routes must add an explicit operation policy before use. Authentication remains
 required unless the deployment explicitly enables the documented local/demo
 mode; missing or invalid credentials do not gain access through these rules.
 Route dependencies may impose additional resource or tenant checks.

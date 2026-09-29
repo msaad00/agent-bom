@@ -9,6 +9,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from agent_bom.api.route_policy import route_policy
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.platform_invariants import normalize_tenant_id
 
@@ -34,6 +35,8 @@ async def call_with_request_tenant(
         tenant_id = require_request_tenant_id(request)
     except HTTPException:
         return JSONResponse(status_code=500, content={"detail": "Authenticated tenant context is unavailable"})
+    if route_policy(request.method, request.url.path) is None:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden — operation has no authorization policy"})
     request.state.tenant_id = tenant_id
     if authenticate is not None:
         from agent_bom.api.stream_authorization import bind_http_stream_authorization

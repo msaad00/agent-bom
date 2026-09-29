@@ -203,10 +203,17 @@ def test_postgres_cleanup_discovers_all_tenant_tables_but_retains_audit_tombston
         ("managed_trial_tenants",),
     ]
     deleted_queries: list[str] = []
+    locked = False
 
     class _Connection:
         def execute(self, query: object, params: object = None) -> object:
+            nonlocal locked
+            if isinstance(query, str) and "pg_advisory_xact_lock" in query:
+                assert params == ("hub-findings:trial-synthetic-001",)
+                locked = True
+                return SimpleNamespace(rowcount=1)
             if isinstance(query, str) and "information_schema.columns" in query:
+                assert locked
                 return SimpleNamespace(fetchall=lambda: discovered)
             if isinstance(query, str) and query.startswith("DELETE FROM teams"):
                 return SimpleNamespace(rowcount=1)

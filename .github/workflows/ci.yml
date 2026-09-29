@@ -1487,6 +1487,7 @@ jobs:
             tests/test_audit_reads_bind_their_tenant.py \
             tests/test_fleet_agents_tenant_scoped_key.py \
             tests/test_hub_ingest_atomic.py \
+            tests/test_hub_ingest_replica_postgres.py \
             tests/test_hub_overview_cache.py \
             tests/test_partition_maintenance.py \
             tests/test_graph_traversal_budget_honesty.py \

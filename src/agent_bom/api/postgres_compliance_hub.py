@@ -8,7 +8,6 @@ share ingested findings across replicas.
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -33,6 +32,7 @@ from agent_bom.api.hub_reference_store import (
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads
 from agent_bom.api.storage.finding_current_writes import reconcile_current, write_current_batch
+from agent_bom.api.storage.finding_ingest_state import INGEST_STATE_DDL, LedgerIngestState, read_ingest_state, write_ingest_state
 from agent_bom.api.storage.finding_ledger_writes import write_ledger_batch
 from agent_bom.api.storage.finding_reads import SqlFindingReads
 from agent_bom.api.storage.finding_write_session import finding_write_session
@@ -311,6 +311,13 @@ def _postgres_current_has_ledger_col(conn: Any) -> bool:
     return row is not None
 
 
+def _ensure_ingest_support_tables(conn: Any) -> None:
+    ensure_postgres_reference_tables(conn)
+    conn.execute(INGEST_STATE_DDL)
+    for table in ("hub_cve_intel", "hub_framework_refs", "hub_ledger_ingest_state"):
+        _ensure_tenant_rls(conn, table, "tenant_id")
+
+
 class PostgresComplianceHubStore:
     """Shared hub store backing multi-replica self-hosted deployments."""
 
@@ -324,26 +331,7 @@ class PostgresComplianceHubStore:
 
     def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
-        self._ingest_stats_lock = threading.Lock()
-        self._finding_count_by_tenant: dict[str, int] = {}
         self._init_tables()
-
-    def _reset_ingest_stats(self, tenant_id: str) -> None:
-        with self._ingest_stats_lock:
-            self._finding_count_by_tenant.pop(tenant_id, None)
-
-    def _bootstrap_ingest_stats(self, conn: Any, tenant_id: str) -> None:
-        with self._ingest_stats_lock:
-            if tenant_id in self._finding_count_by_tenant:
-                return
-        row = conn.execute(
-            "SELECT COUNT(*) FROM compliance_hub_findings WHERE tenant_id = %s",
-            (tenant_id,),
-        ).fetchone()
-        with self._ingest_stats_lock:
-            if tenant_id in self._finding_count_by_tenant:
-                return
-            self._finding_count_by_tenant[tenant_id] = int(row[0]) if row else 0
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
@@ -564,9 +552,7 @@ class PostgresComplianceHubStore:
                 conn.execute(sort_index_sql)
             _ensure_tenant_rls(conn, "hub_findings_current", "tenant_id")
             _ensure_tenant_rls(conn, "hub_findings_current_observations", "tenant_id")
-            ensure_postgres_reference_tables(conn)
-            _ensure_tenant_rls(conn, "hub_cve_intel", "tenant_id")
-            _ensure_tenant_rls(conn, "hub_framework_refs", "tenant_id")
+            _ensure_ingest_support_tables(conn)
             conn.commit()
 
     @staticmethod
@@ -638,27 +624,21 @@ class PostgresComplianceHubStore:
 
     def _write_ledger_batch(self, conn: Any, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         tx = finding_write_session(conn, "postgres", tenant_id)
-        self._bootstrap_ingest_stats(conn, tenant_id)
+        state = read_ingest_state(tx, tenant_id)
         new_rows, _ = write_ledger_batch(tx, "postgres", tenant_id, findings)
-        return new_rows
-
-    def _bump_tenant_total(self, tenant_id: str, new_rows: int) -> int:
-        """Advance the cached tenant total by ``new_rows`` (called post-commit)."""
-        with self._ingest_stats_lock:
-            if tenant_id in self._finding_count_by_tenant:
-                self._finding_count_by_tenant[tenant_id] += new_rows
-                return self._finding_count_by_tenant[tenant_id]
-        return self.count(tenant_id)
+        total = state.finding_count + new_rows
+        write_ingest_state(tx, tenant_id, LedgerIngestState(total, state.next_ordinal))
+        return total
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            new_rows = self._write_ledger_batch(conn, tenant_id, findings)
+            new_total = self._write_ledger_batch(conn, tenant_id, findings)
             if findings:
                 _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         _invalidate_overview_severity(tenant_id)
-        return self._bump_tenant_total(tenant_id, new_rows)
+        return new_total
 
     def ingest_batch_atomic(
         self,
@@ -678,13 +658,12 @@ class PostgresComplianceHubStore:
         current-state upsert left the ledger committed but current-state not:
         the ledger inflated while the findings stayed invisible (wave-2 residual
         #1). Threading a single ``_tenant_connection`` through all three writes
-        and committing once makes a mid-batch failure roll BOTH back. The cached
-        tenant total is bumped only after the commit succeeds so a rolled-back
-        batch does not inflate it. Returns ``(new_total, reconciled)``.
+        and committing once makes a mid-batch failure roll BOTH back. Durable
+        tenant counts commit or roll back in that same transaction. Returns ``(new_total, reconciled)``.
         """
         tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            new_rows = self._write_ledger_batch(conn, tenant_id, findings)
+            new_total = self._write_ledger_batch(conn, tenant_id, findings)
             self._write_current_batch(
                 conn,
                 tenant_id,
@@ -708,7 +687,6 @@ class PostgresComplianceHubStore:
         from agent_bom.api.findings_count_cache import invalidate_tenant
 
         invalidate_tenant(tenant_id)
-        new_total = self._bump_tenant_total(tenant_id, new_rows)
         return new_total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -893,17 +871,18 @@ class PostgresComplianceHubStore:
     def clear(self, tenant_id: str) -> int:
         tenant_id = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            finding_write_session(conn, "postgres", tenant_id)
+            tx = finding_write_session(conn, "postgres", tenant_id)
+            state = read_ingest_state(tx, tenant_id)
             cur = conn.execute(
                 "DELETE FROM compliance_hub_findings WHERE tenant_id = %s",
                 (tenant_id,),
             )
             conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = %s", (tenant_id,))
             conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = %s", (tenant_id,))
+            write_ingest_state(tx, tenant_id, LedgerIngestState(0, state.next_ordinal))
             _bump_overview_revision_postgres(conn, tenant_id)
             conn.commit()
         removed = cur.rowcount or 0
-        self._reset_ingest_stats(tenant_id)
         _invalidate_overview_severity(tenant_id)
         if removed:
             from agent_bom.api.findings_count_cache import invalidate_tenant

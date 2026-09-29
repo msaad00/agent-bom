@@ -60,7 +60,6 @@ def test_advisory_enrichment_paths_are_documented_fail_open() -> None:
     for subsystem in (
         "spend_budgets",
         "cost_anomaly_enforcement",
-        "fleet_quarantine_enforcement",
         "drift_enforcement",
         "graph_reachability_enforcement",
         "audit_export",
@@ -71,6 +70,7 @@ def test_advisory_enrichment_paths_are_documented_fail_open() -> None:
 
 def test_security_decision_paths_are_documented_fail_closed() -> None:
     for subsystem in (
+        "fleet_quarantine_enforcement",
         "control_plane_policy_bundle",
         "conditional_access",
         "caller_identity",

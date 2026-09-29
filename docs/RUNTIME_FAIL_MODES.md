@@ -23,7 +23,7 @@ evaluator that raises. The canonical inventory is code, not prose:
 | Device posture enrichment (device state unknown) | fail-closed | no |
 | Spend budgets (cost-store error) | fail-open | no |
 | Cost-anomaly enforcement (cost-store error) | fail-open | no |
-| Fleet quarantine (fleet-store error) | fail-open | no |
+| Fleet quarantine (fleet-store error, enforce mode) | fail-closed | no |
 | Drift enforcement (drift-store error) | fail-open | no |
 | Graph reachability (evaluation error) | fail-open | no |
 | Audit export (sink/webhook delivery failure) | fail-open | no |
@@ -34,7 +34,7 @@ Two rules explain the split:
   `AGENT_BOM_GATEWAY_FAIL_MODE`. Only the policy engine, firewall policy
   load, and policy plugins honour that knob, and its default is `closed`.
 - **Advisory and telemetry lanes fail open** by design: a spend-, drift-,
-  fleet-, or audit-store error must never take the data plane down. A
+  or audit-store error must never take the data plane down. A
   successfully evaluated enforce-mode rule in those lanes still blocks.
 
 Per-entry failure behavior (the `on_failure` text) is part of the matrix and
@@ -82,3 +82,15 @@ misconfigured server entries. They confer no isolation: a recognized launcher
 (`python`, `node`, `docker`) can still run arbitrary code as the host user.
 The execution control for MCP servers is container isolation —
 `agent_bom.proxy_sandbox` via `--isolate` (see `docs/MCP_SECURITY_MODEL.md`).
+
+## Gateway settings at startup
+
+`agent-bom gateway serve --fleet-enforcement enforce` blocks quarantined
+identities and denies calls when the fleet lookup is unavailable. `warn`
+records the condition without blocking; `off` explicitly disables that check.
+The gateway validates enforcement and DLP modes before creating audit sinks or
+upstream clients. Python integrations normalize mode case and surrounding
+whitespace; unknown modes, non-finite timeouts, invalid pool sizes, and negative
+rate limits reject startup instead of silently disabling protection. Settings
+representations omit credentials, policy contents, and credential-bearing URLs.
+Correct the named setting and restart; mode errors never echo its supplied value.

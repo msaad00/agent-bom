@@ -15,6 +15,7 @@ from rich.console import Console
 
 from agent_bom.extensions import ExtensionCapabilities, iter_entry_point_registrations
 from agent_bom.models import MCPServer, Package, ServerSurface
+from agent_bom.package_utils import package_purl
 from agent_bom.parsers.base import InventoryParserRegistration
 from agent_bom.parsers.beam_parsers import parse_hex_packages, parse_pub_packages  # noqa: F401
 
@@ -314,10 +315,8 @@ def registry_entry_for_references(refs: set[str], registry: dict) -> tuple[str, 
     return next(iter(matches.values()))
 
 
-def _registry_purl(ecosystem: str, package_name: str, version: str) -> str:
-    if ecosystem.lower() == "npm":
-        return _npm_purl(package_name, version)
-    return f"pkg:{ecosystem}/{package_name}@{version}"
+def _registry_purl(ecosystem: str, package_name: str, version: str) -> str | None:
+    return _npm_purl(package_name, version) if ecosystem.lower() == "npm" else package_purl(package_name, version, ecosystem)
 
 
 _CONTAINER_COMMANDS = {"docker", "podman"}

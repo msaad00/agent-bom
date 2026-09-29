@@ -24,6 +24,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Union
 
+from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_band_rank
 from agent_bom.output.finding_views import sanitize_output_text, with_output_sanitizer_cache
 from agent_bom.security import sanitize_sensitive_payload
 
@@ -481,7 +482,6 @@ def to_dot(graph: DepGraph, title: str = "agent-bom dependency graph") -> str:
 
 _MERMAID_DEFAULT_MAX_NODES = 80
 _MERMAID_DEFAULT_MAX_EDGES = 240
-_MERMAID_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 _MERMAID_KIND_PRIORITY = {
     "cve": 0,
     "pkg_vuln": 1,
@@ -506,7 +506,7 @@ def _mermaid_priority_nodes(graph: DepGraph) -> list[_Node]:
     """
     nodes = graph.nodes
     insertion_order = {node.id: index for index, node in enumerate(nodes)}
-    priority = {node.id: _MERMAID_SEVERITY_RANK.get(node.severity.lower(), 0) for node in nodes}
+    priority = {node.id: len(SEVERITY_THRESHOLD_LABELS) - severity_band_rank(node.severity) for node in nodes}
 
     # Edges point from estate roots toward findings. Propagate the highest
     # downstream severity back through predecessors. Each node can advance at

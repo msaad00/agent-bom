@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from agent_bom.package_utils import package_purl
 from agent_bom.redaction.log_values import sanitize_log_value
 
 logger = logging.getLogger(__name__)
@@ -456,9 +457,8 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
     for br in report.blast_radii:
         vuln = br.vulnerability
         # Collect affected PURLs
-        products = []
-        if br.package:
-            products.append(br.package.purl or f"pkg:{br.package.ecosystem}/{br.package.name}@{br.package.version}")
+        pkg = br.package
+        products = [p for p in (pkg.purl or package_purl(pkg.name, pkg.version, pkg.ecosystem),) if p] if pkg else []
 
         # CWE-aware triage: use impact category and reachability
         impact_cat = getattr(br, "impact_category", "unknown")

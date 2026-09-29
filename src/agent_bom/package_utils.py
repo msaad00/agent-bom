@@ -58,6 +58,9 @@ from agent_bom.core.packages import (
     normalize_package_name as normalize_package_name,
 )
 from agent_bom.core.packages import (
+    package_purl as package_purl,
+)
+from agent_bom.core.packages import (
     parse_debian_source_name as parse_debian_source_name,
 )
 from agent_bom.core.packages import (

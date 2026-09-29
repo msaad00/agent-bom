@@ -107,6 +107,23 @@ _PURL_SYNTHESIS_TYPES = {
 _UNRESOLVED_VERSIONS = frozenset({"", "unknown", "latest"})
 
 
+def _build_purl(purl_type: str, name: str, version: str | None) -> Optional[str]:
+    """Encode (type, name, version) as a purl, splitting any namespace off the name."""
+    namespace: str | None = None
+    if purl_type == "maven" and ":" in name:
+        # Maven identities arrive as group:artifact (or group/artifact).
+        name = name.replace(":", "/")
+    if "/" in name:
+        # maven group/artifact, npm @scope/name, golang module paths, composer vendor/package.
+        namespace, _, name = name.rpartition("/")
+    try:
+        from packageurl import PackageURL
+
+        return PackageURL(type=purl_type, namespace=namespace or None, name=name, version=version or None).to_string()
+    except Exception:
+        return None
+
+
 def synthesize_purl(name: str, version: str, ecosystem: str) -> Optional[str]:
     """Build a spec-valid purl from a known ecosystem+name+version.
 
@@ -120,24 +137,29 @@ def synthesize_purl(name: str, version: str, ecosystem: str) -> Optional[str]:
     raw_version = (version or "").strip()
     if not purl_type or not raw_name or raw_version.lower() in _UNRESOLVED_VERSIONS:
         return None
-
-    namespace: str | None = None
-    if purl_type == "maven":
-        # Maven identities arrive as group:artifact (or group/artifact).
-        group_artifact = raw_name.replace(":", "/")
-        if "/" not in group_artifact:
-            return None
-        namespace, _, raw_name = group_artifact.rpartition("/")
-    elif "/" in raw_name:
-        # npm @scope/name, golang module paths, composer vendor/package.
-        namespace, _, raw_name = raw_name.rpartition("/")
-
-    try:
-        from packageurl import PackageURL
-
-        return PackageURL(type=purl_type, namespace=namespace or None, name=raw_name, version=raw_version).to_string()
-    except Exception:
+    if purl_type == "maven" and "/" not in raw_name.replace(":", "/"):
         return None
+    return _build_purl(purl_type, raw_name, raw_version)
+
+
+def package_purl(name: str, version: str, ecosystem: str) -> Optional[str]:
+    """Return the purl a producer should record for a package it has in hand.
+
+    Prefers :func:`synthesize_purl`. When that declines (an OS or otherwise
+    unlisted ecosystem, an unresolved version, a maven name with no group), the
+    purl is still built through ``PackageURL`` — the ecosystem as the type and
+    no invented namespace or qualifiers — so components are spec-encoded and
+    type-normalized instead of pasted raw. ``None`` only when no name or
+    ecosystem is known.
+    """
+    synthesized = synthesize_purl(name, version, ecosystem)
+    if synthesized:
+        return synthesized
+    eco = (ecosystem or "").strip().lower()
+    raw_name = (name or "").strip()
+    if not eco or not raw_name:
+        return None
+    return _build_purl(_PURL_SYNTHESIS_TYPES.get(eco, eco), raw_name, (version or "").strip() or None)
 
 
 def canonical_package_identity(name: str, version: str, ecosystem: str, purl: str | None = None) -> tuple[str, str, str]:
@@ -353,6 +375,7 @@ __all__ = [
     "host_matches_domain",
     "normalize_package_ecosystem",
     "normalize_package_name",
+    "package_purl",
     "parse_debian_source_name",
     "reference_host_and_path",
     "synthesize_purl",

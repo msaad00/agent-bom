@@ -13,12 +13,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from agent_bom.core.severity import severity_band_rank
+
 EXECUTIVE_HEADLINE_BOUNDARY = (
     "This summary describes scan evidence; it is not a compliance certification or audit opinion. "
     "A recorded agent path does not by itself prove exploitation."
 )
-
-_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
 @dataclass
@@ -106,7 +106,7 @@ def build_executive_headline(rows: Iterable[Mapping[str, object]], *, limit: int
         )
 
     # Severity first: an unscored critical must not rank below a scored medium.
-    risks.sort(key=lambda risk: (_SEVERITY_RANK.get(risk.severity, 4), -(risk.risk_score or 0.0), risk.id))
+    risks.sort(key=lambda risk: (severity_band_rank(risk.severity), -(risk.risk_score or 0.0), risk.id))
     top = risks[:limit]
     total = len(risks)
     critical = sum(1 for risk in risks if risk.severity == "critical")

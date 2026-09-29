@@ -170,6 +170,37 @@ def empty_severity_histogram() -> dict[str, int]:
     return {key: 0 for key in SEVERITY_DISPLAY_BUCKETS}
 
 
+def severity_band_rank(sev: str | None) -> int:
+    """Worst-first position among the rated bands: critical=0 … low=3.
+
+    Everything the display histogram calls ``unrated`` (info, none, unknown,
+    empty, unrecognized) shares the rank after ``low``, so it sorts last and
+    ties among itself.
+    """
+    bucket = severity_display_bucket(sev)
+    if bucket == UNRATED_SEVERITY_BUCKET:
+        return len(SEVERITY_THRESHOLD_LABELS)
+    return SEVERITY_THRESHOLD_LABELS.index(bucket)
+
+
+# ── Remediation priority (1 = fix first … 4 = advisory) ──────────────────
+# Critical and high share the top slot; anything unrated defaults to the
+# low-severity slot rather than being promoted or dropped.
+SEVERITY_FIX_PRIORITY: dict[str, int] = {
+    "critical": 1,
+    "high": 1,
+    "medium": 2,
+    "low": 3,
+    "info": 4,
+}
+_DEFAULT_FIX_PRIORITY = 3
+
+
+def severity_fix_priority(sev: str | None) -> int:
+    """Return the remediation priority for ``sev`` (1 = fix first, 4 = advisory)."""
+    return SEVERITY_FIX_PRIORITY.get(normalize_severity(sev), _DEFAULT_FIX_PRIORITY)
+
+
 def severity_policy_rank(sev: str | None) -> int:
     """Return policy comparison rank where UNKNOWN is below NONE."""
     return SEVERITY_POLICY_ORDER.get(normalize_severity(sev).upper(), SEVERITY_POLICY_ORDER["UNKNOWN"])

@@ -15,6 +15,7 @@ import httpx
 
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package
+from agent_bom.package_utils import package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,7 @@ async def _resolve_one_package(
             name=dep_name,
             version=dep_version,
             ecosystem=dep_eco,
-            purl=f"pkg:{dep_eco}/{dep_name}@{dep_version}",
+            purl=package_purl(dep_name, dep_version, dep_eco),
             is_direct=False,
             parent_package=pkg.name,
             dependency_depth=depth,

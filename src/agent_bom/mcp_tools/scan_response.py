@@ -14,7 +14,7 @@ import os
 from collections import Counter
 from typing import Any
 
-from agent_bom.core.severity import normalize_severity
+from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, normalize_severity, severity_band_rank
 from agent_bom.mcp_server_runtime import ToolErrorPayload
 from agent_bom.mcp_tools.result_store import DurableScanResultStore
 
@@ -23,7 +23,6 @@ DEFAULT_TOP_N = 10
 DEFAULT_PAGE_LIMIT = 25
 MAX_PAGE_LIMIT = 200
 
-_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 _TRUTHY = {"1", "true", "yes", "on"}
 
 _PASSTHROUGH_KEYS = (
@@ -149,7 +148,7 @@ def _top_findings(findings: list[Any], top_n: int) -> list[dict[str, Any]]:
     active = [f for f in findings if isinstance(f, dict) and not f.get("suppressed")]
     ranked = sorted(
         active,
-        key=lambda f: (-_number(f.get("risk_score")), _SEVERITY_RANK.get(normalize_severity(str(f.get("severity") or "")), 9)),
+        key=lambda f: (-_number(f.get("risk_score")), severity_band_rank(str(f.get("severity") or ""))),
     )
     return [_compact_finding(f) for f in ranked[:top_n]]
 
@@ -171,7 +170,7 @@ def _counts(result: dict[str, Any], findings: list[Any], paths: list[Any]) -> di
     by_severity = finding_summary.get("by_severity")
     if not isinstance(by_severity, dict):
         tally = Counter(normalize_severity(str(f.get("severity") or "")) or "unknown" for f in finding_rows)
-        by_severity = {sev: tally.get(sev, 0) for sev in (*_SEVERITY_RANK, "unknown")}
+        by_severity = {sev: tally.get(sev, 0) for sev in (*SEVERITY_THRESHOLD_LABELS, "unknown")}
     by_category = Counter(str(f.get("finding_category") or "uncategorized") for f in finding_rows)
 
     return {

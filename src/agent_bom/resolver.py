@@ -20,7 +20,7 @@ from agent_bom.http_client import (
     reset_rate_limit_breaker,
 )
 from agent_bom.models import Package
-from agent_bom.package_utils import synthesize_purl
+from agent_bom.package_utils import package_purl
 from agent_bom.parsers.npm_semver import classify_npm_spec
 from agent_bom.parsers.npm_semver import satisfies as npm_satisfies
 
@@ -162,7 +162,7 @@ def _apply_registry_version_fallback(pkg: Package) -> bool:
     if not fallback_version or fallback_version in _INVALID_VERSIONS:
         return False
     pkg.version = fallback_version
-    pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{fallback_version}"
+    pkg.purl = package_purl(pkg.name, fallback_version, pkg.ecosystem)
     pkg.version_source = "registry_fallback"
     return True
 
@@ -498,7 +498,7 @@ async def _resolve_declared_constraint(pkg: Package, constraint: str, client: ht
         resolved = await transitive.resolve_pypi_spec_version(pkg.name, constraint, client)
     if resolved:
         pkg.version = resolved
-        pkg.purl = synthesize_purl(pkg.name, resolved, pkg.ecosystem) or f"pkg:{pkg.ecosystem}/{pkg.name}@{resolved}"
+        pkg.purl = package_purl(pkg.name, resolved, pkg.ecosystem)
         pkg.resolved_version = resolved
         pkg.resolved_from_registry = True
         pkg.version_resolved_at = datetime.now(timezone.utc).isoformat()
@@ -539,7 +539,7 @@ async def resolve_package_version(pkg: Package, client: httpx.AsyncClient) -> bo
         version, lic = await resolve_maven_metadata(group, artifact, client)
     if version:
         pkg.version = version
-        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{version}"
+        pkg.purl = package_purl(pkg.name, version, pkg.ecosystem)
         if lic and not pkg.license:
             pkg.license = lic
         return True

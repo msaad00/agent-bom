@@ -1,0 +1,14 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    fast-mcp (1.0.0)
+    nokogiri (1.13.0)
+    sinatra (3.0.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  fast-mcp
+  nokogiri
+  sinatra

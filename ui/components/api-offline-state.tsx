@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { AlertTriangle, FileText, PlayCircle, Server } from "lucide-react";
 
 import type { ScanResult } from "@/lib/api";
 import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { getDisplayApiUrl } from "@/lib/runtime-config";
-import { checkFileSize, validateScanReport } from "@/lib/validators";
+import { LocalReportImport } from "@/components/local-report-import";
 
 // Distinguish "API is down" from "API rejected my request" so the splash
 // stops shouting "Cannot connect" at users running `agent-bom serve` who
@@ -34,40 +33,9 @@ export function ApiOfflineState({
   kind = "network",
   onImport,
 }: ApiOfflineStateProps) {
-  const [importError, setImportError] = useState<string | null>(null);
   const apiUrl = getDisplayApiUrl();
   const resolvedTitle = title ?? KIND_TITLES[kind];
   const resolvedDetail = detail ? userFacingApiErrorMessage(detail, "The API request failed.") : null;
-
-  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportError(null);
-
-    const sizeCheck = checkFileSize(file);
-    if (!sizeCheck.ok) {
-      setImportError(sizeCheck.error);
-      e.target.value = "";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => setImportError("Failed to read file.");
-    reader.onload = (ev) => {
-      const text = ev.target?.result;
-      if (typeof text !== "string") {
-        setImportError("Could not read file contents.");
-        return;
-      }
-      const result = validateScanReport(text);
-      if (!result.ok) {
-        setImportError(result.error);
-        return;
-      }
-      onImport?.(result.data as ScanResult);
-    };
-    reader.readAsText(file);
-  };
 
   return (
     <div className="py-10">
@@ -148,34 +116,7 @@ export function ApiOfflineState({
         ) : null}
 
         {onImport ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface)]/40 p-6 text-center">
-            <FileText className="mx-auto mb-3 h-8 w-8 text-[var(--text-tertiary)]" />
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">Or stay offline and import a real report</h3>
-            <p className="mt-2 text-sm text-[var(--text-tertiary)]">
-              Use the built-in demo for a reproducible sample, or export a real project scan and load it here.
-            </p>
-            <code className="mt-4 block rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-xs leading-7 text-[var(--text-secondary)]">
-              agent-bom agents --demo --offline -f json -o report.json
-              <br />
-              agent-bom agents -p . -f json -o report.json
-            </code>
-            {importError ? (
-              <div className="mx-auto mt-4 max-w-xl rounded-xl border border-red-800/50 bg-red-950/30 px-3 py-2 text-left">
-                <p className="break-words text-xs font-mono text-red-400">{importError}</p>
-              </div>
-            ) : null}
-            <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-4 py-2 text-sm text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]">
-              <FileText className="h-4 w-4" />
-              Choose report.json
-              <input
-                type="file"
-                accept=".json,application/json"
-                className="hidden"
-                onChange={handleFile}
-              />
-            </label>
-            <p className="mt-3 text-xs text-[var(--text-tertiary)]">Max 10 MB. Schema-validated before import.</p>
-          </div>
+          <LocalReportImport onImport={onImport} />
         ) : (
           <div className="mt-6 text-center">
             <Link

@@ -219,11 +219,26 @@ describe("Overview canonical finding counts", () => {
     apiMock.listJobs.mockResolvedValue({ jobs: [] });
     render(<Dashboard />);
     expect(screen.queryByText(/No completed scans. Run a scan/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start with evidence" })).not.toBeInTheDocument();
     const empty = overviewFixture();
     await act(async () => resolveOverview({ ...empty, headline: { ...empty.headline, scans: 0, latest_scan_at: null }, finding_counts: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 } }));
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
+    expect(screen.getByRole("heading", { name: "Start with evidence" })).toBeVisible();
     expect(screen.getByText("No completed scans. Run a scan to assess findings.")).toBeVisible();
     expect(screen.queryByText("Loading prioritized findings…")).not.toBeInTheDocument();
+  });
+
+  it.each(["ingested findings", "partial findings", "completed scan"])("does not show first-scan guidance for %s", async (kind) => {
+    const empty = overviewFixture();
+    apiMock.listJobs.mockResolvedValue({ jobs: [] });
+    apiMock.getOverview.mockResolvedValue({
+      ...empty,
+      headline: { ...empty.headline, scans: kind === "completed scan" ? 1 : 0 },
+      finding_counts: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: kind === "ingested findings" ? 1 : 0, kev: 0 },
+      coverage: kind === "partial findings" ? [{ domain: "vuln", label: "Vulnerability", href: "/findings", evidence_status: "partial", count_exact: false, count: 0, severity: {} }] : [],
+    });
+    await act(async () => { render(<Dashboard />); });
+    expect(screen.queryByRole("heading", { name: "Start with evidence" })).not.toBeInTheDocument();
   });
 
   it("distinguishes an initial overview failure from an empty result", async () => {
@@ -235,6 +250,7 @@ describe("Overview canonical finding counts", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Top risks" }));
     expect(screen.getByText("Prioritized findings unavailable.")).toBeVisible();
     expect(screen.queryByText(/No completed scans. Run a scan/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Start with evidence" })).not.toBeInTheDocument();
     expect(screen.queryByText("private upstream")).not.toBeInTheDocument();
   });
 

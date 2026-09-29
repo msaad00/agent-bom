@@ -70,12 +70,16 @@ def test_declared_public_operation_reaches_its_handler(method, path):
 
 
 def test_public_operation_inventory_matches_mounted_handlers():
-    from fastapi.routing import iter_route_contexts
-
     from agent_bom.api.route_policy import PUBLIC_OPERATIONS, public_operation
     from agent_bom.api.server import app
 
-    mounted = {(method, ctx.path) for ctx in iter_route_contexts(app.routes) for method in getattr(ctx.route, "methods", ()) or ()}
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:
+        routes = [(route.path, getattr(route, "methods", ())) for route in app.routes]
+    else:
+        routes = [(ctx.path, getattr(ctx.route, "methods", ())) for ctx in iter_route_contexts(app.routes)]
+    mounted = {(method, path) for path, methods in routes for method in methods or ()}
     assert PUBLIC_OPERATIONS <= mounted
     for method, path in mounted:
         if path in APIKeyMiddleware._EXEMPT_PATHS:

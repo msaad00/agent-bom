@@ -8,6 +8,11 @@ Ratcheted per file (existing counts may only shrink, new files start at zero):
 ``graph_api_imports`` (graph/ -> api), ``api_imports`` (any other non-api
 module -> api) and ``deferred_imports`` (imports inside function bodies, not
 counting optional-extra SDKs that must stay lazy).
+
+Hard ceiling (separate from the ratchet): no file and no function may exceed
+``HARD_CEILING`` lines. Units over it are listed in ``ceiling_burn_down``, which
+can only shrink: entries leave once under the ceiling, allowances only go down,
+and the baseline cannot add entries relative to the trusted base.
 """
 
 from __future__ import annotations
@@ -364,6 +369,59 @@ def restrict_metrics(metrics: dict[str, dict[str, int]], names: set[str]) -> dic
     }
 
 
+# Hard ceiling, separate from the soft ``LIMITS`` above: no Python file and no
+# function may exceed it. Units already over it on adoption are listed in the
+# baseline's ``ceiling_burn_down``, which may only shrink.
+HARD_CEILING = 1000
+CEILING_METRICS = ("file_lines", "function_lines")
+
+
+def ceiling_burn_down(metrics: dict[str, dict[str, int]]) -> dict[str, int]:
+    return {key: value for key, values in metrics.items() for metric in CEILING_METRICS if (value := values.get(metric, 0)) > HARD_CEILING}
+
+
+def ceiling_errors(metrics: dict[str, dict[str, int]], burn_down: dict[str, int]) -> list[str]:
+    over = ceiling_burn_down(metrics)
+    errors = []
+    for key, value in over.items():
+        metric = "function_lines" if "::" in key else "file_lines"
+        if key not in burn_down:
+            errors.append(f"{key}: {metric} {value} exceeds hard ceiling {HARD_CEILING}; split it (no new burn-down entries)")
+        elif value > burn_down[key]:
+            errors.append(f"{key}: {metric} {value} exceeds hard ceiling {HARD_CEILING} and its burn-down allowance {burn_down[key]}")
+    for key in burn_down:
+        if key in over:
+            continue
+        if key not in metrics:
+            errors.append(f"{key}: burn-down entry no longer exists; remove it")
+        else:
+            value = max(metrics[key].get(metric, 0) for metric in CEILING_METRICS)
+            errors.append(f"{key}: burn-down entry is now {value} lines, at or under the hard ceiling {HARD_CEILING}; remove it")
+    return errors
+
+
+def burn_down_growth(current: dict[str, int], previous: dict[str, int] | None) -> list[str]:
+    """An edited burn-down cannot add units or raise allowances over the trusted base."""
+    if previous is None:
+        return []
+    errors = []
+    for key, value in current.items():
+        if key not in previous:
+            errors.append(f"{key}: burn-down entry is not in the trusted baseline")
+        elif value > previous[key]:
+            errors.append(f"{key}: burn-down allowance {value} exceeds trusted {previous[key]}")
+    return errors
+
+
+def burn_down_report(burn_down: dict[str, int]) -> list[str]:
+    functions = sorted(((value, key) for key, value in burn_down.items() if "::" in key), reverse=True)
+    files = sorted(((value, key) for key, value in burn_down.items() if "::" not in key), reverse=True)
+    lines = [f"Hard {HARD_CEILING}-line ceiling burn-down: {len(burn_down)} entries ({len(files)} files, {len(functions)} functions)"]
+    lines += [f"  function  {value}  {key}" for value, key in functions]
+    lines += [f"  file      {value}  {key}" for value, key in files]
+    return lines
+
+
 def trusted_baseline(root: Path, ref: str) -> dict | None:
     # A missing commit is an error; a missing file permits the initial rollout.
     subprocess.run(["git", "cat-file", "-e", f"{ref}^{{commit}}"], cwd=root, check=True, capture_output=True)
@@ -372,6 +430,21 @@ def trusted_baseline(root: Path, ref: str) -> dict | None:
         return None
     content = subprocess.check_output(["git", "show", f"{ref}:{BASELINE.as_posix()}"], cwd=root, text=True)
     return json.loads(content)
+
+
+def ceiling_check(metrics: dict[str, dict[str, int]], stored: dict, previous: dict | None, writing: bool) -> list[str]:
+    """Hard-ceiling errors for the stored burn-down and, with a trusted base, its growth."""
+    burn_down = stored.get("ceiling_burn_down")
+    if burn_down is None:
+        # Seeding the burn-down is the one-time rollout; a plain check has no exemptions.
+        return [] if writing else ceiling_errors(metrics, {})
+    errors = ceiling_errors(metrics, burn_down)
+    if writing:
+        # Writing is how entries that fell under the ceiling are removed.
+        errors = [error for error in errors if not error.endswith("remove it")]
+    if previous is not None:
+        errors.extend(burn_down_growth(burn_down, previous.get("ceiling_burn_down")))
+    return errors
 
 
 def main() -> int:
@@ -389,17 +462,19 @@ def main() -> int:
         # every category it already tracks still has to hold its ratchet.
         checked = restrict_metrics(metrics, set(stored.get("limits", LIMITS))) if args.write_baseline else metrics
         errors.extend(regressions(checked, baseline))
-        if args.base_ref:
-            previous = trusted_baseline(root, args.base_ref)
-            if previous is not None:
-                errors.extend(baseline_growth(baseline, previous["debt"], set(previous.get("limits", {}))))
+        previous = trusted_baseline(root, args.base_ref) if args.base_ref else None
+        if previous is not None:
+            errors.extend(baseline_growth(baseline, previous["debt"], set(previous.get("limits", {}))))
+        errors.extend(ceiling_check(metrics, stored, previous, args.write_baseline))
     elif not args.write_baseline:
         errors.append("Architecture baseline missing; initialize with --write-baseline")
+    print("\n".join(burn_down_report(ceiling_burn_down(metrics))))
     if errors:
         print("\n".join(errors))
         return 1
     if args.write_baseline:
-        path.write_text(json.dumps({"limits": LIMITS, "debt": debt(metrics)}, indent=2, sort_keys=True) + "\n")
+        document = {"limits": LIMITS, "debt": debt(metrics), "ceiling_burn_down": ceiling_burn_down(metrics)}
+        path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
     print(f"Architecture boundaries and ratchet passed ({len(debt(metrics))} existing debt entries)")
     return 0
 

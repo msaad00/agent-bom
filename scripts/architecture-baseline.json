@@ -1,4 +1,82 @@
 {
+  "ceiling_burn_down": {
+    "ai_enrich.py": 2086,
+    "api/agent_identity_store.py": 1310,
+    "api/audit_log.py": 1021,
+    "api/clickhouse_store.py": 1183,
+    "api/compliance_hub_store.py": 2259,
+    "api/gateway_activity_store.py": 1114,
+    "api/graph_store.py": 2614,
+    "api/idempotency_store.py": 1254,
+    "api/middleware.py": 2574,
+    "api/models.py": 1336,
+    "api/pipeline.py": 1790,
+    "api/pipeline.py::_run_scan_sync": 1062,
+    "api/postgres_compliance_hub.py": 1022,
+    "api/postgres_graph.py": 3751,
+    "api/routes/cloud.py": 1488,
+    "api/routes/cloud_connections.py": 1800,
+    "api/routes/compliance.py": 3002,
+    "api/routes/enterprise.py": 3216,
+    "api/routes/gateway_feed.py": 1279,
+    "api/routes/graph.py": 3925,
+    "api/routes/identities.py": 1066,
+    "api/routes/observability.py": 2051,
+    "api/routes/overview.py": 1894,
+    "api/routes/proxy.py": 1324,
+    "api/routes/scan.py": 4851,
+    "api/server.py": 1800,
+    "api/snowflake_store.py": 1170,
+    "ast/js_ts/facade.py": 1099,
+    "ast_go.py": 1093,
+    "ast_python_analysis.py": 2447,
+    "cli/_check.py": 1394,
+    "cli/_cloud_group.py": 1108,
+    "cli/_server.py": 1286,
+    "cli/agents/_discovery.py": 1295,
+    "cli/agents/_discovery.py::run_local_discovery": 1221,
+    "client.py": 1208,
+    "cloud/aws.py": 1627,
+    "cloud/aws_cis_benchmark.py": 3449,
+    "cloud/aws_inventory.py": 2744,
+    "cloud/azure_cis_benchmark.py": 4090,
+    "cloud/azure_inventory.py": 2433,
+    "cloud/gcp_cis_benchmark.py": 2949,
+    "cloud/gcp_inventory.py": 2032,
+    "cloud/side_scan_lifecycle.py": 1282,
+    "cloud/snowflake.py": 4219,
+    "context_graph.py": 1105,
+    "db/graph_store.py": 2373,
+    "db/sync.py": 2132,
+    "demo_estate/enterprise_risk.py": 1184,
+    "demo_estate/showcase_graph.py": 1007,
+    "discovery/__init__.py": 1366,
+    "export/destinations.py": 1171,
+    "finding.py": 1859,
+    "gateway_server.py": 2233,
+    "gateway_server.py::create_gateway_app": 1906,
+    "gateway_server.py::create_gateway_app.relay": 1464,
+    "graph/builder.py": 5276,
+    "graph/container.py": 1396,
+    "intel_lookup.py": 1067,
+    "k8s.py": 1143,
+    "mcp_server.py": 1494,
+    "model_files.py": 1049,
+    "models.py": 1711,
+    "oci_parser.py": 1826,
+    "output/compliance_narrative.py": 1062,
+    "output/console_render.py": 2227,
+    "output/graph.py": 2037,
+    "output/html/sections.py": 1582,
+    "output/json_fmt.py": 1338,
+    "output/sarif.py": 1256,
+    "parsers/compiled_parsers.py": 1539,
+    "parsers/skill_audit_behavior.py": 1252,
+    "proxy.py": 2222,
+    "proxy.py::run_proxy": 1019,
+    "scanners/package_scan.py": 2187,
+    "security.py": 1314
+  },
   "debt": {
     "__init__.py": {
       "deferred_imports": 1
@@ -119,7 +197,7 @@
     },
     "api/compliance_hub_store.py": {
       "deferred_imports": 21,
-      "file_lines": 2293
+      "file_lines": 2259
     },
     "api/compliance_hub_store.py::collect_scope_filtered_page": {
       "function_lines": 88
@@ -282,7 +360,7 @@
     },
     "api/middleware.py": {
       "deferred_imports": 44,
-      "file_lines": 2610
+      "file_lines": 2574
     },
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
       "function_lines": 84
@@ -356,10 +434,10 @@
     },
     "api/postgres_compliance_hub.py": {
       "deferred_imports": 8,
-      "file_lines": 1043
+      "file_lines": 1022
     },
     "api/postgres_compliance_hub.py::PostgresComplianceHubStore._init_tables": {
-      "function_lines": 223
+      "function_lines": 221
     },
     "api/postgres_fleet_store.py": {
       "deferred_imports": 8
@@ -614,8 +692,8 @@
       "deferred_imports": 19
     },
     "api/routes/graph.py": {
-      "deferred_imports": 33,
-      "file_lines": 4098
+      "deferred_imports": 29,
+      "file_lines": 3925
     },
     "api/routes/graph.py::get_graph": {
       "function_lines": 183
@@ -2700,6 +2778,9 @@
     "graph/endpoint_overlay.py": {
       "graph_api_imports": 1
     },
+    "graph/exposure.py": {
+      "deferred_imports": 4
+    },
     "graph/governance_overlay.py": {
       "deferred_imports": 3,
       "graph_api_imports": 4
@@ -2731,7 +2812,7 @@
     },
     "graph/path_derivation.py": {
       "deferred_imports": 7,
-      "file_lines": 702
+      "file_lines": 671
     },
     "graph/path_derivation.py::_derived_attack_paths": {
       "complexity": 31,
@@ -3094,15 +3175,14 @@
     },
     "mcp_tools/graph.py": {
       "api_imports": 6,
-      "deferred_imports": 8,
-      "file_lines": 627
+      "deferred_imports": 7
     },
     "mcp_tools/graph.py::deploy_decision_for_tenant": {
       "function_lines": 93
     },
     "mcp_tools/graph.py::exposure_paths_for_tenant": {
       "complexity": 20,
-      "function_lines": 195
+      "function_lines": 191
     },
     "mcp_tools/graph.py::graph_correlate_impl": {
       "function_lines": 83
@@ -3602,7 +3682,7 @@
     },
     "parsers/__init__.py": {
       "deferred_imports": 4,
-      "file_lines": 966
+      "file_lines": 965
     },
     "parsers/__init__.py::extract_packages": {
       "complexity": 17,
@@ -3634,7 +3714,7 @@
     },
     "parsers/compiled_parsers.py::parse_conda_packages": {
       "complexity": 36,
-      "function_lines": 227
+      "function_lines": 226
     },
     "parsers/compiled_parsers.py::parse_conda_packages._parse_env_file": {
       "complexity": 22,
@@ -4141,7 +4221,7 @@
     },
     "scanners/package_scan.py": {
       "deferred_imports": 43,
-      "file_lines": 2196
+      "file_lines": 2187
     },
     "scanners/package_scan.py::_db_covered_ecosystems": {
       "complexity": 16,
@@ -4159,8 +4239,8 @@
       "function_lines": 253
     },
     "scanners/package_scan.py::scan_packages": {
-      "complexity": 74,
-      "function_lines": 479
+      "complexity": 72,
+      "function_lines": 469
     },
     "scanners/registry.py": {
       "file_lines": 625
@@ -4293,8 +4373,7 @@
       "file_lines": 682
     },
     "vex.py::generate_vex": {
-      "complexity": 16,
-      "function_lines": 114
+      "function_lines": 113
     },
     "vuln_compliance.py": {
       "deferred_imports": 1

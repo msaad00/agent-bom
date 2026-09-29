@@ -318,3 +318,96 @@ def test_operator_registrations_cannot_import_server_composition():
     ):
         assert boundary_errors("mcp_tools/operator/graphs.py", ast.parse(source))
     assert not boundary_errors("mcp_tools/operator/graphs.py", ast.parse("from .bindings import OperatorToolBindings"))
+
+
+def test_hard_ceiling_rejects_any_unit_over_1000_lines_not_in_the_burn_down():
+    from scripts.check_architecture import HARD_CEILING, ceiling_errors
+
+    assert HARD_CEILING == 1000
+    metrics = {"big.py": {"file_lines": 1001}, "big.py::run": {"function_lines": 1200}, "ok.py": {"file_lines": 1000}}
+    errors = ceiling_errors(metrics, {})
+    assert any(error.startswith("big.py: file_lines 1001 exceeds hard ceiling 1000") for error in errors)
+    assert any(error.startswith("big.py::run: function_lines 1200 exceeds hard ceiling 1000") for error in errors)
+    assert not any(error.startswith("ok.py") for error in errors)
+    assert not ceiling_errors(metrics, {"big.py": 1001, "big.py::run": 1200})
+
+
+def test_hard_ceiling_is_independent_of_the_soft_baseline():
+    from scripts.check_architecture import ceiling_errors
+
+    # A soft-baseline allowance above the ceiling does not exempt a unit.
+    metrics = {"big.py": {"file_lines": 1500}}
+    assert not regressions(metrics, {"big.py": {"file_lines": 1500}})
+    assert ceiling_errors(metrics, {})
+
+
+def test_burn_down_entries_cannot_grow_and_must_be_removed_once_under_the_ceiling():
+    from scripts.check_architecture import ceiling_errors
+
+    burn_down = {"big.py": 1200, "big.py::run": 1100}
+    assert ceiling_errors({"big.py": {"file_lines": 1201}, "big.py::run": {"function_lines": 1100}}, burn_down)
+    assert not ceiling_errors({"big.py": {"file_lines": 1150}, "big.py::run": {"function_lines": 1050}}, burn_down)
+    stale = ceiling_errors({"big.py": {"file_lines": 1150}, "big.py::run": {"function_lines": 900}}, burn_down)
+    assert stale == ["big.py::run: burn-down entry is now 900 lines, at or under the hard ceiling 1000; remove it"]
+    gone = ceiling_errors({"big.py": {"file_lines": 1150}}, burn_down)
+    assert gone == ["big.py::run: burn-down entry no longer exists; remove it"]
+
+
+def test_editing_the_baseline_cannot_add_or_raise_burn_down_entries():
+    from scripts.check_architecture import burn_down_growth
+
+    previous = {"big.py": 1200, "big.py::run": 1100}
+    assert not burn_down_growth({"big.py": 1150}, previous)
+    assert not burn_down_growth(previous, previous)
+    assert burn_down_growth({"big.py": 1201, "big.py::run": 1100}, previous) == ["big.py: burn-down allowance 1201 exceeds trusted 1200"]
+    assert burn_down_growth({**previous, "new.py": 1001}, previous) == ["new.py: burn-down entry is not in the trusted baseline"]
+    # A trusted baseline without a burn-down section is the one-time rollout.
+    assert not burn_down_growth({"big.py": 1200}, None)
+
+
+def test_burn_down_is_seeded_from_units_over_the_ceiling_and_reported_with_counts():
+    from scripts.check_architecture import burn_down_report, ceiling_burn_down
+
+    metrics = {
+        "a.py": {"file_lines": 1300, "deferred_imports": 2},
+        "a.py::f": {"function_lines": 1001, "complexity": 40},
+        "b.py": {"file_lines": 999},
+        "b.py::g": {"function_lines": 1000},
+    }
+    burn_down = ceiling_burn_down(metrics)
+    assert burn_down == {"a.py": 1300, "a.py::f": 1001}
+    report = burn_down_report(burn_down)
+    assert report[0] == "Hard 1000-line ceiling burn-down: 2 entries (1 files, 1 functions)"
+    assert report[1:] == ["  function  1001  a.py::f", "  file      1300  a.py"]
+
+
+def test_ceiling_check_seeds_once_then_holds_against_the_trusted_base():
+    from scripts.check_architecture import ceiling_check
+
+    metrics = {"big.py": {"file_lines": 1100}, "fixed.py": {"file_lines": 400}}
+    # No stored burn-down: a plain check has no exemptions, writing seeds it.
+    assert ceiling_check(metrics, {}, None, writing=False)
+    assert not ceiling_check(metrics, {}, None, writing=True)
+    stored = {"ceiling_burn_down": {"big.py": 1100, "fixed.py": 1200}}
+    # A plain check demands the stale entry's removal; writing removes it.
+    assert ceiling_check(metrics, stored, None, writing=False) == [
+        "fixed.py: burn-down entry is now 400 lines, at or under the hard ceiling 1000; remove it"
+    ]
+    assert not ceiling_check(metrics, stored, None, writing=True)
+    # A new oversized unit blocks writing too, so the baseline cannot absorb it.
+    assert ceiling_check({**metrics, "new.py": {"file_lines": 1001}}, stored, None, writing=True)
+    trusted = {"ceiling_burn_down": {"big.py": 1050}}
+    assert ceiling_check(metrics, {"ceiling_burn_down": {"big.py": 1100}}, trusted, writing=False) == [
+        "big.py: burn-down allowance 1100 exceeds trusted 1050"
+    ]
+
+
+def test_repository_burn_down_matches_the_measured_tree():
+    import json
+
+    from scripts.check_architecture import BASELINE, ceiling_burn_down
+
+    root = Path(__file__).resolve().parents[1]
+    stored = json.loads((root / BASELINE).read_text())
+    metrics, _ = measure(root)
+    assert stored["ceiling_burn_down"] == ceiling_burn_down(metrics)

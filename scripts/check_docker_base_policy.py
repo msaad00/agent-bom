@@ -206,7 +206,15 @@ def _policy_key(path: Path) -> str | None:
     return rel if rel in POLICY else None
 
 
+# Scanner test inputs, not images this project builds; several are deliberately insecure.
+_FIXTURE_ROOT = "tests/fixtures/"
+
+
 def _collect_dockerfiles() -> list[Path]:
+    return [path for path in _all_dockerfiles() if not path.relative_to(ROOT).as_posix().startswith(_FIXTURE_ROOT)]
+
+
+def _all_dockerfiles() -> list[Path]:
     try:
         result = subprocess.run(
             ["git", "ls-files", "*Dockerfile*"],

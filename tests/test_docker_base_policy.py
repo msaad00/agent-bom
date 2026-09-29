@@ -196,3 +196,25 @@ def test_unknown_dockerfile_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert script.main() == 1
     captured = capsys.readouterr()
     assert "no entry in scripts/check_docker_base_policy.py POLICY" in captured.err
+
+
+def test_scanner_fixtures_are_exempt_but_other_test_dockerfiles_are_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = _load_script()
+    repo = tmp_path
+    fixture = repo / "tests" / "fixtures" / "iac_golden" / "dockerfile" / "bad.Dockerfile"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text("FROM ubuntu:latest\n", encoding="utf-8")
+
+    monkeypatch.setattr(script, "ROOT", repo)
+    monkeypatch.setattr(script, "POLICY", {})
+    assert script.main() == 0
+
+    stray = repo / "tests" / "integration" / "Dockerfile"
+    stray.parent.mkdir(parents=True)
+    stray.write_text("FROM ubuntu:latest\n", encoding="utf-8")
+    assert script.main() == 1
+    captured = capsys.readouterr()
+    assert "tests/integration/Dockerfile" in captured.err
+    assert "tests/fixtures/" not in captured.err

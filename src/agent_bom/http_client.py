@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import random
+import ssl
 import threading
 import time
 from typing import Any, Callable, Optional
@@ -206,6 +207,21 @@ def _should_retry_status(status_code: int, url: str) -> bool:
     return True
 
 
+def _verified_tls_context(verify: bool | str, cert: str | tuple[str, str] | None) -> ssl.SSLContext:
+    """Build verified trust once, including mTLS material, for every transport."""
+    if verify is True:
+        context = httpx.create_ssl_context(verify=True)
+    elif isinstance(verify, str) and verify.strip():
+        context = ssl.create_default_context(capath=verify) if os.path.isdir(verify) else ssl.create_default_context(cafile=verify)
+    else:
+        raise ValueError("HTTP certificate verification requires True or a non-empty CA path")
+    if isinstance(cert, str):
+        context.load_cert_chain(cert)
+    elif cert is not None:
+        context.load_cert_chain(*cert)
+    return context
+
+
 def create_client(
     timeout: float | None = None,
     max_redirects: int = 0,
@@ -229,14 +245,14 @@ def create_client(
 
     if timeout is None:
         timeout = HTTP_DEFAULT_TIMEOUT
-    transport = None if _env_proxy_configured() else httpx.AsyncHTTPTransport(retries=2)
+    tls_context = _verified_tls_context(verify, cert)
+    transport = None if _env_proxy_configured() else httpx.AsyncHTTPTransport(retries=2, verify=tls_context)
     return httpx.AsyncClient(
         timeout=timeout,
         transport=transport,
         follow_redirects=False,
         max_redirects=max_redirects,
-        verify=verify,
-        cert=cert,
+        verify=tls_context,
     )
 
 

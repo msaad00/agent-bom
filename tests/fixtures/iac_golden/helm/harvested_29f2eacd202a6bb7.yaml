@@ -1,0 +1,11 @@
+topologySpread:
+  zone:
+    topologyKey: topology.kubernetes.io/zone
+injector:
+  selectors:
+    namespaceLabelKey: agent-bom.io/proxy-inject
+    podLabelKey: agent-bom.io/proxy
+    tenantLabelKey: agent-bom.io/tenant
+  controlPlane:
+    tokenSecretName: agent-bom-token
+    tokenSecretKey: token

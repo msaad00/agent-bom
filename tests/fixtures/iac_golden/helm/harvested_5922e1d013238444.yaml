@@ -1,0 +1,946 @@
+# ───────────────────────────────────────────────────────────────────────────
+# IMPORTANT: `controlPlane.enabled` defaults to `false` (scanner-only render).
+#
+# The default render ships ONLY the CLI scanner Job + supporting RBAC. The API,
+# dashboard, gateway, proxy, firewall, MCP server, and Postgres are all gated
+# behind `controlPlane.enabled=true`. EKS / GKE / AKS users that want the full
+# platform — running scans, browsing findings in the UI, hitting the REST API,
+# enforcing runtime policy — should start from a shipped profile, which wires the
+# required Postgres + auth Secrets:
+#
+#     python scripts/install_helm_profile.py focused-pilot --print-command
+#     python scripts/install_helm_profile.py focused-pilot
+#
+# A bare `--set controlPlane.enabled=true` is NOT enough on its own: the
+# control plane needs distinct app and maintenance Postgres credentials plus
+# the control-plane auth Secret supplied via `controlPlane.api.envFrom`.
+# Postgres profiles declare all three database identities through
+# `controlPlane.postgresSecrets`; the chart projects each one by role.
+# See `examples/postgres-secret.example.yaml` +
+# `examples/control-plane-auth-secret.example.yaml` and the chart README.
+#
+# Without that flag a `helm install` succeeds quietly and only the scanner
+# pieces are deployed. See the `controlPlane:` block below (around line 257)
+# for the full set of subcomponents this flag toggles on, and the chart
+# README at deploy/helm/agent-bom/README.md (or the project README's
+# "Helm / Kubernetes" section) for the complete quick-start.
+# ───────────────────────────────────────────────────────────────────────────
+#
+# For the canonical AGENT_BOM_* env-var reference (auto-generated from
+# src/agent_bom/config.py), see docs/operations/ENV_VARS.md. CI fails if a
+# new AGENT_BOM_* env var is referenced in src/ without being declared in
+# config.py or added to scripts/env_var_allowlist.txt with a one-line reason.
+
+image:
+  repository: agentbom/agent-bom
+  tag: "0.106.1"
+  pullPolicy: IfNotPresent
+
+uiImage:
+  repository: agentbom/agent-bom-ui
+  tag: "0.106.1"
+  pullPolicy: IfNotPresent
+
+runtimeImage:
+  repository: agentbom/agent-bom
+  tag: "0.106.1"
+  pullPolicy: IfNotPresent
+
+# Cloud-SDK collector image (issue #4239). Ships the boto3/azure/google/snowflake
+# SDK layer independently of the control-plane release so it can be rebuilt and
+# re-tagged on its own cadence (a daily CI refresh absorbs newer provider-SDK
+# wheels within the pinned floors) WITHOUT a control-plane version bump. The
+# cloud-scan CronJob runs this image instead of the control-plane image. Leave
+# `tag` at the release version to ride the release train, or override
+# `collectorImage.tag` (e.g. --set collectorImage.tag=<sdk-only-build>) to pin a
+# newer SDK-only build between control-plane releases. A blank tag falls back to
+# `image.tag`.
+collectorImage:
+  repository: agentbom/agent-bom-collector
+  tag: "0.106.1"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpread:
+  enabled: false
+  whenUnsatisfiable: ScheduleAnyway
+  zone:
+    enabled: true
+    topologyKey: topology.kubernetes.io/zone
+  node:
+    enabled: true
+    topologyKey: kubernetes.io/hostname
+
+tests:
+  # The hook checks API/UI endpoints and is rendered only when the control
+  # plane is enabled. Keep it available for full-stack profiles without
+  # making the scanner-only default claim a live service check.
+  enabled: true
+  includeUi: true
+  image:
+    repository: agentbom/agent-bom
+    tag: "0.106.1"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+scanner:
+  enabled: true
+  schedule: "0 */6 * * *"
+  # When `cloud.enabled` is true the CronJob runs a full `agent-bom scan` so the
+  # opt-in cloud estate enrichment (AGENT_BOM_<PROVIDER>_INVENTORY) attaches the
+  # read-only inventory + misconfig findings to the report. Default render stays
+  # Kubernetes-only (`--k8s`) for backward compatibility.
+  allNamespaces: true
+  k8s: true
+  outputFormat: json
+  extraArgs: []
+  env: []
+  # ─── Live Kubernetes posture (KSPM) ────────────────────────────────────────
+  # A DISTINCT CronJob from the image-discovery scan above. When enabled it runs
+  # `agent-bom iac --k8s-live`, which executes the read-only in-cluster posture
+  # collectors (workloads, NetworkPolicy, RBAC, optional node config) over the
+  # native service-account transport — no kubectl, no image discovery. It is
+  # bound to the scanner service account, which carries the least-privilege
+  # read-only ClusterRole (get/list on pods/namespaces/nodes/networkpolicies/
+  # RBAC; no secrets, no mutation, no nodes/proxy).
+  kspm:
+    enabled: false
+    schedule: "0 */6 * * *"
+    allNamespaces: true
+    namespace: default
+    extraArgs: []
+    env: []
+  # Optional client TLS material for HTTPS fleet/scan push (collector -> control plane mTLS).
+  # Mount the Secret with cert/key (and optional CA) via extraVolumes + extraVolumeMounts.
+  extraVolumes: []
+  extraVolumeMounts: []
+  # Extra `envFrom` sources (e.g. a Snowflake key-pair Secret reference managed
+  # by external-secrets). Never inline secret material in values — reference a
+  # Secret the cluster already holds.
+  envFrom: []
+  serviceAccount:
+    create: true
+    name: ""
+    # IRSA / GKE Workload Identity annotations land here. EKS:
+    #   eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/agent-bom-readonly
+    # GKE: iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+    annotations: {}
+    # AKS workload identity binds via pod labels, not SA annotations. Set
+    #   azure.workload.identity/client-id on the SA and label the pod
+    #   azure.workload.identity/use: "true" (see cloud.azure below).
+    labels: {}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Writable scratch dir for the read-only-root-FS container. The scan writes
+  # its report under /output (emptyDir); cloud SDKs may also need $HOME/.cache.
+  writableTmp: true
+  # ─── Keyless multi-cloud read-only collection ──────────────────────────────
+  # All providers default OFF. Enable per-provider inventory and the scan picks
+  # up the cluster's workload identity (IRSA / GKE WI / AKS WI) — NO keys in the
+  # cluster. Snowflake is the lone exception (key-pair) and references a Secret.
+  cloud:
+    enabled: false
+    aws:
+      # Sets AGENT_BOM_AWS_INVENTORY=1. Keyless control-plane identity, in order
+      # of preference:
+      #   - EKS: IRSA — set serviceAccount.annotations
+      #     eks.amazonaws.com/role-arn to the scanner/control-plane role. That
+      #     role reads THIS account directly and, cross-account, can AssumeRole
+      #     into connect-aws read-only roles. For Connections org fan-out, set
+      #     inventory_scope=organization on the connection row (not this flag).
+      #     For Helm/CLI Job org fan-out, also set orgInventory below. The
+      #     baseline module attaches least-privilege sts:AssumeRole; see
+      #     deploy/terraform/aws/baseline (connect_role_arns).
+      #   - Self-managed k8s on EC2 / ECS: the pod inherits the node instance
+      #     profile or ECS task role from the AWS SDK default chain — still
+      #     keyless, no annotation needed. Give that role sts:AssumeRole on the
+      #     connect roles the same way.
+      # NEVER static access keys.
+      inventory: false
+      allRegions: false       # AGENT_BOM_AWS_ALL_REGIONS
+      regions: ""             # AGENT_BOM_AWS_REGIONS (comma list, e.g. "us-east-1,eu-west-1")
+      maxRegions: ""          # AGENT_BOM_AWS_MAX_REGIONS
+      # Job/CLI ONLY (scanner CronJob → AGENT_BOM_AWS_ORG_INVENTORY). Does NOT
+      # drive Connections /scan. Connections org fan-out =
+      # inventory_scope=organization on the connection row (+ StackSet grants).
+      # StackSet/org grant onboarding is separate from either path.
+      orgInventory: false     # AGENT_BOM_AWS_ORG_INVENTORY
+      maxAccounts: ""         # AGENT_BOM_AWS_MAX_ACCOUNTS (default 200 in code)
+    azure:
+      # Sets AGENT_BOM_AZURE_INVENTORY=1. Auth = AKS workload identity federated
+      # to the connect-azure Reader principal (see cloud.azure block below).
+      inventory: false
+      # Job/CLI ONLY (AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS). Connections org =
+      # inventory_scope=organization on the row.
+      allSubscriptions: false # AGENT_BOM_AZURE_ALL_SUBSCRIPTIONS
+      maxSubscriptions: ""    # AGENT_BOM_AZURE_MAX_SUBSCRIPTIONS
+      # Client ID of the user-assigned managed identity / app federated to the
+      # KSA. Rendered as the azure.workload.identity/client-id SA annotation and
+      # AZURE_CLIENT_ID env. Leave empty if set directly via serviceAccount.
+      clientId: ""
+      tenantId: ""            # AZURE_TENANT_ID (federation tenant)
+    gcp:
+      # Sets AGENT_BOM_GCP_INVENTORY=1. Auth = GKE Workload Identity; the KSA
+      # impersonates the connect-gcp read-only SA via impersonateSa below.
+      inventory: false
+      # AGENT_BOM_GCP_IMPERSONATE_SA — the connect-gcp read-only SA email. The
+      # ambient KSA token is exchanged for short-lived impersonated creds.
+      impersonateSa: ""
+      # Job/CLI ONLY (AGENT_BOM_GCP_ALL_PROJECTS). Connections org =
+      # inventory_scope=organization on the row. Mirrors azure.allSubscriptions.
+      allProjects: false      # AGENT_BOM_GCP_ALL_PROJECTS
+      maxProjects: ""         # AGENT_BOM_GCP_MAX_PROJECTS (default 200 in code)
+    snowflake:
+      # Sets AGENT_BOM_SNOWFLAKE_INVENTORY=1. Snowflake has no cloud workload
+      # identity; it uses key-pair auth. Provide the private key ONLY via a
+      # Secret reference (external-secrets / sealed-secrets), never inline.
+      inventory: false
+      maxRoles: ""            # AGENT_BOM_SNOWFLAKE_MAX_ROLES
+      account: ""             # SNOWFLAKE_ACCOUNT (non-secret)
+      user: ""               # SNOWFLAKE_USER (non-secret)
+      # Name of a pre-existing Secret holding the PEM private key under `key`.
+      # Mounted read-only at /snowflake; SNOWFLAKE_PRIVATE_KEY_PATH points to it.
+      # The passphrase (if any) comes from SNOWFLAKE_PRIVATE_KEY_PASSPHRASE via
+      # scanner.envFrom -> secretRef. Nothing secret is rendered into manifests.
+      keySecretName: ""
+      keySecretKey: "key"
+
+monitor:
+  enabled: false
+  mode: http
+  port: 8423
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  service:
+    enabled: true
+    type: ClusterIP
+    annotations: {}
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: ""
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+
+# ─── Multi-MCP gateway (optional) ─────────────────────────────────────────────
+# One FastAPI service that fronts N upstream MCP servers so laptops point at
+# one URL per MCP instead of configuring a proxy per MCP. Disabled by default
+# because the per-MCP sidecar mode (controlPlane.runtime) covers teams that
+# prefer local-to-workload enforcement.
+#
+# See docs/design/MULTI_MCP_GATEWAY.md for the full design + rollout plan.
+#
+# ── Operator must provide at least one upstream source: ──────────────────────
+#   1. gateway.upstreamsYaml — a static list of MCP servers the gateway should
+#      route to. Start from deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
+#      and customise; pass via --set-file gateway.upstreamsYaml=./my-upstreams.yaml.
+#   2. gateway.controlPlaneDiscovery.url — optional control-plane discovery
+#      source for live remote MCP inventory. Use env/envFrom to provide
+#      AGENT_BOM_CONTROL_PLANE_TOKEN when the control plane requires auth.
+#   3. A Kubernetes Secret exposing any bearer tokens referenced by
+#      `token_env` in upstreamsYaml (e.g. SNOWFLAKE_JIRA_MCP_TOKEN,
+#      GITHUB_MCP_TOKEN). Point gateway.envFrom at it:
+#
+#        gateway:
+#          envFrom:
+#            - secretRef:
+#                name: agent-bom-gateway-upstream-tokens
+#
+#   4. An ingress (same cluster as controlPlane) pointing at the
+#      agent-bom-{release}-gateway Service on port 8090.
+# ─────────────────────────────────────────────────────────────────────────────
+gateway:
+  enabled: false
+  # Durable delivery claims are process-owned; the shipped topology is one
+  # replica with a restart-stable PVC. Scale-out requires shared leases.
+  replicas: 1
+  autoscaling:
+    # Reserved for a future shared-lease delivery backend. Enabling either HPA
+    # mode currently fails rendering because persistent audit delivery is
+    # required and supports one writer.
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+    behavior: {}
+    # KEDA-driven autoscaling for gateway relay traffic. When enabled, the
+    # static CPU/memory HPA is suppressed and a ScaledObject is rendered
+    # instead. KEDA generates its own internal HPA.
+    keda:
+      enabled: false
+      pollingIntervalSeconds: 30
+      cooldownSeconds: 300
+      prometheus:
+        serverAddress: ""  # e.g. http://prometheus.monitoring.svc:9090
+        relayRateThreshold: "25"       # forwarded relay requests/sec
+        pressureRateThreshold: "1"     # rate-limited/error/circuit events/sec
+      triggers: []  # set non-empty to fully replace the default Prometheus triggers
+      fallback:
+        failureThreshold: 3
+        replicas: 2
+      advanced: {}
+  image:
+    repository: agentbom/agent-bom
+    # tag defaults to Chart.AppVersion
+    pullPolicy: IfNotPresent
+  # Inline YAML for the upstreams ConfigMap. Replace with your environment's
+  # MCPs. See deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
+  # for a commented template with three realistic entries. Starting with an
+  # empty list is valid — the gateway boots clean and rejects requests
+  # until you redeploy with a populated list.
+  upstreamsYaml: |
+    upstreams: []
+  controlPlaneDiscovery:
+    # Optional URL for --from-control-plane discovery.
+    # Example: https://agent-bom.internal.example.com
+    url: ""
+  # Writable local retry state. Every Helm gateway requires the PVC-backed mode
+  # below: even with control-plane discovery, post-forward outcomes and errors
+  # must survive a control-plane outage and pod reschedule without loss.
+  stateDir: /tmp/agent-bom
+  # Pod-rescheduling durability for every gateway. Claims and the local
+  # HMAC chain are process-owned, so the chart requires one replica, disables
+  # both HPA modes, and uses a Recreate rollout when a PVC is used. Scale-out
+  # needs a shared lease implementation that is not shipped.
+  persistence:
+    enabled: false
+    existingClaim: ""
+    mountPath: /var/lib/agent-bom
+  # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
+  policyPath: ""
+  # In-process policy file reload interval; requires policyPath when > 0.
+  policyReloadSeconds: 0
+  # Optional inter-agent firewall policy JSON path (#982). Schema:
+  # docs/AGENT_FIREWALL.md. Mount via extraVolumes + extraVolumeMounts the
+  # same way as policyPath. Independent from policyPath so operators can
+  # rotate firewall rules without touching MCP method-gating policy.
+  firewallPolicyPath: ""
+  # Hot-reload interval for firewallPolicyPath; requires firewallPolicyPath when > 0.
+  firewallPolicyReloadSeconds: 0
+  # Tenant-scoped runtime request limit for gateway relay traffic (0 disables).
+  runtimeRateLimitPerTenantPerMinute: 0
+  # Fail closed unless runtime rate limiting uses a shared backend.
+  requireSharedRateLimit: false
+  # Opt-in graph-derived runtime enforcement. The global default remains off.
+  # bundleUrl must target GET /v1/graph/correlations/{id}/runtime-facts and the
+  # signing key file must be mounted through extraVolumes/extraVolumeMounts.
+  graphReachability:
+    enforcement: "off"
+    bundleUrl: ""
+    tenant: default
+    signingKeyFile: ""
+    pollSeconds: 30
+    # allow preserves legacy missing-evidence behavior. deny is explicit strict
+    # fail-closed mode and requires a valid, content-bound, complete v2 bundle.
+    failureMode: "allow"
+  # Canonical managed client-profile enforcement. Set profileEnvironment when
+  # using warn/enforce. Enforced gateways must share the control plane's
+  # authoritative Postgres identity/profile store. Set gateway.envFrom to the
+  # gateway-scoped Secret containing AGENT_BOM_POSTGRES_URL. Do not reuse the
+  # broader controlPlane.api.envFrom Secret because it may also carry session,
+  # audit, login, or encryption credentials. Enforced mode fails rendering when
+  # gateway.envFrom is empty. The loopback-only development bypass is
+  # intentionally not exposed by this non-loopback Kubernetes deployment.
+  profileEnforcement: "off"
+  profileEnvironment: ""
+  profileIssuer: "agent-bom"
+  # OCR-scan image responses for leaked credentials/PII.
+  detectVisualLeaks: false
+  # Allow startup to continue when OCR runtime support is unavailable.
+  allowVisualLeakBestEffort: false
+  # Typical deploy-time auth/runtime wiring:
+  #   env:
+  #     - name: AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS
+  #       value: "1"
+  #   envFrom:
+  #     - secretRef:
+  #         name: agent-bom-gateway-auth
+  #
+  # Where `agent-bom-gateway-auth` contains:
+  #   AGENT_BOM_GATEWAY_BEARER_TOKEN=<token for incoming gateway clients>
+  #   AGENT_BOM_GATEWAY_BEARER_TOKEN_EXPIRES_AT=<absolute ISO-8601 UTC expiry within one hour>
+  #   AGENT_BOM_CONTROL_PLANE_TOKEN=<token for gateway control-plane discovery>
+  env: []
+  envFrom: []
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  # Gateway-specific default-deny egress. Kubernetes NetworkPolicy cannot
+  # portably express FQDNs from upstream URLs, so operators should translate
+  # configured upstream MCPs/control-plane discovery targets into ipBlock or
+  # pod/namespace selectors here. With gateway.enabled=true this policy keeps
+  # gateway egress closed except DNS and the explicit rules below.
+  networkPolicy:
+    enabled: true
+    allowDns: true
+    egress: []
+    additionalEgress: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
+sidecarInjection:
+  enabled: false
+  replicas: 2
+  image:
+    repository: agentbom/agent-bom
+    # tag defaults to Chart.AppVersion
+    pullPolicy: IfNotPresent
+  service:
+    port: 443
+    targetPort: 8443
+  certManager:
+    enabled: true
+    createSelfSignedIssuer: true
+    issuerRef:
+      name: ""
+      kind: Issuer
+      group: cert-manager.io
+    duration: 2160h
+    renewBefore: 360h
+    tlsSecretName: ""
+  webhook:
+    failurePolicy: Fail
+    timeoutSeconds: 10
+    reinvocationPolicy: IfNeeded
+  selectors:
+    namespaceLabelKey: agent-bom.io/proxy-inject
+    namespaceLabelValue: enabled
+    podLabelKey: agent-bom.io/proxy
+    podLabelValue: "true"
+    tenantLabelKey: agent-bom.io/tenant
+  defaultMcpPort: 3000
+  metricsPort: 8422
+  policyRefreshSeconds: 30
+  auditPushInterval: 10
+  detectCredentials: true
+  blockUndeclared: true
+  policyConfigMapName: ""
+  controlPlane:
+    apiUrl: ""
+    tokenSecretName: ""
+    tokenSecretKey: token
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+teardownHooks:
+  enabled: true
+  deletePolicy: before-hook-creation,hook-succeeded
+  image:
+    repository: agentbom/agent-bom
+    # tag defaults to Chart.AppVersion
+    pullPolicy: IfNotPresent
+  extraTargetSecrets: []
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+controlPlane:
+  enabled: false
+  # Provider label for diagnostics and evidence only. It never changes the
+  # PostgreSQL protocol contract or upgrades compatibility into certification.
+  postgres:
+    provider: auto
+    verification:
+      enabled: true
+      hooks: post-install,post-upgrade
+      hookWeight: "10"
+      # Keep successful output available until the TTL removes it; the next
+      # release still replaces any prior hook deterministically.
+      deletePolicy: before-hook-creation
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 600
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+  # Canonical Postgres Secret references. When enabled, the chart injects
+  # app + maintenance into the API, admin + app + maintenance into the
+  # migration Job, and maintenance only into backups. Names must be distinct.
+  postgresSecrets:
+    enabled: false
+    appSecretRef:
+      name: ""
+    maintenanceSecretRef:
+      name: ""
+    adminSecretRef:
+      name: ""
+  # Opt-in background loop that re-scans due cloud connections (row
+  # scan_interval_minutes). When true, injects AGENT_BOM_CONNECTIONS_SCHEDULER=1
+  # on the API Deployment. Cadence still requires a per-connection interval;
+  # scan_mode=continuous additionally drains provider event queues on each
+  # tick when AGENT_BOM_{AWS,AZURE,GCP}_EVENT_* is set (stamps last_event_at).
+  # maxConcurrency bounds both due full-scans and continuous event drains;
+  # pollSeconds is how often the loop re-checks for due work (optional).
+  connectionsScheduler:
+    enabled: false
+    maxConcurrency: 4
+    # pollSeconds: 60
+  # Correlate each completed multi-target scan batch into one immutable graph
+  # snapshot. Enabled by default only affects supported durable job/graph stores;
+  # in-memory and experimental Neptune backends no-op with a bounded metric.
+  # Automatic runs require fresh evidence and never infer cohorts from source
+  # labels, mutable tags, or tenant-latest snapshots.
+  autoCorrelation:
+    enabled: true
+    maxAgeHours: 168
+  serviceMesh:
+    enabled: false
+    provider: istio
+    istio:
+      peerAuthentication:
+        enabled: true
+        mode: STRICT
+      authorizationPolicy:
+        enabled: true
+        allowSameNamespace: true
+        allowedNamespaces: []
+  policyController:
+    enabled: false
+    provider: kyverno
+    kyverno:
+      validationFailureAction: Audit
+      background: true
+      requireControlPlanePodHardening: true
+  observability:
+    grafanaDashboard:
+      enabled: false
+      namespace: ""
+      labels: {}
+      annotations: {}
+      folder: agent-bom
+    prometheusRule:
+      enabled: true
+      namespace: ""
+      labels: {}
+      annotations: {}
+      rules:
+        apiErrorRate:
+          enabled: true
+          errorRateThreshold: 0.05
+          for: 10m
+        scannerFailures:
+          enabled: true
+          for: 15m
+        oidcFailures:
+          enabled: true
+          for: 10m
+          increaseThreshold: 5
+        proxyAuditBacklog:
+          enabled: true
+          for: 10m
+          backlogBytesThreshold: 10485760
+  podAntiAffinity:
+    enabled: false
+    topologyKey: kubernetes.io/hostname
+  priorityClass:
+    create: false
+    name: ""
+    value: 100000
+    preemptionPolicy: PreemptLowerPriority
+    description: "Priority class for agent-bom control-plane API and UI workloads."
+  api:
+    enabled: true
+    serviceAccount:
+      create: true
+      name: ""
+      # IRSA for async findings export to customer S3 (set eks.amazonaws.com/role-arn).
+      annotations: {}
+      automountServiceAccountToken: true
+    replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: null
+      behavior: {}
+      # KEDA-driven autoscaling. When enabled, the static CPU/memory HPA is
+      # suppressed and a ScaledObject is rendered instead. KEDA generates
+      # its own internal HPA. Requires the KEDA operator installed cluster-side
+      # (https://keda.sh). See examples/eks-keda-values.yaml for a full
+      # production preset and site-docs/deployment/scaling-slo.md for the
+      # published per-tier SLO this scaler implements.
+      keda:
+        enabled: false
+        pollingIntervalSeconds: 30
+        cooldownSeconds: 300
+        # Default trigger set targets bursty scanner workloads using
+        # backpressure + p99 latency signals exported by the API. Override
+        # `triggers:` with a full KEDA triggers list to plug in custom scalers
+        # (SQS, Kafka, AWS CloudWatch, queue-depth, etc.).
+        prometheus:
+          serverAddress: ""  # e.g. http://prometheus.monitoring.svc:9090
+          rateLimitThreshold: "0.5"           # rejections/sec averaged across replicas
+          p99ThresholdSeconds: "1.5"          # API p99 latency in seconds
+          scanJobsActiveThreshold: "8"        # in-flight scans averaged across replicas
+        triggers: []  # set non-empty to fully replace the default Prometheus pair
+        fallback:
+          failureThreshold: 3
+          replicas: 2  # falls back here if Prometheus is unreachable
+        advanced: {}   # passes through to ScaledObject.spec.advanced
+    port: 8422
+    args:
+      - api
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8422"
+    env:
+      - name: AGENT_BOM_API_LOCAL_PATH_SCANS
+        value: "disabled"
+      # Retention knobs (global default, optional per-tenant JSON overrides, analytics cap).
+      # Per-tenant overrides can also be persisted via the control-plane tenant retention store.
+      # - name: AGENT_BOM_GRAPH_RETENTION_DAYS
+      #   value: "180"
+      # - name: AGENT_BOM_GRAPH_RETENTION_OVERRIDES
+      #   value: '{"tenant-a": 30, "tenant-b": 90}'
+      # - name: AGENT_BOM_HISTORY_MAX_REPORTS
+      #   value: "500"
+      # - name: AGENT_BOM_ANALYTICS_MAX_EVENTS
+      #   value: "50000"
+      # - name: AGENT_BOM_ANALYTICS_MAX_FINDINGS
+      #   value: "250000"
+      # - name: AGENT_BOM_ANALYTICS_MAX_PACKAGES
+      #   value: "500000"
+      # Durable export workers use a separate bounded pool (0 makes an API-only producer).
+      # - name: AGENT_BOM_API_REPORT_WORKERS
+      #   value: "2"
+      # Local artifacts across replicas require a shared mount plus an explicit acknowledgement:
+      # - name: AGENT_BOM_REPORT_ARTIFACT_DIR
+      #   value: "/mnt/shared/report-artifacts"
+      # - name: AGENT_BOM_REPORT_ARTIFACT_SHARED
+      #   value: "1"
+      # Async findings exports: upload completed artifacts to customer S3 (IRSA recommended).
+      # - name: AGENT_BOM_REPORT_S3_BUCKET
+      #   value: "my-org-agent-bom-reports"
+      # - name: AGENT_BOM_REPORT_S3_PREFIX
+      #   value: "report-artifacts"
+      # - name: AGENT_BOM_REPORT_S3_PRESIGN_SECONDS
+      #   value: "3600"
+    envFrom: []
+    extraVolumes: []
+    extraVolumeMounts: []
+    service:
+      enabled: true
+      type: ClusterIP
+      annotations: {}
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 30
+    # /readyz goes 503 as soon as graceful shutdown begins so the service
+    # endpoint drains before Kubernetes sends SIGTERM. The drain window is
+    # AGENT_BOM_SHUTDOWN_DRAIN_SECONDS (default 25s); keep that under
+    # terminationGracePeriodSeconds so the pod exits cleanly.
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    startupProbe:
+      httpGet:
+        path: /health
+        port: http
+      failureThreshold: 18
+      periodSeconds: 5
+    # Leaves a 5s margin over the default 25s drain window for in-flight
+    # requests to finish before Kubernetes force-kills the pod.
+    terminationGracePeriodSeconds: 30
+  ui:
+    enabled: true
+    replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: null
+      behavior: {}
+    port: 3000
+    env:
+      - name: NEXT_PUBLIC_API_URL
+        value: ""
+    envFrom: []
+    service:
+      enabled: true
+      type: ClusterIP
+      annotations: {}
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    livenessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 10
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    startupProbe:
+      httpGet:
+        path: /
+        port: http
+      failureThreshold: 18
+      periodSeconds: 5
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: ""
+        apiPaths:
+          - path: /v1
+            pathType: Prefix
+          - path: /scim
+            pathType: Prefix
+          - path: /health
+            pathType: Prefix
+          - path: /docs
+            pathType: Prefix
+          - path: /redoc
+            pathType: Prefix
+          - path: /openapi.json
+            pathType: Prefix
+          - path: /ws
+            pathType: Prefix
+        uiPaths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  externalSecrets:
+    enabled: false
+    # Render only the ExternalSecret resources for a separate bootstrap
+    # release. Keep controlPlane.enabled=false in that release, wait for every
+    # target Secret to become ready, then install/upgrade the workload release
+    # with externalSecrets.enabled=false. A pre-install migration hook is never
+    # allowed to depend on ExternalSecrets from its own release.
+    syncOnly: false
+    refreshPolicy: Periodic
+    refreshInterval: 1h
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: ""
+    target:
+      name: agent-bom-control-plane
+      creationPolicy: Owner
+    data: []
+    dataFrom: []
+    secrets: []
+  migrations:
+    enabled: true
+    postgres:
+      enabled: true
+    hooks: pre-upgrade,pre-install
+    hookWeight: "-10"
+    deletePolicy: before-hook-creation,hook-succeeded
+    backoffLimit: 0
+    ttlSecondsAfterFinished: 600
+    alembicConfig: deploy/supabase/postgres/alembic.ini
+    workingDir: /opt/agent-bom
+    env: []
+    # Generic extras only. Postgres profiles use controlPlane.postgresSecrets,
+    # unless ALEMBIC_DATABASE_URL is supplied as an explicit env entry for an
+    # externally provisioned role contract.
+    envFrom: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  backup:
+    enabled: false
+    schedule: "0 3 * * *"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    suspend: false
+    serviceAccountName: ""
+    serviceAccount:
+      create: true
+      name: ""
+      annotations: {}
+    image:
+      dumpRepository: postgres
+      dumpTag: "16-alpine"
+      uploadRepository: amazon/aws-cli
+      uploadTag: "2.17.52"
+      pullPolicy: IfNotPresent
+    resources:
+      dump:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+      upload:
+        requests:
+          memory: "128Mi"
+          cpu: "50m"
+        limits:
+          memory: "256Mi"
+          cpu: "250m"
+    destination:
+      bucket: ""
+      prefix: "agent-bom/postgres"
+      bucketRegion: ""
+      region: us-east-1
+      endpoint: ""
+      encryption:
+        enabled: true
+        mode: "AES256"
+        kmsKeyId: ""
+      extraArgs: []
+    retentionDays: 14
+    env: []
+    # Required when backup.enabled=true. Reference only the scoped maintenance
+    # Secret containing AGENT_BOM_POSTGRES_MAINTENANCE_URL; never the app or
+    # migration/admin Secret.
+    envFrom: []
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: agent-bom
+  annotations: {}
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "500m"
+
+podSecurityContext:
+  runAsNonRoot: true
+  # Numeric UID/GID of the image's `abom` user (Dockerfile: adduser abom → 100).
+  # runAsNonRoot alone fails with CreateContainerConfigError because the kubelet
+  # cannot verify a non-numeric image USER is non-root; pinning the numeric UID
+  # makes the chart schedulable with the official image.
+  runAsUser: 100
+  runAsGroup: 101
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
+  capabilities:
+    drop:
+      - ALL
+
+livenessProbe:
+  httpGet:
+    path: /status
+    port: protect
+  initialDelaySeconds: 5
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /status
+    port: protect
+  initialDelaySeconds: 2
+  periodSeconds: 10
+
+startupProbe:
+  httpGet:
+    path: /status
+    port: protect
+  failureThreshold: 12
+  periodSeconds: 5
+
+networkPolicy:
+  enabled: true
+  # The default chart is scanner-only. Scope this baseline policy to scanner
+  # pods so enabling the control plane does not silently block Postgres,
+  # identity, cloud, or UI/API traffic before operators provide egress rules.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: scanner
+  restrictIngress: true
+  ingress: []
+  allowDns: true
+  # Kubernetes NetworkPolicy cannot portably express FQDNs from upstream URLs.
+  # Translate Postgres, ClickHouse, IdP/OIDC, and cloud API endpoints into
+  # ipBlock/pod/namespace selectors via egress/additionalEgress below.
+  allowWeb: false
+  webPorts:
+    - 80
+    - 443
+  egress: []
+  additionalEgress: []
+
+pdb:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: null

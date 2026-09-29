@@ -1,0 +1,8 @@
+replicaCount: 0
+replicas: 1
+ingress:
+  enabled: false
+persistence:
+  enabled: false
+resources:
+  limits: 512Mi

@@ -1,0 +1,5369 @@
+{
+ "cloudformation/harvested_02607cd2c93f6eae.json": [],
+ "cloudformation/harvested_041e95535185396d.json": [],
+ "cloudformation/harvested_051347c8735e59e8.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/harvested_051347c8735e59e8.json",
+   "line_number": 4,
+   "message": "Resource 'AdminPolicy' has overly permissive IAM policy (Action:* or Resource:*).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-004",
+   "severity": "high",
+   "title": "IAM policy with wildcard permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/harvested_051347c8735e59e8.json",
+   "line_number": 4,
+   "message": "Resource 'AdminPolicy' has an IAM statement with Action: '*'. Follow least-privilege: scope actions to specific services.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-014",
+   "severity": "critical",
+   "title": "IAM policy with Action: * (overly permissive)"
+  }
+ ],
+ "cloudformation/harvested_2e86cfed6f733716.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_2e86cfed6f733716.json",
+   "line_number": 4,
+   "message": "Resource 'PrivateBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_2e86cfed6f733716.json",
+   "line_number": 4,
+   "message": "Resource 'PrivateBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_30072a95d455b0b5.json": [],
+ "cloudformation/harvested_3fd8bcb72fce5aff.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.3.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_3fd8bcb72fce5aff.json",
+   "line_number": 4,
+   "message": "Resource 'MyDB' has StorageEncrypted=false or missing. Enable encryption at rest.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-005",
+   "severity": "high",
+   "title": "RDS instance without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.3.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_3fd8bcb72fce5aff.json",
+   "line_number": 4,
+   "message": "Resource 'MyDB' has StorageEncrypted=false or missing. Enable encryption at rest.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-012",
+   "severity": "high",
+   "title": "RDS instance without encryption"
+  }
+ ],
+ "cloudformation/harvested_465c2d344004a5db.json": [],
+ "cloudformation/harvested_4adbce1585bc7387.json": [],
+ "cloudformation/harvested_62212cffbce44957.json": [],
+ "cloudformation/harvested_66737835955f6865.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-3.1",
+    "NIST-AU-2"
+   ],
+   "file_path": "cloudformation/harvested_66737835955f6865.json",
+   "line_number": 4,
+   "message": "Resource 'Trail' has IsMultiRegionTrail=false. Enable multi-region for full coverage.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-008",
+   "severity": "medium",
+   "title": "CloudTrail not multi-region"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-3.2",
+    "NIST-AU-3"
+   ],
+   "file_path": "cloudformation/harvested_66737835955f6865.json",
+   "line_number": 4,
+   "message": "Resource 'Trail' has EnableLogFileValidation=false or missing. Enable log file validation to detect tampering.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-017",
+   "severity": "medium",
+   "title": "CloudTrail without log file validation"
+  }
+ ],
+ "cloudformation/harvested_6a72f9c75def17fb.json": [],
+ "cloudformation/harvested_6eb5830bb2016890.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.4",
+    "NIST-IA-5",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_6eb5830bb2016890.json",
+   "line_number": 4,
+   "message": "Parameter 'ApiKey' has a non-empty Default value. Use NoEcho and SSM/Secrets Manager.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-007",
+   "severity": "critical",
+   "title": "Hardcoded secret in parameter default"
+  }
+ ],
+ "cloudformation/harvested_72e5aeb95edb757b.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_72e5aeb95edb757b.yaml",
+   "line_number": 3,
+   "message": "Resource 'DataBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_72e5aeb95edb757b.yaml",
+   "line_number": 3,
+   "message": "Resource 'DataBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_7765874c93097823.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_7765874c93097823.json",
+   "line_number": 4,
+   "message": "Resource 'PublicBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.2",
+    "NIST-AC-3"
+   ],
+   "file_path": "cloudformation/harvested_7765874c93097823.json",
+   "line_number": 4,
+   "message": "Resource 'PublicBucket' uses AccessControl 'PublicReadWrite'. Use private ACL with bucket policies.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-002",
+   "severity": "critical",
+   "title": "S3 bucket with public ACL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_7765874c93097823.json",
+   "line_number": 4,
+   "message": "Resource 'PublicBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_86db10f7cc8bcf57.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.2",
+    "NIST-AC-3"
+   ],
+   "file_path": "cloudformation/harvested_86db10f7cc8bcf57.json",
+   "line_number": 4,
+   "message": "Resource 'PublicBucket' uses AccessControl 'PublicRead'. Use private ACL with bucket policies.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-002",
+   "severity": "critical",
+   "title": "S3 bucket with public ACL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_86db10f7cc8bcf57.json",
+   "line_number": 4,
+   "message": "Resource 'PublicBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_8851a8d6acfd884b.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-3.2",
+    "NIST-AU-3"
+   ],
+   "file_path": "cloudformation/harvested_8851a8d6acfd884b.json",
+   "line_number": 4,
+   "message": "Resource 'Trail' has EnableLogFileValidation=false or missing. Enable log file validation to detect tampering.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-017",
+   "severity": "medium",
+   "title": "CloudTrail without log file validation"
+  }
+ ],
+ "cloudformation/harvested_931ce5e2ecf7088e.json": [],
+ "cloudformation/harvested_a3ec3e11df054199.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-3",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/harvested_a3ec3e11df054199.json",
+   "line_number": 4,
+   "message": "Resource 'AllowSSH' allows ingress from 0.0.0.0/0 on ports 22-22.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-003",
+   "severity": "high",
+   "title": "Security group open to 0.0.0.0/0"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-4",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/harvested_a3ec3e11df054199.json",
+   "line_number": 4,
+   "message": "Resource 'AllowSSH' allows ingress from 0.0.0.0/0 on ports 22-22. Restrict to HTTP/HTTPS ports only.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-013",
+   "severity": "high",
+   "title": "Security group with 0.0.0.0/0 ingress on non-HTTP port"
+  }
+ ],
+ "cloudformation/harvested_a69781f9d920d0b5.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.4",
+    "NIST-IA-5",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_a69781f9d920d0b5.json",
+   "line_number": 4,
+   "message": "Parameter 'DBPassword' has a non-empty Default value. Use NoEcho and SSM/Secrets Manager.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-007",
+   "severity": "critical",
+   "title": "Hardcoded secret in parameter default"
+  }
+ ],
+ "cloudformation/harvested_a7d28a7cb0b6f160.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/harvested_a7d28a7cb0b6f160.json",
+   "line_number": 4,
+   "message": "Resource 'AdminRole' has overly permissive IAM policy (Action:* or Resource:*).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-004",
+   "severity": "high",
+   "title": "IAM policy with wildcard permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/harvested_a7d28a7cb0b6f160.json",
+   "line_number": 4,
+   "message": "Resource 'AdminRole' has an IAM statement with Action: '*'. Follow least-privilege: scope actions to specific services.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-014",
+   "severity": "critical",
+   "title": "IAM policy with Action: * (overly permissive)"
+  }
+ ],
+ "cloudformation/harvested_bbcf1b96704c2f25.template": [],
+ "cloudformation/harvested_bbe74a43f2256cf1.json": [],
+ "cloudformation/harvested_c21eb7eb3ddfc72d.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.2.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_c21eb7eb3ddfc72d.json",
+   "line_number": 4,
+   "message": "Resource 'DataVolume' has Encrypted=false or missing. Enable encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-009",
+   "severity": "high",
+   "title": "EBS volume not encrypted"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.2.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_c21eb7eb3ddfc72d.json",
+   "line_number": 4,
+   "message": "Resource 'DataVolume' has Encrypted=false or missing. Enable encryption for EBS volumes.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-019",
+   "severity": "high",
+   "title": "EBS volume without encryption"
+  }
+ ],
+ "cloudformation/harvested_c827a4a5c8091f1d.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_c827a4a5c8091f1d.json",
+   "line_number": 4,
+   "message": "Resource 'DataBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_d405e6d06a55b270.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_d405e6d06a55b270.json",
+   "line_number": 4,
+   "message": "Resource 'Bucket1' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_d405e6d06a55b270.json",
+   "line_number": 4,
+   "message": "Resource 'Bucket1' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_d405e6d06a55b270.json",
+   "line_number": 10,
+   "message": "Resource 'Bucket2' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_e02ae4cc3adc2f3f.json": [],
+ "cloudformation/harvested_e4a6fb9dc6c7fdf4.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/harvested_e4a6fb9dc6c7fdf4.json",
+   "line_number": 4,
+   "message": "Resource 'BroadPolicy' has overly permissive IAM policy (Action:* or Resource:*).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-004",
+   "severity": "high",
+   "title": "IAM policy with wildcard permissions"
+  }
+ ],
+ "cloudformation/harvested_e923713e467654c2.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.14",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/harvested_e923713e467654c2.json",
+   "line_number": 4,
+   "message": "Resource 'WebServer' has no IamInstanceProfile. Use IAM roles instead of hardcoded credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-006",
+   "severity": "medium",
+   "title": "EC2 instance without IAM instance profile"
+  }
+ ],
+ "cloudformation/harvested_ec4dcbbf0ae1affb.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_ec4dcbbf0ae1affb.json",
+   "line_number": 4,
+   "message": "Resource 'DataBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.2",
+    "NIST-AC-3"
+   ],
+   "file_path": "cloudformation/harvested_ec4dcbbf0ae1affb.json",
+   "line_number": 4,
+   "message": "Resource 'DataBucket' uses AccessControl 'PublicRead'. Use private ACL with bucket policies.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-002",
+   "severity": "critical",
+   "title": "S3 bucket with public ACL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_ec4dcbbf0ae1affb.json",
+   "line_number": 4,
+   "message": "Resource 'DataBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/harvested_ef5f8e48cee2a0c0.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/harvested_ef5f8e48cee2a0c0.json",
+   "line_number": 4,
+   "message": "Resource 'MyFunction' has no VpcConfig. Deploy in VPC for network isolation.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-010",
+   "severity": "medium",
+   "title": "Lambda function without VPC configuration"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "NIST-SC-7",
+    "NIST-AC-4"
+   ],
+   "file_path": "cloudformation/harvested_ef5f8e48cee2a0c0.json",
+   "line_number": 4,
+   "message": "Resource 'MyFunction' has no VpcConfig. Deploy Lambda in a VPC for network isolation and access control.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-015",
+   "severity": "medium",
+   "title": "Lambda function without VPC configuration"
+  }
+ ],
+ "cloudformation/harvested_f3abdce5433bb3c7.json": [],
+ "cloudformation/harvested_f87c5a12ed6b63a2.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-3",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/harvested_f87c5a12ed6b63a2.json",
+   "line_number": 4,
+   "message": "Resource 'AllowSSHv6' allows ingress from 0.0.0.0/0 on ports 22-22.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-003",
+   "severity": "high",
+   "title": "Security group open to 0.0.0.0/0"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-4",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/harvested_f87c5a12ed6b63a2.json",
+   "line_number": 4,
+   "message": "Resource 'AllowSSHv6' allows ingress from 0.0.0.0/0 on ports 22-22. Restrict to HTTP/HTTPS ports only.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-013",
+   "severity": "high",
+   "title": "Security group with 0.0.0.0/0 ingress on non-HTTP port"
+  }
+ ],
+ "cloudformation/harvested_fb61f11a7d8dee37.json": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/harvested_fb61f11a7d8dee37.json",
+   "line_number": 4,
+   "message": "Resource 'DataBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/harvested_fb61f11a7d8dee37.json",
+   "line_number": 4,
+   "message": "Resource 'DataBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  }
+ ],
+ "cloudformation/synthetic_all_rules_bad.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 17,
+   "message": "Resource 'OpenBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.2",
+    "NIST-AC-3"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 17,
+   "message": "Resource 'OpenBucket' uses AccessControl 'PublicReadWrite'. Use private ACL with bucket policies.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-002",
+   "severity": "critical",
+   "title": "S3 bucket with public ACL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 17,
+   "message": "Resource 'OpenBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 23,
+   "message": "Resource 'ReadBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.2",
+    "NIST-AC-3"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 23,
+   "message": "Resource 'ReadBucket' uses AccessControl 'PublicRead'. Use private ACL with bucket policies.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-002",
+   "severity": "critical",
+   "title": "S3 bucket with public ACL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 23,
+   "message": "Resource 'ReadBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 29,
+   "message": "Resource 'NoPropsBucket' has no BucketEncryption. Add SSE-S3 or SSE-KMS encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-001",
+   "severity": "high",
+   "title": "S3 bucket without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.1.3",
+    "NIST-CP-9"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 29,
+   "message": "Resource 'NoPropsBucket' does not have VersioningConfiguration.Status set to 'Enabled'. Enable versioning for data protection and recovery.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-011",
+   "severity": "medium",
+   "title": "S3 bucket without versioning enabled"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-3",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 31,
+   "message": "Resource 'WideOpenSg' allows ingress from 0.0.0.0/0 on ports 22-22.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-003",
+   "severity": "high",
+   "title": "Security group open to 0.0.0.0/0"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-3",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 31,
+   "message": "Resource 'WideOpenSg' allows ingress from 0.0.0.0/0 on ports 0-65535.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-003",
+   "severity": "high",
+   "title": "Security group open to 0.0.0.0/0"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-4",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 31,
+   "message": "Resource 'WideOpenSg' allows ingress from 0.0.0.0/0 on ports 22-22. Restrict to HTTP/HTTPS ports only.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-013",
+   "severity": "high",
+   "title": "Security group with 0.0.0.0/0 ingress on non-HTTP port"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-5.2",
+    "NIST-AC-4",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 31,
+   "message": "Resource 'WideOpenSg' allows ingress from 0.0.0.0/0 on ports 0-65535. Restrict to HTTP/HTTPS ports only.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-013",
+   "severity": "high",
+   "title": "Security group with 0.0.0.0/0 ingress on non-HTTP port"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 48,
+   "message": "Resource 'AdminPolicy' has overly permissive IAM policy (Action:* or Resource:*).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-004",
+   "severity": "high",
+   "title": "IAM policy with wildcard permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 48,
+   "message": "Resource 'AdminPolicy' has an IAM statement with Action: '*'. Follow least-privilege: scope actions to specific services.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-014",
+   "severity": "critical",
+   "title": "IAM policy with Action: * (overly permissive)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 59,
+   "message": "Resource 'ResourceWildcardPolicy' has overly permissive IAM policy (Action:* or Resource:*).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-004",
+   "severity": "high",
+   "title": "IAM policy with wildcard permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 68,
+   "message": "Resource 'InlineRole' has overly permissive IAM policy (Action:* or Resource:*).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-004",
+   "severity": "high",
+   "title": "IAM policy with wildcard permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.16",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 68,
+   "message": "Resource 'InlineRole' has an IAM statement with Action: '*'. Follow least-privilege: scope actions to specific services.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-014",
+   "severity": "critical",
+   "title": "IAM policy with Action: * (overly permissive)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.3.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 79,
+   "message": "Resource 'PublicDb' has StorageEncrypted=false or missing. Enable encryption at rest.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-005",
+   "severity": "high",
+   "title": "RDS instance without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.3.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 79,
+   "message": "Resource 'PublicDb' has StorageEncrypted=false or missing. Enable encryption at rest.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-012",
+   "severity": "high",
+   "title": "RDS instance without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.3.2",
+    "NIST-AC-3",
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 79,
+   "message": "Resource 'PublicDb' has PubliclyAccessible=true. RDS instances should not be publicly accessible. Use private subnets and VPC security groups.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-020",
+   "severity": "critical",
+   "title": "RDS instance publicly accessible"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.14",
+    "NIST-AC-6"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 83,
+   "message": "Resource 'BareInstance' has no IamInstanceProfile. Use IAM roles instead of hardcoded credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-006",
+   "severity": "medium",
+   "title": "EC2 instance without IAM instance profile"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-3.1",
+    "NIST-AU-2"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 87,
+   "message": "Resource 'Trail' has IsMultiRegionTrail=false. Enable multi-region for full coverage.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-008",
+   "severity": "medium",
+   "title": "CloudTrail not multi-region"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-3.2",
+    "NIST-AU-3"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 87,
+   "message": "Resource 'Trail' has EnableLogFileValidation=false or missing. Enable log file validation to detect tampering.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-017",
+   "severity": "medium",
+   "title": "CloudTrail without log file validation"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.2.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 91,
+   "message": "Resource 'Volume' has Encrypted=false or missing. Enable encryption.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-009",
+   "severity": "high",
+   "title": "EBS volume not encrypted"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.2.1",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 91,
+   "message": "Resource 'Volume' has Encrypted=false or missing. Enable encryption for EBS volumes.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-019",
+   "severity": "high",
+   "title": "EBS volume without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "NIST-SC-7"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 95,
+   "message": "Resource 'Func' has no VpcConfig. Deploy in VPC for network isolation.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-010",
+   "severity": "medium",
+   "title": "Lambda function without VPC configuration"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "NIST-SC-7",
+    "NIST-AC-4"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 95,
+   "message": "Resource 'Func' has no VpcConfig. Deploy Lambda in a VPC for network isolation and access control.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-015",
+   "severity": "medium",
+   "title": "Lambda function without VPC configuration"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.6",
+    "NIST-AU-2"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 99,
+   "message": "Resource 'ClassicElb' does not have access logging enabled. Enable access logs for security monitoring and compliance.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-016",
+   "severity": "medium",
+   "title": "ELB without access logging"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-2.6",
+    "NIST-AU-2"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 104,
+   "message": "Resource 'AlbNoLogs' does not have access logging enabled. Enable access logs for security monitoring and compliance.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-016",
+   "severity": "medium",
+   "title": "ELB without access logging"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 111,
+   "message": "Resource 'Topic' does not have KmsMasterKeyId set. Enable server-side encryption with KMS for SNS topics.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-018",
+   "severity": "medium",
+   "title": "SNS topic without encryption"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "cloudformation",
+   "compliance": [
+    "CIS-AWS-1.4",
+    "NIST-IA-5",
+    "NIST-SC-28"
+   ],
+   "file_path": "cloudformation/synthetic_all_rules_bad.yaml",
+   "line_number": 3,
+   "message": "Parameter 'DbPassword' has a non-empty Default value. Use NoEcho and SSM/Secrets Manager.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "CFN-007",
+   "severity": "critical",
+   "title": "Hardcoded secret in parameter default"
+  }
+ ],
+ "cloudformation/synthetic_all_rules_good.json": [],
+ "cloudformation/synthetic_empty.yaml": [],
+ "cloudformation/synthetic_intrinsic_tag.yaml": [],
+ "cloudformation/synthetic_invalid.json": [],
+ "cloudformation/synthetic_list_template.yaml": {
+  "exception": "AttributeError",
+  "message": "'list' object has no attribute 'get'"
+ },
+ "cloudformation/synthetic_null_resources.yaml": [],
+ "cloudformation/synthetic_policy_doc_string.yaml": {
+  "exception": "AttributeError",
+  "message": "'str' object has no attribute 'get'"
+ },
+ "cloudformation/synthetic_props_list.yaml": {
+  "exception": "AttributeError",
+  "message": "'list' object has no attribute 'get'"
+ },
+ "cloudformation/synthetic_resource_not_dict.yaml": {
+  "exception": "AttributeError",
+  "message": "'str' object has no attribute 'get'"
+ },
+ "dockerfile/harvested_0366d05f3d8f4a18.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_0366d05f3d8f4a18.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_060e2cf07aa89735.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_060e2cf07aa89735.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9"
+   ],
+   "file_path": "dockerfile/harvested_060e2cf07aa89735.Dockerfile",
+   "line_number": 2,
+   "message": "pip caches downloaded packages. Add --no-cache-dir to reduce image size.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-017",
+   "severity": "low",
+   "title": "pip install without --no-cache-dir"
+  }
+ ],
+ "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' has no explicit tag. Pin to a specific version tag for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses no tag (defaults to :latest)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 2,
+   "message": "USER is set to root. Containers should run as a non-root user to limit blast radius of exploits.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "Container runs as root"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 3,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 3,
+   "message": "ADD downloads remote content during the image build. Fetch artifacts in a verified step and pin checksums before COPY.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-022",
+   "severity": "high",
+   "title": "ADD fetches a remote URL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 4,
+   "message": "Piping remote scripts directly to a shell bypasses integrity checks. Download, verify checksums, then execute.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-005",
+   "severity": "medium",
+   "title": "Pipe install detected (curl|sh)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_10d27fc7b23a2f0d.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_214aba46448c20e2.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_214aba46448c20e2.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_214aba46448c20e2.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  }
+ ],
+ "dockerfile/harvested_2e6a464076134f28.Dockerfile": [],
+ "dockerfile/harvested_3ed379df068359cf.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_3ed379df068359cf.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu:latest' uses the :latest tag. Pin to a specific version for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses :latest tag"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_3ed379df068359cf.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu:latest' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_3ed379df068359cf.Dockerfile",
+   "line_number": 2,
+   "message": "USER is set to root. Containers should run as a non-root user to limit blast radius of exploits.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "Container runs as root"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_3ed379df068359cf.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_5273040f841cd037.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_5273040f841cd037.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12-slim' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_54ddcc12b5003284.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_54ddcc12b5003284.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_54ddcc12b5003284.Dockerfile",
+   "line_number": 2,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  }
+ ],
+ "dockerfile/harvested_581d43db3421f53a.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_581d43db3421f53a.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_5b9f973d3e063905.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_5b9f973d3e063905.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_5d2ad98194f39534.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_5d2ad98194f39534.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:latest' uses the :latest tag. Pin to a specific version for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses :latest tag"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_5d2ad98194f39534.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:latest' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_5d2ad98194f39534.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_5d2ad98194f39534.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_5d3b6802f9acaee8.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_5d3b6802f9acaee8.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu:latest' uses the :latest tag. Pin to a specific version for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses :latest tag"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_5d3b6802f9acaee8.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu:latest' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_5d3b6802f9acaee8.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_5d3b6802f9acaee8.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_6fa512445136b920.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' has no explicit tag. Pin to a specific version tag for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses no tag (defaults to :latest)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.3",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 2,
+   "message": "Package manager install without --no-cache or cache removal increases image size and attack surface. Add --no-cache or '&& rm -rf /var/cache/*' after install.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-007",
+   "severity": "high",
+   "title": "Package install without cache cleanup"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 3,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.5",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 4,
+   "message": "Port 22 (SSH) is exposed. Containers should not run SSH daemons \u2014 use 'docker exec' or orchestrator tools instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-008",
+   "severity": "medium",
+   "title": "SSH port exposed"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_6fa512445136b920.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_87ff6e6be025f9cb.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_87ff6e6be025f9cb.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_9509e614c12fa508.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_9509e614c12fa508.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_9509e614c12fa508.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_9d361887fa68fac1.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' has no explicit tag. Pin to a specific version tag for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses no tag (defaults to :latest)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-IA-5"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 2,
+   "message": "ENV variable 'API_KEY' appears to contain a hardcoded secret. Use build args with --secret, multi-stage builds, or runtime secret injection instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in ENV"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 3,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 3,
+   "message": "ADD downloads remote content during the image build. Fetch artifacts in a verified step and pin checksums before COPY.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-022",
+   "severity": "high",
+   "title": "ADD fetches a remote URL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.8",
+    "NIST-AC-3",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 4,
+   "message": "COPY --chmod=777 makes copied files world-writable. Use the least-permissive mode required by the runtime user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-021",
+   "severity": "high",
+   "title": "COPY --chmod grants world-writable permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 5,
+   "message": "Piping remote scripts directly to a shell bypasses integrity checks. Download, verify checksums, then execute.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-005",
+   "severity": "medium",
+   "title": "Pipe install detected (curl|sh)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.5",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 6,
+   "message": "Port 22 (SSH) is exposed. Containers should not run SSH daemons \u2014 use 'docker exec' or orchestrator tools instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-008",
+   "severity": "medium",
+   "title": "SSH port exposed"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_9d361887fa68fac1.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_b52ac5a21424e67d.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_b52ac5a21424e67d.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_b65af77c92ba699b.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_b65af77c92ba699b.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.5",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_b65af77c92ba699b.Dockerfile",
+   "line_number": 2,
+   "message": "Port 22 (SSH) is exposed. Containers should not run SSH daemons \u2014 use 'docker exec' or orchestrator tools instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-008",
+   "severity": "medium",
+   "title": "SSH port exposed"
+  }
+ ],
+ "dockerfile/harvested_b71177bde4632e7f.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_b71177bde4632e7f.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_b71177bde4632e7f.Dockerfile",
+   "line_number": 2,
+   "message": "Piping remote scripts directly to a shell bypasses integrity checks. Download, verify checksums, then execute.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-005",
+   "severity": "medium",
+   "title": "Pipe install detected (curl|sh)"
+  }
+ ],
+ "dockerfile/harvested_b976aa2a6035b7c2.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_b976aa2a6035b7c2.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_b976aa2a6035b7c2.Dockerfile",
+   "line_number": 2,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_b976aa2a6035b7c2.Dockerfile",
+   "line_number": 2,
+   "message": "ADD downloads remote content during the image build. Fetch artifacts in a verified step and pin checksums before COPY.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-022",
+   "severity": "high",
+   "title": "ADD fetches a remote URL"
+  }
+ ],
+ "dockerfile/harvested_b9ab6d172fda1fa2.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_b9ab6d172fda1fa2.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-IA-5"
+   ],
+   "file_path": "dockerfile/harvested_b9ab6d172fda1fa2.Dockerfile",
+   "line_number": 2,
+   "message": "ENV variable 'API_KEY' appears to contain a hardcoded secret. Use build args with --secret, multi-stage builds, or runtime secret injection instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in ENV"
+  }
+ ],
+ "dockerfile/harvested_c14f90dad8bc7eb1.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_c14f90dad8bc7eb1.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' has no explicit tag. Pin to a specific version tag for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses no tag (defaults to :latest)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_c14f90dad8bc7eb1.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'ubuntu' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_c14f90dad8bc7eb1.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_c14f90dad8bc7eb1.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_d3010d1152646ad5.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_d3010d1152646ad5.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/harvested_d3010d1152646ad5.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/harvested_dc32005c28d95ac5.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_dc32005c28d95ac5.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_dc32005c28d95ac5.Dockerfile",
+   "line_number": 2,
+   "message": "USER is set to root. Containers should run as a non-root user to limit blast radius of exploits.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "Container runs as root"
+  }
+ ],
+ "dockerfile/harvested_dcb2ade794fd08ff.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_dcb2ade794fd08ff.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.8",
+    "NIST-AC-3",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_dcb2ade794fd08ff.Dockerfile",
+   "line_number": 2,
+   "message": "COPY --chmod=777 makes copied files world-writable. Use the least-permissive mode required by the runtime user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-021",
+   "severity": "high",
+   "title": "COPY --chmod grants world-writable permissions"
+  }
+ ],
+ "dockerfile/harvested_e1e66462e3d28785.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_e1e66462e3d28785.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'alpine:3.18' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile/harvested_e38e038427c04b66.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_e38e038427c04b66.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/harvested_e38e038427c04b66.Dockerfile",
+   "line_number": 2,
+   "message": "COPY . . copies the entire build context into the image. Without a .dockerignore, secrets, .git, and other sensitive files may be included. Create a .dockerignore file.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-009",
+   "severity": "high",
+   "title": "COPY . . without .dockerignore"
+  }
+ ],
+ "dockerfile/harvested_ef7cb2c1e59ec1ee.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_ef7cb2c1e59ec1ee.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/harvested_ef7cb2c1e59ec1ee.Dockerfile",
+   "line_number": 2,
+   "message": "USER is set to root. Containers should run as a non-root user to limit blast radius of exploits.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "Container runs as root"
+  }
+ ],
+ "dockerfile/harvested_fc367aacb329bc38.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_fc367aacb329bc38.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.3",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/harvested_fc367aacb329bc38.Dockerfile",
+   "line_number": 2,
+   "message": "Package manager install without --no-cache or cache removal increases image size and attack surface. Add --no-cache or '&& rm -rf /var/cache/*' after install.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-007",
+   "severity": "high",
+   "title": "Package install without cache cleanup"
+  }
+ ],
+ "dockerfile/harvested_feacd24c6fed37eb.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_feacd24c6fed37eb.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/harvested_feacd24c6fed37eb.Dockerfile",
+   "line_number": 2,
+   "message": "Piping remote scripts directly to a shell bypasses integrity checks. Download, verify checksums, then execute.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-005",
+   "severity": "medium",
+   "title": "Pipe install detected (curl|sh)"
+  }
+ ],
+ "dockerfile/synthetic_all_rules_bad.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 3,
+   "message": "Image 'ubuntu' has no explicit tag. Pin to a specific version tag for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses no tag (defaults to :latest)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 3,
+   "message": "Image 'ubuntu' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 4,
+   "message": "Image 'python:latest' uses the :latest tag. Pin to a specific version for reproducible builds.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-001",
+   "severity": "high",
+   "title": "FROM uses :latest tag"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 4,
+   "message": "Image 'python:latest' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 5,
+   "message": "Image 'node:20-alpine' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 8,
+   "message": "Image 'registry.example.com/app@sha512:abc' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 9,
+   "message": "USER is set to root. Containers should run as a non-root user to limit blast radius of exploits.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "Container runs as root"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 10,
+   "message": "USER is set to root. Containers should run as a non-root user to limit blast radius of exploits.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "Container runs as root"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-IA-5"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 12,
+   "message": "ENV variable 'API_KEY' appears to contain a hardcoded secret. Use build args with --secret, multi-stage builds, or runtime secret injection instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in ENV"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-IA-5"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 13,
+   "message": "ENV variable 'DB_PASSWORD' appears to contain a hardcoded secret. Use build args with --secret, multi-stage builds, or runtime secret injection instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in ENV"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 17,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 18,
+   "message": "ADD can fetch remote URLs and auto-extract archives, introducing supply chain risk. Use COPY unless you specifically need ADD features.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-004",
+   "severity": "medium",
+   "title": "ADD used instead of COPY"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 18,
+   "message": "ADD downloads remote content during the image build. Fetch artifacts in a verified step and pin checksums before COPY.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-022",
+   "severity": "high",
+   "title": "ADD fetches a remote URL"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 19,
+   "message": "Piping remote scripts directly to a shell bypasses integrity checks. Download, verify checksums, then execute.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-005",
+   "severity": "medium",
+   "title": "Pipe install detected (curl|sh)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 20,
+   "message": "Piping remote scripts directly to a shell bypasses integrity checks. Download, verify checksums, then execute.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-005",
+   "severity": "medium",
+   "title": "Pipe install detected (curl|sh)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.3",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 21,
+   "message": "Package manager install without --no-cache or cache removal increases image size and attack surface. Add --no-cache or '&& rm -rf /var/cache/*' after install.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-007",
+   "severity": "high",
+   "title": "Package install without cache cleanup"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.3",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 22,
+   "message": "Package manager install without --no-cache or cache removal increases image size and attack surface. Add --no-cache or '&& rm -rf /var/cache/*' after install.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-007",
+   "severity": "high",
+   "title": "Package install without cache cleanup"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.5",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 25,
+   "message": "Port 22 (SSH) is exposed. Containers should not run SSH daemons \u2014 use 'docker exec' or orchestrator tools instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-008",
+   "severity": "medium",
+   "title": "SSH port exposed"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.5",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 26,
+   "message": "Port 22 (SSH) is exposed. Containers should not run SSH daemons \u2014 use 'docker exec' or orchestrator tools instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-008",
+   "severity": "medium",
+   "title": "SSH port exposed"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-5.8",
+    "NIST-CM-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 27,
+   "message": "Exposing a range of ports increases attack surface. Expose only specific required ports.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-013",
+   "severity": "medium",
+   "title": "EXPOSE port range (excessive attack surface)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 28,
+   "message": "COPY . . copies the entire build context into the image. Without a .dockerignore, secrets, .git, and other sensitive files may be included. Create a .dockerignore file.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-009",
+   "severity": "high",
+   "title": "COPY . . without .dockerignore"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 29,
+   "message": "COPY with --chown=0 explicitly sets root ownership. Use a non-root UID.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-011",
+   "severity": "medium",
+   "title": "COPY --chown=0 (root ownership)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.8",
+    "NIST-AC-3",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 30,
+   "message": "COPY --chmod=777 makes copied files world-writable. Use the least-permissive mode required by the runtime user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-021",
+   "severity": "high",
+   "title": "COPY --chmod grants world-writable permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.8",
+    "NIST-AC-3",
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 31,
+   "message": "COPY --chmod=777 makes copied files world-writable. Use the least-permissive mode required by the runtime user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-021",
+   "severity": "high",
+   "title": "COPY --chmod grants world-writable permissions"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.8",
+    "NIST-AC-3"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 32,
+   "message": "chmod 777 makes files world-writable. Use specific permissions (e.g. 755 for dirs, 644 for files).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-012",
+   "severity": "high",
+   "title": "RUN chmod 777 (world-writable files)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.8",
+    "NIST-AC-3"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 33,
+   "message": "chmod 777 makes files world-writable. Use specific permissions (e.g. 755 for dirs, 644 for files).",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-012",
+   "severity": "high",
+   "title": "RUN chmod 777 (world-writable files)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 34,
+   "message": "sudo in Dockerfile is unnecessary \u2014 RUN already executes as the current user. Remove sudo.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-014",
+   "severity": "medium",
+   "title": "RUN with sudo (unnecessary privilege escalation)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.10",
+    "NIST-SC-12"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 35,
+   "message": "ARG values are stored in image history. Use BuildKit secrets (--mount=type=secret) instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-015",
+   "severity": "critical",
+   "title": "ARG used for secrets (visible in image history)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 37,
+   "message": "pip caches downloaded packages. Add --no-cache-dir to reduce image size.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-017",
+   "severity": "low",
+   "title": "pip install without --no-cache-dir"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.9"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 39,
+   "message": "Use absolute paths in WORKDIR for clarity and predictability.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-018",
+   "severity": "low",
+   "title": "WORKDIR uses relative path"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "NIST-CM-6"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 41,
+   "message": "Custom SHELL changes RUN behavior. Ensure it's intentional and documented.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-019",
+   "severity": "medium",
+   "title": "SHELL instruction overrides default shell"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-5.1",
+    "NIST-SC-7"
+   ],
+   "file_path": "dockerfile/synthetic_all_rules_bad.Dockerfile",
+   "line_number": 42,
+   "message": "--network=host in RUN exposes host network during build. Use default bridge network.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-020",
+   "severity": "high",
+   "title": "RUN with --network=host (shares host network during build)"
+  }
+ ],
+ "dockerfile/synthetic_all_rules_good.Dockerfile": [],
+ "dockerfile/synthetic_bare_directives.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/synthetic_bare_directives.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/synthetic_bare_directives.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile/synthetic_empty.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.1",
+    "NIST-AC-6"
+   ],
+   "file_path": "dockerfile/synthetic_empty.Dockerfile",
+   "line_number": 1,
+   "message": "No USER directive found. The container will run as root by default. Add a USER directive to run as a non-root user.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-002",
+   "severity": "high",
+   "title": "No USER directive (runs as root)"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile/synthetic_empty.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "dockerfile_dockerignore/harvested_bdf9981dd168e171.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile_dockerignore/harvested_bdf9981dd168e171.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  }
+ ],
+ "dockerfile_dockerignore/synthetic_copy_all.Dockerfile": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.7",
+    "NIST-SI-7"
+   ],
+   "file_path": "dockerfile_dockerignore/synthetic_copy_all.Dockerfile",
+   "line_number": 1,
+   "message": "Image 'python:3.12' is not pinned by digest (sha256). Use @sha256:<hash> to guarantee immutable base images.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-010",
+   "severity": "medium",
+   "title": "FROM without digest pin"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "dockerfile",
+   "compliance": [
+    "CIS-Docker-4.6",
+    "NIST-SI-4"
+   ],
+   "file_path": "dockerfile_dockerignore/synthetic_copy_all.Dockerfile",
+   "line_number": 1,
+   "message": "No HEALTHCHECK instruction found. Add a HEALTHCHECK to enable container health monitoring and automatic restart on failure.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "DOCKER-006",
+   "severity": "low",
+   "title": "No HEALTHCHECK directive"
+  }
+ ],
+ "helm/harvested_01188b731a54eca9.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_01188b731a54eca9.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_01188b731a54eca9.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_0206c0c5a95ed560.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.1.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_0206c0c5a95ed560.yaml",
+   "line_number": 2,
+   "message": "values.yaml sets serviceAccount.create to false. Disabling service account creation may reuse the default service account, which is often over-privileged. Create a dedicated service account with only the required permissions.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-007",
+   "severity": "medium",
+   "title": "serviceAccount.create set to false"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_0206c0c5a95ed560.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_0206c0c5a95ed560.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_0a75cea176eb0a8b.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_0a75cea176eb0a8b.yaml",
+   "line_number": 5,
+   "message": "Field 'password' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'password'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.5.1",
+    "NIST-CM-6"
+   ],
+   "file_path": "helm/harvested_0a75cea176eb0a8b.yaml",
+   "line_number": 3,
+   "message": "values.yaml sets image.tag to 'latest'. The latest tag is mutable and can cause unexpected version changes on re-deploy. Pin to a specific immutable digest or version tag.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-004",
+   "severity": "medium",
+   "title": "Image tag set to 'latest' in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_0a75cea176eb0a8b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_0a75cea176eb0a8b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_0c76124978505c20.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_0c76124978505c20.yaml",
+   "line_number": 1,
+   "message": "Field 'adminPassword' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'adminPassword'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_0c76124978505c20.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_0c76124978505c20.yaml",
+   "line_number": 1,
+   "message": "values.yaml sets 'adminPassword' to a non-placeholder value. Default admin passwords are a common attack vector. Use a Kubernetes Secret or external secret manager instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-013",
+   "severity": "critical",
+   "title": "Default admin password in values.yaml: 'adminPassword'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_0c76124978505c20.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_17e7e8c195e5f140.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_17e7e8c195e5f140.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_17e7e8c195e5f140.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_185352f617a71e45.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-AU-3"
+   ],
+   "file_path": "helm/harvested_185352f617a71e45.yaml",
+   "line_number": 3,
+   "message": "values.yaml sets service.externalTrafficPolicy to 'Cluster'. This causes source IP to be lost via SNAT. Set to 'Local' to preserve client source IP for auditing and network policy enforcement.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-009",
+   "severity": "low",
+   "title": "Service externalTrafficPolicy set to Cluster"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_185352f617a71e45.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_185352f617a71e45.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_25e2c3eaab55284e.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.5.1",
+    "NIST-CM-6"
+   ],
+   "file_path": "helm/harvested_25e2c3eaab55284e.yaml",
+   "line_number": 2,
+   "message": "values.yaml sets image.tag to 'latest'. The latest tag is mutable and can cause unexpected version changes on re-deploy. Pin to a specific immutable digest or version tag.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-004",
+   "severity": "medium",
+   "title": "Image tag set to 'latest' in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_25e2c3eaab55284e.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_25e2c3eaab55284e.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_29f2eacd202a6bb7.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_29f2eacd202a6bb7.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_29f2eacd202a6bb7.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_347c25bfc94c5fea.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-SC-8"
+   ],
+   "file_path": "helm/harvested_347c25bfc94c5fea.yaml",
+   "line_number": 1,
+   "message": "values.yaml defines an ingress without TLS configuration. Traffic will be served over plain HTTP, exposing data in transit. Configure ingress.tls with a certificate secret.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-008",
+   "severity": "high",
+   "title": "Ingress without TLS configuration"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_347c25bfc94c5fea.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_347c25bfc94c5fea.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_352658b9cd5d2879.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_352658b9cd5d2879.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_352658b9cd5d2879.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_4da4b54e8b0cc6dd.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_4da4b54e8b0cc6dd.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  }
+ ],
+ "helm/harvested_518efbdc76774b4b.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_518efbdc76774b4b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_518efbdc76774b4b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_5495eb6991f7c134.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_5495eb6991f7c134.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_5495eb6991f7c134.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-CP-10"
+   ],
+   "file_path": "helm/harvested_5495eb6991f7c134.yaml",
+   "line_number": 1,
+   "message": "values.yaml sets replicaCount/replicas to 1. A single replica provides no high availability. Set replicas >= 2 for production workloads to ensure uptime.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-015",
+   "severity": "low",
+   "title": "Deployment replicas set to 1"
+  }
+ ],
+ "helm/harvested_5922e1d013238444.yaml": [],
+ "helm/harvested_5ebfdbe6d37e195b.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_5ebfdbe6d37e195b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_5ebfdbe6d37e195b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_5fd34c8e6f6c767d.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SC-28"
+   ],
+   "file_path": "helm/harvested_5fd34c8e6f6c767d.yaml",
+   "line_number": 1,
+   "message": "values.yaml defines persistence without an explicit storageClassName. The default storage class may not meet performance or encryption requirements. Specify storageClassName explicitly.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-010",
+   "severity": "low",
+   "title": "PersistentVolumeClaim without storageClassName"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_5fd34c8e6f6c767d.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_5fd34c8e6f6c767d.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_64c510504df97ba5.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_64c510504df97ba5.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_64c510504df97ba5.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-CP-10"
+   ],
+   "file_path": "helm/harvested_64c510504df97ba5.yaml",
+   "line_number": 1,
+   "message": "values.yaml sets replicaCount/replicas to 1. A single replica provides no high availability. Set replicas >= 2 for production workloads to ensure uptime.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-015",
+   "severity": "low",
+   "title": "Deployment replicas set to 1"
+  }
+ ],
+ "helm/harvested_65f140fccdf60623.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.3.2",
+    "NIST-SC-7"
+   ],
+   "file_path": "helm/harvested_65f140fccdf60623.yaml",
+   "line_number": 2,
+   "message": "values.yaml explicitly disables NetworkPolicy (networkPolicy.enabled: false). Enable NetworkPolicy to enforce network isolation and restrict pod-to-pod traffic.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-006",
+   "severity": "medium",
+   "title": "networkPolicy.enabled set to false"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_65f140fccdf60623.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_65f140fccdf60623.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_6fa7f501252e81af.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_6fa7f501252e81af.yaml",
+   "line_number": 2,
+   "message": "Field 'password' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'password'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_6fa7f501252e81af.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_6fa7f501252e81af.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_7047a6e0f1529131.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_7047a6e0f1529131.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_7047a6e0f1529131.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_7f106b14f2b25ed2.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_7f106b14f2b25ed2.yaml",
+   "line_number": 2,
+   "message": "Field 'token' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'token'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_7f106b14f2b25ed2.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_7f106b14f2b25ed2.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_803f06d4673b0766.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_803f06d4673b0766.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_803f06d4673b0766.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_8c708feefecdbe16.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.1.5",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_8c708feefecdbe16.yaml",
+   "line_number": 2,
+   "message": "values.yaml sets rbac.create to false. Disabling RBAC resource creation may leave the workload relying on overly permissive pre-existing roles. Enable RBAC to enforce least-privilege access control.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-007",
+   "severity": "medium",
+   "title": "rbac.create set to false"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_8c708feefecdbe16.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_8c708feefecdbe16.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_955c6bc69de4ffdf.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_955c6bc69de4ffdf.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_955c6bc69de4ffdf.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_974a0b3f44cc5b59.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_974a0b3f44cc5b59.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_a113a9a675bc0c20.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_a113a9a675bc0c20.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_a113a9a675bc0c20.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_a14cca47f58fb47a.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.3.1",
+    "NIST-SC-7"
+   ],
+   "file_path": "helm/harvested_a14cca47f58fb47a.yaml",
+   "line_number": 2,
+   "message": "values.yaml sets service.type to 'NodePort'. NodePort exposes the service on all node IPs on a static port, increasing the attack surface. Use ClusterIP with an Ingress controller or LoadBalancer instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-005",
+   "severity": "medium",
+   "title": "service.type set to NodePort"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_a14cca47f58fb47a.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_a14cca47f58fb47a.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_a192cbfa597506bc.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_a192cbfa597506bc.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_a192cbfa597506bc.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_a2b07a3c3f56a223.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.5.1",
+    "NIST-CM-6"
+   ],
+   "file_path": "helm/harvested_a2b07a3c3f56a223.yaml",
+   "line_number": 3,
+   "message": "values.yaml sets image.tag to 'latest'. The latest tag is mutable and can cause unexpected version changes on re-deploy. Pin to a specific immutable digest or version tag.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-004",
+   "severity": "medium",
+   "title": "Image tag set to 'latest' in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_a2b07a3c3f56a223.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_a2b07a3c3f56a223.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_af34870684a7b588.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_af34870684a7b588.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_af34870684a7b588.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_b2993e339fccf08b.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_b2993e339fccf08b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_b2993e339fccf08b.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_c5b1a15cca8aab54.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_c5b1a15cca8aab54.yaml",
+   "line_number": 1,
+   "message": "Field 'adminPassword' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'adminPassword'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_c5b1a15cca8aab54.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_c5b1a15cca8aab54.yaml",
+   "line_number": 1,
+   "message": "values.yaml sets 'adminPassword' to a non-placeholder value. Default admin passwords are a common attack vector. Use a Kubernetes Secret or external secret manager instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-013",
+   "severity": "critical",
+   "title": "Default admin password in values.yaml: 'adminPassword'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_c5b1a15cca8aab54.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_c98bd13260edda1a.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_c98bd13260edda1a.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_c98bd13260edda1a.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_cf1db8b78edebeaa.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_cf1db8b78edebeaa.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_cf1db8b78edebeaa.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_d48106789629b5ac.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_d48106789629b5ac.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_d48106789629b5ac.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_da0c5b1e934eec26.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_da0c5b1e934eec26.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_da0c5b1e934eec26.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_e86deea1cd8869d7.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/harvested_e86deea1cd8869d7.yaml",
+   "line_number": 2,
+   "message": "Field 'password' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'password'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_e86deea1cd8869d7.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_e86deea1cd8869d7.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_f372d6cb51561ab8.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-SC-6"
+   ],
+   "file_path": "helm/harvested_f372d6cb51561ab8.yaml",
+   "line_number": 1,
+   "message": "values.yaml defines resources without memory limits. Without memory limits, a container can consume all node memory and cause OOM kills on other workloads. Set resources.limits.memory.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-011",
+   "severity": "medium",
+   "title": "Container resources without memory limits"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_f372d6cb51561ab8.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_f372d6cb51561ab8.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/harvested_fd31ac54282638c3.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/harvested_fd31ac54282638c3.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/harvested_fd31ac54282638c3.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ],
+ "helm/synthetic_all_rules_bad.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 23,
+   "message": "Field 'adminPassword' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'adminPassword'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 24,
+   "message": "Field 'admin_password' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'admin_password'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 28,
+   "message": "Field 'apiToken' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'apiToken'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 35,
+   "message": "Field 'credential' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'credential'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 36,
+   "message": "Field 'nestedToken' in values.yaml contains a hardcoded secret value. Use environment variable substitution, a Secrets Store CSI driver, or reference a Kubernetes Secret instead of hardcoding credentials.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-003",
+   "severity": "critical",
+   "title": "Hardcoded secret in values.yaml: 'nestedToken'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.5.1",
+    "NIST-CM-6"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 4,
+   "message": "values.yaml sets image.tag to 'latest'. The latest tag is mutable and can cause unexpected version changes on re-deploy. Pin to a specific immutable digest or version tag.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-004",
+   "severity": "medium",
+   "title": "Image tag set to 'latest' in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.3.1",
+    "NIST-SC-7"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 6,
+   "message": "values.yaml sets service.type to 'NodePort'. NodePort exposes the service on all node IPs on a static port, increasing the attack surface. Use ClusterIP with an Ingress controller or LoadBalancer instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-005",
+   "severity": "medium",
+   "title": "service.type set to NodePort"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.3.2",
+    "NIST-SC-7"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 9,
+   "message": "values.yaml explicitly disables NetworkPolicy (networkPolicy.enabled: false). Enable NetworkPolicy to enforce network isolation and restrict pod-to-pod traffic.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-006",
+   "severity": "medium",
+   "title": "networkPolicy.enabled set to false"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.1.5",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 11,
+   "message": "values.yaml sets rbac.create to false. Disabling RBAC resource creation may leave the workload relying on overly permissive pre-existing roles. Enable RBAC to enforce least-privilege access control.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-007",
+   "severity": "medium",
+   "title": "rbac.create set to false"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.1.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 11,
+   "message": "values.yaml sets serviceAccount.create to false. Disabling service account creation may reuse the default service account, which is often over-privileged. Create a dedicated service account with only the required permissions.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-007",
+   "severity": "medium",
+   "title": "serviceAccount.create set to false"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-SC-8"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 14,
+   "message": "values.yaml defines an ingress without TLS configuration. Traffic will be served over plain HTTP, exposing data in transit. Configure ingress.tls with a certificate secret.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-008",
+   "severity": "high",
+   "title": "Ingress without TLS configuration"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-AU-3"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 7,
+   "message": "values.yaml sets service.externalTrafficPolicy to 'Cluster'. This causes source IP to be lost via SNAT. Set to 'Local' to preserve client source IP for auditing and network policy enforcement.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-009",
+   "severity": "low",
+   "title": "Service externalTrafficPolicy set to Cluster"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SC-28"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 18,
+   "message": "values.yaml defines persistence without an explicit storageClassName. The default storage class may not meet performance or encryption requirements. Specify storageClassName explicitly.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-010",
+   "severity": "low",
+   "title": "PersistentVolumeClaim without storageClassName"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-SC-6"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 20,
+   "message": "values.yaml defines resources without memory limits. Without memory limits, a container can consume all node memory and cause OOM kills on other workloads. Set resources.limits.memory.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-011",
+   "severity": "medium",
+   "title": "Container resources without memory limits"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 23,
+   "message": "values.yaml sets 'adminPassword' to a non-placeholder value. Default admin passwords are a common attack vector. Use a Kubernetes Secret or external secret manager instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-013",
+   "severity": "critical",
+   "title": "Default admin password in values.yaml: 'adminPassword'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-IA-5"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 24,
+   "message": "values.yaml sets 'admin_password' to a non-placeholder value. Default admin passwords are a common attack vector. Use a Kubernetes Secret or external secret manager instead.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-013",
+   "severity": "critical",
+   "title": "Default admin password in values.yaml: 'admin_password'"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-CP-10"
+   ],
+   "file_path": "helm/synthetic_all_rules_bad.yaml",
+   "line_number": 1,
+   "message": "values.yaml sets replicaCount/replicas to 1. A single replica provides no high availability. Set replicas >= 2 for production workloads to ensure uptime.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-015",
+   "severity": "low",
+   "title": "Deployment replicas set to 1"
+  }
+ ],
+ "helm/synthetic_all_rules_good.yaml": [],
+ "helm/synthetic_empty.yaml": [],
+ "helm/synthetic_invalid.yaml": [],
+ "helm/synthetic_list_doc.yaml": [],
+ "helm/synthetic_replicas_fallback.yaml": [
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.4.1",
+    "NIST-SC-6"
+   ],
+   "file_path": "helm/synthetic_replicas_fallback.yaml",
+   "line_number": 7,
+   "message": "values.yaml defines resources without memory limits. Without memory limits, a container can consume all node memory and cause OOM kills on other workloads. Set resources.limits.memory.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-011",
+   "severity": "medium",
+   "title": "Container resources without memory limits"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "CIS-K8s-5.2.6",
+    "NIST-AC-6"
+   ],
+   "file_path": "helm/synthetic_replicas_fallback.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define podSecurityContext. Set podSecurityContext with runAsNonRoot: true, fsGroup, and seccompProfile to enforce pod-level security defaults.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-012",
+   "severity": "medium",
+   "title": "Missing podSecurityContext in values.yaml"
+  },
+  {
+   "atlas_techniques": [],
+   "attack_techniques": [],
+   "category": "helm",
+   "compliance": [
+    "NIST-SI-13"
+   ],
+   "file_path": "helm/synthetic_replicas_fallback.yaml",
+   "line_number": 1,
+   "message": "values.yaml does not define livenessProbe defaults. Without a liveness probe, Kubernetes cannot detect and restart deadlocked containers. Define livenessProbe with httpGet or tcpSocket.",
+   "remediation": "",
+   "resource_type": null,
+   "rule_id": "HELM-014",
+   "severity": "medium",
+   "title": "Missing livenessProbe in values.yaml"
+  }
+ ]
+}

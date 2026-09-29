@@ -1,0 +1,4 @@
+FROM python:3.12
+ENV API_KEY=sk-abc123456789
+USER app
+HEALTHCHECK CMD true

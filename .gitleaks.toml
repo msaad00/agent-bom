@@ -28,4 +28,5 @@ paths = [
   '''tests/test_sanitize_text_secret_coverage\.py$''',
   '''tests/fixtures/iac_golden/terraform/harvested_90fd65a14e99cc0d\.tf$''',
   '''tests/fixtures/iac_golden/terraform/synthetic_all_rules_bad\.tf$''',
+  '''tests/fixtures/iac_golden/dockerfile/harvested_b9ab6d172fda1fa2\.Dockerfile$''',
 ]

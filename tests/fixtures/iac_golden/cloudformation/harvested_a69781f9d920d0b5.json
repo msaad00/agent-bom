@@ -1,0 +1,10 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "DBPassword": {
+      "Type": "String",
+      "Default": "supersecret123"
+    }
+  },
+  "Resources": {}
+}

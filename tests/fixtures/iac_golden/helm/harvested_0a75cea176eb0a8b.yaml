@@ -1,0 +1,8 @@
+image:
+  repository: myapp
+  tag: latest
+db:
+  password: realpassword123
+service:
+  type: ClusterIP
+  port: 80

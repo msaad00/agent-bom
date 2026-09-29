@@ -1,0 +1,37 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "GoodBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "AccessControl": "Private",
+        "BucketEncryption": {"ServerSideEncryptionConfiguration": [{"ServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]},
+        "VersioningConfiguration": {"Status": "Enabled"}
+      }
+    },
+    "WebSg": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "SecurityGroupIngress": [
+          {"CidrIp": "0.0.0.0/0", "FromPort": 443, "ToPort": 443},
+          {"CidrIp": "0.0.0.0/0", "FromPort": "80", "ToPort": "80"}
+        ]
+      }
+    },
+    "ScopedPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {"PolicyDocument": {"Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::b/*"}]}}
+    },
+    "Db": {"Type": "AWS::RDS::DBInstance", "Properties": {"StorageEncrypted": true, "PubliclyAccessible": false}},
+    "Instance": {"Type": "AWS::EC2::Instance", "Properties": {"IamInstanceProfile": "profile"}},
+    "Trail": {"Type": "AWS::CloudTrail::Trail", "Properties": {"IsMultiRegionTrail": true, "EnableLogFileValidation": true}},
+    "Volume": {"Type": "AWS::EC2::Volume", "Properties": {"Encrypted": true}},
+    "Func": {"Type": "AWS::Lambda::Function", "Properties": {"VpcConfig": {"SubnetIds": ["subnet-1"]}}},
+    "Elb": {"Type": "AWS::ElasticLoadBalancing::LoadBalancer", "Properties": {"AccessLoggingPolicy": {"Enabled": true}}},
+    "Alb": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {"LoadBalancerAttributes": [{"Key": "access_logs.s3.enabled", "Value": "TRUE"}]}
+    },
+    "Topic": {"Type": "AWS::SNS::Topic", "Properties": {"KmsMasterKeyId": "alias/aws/sns"}}
+  }
+}

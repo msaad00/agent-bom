@@ -1,0 +1,16 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "MyFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": "my-func",
+        "Runtime": "python3.12",
+        "Handler": "index.handler",
+        "Code": {
+          "ZipFile": "def handler(event, context): pass"
+        }
+      }
+    }
+  }
+}

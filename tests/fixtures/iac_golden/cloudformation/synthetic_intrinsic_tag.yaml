@@ -1,0 +1,5 @@
+Resources:
+  Fn:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt Role.Arn

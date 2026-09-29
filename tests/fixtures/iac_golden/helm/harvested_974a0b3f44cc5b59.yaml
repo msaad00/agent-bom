@@ -1,0 +1,3 @@
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000

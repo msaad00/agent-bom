@@ -1,0 +1,37 @@
+replicaCount: 1
+image:
+  repository: example/app
+  tag: latest
+service:
+  type: NodePort
+  externalTrafficPolicy: Cluster
+networkPolicy:
+  enabled: false
+rbac:
+  create: false
+serviceAccount:
+  create: false
+ingress:
+  enabled: true
+  hosts:
+    - host: app.example.com
+persistence:
+  size: 10Gi
+resources:
+  requests:
+    memory: 128Mi
+adminPassword: fake-admin-value-1
+admin_password: fake-admin-value-2
+adminPass: changeme
+admin_pass: "{{ .Values.generated }}"
+auth:
+  apiToken: fake-nested-token-value
+  existingSecretName: my-secret
+  topologyKey: kubernetes.io/hostname
+  passwordSecretKey: password
+  clientSecret: your-client-secret
+  privateKey: ""
+  items:
+    - credential: fake-list-credential
+    - - nestedToken: fake-deep-token
+  numericToken: 12345

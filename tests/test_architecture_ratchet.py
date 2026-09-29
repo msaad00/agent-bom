@@ -344,3 +344,39 @@ def test_raw_env_reads_bootstrap_once_then_only_shrink():
     assert baseline_growth({"old.py": {"raw_env_reads": 5}}, previous, ratcheted_metrics={"raw_env_reads"})
     assert baseline_growth({"new.py": {"raw_env_reads": 1}}, previous, ratcheted_metrics={"raw_env_reads"})
     assert not baseline_growth({"old.py": {"raw_env_reads": 3}}, previous, ratcheted_metrics={"raw_env_reads"})
+def test_broad_except_counts_every_broad_handler_but_not_specific_ones(tmp_path):
+    source = (
+        "def f():\n"
+        "    try:\n        pass\n    except Exception:\n        pass\n"
+        "    try:\n        pass\n    except BaseException:\n        raise\n"
+        "    try:\n        pass\n    except:\n        pass\n"
+        "    try:\n        pass\n    except (ValueError, Exception) as exc:\n        raise RuntimeError() from exc\n"
+        "    try:\n        pass\n    except (ValueError, KeyError):\n        pass\n"
+        "    try:\n        pass\n    except httpx.HTTPError:\n        pass\n"
+    )
+    metrics = _layer_metrics(tmp_path, {"handlers.py": source, "clean.py": "try:\n    pass\nexcept OSError:\n    pass\n"})
+    assert metrics["handlers.py"]["broad_except"] == 4
+    assert "broad_except" not in metrics["clean.py"]
+
+
+def test_broad_except_budget_only_shrinks_but_splits_can_move_handlers():
+    baseline = {"old.py": {"broad_except": 3}}
+    assert not regressions({"old.py": {"broad_except": 2}}, baseline)
+    assert not regressions({"old.py": {"broad_except": 1}, "old_part.py": {"broad_except": 2}}, baseline)
+    assert regressions({"old.py": {"broad_except": 4}}, baseline) == ["broad_except: total 4 exceeds budget 3"]
+    assert regressions({"old.py": {"broad_except": 3}, "new.py": {"broad_except": 1}}, baseline)
+    assert regressions({"new.py": {"broad_except": 1}}, {}) == ["broad_except: total 1 exceeds budget 0"]
+    assert debt({"old.py": {"broad_except": 2}}) == {"old.py": {"broad_except": 2}}
+
+
+def test_reviewed_broad_except_marker_needs_a_reason_and_is_capped(tmp_path):
+    handler = "try:\n    pass\nexcept Exception:  # broad-except: {reason}\n    pass\n"
+    reasoned = handler.format(reason="plugin boundary isolates third-party hooks")
+    metrics = _layer_metrics(tmp_path, {"one.py": reasoned, "lazy.py": handler.format(reason="x")})
+    assert "broad_except" not in metrics["one.py"]
+    assert metrics["lazy.py"]["broad_except"] == 1
+    capped = tmp_path / "capped"
+    (capped / "src" / "agent_bom").mkdir(parents=True)
+    (capped / "src" / "agent_bom" / "many.py").write_text(reasoned * 4)
+    _metrics, errors = measure(capped)
+    assert errors == ["many.py: 4 '# broad-except:' handlers exceed 3; catch specific errors"]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+from agent_bom.core.settings import env_list, env_opt, env_raw, env_str
 
 SandboxRuntime = Literal["auto", "docker", "podman"]
 SandboxEgressPolicy = Literal["deny", "allow_all"]
@@ -169,27 +170,27 @@ def sandbox_config_from_env(
 ) -> SandboxConfig:
     """Build sandbox config from CLI values and AGENT_BOM_MCP_SANDBOX_* env vars."""
     if enabled is None:
-        env_enabled = os.environ.get("AGENT_BOM_MCP_SANDBOX")
+        env_enabled = env_raw("AGENT_BOM_MCP_SANDBOX")
         enabled = _sandbox_enabled_from_env(env_enabled)
     else:
         enabled = bool(enabled)
-    requested_runtime = (runtime or os.environ.get("AGENT_BOM_MCP_SANDBOX_RUNTIME") or "auto").strip().lower()
+    requested_runtime = (runtime or env_str("AGENT_BOM_MCP_SANDBOX_RUNTIME", "auto")).strip().lower()
     if requested_runtime not in {"auto", "docker", "podman"}:
         raise ValueError("sandbox runtime must be auto, docker, or podman")
-    requested_egress = (egress_policy or os.environ.get("AGENT_BOM_MCP_SANDBOX_EGRESS") or "deny").strip().lower().replace("-", "_")
+    requested_egress = (egress_policy or env_str("AGENT_BOM_MCP_SANDBOX_EGRESS", "deny")).strip().lower().replace("-", "_")
     if requested_egress not in {"deny", "allow_all"}:
         raise ValueError("sandbox egress policy must be deny or allow-all")
-    requested_image = image or os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE")
-    requested_image_pin_policy = (image_pin_policy or os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY") or "warn").strip().lower()
+    requested_image = image or env_opt("AGENT_BOM_MCP_SANDBOX_IMAGE")
+    requested_image_pin_policy = (image_pin_policy or env_str("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", "warn")).strip().lower()
     if requested_image_pin_policy not in {"off", "warn", "enforce"}:
         raise ValueError("sandbox image pin policy must be off, warn, or enforce")
     requested_image_pin_policy = _harden_image_pin_policy(requested_image_pin_policy, requested_image)
-    env_mounts = tuple(item.strip() for item in os.environ.get("AGENT_BOM_MCP_SANDBOX_MOUNTS", "").split(",") if item.strip())
+    env_mounts = env_list("AGENT_BOM_MCP_SANDBOX_MOUNTS")
     parsed_mounts = tuple(parse_sandbox_mount(item) for item in (*mounts, *env_mounts))
-    requested_user = user or os.environ.get("AGENT_BOM_MCP_SANDBOX_USER")
-    requested_cpus = cpus or os.environ.get("AGENT_BOM_MCP_SANDBOX_CPUS") or _DEFAULT_SANDBOX_CPUS
-    requested_memory = memory or os.environ.get("AGENT_BOM_MCP_SANDBOX_MEMORY") or _DEFAULT_SANDBOX_MEMORY
-    requested_tmpfs_size = tmpfs_size or os.environ.get("AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE") or _DEFAULT_SANDBOX_TMPFS_SIZE
+    requested_user = user or env_opt("AGENT_BOM_MCP_SANDBOX_USER")
+    requested_cpus = cpus or env_str("AGENT_BOM_MCP_SANDBOX_CPUS", _DEFAULT_SANDBOX_CPUS)
+    requested_memory = memory or env_str("AGENT_BOM_MCP_SANDBOX_MEMORY", _DEFAULT_SANDBOX_MEMORY)
+    requested_tmpfs_size = tmpfs_size or env_str("AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE", _DEFAULT_SANDBOX_TMPFS_SIZE)
     requested_pids_limit = (
         _validate_positive_int("sandbox pids limit", pids_limit)
         if pids_limit is not None
@@ -402,7 +403,7 @@ def _is_server_mode() -> bool:
     ``enforce`` so a non-reproducible image cannot start a proxied server.
     """
     for name in ("AGENT_BOM_MCP_SANDBOX_SERVER_MODE", "AGENT_BOM_SERVER_MODE"):
-        raw = os.environ.get(name)
+        raw = env_raw(name)
         if raw is not None:
             return raw.strip().lower() in _SERVER_MODE_VALUES
     return False
@@ -432,8 +433,8 @@ def _validate_image_pin_policy(image: str, policy: SandboxImagePinPolicy) -> Non
 
 
 def _optional_positive_int(env_name: str, *, default: int | None = None) -> int | None:
-    value = os.environ.get(env_name)
-    if not value:
+    value = env_opt(env_name)
+    if value is None:
         return default
     try:
         parsed = int(value)
@@ -456,7 +457,7 @@ def describe_proxy_sandbox_posture() -> dict[str, object]:
     dashboard whether mutable image references would be rejected before a
     proxied MCP server starts. Per-server configs may override the default.
     """
-    raw = (os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY") or "warn").strip().lower()
+    raw = env_str("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", "warn").lower()
     default_policy: SandboxImagePinPolicy = raw if raw in {"off", "warn", "enforce"} else "warn"  # type: ignore[assignment]
     server_mode = _is_server_mode()
     effective_default: SandboxImagePinPolicy = "enforce" if (default_policy == "warn" and server_mode) else default_policy

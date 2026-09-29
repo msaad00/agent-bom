@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, TypeVar
@@ -11,15 +10,16 @@ from typing import Any, TypeVar
 import click
 
 from agent_bom.client import AgentBomApiError, AgentBomClient, JsonObject
+from agent_bom.core.settings import env_opt, env_str
 
 _RequestResult = TypeVar("_RequestResult")
 
 
 def _make_client(api_url: str | None, api_key: str | None, bearer_token: str | None, tenant_id: str | None) -> AgentBomClient:
-    base_url = api_url or os.getenv("AGENT_BOM_API_URL") or "http://127.0.0.1:8422"
-    resolved_api_key = api_key or os.getenv("AGENT_BOM_API_KEY")
-    resolved_bearer_token = bearer_token or os.getenv("AGENT_BOM_API_TOKEN")
-    resolved_tenant_id = tenant_id or os.getenv("AGENT_BOM_TENANT_ID")
+    base_url = api_url or env_str("AGENT_BOM_API_URL", "http://127.0.0.1:8422")
+    resolved_api_key = api_key or env_opt("AGENT_BOM_API_KEY")
+    resolved_bearer_token = bearer_token or env_opt("AGENT_BOM_API_TOKEN")
+    resolved_tenant_id = tenant_id or env_opt("AGENT_BOM_TENANT_ID")
     return AgentBomClient(
         base_url=base_url,
         api_key=resolved_api_key,

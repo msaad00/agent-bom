@@ -33,9 +33,10 @@ degrades to a graceful no-op when it is not installed.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from typing import TYPE_CHECKING, Any
+
+from agent_bom.core.settings import env_flag, env_str
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.api.governance_audit_log import GovernanceAuditRecord
@@ -183,7 +184,7 @@ def build_audit_otlp_exporter(endpoint: str, headers: dict[str, str] | None = No
     from agent_bom import __version__
     from agent_bom.security import SecurityError, validate_url
 
-    allow_private = os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {"1", "true", "yes", "on"}
+    allow_private = env_flag("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS")
     try:
         validate_url(endpoint, allowed_schemes=("https", "http") if allow_private else ("https",), allow_private=allow_private)
     except SecurityError as exc:
@@ -226,7 +227,7 @@ def configure_audit_otlp_from_env() -> AuditLogOtlpExporter | None:
     exporter is created once per process.
     """
     global _EXPORTER, _CONFIGURED, _ENV_ATTEMPTED_ENDPOINT
-    endpoint = os.environ.get(ENDPOINT_ENV, "").strip()
+    endpoint = env_str(ENDPOINT_ENV)
     if not endpoint:
         return None
     with _EXPORTER_LOCK:
@@ -236,7 +237,7 @@ def configure_audit_otlp_from_env() -> AuditLogOtlpExporter | None:
         # (otel extra missing): don't re-run the blocking build/URL validation.
         if _ENV_ATTEMPTED_ENDPOINT == endpoint:
             return None
-        headers = _parse_headers(os.environ.get(HEADERS_ENV, "").strip())
+        headers = _parse_headers(env_str(HEADERS_ENV))
         exporter = build_audit_otlp_exporter(endpoint, headers)
         _ENV_ATTEMPTED_ENDPOINT = endpoint
         if exporter is not None:
@@ -275,8 +276,8 @@ def export_governance_audit_record(record: "GovernanceAuditRecord") -> bool:
 
 def audit_otlp_health() -> dict[str, Any]:
     """Operator-facing status of audit OTLP-log export (no secrets)."""
-    endpoint = os.environ.get(ENDPOINT_ENV, "").strip()
-    headers = os.environ.get(HEADERS_ENV, "").strip()
+    endpoint = env_str(ENDPOINT_ENV)
+    headers = env_str(HEADERS_ENV)
     if not endpoint:
         state = "disabled"
     elif _CONFIGURED and _EXPORTER is not None:

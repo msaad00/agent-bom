@@ -27,7 +27,6 @@ import hashlib
 import ipaddress
 import json
 import logging
-import os
 import random
 import re
 import threading
@@ -45,6 +44,7 @@ from rich.console import Console
 from agent_bom import config
 from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
 from agent_bom.config import OLLAMA_BASE_URL
+from agent_bom.core.settings import env_first, env_is_set, env_opt, env_str
 from agent_bom.security import sanitize_command_args, sanitize_error
 
 if TYPE_CHECKING:
@@ -313,11 +313,11 @@ _LITELLM_MODEL_CREDENTIALS: dict[str, tuple[str, ...]] = {
 
 def _litellm_readiness(model: str) -> tuple[bool, str]:
     """Return model-specific credential or explicit local-endpoint readiness."""
-    proxy_url = os.environ.get("LITELLM_PROXY_URL", "").strip()
+    proxy_url = env_str("LITELLM_PROXY_URL")
     if proxy_url:
         if _url_is_loopback(proxy_url):
             return True, "keyless loopback LiteLLM proxy configured"
-        if os.environ.get("LITELLM_API_KEY"):
+        if env_is_set("LITELLM_API_KEY"):
             return True, "authenticated LiteLLM proxy configured"
         return False, "LITELLM_API_KEY is required for the configured remote LiteLLM proxy"
 
@@ -325,12 +325,12 @@ def _litellm_readiness(model: str) -> tuple[bool, str]:
     if prefix in {"bedrock", "vertex_ai"}:
         return True, f"{prefix} ambient workload identity chain supported"
     if prefix == "openai":
-        api_base = (os.environ.get("OPENAI_API_BASE") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+        api_base = env_first("OPENAI_API_BASE", "OPENAI_BASE_URL")
         if api_base and _url_is_loopback(api_base):
             return True, "keyless loopback OpenAI-compatible endpoint configured"
 
     credential_names = _LITELLM_MODEL_CREDENTIALS.get(prefix, ("LITELLM_API_KEY",))
-    if any(os.environ.get(name) for name in credential_names):
+    if any(env_is_set(name) for name in credential_names):
         return True, "model credentials configured"
     return False, f"selected {prefix or 'litellm'} model requires one of: {', '.join(credential_names)}"
 
@@ -351,7 +351,7 @@ def _provider_status(provider_name: str, model: str | None = None) -> AIProvider
         )
     if provider_name == "huggingface":
         installed = _check_huggingface()
-        configured = bool(os.environ.get("HF_TOKEN"))
+        configured = env_is_set("HF_TOKEN")
         return AIProviderStatus(
             descriptor=descriptor,
             installed=installed,
@@ -438,9 +438,9 @@ def _resolve_model(model: str = DEFAULT_MODEL) -> str:
             # None from preference list — use first available
             return f"ollama/{installed[0]}"
         # Ollama running but no models pulled — fall through
-    if _check_huggingface() and os.environ.get("HF_TOKEN"):
+    if _check_huggingface() and env_is_set("HF_TOKEN"):
         return f"huggingface/{HF_DEFAULT_MODEL}"
-    if os.environ.get("OPENAI_API_KEY"):
+    if env_is_set("OPENAI_API_KEY"):
         return DEFAULT_MODEL
     return model
 
@@ -743,7 +743,7 @@ class HuggingFaceProvider(EnrichmentProvider):
     descriptor = AI_PROVIDER_DESCRIPTORS["huggingface"]
 
     def is_available(self) -> bool:
-        return _check_huggingface() and bool(os.environ.get("HF_TOKEN"))
+        return _check_huggingface() and env_is_set("HF_TOKEN")
 
     async def generate(self, prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
         hf_model = model[len("huggingface/") :] if model.startswith("huggingface/") else model
@@ -944,7 +944,7 @@ async def _call_huggingface(
         except ImportError:
             logger.warning("huggingface-hub not installed. Install with: pip install 'agent-bom[huggingface]'")
             return None
-        client = InferenceClient(model=model, token=os.environ.get("HF_TOKEN"))
+        client = InferenceClient(model=model, token=env_opt("HF_TOKEN"))
         # Run sync client in executor to avoid blocking event loop
         response = await asyncio.to_thread(
             client.chat_completion,

@@ -22,6 +22,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Protocol
 
+from agent_bom.api.postgres_common import _tenant_connection
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.export.destinations import SUPPORTED_EXPORT_KINDS
@@ -66,6 +67,9 @@ class ExportDestinationRecord:
 class ExportDestinationStore(Protocol):
     """Tenant-scoped CRUD contract for export destinations."""
 
+    def record_run(
+        self, observed: ExportDestinationRecord, *, tenant_id: str, status: str, detail: str, run_status: str, completed_at: str
+    ) -> bool: ...
     def init_schema(self) -> None: ...
     def put(self, record: ExportDestinationRecord, *, tenant_id: str) -> None: ...
     def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None: ...
@@ -174,6 +178,22 @@ class InMemoryExportDestinationStore:
             del self._rows[destination_id]
             return True
 
+    def record_run(
+        self, observed: ExportDestinationRecord, *, tenant_id: str, status: str, detail: str, run_status: str, completed_at: str
+    ) -> bool:
+        """Update only outcomes of an unchanged destination; never insert."""
+        tenant = destination_write_tenant(observed, tenant_id)
+        with self._lock:
+            current = self._rows.get(observed.id)
+            if current is None or current.tenant_id != tenant or not _same_destination_revision(current, observed):
+                return False
+            if current.last_run_at and current.last_run_at > completed_at:
+                return False
+            self._rows[observed.id] = replace(
+                current, status=status, status_detail=detail, last_run_status=run_status, last_run_at=completed_at
+            )
+            return True
+
 
 class SQLiteExportDestinationStore:
     """SQLite-backed export-destination store (durable single-node default)."""
@@ -260,7 +280,20 @@ class SQLiteExportDestinationStore:
             (tenant, destination_id),
         )
         self._conn.commit()
-        return cursor.rowcount > 0
+        return bool(cursor.rowcount > 0)
+
+    def record_run(
+        self, observed: ExportDestinationRecord, *, tenant_id: str, status: str, detail: str, run_status: str, completed_at: str
+    ) -> bool:
+        tenant = destination_write_tenant(observed, tenant_id)
+        cursor = self._conn.execute(
+            "UPDATE export_destinations SET status=?, status_detail=?, last_run_status=?, last_run_at=? "
+            "WHERE tenant_id=? AND id=? AND created_at=? AND updated_at=? "
+            "AND (last_run_at IS NULL OR last_run_at<=?)",
+            (status, detail, run_status, completed_at, tenant, observed.id, observed.created_at, observed.updated_at, completed_at),
+        )
+        self._conn.commit()
+        return bool(cursor.rowcount == 1)
 
 
 class PostgresExportDestinationStore:
@@ -292,8 +325,6 @@ class PostgresExportDestinationStore:
             conn.commit()
 
     def put(self, record: ExportDestinationRecord, *, tenant_id: str) -> None:
-        from agent_bom.api.postgres_common import _tenant_connection
-
         destination_write_tenant(record, tenant_id)
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -322,29 +353,41 @@ class PostgresExportDestinationStore:
             conn.commit()
 
     def get(self, tenant_id: str, destination_id: str) -> ExportDestinationRecord | None:
-        from agent_bom.api.postgres_common import _tenant_connection
-
         tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(f"{_SELECT} WHERE tenant_id = %s AND id = %s", (tenant, destination_id)).fetchone()
         return _row_to_record(row) if row else None
 
     def list_for_tenant(self, tenant_id: str) -> list[ExportDestinationRecord]:
-        from agent_bom.api.postgres_common import _tenant_connection
-
         tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(f"{_SELECT} WHERE tenant_id = %s ORDER BY created_at, id", (tenant,)).fetchall()
         return [_row_to_record(row) for row in rows]
 
     def delete(self, tenant_id: str, destination_id: str) -> bool:
-        from agent_bom.api.postgres_common import _tenant_connection
-
         tenant = require_explicit_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             deleted = conn.execute("DELETE FROM export_destinations WHERE tenant_id = %s AND id = %s", (tenant, destination_id))
             conn.commit()
             return bool(deleted.rowcount > 0)
+
+    def record_run(
+        self, observed: ExportDestinationRecord, *, tenant_id: str, status: str, detail: str, run_status: str, completed_at: str
+    ) -> bool:
+        tenant = destination_write_tenant(observed, tenant_id)
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                "UPDATE export_destinations SET status=%s, status_detail=%s, last_run_status=%s, last_run_at=%s "
+                "WHERE tenant_id=%s AND id=%s AND created_at=%s AND updated_at=%s "
+                "AND (last_run_at IS NULL OR last_run_at<=%s)",
+                (status, detail, run_status, completed_at, tenant, observed.id, observed.created_at, observed.updated_at, completed_at),
+            )
+            conn.commit()
+            return bool(cursor.rowcount == 1)
+
+
+def _same_destination_revision(current: ExportDestinationRecord, observed: ExportDestinationRecord) -> bool:
+    return current.created_at == observed.created_at and current.updated_at == observed.updated_at
 
 
 _DESTINATION_STORE: ExportDestinationStore | None = None

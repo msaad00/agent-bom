@@ -8,6 +8,8 @@ across control-plane replicas, exactly one replica fires a given due export.
 
 from __future__ import annotations
 
+import heapq
+import os
 import sqlite3
 import threading
 from typing import Protocol
@@ -16,6 +18,8 @@ from pydantic import BaseModel
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.core.tenancy import require_explicit_tenant_id
+from agent_bom.storage.base import BackendKind
+from agent_bom.storage.factory import resolve_backend
 
 
 class ExportSchedule(BaseModel):
@@ -41,11 +45,12 @@ class ExportSchedule(BaseModel):
 class ExportScheduleStore(Protocol):
     """Protocol for export-schedule persistence."""
 
+    def record_run(self, observed: ExportSchedule, *, tenant_id: str, at: str, status: str, row_count: int | None) -> bool: ...
     def put(self, schedule: ExportSchedule, *, tenant_id: str) -> None: ...
     def get(self, schedule_id: str, tenant_id: str) -> ExportSchedule | None: ...
     def delete(self, schedule_id: str, tenant_id: str) -> bool: ...
     def list_all(self, tenant_id: str) -> list[ExportSchedule]: ...
-    def list_due(self, now_iso: str) -> list[ExportSchedule]: ...
+    def list_due(self, now_iso: str, *, limit: int = 100) -> list[ExportSchedule]: ...
     def claim_due(self, schedule: ExportSchedule, next_run_iso: str | None, *, tenant_id: str) -> bool: ...
 
 
@@ -87,10 +92,11 @@ class InMemoryExportScheduleStore:
             schedules = [s.model_copy(deep=True) for s in self._schedules.values() if s.tenant_id == tenant]
         return schedules
 
-    def list_due(self, now_iso: str) -> list[ExportSchedule]:
+    def list_due(self, now_iso: str, *, limit: int = 100) -> list[ExportSchedule]:
         """Return due rows for the privileged scheduler, which binds each tenant before work."""
         with self._lock:
-            return [s.model_copy(deep=True) for s in self._schedules.values() if s.enabled and s.next_run and s.next_run <= now_iso]
+            due = (s for s in self._schedules.values() if s.enabled and s.next_run and s.next_run <= now_iso)
+            return [s.model_copy(deep=True) for s in heapq.nsmallest(max(1, limit), due, key=lambda s: (s.next_run or "", s.schedule_id))]
 
     def claim_due(self, schedule: ExportSchedule, next_run_iso: str | None, *, tenant_id: str) -> bool:
         """Advance ``next_run`` iff it still matches the observed value (CAS)."""
@@ -99,10 +105,19 @@ class InMemoryExportScheduleStore:
             current = self._schedules.get(schedule.schedule_id)
             if current is None or current.tenant_id != tenant:
                 return False
-            if current.next_run != schedule.next_run:
+            if not current.enabled or current != schedule:
                 return False
             current.next_run = next_run_iso
         return True
+
+    def record_run(self, observed: ExportSchedule, *, tenant_id: str, at: str, status: str, row_count: int | None) -> bool:
+        tenant = schedule_write_tenant(observed, tenant_id)
+        with self._lock:
+            current = self._schedules.get(observed.schedule_id)
+            if current is None or current.tenant_id != tenant or current != observed:
+                return False
+            self._schedules[observed.schedule_id] = completed_schedule(observed, at, status, row_count)
+            return True
 
 
 class SQLiteExportScheduleStore:
@@ -146,10 +161,10 @@ class SQLiteExportScheduleStore:
     def get(self, schedule_id: str, tenant_id: str) -> ExportSchedule | None:
         tenant = require_explicit_tenant_id(tenant_id)
         row = self._conn.execute(
-            "SELECT data FROM export_schedules WHERE schedule_id = ? AND tenant_id = ?",
+            "SELECT data, next_run, enabled FROM export_schedules WHERE schedule_id = ? AND tenant_id = ?",
             (schedule_id, tenant),
         ).fetchone()
-        return ExportSchedule.model_validate_json(row[0]) if row else None
+        return _sqlite_schedule(row) if row else None
 
     def delete(self, schedule_id: str, tenant_id: str) -> bool:
         tenant = require_explicit_tenant_id(tenant_id)
@@ -163,38 +178,55 @@ class SQLiteExportScheduleStore:
     def list_all(self, tenant_id: str) -> list[ExportSchedule]:
         tenant = require_explicit_tenant_id(tenant_id)
         rows = self._conn.execute(
-            "SELECT data FROM export_schedules WHERE tenant_id = ? ORDER BY schedule_id",
+            "SELECT data, next_run, enabled FROM export_schedules WHERE tenant_id = ? ORDER BY schedule_id",
             (tenant,),
         ).fetchall()
-        return [ExportSchedule.model_validate_json(r[0]) for r in rows]
+        return [_sqlite_schedule(r) for r in rows]
 
-    def list_due(self, now_iso: str) -> list[ExportSchedule]:
+    def list_due(self, now_iso: str, *, limit: int = 100) -> list[ExportSchedule]:
         """Return due rows for the privileged scheduler, which binds each tenant before work."""
         rows = self._conn.execute(
-            "SELECT data FROM export_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= ?",
-            (now_iso,),
+            "SELECT data, next_run, enabled FROM export_schedules WHERE enabled = 1 AND next_run IS NOT NULL AND next_run <= ? "
+            "ORDER BY next_run, schedule_id LIMIT ?",
+            (now_iso, max(1, limit)),
         ).fetchall()
-        return [ExportSchedule.model_validate_json(r[0]) for r in rows]
+        return [_sqlite_schedule(r) for r in rows]
 
     def claim_due(self, schedule: ExportSchedule, next_run_iso: str | None, *, tenant_id: str) -> bool:
-        """Advance ``next_run`` via a conditional UPDATE (compare-and-swap).
+        """Atomically advance the indexed time and record if configuration is unchanged."""
+        schedule_write_tenant(schedule, tenant_id)
+        if not schedule.enabled:
+            return False
+        return self._replace_observed(schedule, schedule.model_copy(update={"next_run": next_run_iso}))
 
-        Only the replica whose observed ``next_run`` still matches wins; a racing
-        replica's WHERE no longer matches after the winner commits.
-        """
-        tenant = schedule_write_tenant(schedule, tenant_id)
-        if schedule.next_run is None:
-            cursor = self._conn.execute(
-                "UPDATE export_schedules SET next_run = ? WHERE schedule_id = ? AND tenant_id = ? AND next_run IS NULL",
-                (next_run_iso, schedule.schedule_id, tenant),
+    def record_run(self, observed: ExportSchedule, *, tenant_id: str, at: str, status: str, row_count: int | None) -> bool:
+        schedule_write_tenant(observed, tenant_id)
+        return self._replace_observed(observed, completed_schedule(observed, at, status, row_count))
+
+    def _replace_observed(self, observed: ExportSchedule, updated: ExportSchedule) -> bool:
+        # Reserve the write before reading so other processes cannot edit/delete
+        # between the comparison and update. Exceptions roll back the transaction.
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            current = self.get(observed.schedule_id, observed.tenant_id)
+            if current != observed:
+                return False
+            self._conn.execute(
+                "UPDATE export_schedules SET next_run=?, data=? WHERE schedule_id=? AND tenant_id=?",
+                (updated.next_run, updated.model_dump_json(), observed.schedule_id, observed.tenant_id),
             )
-        else:
-            cursor = self._conn.execute(
-                "UPDATE export_schedules SET next_run = ? WHERE schedule_id = ? AND tenant_id = ? AND next_run = ?",
-                (next_run_iso, schedule.schedule_id, tenant, schedule.next_run),
-            )
-        self._conn.commit()
-        return cursor.rowcount == 1
+        return True
+
+
+def _sqlite_schedule(row: tuple) -> ExportSchedule:
+    # Older replicas only updated the indexed columns during a claim. Those
+    # columns are authoritative even before the next write repairs the payload.
+    return ExportSchedule.model_validate_json(row[0]).model_copy(update={"next_run": row[1], "enabled": bool(row[2])})
+
+
+def completed_schedule(observed: ExportSchedule, at: str, status: str, row_count: int | None) -> ExportSchedule:
+    """Outcome metadata does not rewrite the configuration's update revision."""
+    return observed.model_copy(update={"last_run": at, "last_run_status": status, "last_row_count": row_count})
 
 
 def schedule_write_tenant(schedule: ExportSchedule, tenant_id: str) -> str:
@@ -213,14 +245,13 @@ def get_export_schedule_store() -> ExportScheduleStore:
     global _EXPORT_SCHEDULE_STORE
     if _EXPORT_SCHEDULE_STORE is not None:
         return _EXPORT_SCHEDULE_STORE
-    import os
-
-    from agent_bom.storage.base import BackendKind
-    from agent_bom.storage.factory import resolve_backend
+    from agent_bom.api.storage.export_schedules import PostgresExportScheduleStore
 
     selection = resolve_backend(mode="env")
     if selection.backend is BackendKind.SQLITE and selection.sqlite_path:
         _EXPORT_SCHEDULE_STORE = SQLiteExportScheduleStore(selection.sqlite_path)
+    elif selection.backend is BackendKind.POSTGRES:
+        _EXPORT_SCHEDULE_STORE = PostgresExportScheduleStore()
     elif os.environ.get("AGENT_BOM_DB"):
         _EXPORT_SCHEDULE_STORE = SQLiteExportScheduleStore(os.environ["AGENT_BOM_DB"])
     else:

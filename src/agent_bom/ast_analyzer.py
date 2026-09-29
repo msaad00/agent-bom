@@ -27,12 +27,14 @@ Compliance mapping:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
 from agent_bom.ast.application_entrypoints import detect_application_entrypoints
 from agent_bom.ast.js_ts import JS_TS_EXTS as _JS_TS_EXTS
-from agent_bom.ast.js_ts import JSTSFunction, JSTSToolRegistration, build_js_ts_dependency_symbol_reach
+from agent_bom.ast.js_ts import JSTSToolRegistration, build_js_ts_dependency_symbol_reach
 from agent_bom.ast.js_ts import build_js_ts_flow_findings as _build_js_ts_flow_findings
 from agent_bom.ast.js_ts import js_ts_function_key as _js_ts_function_key
 from agent_bom.ast.js_ts import scan_js_ts_file as _scan_js_ts_file
@@ -53,22 +55,14 @@ from agent_bom.ast_models import (
     ASTCoverageGap,
     CallEdge,
     DependencySymbolReach,
-    _CSharpMethodAnalysis,
     _CSharpToolRegistration,
     _FunctionAnalysis,
-    _GoFunctionAnalysis,
     _GoToolRegistration,
-    _JavaMethodAnalysis,
     _JavaToolRegistration,
-    _KotlinFunctionAnalysis,
     _KotlinToolRegistration,
-    _PhpMethodAnalysis,
     _PhpToolRegistration,
-    _RubyMethodAnalysis,
     _RubyToolRegistration,
-    _RustFunctionAnalysis,
     _RustToolRegistration,
-    _SwiftFunctionAnalysis,
     _SwiftToolRegistration,
 )
 from agent_bom.ast_php import _php_method_key, build_php_dependency_symbol_reach, load_composer_package_map
@@ -196,6 +190,324 @@ def project_has_analyzable_sources(project_path: str | Path) -> bool:
     return False
 
 
+_SOURCE_GLOBS: tuple[tuple[str, frozenset[str] | None], ...] = (
+    ("*.py", None),
+    ("*", frozenset(_JS_TS_EXTS)),
+    ("*.go", None),
+    ("*.rs", None),
+    ("*.java", None),
+    ("*.cs", None),
+    ("*.rb", None),
+    ("*.php", None),
+    ("*.swift", None),
+    ("*", frozenset(_KOTLIN_EXTS)),
+)
+
+
+@dataclass(frozen=True)
+class _LanguageSpec:
+    """How one non-Python language is scanned, keyed, bound and reached."""
+
+    scan: Callable[[Path, str], tuple[Any, ...]]
+    key: Callable[[Any], str]
+    app_registration: Callable[[str, str, Any, ApplicationEntrypoint], Any]
+    reach: Callable[[dict[str, Any], list[Any]], list[DependencySymbolReach]]
+
+
+@dataclass
+class _LanguageLane:
+    spec: _LanguageSpec
+    files: list[Path]
+    functions: dict[str, Any] = field(default_factory=dict)
+    tool_registrations: list[Any] = field(default_factory=list)
+    application_registrations: list[Any] = field(default_factory=list)
+
+
+def _collect_sources(project: Path, pattern: str, suffixes: frozenset[str] | None) -> list[Path]:
+    files = []
+    for f in sorted(project.rglob(pattern)):
+        if suffixes is not None and f.suffix.lower() not in suffixes:
+            continue
+        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
+            continue
+        # Skip test/fixture/pattern files to avoid false positives
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        files.append(f)
+    return files
+
+
+def _record_file_budget(result: ASTAnalysisResult, selected_count: int, eligible_count: int) -> None:
+    result.analysis_coverage.status = "partial"
+    warning = f"AST analysis stopped at {selected_count} of {eligible_count} eligible source files"
+    result.warnings.append(warning)
+    from agent_bom.scanners.state import record_coverage_warning
+
+    record_coverage_warning(
+        {
+            "ecosystem": "ast-analysis",
+            "release": "ast-analysis:project-file-budget",
+            "reason": "source_file_limit",
+            "detail": f"{warning}.",
+            "package_count": 0,
+            "advisory_rows": 0,
+        }
+    )
+
+
+def _select_source_files(project: Path, result: ASTAnalysisResult) -> list[list[Path]]:
+    """Collect every language's sources, then keep the highest-priority budget."""
+    file_groups = [_collect_sources(project, pattern, suffixes) for pattern, suffixes in _SOURCE_GLOBS]
+    eligible_count = sum(len(group) for group in file_groups)
+    selected = set(
+        sorted((path for group in file_groups for path in group), key=lambda path: _analysis_priority(project, path))[:_MAX_FILES]
+    )
+    groups = [[path for path in group if path in selected] for group in file_groups]
+    if eligible_count > len(selected):
+        _record_file_budget(result, len(selected), eligible_count)
+    result.files_analyzed = sum(len(group) for group in groups)
+    result.analysis_coverage.eligible_files = eligible_count
+    result.analysis_coverage.analyzed_files = result.files_analyzed
+    return groups
+
+
+def _js_ts_app_registration(token: str, handler_key: str, _handler: Any, entry: ApplicationEntrypoint) -> JSTSToolRegistration:
+    return JSTSToolRegistration(tool_name=token, handler_name=handler_key, line_number=entry.line_number)
+
+
+def _go_app_registration(token: str, _handler_key: str, handler: Any, entry: ApplicationEntrypoint) -> _GoToolRegistration:
+    return _GoToolRegistration(
+        tool_name=token,
+        handler_name=handler.name,
+        line_number=entry.line_number,
+        file_path=entry.file_path,
+        scope_name=handler.scope_name,
+        imported_aliases=handler.imported_aliases,
+    )
+
+
+def _bound_app_registration(registration_type: type, owner: str, bindings: str) -> Callable[[str, str, Any, ApplicationEntrypoint], Any]:
+    def build(token: str, handler_key: str, handler: Any, entry: ApplicationEntrypoint) -> Any:
+        return registration_type(
+            tool_name=token,
+            handler_name=handler_key,
+            line_number=entry.line_number,
+            file_path=entry.file_path,
+            **{owner: getattr(handler, owner), bindings: getattr(handler, bindings)},
+        )
+
+    return build
+
+
+def _language_specs(project: Path) -> dict[str, _LanguageSpec]:
+    """Per-language adapters in analysis order, keyed by entrypoint language."""
+    maven_map = _load_maven_dependency_map(project)
+    nuget_map = load_nuget_namespace_map(project)
+    gem_map = load_ruby_gem_map(project)
+    composer_map = load_composer_package_map(project)
+    swift_map = load_swift_package_map(project)
+    return {
+        "javascript_typescript": _LanguageSpec(
+            _scan_js_ts_file,
+            lambda fn: _js_ts_function_key(fn.module_name, fn.name),
+            _js_ts_app_registration,
+            lambda fns, regs: build_js_ts_dependency_symbol_reach(
+                functions=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()
+            ),
+        ),
+        "go": _LanguageSpec(
+            _scan_go_file,
+            lambda fn: _go_function_key(fn.scope_name, fn.name),
+            _go_app_registration,
+            lambda fns, regs: build_go_dependency_symbol_reach(functions=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()),
+        ),
+        "rust": _LanguageSpec(
+            _scan_rust_file,
+            lambda fn: _rust_function_key(fn.module_name, fn.name),
+            _bound_app_registration(_RustToolRegistration, "module_name", "crate_bindings"),
+            lambda fns, regs: build_rust_dependency_symbol_reach(
+                functions=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()
+            ),
+        ),
+        "java": _LanguageSpec(
+            lambda path, rel: _scan_java_file(path, rel, maven_map=maven_map),
+            lambda fn: _java_method_key(fn.class_name, fn.name),
+            _bound_app_registration(_JavaToolRegistration, "class_name", "import_bindings"),
+            lambda fns, regs: build_java_dependency_symbol_reach(methods=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()),
+        ),
+        "csharp": _LanguageSpec(
+            lambda path, rel: _scan_csharp_file(path, rel, nuget_map=nuget_map),
+            lambda fn: _csharp_method_key(fn.class_name, fn.name),
+            _bound_app_registration(_CSharpToolRegistration, "class_name", "import_bindings"),
+            lambda fns, regs: build_csharp_dependency_symbol_reach(
+                methods=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()
+            ),
+        ),
+        "ruby": _LanguageSpec(
+            lambda path, rel: _scan_ruby_file(path, rel, gem_map=gem_map),
+            lambda fn: _ruby_method_key(fn.class_name, fn.name),
+            _bound_app_registration(_RubyToolRegistration, "class_name", "import_bindings"),
+            lambda fns, regs: build_ruby_dependency_symbol_reach(methods=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()),
+        ),
+        "php": _LanguageSpec(
+            lambda path, rel: _scan_php_file(path, rel, package_map=composer_map),
+            lambda fn: _php_method_key(fn.class_name, fn.name),
+            _bound_app_registration(_PhpToolRegistration, "class_name", "import_bindings"),
+            lambda fns, regs: build_php_dependency_symbol_reach(
+                methods=fns, tool_registrations=regs, package_map=composer_map, max_depth=_python_max_taint_depth()
+            ),
+        ),
+        "swift": _LanguageSpec(
+            lambda path, rel: _scan_swift_file(path, rel, package_map=swift_map),
+            lambda fn: _swift_function_key(fn.scope_name, fn.name),
+            _bound_app_registration(_SwiftToolRegistration, "scope_name", "import_bindings"),
+            lambda fns, regs: build_swift_dependency_symbol_reach(
+                functions=fns, tool_registrations=regs, package_map=swift_map, max_depth=_python_max_taint_depth()
+            ),
+        ),
+        "kotlin": _LanguageSpec(
+            lambda path, rel: _scan_kotlin_file(path, rel, maven_map=maven_map),
+            lambda fn: _kotlin_function_key(fn.scope_name, fn.name),
+            _bound_app_registration(_KotlinToolRegistration, "scope_name", "import_bindings"),
+            lambda fns, regs: build_kotlin_dependency_symbol_reach(
+                functions=fns, tool_registrations=regs, max_depth=_python_max_taint_depth()
+            ),
+        ),
+    }
+
+
+def _record_scan(result: ASTAnalysisResult, scanned: tuple[Any, ...]) -> Any:
+    prompts, guardrails, tools, flow_findings, frameworks, call_edges, analysis = scanned
+    result.prompts.extend(prompts)
+    result.guardrails.extend(guardrails)
+    result.tools.extend(tools)
+    result.flow_findings.extend(flow_findings)
+    result.frameworks_detected.extend(frameworks)
+    result.call_edges.extend(call_edges)
+    return analysis
+
+
+def _scan_python_files(project: Path, py_files: list[Path], result: ASTAnalysisResult) -> list[_FunctionAnalysis]:
+    function_analyses: list[_FunctionAnalysis] = []
+    for py_file in py_files:
+        rel = str(py_file.relative_to(project))
+        prompts, guardrails, tools, frameworks, file_functions, flow_findings = _analyze_file(py_file, rel)
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.frameworks_detected.extend(frameworks)
+        result.flow_findings.extend(flow_findings)
+        function_analyses.extend(file_functions)
+        for function in file_functions:
+            result.cfg_edges.extend(function.cfg_edges)
+    return function_analyses
+
+
+def _record_js_ts_gap(result: ASTAnalysisResult, js_ts_file: Path, rel: str) -> None:
+    result.analysis_coverage.status = "partial"
+    result.analysis_coverage.partial_files.append(
+        ASTCoverageGap(
+            file_path=rel,
+            language="typescript" if js_ts_file.suffix.lower() in {".ts", ".tsx"} else "javascript",
+            reason="structured_analysis_unavailable",
+        )
+    )
+    result.warnings.append(f"Partial JS/TS structured analysis for {rel}; fallback findings were retained")
+
+
+def _scan_js_ts_lane(project: Path, lane: _LanguageLane, result: ASTAnalysisResult) -> None:
+    for js_ts_file in lane.files:
+        rel = str(js_ts_file.relative_to(project))
+        analysis = _record_scan(result, lane.spec.scan(js_ts_file, rel))
+        if analysis is None:
+            _record_js_ts_gap(result, js_ts_file, rel)
+            continue
+        for js_ts_function in analysis.functions.values():
+            lane.functions[lane.spec.key(js_ts_function)] = js_ts_function
+        if analysis.default_export_name:
+            default_function = analysis.functions.get(analysis.default_export_name)
+            if default_function is not None:
+                lane.functions[_js_ts_function_key(default_function.module_name, "default")] = default_function
+        lane.tool_registrations.extend(analysis.tool_registrations)
+
+
+def _scan_language_lane(project: Path, lane: _LanguageLane, result: ASTAnalysisResult) -> None:
+    for source_file in lane.files:
+        rel = str(source_file.relative_to(project))
+        analysis = _record_scan(result, lane.spec.scan(source_file, rel))
+        if analysis is None:
+            continue
+        for function in analysis.functions.values():
+            lane.functions[lane.spec.key(function)] = function
+        lane.tool_registrations.extend(analysis.tool_registrations)
+
+
+def _bind_application_entrypoints(result: ASTAnalysisResult, lanes: Mapping[str, _LanguageLane]) -> dict[str, ApplicationEntrypoint]:
+    """Register each resolvable non-Python entrypoint as a synthetic tool token."""
+    entries_by_token: dict[str, ApplicationEntrypoint] = {}
+    for index, entry in enumerate(result.application_entrypoints):
+        lane = lanes.get(entry.language)
+        if lane is None:
+            continue
+        resolved = _application_handler(entry, lane.functions)
+        if resolved is None:
+            continue
+        token = f"__application_entrypoint_{index}"
+        handler_key, handler = resolved
+        lane.application_registrations.append(lane.spec.app_registration(token, handler_key, handler, entry))
+        entries_by_token[token] = entry
+    return entries_by_token
+
+
+def _add_python_flows(result: ASTAnalysisResult, function_analyses: list[_FunctionAnalysis]) -> None:
+    python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
+    result.call_edges.extend(python_call_edges)
+    result.flow_findings.extend(interprocedural_findings)
+    python_application_entrypoints = [entry for entry in result.application_entrypoints if entry.language == "python"]
+    result.dependency_symbol_reach.extend(_build_dependency_symbol_reach(function_analyses, python_application_entrypoints))
+    result.flow_findings.extend(_build_taint_findings(function_analyses, python_application_entrypoints))
+
+
+def _add_language_flows(result: ASTAnalysisResult, lanes: Mapping[str, _LanguageLane]) -> None:
+    js_ts, go = lanes["javascript_typescript"], lanes["go"]
+    js_ts_call_edges, js_ts_findings = _build_js_ts_flow_findings(functions=js_ts.functions, tool_registrations=js_ts.tool_registrations)
+    result.call_edges.extend(js_ts_call_edges)
+    result.flow_findings.extend(js_ts_findings)
+    go_call_edges, go_findings = _build_go_flow_findings(functions=go.functions, tool_registrations=go.tool_registrations)
+    result.call_edges.extend(go_call_edges)
+    result.flow_findings.extend(go_findings)
+    for lane in lanes.values():
+        result.dependency_symbol_reach.extend(lane.spec.reach(lane.functions, lane.tool_registrations))
+
+
+def _add_application_reaches(
+    result: ASTAnalysisResult, lanes: Mapping[str, _LanguageLane], entries_by_token: Mapping[str, ApplicationEntrypoint]
+) -> None:
+    application_reaches: list[DependencySymbolReach] = []
+    for lane in lanes.values():
+        application_reaches.extend(lane.spec.reach(lane.functions, lane.application_registrations))
+    _stamp_application_reaches(application_reaches, entries_by_token)
+    result.dependency_symbol_reach.extend(application_reaches)
+
+
+def _finalize_result(result: ASTAnalysisResult) -> None:
+    # Test fixtures remain visible in inventory, but are not production
+    # reachability evidence. Otherwise dev-only imports become build-blocking
+    # production CVEs.
+    result.flow_findings = [finding for finding in result.flow_findings if not _is_test_source_path(finding.file_path)]
+    result.dependency_symbol_reach = [reach for reach in result.dependency_symbol_reach if not _is_test_source_path(reach.file_path)]
+    deduped_call_edges: list[CallEdge] = []
+    seen_call_edges: set[tuple[str, str, str, int]] = set()
+    for edge in result.call_edges:
+        key = (edge.caller, edge.callee, edge.file_path, edge.line_number)
+        if key in seen_call_edges:
+            continue
+        seen_call_edges.add(key)
+        deduped_call_edges.append(edge)
+    result.call_edges = deduped_call_edges
+    result.frameworks_detected = sorted(set(result.frameworks_detected))
+
+
 def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     """Analyze a project directory for prompts, tools, and risky call paths.
 
@@ -214,670 +526,20 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         return ASTAnalysisResult(warnings=[f"{project_path} is not a directory"])
 
     result = ASTAnalysisResult()
-
-    # Collect source files
-    py_files = []
-    for f in sorted(project.rglob("*.py")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        # Skip test/fixture/pattern files to avoid false positives
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        py_files.append(f)
-
-    js_ts_files = []
-    for f in sorted(project.rglob("*")):
-        if f.suffix.lower() not in _JS_TS_EXTS:
-            continue
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        js_ts_files.append(f)
-
-    go_files = []
-    for f in sorted(project.rglob("*.go")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        go_files.append(f)
-
-    rust_files = []
-    for f in sorted(project.rglob("*.rs")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        rust_files.append(f)
-
-    java_files = []
-    for f in sorted(project.rglob("*.java")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        java_files.append(f)
-
-    kotlin_files = []
-    for f in sorted(project.rglob("*")):
-        if f.suffix.lower() not in _KOTLIN_EXTS:
-            continue
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        kotlin_files.append(f)
-
-    csharp_files = []
-    for f in sorted(project.rglob("*.cs")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        csharp_files.append(f)
-
-    ruby_files = []
-    for f in sorted(project.rglob("*.rb")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        ruby_files.append(f)
-
-    php_files = []
-    for f in sorted(project.rglob("*.php")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        php_files.append(f)
-
-    swift_files = []
-    for f in sorted(project.rglob("*.swift")):
-        if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
-            continue
-        swift_files.append(f)
-
-    file_groups = (
-        py_files,
-        js_ts_files,
-        go_files,
-        rust_files,
-        java_files,
-        csharp_files,
-        ruby_files,
-        php_files,
-        swift_files,
-        kotlin_files,
+    py_files, *language_files = _select_source_files(project, result)
+    result.application_entrypoints = detect_application_entrypoints(
+        project, [path for group in (py_files, *language_files) for path in group]
     )
-    eligible_count = sum(len(group) for group in file_groups)
-    selected = set(
-        sorted((path for group in file_groups for path in group), key=lambda path: _analysis_priority(project, path))[:_MAX_FILES]
-    )
-    (
-        py_files,
-        js_ts_files,
-        go_files,
-        rust_files,
-        java_files,
-        csharp_files,
-        ruby_files,
-        php_files,
-        swift_files,
-        kotlin_files,
-    ) = tuple([path for path in group if path in selected] for group in file_groups)
-    if eligible_count > len(selected):
-        result.analysis_coverage.status = "partial"
-        warning = f"AST analysis stopped at {len(selected)} of {eligible_count} eligible source files"
-        result.warnings.append(warning)
-        from agent_bom.scanners.state import record_coverage_warning
-
-        record_coverage_warning(
-            {
-                "ecosystem": "ast-analysis",
-                "release": "ast-analysis:project-file-budget",
-                "reason": "source_file_limit",
-                "detail": f"{warning}.",
-                "package_count": 0,
-                "advisory_rows": 0,
-            }
-        )
-    result.files_analyzed = (
-        len(py_files)
-        + len(js_ts_files)
-        + len(go_files)
-        + len(rust_files)
-        + len(java_files)
-        + len(csharp_files)
-        + len(ruby_files)
-        + len(php_files)
-        + len(swift_files)
-        + len(kotlin_files)
-    )
-    result.analysis_coverage.eligible_files = eligible_count
-    result.analysis_coverage.analyzed_files = result.files_analyzed
-    selected_source_files = [path for group in file_groups for path in group if path in selected]
-    result.application_entrypoints = detect_application_entrypoints(project, selected_source_files)
-    function_analyses: list[_FunctionAnalysis] = []
-    js_ts_functions: dict[str, JSTSFunction] = {}
-    js_ts_tool_registrations: list[JSTSToolRegistration] = []
-    go_functions: dict[str, _GoFunctionAnalysis] = {}
-    go_tool_registrations: list[_GoToolRegistration] = []
-    rust_functions: dict[str, _RustFunctionAnalysis] = {}
-    rust_tool_registrations: list[_RustToolRegistration] = []
-    java_methods: dict[str, _JavaMethodAnalysis] = {}
-    java_tool_registrations: list[_JavaToolRegistration] = []
-    csharp_methods: dict[str, _CSharpMethodAnalysis] = {}
-    csharp_tool_registrations: list[_CSharpToolRegistration] = []
-    ruby_methods: dict[str, _RubyMethodAnalysis] = {}
-    ruby_tool_registrations: list[_RubyToolRegistration] = []
-    php_methods: dict[str, _PhpMethodAnalysis] = {}
-    php_tool_registrations: list[_PhpToolRegistration] = []
-    swift_functions: dict[str, _SwiftFunctionAnalysis] = {}
-    swift_tool_registrations: list[_SwiftToolRegistration] = []
-    kotlin_functions: dict[str, _KotlinFunctionAnalysis] = {}
-    kotlin_tool_registrations: list[_KotlinToolRegistration] = []
-    js_ts_application_registrations: list[JSTSToolRegistration] = []
-    go_application_registrations: list[_GoToolRegistration] = []
-    rust_application_registrations: list[_RustToolRegistration] = []
-    java_application_registrations: list[_JavaToolRegistration] = []
-    csharp_application_registrations: list[_CSharpToolRegistration] = []
-    ruby_application_registrations: list[_RubyToolRegistration] = []
-    php_application_registrations: list[_PhpToolRegistration] = []
-    swift_application_registrations: list[_SwiftToolRegistration] = []
-    kotlin_application_registrations: list[_KotlinToolRegistration] = []
-    maven_dependency_map = _load_maven_dependency_map(project)
-    nuget_namespace_map = load_nuget_namespace_map(project)
-    ruby_gem_map = load_ruby_gem_map(project)
-    composer_package_map = load_composer_package_map(project)
-    swift_package_map = load_swift_package_map(project)
-
-    for py_file in py_files:
-        rel = str(py_file.relative_to(project))
-        prompts, guardrails, tools, frameworks, file_functions, flow_findings = _analyze_file(py_file, rel)
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.frameworks_detected.extend(frameworks)
-        result.flow_findings.extend(flow_findings)
-        function_analyses.extend(file_functions)
-        for function in file_functions:
-            result.cfg_edges.extend(function.cfg_edges)
-
-    for js_ts_file in js_ts_files:
-        rel = str(js_ts_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, js_ts_call_edges, js_ts_analysis = _scan_js_ts_file(js_ts_file, rel)
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(js_ts_call_edges)
-        if js_ts_analysis is None:
-            result.analysis_coverage.status = "partial"
-            result.analysis_coverage.partial_files.append(
-                ASTCoverageGap(
-                    file_path=rel,
-                    language="typescript" if js_ts_file.suffix.lower() in {".ts", ".tsx"} else "javascript",
-                    reason="structured_analysis_unavailable",
-                )
-            )
-            result.warnings.append(f"Partial JS/TS structured analysis for {rel}; fallback findings were retained")
-        if js_ts_analysis is not None:
-            for js_ts_function in js_ts_analysis.functions.values():
-                js_ts_functions[_js_ts_function_key(js_ts_function.module_name, js_ts_function.name)] = js_ts_function
-            if js_ts_analysis.default_export_name:
-                default_function = js_ts_analysis.functions.get(js_ts_analysis.default_export_name)
-                if default_function is not None:
-                    js_ts_functions[_js_ts_function_key(default_function.module_name, "default")] = default_function
-            js_ts_tool_registrations.extend(js_ts_analysis.tool_registrations)
-
-    for go_file in go_files:
-        rel = str(go_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, go_call_edges, go_analysis = _scan_go_file(go_file, rel)
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(go_call_edges)
-        if go_analysis is not None:
-            for go_function in go_analysis.functions.values():
-                go_functions[_go_function_key(go_function.scope_name, go_function.name)] = go_function
-            go_tool_registrations.extend(go_analysis.tool_registrations)
-
-    for rust_file in rust_files:
-        rel = str(rust_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, rust_call_edges, rust_analysis = _scan_rust_file(rust_file, rel)
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(rust_call_edges)
-        if rust_analysis is not None:
-            for rust_function in rust_analysis.functions.values():
-                rust_functions[_rust_function_key(rust_function.module_name, rust_function.name)] = rust_function
-            rust_tool_registrations.extend(rust_analysis.tool_registrations)
-
-    for java_file in java_files:
-        rel = str(java_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, java_call_edges, java_analysis = _scan_java_file(
-            java_file,
-            rel,
-            maven_map=maven_dependency_map,
-        )
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(java_call_edges)
-        if java_analysis is not None:
-            for java_method in java_analysis.functions.values():
-                java_methods[_java_method_key(java_method.class_name, java_method.name)] = java_method
-            java_tool_registrations.extend(java_analysis.tool_registrations)
-
-    for csharp_file in csharp_files:
-        rel = str(csharp_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, csharp_call_edges, csharp_analysis = _scan_csharp_file(
-            csharp_file,
-            rel,
-            nuget_map=nuget_namespace_map,
-        )
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(csharp_call_edges)
-        if csharp_analysis is not None:
-            for csharp_method in csharp_analysis.functions.values():
-                csharp_methods[_csharp_method_key(csharp_method.class_name, csharp_method.name)] = csharp_method
-            csharp_tool_registrations.extend(csharp_analysis.tool_registrations)
-
-    for ruby_file in ruby_files:
-        rel = str(ruby_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, ruby_call_edges, ruby_analysis = _scan_ruby_file(
-            ruby_file,
-            rel,
-            gem_map=ruby_gem_map,
-        )
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(ruby_call_edges)
-        if ruby_analysis is not None:
-            for ruby_method in ruby_analysis.functions.values():
-                ruby_methods[_ruby_method_key(ruby_method.class_name, ruby_method.name)] = ruby_method
-            ruby_tool_registrations.extend(ruby_analysis.tool_registrations)
-
-    for php_file in php_files:
-        rel = str(php_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, php_call_edges, php_analysis = _scan_php_file(
-            php_file,
-            rel,
-            package_map=composer_package_map,
-        )
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(php_call_edges)
-        if php_analysis is not None:
-            for php_method in php_analysis.functions.values():
-                php_methods[_php_method_key(php_method.class_name, php_method.name)] = php_method
-            php_tool_registrations.extend(php_analysis.tool_registrations)
-
-    for swift_file in swift_files:
-        rel = str(swift_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, swift_call_edges, swift_analysis = _scan_swift_file(
-            swift_file,
-            rel,
-            package_map=swift_package_map,
-        )
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(swift_call_edges)
-        if swift_analysis is not None:
-            for swift_function in swift_analysis.functions.values():
-                swift_functions[_swift_function_key(swift_function.scope_name, swift_function.name)] = swift_function
-            swift_tool_registrations.extend(swift_analysis.tool_registrations)
-
-    for kotlin_file in kotlin_files:
-        rel = str(kotlin_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, kotlin_call_edges, kotlin_analysis = _scan_kotlin_file(
-            kotlin_file,
-            rel,
-            maven_map=maven_dependency_map,
-        )
-        result.prompts.extend(prompts)
-        result.guardrails.extend(guardrails)
-        result.tools.extend(tools)
-        result.flow_findings.extend(flow_findings)
-        result.frameworks_detected.extend(frameworks)
-        result.call_edges.extend(kotlin_call_edges)
-        if kotlin_analysis is not None:
-            for kotlin_function in kotlin_analysis.functions.values():
-                kotlin_functions[_kotlin_function_key(kotlin_function.scope_name, kotlin_function.name)] = kotlin_function
-            kotlin_tool_registrations.extend(kotlin_analysis.tool_registrations)
-
-    application_entries_by_token: dict[str, ApplicationEntrypoint] = {}
-    for index, entry in enumerate(result.application_entrypoints):
-        if entry.language == "python":
-            continue
-        token = f"__application_entrypoint_{index}"
-        if entry.language == "javascript_typescript":
-            resolved = _application_handler(entry, js_ts_functions)
-            if resolved is None:
-                continue
-            handler_key, _handler = resolved
-            js_ts_application_registrations.append(
-                JSTSToolRegistration(tool_name=token, handler_name=handler_key, line_number=entry.line_number)
-            )
-        elif entry.language == "go":
-            resolved = _application_handler(entry, go_functions)
-            if resolved is None:
-                continue
-            _handler_key, handler = resolved
-            go_application_registrations.append(
-                _GoToolRegistration(
-                    tool_name=token,
-                    handler_name=handler.name,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    scope_name=handler.scope_name,
-                    imported_aliases=handler.imported_aliases,
-                )
-            )
-        elif entry.language == "rust":
-            resolved = _application_handler(entry, rust_functions)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            rust_application_registrations.append(
-                _RustToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    module_name=handler.module_name,
-                    crate_bindings=handler.crate_bindings,
-                )
-            )
-        elif entry.language == "java":
-            resolved = _application_handler(entry, java_methods)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            java_application_registrations.append(
-                _JavaToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    class_name=handler.class_name,
-                    import_bindings=handler.import_bindings,
-                )
-            )
-        elif entry.language == "csharp":
-            resolved = _application_handler(entry, csharp_methods)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            csharp_application_registrations.append(
-                _CSharpToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    class_name=handler.class_name,
-                    import_bindings=handler.import_bindings,
-                )
-            )
-        elif entry.language == "ruby":
-            resolved = _application_handler(entry, ruby_methods)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            ruby_application_registrations.append(
-                _RubyToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    class_name=handler.class_name,
-                    import_bindings=handler.import_bindings,
-                )
-            )
-        elif entry.language == "php":
-            resolved = _application_handler(entry, php_methods)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            php_application_registrations.append(
-                _PhpToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    class_name=handler.class_name,
-                    import_bindings=handler.import_bindings,
-                )
-            )
-        elif entry.language == "swift":
-            resolved = _application_handler(entry, swift_functions)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            swift_application_registrations.append(
-                _SwiftToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    scope_name=handler.scope_name,
-                    import_bindings=handler.import_bindings,
-                )
-            )
-        elif entry.language == "kotlin":
-            resolved = _application_handler(entry, kotlin_functions)
-            if resolved is None:
-                continue
-            handler_key, handler = resolved
-            kotlin_application_registrations.append(
-                _KotlinToolRegistration(
-                    tool_name=token,
-                    handler_name=handler_key,
-                    line_number=entry.line_number,
-                    file_path=entry.file_path,
-                    scope_name=handler.scope_name,
-                    import_bindings=handler.import_bindings,
-                )
-            )
-        else:
-            continue
-        application_entries_by_token[token] = entry
-
-    python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
-    result.call_edges.extend(python_call_edges)
-    result.flow_findings.extend(interprocedural_findings)
-    python_application_entrypoints = [entry for entry in result.application_entrypoints if entry.language == "python"]
-    result.dependency_symbol_reach.extend(_build_dependency_symbol_reach(function_analyses, python_application_entrypoints))
-    result.flow_findings.extend(_build_taint_findings(function_analyses, python_application_entrypoints))
-    js_ts_call_edges, js_ts_interprocedural_findings = _build_js_ts_flow_findings(
-        functions=js_ts_functions,
-        tool_registrations=js_ts_tool_registrations,
-    )
-    result.call_edges.extend(js_ts_call_edges)
-    result.flow_findings.extend(js_ts_interprocedural_findings)
-    go_call_edges, go_interprocedural_findings = _build_go_flow_findings(
-        functions=go_functions,
-        tool_registrations=go_tool_registrations,
-    )
-    result.call_edges.extend(go_call_edges)
-    result.flow_findings.extend(go_interprocedural_findings)
-    result.dependency_symbol_reach.extend(
-        build_js_ts_dependency_symbol_reach(
-            functions=js_ts_functions,
-            tool_registrations=js_ts_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_go_dependency_symbol_reach(
-            functions=go_functions,
-            tool_registrations=go_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_rust_dependency_symbol_reach(
-            functions=rust_functions,
-            tool_registrations=rust_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_java_dependency_symbol_reach(
-            methods=java_methods,
-            tool_registrations=java_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_csharp_dependency_symbol_reach(
-            methods=csharp_methods,
-            tool_registrations=csharp_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_ruby_dependency_symbol_reach(
-            methods=ruby_methods,
-            tool_registrations=ruby_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_php_dependency_symbol_reach(
-            methods=php_methods,
-            tool_registrations=php_tool_registrations,
-            package_map=composer_package_map,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_swift_dependency_symbol_reach(
-            functions=swift_functions,
-            tool_registrations=swift_tool_registrations,
-            package_map=swift_package_map,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    result.dependency_symbol_reach.extend(
-        build_kotlin_dependency_symbol_reach(
-            functions=kotlin_functions,
-            tool_registrations=kotlin_tool_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-
-    application_reaches: list[DependencySymbolReach] = []
-    application_reaches.extend(
-        build_js_ts_dependency_symbol_reach(
-            functions=js_ts_functions,
-            tool_registrations=js_ts_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_go_dependency_symbol_reach(
-            functions=go_functions,
-            tool_registrations=go_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_rust_dependency_symbol_reach(
-            functions=rust_functions,
-            tool_registrations=rust_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_java_dependency_symbol_reach(
-            methods=java_methods,
-            tool_registrations=java_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_csharp_dependency_symbol_reach(
-            methods=csharp_methods,
-            tool_registrations=csharp_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_ruby_dependency_symbol_reach(
-            methods=ruby_methods,
-            tool_registrations=ruby_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_php_dependency_symbol_reach(
-            methods=php_methods,
-            tool_registrations=php_application_registrations,
-            package_map=composer_package_map,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_swift_dependency_symbol_reach(
-            functions=swift_functions,
-            tool_registrations=swift_application_registrations,
-            package_map=swift_package_map,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    application_reaches.extend(
-        build_kotlin_dependency_symbol_reach(
-            functions=kotlin_functions,
-            tool_registrations=kotlin_application_registrations,
-            max_depth=_python_max_taint_depth(),
-        )
-    )
-    _stamp_application_reaches(application_reaches, application_entries_by_token)
-    result.dependency_symbol_reach.extend(application_reaches)
-
-    # Test fixtures remain visible in inventory, but are not production
-    # reachability evidence. Otherwise dev-only imports become build-blocking
-    # production CVEs.
-    result.flow_findings = [finding for finding in result.flow_findings if not _is_test_source_path(finding.file_path)]
-    result.dependency_symbol_reach = [reach for reach in result.dependency_symbol_reach if not _is_test_source_path(reach.file_path)]
-
-    deduped_call_edges: list[CallEdge] = []
-    seen_call_edges: set[tuple[str, str, str, int]] = set()
-    for edge in result.call_edges:
-        key = (edge.caller, edge.callee, edge.file_path, edge.line_number)
-        if key in seen_call_edges:
-            continue
-        seen_call_edges.add(key)
-        deduped_call_edges.append(edge)
-    result.call_edges = deduped_call_edges
-
-    # Deduplicate frameworks
-    result.frameworks_detected = sorted(set(result.frameworks_detected))
-
+    lanes = {
+        language: _LanguageLane(spec, files)
+        for (language, spec), files in zip(_language_specs(project).items(), language_files, strict=True)
+    }
+    function_analyses = _scan_python_files(project, py_files, result)
+    for language, lane in lanes.items():
+        (_scan_js_ts_lane if language == "javascript_typescript" else _scan_language_lane)(project, lane, result)
+    entries_by_token = _bind_application_entrypoints(result, lanes)
+    _add_python_flows(result, function_analyses)
+    _add_language_flows(result, lanes)
+    _add_application_reaches(result, lanes, entries_by_token)
+    _finalize_result(result)
     return result

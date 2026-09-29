@@ -940,12 +940,7 @@
       "function_lines": 83
     },
     "ast_analyzer.py": {
-      "deferred_imports": 1,
-      "file_lines": 883
-    },
-    "ast_analyzer.py::analyze_project": {
-      "complexity": 89,
-      "function_lines": 685
+      "deferred_imports": 1
     },
     "ast_csharp.py": {
       "deferred_imports": 1
@@ -3297,12 +3292,7 @@
       "function_lines": 87
     },
     "oci_parser.py": {
-      "deferred_imports": 2,
-      "file_lines": 1871
-    },
-    "oci_parser.py::_extract_packages_from_layer": {
-      "complexity": 131,
-      "function_lines": 606
+      "file_lines": 1826
     },
     "oci_parser.py::_parse_layers_from_tarball": {
       "function_lines": 126

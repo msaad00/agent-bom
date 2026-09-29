@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFindingAssetHref, buildFindingInvestigationHref } from "@/lib/finding-investigation-href";
+import { buildFindingAssetHref, buildFindingInvestigationHref, buildFindingReturnHref, withFindingContext } from "@/lib/finding-investigation-href";
 import { defaultOperatorLanding, OVERVIEW_LANDING } from "@/lib/operator-landing";
 
 describe("buildFindingInvestigationHref", () => {
@@ -60,4 +60,32 @@ it("opens the exact asset neighborhood with occurrence and snapshot provenance",
   expect(params.get("node")).toBe("package:exact");
   expect(params.get("finding")).toBe("occurrence-1");
   expect(params.get("scan")).toBe("scan-1");
+});
+
+it("stamps the finding source snapshot separately from the navigable graph snapshot", () => {
+  const params = new URL(buildFindingInvestigationHref({ id: "issue", finding_id: "finding-a", scan_id: "original", packages: [], agents: [] }), "http://localhost").searchParams;
+  expect(params.get("finding_scan")).toBe("original");
+});
+
+it("keeps the original finding snapshot after graph navigation and encodes identifiers", () => {
+  const finding = "finding/&next=other";
+  const original = "scan/?original=1";
+  const current = new URLSearchParams({ finding, finding_scan: original, scan: "another-snapshot" });
+  const next = new URL(withFindingContext("/security-graph?lens=lineage&scan=another-snapshot", current), "http://localhost");
+  expect(next.searchParams.get("scan")).toBe("another-snapshot");
+  const back = new URL(buildFindingReturnHref(next.searchParams)!, "http://localhost");
+  expect(back.pathname).toBe("/findings");
+  expect(Object.fromEntries(back.searchParams)).toEqual({ finding, scan: original, window: "0" });
+});
+
+it("preserves related-finding provenance without restoring an asserted path association", () => {
+  const next = new URL(withFindingContext("/security-graph?lens=estate", new URLSearchParams({ related_finding: "f-1", scan: "s-1" })), "http://localhost");
+  expect(next.searchParams.has("finding")).toBe(false);
+  expect(next.searchParams.get("related_finding")).toBe("f-1");
+  expect(buildFindingReturnHref(next.searchParams)).toBe("/findings?finding=f-1&scan=s-1&window=0");
+});
+
+it("does not invent a finding or snapshot for ordinary graph browsing", () => {
+  expect(buildFindingReturnHref(new URLSearchParams({ scan: "s-1" }))).toBeNull();
+  expect(buildFindingReturnHref(new URLSearchParams({ finding: "f-1" }))).toBe("/findings?finding=f-1");
 });

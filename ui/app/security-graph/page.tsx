@@ -80,7 +80,8 @@ import {
   toExposurePathFromAttackPath,
   withCanonicalExposurePresentation,
 } from "@/lib/attack-paths";
-import { buildFindingAssetHref } from "@/lib/finding-investigation-href";
+import { FindingInvestigationContext } from "@/components/finding-investigation-context";
+import { buildFindingAssetHref, withFindingContext } from "@/lib/finding-investigation-href";
 import { SecurityGraphInvestigation } from "@/components/security-graph-investigation";
 import { GraphSurface } from "@/app/graph/graph-surface";
 import type { UnifiedGraphData, UnifiedNode } from "@/lib/graph-schema";
@@ -581,12 +582,12 @@ function AttackPathInvestigationContent() {
   );
   const fullGraphHref = useMemo(() => {
     if (investigationRoot) {
-      return buildGraphInvestigationHref({
+      return withFindingContext(buildGraphInvestigationHref({
         scanId: selectedScanId || undefined,
         agentName: focus.agentName || undefined,
         rootId: investigationRoot.id,
         rootLabel: investigationRoot.label,
-      });
+      }), searchParams);
     }
 
     const params = new URLSearchParams();
@@ -594,8 +595,8 @@ function AttackPathInvestigationContent() {
     if (focus.agentName) params.set("agent", focus.agentName);
     const query = params.toString();
     if (query) params.set("lens", "lineage");
-    return params.size > 0 ? `/security-graph?${params.toString()}` : "/security-graph?lens=lineage";
-  }, [focus.agentName, investigationRoot, selectedScanId]);
+    return withFindingContext(params.size > 0 ? `/security-graph?${params.toString()}` : "/security-graph?lens=lineage", searchParams);
+  }, [focus.agentName, investigationRoot, selectedScanId, searchParams]);
   const resetFocusHref = useMemo(
     () => buildSecurityGraphHref({ scanId: selectedScanId || undefined }),
     [selectedScanId],
@@ -953,7 +954,7 @@ function AttackPathInvestigationContent() {
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
             {focus.nodeId ? (
-              <Link href={buildFindingAssetHref({ nodeId: focus.nodeId, findingId: focus.findingId, scanId: selectedScanId })} className="sg-action">
+              <Link href={buildFindingAssetHref({ findingScanId: searchParams.get("finding_scan") || focus.scanId, nodeId: focus.nodeId, findingId: focus.findingId, scanId: selectedScanId })} className="sg-action">
                 Inspect linked asset
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -1285,7 +1286,7 @@ function AttackPathInvestigationContent() {
 function SecurityGraphPageContent() {
   const searchParams = useSearchParams();
   return resolveSecurityGraphSurface(searchParams) === "attack-path"
-    ? <AttackPathInvestigationContent />
+    ? <><FindingInvestigationContext /><AttackPathInvestigationContent /></>
     : <GraphSurface />;
 }
 

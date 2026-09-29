@@ -15,7 +15,7 @@ Design mirrors the cloud-connection scheduler:
   on ``next_run`` (``ExportScheduleStore.claim_due``); exactly one replica fires
   a given due export.
 * **Isolated + bounded.** Each export runs in a worker thread (streaming + the
-  destination client are blocking) under a semaphore; one failing schedule is
+  destination client are blocking) in bounded batches; one failing schedule is
   marked ``error`` and never stops the loop.
 """
 
@@ -121,35 +121,31 @@ def _decrypt_secret(secret_encrypted: str) -> str | None:
 
 
 def _mark_destination(store: ExportDestinationStore, tenant_id: str, record: ExportDestinationRecord, status: str, detail: str) -> None:
-    record.status = status
-    record.status_detail = detail
-    record.last_run_at = _now().isoformat()
-    record.last_run_status = status
-    store.put(record, tenant_id=tenant_id)
+    store.record_run(
+        record,
+        tenant_id=tenant_id,
+        status=status,
+        detail=detail,
+        run_status="success" if status == "active" else status,
+        completed_at=_now().isoformat(),
+    )
 
 
 def _persist_run(store: ExportScheduleStore, schedule: ExportSchedule, now_iso: str, *, status: str, row_count: int | None) -> None:
-    latest = store.get(schedule.schedule_id, schedule.tenant_id)
-    if latest is None:
-        return
-    latest.last_run = now_iso
-    latest.last_run_status = status
-    latest.last_row_count = row_count
-    latest.updated_at = now_iso
-    store.put(latest, tenant_id=schedule.tenant_id)
+    store.record_run(schedule, tenant_id=schedule.tenant_id, at=now_iso, status=status, row_count=row_count)
 
 
-def claim_due_schedules(store: ExportScheduleStore, now: datetime) -> list[ExportSchedule]:
+def claim_due_schedules(store: ExportScheduleStore, now: datetime, *, limit: int = 100) -> list[ExportSchedule]:
     """Select due schedules and atomically claim each by advancing ``next_run``."""
     now_iso = now.isoformat()
     won: list[ExportSchedule] = []
-    for schedule in store.list_due(now_iso):
+    for schedule in store.list_due(now_iso, limit=limit):
         if not schedule.enabled:
             continue
         next_run = parse_cron_next(schedule.cron_expression, now)
         next_run_iso = next_run.isoformat() if next_run else None
-        if store.claim_due(schedule, next_run_iso, tenant_id=schedule.tenant_id):
-            won.append(schedule)
+        if run_tenant_bound(schedule.tenant_id, store.claim_due, schedule, next_run_iso, tenant_id=schedule.tenant_id):
+            won.append(schedule.model_copy(update={"next_run": next_run_iso}))
     return won
 
 
@@ -161,26 +157,17 @@ async def run_due_exports_once(
     max_concurrency: int = _MAX_CONCURRENCY,
 ) -> int:
     """Claim and run every due export once, with bounded concurrency."""
-    claimed = claim_due_schedules(store, now)
-    if not claimed:
-        return 0
-
-    semaphore = asyncio.Semaphore(max(1, max_concurrency))
-
-    async def _guarded(schedule: ExportSchedule) -> None:
-        async with semaphore:
-            await asyncio.to_thread(
-                run_tenant_bound,
-                schedule.tenant_id,
-                execute_export,
-                schedule,
-                store,
-                destination_store,
-                now,
+    capacity = min(64, max(1, max_concurrency))
+    completed = 0
+    while claimed := claim_due_schedules(store, now, limit=capacity):
+        await asyncio.gather(
+            *(
+                asyncio.to_thread(run_tenant_bound, schedule.tenant_id, execute_export, schedule, store, destination_store, now)
+                for schedule in claimed
             )
-
-    await asyncio.gather(*(_guarded(schedule) for schedule in claimed))
-    return len(claimed)
+        )
+        completed += len(claimed)
+    return completed
 
 
 async def export_scheduler_loop(

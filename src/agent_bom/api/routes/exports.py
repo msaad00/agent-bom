@@ -200,21 +200,23 @@ def _run_export_sync(tenant_id: str, destination_id: str, run_id: str) -> None:
             actor="api",
         )
     except ExportPublicationIndeterminateError:
-        record.status = "indeterminate"
-        record.last_run_status = "indeterminate"
-        record.status_detail = "Publication status is indeterminate; verify the destination marker before retrying"
+        status = run_status = "indeterminate"
+        detail = "Publication status is indeterminate; verify the destination marker before retrying"
         logger.warning("One-off export publication is indeterminate for destination %s", destination_id)
     except Exception as exc:  # noqa: BLE001 - worker must persist destination failure state
-        record.status = "error"
-        record.last_run_status = "error"
-        record.status_detail = sanitize_error(exc)
+        status = run_status = "error"
+        detail = sanitize_error(exc)
         logger.warning("One-off export failed for destination %s", destination_id)
     else:
-        record.status = "active"
-        record.last_run_status = "success"
-        record.status_detail = ""
-    record.last_run_at = datetime.now(timezone.utc).isoformat()
-    store.put(record, tenant_id=tenant_id)
+        status, run_status, detail = "active", "success", ""
+    store.record_run(
+        record,
+        tenant_id=tenant_id,
+        status=status,
+        detail=detail,
+        run_status=run_status,
+        completed_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 # ── Schedules ─────────────────────────────────────────────────────────────

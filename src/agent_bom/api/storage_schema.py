@@ -72,6 +72,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
         ("graph_nodes", "graph_edges", "graph_node_search", "graph_snapshots", "graph_correlation_runs"),
         version=5,
     ),
+    StorageSchemaComponent("export_schedules", "sqlite/postgres", ("export_schedules",)),
     StorageSchemaComponent("export_destinations", "sqlite/postgres", ("export_destinations",)),
     StorageSchemaComponent("graph_scenarios", "sqlite/postgres", ("graph_scenarios",)),
     StorageSchemaComponent("identity_scim", "sqlite/postgres", ("scim_users", "scim_groups")),

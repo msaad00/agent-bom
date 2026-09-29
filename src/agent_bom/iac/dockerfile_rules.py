@@ -8,7 +8,7 @@ registered for its instruction (see ``DOCKER_LINE_RULES``).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from typing import NamedTuple
 
 from agent_bom.iac.models import IaCFinding
 
@@ -45,8 +45,7 @@ _CACHE_CLEANUP_RE = re.compile(
 )
 
 
-@dataclass(frozen=True)
-class DockerLine:
+class DockerLine(NamedTuple):
     """One non-comment Dockerfile line as the rule checks see it."""
 
     stripped: str

@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-29T00:38:11.814Z",
-  "source_commit": "d6ecddd98bc0cd00163cb154530a75a7b24190ef",
+  "captured_at": "2026-09-29T06:32:00.450Z",
+  "source_commit": "957f3b2fbfb4963f5de3fa4c8a39ac44fd8fb254",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:1c4adf181039cd9ff376e383259064dbaec27c8291d8125043ee0a9788930080",
+  "capture_inputs_sha256": "sha256:29851d3c8b5ec9c718dfc120d99d5e164ec8905486545b24daa1009ee5dd4155",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -92,7 +92,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.1",
-      "sha256": "sha256:a63fcd331be97edc1e366fa023bf9d148c34fd4ac771f172421f12eb641aeab3"
+      "sha256": "sha256:76acab40bb27ef03f02579e0690de045822d5e9a9c98502213757bc3b4908cb3"
     },
     {
       "presentation": "dark desktop",
@@ -108,7 +108,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.106.1",
-      "sha256": "sha256:92ba4f52ee314eda7cd2735ce8484c3739c58e6958b893cbad7128d5a6409827"
+      "sha256": "sha256:87ada7723972b28e14ed8e76338c5deb4f2682af627af5c16377c1ee79bc3ae9"
     },
     {
       "presentation": "dark desktop",
@@ -217,7 +217,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.1",
-      "sha256": "sha256:fafbc50bd1c5b4fb77dfd049fdec5b79a2271264271d2f8625639ace2de827de"
+      "sha256": "sha256:4185b1e7268b08cf447f9f23db34aea91fd579062060b12d1fa7abd277212268"
     },
     {
       "presentation": "dark desktop 1512x811",

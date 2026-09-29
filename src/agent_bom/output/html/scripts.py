@@ -362,6 +362,19 @@ PAGE_INTERACTIONS_JS = """\
   }
 """
 
+_GRAPH_SCRIPT_BODY = "".join(
+    (
+        SEVERITY_CHART_JS,
+        BLAST_RADIUS_CHART_JS,
+        SUPPLY_CHAIN_GRAPH_JS,
+        SUPPLY_CHAIN_SIDEBAR_JS,
+        SUPPLY_CHAIN_TOOLS_JS,
+        ATTACK_FLOW_GRAPH_JS,
+        PAGE_INTERACTIONS_JS,
+        "})();\n</script>",
+    )
+)
+
 
 def render_graph_script(chart_data_json: str, elements_json: str, attack_flow_json: str) -> str:
     """Return the Chart.js + Cytoscape graph/interaction <script> block."""
@@ -374,19 +387,7 @@ def render_graph_script(chart_data_json: str, elements_json: str, attack_flow_js
   var ATTACK_FLOW = {attack_flow_json};
 
 """
-    return "".join(
-        (
-            injected_data,
-            SEVERITY_CHART_JS,
-            BLAST_RADIUS_CHART_JS,
-            SUPPLY_CHAIN_GRAPH_JS,
-            SUPPLY_CHAIN_SIDEBAR_JS,
-            SUPPLY_CHAIN_TOOLS_JS,
-            ATTACK_FLOW_GRAPH_JS,
-            PAGE_INTERACTIONS_JS,
-            "})();\n</script>",
-        )
-    )
+    return injected_data + _GRAPH_SCRIPT_BODY
 
 
 def _offline_assets_notice() -> str:

@@ -158,3 +158,40 @@ Expired results cannot be read and are removed on the next successful write for
 that tenant; this cache is not an audit archive. Eviction is transactional.
 Missing migrations and unavailable storage fail closed, without an in-memory
 fallback. Older binaries ignore the additive table on rollback.
+
+
+## Upgrade finding ingest storage
+
+Before upgrading an existing control plane, stop and drain every API, worker,
+connector and MCP process that writes findings, then take a restorable database
+backup. Mixed old/new writers and direct SQL ledger mutations are unsupported:
+older writers do not maintain the transaction-owned tenant counters.
+
+For PostgreSQL, run `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`
+with the migration-owner connection configured through `ALEMBIC_DATABASE_URL`.
+Revision `20260929_01` creates the RLS-protected ingest state. The ordinary app
+role cannot read or mutate another tenant's counters; an unbound write fails
+closed. Use the separate maintenance role for authorized tenant cleanup.
+The bootstrap SQL still requires the full Alembic migration chain.
+
+SQLite upgrades on store initialization inside a writer-excluding transaction.
+Schema version 3 repairs historical duplicate ordinals, preserves finding
+payloads and current-state pointers, and enforces unique tenant ordinals.
+Restart pagination from the first page after upgrading; saved pre-upgrade
+cursors may reference moved ordinals. Allow space and downtime for the one-time
+repair and index build on the existing ledger.
+
+Restart compatible writers only after migration succeeds. Ingest totals are
+captured inside the committing transaction; later concurrent writes may change
+the total after a response is produced. First ingest per existing tenant reads
+its count and maximum ordinal once. Subsequent batches use indexed durable
+state, and ledger/current/reference/counter writes roll back together on error.
+Clearing a tenant preserves SQLite's ordinal high-water mark.
+
+Verify with a bounded ingest, an idempotent replay, and paged finding reads
+before resuming all producers. To roll back, drain writers again and restore
+the pre-upgrade backup with its compatible application version; the PostgreSQL
+migration intentionally has no destructive downgrade. Transaction atomicity
+does not establish independent audit retention or acknowledged-write survival
+under host/storage loss. SQLite WAL uses NORMAL synchronous mode; replication,
+backup recovery, failover and power-loss durability require separate qualification.

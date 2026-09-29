@@ -50,6 +50,7 @@ from agent_bom.api.hub_reference_store import (
 )
 from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads, current_order
 from agent_bom.api.storage.finding_current_writes import reconcile_current, write_current_batch
+from agent_bom.api.storage.finding_ingest_state import LedgerIngestState, ensure_sqlite_ingest_state, read_ingest_state, write_ingest_state
 from agent_bom.api.storage.finding_ledger_writes import write_ledger_batch
 from agent_bom.api.storage.finding_reads import SqlFindingReads
 from agent_bom.api.storage.finding_write_session import finding_write_session
@@ -842,7 +843,10 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
         _CURRENT_LIFECYCLE_SQLITE_DDL,
     )
 
-    conn.executescript(_CURRENT_LIFECYCLE_SQLITE_DDL)
+    # executescript commits an open transaction; keep schema upgrades atomic.
+    for statement in _CURRENT_LIFECYCLE_SQLITE_DDL.split(";"):
+        if statement.strip():
+            conn.execute(statement)
     # Backfill the origin column before the sort indexes so the composite
     # ``(tenant_id, origin, cvss_score DESC, …)`` index can build on pre-existing
     # tables that predate the column.
@@ -855,7 +859,9 @@ def _ensure_current_lifecycle_sqlite(conn: sqlite3.Connection) -> None:
     # pre-existing tables that predate those columns (#3984).
     _migrate_current_ledger_ref_sqlite(conn)
     _migrate_current_ledger_ordinal_sqlite(conn)
-    conn.executescript(_CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE)
+    for statement in _CURRENT_LIFECYCLE_SORT_INDEXES_SQLITE.split(";"):
+        if statement.strip():
+            conn.execute(statement)
     _ensure_current_scale_indexes_sqlite(conn)
     _migrate_lifecycle_observations_l2_sqlite(conn)
     conn.execute("UPDATE hub_findings_current SET cvss_score = 0 WHERE cvss_score IS NULL")
@@ -1440,7 +1446,7 @@ class InMemoryComplianceHubStore:
 
 # Default name surfaced in the openapi description; set when AGENT_BOM_DB is wired.
 _SCHEMA_KEY = "compliance_hub"
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 def _frameworks_csv(payload: dict[str, Any]) -> str:
@@ -1582,9 +1588,6 @@ class SQLiteComplianceHubStore:
         self._db_path = db_path
         self._local = threading.local()
         self._current_has_ledger_col: bool | None = None
-        self._ingest_stats_lock = threading.Lock()
-        self._next_ordinal_by_tenant: dict[str, int] = {}
-        self._finding_count_by_tenant: dict[str, int] = {}
         self._init_db()
 
     def _ensure_current_has_ledger_col(self) -> bool:
@@ -1609,35 +1612,37 @@ class SQLiteComplianceHubStore:
     def _init_db(self) -> None:
         from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
-        ensure_sqlite_schema_version(self._conn, _SCHEMA_KEY, _SCHEMA_VERSION)
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS compliance_hub_findings (
-                tenant_id TEXT NOT NULL,
-                finding_id TEXT NOT NULL,
-                ingested_at TEXT NOT NULL,
-                source TEXT NOT NULL,
-                applicable_frameworks_csv TEXT NOT NULL DEFAULT '',
-                payload TEXT NOT NULL,
-                ordinal INTEGER NOT NULL,
-                effective_reach_score REAL NOT NULL DEFAULT 0,
-                origin TEXT NOT NULL DEFAULT '',
-                severity TEXT NOT NULL DEFAULT '',
-                severity_rank INTEGER NOT NULL DEFAULT 0,
-                cvss_score REAL NOT NULL DEFAULT 0,
-                scan_id TEXT NOT NULL DEFAULT '',
-                PRIMARY KEY (tenant_id, finding_id)
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            ensure_sqlite_schema_version(self._conn, _SCHEMA_KEY, _SCHEMA_VERSION)
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS compliance_hub_findings (
+                    tenant_id TEXT NOT NULL,
+                    finding_id TEXT NOT NULL,
+                    ingested_at TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    applicable_frameworks_csv TEXT NOT NULL DEFAULT '',
+                    payload TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL,
+                    effective_reach_score REAL NOT NULL DEFAULT 0,
+                    origin TEXT NOT NULL DEFAULT '',
+                    severity TEXT NOT NULL DEFAULT '',
+                    severity_rank INTEGER NOT NULL DEFAULT 0,
+                    cvss_score REAL NOT NULL DEFAULT 0,
+                    scan_id TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (tenant_id, finding_id)
+                )
+                """
             )
-            """
-        )
-        self._migrate_columns()
-        self._migrate_primary_key()
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
-        self._ensure_scale_indexes()
-        _ensure_current_lifecycle_sqlite(self._conn)
-        _ensure_overview_revision_sqlite(self._conn)
-        ensure_sqlite_reference_tables(self._conn)
-        self._conn.commit()
+            self._migrate_columns()
+            self._migrate_primary_key()
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_hub_findings_tenant_order ON compliance_hub_findings(tenant_id, ordinal)")
+            self._ensure_scale_indexes()
+            _ensure_current_lifecycle_sqlite(self._conn)
+            _ensure_overview_revision_sqlite(self._conn)
+            ensure_sqlite_reference_tables(self._conn)
+            ensure_sqlite_ingest_state(self._conn)
 
     def _migrate_columns(self) -> None:
         """Add PR1 read-scale columns to pre-existing tables (idempotent)."""
@@ -1803,34 +1808,6 @@ class SQLiteComplianceHubStore:
             "ON compliance_hub_findings(tenant_id, LOWER(severity)) WHERE severity != ''"
         )
 
-    def _reset_ingest_stats(self, tenant_id: str) -> None:
-        with self._ingest_stats_lock:
-            self._next_ordinal_by_tenant.pop(tenant_id, None)
-            self._finding_count_by_tenant.pop(tenant_id, None)
-
-    def _bootstrap_ingest_stats(self, tenant_id: str) -> None:
-        with self._ingest_stats_lock:
-            if tenant_id in self._finding_count_by_tenant:
-                return
-        count_row = self._conn.execute(
-            "SELECT COUNT(*) FROM compliance_hub_findings WHERE tenant_id = ?",
-            (tenant_id,),
-        ).fetchone()
-        max_row = self._conn.execute(
-            "SELECT COALESCE(MAX(ordinal), 0) FROM compliance_hub_findings WHERE tenant_id = ?",
-            (tenant_id,),
-        ).fetchone()
-        with self._ingest_stats_lock:
-            if tenant_id in self._finding_count_by_tenant:
-                return
-            self._finding_count_by_tenant[tenant_id] = int(count_row[0]) if count_row else 0
-            self._next_ordinal_by_tenant[tenant_id] = int(max_row[0]) + 1 if max_row else 1
-
-    def _next_ordinal(self, tenant_id: str) -> int:
-        self._bootstrap_ingest_stats(tenant_id)
-        with self._ingest_stats_lock:
-            return self._next_ordinal_by_tenant[tenant_id]
-
     def _invalidate_ingest_caches(self, tenant_id: str) -> None:
         from agent_bom.api import hub_overview_cache
         from agent_bom.api.findings_count_cache import invalidate_tenant
@@ -1841,34 +1818,25 @@ class SQLiteComplianceHubStore:
     def overview_evidence_revision(self, tenant_id: str) -> int:
         return self._ledger_reads.overview_evidence_revision(tenant_id)
 
-    def _ledger_insert_no_commit(self, tenant_id: str, findings: list[dict[str, Any]]) -> tuple[int, int, int]:
+    def _ledger_insert_no_commit(self, tenant_id: str, findings: list[dict[str, Any]]) -> tuple[int, int]:
         tx = finding_write_session(self._conn, "sqlite", tenant_id)
-        next_ord = self._next_ordinal(tenant_id)
-        new_rows, num_rows = write_ledger_batch(tx, "sqlite", tenant_id, findings, next_ordinal=next_ord)
-        return new_rows, next_ord, num_rows
-
-    def _commit_ledger_stats(self, tenant_id: str, next_ord: int, num_rows: int, new_rows: int) -> int:
-        """Advance the cached ordinal/total AFTER the ledger write committed."""
-        with self._ingest_stats_lock:
-            self._next_ordinal_by_tenant[tenant_id] = next_ord + num_rows
-            self._finding_count_by_tenant[tenant_id] += new_rows
-            return self._finding_count_by_tenant[tenant_id]
+        state = read_ingest_state(tx, tenant_id)
+        new_rows, num_rows = write_ledger_batch(tx, "sqlite", tenant_id, findings, next_ordinal=state.next_ordinal)
+        total = state.finding_count + new_rows
+        # Allocate for input offsets, including skipped values; valid rows after
+        # malformed entries must never overlap the following batch's allocation.
+        write_ingest_state(tx, tenant_id, LedgerIngestState(total, state.next_ordinal + len(findings)))
+        return total, num_rows
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
         tenant_id = require_explicit_tenant_id(tenant_id)
-        if not findings:
-            self._bootstrap_ingest_stats(tenant_id)
-            with self._ingest_stats_lock:
-                if tenant_id in self._finding_count_by_tenant:
-                    return self._finding_count_by_tenant[tenant_id]
-            return self.count(tenant_id)
         with self._conn:
-            new_rows, next_ord, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
+            total, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
             if num_rows:
                 _bump_overview_revision_sqlite(self._conn, tenant_id)
         if num_rows:
             self._invalidate_ingest_caches(tenant_id)
-        return self._commit_ledger_stats(tenant_id, next_ord, num_rows, new_rows)
+        return total
 
     def ingest_batch_atomic(
         self,
@@ -1888,17 +1856,14 @@ class SQLiteComplianceHubStore:
         current-state upsert left ``tenant_total`` inflated while the findings
         never appeared in any list. Threading all three writes through a single
         ``with conn`` block (commit on success, rollback on failure) makes a
-        mid-batch failure roll BOTH back, mirroring the Postgres seam. The cached
-        ordinal/total is advanced only after the commit succeeds. Returns
+        mid-batch failure roll BOTH back, mirroring the Postgres seam. Durable
+        ordinal/count state commits or rolls back with the ledger. Returns
         ``(new_total, reconciled)``.
         """
         tenant_id = require_explicit_tenant_id(tenant_id)
         conn = self._conn
         with conn:  # sqlite3 connection: commit on success, rollback on exception
-            if findings:
-                new_rows, next_ord, num_rows = self._ledger_insert_no_commit(tenant_id, findings)
-            else:
-                new_rows, next_ord, num_rows = 0, self._next_ordinal(tenant_id), 0
+            new_total, _ = self._ledger_insert_no_commit(tenant_id, findings)
             self._upsert_current_no_commit(
                 tenant_id,
                 findings,
@@ -1916,7 +1881,6 @@ class SQLiteComplianceHubStore:
                 )
             _bump_overview_revision_sqlite(conn, tenant_id)
         self._invalidate_ingest_caches(tenant_id)
-        new_total = self._commit_ledger_stats(tenant_id, next_ord, num_rows, new_rows)
         return new_total, reconciled
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -2112,15 +2076,17 @@ class SQLiteComplianceHubStore:
     def clear(self, tenant_id: str) -> int:
         tenant_id = require_explicit_tenant_id(tenant_id)
         with self._conn:
+            tx = finding_write_session(self._conn, "sqlite", tenant_id)
+            state = read_ingest_state(tx, tenant_id)
             cur = self._conn.execute(
                 "DELETE FROM compliance_hub_findings WHERE tenant_id = ?",
                 (tenant_id,),
             )
             self._conn.execute("DELETE FROM hub_findings_current WHERE tenant_id = ?", (tenant_id,))
             self._conn.execute("DELETE FROM hub_findings_current_observations WHERE tenant_id = ?", (tenant_id,))
+            write_ingest_state(tx, tenant_id, LedgerIngestState(0, state.next_ordinal))
             _bump_overview_revision_sqlite(self._conn, tenant_id)
         removed = cur.rowcount or 0
-        self._reset_ingest_stats(tenant_id)
         if removed:
             from agent_bom.api import hub_overview_cache
             from agent_bom.api.findings_count_cache import invalidate_tenant

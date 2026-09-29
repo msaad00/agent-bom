@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Protocol
 
+from agent_bom.api.storage.finding_write_session import finding_write_session
+
 MANAGED_TRIAL_DURATION = timedelta(days=14)
 MANAGED_TRIAL_CLEANUP_GRACE = timedelta(days=7)
 
@@ -327,6 +329,8 @@ def delete_tenant_records(tenant_id: str) -> dict[str, int]:
 
         with bypass_tenant_rls():
             with _maintenance_connection() as conn:
+                # Serialize ledger and counter deletion with every ingest writer.
+                finding_write_session(conn, "postgres", tenant_id)
                 table_rows = conn.execute(
                     """SELECT table_name
                        FROM information_schema.columns

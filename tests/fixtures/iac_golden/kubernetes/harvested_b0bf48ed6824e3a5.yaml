@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: myapp:1.0
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          add:
+            - NET_ADMIN
+      resources:
+        limits:
+          cpu: "1"
+          memory: "256Mi"

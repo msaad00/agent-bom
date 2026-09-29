@@ -1,0 +1,4 @@
+resource "aws_s3_bucket" "data" {
+  bucket = "my-data-bucket"
+  acl    = "private"
+}

@@ -8,6 +8,17 @@ Ratcheted per file (existing counts may only shrink, new files start at zero):
 ``graph_api_imports`` (graph/ -> api), ``api_imports`` (any other non-api
 module -> api) and ``deferred_imports`` (imports inside function bodies, not
 counting optional-extra SDKs that must stay lazy).
+
+``broad_except`` counts, per file, every ``except Exception``, ``except
+BaseException`` and bare ``except:`` handler (including tuples that contain
+one), whether the handler swallows, logs or re-raises: the count is the
+handler, not its body. Like import debt it is budgeted repo-wide, so splitting
+a module can move handlers into new files, but the total may only shrink and
+any new broad handler must be paid for by removing one. A handler that genuinely must be broad (a plugin boundary, a top-level
+worker loop) carries ``# broad-except: <reason>`` on its ``except`` line and is
+not counted; at most ``MAX_ANNOTATED_BROAD_EXCEPTS`` per file, and the reason
+must be a real sentence fragment, so the marker cannot become a blanket waiver.
+Upstream failures belong in ``agent_bom.core.errors`` types instead.
 """
 
 from __future__ import annotations
@@ -28,7 +39,11 @@ LIMITS = {
     "deferred_imports": 0,
     "api_imports": 0,
     "graph_api_imports": 0,
+    "broad_except": 0,
 }
+MAX_ANNOTATED_BROAD_EXCEPTS = 3
+BROAD_EXCEPT_MARKER = re.compile(r"#\s*broad-except:\s*(?P<reason>\S.*)$")
+_BROAD_EXCEPTION_NAMES = frozenset({"Exception", "BaseException"})
 # Top-level import names that ship only in optional extras (pyproject
 # optional-dependencies) or are probed at runtime. Importing them inside a
 # function keeps a base install working, so they do not count as deferred debt.
@@ -192,6 +207,27 @@ def layer_metrics(path: str, tree: ast.Module) -> dict[str, int]:
     return {name: value for name, value in metrics.items() if value}
 
 
+def _is_broad_handler(handler: ast.ExceptHandler) -> bool:
+    if handler.type is None:
+        return True
+    names = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any(isinstance(name, ast.Name) and name.id in _BROAD_EXCEPTION_NAMES for name in names)
+
+
+def broad_except_counts(tree: ast.AST, lines: list[str]) -> tuple[int, int]:
+    """Return ``(unannotated, annotated)`` broad exception handlers in a module."""
+    unannotated = annotated = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler) or not _is_broad_handler(node):
+            continue
+        marker = BROAD_EXCEPT_MARKER.search(lines[node.lineno - 1]) if node.lineno <= len(lines) else None
+        if marker and len(marker.group("reason").strip()) >= 10:
+            annotated += 1
+        else:
+            unannotated += 1
+    return unannotated, annotated
+
+
 def boundary_errors(path: str, tree: ast.AST) -> list[str]:
     errors = []
     for node in ast.walk(tree):
@@ -279,7 +315,13 @@ def measure(root: Path) -> tuple[dict[str, dict[str, int]], list[str]]:
         relative = path.relative_to(source).as_posix()
         text = path.read_text()
         tree = ast.parse(text, filename=str(path))
-        metrics[relative] = {"file_lines": len(text.splitlines()), **layer_metrics(relative, tree)}
+        lines = text.splitlines()
+        metrics[relative] = {"file_lines": len(lines), **layer_metrics(relative, tree)}
+        broad, annotated = broad_except_counts(tree, lines)
+        if broad:
+            metrics[relative]["broad_except"] = broad
+        if annotated > MAX_ANNOTATED_BROAD_EXCEPTS:
+            errors.append(f"{relative}: {annotated} '# broad-except:' handlers exceed {MAX_ANNOTATED_BROAD_EXCEPTS}; catch specific errors")
         errors.extend(boundary_errors(relative, tree))
         for name, start, end in function_spans(tree):
             key = f"{relative}::{name}"
@@ -317,7 +359,7 @@ def measure(root: Path) -> tuple[dict[str, dict[str, int]], list[str]]:
 
 # Import-direction debt is budgeted per category, not per file, so splitting a
 # large module can move its imports into new files without growing the total.
-BUDGETED_METRICS = frozenset({"deferred_imports", "api_imports", "graph_api_imports"})
+BUDGETED_METRICS = frozenset({"deferred_imports", "api_imports", "graph_api_imports", "broad_except"})
 
 
 def regressions(metrics: dict[str, dict[str, int]], baseline: dict[str, dict[str, int]]) -> list[str]:

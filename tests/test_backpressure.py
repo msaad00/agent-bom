@@ -152,7 +152,7 @@ async def test_enrichment_backpressure_sheds_with_scan_warning(monkeypatch) -> N
     vuln = Vulnerability(id="CVE-2026-0001", summary="test", severity=Severity.HIGH)
     calls = 0
 
-    async def _slow_epss(cve_ids, client):  # noqa: ARG001
+    async def _slow_epss(cve_ids, client, *, errors=None):  # noqa: ARG001
         nonlocal calls
         calls += 1
         await asyncio.sleep(0.01)

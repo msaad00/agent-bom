@@ -545,7 +545,7 @@ async def test_enrich_skips_nvd_when_cwe_known() -> None:
 
     fetch_calls: list[str] = []
 
-    async def tracking_fetch(cve_id, client, api_key=None):
+    async def tracking_fetch(cve_id, client, api_key=None, *, errors=None):
         fetch_calls.append(cve_id)
         return {
             "weaknesses": [{"description": [{"value": "CWE-89"}]}],
@@ -580,7 +580,7 @@ async def test_enrich_skips_nvd_entirely_when_all_have_cwe() -> None:
 
     fetch_calls: list[str] = []
 
-    async def tracking_fetch(cve_id, client, api_key=None):
+    async def tracking_fetch(cve_id, client, api_key=None, *, errors=None):
         fetch_calls.append(cve_id)
         return None
 
@@ -605,7 +605,7 @@ async def test_enrich_extracts_cwe_from_nvd_response() -> None:
     """CWE IDs from NVD weaknesses should be added to the vulnerability."""
     vuln = Vulnerability(id="CVE-2024-5555", summary="test", severity=Severity.HIGH)
 
-    async def mock_fetch(cve_id, client, api_key=None):
+    async def mock_fetch(cve_id, client, api_key=None, *, errors=None):
         return {
             "weaknesses": [
                 {"description": [{"value": "CWE-79"}, {"value": "CWE-89"}]},

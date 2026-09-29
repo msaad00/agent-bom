@@ -835,7 +835,7 @@ def scan_js_ts_file(
             )
         analysis.tool_registrations = resolved_registrations
         analysis_result = analysis
-        dangerous_call_names.update(analysis.call_names)
+        dangerous_call_names.update(name for name in analysis.call_names if _is_js_ts_dangerous_call_name(name))
         frameworks = sorted(set(frameworks) | set(_frameworks_from_js_modules(analysis.imported_modules)))
 
         seen_tool_signatures = {(tool.name, tool.line_number) for tool in tools}

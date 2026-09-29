@@ -24,6 +24,7 @@ from agent_bom.ast_signal_utils import _GUARDRAIL_CALL_PATTERNS
 from agent_bom.ast_signal_utils import check_prompt_risks as _check_prompt_risks
 from agent_bom.ast_signal_utils import classify_prompt_type as _classify_prompt_type
 from agent_bom.ast_signal_utils import is_agent_tool_decorator as _is_agent_tool_decorator
+from agent_bom.traversal import VENDOR_SKIP_DIRS
 
 
 # Bounded depth for inter-procedural taint propagation. The taint analyzer
@@ -260,23 +261,10 @@ _SANITIZER_CALLS = {
 
 # ── Skip directories ─────────────────────────────────────────────────────────
 
-_SKIP_DIRS = frozenset(
+_SKIP_DIRS = VENDOR_SKIP_DIRS | frozenset(
     {
-        ".venv",
-        "venv",
         "env",
         ".env",
-        "node_modules",
-        "__pycache__",
-        ".git",
-        "dist",
-        "build",
-        "site-packages",
-        ".tox",
-        ".eggs",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
         "tests",
         "test",
         "testing",

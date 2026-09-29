@@ -85,6 +85,8 @@ from agent_bom.ast_rust import _rust_function_key, build_rust_dependency_symbol_
 from agent_bom.ast_rust import scan_rust_file as _scan_rust_file
 from agent_bom.ast_swift import _swift_function_key, build_swift_dependency_symbol_reach, load_swift_package_map
 from agent_bom.ast_swift import scan_swift_file as _scan_swift_file
+from agent_bom.scanners.repo_ignore import RepositoryIgnore
+from agent_bom.traversal import iter_discovery_files
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
@@ -175,7 +177,7 @@ def project_has_analyzable_sources(project_path: str | Path) -> bool:
     project = Path(project_path)
     if not project.is_dir():
         return False
-    for path in project.rglob("*"):
+    for path in iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, ignore=RepositoryIgnore.for_root(project)):
         if not path.is_file():
             continue
         # Only consider path components RELATIVE to the scan root — an ancestor
@@ -225,7 +227,9 @@ class _LanguageLane:
 
 def _collect_sources(project: Path, pattern: str, suffixes: frozenset[str] | None) -> list[Path]:
     files = []
-    for f in sorted(project.rglob(pattern)):
+    for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, ignore=RepositoryIgnore.for_root(project))):
+        if not f.match(pattern):
+            continue
         if suffixes is not None and f.suffix.lower() not in suffixes:
             continue
         if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):

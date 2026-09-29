@@ -35,7 +35,9 @@ for (const theme of ["light", "dark"] as const) for (const width of [1440, 390])
     const inspector = page.getByRole("complementary", { name: "Agent neighborhood inspector" });
     await expect(inspector.getByRole("heading", { name: "Cloud planner", exact: true })).toBeVisible();
     await expect(page.getByTestId("context-overview-title").filter({ hasText: "Ingested worker" })).toBeVisible();
-    await expect(page.getByText("93 recorded agents · snapshot scope")).toBeVisible();
+    await page.getByLabel("Search & direction", { exact: true }).click();
+    await expect(page.getByText("93 recorded agents in this snapshot", { exact: true })).toBeVisible();
+    await page.getByLabel("Search & direction", { exact: true }).click();
     expect(incident.length).toBeGreaterThan(0);
     expect(incident.every(url => url.searchParams.get("scan_id") === snapshot)).toBe(true);
     expect(incident[0]?.searchParams.get("node_id")).toBe(source);

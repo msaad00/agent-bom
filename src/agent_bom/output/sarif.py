@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
-import uuid
 from pathlib import Path
 from typing import Any, Optional
 
@@ -15,6 +15,7 @@ from agent_bom.asset_provenance import (
 )
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
+from agent_bom.evidence.scan_run import ScanOutcome, ScanRun, effective_scan_run
 from agent_bom.exploitability import exploitability_tags, parse_cvss_vector_signals
 from agent_bom.finding import Finding, FindingType
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
@@ -25,6 +26,7 @@ from agent_bom.output.exposure_path import (
     exposure_path_for_report_finding,
 )
 from agent_bom.output.finding_views import (
+    apply_workload_runtime_evidence_for_export,
     cve_findings,
     evidence,
     exploit_likelihood_value,
@@ -32,6 +34,14 @@ from agent_bom.output.finding_views import (
     package_ecosystem,
     package_name,
     package_version,
+)
+from agent_bom.output.sarif_taxonomy import (
+    _FRAMEWORK_TAXONOMY_META,  # noqa: F401
+    _attach_cwe_taxonomy,
+    _build_run_taxonomies,
+    _compact_taxa_references,
+    _framework_taxa_references,
+    _taxonomies_as_tool_extensions,
 )
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text, sanitize_url
 
@@ -133,33 +143,6 @@ def _unified_finding_rule_id(finding: Finding) -> str:
         digest = hashlib.sha256(token.encode()).hexdigest()[:12]
         token = f"{token[:80]}-{digest}"
     return f"{family_rule_id}/{token}"
-
-
-_FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
-    "owasp_tags": (
-        "owasp-llm-top10",
-        "OWASP Top 10 for Large Language Model Applications",
-        "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
-    ),
-    "atlas_tags": ("mitre-atlas", "MITRE ATLAS", "https://atlas.mitre.org/"),
-    "attack_tags": ("mitre-attack", "MITRE ATT&CK", "https://attack.mitre.org/"),
-    "nist_ai_rmf_tags": ("nist-ai-rmf", "NIST AI Risk Management Framework", "https://www.nist.gov/itl/ai-risk-management-framework"),
-    "owasp_mcp_tags": ("owasp-mcp", "OWASP MCP Security", "https://owasp.org/"),
-    "owasp_agentic_tags": ("owasp-agentic", "OWASP Agentic AI Security", "https://owasp.org/"),
-    "eu_ai_act_tags": ("eu-ai-act", "EU AI Act", "https://artificialintelligenceact.eu/"),
-    "nist_csf_tags": ("nist-csf", "NIST Cybersecurity Framework", "https://www.nist.gov/cyberframework"),
-    "iso_27001_tags": ("iso-27001", "ISO/IEC 27001", "https://www.iso.org/standard/27001"),
-    "soc2_tags": (
-        "soc2",
-        "SOC 2 Trust Services Criteria",
-        "https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services",
-    ),
-    "cis_tags": ("cis-controls", "CIS Controls", "https://www.cisecurity.org/controls"),
-    "cmmc_tags": ("cmmc", "Cybersecurity Maturity Model Certification", "https://dodcio.defense.gov/CMMC/"),
-    "nist_800_53_tags": ("nist-800-53", "NIST SP 800-53", "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final"),
-    "fedramp_tags": ("fedramp", "FedRAMP", "https://www.fedramp.gov/"),
-    "pci_dss_tags": ("pci-dss", "PCI DSS", "https://www.pcisecuritystandards.org/"),
-}
 
 
 # Per-ecosystem manifest candidates, checked in order. Lets a SARIF result for
@@ -303,153 +286,6 @@ def _trust_assessment_sarif_property(data: dict[str, Any]) -> dict[str, str]:
     return {field: str(data[field]) for field in allowed_fields if data.get(field) is not None}
 
 
-def _build_run_taxonomies(results: list[dict]) -> list[dict]:
-    """Build SARIF run-level taxonomies from per-result framework tags."""
-    tags_by_property: dict[str, set[str]] = {key: set() for key in _FRAMEWORK_TAXONOMY_META}
-    for result in results:
-        properties = result.get("properties") or {}
-        if not isinstance(properties, dict):
-            continue
-        for property_name in tags_by_property:
-            raw_tags = properties.get(property_name) or []
-            if isinstance(raw_tags, str):
-                raw_tags = [raw_tags]
-            if isinstance(raw_tags, list):
-                tags_by_property[property_name].update(str(tag) for tag in raw_tags if str(tag).strip())
-
-    taxonomies: list[dict] = []
-    for property_name, tags in tags_by_property.items():
-        if not tags:
-            continue
-        name, full_name, uri = _FRAMEWORK_TAXONOMY_META[property_name]
-        taxonomies.append(
-            {
-                "name": name,
-                "fullName": full_name,
-                "informationUri": uri,
-                # Honesty: agent-bom's finding→control mappings are its own
-                # asserted judgment of which control a finding evidences, not an
-                # authority-published crosswalk. Label the provenance so SARIF
-                # consumers never read these as official. taxa carry control IDs
-                # only (name == id) — no copyrighted control-title text.
-                "properties": {
-                    "agent-bom:mappingProvenance": "vendor-asserted",
-                    "agent-bom:mappingProvenanceNote": (
-                        "Finding-to-control mappings are agent-bom's own asserted judgment of which "
-                        "control a finding evidences, not an authority-published crosswalk."
-                    ),
-                },
-                "taxa": [{"id": tag, "name": tag} for tag in sorted(tags)],
-            }
-        )
-    return taxonomies
-
-
-def _attach_cwe_taxonomy(results: list[dict], rules: list[dict]) -> dict | None:
-    """Link structured finding CWEs to SARIF's standard CWE taxonomy.
-
-    GUIDs resolve taxonomy descriptors per SARIF 2.1.0 sections 3.52-3.54;
-    names are display labels only. Rule mappings are relevant associations:
-    a shared rule must not assign every observed CWE to all of its results.
-    """
-    taxonomy_guid = str(uuid.uuid5(uuid.NAMESPACE_URL, "https://cwe.mitre.org/"))
-
-    def taxon_guid(value: str) -> str:
-        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"https://cwe.mitre.org/data/definitions/{value}.html"))
-
-    def reference(value: str) -> dict:
-        return {"id": value, "guid": taxon_guid(value), "toolComponent": {"name": "CWE", "guid": taxonomy_guid}}
-
-    by_rule: dict[str, set[str]] = {}
-    all_ids: set[str] = set()
-    for result in results:
-        cwes = sorted(
-            {
-                value[4:]
-                for value in result.get("properties", {}).get("cwe_ids", [])
-                if isinstance(value, str) and re.fullmatch(r"CWE-[1-9][0-9]{0,8}", value)
-            },
-            key=int,
-        )
-        if not cwes:
-            continue
-        all_ids.update(cwes)
-        by_rule.setdefault(result["ruleId"], set()).update(cwes)
-        result.setdefault("taxa", []).extend(reference(value) for value in cwes)
-    if not all_ids:
-        return None
-    for rule in rules:
-        rule_cwes = by_rule.get(rule["id"], set())
-        if rule_cwes:
-            rule.setdefault("relationships", []).extend(
-                {"target": reference(value), "kinds": ["relevant"]} for value in sorted(rule_cwes, key=int)
-            )
-    return {
-        "name": "CWE",
-        "guid": taxonomy_guid,
-        "fullName": "Common Weakness Enumeration",
-        "informationUri": "https://cwe.mitre.org/",
-        "organization": "MITRE",
-        "isComprehensive": False,
-        "taxa": [
-            {
-                "id": value,
-                "guid": taxon_guid(value),
-                "name": f"CWE-{value}",
-                "helpUri": f"https://cwe.mitre.org/data/definitions/{value}.html",
-            }
-            for value in sorted(all_ids, key=int)
-        ],
-    }
-
-
-def _taxonomies_as_tool_extensions(taxonomies: list[dict]) -> list[dict]:
-    """Expose framework catalogs as SARIF tool extensions for catalog readers."""
-    extensions: list[dict] = []
-    for taxonomy in taxonomies:
-        extension_taxa: list[dict] = []
-        for taxon in taxonomy.get("taxa", []):
-            compact_taxon = dict(taxon)
-            if compact_taxon.get("name") == compact_taxon.get("id"):
-                compact_taxon.pop("name", None)
-            extension_taxa.append(compact_taxon)
-        extension = {
-            "name": taxonomy["name"],
-            "fullName": taxonomy.get("fullName", taxonomy["name"]),
-            "informationUri": taxonomy.get("informationUri", ""),
-            "taxa": extension_taxa,
-        }
-        extensions.append(extension)
-    return extensions
-
-
-def _compact_taxa_references(results: list[dict], taxonomies: list[dict]) -> None:
-    """Replace repeated taxonomy names and IDs with SARIF index references."""
-    taxonomy_indexes = {taxonomy.get("name"): index for index, taxonomy in enumerate(taxonomies)}
-    taxon_indexes = {
-        (taxonomy.get("name"), taxon.get("id")): index for taxonomy in taxonomies for index, taxon in enumerate(taxonomy.get("taxa") or [])
-    }
-    for result in results:
-        references = result.get("taxa")
-        if not isinstance(references, list):
-            continue
-        compact: list[dict] = []
-        for reference in references:
-            if not isinstance(reference, dict):
-                compact.append(reference)
-                continue
-            component = reference.get("toolComponent")
-            taxonomy_name = component.get("name") if isinstance(component, dict) else None
-            taxon_id = reference.get("id")
-            taxonomy_index = taxonomy_indexes.get(taxonomy_name)
-            taxon_index = taxon_indexes.get((taxonomy_name, taxon_id))
-            if taxonomy_index is None or taxon_index is None:
-                compact.append(reference)
-                continue
-            compact.append({"index": taxon_index, "toolComponent": {"index": taxonomy_index}})
-        result["taxa"] = compact
-
-
 _GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
 
 # Map agent-bom suppression states onto the SARIF 2.1.0 suppression.status enum.
@@ -509,30 +345,8 @@ def _suppression_entries(source: object) -> list[dict]:
     return [entry]
 
 
-def _framework_taxa_references(properties: dict[str, Any]) -> list[dict]:
-    """Build result-level SARIF taxa references for declared framework taxonomies."""
-    refs: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-    for property_name, (taxonomy_name, _full_name, _uri) in _FRAMEWORK_TAXONOMY_META.items():
-        raw_tags = properties.get(property_name) or []
-        if isinstance(raw_tags, str):
-            raw_tags = [raw_tags]
-        if not isinstance(raw_tags, list):
-            continue
-        for raw_tag in raw_tags:
-            tag = str(raw_tag).strip()
-            if not tag:
-                continue
-            key = (taxonomy_name, tag)
-            if key in seen:
-                continue
-            seen.add(key)
-            refs.append({"id": tag, "toolComponent": {"name": taxonomy_name}})
-    return refs
-
-
 # Cloud providers whose CIS benchmark failures are emitted by the dedicated CIS
-# loop in to_sarif() with per-check rule IDs + structured remediation. The
+# loop (_add_cis_benchmark_results) with per-check rule IDs + structured remediation. The
 # unified non-CVE loop skips these so each failed check yields exactly one SARIF
 # result (no duplicate ruleId+location) in the GitHub Security tab. databricks
 # CIS and snowflake governance findings have no dedicated loop, so they keep
@@ -876,26 +690,37 @@ def _cve_sarif_result(
     return result
 
 
-def to_sarif(
+@dataclasses.dataclass
+class _SarifCatalog:
+    """Rules and results accumulated across finding families for one SARIF run."""
+
+    rules: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    results: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    seen_rule_ids: set[str] = dataclasses.field(default_factory=set)
+
+    def claim_rule(self, rule_id: str) -> bool:
+        """Return True the first time a rule ID is seen, so its rule is emitted once."""
+        if rule_id in self.seen_rule_ids:
+            return False
+        self.seen_rule_ids.add(rule_id)
+        return True
+
+
+def _physical_location(uri: str, start_line: Any) -> dict[str, Any]:
+    return {
+        "physicalLocation": {
+            "artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"},
+            "region": {"startLine": start_line, "startColumn": 1},
+        },
+    }
+
+
+def _add_cve_results(
+    catalog: _SarifCatalog,
     report: AIBOMReport,
-    *,
-    exclude_unfixable: bool = False,
-    blast_radii: list[BlastRadius] | None = None,
-) -> dict:
-    """Convert report to SARIF 2.1.0 dict for GitHub Security tab.
-
-    Args:
-        exclude_unfixable: If True, skip findings where no fix is available
-            (fixed_version is None/empty). Reduces noise in GitHub Security tab
-            from CVEs that can't be acted on.
-    """
-    from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
-    from agent_bom.output.finding_views import apply_workload_runtime_evidence_for_export
-
-    scan_run = effective_scan_run(report)
-    rules: list[dict[str, Any]] = []
-    results: list[dict[str, Any]] = []
-    seen_rule_ids: set[str] = set()
+    blast_radii: list[BlastRadius] | None,
+    exclude_unfixable: bool,
+) -> None:
     # Advisory AI-triage assessments keyed by the finding_id they describe, so
     # each is joined onto its finding's result instead of only the JSON block.
     ai_assessments_by_finding: dict[str, Any] = {
@@ -928,10 +753,10 @@ def to_sarif(
             level=level,
             pkg_name=pkg_name,
             pkg_version=pkg_version,
-            seen_rule_ids=seen_rule_ids,
-            rules=rules,
+            seen_rule_ids=catalog.seen_rule_ids,
+            rules=catalog.rules,
         )
-        results.append(
+        catalog.results.append(
             _cve_sarif_result(
                 report,
                 finding,
@@ -944,300 +769,380 @@ def to_sarif(
             )
         )
 
-    # Unified non-CVE findings, including MCP intelligence/blocklist matches.
+
+def _emitted_by_dedicated_loop(finding: Finding, evidence: dict[str, Any]) -> bool:
+    """True when a unified finding is emitted by a richer family-specific loop instead."""
+    # Package CVEs are emitted by the blast-radius loop above; an imported
+    # advisory with no resolvable package has no blast radius, so it flows here.
+    if finding.finding_type == FindingType.CVE and evidence.get("package_resolution") != "unresolved":
+        return True
+    # Cloud CIS benchmark failures for the dedicated-loop providers are
+    # emitted once below with richer per-check rule IDs + structured
+    # remediation. Skip them here so a failed check is not double-counted in
+    # the GitHub Security tab. databricks CIS + snowflake governance have no
+    # dedicated loop, so they still flow through this unified path.
+    if (
+        finding.finding_type == FindingType.CIS_FAIL
+        and evidence.get("benchmark") == "CIS"
+        and evidence.get("provider") in _DEDICATED_CIS_PROVIDERS
+    ):
+        return True
+    # IaC misconfigurations are emitted once below by the dedicated IaC loop
+    # with richer per-rule rule IDs + line numbers. They now also flow through
+    # report.to_findings() (for exec totals + the severity gate), carrying an
+    # ``iac`` evidence marker; skip them here to keep each IaC finding to
+    # exactly one SARIF result.
+    return bool(finding.finding_type == FindingType.CIS_FAIL and evidence.get("iac"))
+
+
+def _unified_finding_rule(finding: Finding, rule_id: str, level: str, security_severity: str) -> dict[str, Any]:
+    description = _sanitize_scanner_text(
+        "description",
+        finding.description,
+        fallback=sanitize_advisory_text("title", finding.title or finding.finding_type.value),
+    )
+    finding_rule: dict[str, Any] = {
+        "id": rule_id,
+        "shortDescription": {
+            "text": sanitize_advisory_text(
+                "title",
+                finding.title,
+                fallback=finding.finding_type.value.replace("_", " ").title(),
+            )
+        },
+        "fullDescription": {"text": description},
+        "helpUri": _UNIFIED_RULE_HELP_URI,
+        "defaultConfiguration": {"level": level},
+        "properties": {
+            "security-severity": security_severity,
+            "source": finding.source.value,
+            "finding_type": finding.finding_type.value,
+        },
+    }
+    help_body = advisory_help(
+        description,
+        remediation=_sanitize_scanner_text("recommendation", finding.remediation_guidance),
+    )
+    if help_body:
+        finding_rule["help"] = help_body
+    return finding_rule
+
+
+def _sast_result_properties(finding: Finding, evidence: dict[str, Any]) -> dict[str, Any]:
+    if finding.finding_type != FindingType.SAST:
+        return {}
+    return {
+        **{key: sanitize_text(value, max_len=500) for key in ("category", "entrypoint", "sink", "source") if (value := evidence.get(key))},
+        **{
+            key: [sanitize_text(item, max_len=500) for item in value]
+            for key in ("call_path", "detector_categories")
+            if isinstance((value := evidence.get(key)), list)
+        },
+    }
+
+
+def _unified_finding_properties(finding: Finding, rule_id: str, evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "advisory_id": rule_id,
+        "cwe_ids": list(finding.cwe_ids),
+        "asset_canonical_id": finding.asset.stable_id,
+        "occurrence_id": finding.id,
+        "canonical_id": finding.id,
+        "risk_score": finding.risk_score,
+        "asset_type": finding.asset.asset_type,
+        "asset_name": sanitize_advisory_text("title", finding.asset.name, fallback=finding.asset.asset_type),
+        "evidence": _sanitize_sarif_property(finding.evidence),
+        "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
+        "is_malicious": finding.is_malicious,
+        "malicious_reason": (sanitize_advisory_text("title", finding.malicious_reason) or None) if finding.malicious_reason else None,
+        # Structured reach lists + AI-native context (unified Finding parity).
+        "affected_servers": list(finding.affected_servers),
+        "affected_agents": list(finding.affected_agents),
+        "exposed_credentials": list(finding.exposed_credentials),
+        "exposed_tools": list(finding.exposed_tools),
+        "ai_risk_context": finding.ai_risk_context,
+        "ai_summary": finding.ai_summary,
+        "attack_vector_summary": finding.attack_vector_summary,
+        "suppressed": finding.suppressed,
+        **_sast_result_properties(finding, evidence),
+        **(
+            {
+                "workload_runtime_evidence": _sanitize_sarif_property(finding.workload_runtime_evidence),
+            }
+            if isinstance(getattr(finding, "workload_runtime_evidence", None), dict) and finding.workload_runtime_evidence
+            else {}
+        ),
+    }
+
+
+def _unified_finding_result(finding: Finding, rule_id: str, level: str, evidence: dict[str, Any]) -> dict[str, Any]:
+    file_path = (
+        _to_relative_path(
+            finding.asset.location,
+            _ecosystem_from_purl(finding.asset.identifier),
+        )
+        if finding.asset.location
+        else None
+    )
+    raw_start_line = finding.evidence.get("line_number") or finding.evidence.get("line")
+    start_line = raw_start_line if isinstance(raw_start_line, int) and raw_start_line > 0 else 1
+    fingerprint_uri = file_path or f"{finding.asset.asset_type}:{finding.asset.stable_id}"
+    fp_input = f"{finding.id}:{fingerprint_uri}:{finding.asset.stable_id}"
+    fingerprint_fields = _sarif_fingerprint_fields(
+        stable_input=fp_input,
+        artifact_uri=fingerprint_uri,
+        start_line=start_line,
+    )
+    if file_path is None:
+        fingerprint_fields.pop("partialFingerprints", None)
+    finding_result: dict = {
+        "ruleId": rule_id,
+        "level": level,
+        "kind": "fail" if level in {"error", "warning"} else "informational",
+        "message": {
+            "text": sanitize_advisory_text(
+                "title",
+                finding.title,
+                fallback=_sanitize_scanner_text("description", finding.description, fallback=finding.finding_type.value),
+            )
+        },
+        **fingerprint_fields,
+        "properties": _unified_finding_properties(finding, rule_id, evidence),
+    }
+    if file_path is not None:
+        finding_result["locations"] = [_physical_location(file_path, start_line)]
+    else:
+        asset_name = sanitize_advisory_text("title", finding.asset.name, fallback=finding.asset.asset_type)
+        finding_result["locations"] = [{"logicalLocations": [{"name": asset_name, "kind": finding.asset.asset_type}]}]
+    suppressions = _suppression_entries(finding)
+    if suppressions:
+        finding_result["suppressions"] = suppressions
+    return finding_result
+
+
+def _add_unified_finding_results(catalog: _SarifCatalog, report: AIBOMReport) -> None:
+    """Unified non-CVE findings, including MCP intelligence/blocklist matches."""
     for finding in apply_workload_runtime_evidence_for_export(list(report.to_findings())):
         evidence = finding.evidence if isinstance(finding.evidence, dict) else {}
-        # Package CVEs are emitted by the blast-radius loop above; an imported
-        # advisory with no resolvable package has no blast radius, so it flows here.
-        if finding.finding_type == FindingType.CVE and evidence.get("package_resolution") != "unresolved":
-            continue
-        # Cloud CIS benchmark failures for the dedicated-loop providers are
-        # emitted once below with richer per-check rule IDs + structured
-        # remediation. Skip them here so a failed check is not double-counted in
-        # the GitHub Security tab. databricks CIS + snowflake governance have no
-        # dedicated loop, so they still flow through this unified path.
-        if (
-            finding.finding_type == FindingType.CIS_FAIL
-            and evidence.get("benchmark") == "CIS"
-            and evidence.get("provider") in _DEDICATED_CIS_PROVIDERS
-        ):
-            continue
-        # IaC misconfigurations are emitted once below by the dedicated IaC loop
-        # with richer per-rule rule IDs + line numbers. They now also flow through
-        # report.to_findings() (for exec totals + the severity gate), carrying an
-        # ``iac`` evidence marker; skip them here to keep each IaC finding to
-        # exactly one SARIF result.
-        if finding.finding_type == FindingType.CIS_FAIL and evidence.get("iac"):
+        if _emitted_by_dedicated_loop(finding, evidence):
             continue
         rule_id = _unified_finding_rule_id(finding)
         level, security_severity = _sarif_severity(finding.severity or "medium")
-        if rule_id not in seen_rule_ids:
-            seen_rule_ids.add(rule_id)
-            description = _sanitize_scanner_text(
-                "description",
-                finding.description,
-                fallback=sanitize_advisory_text("title", finding.title or finding.finding_type.value),
-            )
-            finding_rule: dict[str, Any] = {
-                "id": rule_id,
-                "shortDescription": {
+        if catalog.claim_rule(rule_id):
+            catalog.rules.append(_unified_finding_rule(finding, rule_id, level, security_severity))
+        catalog.results.append(_unified_finding_result(finding, rule_id, level, evidence))
+
+
+def _iac_rule(iac_finding: dict[str, Any], rule_id: str, level: str, security_severity: str) -> dict[str, Any]:
+    description = sanitize_advisory_text(
+        "description",
+        iac_finding.get("message"),
+        fallback=sanitize_advisory_text("title", iac_finding.get("title", rule_id), fallback=rule_id),
+    )
+    iac_rule: dict[str, Any] = {
+        "id": rule_id,
+        "shortDescription": {"text": sanitize_advisory_text("title", iac_finding.get("title", rule_id), fallback=rule_id)},
+        "fullDescription": {"text": description},
+        "defaultConfiguration": {"level": level},
+        "properties": {
+            "security-severity": security_severity,
+            "category": iac_finding.get("category", "iac"),
+            "compliance": iac_finding.get("compliance", []),
+        },
+    }
+    help_body = advisory_help(
+        description,
+        remediation=sanitize_advisory_text("recommendation", iac_finding.get("remediation")),
+    )
+    if help_body:
+        iac_rule["help"] = help_body
+    return iac_rule
+
+
+def _add_iac_results(catalog: _SarifCatalog, report: AIBOMReport) -> None:
+    """IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)."""
+    iac_data = getattr(report, "iac_findings_data", None)
+    if not iac_data:
+        return
+    for iac_finding in iac_data.get("findings", []):
+        sev = iac_finding.get("severity", "medium").lower()
+        rule_id = f"iac/{iac_finding.get('rule_id', 'unknown')}"
+        level, security_severity = _sarif_severity(sev)
+        file_path = _to_relative_path(iac_finding.get("file_path", "unknown") or "unknown")
+        line_num = iac_finding.get("line_number") or 1
+        if catalog.claim_rule(rule_id):
+            catalog.rules.append(_iac_rule(iac_finding, rule_id, level, security_severity))
+
+        fp_input = f"{rule_id}:{file_path}:{line_num}"
+        catalog.results.append(
+            {
+                "ruleId": rule_id,
+                "level": level,
+                "kind": "fail",
+                "message": {
                     "text": sanitize_advisory_text(
-                        "title",
-                        finding.title,
-                        fallback=finding.finding_type.value.replace("_", " ").title(),
+                        "description",
+                        iac_finding.get("message"),
+                        fallback=sanitize_advisory_text("title", iac_finding.get("title", "IaC misconfiguration")),
                     )
                 },
-                "fullDescription": {"text": description},
-                "helpUri": _UNIFIED_RULE_HELP_URI,
-                "defaultConfiguration": {"level": level},
-                "properties": {
-                    "security-severity": security_severity,
-                    "source": finding.source.value,
-                    "finding_type": finding.finding_type.value,
-                },
+                **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
+                "locations": [_physical_location(file_path, line_num)],
             }
-            help_body = advisory_help(
-                description,
-                remediation=_sanitize_scanner_text("recommendation", finding.remediation_guidance),
-            )
-            if help_body:
-                finding_rule["help"] = help_body
-            rules.append(finding_rule)
-
-        file_path = (
-            _to_relative_path(
-                finding.asset.location,
-                _ecosystem_from_purl(finding.asset.identifier),
-            )
-            if finding.asset.location
-            else None
         )
-        raw_start_line = finding.evidence.get("line_number") or finding.evidence.get("line")
-        start_line = raw_start_line if isinstance(raw_start_line, int) and raw_start_line > 0 else 1
-        fingerprint_uri = file_path or f"{finding.asset.asset_type}:{finding.asset.stable_id}"
-        fp_input = f"{finding.id}:{fingerprint_uri}:{finding.asset.stable_id}"
-        fingerprint_fields = _sarif_fingerprint_fields(
-            stable_input=fp_input,
-            artifact_uri=fingerprint_uri,
-            start_line=start_line,
-        )
-        if file_path is None:
-            fingerprint_fields.pop("partialFingerprints", None)
-        finding_result: dict = {
-            "ruleId": rule_id,
-            "level": level,
-            "kind": "fail" if level in {"error", "warning"} else "informational",
-            "message": {
-                "text": sanitize_advisory_text(
-                    "title",
-                    finding.title,
-                    fallback=_sanitize_scanner_text("description", finding.description, fallback=finding.finding_type.value),
-                )
-            },
-            **fingerprint_fields,
-            "properties": {
-                "advisory_id": rule_id,
-                "cwe_ids": list(finding.cwe_ids),
-                "asset_canonical_id": finding.asset.stable_id,
-                "occurrence_id": finding.id,
-                "canonical_id": finding.id,
-                "risk_score": finding.risk_score,
-                "asset_type": finding.asset.asset_type,
-                "asset_name": sanitize_advisory_text("title", finding.asset.name, fallback=finding.asset.asset_type),
-                "evidence": _sanitize_sarif_property(finding.evidence),
-                "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
-                "is_malicious": finding.is_malicious,
-                "malicious_reason": (sanitize_advisory_text("title", finding.malicious_reason) or None)
-                if finding.malicious_reason
-                else None,
-                # Structured reach lists + AI-native context (unified Finding parity).
-                "affected_servers": list(finding.affected_servers),
-                "affected_agents": list(finding.affected_agents),
-                "exposed_credentials": list(finding.exposed_credentials),
-                "exposed_tools": list(finding.exposed_tools),
-                "ai_risk_context": finding.ai_risk_context,
-                "ai_summary": finding.ai_summary,
-                "attack_vector_summary": finding.attack_vector_summary,
-                "suppressed": finding.suppressed,
-                **(
-                    {
-                        key: sanitize_text(value, max_len=500)
-                        for key in ("category", "entrypoint", "sink", "source")
-                        if (value := evidence.get(key))
-                    }
-                    if finding.finding_type == FindingType.SAST
-                    else {}
-                ),
-                **(
-                    {
-                        key: [sanitize_text(item, max_len=500) for item in value]
-                        for key in ("call_path", "detector_categories")
-                        if isinstance((value := evidence.get(key)), list)
-                    }
-                    if finding.finding_type == FindingType.SAST
-                    else {}
-                ),
-                **(
-                    {
-                        "workload_runtime_evidence": _sanitize_sarif_property(finding.workload_runtime_evidence),
-                    }
-                    if isinstance(getattr(finding, "workload_runtime_evidence", None), dict) and finding.workload_runtime_evidence
-                    else {}
-                ),
-            },
-        }
-        if file_path is not None:
-            finding_result["locations"] = [
-                {
-                    "physicalLocation": {
-                        "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
-                        "region": {"startLine": start_line, "startColumn": 1},
-                    },
-                }
-            ]
-        else:
-            finding_result["locations"] = [
-                {
-                    "logicalLocations": [
-                        {
-                            "name": sanitize_advisory_text(
-                                "title",
-                                finding.asset.name,
-                                fallback=finding.asset.asset_type,
-                            ),
-                            "kind": finding.asset.asset_type,
-                        }
-                    ]
-                }
-            ]
-        suppressions = _suppression_entries(finding)
-        if suppressions:
-            finding_result["suppressions"] = suppressions
-        results.append(finding_result)
 
-    # IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)
-    iac_data = getattr(report, "iac_findings_data", None)
-    if iac_data:
-        for iac_finding in iac_data.get("findings", []):
-            sev = iac_finding.get("severity", "medium").lower()
-            rule_id = f"iac/{iac_finding.get('rule_id', 'unknown')}"
-            level, security_severity = _sarif_severity(sev)
-            file_path = _to_relative_path(iac_finding.get("file_path", "unknown") or "unknown")
-            line_num = iac_finding.get("line_number") or 1
 
-            if rule_id not in seen_rule_ids:
-                seen_rule_ids.add(rule_id)
-                description = sanitize_advisory_text(
-                    "description",
-                    iac_finding.get("message"),
-                    fallback=sanitize_advisory_text("title", iac_finding.get("title", rule_id), fallback=rule_id),
-                )
-                iac_rule: dict[str, Any] = {
-                    "id": rule_id,
-                    "shortDescription": {"text": sanitize_advisory_text("title", iac_finding.get("title", rule_id), fallback=rule_id)},
-                    "fullDescription": {"text": description},
-                    "defaultConfiguration": {"level": level},
-                    "properties": {
-                        "security-severity": security_severity,
-                        "category": iac_finding.get("category", "iac"),
-                        "compliance": iac_finding.get("compliance", []),
-                    },
-                }
-                help_body = advisory_help(
-                    description,
-                    remediation=sanitize_advisory_text("recommendation", iac_finding.get("remediation")),
-                )
-                if help_body:
-                    iac_rule["help"] = help_body
-                rules.append(iac_rule)
+def _ai_inventory_rule(comp: dict[str, Any], rule_id: str, name: str, level: str, security_severity: str) -> dict[str, Any]:
+    sev = comp.get("severity", "info")
+    comp_type = comp.get("type", "unknown")
+    description = sanitize_advisory_text(
+        "description",
+        comp.get("description", ""),
+        fallback=f"AI component finding: {name}",
+    )
+    ai_rule: dict[str, Any] = {
+        "id": rule_id,
+        "shortDescription": {"text": sanitize_advisory_text("title", f"{sev.upper()}: {comp_type.replace('_', ' ')} - {name}")},
+        "fullDescription": {"text": description},
+        "defaultConfiguration": {"level": level},
+        "properties": {"security-severity": security_severity},
+    }
+    help_body = advisory_help(
+        description,
+        remediation=sanitize_advisory_text("recommendation", comp.get("recommendation")),
+    )
+    if help_body:
+        ai_rule["help"] = help_body
+    return ai_rule
 
-            fp_input = f"{rule_id}:{file_path}:{line_num}"
-            results.append(
-                {
-                    "ruleId": rule_id,
-                    "level": level,
-                    "kind": "fail",
-                    "message": {
-                        "text": sanitize_advisory_text(
-                            "description",
-                            iac_finding.get("message"),
-                            fallback=sanitize_advisory_text("title", iac_finding.get("title", "IaC misconfiguration")),
-                        )
-                    },
-                    **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
-                    "locations": [
-                        {
-                            "physicalLocation": {
-                                "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
-                                "region": {"startLine": line_num, "startColumn": 1},
-                            },
-                        }
-                    ],
-                }
-            )
 
-    # AI inventory findings (shadow AI, deprecated models, API keys, invisible Unicode)
+def _add_ai_inventory_results(catalog: _SarifCatalog, report: AIBOMReport) -> None:
+    """AI inventory findings (shadow AI, deprecated models, API keys, invisible Unicode)."""
     ai_inv = getattr(report, "ai_inventory_data", None)
-    if ai_inv:
-        for comp in ai_inv.get("components", []):
-            sev = comp.get("severity", "info")
-            if sev not in ("critical", "high", "medium"):
-                continue  # only actionable findings in SARIF
-            comp_type = comp.get("type", "unknown")
-            # Redact credential fragments — never embed key material in SARIF
-            raw_name = comp.get("name", "")
-            name = "[REDACTED]" if comp_type == "api_key" else raw_name
-            rule_id = f"ai-inventory/{comp_type}/{name}"
-            level, security_severity = _sarif_severity(sev)
+    if not ai_inv:
+        return
+    for comp in ai_inv.get("components", []):
+        sev = comp.get("severity", "info")
+        if sev not in ("critical", "high", "medium"):
+            continue  # only actionable findings in SARIF
+        comp_type = comp.get("type", "unknown")
+        # Redact credential fragments — never embed key material in SARIF
+        raw_name = comp.get("name", "")
+        name = "[REDACTED]" if comp_type == "api_key" else raw_name
+        rule_id = f"ai-inventory/{comp_type}/{name}"
+        level, security_severity = _sarif_severity(sev)
+        if catalog.claim_rule(rule_id):
+            catalog.rules.append(_ai_inventory_rule(comp, rule_id, name, level, security_severity))
 
-            if rule_id not in seen_rule_ids:
-                seen_rule_ids.add(rule_id)
-                description = sanitize_advisory_text(
-                    "description",
-                    comp.get("description", ""),
-                    fallback=f"AI component finding: {name}",
-                )
-                ai_rule: dict[str, Any] = {
-                    "id": rule_id,
-                    "shortDescription": {"text": sanitize_advisory_text("title", f"{sev.upper()}: {comp_type.replace('_', ' ')} - {name}")},
-                    "fullDescription": {"text": description},
-                    "defaultConfiguration": {"level": level},
-                    "properties": {"security-severity": security_severity},
-                }
-                help_body = advisory_help(
-                    description,
-                    remediation=sanitize_advisory_text("recommendation", comp.get("recommendation")),
-                )
-                if help_body:
-                    ai_rule["help"] = help_body
-                rules.append(ai_rule)
+        file_path = _to_relative_path(comp.get("file", "unknown") or "unknown")
+        line_num = int(comp.get("line", 1) or 1)
+        fp_input = f"{rule_id}:{file_path}:{line_num}"
+        desc = sanitize_advisory_text("description", comp.get("description", ""), fallback=f"{comp_type.replace('_', ' ')}: {name}")
+        catalog.results.append(
+            {
+                "ruleId": rule_id,
+                "level": level,
+                "kind": "fail",
+                "message": {"text": desc},
+                **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
+                "locations": [_physical_location(file_path, comp.get("line", 1))],
+            }
+        )
 
-            file_path = _to_relative_path(comp.get("file", "unknown") or "unknown")
-            line_num = int(comp.get("line", 1) or 1)
-            fp_input = f"{rule_id}:{file_path}:{line_num}"
-            desc = sanitize_advisory_text("description", comp.get("description", ""), fallback=f"{comp_type.replace('_', ' ')}: {name}")
-            results.append(
-                {
-                    "ruleId": rule_id,
-                    "level": level,
-                    "kind": "fail",
-                    "message": {"text": desc},
-                    **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
-                    "locations": [
-                        {
-                            "physicalLocation": {
-                                "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
-                                "region": {"startLine": comp.get("line", 1), "startColumn": 1},
-                            },
-                        }
-                    ],
-                }
+
+def _cis_rule(check: dict[str, Any], cloud_key: str, rule_id: str, level: str, security_severity: str) -> dict[str, Any]:
+    cis_severity = str(check.get("severity") or "unknown").lower()
+    check_id = check.get("check_id") or "unknown"
+    remediation = check.get("remediation") or {}
+    title = check.get("title") or rule_id
+    help_uri = sanitize_url(str(remediation.get("docs") or "")) or ""
+    recommendation = sanitize_advisory_text(
+        "recommendation",
+        check.get("recommendation"),
+        fallback=sanitize_advisory_text("title", title, fallback=rule_id),
+    )
+    cis_rule: dict = {
+        "id": rule_id,
+        "shortDescription": {
+            "text": sanitize_advisory_text(
+                "title",
+                f"{cis_severity.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
+                fallback=rule_id,
             )
+        },
+        "fullDescription": {"text": recommendation},
+        "defaultConfiguration": {"level": level},
+        "properties": {
+            "security-severity": security_severity,
+            "tags": ["cis", cloud_key, "compliance"],
+            "cis_section": check.get("cis_section") or "",
+        },
+    }
+    if help_uri:
+        cis_rule["helpUri"] = help_uri
+    help_body = advisory_help(
+        recommendation,
+        remediation=_cis_remediation_text(remediation),
+        reference_uri=help_uri,
+    )
+    if help_body:
+        cis_rule["help"] = help_body
+    return cis_rule
 
-    # CIS benchmark findings (AWS / Azure / GCP / Snowflake). Each failed
-    # check emits a SARIF result with the structured remediation dict
-    # (issue #665) in ``properties.remediation`` so GitHub Code Scanning
-    # and downstream SARIF consumers can surface fix guidance per finding.
+
+def _cis_result_properties(check: dict[str, Any]) -> dict[str, Any]:
+    remediation = check.get("remediation") or {}
+    result_props: dict = {
+        "remediation": remediation,
+        "cis_section": check.get("cis_section") or "",
+        "evidence": _sanitize_sarif_property(check.get("evidence") or ""),
+        "resource_ids": _sanitize_sarif_property(check.get("resource_ids") or []),
+    }
+    # Surface the remediation knobs flat for consumers that
+    # can't (or don't want to) read nested dicts.
+    if remediation:
+        result_props["fix_cli"] = remediation.get("fix_cli")
+        result_props["fix_console"] = remediation.get("fix_console") or ""
+        result_props["effort"] = remediation.get("effort") or "manual"
+        result_props["priority"] = remediation.get("priority") or 3
+        result_props["guardrails"] = remediation.get("guardrails") or []
+        result_props["requires_human_review"] = bool(remediation.get("requires_human_review"))
+    return result_props
+
+
+def _cis_result(check: dict[str, Any], cloud_key: str, rule_id: str, level: str) -> dict[str, Any]:
+    check_id = check.get("check_id") or "unknown"
+    title = check.get("title") or rule_id
+    # Synthetic fingerprint so repeat runs produce stable IDs.
+    fp_input = f"{rule_id}:{','.join(check.get('resource_ids') or [])}"
+    # CIS findings are cloud-control-level, not file-level. Point
+    # at a conventional manifest so GitHub renders the result;
+    # the rich context lives in ``properties``.
+    artifact_uri = f"cis-{cloud_key}-benchmark"
+    return {
+        "ruleId": rule_id,
+        "level": level,
+        "kind": "fail",
+        "message": {
+            "text": sanitize_advisory_text(
+                "title",
+                f"CIS {cloud_key.upper()} {check_id} failed: {title}",
+                fallback=rule_id,
+            )
+        },
+        **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=artifact_uri, start_line=1),
+        "locations": [_physical_location(artifact_uri, 1)],
+        "properties": _cis_result_properties(check),
+    }
+
+
+def _add_cis_benchmark_results(catalog: _SarifCatalog, report: AIBOMReport) -> None:
+    """CIS benchmark findings (AWS / Azure / GCP / Snowflake).
+
+    Each failed check emits a SARIF result with the structured remediation dict
+    (issue #665) in ``properties.remediation`` so GitHub Code Scanning and
+    downstream SARIF consumers can surface fix guidance per finding.
+    """
     from agent_bom.cloud.cis_remediation import fail_closed_cis_bundle
 
     for cloud_key, data_attr in _DEDICATED_CIS_BENCHMARKS:
@@ -1253,128 +1158,48 @@ def to_sarif(
             # the check to GitHub as Medium while every summary built from the
             # unified stream called the same check unrated.
             cis_severity = str(check.get("severity") or "unknown").lower()
-            check_id = check.get("check_id") or "unknown"
-            rule_id = f"cis/{cloud_key}/{check_id}"
+            rule_id = f"cis/{cloud_key}/{check.get('check_id') or 'unknown'}"
             level, security_severity = _sarif_severity(cis_severity)
-            remediation = check.get("remediation") or {}
-            title = check.get("title") or rule_id
-            help_uri = sanitize_url(str(remediation.get("docs") or "")) or ""
+            if catalog.claim_rule(rule_id):
+                catalog.rules.append(_cis_rule(check, cloud_key, rule_id, level, security_severity))
+            catalog.results.append(_cis_result(check, cloud_key, rule_id, level))
 
-            if rule_id not in seen_rule_ids:
-                seen_rule_ids.add(rule_id)
-                recommendation = sanitize_advisory_text(
-                    "recommendation",
-                    check.get("recommendation"),
-                    fallback=sanitize_advisory_text("title", title, fallback=rule_id),
-                )
-                cis_rule: dict = {
-                    "id": rule_id,
-                    "shortDescription": {
-                        "text": sanitize_advisory_text(
-                            "title",
-                            f"{cis_severity.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
-                            fallback=rule_id,
-                        )
-                    },
-                    "fullDescription": {"text": recommendation},
-                    "defaultConfiguration": {"level": level},
-                    "properties": {
-                        "security-severity": security_severity,
-                        "tags": ["cis", cloud_key, "compliance"],
-                        "cis_section": check.get("cis_section") or "",
-                    },
-                }
-                if help_uri:
-                    cis_rule["helpUri"] = help_uri
-                help_body = advisory_help(
-                    recommendation,
-                    remediation=_cis_remediation_text(remediation),
-                    reference_uri=help_uri,
-                )
-                if help_body:
-                    cis_rule["help"] = help_body
-                rules.append(cis_rule)
 
-            # Synthetic fingerprint so repeat runs produce stable IDs.
-            fp_input = f"{rule_id}:{','.join(check.get('resource_ids') or [])}"
-            artifact_uri = f"cis-{cloud_key}-benchmark"
-
-            # CIS findings are cloud-control-level, not file-level. Point
-            # at a conventional manifest so GitHub renders the result;
-            # the rich context lives in ``properties``.
-            result_props: dict = {
-                "remediation": remediation,
-                "cis_section": check.get("cis_section") or "",
-                "evidence": _sanitize_sarif_property(check.get("evidence") or ""),
-                "resource_ids": _sanitize_sarif_property(check.get("resource_ids") or []),
+def _sarif_invocation(scan_run: ScanRun) -> dict[str, Any]:
+    return {
+        "executionSuccessful": scan_run.outcome is not ScanOutcome.FAILED,
+        "toolExecutionNotifications": [
+            {
+                "descriptor": {"id": issue.code},
+                "level": issue.severity,
+                "message": {"text": sanitize_text(issue.message) or "Scan execution issue"},
+                "properties": {
+                    "stage": issue.stage,
+                    "source": issue.source,
+                    "affectsCoverage": issue.affects_coverage,
+                },
             }
-            # Surface the remediation knobs flat for consumers that
-            # can't (or don't want to) read nested dicts.
-            if remediation:
-                result_props["fix_cli"] = remediation.get("fix_cli")
-                result_props["fix_console"] = remediation.get("fix_console") or ""
-                result_props["effort"] = remediation.get("effort") or "manual"
-                result_props["priority"] = remediation.get("priority") or 3
-                result_props["guardrails"] = remediation.get("guardrails") or []
-                result_props["requires_human_review"] = bool(remediation.get("requires_human_review"))
+            for issue in scan_run.issues
+        ],
+    }
 
-            results.append(
-                {
-                    "ruleId": rule_id,
-                    "level": level,
-                    "kind": "fail",
-                    "message": {
-                        "text": sanitize_advisory_text(
-                            "title",
-                            f"CIS {cloud_key.upper()} {check_id} failed: {title}",
-                            fallback=rule_id,
-                        )
-                    },
-                    **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=artifact_uri, start_line=1),
-                    "locations": [
-                        {
-                            "physicalLocation": {
-                                "artifactLocation": {"uri": artifact_uri, "uriBaseId": "%SRCROOT%"},
-                                "region": {"startLine": 1, "startColumn": 1},
-                            },
-                        }
-                    ],
-                    "properties": result_props,
-                }
-            )
 
-    taxonomies = _build_run_taxonomies(results)
-    _compact_taxa_references(results, taxonomies)
-    cwe_taxonomy = _attach_cwe_taxonomy(results, rules)
+def _build_sarif_run(report: AIBOMReport, catalog: _SarifCatalog, scan_run: ScanRun) -> dict[str, Any]:
+    taxonomies = _build_run_taxonomies(catalog.results)
+    _compact_taxa_references(catalog.results, taxonomies)
+    cwe_taxonomy = _attach_cwe_taxonomy(catalog.results, catalog.rules)
     run: dict = {
         "tool": {
             "driver": {
                 "name": "agent-bom",
                 "version": report.tool_version,
                 "informationUri": "https://github.com/msaad00/agent-bom",
-                "rules": rules,
+                "rules": catalog.rules,
             }
         },
-        "results": results,
+        "results": catalog.results,
         "properties": {"scan_outcome": scan_run.outcome.value},
-        "invocations": [
-            {
-                "executionSuccessful": scan_run.outcome is not ScanOutcome.FAILED,
-                "toolExecutionNotifications": [
-                    {
-                        "descriptor": {"id": issue.code},
-                        "level": issue.severity,
-                        "message": {"text": sanitize_text(issue.message) or "Scan execution issue"},
-                        "properties": {
-                            "stage": issue.stage,
-                            "source": issue.source,
-                            "affectsCoverage": issue.affects_coverage,
-                        },
-                    }
-                    for issue in scan_run.issues
-                ],
-            }
-        ],
+        "invocations": [_sarif_invocation(scan_run)],
         **({"automationDetails": {"id": f"agent-bom/{report.scan_id}"}} if report.scan_id else {}),
     }
     trust_assessment = getattr(report, "trust_assessment_data", None)
@@ -1387,11 +1212,33 @@ def to_sarif(
     if cwe_taxonomy:
         run.setdefault("taxonomies", []).append(cwe_taxonomy)
         run["tool"]["driver"]["supportedTaxonomies"] = [{"name": "CWE", "guid": cwe_taxonomy["guid"]}]
+    return run
 
+
+def to_sarif(
+    report: AIBOMReport,
+    *,
+    exclude_unfixable: bool = False,
+    blast_radii: list[BlastRadius] | None = None,
+) -> dict:
+    """Convert report to SARIF 2.1.0 dict for GitHub Security tab.
+
+    Args:
+        exclude_unfixable: If True, skip findings where no fix is available
+            (fixed_version is None/empty). Reduces noise in GitHub Security tab
+            from CVEs that can't be acted on.
+    """
+    scan_run = effective_scan_run(report)
+    catalog = _SarifCatalog()
+    _add_cve_results(catalog, report, blast_radii, exclude_unfixable)
+    _add_unified_finding_results(catalog, report)
+    _add_iac_results(catalog, report)
+    _add_ai_inventory_results(catalog, report)
+    _add_cis_benchmark_results(catalog, report)
     document = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",
-        "runs": [run],
+        "runs": [_build_sarif_run(report, catalog, scan_run)],
     }
     from agent_bom.output.interop_security import sanitize_linked_document
 

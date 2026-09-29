@@ -318,3 +318,29 @@ def test_operator_registrations_cannot_import_server_composition():
     ):
         assert boundary_errors("mcp_tools/operator/graphs.py", ast.parse(source))
     assert not boundary_errors("mcp_tools/operator/graphs.py", ast.parse("from .bindings import OperatorToolBindings"))
+
+
+def test_raw_env_reads_are_counted_per_file_and_only_settings_owners_are_exempt(tmp_path):
+    body = (
+        "import os\nimport os as _os\nfrom os import environ, getenv\nfrom os import environ as env\n"
+        "a = os.environ.get('A')\nb = os.getenv('B')\nc = os.environ['C']\nd = _os.environ.get('D')\n"
+        "e = environ.get('E')\nf = getenv('F')\ng = env['G']\n"
+        "os.environ['H'] = '1'\nos.environ.setdefault('I', '1')\nh = 'J' in os.environ\n"
+    )
+    metrics = _layer_metrics(tmp_path, {"cli/x.py": body, "config.py": body, "core/settings.py": body, "clean.py": "x = 1\n"})
+    assert metrics["cli/x.py"]["raw_env_reads"] == 7
+    assert "raw_env_reads" not in metrics["config.py"]
+    assert "raw_env_reads" not in metrics["core/settings.py"]
+    assert "raw_env_reads" not in metrics["clean.py"]
+    assert regressions({"new.py": {"raw_env_reads": 1}}, {})
+    assert regressions({"old.py": {"raw_env_reads": 3}}, {"old.py": {"raw_env_reads": 2}})
+    assert not regressions({"old.py": {"raw_env_reads": 1}}, {"old.py": {"raw_env_reads": 2}})
+    assert debt({"old.py": {"raw_env_reads": 2}}) == {"old.py": {"raw_env_reads": 2}}
+
+
+def test_raw_env_reads_bootstrap_once_then_only_shrink():
+    previous = {"old.py": {"raw_env_reads": 4}}
+    assert not baseline_growth({"old.py": {"raw_env_reads": 9}}, {}, ratcheted_metrics={"file_lines"})
+    assert baseline_growth({"old.py": {"raw_env_reads": 5}}, previous, ratcheted_metrics={"raw_env_reads"})
+    assert baseline_growth({"new.py": {"raw_env_reads": 1}}, previous, ratcheted_metrics={"raw_env_reads"})
+    assert not baseline_growth({"old.py": {"raw_env_reads": 3}}, previous, ratcheted_metrics={"raw_env_reads"})

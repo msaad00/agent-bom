@@ -47,6 +47,8 @@ UPDATE = os.environ.get("AGENT_BOM_UPDATE_OUTPUT_GOLDENS") == "1"
 PINNED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
 ROOT = "/tmp/output-golden"
 
+pytestmark = pytest.mark.skipif(os.name == "nt", reason="goldens pin POSIX fixture paths")
+
 
 def _pin(report: AIBOMReport, scan_id: str) -> AIBOMReport:
     report.generated_at = PINNED_AT

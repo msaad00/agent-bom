@@ -42,6 +42,20 @@ def test_targeted_tests_include_changed_tests_and_source_name_matches(tmp_path: 
     assert selected == [matching, direct]
 
 
+def test_ast_edits_select_characterization_and_console_reconciliation(tmp_path: Path) -> None:
+    expected = sorted(tmp_path / "tests" / name for name in ("test_ast_analysis_characterization.py", "test_console_reconciliation.py"))
+    for path in [*expected, tmp_path / "tests/test_other.py"]:
+        _write(path, 1)
+    for source in (
+        "src/agent_bom/ast_analyzer.py",
+        "src/agent_bom/ast_python_analysis.py",
+        "src/agent_bom/ast/js_ts/facade.py",
+        "tests/fixtures/analysis_characterization/multilang/server.ts",
+        "tests/fixtures/analysis_characterization_golden.json",
+    ):
+        assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
 def test_route_and_shared_auth_edits_always_select_mounted_operation_matrix(tmp_path: Path) -> None:
     from scripts.pytest_ci_plan import AUTHORIZATION_CONTRACTS, AUTHORIZATION_SOURCES
 

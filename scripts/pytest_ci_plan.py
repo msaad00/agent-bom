@@ -126,6 +126,12 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
 
     for changed in changed_files:
         normalized = Path(changed.as_posix().lstrip("./"))
+        if normalized.as_posix().startswith(("src/agent_bom/ast/", "src/agent_bom/ast_", "tests/fixtures/analysis_characterization")):
+            selected.update(
+                candidate
+                for candidate in available
+                if candidate.name in {"test_ast_analysis_characterization.py", "test_console_reconciliation.py"}
+            )
         if normalized.as_posix().startswith("src/agent_bom/api/storage/") or normalized.as_posix() in {
             "src/agent_bom/api/compliance_hub_store.py",
             "src/agent_bom/api/postgres_compliance_hub.py",

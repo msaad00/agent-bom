@@ -97,6 +97,65 @@ async def test_idle_alert_stream_closes_when_key_is_revoked(scoped_store, monkey
     assert socket.close_code == 4001
 
 
+@pytest.mark.parametrize("transport", ["header", "first-message"])
+@pytest.mark.parametrize("role", list(auth.Role))
+def test_startup_seeded_env_keys_retain_store_identity(scoped_store, monkeypatch, transport, role):
+    from agent_bom.api import server
+
+    raw, _ = auth.create_api_key(name="seed-input", role=role)
+    monkeypatch.setenv("AGENT_BOM_API_KEYS", f"{raw}:{role.value}")
+    monkeypatch.setattr(server, "_env_api_keys_seeded", False)
+    seeded = server._seed_api_key_store_from_env()
+    assert seeded
+    key = scoped_store.verify(raw)
+    assert key is not None
+    context = websocket_auth._ws_auth_from_token(raw, bearer=transport == "header")
+    assert context is not None
+    assert (context.key_id, context.tenant_id, context.role) == (key.key_id, key.tenant_id, role.value)
+
+
+@pytest.mark.parametrize("transport", ["header", "first-message"])
+@pytest.mark.parametrize("restriction", ["revoked", "expired", "rotation-ended", "unseeded"])
+def test_env_key_cannot_bypass_store_lifecycle(scoped_store, monkeypatch, transport, restriction):
+    raw, key = auth.create_api_key(name="env-stream", role=auth.Role.ADMIN, scopes=["runtime:read"])
+    monkeypatch.setenv("AGENT_BOM_API_KEYS", f"{raw}:admin")
+    if restriction != "unseeded":
+        scoped_store.add(key)
+        assert websocket_auth._ws_auth_from_token(raw) is not None
+    if restriction == "revoked":
+        scoped_store.remove(key.key_id)
+    elif restriction == "expired":
+        key.expires_at = "2000-01-01T00:00:00+00:00"
+    elif restriction == "rotation-ended":
+        key.replacement_key_id = "replacement-key"
+        key.rotation_overlap_until = "2000-01-01T00:00:00+00:00"
+    assert websocket_auth._ws_auth_from_token(raw, bearer=transport == "header") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", [proxy.ws_proxy_metrics, proxy.ws_proxy_alerts])
+@pytest.mark.parametrize("transport", ["header", "first-message"])
+async def test_revoked_env_key_handshake_never_reads_or_sends_runtime_data(scoped_store, monkeypatch, endpoint, transport):
+    raw, key = auth.create_api_key(name="env-reconnect", role=auth.Role.ADMIN)
+    scoped_store.add(key)
+    monkeypatch.setenv("AGENT_BOM_API_KEYS", f"{raw}:admin")
+    scoped_store.remove(key.key_id)
+    monkeypatch.setattr(websocket_auth, "_ws_auth_required", lambda: True)
+    monkeypatch.setattr(websocket_auth, "_ws_handshake_within_rate_limit", AsyncMock(return_value=True))
+    monkeypatch.setattr(proxy, "_runtime_metrics_for_tenant", lambda _: pytest.fail("Denied handshake read runtime metrics"))
+    socket = SimpleNamespace(
+        headers=Headers({"Authorization": f"Bearer {raw}"} if transport == "header" else {}),
+        query_params=QueryParams(),
+        accept=AsyncMock(),
+        receive_json=AsyncMock(return_value={"type": "auth", "token": raw}),
+        send_json=AsyncMock(side_effect=AssertionError("Denied handshake sent a frame")),
+        close=AsyncMock(),
+    )
+    await asyncio.wait_for(endpoint(socket), timeout=1)
+    socket.close.assert_awaited_once_with(code=4001)
+    socket.send_json.assert_not_awaited()
+
+
 @pytest.fixture
 def scoped_store(monkeypatch):
     for name in ("AGENT_BOM_API_KEY", "AGENT_BOM_OIDC_ISSUER", "AGENT_BOM_TRUST_PROXY_AUTH", "AGENT_BOM_DEMO_ESTATE"):

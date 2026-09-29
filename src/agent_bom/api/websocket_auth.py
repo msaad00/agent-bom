@@ -246,12 +246,9 @@ def _ws_auth_from_token(token: str, *, bearer: bool = True) -> _WebSocketAuthCon
             return _WebSocketAuthContext(tenant_id=api_key.tenant_id, role=role, auth_method="api_key", key_id=api_key.key_id)
         return None
 
-    # Direct ASGI imports may configure env keys after module import. A denied
-    # stored-key scope above is terminal and cannot fall back to this identity.
-    for item in resolve_secret("AGENT_BOM_API_KEYS").split(","):
-        raw_key, sep, role_value = item.strip().partition(":")
-        if sep and raw_key and _hmac.compare_digest(token, raw_key.strip()) and _role_allows(role_value, "viewer"):
-            return _WebSocketAuthContext(tenant_id="default", role=role_value.strip().lower(), auth_method="api_key")
+    # AGENT_BOM_API_KEYS is seeded into the shared store at startup. Never
+    # authenticate it directly here: a failed store verification can mean
+    # revocation, expiry, or an ended rotation overlap, not just an unknown key.
 
     if bearer:
         from agent_bom.api.oidc import oidc_enabled_from_env

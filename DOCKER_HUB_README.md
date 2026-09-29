@@ -6,7 +6,7 @@
 non-human identity, runtime, and skill evidence into one reachability-backed AI
 BOM, then tells humans and AI agents which multi-hop exposure path to fix first.
 
-The shared security graph connects packages, workloads, agents, tools, identities, and data assets through typed relationships with source evidence and explicit completeness.
+The shared security graph connects packages, workloads, agents, tools, identities, and data assets through typed relationships with source evidence and explicit completeness. Recorded relationships do not establish execution or successful data access.
 
 Blast radius is the core idea:
 
@@ -60,7 +60,7 @@ feed the same evidence model.
 
 | Lane | Start with | Produces |
 |------|------------|----------|
-| **Scan locally** | `docker run --rm -v agentbom-state:/home/abom/.agent-bom agentbom/agent-bom:latest scan --demo --offline` | findings, SARIF, SBOM, HTML, graph exports |
+| **Try the sample** | `docker run --rm -v agentbom-state:/home/abom/.agent-bom agentbom/agent-bom:latest scan --demo --offline` | bundled sample findings in the terminal; security-verdict exit `1` is expected |
 | **Send evidence to a control plane** | `docker compose -f docker-compose.pilot.yml up -d` | fleet inventory, scan jobs, graph state, compliance exports |
 | **Enforce runtime behavior** | `agent-bom proxy` or `agent-bom mcp server` from this image | MCP tools, audit JSONL, policy blocks, runtime alerts |
 
@@ -70,13 +70,15 @@ The `agentbom-state` named volume reuses vulnerability and scan state across
 disposable containers. Keep this mount on project scans so later runs can use
 the existing advisory cache instead of downloading it again.
 
-**Discover and scan your AI agent environment**
+**Scan agent configuration visible inside the container**
 
 ```bash
 docker run --rm -v agentbom-state:/home/abom/.agent-bom agentbom/agent-bom:latest agents
 ```
 
-**Workstation posture summary**
+This container cannot discover host configuration that has not been mounted. For a repository scan, use the explicit project mount below.
+
+**Container-visible posture summary**
 
 ```bash
 docker run --rm agentbom/agent-bom:latest agents --posture

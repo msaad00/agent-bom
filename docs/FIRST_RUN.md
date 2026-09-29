@@ -67,7 +67,7 @@ local DB. Everyday scans should use `agent-bom scan .` (section 0) instead.
 ### Annotated demo output
 
 The demo is intentionally noisy enough to prove value without scanning a
-private repo. A current release run starts like this:
+private repo. Current source output includes these excerpts (installed-release output may differ):
 
 ```text
 Demo mode - curated agent + MCP sample with known-vulnerable packages.
@@ -82,12 +82,11 @@ Package Extraction
 Vulnerability Scan
   [ok] Demo advisory DB: 15 vulnerabilities found (offline)
   [warn] Found 15 vulnerabilities across 15 findings
-  [warn] Scan complete — package CVEs: 2 critical · 9 high · 4 medium
+  [warn] Scan complete — package CVEs: 2 critical · 8 high · 5 medium
 [warn] Toxic combinations: 5 finding(s)
-[warn] Findings — 2 critical · 16 high · 5 medium (all finding categories)
+[warn] Findings — 7 critical · 10 high · 6 medium (all finding categories)
 
-agent-bom <installed version>
-agents=5 servers=10 packages=23 vulnerabilities=15
+5 agents · 10 servers · 23 packages
 ```
 
 The package-CVE count and unified finding count have different scopes. This
@@ -106,27 +105,22 @@ What to look for:
 | `23 packages` | Extracts Python and npm package evidence behind MCP servers. | The scan proves supply-chain inventory before reporting risk. |
 | `15 vulnerabilities` | Matches vulnerable demo package versions against curated advisory-backed ranges. | The findings are advisory-backed; they are not invented demo rows. |
 | severity summary | Groups findings by critical/high/medium/low. | Operators can immediately prioritize the highest-risk fixes. |
-| `agents=... servers=...` | Prints a compact inventory summary. | The same evidence can move into JSON, SARIF, SBOM, HTML, graph, or dashboard workflows. |
+| `5 agents · 10 servers · 23 packages` | Prints a compact inventory summary. | The same evidence can move into JSON, SARIF, SBOM, HTML, graph, or dashboard workflows. |
 
-After the summary, text output lists package rows:
-
-```text
-cursor  database-server  pypi  cryptography  39.0.0
-cursor  database-server  pypi  pillow        9.0.0
-```
-
-Then it lists findings with fix guidance and reach context:
+The critical detail view names the affected package, fix, and recorded associations:
 
 ```text
-VULN_ID          SEVERITY  PACKAGE              FIX     AGENTS  CREDENTIALS
-GHSA-8vj2-vxx3-667w  critical  pillow@9.0.0         9.0.1   1       2
-PYSEC-2023-254       high      cryptography@39.0.0  41.0.3  1       2
+CVE-2023-36258 · langchain@0.0.150 · CRITICAL
+Fix: upgrade to ≥ 0.0.247
+Blast: langchain-service → llm-orchestrator-server → ANTHROPIC_API_KEY, OPENAI_API_KEY
+
+CVE-2023-4863 · pillow@9.0.0 · HIGH
+Fix: upgrade to ≥ 10.0.1
+Blast: data-pipeline → etl-server → GCS_SERVICE_ACCOUNT_KEY
 ```
 
-Read the final columns as blast-radius context: `AGENTS` is how many agent
-surfaces can reach the vulnerable package instance, and `CREDENTIALS` is how
-many credential environment variable names are visible on the associated path.
-Those names are environment variable identifiers, not secret values.
+Credential references are environment variable names, not secret values.
+Recorded graph relationships do not establish execution or successful data access.
 
 The most useful next command is usually a structured export:
 

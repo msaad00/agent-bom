@@ -804,10 +804,16 @@ for (const theme of ["light", "dark"] as const) {
       await expect(drawer.getByText("server:opaque", { exact: true })).toBeVisible();
       expect(await drawer.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       // Crossing the mobile portal boundary must retain pages and their generation.
-      await page.setViewportSize({ width: width === 390 ? 1440 : 390, height: 1000 });
-      await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
-      await page.setViewportSize({ width, height: 1000 });
-      await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
+      for (const nextWidth of [width === 390 ? 1440 : 390, width]) {
+        await page.setViewportSize({ width: nextWidth, height: 1000 });
+        if (nextWidth === 390) {
+          await expect(drawer.getByRole("dialog")).toHaveCSS("opacity", "1");
+          await expect.poll(() => drawer.locator("aside").evaluate(element => element.getBoundingClientRect().left)).toBe(0);
+        } else {
+          await expect(drawer.getByRole("dialog")).toHaveCount(0);
+        }
+        await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
+      }
       await page.screenshot({ path: testInfo.outputPath(`relationships-${theme}-${width}.png`), fullPage: true });
       await expect(drawer.getByRole("status")).toContainText("2 loaded relationships · total unknown");
       expect(requests).toHaveLength(2);

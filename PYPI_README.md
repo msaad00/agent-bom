@@ -40,7 +40,7 @@ the printed report is complete.
 agent-bom scan --demo --offline
 ```
 
-The demo uses a curated sample so the output stays reproducible across releases.
+The demo uses a curated sample for reproducible output within a release; advisory and severity updates can change later releases.
 
 If you want an inspectable sample before scanning your own repo:
 

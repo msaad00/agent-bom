@@ -24,6 +24,10 @@ scan creates the inventory and findings; starting the dashboard alone does not
 collect an estate. Inspect coverage, open a finding, then follow its evidence
 and remediation action.
 
+In an empty overview, **Preview a saved report** opens a local JSON report in
+the browser. This does not upload it or populate the control-plane graph. Use
+**Return to live overview** to resume the authenticated workspace.
+
 Stop with `docker compose -f docker-compose.pilot.yml down`. The named data
 volume remains available for the next run.
 

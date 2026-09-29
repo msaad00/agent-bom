@@ -5,7 +5,9 @@ from __future__ import annotations
 import ast
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from agent_bom.ast.source_reader import read_source_for_analysis
 from agent_bom.ast_models import (
@@ -1670,30 +1672,130 @@ def _resolve_external_dependency_symbol(caller: _FunctionAnalysis, raw_name: str
     return None
 
 
-def _build_taint_findings(
-    functions: list[_FunctionAnalysis],
-    application_entrypoints: list[ApplicationEntrypoint] | None = None,
-) -> list[FlowFinding]:
-    """Build taint/data-flow findings from tool and HTTP route entrypoints into sinks and LLM calls."""
-    by_name: dict[str, list[_FunctionAnalysis]] = {}
-    by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
-    for func in functions:
-        by_name.setdefault(func.simple_name, []).append(func)
-        if func.module_name:
-            by_module_and_name[(func.module_name, func.simple_name)] = func
+_TAINT_SINK_TITLES = {
+    "tainted_path_access": "Untrusted data reaches a file-system path sink",
+    "tainted_ssrf_sink": "Untrusted data reaches an outbound URL sink",
+    "tainted_command_execution": "Untrusted data reaches shell command execution",
+    "tainted_dynamic_code_execution": "Untrusted data reaches dynamic code execution",
+    "tainted_dangerous_sink": "Untrusted data reaches a dangerous sink",
+    "tainted_xss_sink": "Untrusted data reaches an HTML rendering sink",
+    "tainted_sql_query": "Untrusted data reaches SQL execution",
+    "tainted_llm_prompt": "Untrusted data reaches an LLM invocation",
+}
 
-    seen_findings: set[tuple[str, str, str, int, str]] = set()
-    validator_summary_cache: dict[str, set[str]] = {}
+_TaintResult = tuple[bool, list[FlowFinding]]
+_StatementResult = tuple[list[FlowFinding], bool]
 
-    def validator_param_names(
-        func: _FunctionAnalysis,
-        seen: set[str] | None = None,
-    ) -> set[str]:
-        cached = validator_summary_cache.get(func.qualified_name)
+
+def _taint_sink_categories(call_name: str, call: ast.Call) -> tuple[str, ...]:
+    """Classify a call as the taint sink categories it reports, first match wins."""
+    if _is_path_access_call_name(call_name):
+        return ("tainted_path_access",)
+    if _is_http_client_call_name(call_name):
+        return ("tainted_ssrf_sink",)
+    if _is_command_execution_call_name(call_name) and _is_shell_execution_call(call_name, call):
+        if call_name in _DANGEROUS_CALLS:
+            return ("tainted_command_execution", "tainted_dangerous_sink")
+        return ("tainted_command_execution",)
+    if call_name in _DYNAMIC_CODE_CALLS:
+        return ("tainted_dynamic_code_execution",)
+    if call_name in _DANGEROUS_CALLS:
+        return ("tainted_dangerous_sink",)
+    if _is_xss_sink_call_name(call_name):
+        return ("tainted_xss_sink",)
+    if _is_sql_call_name(call_name):
+        return ("tainted_sql_query",)
+    if _is_llm_call_name(call_name):
+        return ("tainted_llm_prompt",)
+    return ()
+
+
+def _taint_expr_children(expr: ast.AST) -> list[ast.AST | None] | None:
+    """Sub-expressions whose taint an aggregate expression unions, in evaluation order."""
+    if isinstance(expr, ast.JoinedStr):
+        return list(expr.values)
+    if isinstance(expr, ast.BinOp):
+        return [expr.left, expr.right]
+    if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):
+        return list(expr.elts)
+    if isinstance(expr, ast.Dict):
+        return [child for key, value in zip(expr.keys, expr.values, strict=False) for child in (key, value)]
+    if isinstance(expr, ast.BoolOp):
+        return list(expr.values)
+    if isinstance(expr, ast.Compare):
+        return [expr.left, *expr.comparators]
+    return None
+
+
+def _names_bound_to_params(callee: _FunctionAnalysis, call: ast.Call, params: set[str]) -> set[str]:
+    """Names passed, positionally or by keyword, into ``params`` of ``callee``."""
+    names: set[str] = set()
+    for param_name, arg in zip(callee.param_names, call.args, strict=False):
+        if param_name in params:
+            names.update(_names_in_expr(arg))
+    for keyword in call.keywords:
+        if keyword.arg and keyword.arg in params:
+            names.update(_names_in_expr(keyword.value))
+    return names
+
+
+def _returns_opposite_booleans(first: list[ast.stmt], second: list[ast.stmt]) -> bool:
+    return (_returns_boolean_constant(first, True) and _returns_boolean_constant(second, False)) or (
+        _returns_boolean_constant(first, False) and _returns_boolean_constant(second, True)
+    )
+
+
+def _validated_by_boolean_if(func: _FunctionAnalysis, statement: ast.If) -> set[str]:
+    """Parameters an ``if check(x): return True else: return False`` validates."""
+    if not _expr_contains_validation_hint(statement.test):
+        return set()
+    branch_validated = {name for name in _validation_source_names_from_expr(statement.test) if name in func.param_names}
+    if branch_validated and _returns_opposite_booleans(statement.body, statement.orelse):
+        return branch_validated
+    return set()
+
+
+def _validated_by_early_return(func: _FunctionAnalysis, body_statements: list[ast.stmt]) -> set[str]:
+    """Parameters validated by a top-level ``if`` whose early return mirrors the tail."""
+    validated: set[str] = set()
+    for index, statement in enumerate(body_statements):
+        if not isinstance(statement, ast.If) or not _expr_contains_validation_hint(statement.test):
+            continue
+        branch_validated = {name for name in _validation_source_names_from_expr(statement.test) if name in func.param_names}
+        if branch_validated and _returns_opposite_booleans(statement.body, body_statements[index + 1 :]):
+            validated.update(branch_validated)
+    return validated
+
+
+class _TaintInterpreter:
+    """Inter-procedural taint walk from tool and HTTP route entrypoints into sinks.
+
+    Holds the state shared across every analyzed function: the call-resolution
+    indexes, the validator summary cache and the depth cap. Each function
+    invocation runs in its own ``_TaintFrame``.
+    """
+
+    def __init__(self, functions: list[_FunctionAnalysis]) -> None:
+        self.by_name: dict[str, list[_FunctionAnalysis]] = {}
+        self.by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
+        for func in functions:
+            self.by_name.setdefault(func.simple_name, []).append(func)
+            if func.module_name:
+                self.by_module_and_name[(func.module_name, func.simple_name)] = func
+        self.validator_summary_cache: dict[str, set[str]] = {}
+        self.max_depth = _max_taint_depth()
+
+    def resolve(self, func: _FunctionAnalysis, call_name: str) -> _FunctionAnalysis | None:
+        if not call_name:
+            return None
+        return _resolve_called_function(func, call_name, self.by_name, self.by_module_and_name)
+
+    def validator_param_names(self, func: _FunctionAnalysis, seen: set[str] | None = None) -> set[str]:
+        cached = self.validator_summary_cache.get(func.qualified_name)
         if cached is not None:
             return cached
         if func.node is None:
-            validator_summary_cache[func.qualified_name] = set()
+            self.validator_summary_cache[func.qualified_name] = set()
             return set()
 
         seen = set(seen or ())
@@ -1702,96 +1804,63 @@ def _build_taint_findings(
         seen.add(func.qualified_name)
 
         validated: set[str] = set()
-        body_statements = list(func.node.body)
         for statement in ast.walk(func.node):
             if isinstance(statement, ast.Return):
-                if statement.value is not None and _expr_contains_validation_hint(statement.value):
-                    validated.update(name for name in _validation_source_names_from_expr(statement.value) if name in func.param_names)
-                    continue
-                if isinstance(statement.value, ast.Call):
-                    call_name = _call_name(statement.value.func)
-                    callee = _resolve_called_function(func, call_name, by_name, by_module_and_name) if call_name else None
-                    if callee is not None:
-                        callee_validated = validator_param_names(callee, seen)
-                        for param_name, arg in zip(callee.param_names, statement.value.args, strict=False):
-                            if param_name in callee_validated:
-                                validated.update(name for name in _names_in_expr(arg) if name in func.param_names)
-                        for keyword in statement.value.keywords:
-                            if keyword.arg and keyword.arg in callee_validated:
-                                validated.update(name for name in _names_in_expr(keyword.value) if name in func.param_names)
-            if isinstance(statement, ast.If) and _expr_contains_validation_hint(statement.test):
-                branch_validated = {name for name in _validation_source_names_from_expr(statement.test) if name in func.param_names}
-                if branch_validated and (
-                    (_returns_boolean_constant(statement.body, True) and _returns_boolean_constant(statement.orelse, False))
-                    or (_returns_boolean_constant(statement.body, False) and _returns_boolean_constant(statement.orelse, True))
-                ):
-                    validated.update(branch_validated)
-        for index, statement in enumerate(body_statements):
-            if not isinstance(statement, ast.If) or not _expr_contains_validation_hint(statement.test):
-                continue
-            branch_validated = {name for name in _validation_source_names_from_expr(statement.test) if name in func.param_names}
-            if not branch_validated:
-                continue
-            tail_statements = body_statements[index + 1 :]
-            if (_returns_boolean_constant(statement.body, True) and _returns_boolean_constant(tail_statements, False)) or (
-                _returns_boolean_constant(statement.body, False) and _returns_boolean_constant(tail_statements, True)
-            ):
-                validated.update(branch_validated)
+                validated.update(self._validated_by_return(func, statement, seen))
+            elif isinstance(statement, ast.If):
+                validated.update(_validated_by_boolean_if(func, statement))
+        validated.update(_validated_by_early_return(func, list(func.node.body)))
 
-        validator_summary_cache[func.qualified_name] = validated
+        self.validator_summary_cache[func.qualified_name] = validated
         return validated
 
-    def guarded_names_from_expr(
-        func: _FunctionAnalysis,
-        expr: ast.AST | None,
-    ) -> set[str]:
+    def _validated_by_return(self, func: _FunctionAnalysis, statement: ast.Return, seen: set[str]) -> set[str]:
+        value = statement.value
+        if value is not None and _expr_contains_validation_hint(value):
+            return {name for name in _validation_source_names_from_expr(value) if name in func.param_names}
+        if not isinstance(value, ast.Call):
+            return set()
+        callee = self.resolve(func, _call_name(value.func))
+        if callee is None:
+            return set()
+        callee_validated = self.validator_param_names(callee, seen)
+        return {name for name in _names_bound_to_params(callee, value, callee_validated) if name in func.param_names}
+
+    def guarded_names_from_expr(self, func: _FunctionAnalysis, expr: ast.AST | None) -> set[str]:
         if expr is None:
             return set()
         if _expr_contains_validation_hint(expr):
             return _validation_source_names_from_expr(expr)
         if isinstance(expr, ast.Call):
-            call_name = _call_name(expr.func)
-            callee = _resolve_called_function(func, call_name, by_name, by_module_and_name) if call_name else None
+            callee = self.resolve(func, _call_name(expr.func))
             if callee is None:
                 return set()
-            callee_validated = validator_param_names(callee)
-            guarded: set[str] = set()
-            for param_name, arg in zip(callee.param_names, expr.args, strict=False):
-                if param_name in callee_validated:
-                    guarded.update(_names_in_expr(arg))
-            for keyword in expr.keywords:
-                if keyword.arg and keyword.arg in callee_validated:
-                    guarded.update(_names_in_expr(keyword.value))
-            return guarded
+            return _names_bound_to_params(callee, expr, self.validator_param_names(callee))
         if isinstance(expr, ast.BoolOp):
             guarded_names: set[str] = set()
             for value in expr.values:
-                guarded_names.update(guarded_names_from_expr(func, value))
+                guarded_names.update(self.guarded_names_from_expr(func, value))
             return guarded_names
         if isinstance(expr, ast.UnaryOp):
-            return guarded_names_from_expr(func, expr.operand)
+            return self.guarded_names_from_expr(func, expr.operand)
         return set()
 
-    def post_if_guarded_names(
-        func: _FunctionAnalysis,
-        statement: ast.If,
-    ) -> set[str]:
+    def post_if_guarded_names(self, func: _FunctionAnalysis, statement: ast.If) -> set[str]:
         """Return names guarded on the path that continues after an if-statement."""
         test = statement.test
         if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-            guarded = guarded_names_from_expr(func, test.operand)
+            guarded = self.guarded_names_from_expr(func, test.operand)
             if guarded and _branch_definitely_exits(statement.body):
                 return guarded
             return set()
 
-        guarded = guarded_names_from_expr(func, test)
+        guarded = self.guarded_names_from_expr(func, test)
         if guarded and _branch_definitely_exits(statement.orelse):
             return guarded
         return set()
 
-    max_depth = _max_taint_depth()
-
     def analyze_function(
+        self,
         func: _FunctionAnalysis,
         tainted_params: set[str],
         call_path: list[str],
@@ -1801,7 +1870,7 @@ def _build_taint_findings(
         # cycles, but a long fan-out chain could still explode the work
         # without surfacing a finding the operator can act on. Cap the
         # call_path length so the analyzer commits to a documented depth.
-        if len(call_path) > max_depth:
+        if len(call_path) > self.max_depth:
             return [], False
         visit_key = (func.qualified_name, tuple(sorted(tainted_params)))
         if visit_key in visited or func.node is None:
@@ -1809,407 +1878,319 @@ def _build_taint_findings(
         visited = set(visited)
         visited.add(visit_key)
 
-        tainted_vars = set(tainted_params)
-        request_global_is_source = _request_global_is_framework_source(func)
-        sanitized_vars: set[str] = set()
-        findings: list[FlowFinding] = []
-        returns_tainted = False
-
-        def expr_taint(expr: ast.AST | None, current_sanitized: set[str]) -> tuple[bool, list[FlowFinding]]:
-            if expr is None:
-                return False, []
-            if isinstance(expr, ast.Name):
-                return expr.id in tainted_vars and expr.id not in current_sanitized, []
-            if isinstance(expr, ast.Constant):
-                return False, []
-            if isinstance(expr, ast.Attribute):
-                if request_global_is_source and _is_request_data_attribute(expr):
-                    return True, []
-                return expr_taint(expr.value, current_sanitized)
-            if isinstance(expr, ast.Subscript):
-                return expr_taint(expr.value, current_sanitized)
-            if isinstance(expr, ast.JoinedStr):
-                findings_acc: list[FlowFinding] = []
-                tainted = False
-                for value in expr.values:
-                    child_tainted, child_findings = expr_taint(value, current_sanitized)
-                    findings_acc.extend(child_findings)
-                    tainted |= child_tainted
-                return tainted, findings_acc
-            if isinstance(expr, ast.FormattedValue):
-                return expr_taint(expr.value, current_sanitized)
-            if isinstance(expr, ast.BinOp):
-                left_tainted, left_findings = expr_taint(expr.left, current_sanitized)
-                right_tainted, right_findings = expr_taint(expr.right, current_sanitized)
-                return left_tainted or right_tainted, left_findings + right_findings
-            if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):
-                sequence_findings: list[FlowFinding] = []
-                tainted = False
-                for elt in expr.elts:
-                    child_tainted, child_findings = expr_taint(elt, current_sanitized)
-                    sequence_findings.extend(child_findings)
-                    tainted |= child_tainted
-                return tainted, sequence_findings
-            if isinstance(expr, ast.Dict):
-                dict_findings: list[FlowFinding] = []
-                tainted = False
-                for key, value in zip(expr.keys, expr.values, strict=False):
-                    for child in (key, value):
-                        child_tainted, child_findings = expr_taint(child, current_sanitized)
-                        dict_findings.extend(child_findings)
-                        tainted |= child_tainted
-                return tainted, dict_findings
-            if isinstance(expr, ast.BoolOp):
-                bool_findings: list[FlowFinding] = []
-                tainted = False
-                for value in expr.values:
-                    child_tainted, child_findings = expr_taint(value, current_sanitized)
-                    bool_findings.extend(child_findings)
-                    tainted |= child_tainted
-                return tainted, bool_findings
-            if isinstance(expr, ast.Compare):
-                compare_findings: list[FlowFinding] = []
-                left_tainted, left_findings = expr_taint(expr.left, current_sanitized)
-                compare_findings.extend(left_findings)
-                tainted = left_tainted
-                for comparator in expr.comparators:
-                    child_tainted, child_findings = expr_taint(comparator, current_sanitized)
-                    compare_findings.extend(child_findings)
-                    tainted |= child_tainted
-                return tainted, compare_findings
-            if isinstance(expr, ast.Call):
-                return call_taint(expr, current_sanitized)
-            return any(name in tainted_vars and name not in current_sanitized for name in _names_in_expr(expr)), []
-
-        def call_taint(call: ast.Call, current_sanitized: set[str]) -> tuple[bool, list[FlowFinding]]:
-            call_name = _call_name(call.func)
-            arg_results = [expr_taint(arg, current_sanitized) for arg in call.args]
-            kw_results = [(kw.arg, *expr_taint(kw.value, current_sanitized)) for kw in call.keywords]
-            receiver_tainted = False
-            receiver_findings: list[FlowFinding] = []
-            if isinstance(call.func, ast.Attribute):
-                receiver_tainted, receiver_findings = expr_taint(call.func.value, current_sanitized)
-
-            arg_tainted = receiver_tainted or any(result[0] for result in arg_results) or any(result[1] for result in kw_results)
-            nested_findings: list[FlowFinding] = []
-            nested_findings.extend(receiver_findings)
-            for _, child_findings in arg_results:
-                nested_findings.extend(child_findings)
-            for _, _, child_findings in kw_results:
-                nested_findings.extend(child_findings)
-
-            if _is_untrusted_source_call(call_name):
-                return True, nested_findings
-            if _is_sanitizer_call_name(call_name):
-                return False, nested_findings
-
-            source_names: set[str] = set()
-            if receiver_tainted and isinstance(call.func, ast.Attribute):
-                source_names.update(name for name in _names_in_expr(call.func.value) if name in tainted_vars)
-            for arg, (is_tainted, _) in zip(call.args, arg_results, strict=False):
-                if is_tainted:
-                    source_names.update(name for name in _names_in_expr(arg) if name in tainted_vars)
-            for kw in call.keywords:
-                kw_tainted, _ = expr_taint(kw.value, current_sanitized)
-                if kw_tainted:
-                    source_names.update(name for name in _names_in_expr(kw.value) if name in tainted_vars)
-            source_label = ", ".join(sorted(source_names)) or "untrusted input"
-            guarded = _is_guarded_call(call, func.parent_map)
-
-            if call_name and arg_tainted and not guarded:
-                line_number = getattr(call, "lineno", func.line_number)
-                if _is_path_access_call_name(call_name):
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_path_access",
-                            title="Untrusted data reaches a file-system path sink",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                elif _is_http_client_call_name(call_name):
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_ssrf_sink",
-                            title="Untrusted data reaches an outbound URL sink",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                elif _is_command_execution_call_name(call_name) and _is_shell_execution_call(call_name, call):
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_command_execution",
-                            title="Untrusted data reaches shell command execution",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` with shell execution in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                    if call_name in _DANGEROUS_CALLS:
-                        nested_findings.append(
-                            _build_flow_finding(
-                                category="tainted_dangerous_sink",
-                                title="Untrusted data reaches a dangerous sink",
-                                detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                                file_path=func.file_path,
-                                line_number=line_number,
-                                entrypoint=call_path[0],
-                                sink=call_name,
-                                call_path=call_path + [call_name],
-                                source=source_label,
-                            )
-                        )
-                elif call_name in _DYNAMIC_CODE_CALLS:
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_dynamic_code_execution",
-                            title="Untrusted data reaches dynamic code execution",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                elif call_name in _DANGEROUS_CALLS:
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_dangerous_sink",
-                            title="Untrusted data reaches a dangerous sink",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                elif _is_xss_sink_call_name(call_name):
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_xss_sink",
-                            title="Untrusted data reaches an HTML rendering sink",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                elif _is_sql_call_name(call_name):
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_sql_query",
-                            title="Untrusted data reaches SQL execution",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-                elif _is_llm_call_name(call_name):
-                    nested_findings.append(
-                        _build_flow_finding(
-                            category="tainted_llm_prompt",
-                            title="Untrusted data reaches an LLM invocation",
-                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
-                            file_path=func.file_path,
-                            line_number=line_number,
-                            entrypoint=call_path[0],
-                            sink=call_name,
-                            call_path=call_path + [call_name],
-                            source=source_label,
-                        )
-                    )
-
-            callee = _resolve_called_function(func, call_name, by_name, by_module_and_name) if call_name else None
-            if callee is not None:
-                callee_tainted_params: set[str] = set()
-                for param_name, (is_tainted, _) in zip(callee.param_names, arg_results, strict=False):
-                    if is_tainted:
-                        callee_tainted_params.add(param_name)
-                for kw_name, is_tainted, _ in kw_results:
-                    if kw_name and is_tainted and kw_name in callee.param_names:
-                        callee_tainted_params.add(kw_name)
-                if callee_tainted_params:
-                    sub_findings, callee_returns_tainted = analyze_function(
-                        callee,
-                        callee_tainted_params,
-                        call_path + [callee.simple_name],
-                        visited,
-                    )
-                    nested_findings.extend(sub_findings)
-                    return callee_returns_tainted, nested_findings
-            return False, nested_findings
-
-        def walk_statements(statements: list[ast.stmt], current_sanitized: set[str]) -> tuple[set[str], list[FlowFinding], bool]:
-            local_tainted = set(tainted_vars)
-            findings_acc: list[FlowFinding] = []
-            local_returns_tainted = False
-
-            for statement in statements:
-                if isinstance(statement, ast.Assign):
-                    value_tainted, value_findings = expr_taint(statement.value, current_sanitized)
-                    findings_acc.extend(value_findings)
-                    target_names: set[str] = set()
-                    for target in statement.targets:
-                        target_names.update(_target_names(target))
-                    if value_tainted:
-                        local_tainted.update(target_names)
-                        tainted_vars.update(target_names)
-                    else:
-                        local_tainted.difference_update(target_names)
-                        tainted_vars.difference_update(target_names)
-                        current_sanitized.difference_update(target_names)
-                    continue
-                if isinstance(statement, ast.AnnAssign):
-                    value_tainted, value_findings = expr_taint(statement.value, current_sanitized)
-                    findings_acc.extend(value_findings)
-                    target_names = _target_names(statement.target)
-                    if value_tainted:
-                        local_tainted.update(target_names)
-                        tainted_vars.update(target_names)
-                    else:
-                        local_tainted.difference_update(target_names)
-                        tainted_vars.difference_update(target_names)
-                        current_sanitized.difference_update(target_names)
-                    continue
-                if isinstance(statement, ast.AugAssign):
-                    target_names = _target_names(statement.target)
-                    value_tainted, value_findings = expr_taint(statement.value, current_sanitized)
-                    findings_acc.extend(value_findings)
-                    target_tainted = any(name in tainted_vars for name in target_names)
-                    if value_tainted or target_tainted:
-                        local_tainted.update(target_names)
-                        tainted_vars.update(target_names)
-                    continue
-                if isinstance(statement, ast.Expr):
-                    _, value_findings = expr_taint(statement.value, current_sanitized)
-                    findings_acc.extend(value_findings)
-                    continue
-                if isinstance(statement, ast.Assert):
-                    _, test_findings = expr_taint(statement.test, current_sanitized)
-                    findings_acc.extend(test_findings)
-                    current_sanitized.update(guarded_names_from_expr(func, statement.test))
-                    continue
-                if isinstance(statement, ast.If):
-                    _, test_findings = expr_taint(statement.test, current_sanitized)
-                    findings_acc.extend(test_findings)
-                    guarded_names = guarded_names_from_expr(func, statement.test)
-                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, current_sanitized | guarded_names)
-                    orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
-                    findings_acc.extend(body_findings)
-                    findings_acc.extend(orelse_findings)
-                    tainted_vars.update(body_tainted | orelse_tainted)
-                    local_tainted.update(body_tainted | orelse_tainted)
-                    current_sanitized.update(post_if_guarded_names(func, statement))
-                    local_returns_tainted |= body_returns_tainted or orelse_returns_tainted
-                    continue
-                if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
-                    iter_expr = statement.iter if isinstance(statement, (ast.For, ast.AsyncFor)) else statement.test
-                    iter_tainted, iter_findings = expr_taint(iter_expr, current_sanitized)
-                    findings_acc.extend(iter_findings)
-                    body_sanitized = set(current_sanitized)
-                    if isinstance(statement, (ast.For, ast.AsyncFor)) and iter_tainted:
-                        tainted_loop_names = _target_names(statement.target)
-                        body_sanitized.difference_update(tainted_loop_names)
-                        tainted_vars.update(tainted_loop_names)
-                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, body_sanitized)
-                    orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
-                    findings_acc.extend(body_findings)
-                    findings_acc.extend(orelse_findings)
-                    tainted_vars.update(body_tainted | orelse_tainted)
-                    local_tainted.update(body_tainted | orelse_tainted)
-                    local_returns_tainted |= body_returns_tainted or orelse_returns_tainted
-                    continue
-                if isinstance(statement, ast.With):
-                    for item in statement.items:
-                        context_tainted, context_findings = expr_taint(item.context_expr, current_sanitized)
-                        findings_acc.extend(context_findings)
-                        if context_tainted and item.optional_vars is not None:
-                            names = _target_names(item.optional_vars)
-                            tainted_vars.update(names)
-                            local_tainted.update(names)
-                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, set(current_sanitized))
-                    findings_acc.extend(body_findings)
-                    tainted_vars.update(body_tainted)
-                    local_tainted.update(body_tainted)
-                    local_returns_tainted |= body_returns_tainted
-                    continue
-                if isinstance(statement, ast.Try):
-                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, set(current_sanitized))
-                    findings_acc.extend(body_findings)
-                    local_returns_tainted |= body_returns_tainted
-                    branch_tainted: set[str] = set(body_tainted)
-                    for handler in statement.handlers:
-                        handler_tainted, handler_findings, handler_returns_tainted = walk_statements(handler.body, set(current_sanitized))
-                        findings_acc.extend(handler_findings)
-                        branch_tainted.update(handler_tainted)
-                        local_returns_tainted |= handler_returns_tainted
-                    orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
-                    findings_acc.extend(orelse_findings)
-                    branch_tainted.update(orelse_tainted)
-                    local_returns_tainted |= orelse_returns_tainted
-                    final_tainted, final_findings, final_returns_tainted = walk_statements(statement.finalbody, set(current_sanitized))
-                    findings_acc.extend(final_findings)
-                    branch_tainted.update(final_tainted)
-                    local_returns_tainted |= final_returns_tainted
-                    tainted_vars.update(branch_tainted)
-                    local_tainted.update(branch_tainted)
-                    continue
-                if isinstance(statement, ast.Return):
-                    ret_tainted, ret_findings = expr_taint(statement.value, current_sanitized)
-                    findings_acc.extend(ret_findings)
-                    local_returns_tainted |= ret_tainted
-                    continue
-
-            return local_tainted, findings_acc, local_returns_tainted
-
-        _, findings, returns_tainted = walk_statements(func.node.body, sanitized_vars)
+        frame = _TaintFrame(self, func, set(tainted_params), call_path, visited)
+        _, findings, returns_tainted = frame.walk_statements(func.node.body, set())
         return findings, returns_tainted
 
-    roots: list[tuple[_FunctionAnalysis, set[str], str]] = [
-        (func, set(func.param_names), func.entrypoint_name or func.simple_name) for func in functions if func.is_tool and func.param_names
-    ]
-    tool_ids = {func.qualified_name for func, _, _ in roots}
-    for _, entry, func in _application_entrypoint_matches(functions, application_entrypoints, kinds=frozenset({"http_route"})):
-        if func.qualified_name not in tool_ids:
-            roots.append((func, _route_tainted_params(func), entry.name))
+    def run(
+        self,
+        functions: list[_FunctionAnalysis],
+        application_entrypoints: list[ApplicationEntrypoint] | None,
+    ) -> list[FlowFinding]:
+        roots: list[tuple[_FunctionAnalysis, set[str], str]] = [
+            (func, set(func.param_names), func.entrypoint_name or func.simple_name)
+            for func in functions
+            if func.is_tool and func.param_names
+        ]
+        tool_ids = {func.qualified_name for func, _, _ in roots}
+        for _, entry, func in _application_entrypoint_matches(functions, application_entrypoints, kinds=frozenset({"http_route"})):
+            if func.qualified_name not in tool_ids:
+                roots.append((func, _route_tainted_params(func), entry.name))
 
-    aggregated_findings: list[FlowFinding] = []
-    for func, tainted_params, entrypoint in roots:
-        tool_findings, _ = analyze_function(func, tainted_params, [entrypoint], set())
-        for finding in tool_findings:
-            dedup_key = (finding.category, finding.file_path, finding.sink, finding.line_number, finding.entrypoint)
-            if dedup_key in seen_findings:
+        seen_findings: set[tuple[str, str, str, int, str]] = set()
+        aggregated_findings: list[FlowFinding] = []
+        for func, tainted_params, entrypoint in roots:
+            tool_findings, _ = self.analyze_function(func, tainted_params, [entrypoint], set())
+            for finding in tool_findings:
+                dedup_key = (finding.category, finding.file_path, finding.sink, finding.line_number, finding.entrypoint)
+                if dedup_key in seen_findings:
+                    continue
+                seen_findings.add(dedup_key)
+                aggregated_findings.append(finding)
+        return aggregated_findings
+
+
+class _TaintFrame:
+    """Taint state for one function invocation on one inter-procedural call path."""
+
+    def __init__(
+        self,
+        interpreter: _TaintInterpreter,
+        func: _FunctionAnalysis,
+        tainted_vars: set[str],
+        call_path: list[str],
+        visited: set[tuple[str, tuple[str, ...]]],
+    ) -> None:
+        self.interpreter = interpreter
+        self.func = func
+        self.tainted_vars = tainted_vars
+        self.call_path = call_path
+        self.visited = visited
+        self.request_global_is_source = _request_global_is_framework_source(func)
+
+    def expr_taint(self, expr: ast.AST | None, current_sanitized: set[str]) -> _TaintResult:
+        if expr is None:
+            return False, []
+        if isinstance(expr, ast.Name):
+            return expr.id in self.tainted_vars and expr.id not in current_sanitized, []
+        if isinstance(expr, ast.Constant):
+            return False, []
+        if isinstance(expr, ast.Attribute):
+            if self.request_global_is_source and _is_request_data_attribute(expr):
+                return True, []
+            return self.expr_taint(expr.value, current_sanitized)
+        if isinstance(expr, (ast.Subscript, ast.FormattedValue)):
+            return self.expr_taint(expr.value, current_sanitized)
+        if isinstance(expr, ast.Call):
+            return self.call_taint(expr, current_sanitized)
+        children = _taint_expr_children(expr)
+        if children is not None:
+            return self._union_taint(children, current_sanitized)
+        return any(name in self.tainted_vars and name not in current_sanitized for name in _names_in_expr(expr)), []
+
+    def _union_taint(self, children: list[ast.AST | None], current_sanitized: set[str]) -> _TaintResult:
+        findings: list[FlowFinding] = []
+        tainted = False
+        for child in children:
+            child_tainted, child_findings = self.expr_taint(child, current_sanitized)
+            findings.extend(child_findings)
+            tainted |= child_tainted
+        return tainted, findings
+
+    def call_taint(self, call: ast.Call, current_sanitized: set[str]) -> _TaintResult:
+        call_name = _call_name(call.func)
+        arg_results = [self.expr_taint(arg, current_sanitized) for arg in call.args]
+        kw_results = [(kw.arg, *self.expr_taint(kw.value, current_sanitized)) for kw in call.keywords]
+        receiver_tainted = False
+        receiver_findings: list[FlowFinding] = []
+        if isinstance(call.func, ast.Attribute):
+            receiver_tainted, receiver_findings = self.expr_taint(call.func.value, current_sanitized)
+
+        arg_tainted = receiver_tainted or any(result[0] for result in arg_results) or any(result[1] for result in kw_results)
+        nested_findings: list[FlowFinding] = []
+        nested_findings.extend(receiver_findings)
+        for _, child_findings in arg_results:
+            nested_findings.extend(child_findings)
+        for _, _, child_findings in kw_results:
+            nested_findings.extend(child_findings)
+
+        if _is_untrusted_source_call(call_name):
+            return True, nested_findings
+        if _is_sanitizer_call_name(call_name):
+            return False, nested_findings
+
+        source_label = self._source_label(call, receiver_tainted, arg_results, current_sanitized)
+        if call_name and arg_tainted and not _is_guarded_call(call, self.func.parent_map):
+            nested_findings.extend(self._sink_findings(call, call_name, source_label))
+        return self._propagate_into_callee(call_name, arg_results, kw_results, nested_findings)
+
+    def _source_label(
+        self,
+        call: ast.Call,
+        receiver_tainted: bool,
+        arg_results: list[_TaintResult],
+        current_sanitized: set[str],
+    ) -> str:
+        source_names: set[str] = set()
+        if receiver_tainted and isinstance(call.func, ast.Attribute):
+            source_names.update(name for name in _names_in_expr(call.func.value) if name in self.tainted_vars)
+        for arg, (is_tainted, _) in zip(call.args, arg_results, strict=False):
+            if is_tainted:
+                source_names.update(name for name in _names_in_expr(arg) if name in self.tainted_vars)
+        for kw in call.keywords:
+            kw_tainted, _ = self.expr_taint(kw.value, current_sanitized)
+            if kw_tainted:
+                source_names.update(name for name in _names_in_expr(kw.value) if name in self.tainted_vars)
+        return ", ".join(sorted(source_names)) or "untrusted input"
+
+    def _sink_findings(self, call: ast.Call, call_name: str, source_label: str) -> list[FlowFinding]:
+        func = self.func
+        line_number = getattr(call, "lineno", func.line_number)
+        findings: list[FlowFinding] = []
+        for category in _taint_sink_categories(call_name, call):
+            shell = " with shell execution" if category == "tainted_command_execution" else ""
+            findings.append(
+                _build_flow_finding(
+                    category=category,
+                    title=_TAINT_SINK_TITLES[category],
+                    detail=f"Untrusted data ({source_label}) reaches `{call_name}`{shell} in {func.file_path}.",
+                    file_path=func.file_path,
+                    line_number=line_number,
+                    entrypoint=self.call_path[0],
+                    sink=call_name,
+                    call_path=self.call_path + [call_name],
+                    source=source_label,
+                )
+            )
+        return findings
+
+    def _propagate_into_callee(
+        self,
+        call_name: str,
+        arg_results: list[_TaintResult],
+        kw_results: list[tuple[str | None, bool, list[FlowFinding]]],
+        nested_findings: list[FlowFinding],
+    ) -> _TaintResult:
+        callee = self.interpreter.resolve(self.func, call_name)
+        if callee is None:
+            return False, nested_findings
+        callee_tainted_params: set[str] = set()
+        for param_name, (is_tainted, _) in zip(callee.param_names, arg_results, strict=False):
+            if is_tainted:
+                callee_tainted_params.add(param_name)
+        for kw_name, is_tainted, _ in kw_results:
+            if kw_name and is_tainted and kw_name in callee.param_names:
+                callee_tainted_params.add(kw_name)
+        if not callee_tainted_params:
+            return False, nested_findings
+        sub_findings, callee_returns_tainted = self.interpreter.analyze_function(
+            callee,
+            callee_tainted_params,
+            self.call_path + [callee.simple_name],
+            self.visited,
+        )
+        nested_findings.extend(sub_findings)
+        return callee_returns_tainted, nested_findings
+
+    def walk_statements(self, statements: list[ast.stmt], current_sanitized: set[str]) -> tuple[set[str], list[FlowFinding], bool]:
+        local_tainted = set(self.tainted_vars)
+        findings: list[FlowFinding] = []
+        returns_tainted = False
+        for statement in statements:
+            handler = _TAINT_STATEMENT_HANDLERS.get(type(statement))
+            if handler is None:
                 continue
-            seen_findings.add(dedup_key)
-            aggregated_findings.append(finding)
+            statement_findings, statement_returns_tainted = handler(self, statement, current_sanitized, local_tainted)
+            findings.extend(statement_findings)
+            returns_tainted |= statement_returns_tainted
+        return local_tainted, findings, returns_tainted
 
-    return aggregated_findings
+    def _bind(self, target_names: set[str], value_tainted: bool, current_sanitized: set[str], local_tainted: set[str]) -> None:
+        if value_tainted:
+            local_tainted.update(target_names)
+            self.tainted_vars.update(target_names)
+        else:
+            local_tainted.difference_update(target_names)
+            self.tainted_vars.difference_update(target_names)
+            current_sanitized.difference_update(target_names)
+
+    def _mark_tainted(self, names: set[str], local_tainted: set[str]) -> None:
+        self.tainted_vars.update(names)
+        local_tainted.update(names)
+
+    def _walk_assign(self, statement: ast.Assign, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        value_tainted, findings = self.expr_taint(statement.value, current_sanitized)
+        target_names: set[str] = set()
+        for target in statement.targets:
+            target_names.update(_target_names(target))
+        self._bind(target_names, value_tainted, current_sanitized, local_tainted)
+        return findings, False
+
+    def _walk_ann_assign(self, statement: ast.AnnAssign, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        value_tainted, findings = self.expr_taint(statement.value, current_sanitized)
+        self._bind(_target_names(statement.target), value_tainted, current_sanitized, local_tainted)
+        return findings, False
+
+    def _walk_aug_assign(self, statement: ast.AugAssign, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        target_names = _target_names(statement.target)
+        value_tainted, findings = self.expr_taint(statement.value, current_sanitized)
+        target_tainted = any(name in self.tainted_vars for name in target_names)
+        if value_tainted or target_tainted:
+            local_tainted.update(target_names)
+            self.tainted_vars.update(target_names)
+        return findings, False
+
+    def _walk_expr(self, statement: ast.Expr, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        _, findings = self.expr_taint(statement.value, current_sanitized)
+        return findings, False
+
+    def _walk_assert(self, statement: ast.Assert, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        _, findings = self.expr_taint(statement.test, current_sanitized)
+        current_sanitized.update(self.interpreter.guarded_names_from_expr(self.func, statement.test))
+        return findings, False
+
+    def _walk_return(self, statement: ast.Return, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        returns_tainted, findings = self.expr_taint(statement.value, current_sanitized)
+        return findings, returns_tainted
+
+    def _walk_if(self, statement: ast.If, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        _, findings = self.expr_taint(statement.test, current_sanitized)
+        guarded_names = self.interpreter.guarded_names_from_expr(self.func, statement.test)
+        body_tainted, body_findings, body_returns_tainted = self.walk_statements(statement.body, current_sanitized | guarded_names)
+        orelse_tainted, orelse_findings, orelse_returns_tainted = self.walk_statements(statement.orelse, set(current_sanitized))
+        findings.extend(body_findings)
+        findings.extend(orelse_findings)
+        self._mark_tainted(body_tainted | orelse_tainted, local_tainted)
+        current_sanitized.update(self.interpreter.post_if_guarded_names(self.func, statement))
+        return findings, body_returns_tainted or orelse_returns_tainted
+
+    def _walk_loop(
+        self,
+        statement: ast.For | ast.AsyncFor | ast.While,
+        current_sanitized: set[str],
+        local_tainted: set[str],
+    ) -> _StatementResult:
+        iter_expr = statement.iter if isinstance(statement, (ast.For, ast.AsyncFor)) else statement.test
+        iter_tainted, findings = self.expr_taint(iter_expr, current_sanitized)
+        body_sanitized = set(current_sanitized)
+        if isinstance(statement, (ast.For, ast.AsyncFor)) and iter_tainted:
+            tainted_loop_names = _target_names(statement.target)
+            body_sanitized.difference_update(tainted_loop_names)
+            self.tainted_vars.update(tainted_loop_names)
+        body_tainted, body_findings, body_returns_tainted = self.walk_statements(statement.body, body_sanitized)
+        orelse_tainted, orelse_findings, orelse_returns_tainted = self.walk_statements(statement.orelse, set(current_sanitized))
+        findings.extend(body_findings)
+        findings.extend(orelse_findings)
+        self._mark_tainted(body_tainted | orelse_tainted, local_tainted)
+        return findings, body_returns_tainted or orelse_returns_tainted
+
+    def _walk_with(self, statement: ast.With, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        findings: list[FlowFinding] = []
+        for item in statement.items:
+            context_tainted, context_findings = self.expr_taint(item.context_expr, current_sanitized)
+            findings.extend(context_findings)
+            if context_tainted and item.optional_vars is not None:
+                self._mark_tainted(_target_names(item.optional_vars), local_tainted)
+        body_tainted, body_findings, body_returns_tainted = self.walk_statements(statement.body, set(current_sanitized))
+        findings.extend(body_findings)
+        self._mark_tainted(body_tainted, local_tainted)
+        return findings, body_returns_tainted
+
+    def _walk_try(self, statement: ast.Try, current_sanitized: set[str], local_tainted: set[str]) -> _StatementResult:
+        branch_tainted, findings, returns_tainted = self.walk_statements(statement.body, set(current_sanitized))
+        branch_tainted = set(branch_tainted)
+        blocks = [handler.body for handler in statement.handlers] + [statement.orelse, statement.finalbody]
+        for block in blocks:
+            block_tainted, block_findings, block_returns_tainted = self.walk_statements(block, set(current_sanitized))
+            findings.extend(block_findings)
+            branch_tainted.update(block_tainted)
+            returns_tainted |= block_returns_tainted
+        self._mark_tainted(branch_tainted, local_tainted)
+        return findings, returns_tainted
+
+
+_TAINT_STATEMENT_HANDLERS: dict[type[ast.stmt], Callable[[_TaintFrame, Any, set[str], set[str]], _StatementResult]] = {
+    ast.Assign: _TaintFrame._walk_assign,
+    ast.AnnAssign: _TaintFrame._walk_ann_assign,
+    ast.AugAssign: _TaintFrame._walk_aug_assign,
+    ast.Expr: _TaintFrame._walk_expr,
+    ast.Assert: _TaintFrame._walk_assert,
+    ast.If: _TaintFrame._walk_if,
+    ast.For: _TaintFrame._walk_loop,
+    ast.AsyncFor: _TaintFrame._walk_loop,
+    ast.While: _TaintFrame._walk_loop,
+    ast.With: _TaintFrame._walk_with,
+    ast.Try: _TaintFrame._walk_try,
+    ast.Return: _TaintFrame._walk_return,
+}
+
+
+def _build_taint_findings(
+    functions: list[_FunctionAnalysis],
+    application_entrypoints: list[ApplicationEntrypoint] | None = None,
+) -> list[FlowFinding]:
+    """Build taint/data-flow findings from tool and HTTP route entrypoints into sinks and LLM calls."""
+    return _TaintInterpreter(functions).run(functions, application_entrypoints)
 
 
 def _find_call_node(func: _FunctionAnalysis, call_name: str, line_number: int) -> ast.Call | None:

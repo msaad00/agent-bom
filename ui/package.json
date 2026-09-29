@@ -7,7 +7,7 @@
     "node": "^22.22.2 || >=24.15.0 <25"
   },
   "scripts": {
-    "dev": "node scripts/run-next.mjs dev",
+    "dev": "node scripts/run-next.mjs dev --webpack",
     "build": "node scripts/run-next.mjs build --webpack",
     "start": "next start",
     "bundle:check": "node scripts/assert-install-matches-lockfile.mjs && node scripts/check-bundle-budget.mjs",

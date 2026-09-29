@@ -1145,22 +1145,20 @@
       "deferred_imports": 2
     },
     "cli/_check.py": {
-      "deferred_imports": 24,
-      "file_lines": 1394
-    },
-    "cli/_check.py::_check_payload_to_sarif": {
-      "function_lines": 106
+      "deferred_imports": 9
     },
     "cli/_check.py::_exit_model_verification": {
       "function_lines": 91
     },
-    "cli/_check.py::check": {
-      "complexity": 51,
-      "function_lines": 533
-    },
     "cli/_check.py::verify": {
       "complexity": 29,
       "function_lines": 219
+    },
+    "cli/_check_command.py": {
+      "deferred_imports": 9
+    },
+    "cli/_check_support.py": {
+      "deferred_imports": 4
     },
     "cli/_cloud_group.py": {
       "api_imports": 1,
@@ -2847,20 +2845,8 @@
     "iac/cloudformation.py": {
       "deferred_imports": 1
     },
-    "iac/cloudformation.py::scan_cloudformation": {
-      "complexity": 68,
-      "function_lines": 464
-    },
     "iac/dbt_security.py::_scan_profiles": {
       "function_lines": 84
-    },
-    "iac/dockerfile.py::scan_dockerfile": {
-      "complexity": 38,
-      "function_lines": 441
-    },
-    "iac/helm.py::scan_values_yaml": {
-      "complexity": 29,
-      "function_lines": 307
     },
     "iac/terraform_ai.py::scan_terraform_ai": {
       "function_lines": 90

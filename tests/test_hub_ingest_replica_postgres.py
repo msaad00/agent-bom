@@ -16,7 +16,11 @@ pytestmark = pytest.mark.skipif(not os.environ.get("AGENT_BOM_POSTGRES_URL"), re
 def pg_pool():
     from psycopg_pool import ConnectionPool
 
-    pool = ConnectionPool(os.environ["AGENT_BOM_POSTGRES_URL"], min_size=1, max_size=5, open=True)
+    from agent_bom.api.postgres_common import resolve_postgres_secret, resolve_postgres_url
+
+    password = resolve_postgres_secret()
+    kwargs = {"password": password} if password is not None else {}
+    pool = ConnectionPool(resolve_postgres_url(), kwargs=kwargs, min_size=1, max_size=5, open=True)
     yield pool
     pool.close()
 

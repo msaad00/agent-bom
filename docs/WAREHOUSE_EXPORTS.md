@@ -89,3 +89,35 @@ both `ROLLBACK` and unique stage-prefix removal without masking the primary
 error. Snowflake and Databricks require a non-blank stored private key or token
 at API validation and build time. S3, GCS, BigQuery, and Azure Blob retain their
 implemented ambient or managed-identity credential chains.
+
+## Schedule durability and concurrent edits
+
+For a Postgres control plane, run the migration from the checkout before
+restarting API replicas with `AGENT_BOM_EXPORT_SCHEDULER=1`:
+
+```bash
+alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+```
+
+The `export_schedules` component stores schedules under forced tenant RLS;
+`GET /v1/exports/schedules` returns the authenticated tenant's persisted
+configuration and run outcomes. Due discovery requires the dedicated
+`AGENT_BOM_POSTGRES_MAINTENANCE_URL`; claims and delivery run with the individual
+tenant's application authority. A missing migration, unavailable database, or
+missing maintenance credentials fails the operation without switching to memory.
+Older Postgres deployments used process memory for schedules; recreate any
+missing schedules through the API after migration.
+
+SQLite claims update the indexed next-run time and record together. Existing
+records with an older embedded time are read using the indexed time. Workers
+claim at most the configured concurrency per batch (four by default, capped at
+64), leaving the rest of the backlog unclaimed until capacity is available.
+
+Run completion updates outcome metadata only. A deleted destination or schedule
+stays deleted; a changed destination revision, schedule configuration, or newer
+schedule claim rejects the older completion update. Delivery already in flight
+can still publish externally. A crash after claiming can miss that occurrence;
+the next cadence remains eligible. This is not an exactly-once delivery or crash
+replay guarantee. Inspect the export audit and destination publication marker
+before retrying an uncertain run. Keep the additive schema when rolling back;
+older scheduler code does not provide these completion or Postgres guarantees.

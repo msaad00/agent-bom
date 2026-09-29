@@ -2,7 +2,7 @@
 
 Rules match path segments, never similarly named sibling routes. Specific
 subpaths win. HEAD shares GET policy. Authentication remains the middleware's
-responsibility; unclassified mutations retain the administrative role floor.
+responsibility; unclassified protected operations fail closed after authentication.
 """
 
 from __future__ import annotations
@@ -303,14 +303,16 @@ def required_scope(method: str, path: str) -> str | None:
 
 
 def request_scopes_allow(scopes: list[str], method: str, path: str) -> bool:
-    """Fail closed for scoped credentials when no operation grant is defined.
+    """Fail closed when no operation policy is defined.
 
-    Empty scopes and ``*`` retain the unrestricted legacy contract. The exact
+    Empty scopes and ``*`` retain unrestricted access to classified operations. The exact
     self-identity read needs no resource grant; similarly named paths do not.
     Role, tenant and credential-lifecycle checks still apply independently.
     """
     from agent_bom.api.auth import scopes_allow
 
+    if route_policy(method, path) is None:
+        return False
     if not scopes or "*" in scopes:
         return True
     if _method(method) == "GET" and path == "/v1/auth/me":

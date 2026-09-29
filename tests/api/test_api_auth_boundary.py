@@ -89,7 +89,7 @@ def test_attested_proxy_headers_reject_wrong_secret(monkeypatch) -> None:
     assert response.status_code == 401
 
 
-def test_unmatched_v1_mutating_route_requires_admin_by_default(monkeypatch) -> None:
+def test_unmatched_v1_mutating_route_denies_even_admin(monkeypatch) -> None:
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse as StarletteJSONResponse
     from starlette.routing import Route
@@ -116,7 +116,8 @@ def test_unmatched_v1_mutating_route_requires_admin_by_default(monkeypatch) -> N
 
     assert denied.status_code == 403
     assert "requires admin role" in denied.json()["detail"]
-    assert allowed.status_code == 200
+    assert allowed.status_code == 403
+    assert "no authorization policy" in allowed.json()["detail"]
 
 
 def test_scim_role_can_authorize_attested_proxy_subject(monkeypatch) -> None:

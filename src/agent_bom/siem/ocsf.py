@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import socket
 import ssl
 import time
@@ -21,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from agent_bom.core.settings import env_str
 from agent_bom.graph import OCSF_SEVERITY_NAMES as _SEVERITY_NAMES
 from agent_bom.graph import OCSF_TO_SYSLOG
 from agent_bom.graph import SEVERITY_TO_OCSF as _SEVERITY_MAP
@@ -165,7 +165,7 @@ class SyslogConnector:
         self.port = port
         self.use_tls = getattr(config, "verify_ssl", True)
         self.app_name = "agent-bom"
-        self._product_version = os.environ.get("AGENT_BOM_VERSION", "0.0.0")
+        self._product_version = env_str("AGENT_BOM_VERSION", "0.0.0")
         self._event_format = getattr(config, "event_format", "raw")
 
     @staticmethod

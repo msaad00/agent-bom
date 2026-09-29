@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import random
 import re
 import time
@@ -15,6 +14,7 @@ from enum import Enum
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+from agent_bom.core.settings import env_str
 from agent_bom.permissions import classify_tool
 from agent_bom.runtime.risk_conditions import evaluate_risk_conditions
 from agent_bom.runtime.text_normalize import normalize_identifier
@@ -416,7 +416,7 @@ def resolve_fail_mode(explicit: str | None = None) -> str:
     then the secure default ``"closed"``. Any unrecognised value falls back to
     ``"closed"`` with a warning so a typo never silently disables enforcement.
     """
-    raw = (explicit if explicit is not None else os.environ.get(GATEWAY_FAIL_MODE_ENV, "")).strip().lower()
+    raw = (explicit if explicit is not None else env_str(GATEWAY_FAIL_MODE_ENV)).strip().lower()
     if not raw:
         return "closed"
     if raw in ("open", "closed"):
@@ -877,10 +877,10 @@ def deliver_policy_webhook(
     delivery never double-records downstream. ``poster``/``sleep``/``rng`` are
     injectable for tests; in production a small httpx POST is used.
     """
-    target = url if url is not None else os.environ.get(POLICY_WEBHOOK_URL_ENV, "").strip()
+    target = url if url is not None else env_str(POLICY_WEBHOOK_URL_ENV)
     if not target:
         return False
-    auth = token if token is not None else os.environ.get(POLICY_WEBHOOK_TOKEN_ENV, "").strip()
+    auth = token if token is not None else env_str(POLICY_WEBHOOK_TOKEN_ENV)
     idempotency_key = str(event.get("idempotency_key") or event.get("metadata", {}).get("uid") or "")
     headers = {"Content-Type": "application/json"}
     if idempotency_key:

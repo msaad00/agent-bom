@@ -36,9 +36,9 @@ this module — the central path is the only sanctioned one.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Final
 
+from agent_bom.core.settings import env_flag, env_str
 from agent_bom.platform_invariants import (
     RESERVED_TENANT_IDS,
     ReservedTenantIdError,
@@ -72,9 +72,9 @@ def _multi_tenant_signals_present() -> bool:
     is talking to a multi-tenant control plane. Used by strict mode to
     refuse a silent fall-through to the default tenant.
     """
-    if (os.environ.get(_REQUIRE_BOUNDARY_ENV) or "").strip().lower() in {"1", "true", "yes", "on"}:
+    if env_flag(_REQUIRE_BOUNDARY_ENV):
         return True
-    raw = (os.environ.get(_REPLICAS_ENV) or "").strip()
+    raw = env_str(_REPLICAS_ENV)
     if raw.isdigit() and int(raw) > 1:
         return True
     return False
@@ -90,7 +90,7 @@ def resolve_cli_tenant_id(explicit: str | None = None) -> str:
     """
     if explicit and explicit.strip():
         return _canonicalize_resolved_tenant_id(explicit)
-    env_value = (os.environ.get(TENANT_ENV_VAR) or "").strip()
+    env_value = env_str(TENANT_ENV_VAR)
     if env_value:
         return _canonicalize_resolved_tenant_id(env_value)
     if _multi_tenant_signals_present():
@@ -110,7 +110,7 @@ def resolve_cli_tenant_id_strict(explicit: str | None = None) -> str:
     """
     if explicit and explicit.strip():
         return _canonicalize_resolved_tenant_id(explicit)
-    env_value = (os.environ.get(TENANT_ENV_VAR) or "").strip()
+    env_value = env_str(TENANT_ENV_VAR)
     if env_value:
         return _canonicalize_resolved_tenant_id(env_value)
     if _multi_tenant_signals_present():

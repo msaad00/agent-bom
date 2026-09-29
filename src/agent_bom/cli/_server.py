@@ -15,6 +15,7 @@ from typing import Any, Optional
 import click
 
 from agent_bom.cli._common import LISTEN_PORT_RANGE
+from agent_bom.core.settings import env_flag, env_list, env_raw, env_str
 from agent_bom.storage import state_home
 
 
@@ -164,10 +165,10 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
 
 def _uvicorn_tls_kwargs() -> dict[str, Any]:
     """Return uvicorn TLS kwargs from app-native control-plane TLS env vars."""
-    cert_file = os.environ.get("AGENT_BOM_TLS_CERT_FILE", "").strip()
-    key_file = os.environ.get("AGENT_BOM_TLS_KEY_FILE", "").strip()
-    client_ca_file = os.environ.get("AGENT_BOM_TLS_CLIENT_CA_FILE", "").strip()
-    require_client_cert = os.environ.get("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT", "").strip().lower() in {"1", "true", "yes", "on"}
+    cert_file = env_str("AGENT_BOM_TLS_CERT_FILE")
+    key_file = env_str("AGENT_BOM_TLS_KEY_FILE")
+    client_ca_file = env_str("AGENT_BOM_TLS_CLIENT_CA_FILE")
+    require_client_cert = env_flag("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT")
 
     if require_client_cert and not client_ca_file:
         raise click.ClickException("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT requires AGENT_BOM_TLS_CLIENT_CA_FILE.")
@@ -213,9 +214,9 @@ def _enforce_database_role_posture(command: str) -> None:
     maintenance boundary that cannot be authenticated and validated is not a
     safe state in which to accept requests.
     """
-    if os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if env_raw("SNOWFLAKE_ACCOUNT"):
         return
-    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if not env_raw("AGENT_BOM_POSTGRES_URL"):
         return
     from agent_bom.api import postgres_common
 
@@ -298,8 +299,7 @@ def _configure_analytics_backend(
 ) -> tuple[str, str | None]:
     """Resolve and export the requested analytics backend contract."""
     resolved_backend = (analytics_backend or "").strip().lower()
-    env_clickhouse_url = os.environ.get("AGENT_BOM_CLICKHOUSE_URL") or ""
-    resolved_url = (clickhouse_url or env_clickhouse_url).strip() or None
+    resolved_url = (clickhouse_url or env_str("AGENT_BOM_CLICKHOUSE_URL")).strip() or None
     if resolved_backend in {"", "auto"}:
         resolved_backend = "clickhouse" if resolved_url else "disabled"
     if resolved_backend == "clickhouse" and not resolved_url:
@@ -376,7 +376,7 @@ def _auth_summary(
 
 def _env_truthy(name: str) -> bool:
     """Return True when environment variable ``name`` holds a truthy flag."""
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+    return env_flag(name)
 
 
 def _resolve_allow_unauthenticated(allow_insecure_no_auth: bool) -> bool:
@@ -460,7 +460,7 @@ def _maybe_seed_local_connection_key(*, host: str, allow_insecure_no_auth: bool)
         seed_local_connection_key,
     )
 
-    provider = os.environ.get(CONNECTIONS_KEY_PROVIDER_ENV, "env").strip().lower() or "env"
+    provider = env_str(CONNECTIONS_KEY_PROVIDER_ENV, "env").lower()
     if provider != "env":
         return None
     if connections_key_configured():
@@ -543,13 +543,13 @@ def _storage_summary(*, persist: str | None) -> str:
 
     # Mirror the pending job-store selection in server._lifespan. Neptune's
     # graph-only branch currently leaves the lazy job store in memory.
-    if os.environ.get("SNOWFLAKE_ACCOUNT"):
+    if env_raw("SNOWFLAKE_ACCOUNT"):
         return "Snowflake"
-    if os.environ.get("AGENT_BOM_GRAPH_BACKEND", "").strip().lower() == "neptune":
+    if env_str("AGENT_BOM_GRAPH_BACKEND").lower() == "neptune":
         return "In-memory (ephemeral)"
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if env_raw("AGENT_BOM_POSTGRES_URL"):
         return "PostgreSQL"
-    if os.environ.get("AGENT_BOM_DB"):
+    if env_raw("AGENT_BOM_DB"):
         return "SQLite"
     return "In-memory (ephemeral)"
 
@@ -1069,7 +1069,7 @@ def api_cmd(
         listener_host=host,
     )
 
-    pg_url = _os.environ.get("AGENT_BOM_POSTGRES_URL")
+    pg_url = env_raw("AGENT_BOM_POSTGRES_URL")
     if pg_url and not persist:
         # Postgres takes priority when no explicit --persist flag
         from agent_bom.api.postgres_store import PostgresJobStore
@@ -1219,7 +1219,7 @@ def mcp_server_cmd(
     setup_logging(level=log_level, json_output=log_json)
 
     if workspace_roots:
-        existing = [entry for entry in os.environ.get("AGENT_BOM_MCP_WORKSPACE_ROOTS", "").split(os.pathsep) if entry.strip()]
+        existing = list(env_list("AGENT_BOM_MCP_WORKSPACE_ROOTS", sep=os.pathsep))
         os.environ["AGENT_BOM_MCP_WORKSPACE_ROOTS"] = os.pathsep.join([*existing, *workspace_roots])
 
     _require_optional_dependencies(

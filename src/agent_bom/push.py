@@ -13,13 +13,13 @@ import gzip
 import hashlib
 import json
 import logging
-import os
 import platform
 import uuid
 from typing import Any, Literal, overload
 
 import httpx
 
+from agent_bom.core.settings import env_list, env_str
 from agent_bom.security import sanitize_command_args, sanitize_env_vars, sanitize_security_warnings, sanitize_text, sanitize_url
 
 logger = logging.getLogger(__name__)
@@ -71,26 +71,23 @@ def _validate_push_destination_url(push_url: str) -> None:
 
 
 def _csv_env(name: str) -> list[str]:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return []
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    return list(env_list(name))
 
 
 def _endpoint_identity_from_env() -> dict[str, str | list[str]]:
     return {
         "source_id": generate_source_id(),
-        "enrollment_name": os.environ.get("AGENT_BOM_PUSH_ENROLLMENT_NAME", "").strip(),
-        "owner": os.environ.get("AGENT_BOM_PUSH_OWNER", "").strip(),
-        "environment": os.environ.get("AGENT_BOM_PUSH_ENVIRONMENT", "").strip(),
-        "mdm_provider": os.environ.get("AGENT_BOM_PUSH_MDM_PROVIDER", "").strip(),
+        "enrollment_name": env_str("AGENT_BOM_PUSH_ENROLLMENT_NAME"),
+        "owner": env_str("AGENT_BOM_PUSH_OWNER"),
+        "environment": env_str("AGENT_BOM_PUSH_ENVIRONMENT"),
+        "mdm_provider": env_str("AGENT_BOM_PUSH_MDM_PROVIDER"),
         "tags": _csv_env("AGENT_BOM_PUSH_TAGS"),
     }
 
 
 def generate_source_id() -> str:
     """Generate a stable machine identifier (hostname SHA256[:12])."""
-    configured = os.environ.get("AGENT_BOM_PUSH_SOURCE_ID", "").strip()
+    configured = env_str("AGENT_BOM_PUSH_SOURCE_ID")
     if configured:
         return configured
     hostname = platform.node() or "unknown"
@@ -161,8 +158,8 @@ def _redact_nested_secrets(value):
 
 
 def _push_tls_cert() -> str | tuple[str, str] | None:
-    cert_file = os.environ.get("AGENT_BOM_PUSH_TLS_CERT_FILE", "").strip()
-    key_file = os.environ.get("AGENT_BOM_PUSH_TLS_KEY_FILE", "").strip()
+    cert_file = env_str("AGENT_BOM_PUSH_TLS_CERT_FILE")
+    key_file = env_str("AGENT_BOM_PUSH_TLS_KEY_FILE")
     if cert_file and key_file:
         return cert_file, key_file
     if cert_file or key_file:
@@ -171,7 +168,7 @@ def _push_tls_cert() -> str | tuple[str, str] | None:
 
 
 def _push_tls_verify() -> bool | str:
-    ca_file = os.environ.get("AGENT_BOM_PUSH_TLS_CA_FILE", "").strip()
+    ca_file = env_str("AGENT_BOM_PUSH_TLS_CA_FILE")
     return ca_file if ca_file else True
 
 

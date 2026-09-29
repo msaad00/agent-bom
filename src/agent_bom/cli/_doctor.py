@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import sys
 from contextlib import redirect_stderr, redirect_stdout
@@ -12,6 +11,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
+from agent_bom.core.settings import env_raw, env_str
 from agent_bom.storage import state_home
 
 
@@ -47,10 +47,9 @@ def doctor_cmd() -> None:
 
     # Local vulnerability DB — check the same path ScanCache() uses
     try:
-        import os as _os
         from pathlib import Path
 
-        _db_env = _os.environ.get("AGENT_BOM_SCAN_CACHE")
+        _db_env = env_str("AGENT_BOM_SCAN_CACHE")
         db_path = Path(_db_env) if _db_env else state_home.state_path("scan_cache.db")
         if db_path.exists():
             size_kb = db_path.stat().st_size // 1024
@@ -132,7 +131,7 @@ def doctor_cmd() -> None:
         "SNOWFLAKE_ACCOUNT": "Snowflake governance",
     }
     for key, label in api_keys.items():
-        if os.environ.get(key):
+        if env_raw(key):
             platform_checks.append((label, "configured", "ok"))
         else:
             platform_checks.append((label, "not set", "info"))
@@ -201,8 +200,8 @@ def doctor_cmd() -> None:
     except Exception:
         pin_drift_checks.append(("Cloud SDK pin drift", "check unavailable", "info"))
 
-    postgres_url = os.environ.get("AGENT_BOM_POSTGRES_URL", "")
-    database_url = os.environ.get("AGENT_BOM_DB", "")
+    postgres_url = env_raw("AGENT_BOM_POSTGRES_URL", "")
+    database_url = env_raw("AGENT_BOM_DB", "")
     if postgres_url or database_url.startswith(("postgres://", "postgresql://")):
         from agent_bom.storage.postgres_capabilities import probe_postgres_portability
 

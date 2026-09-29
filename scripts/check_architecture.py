@@ -6,8 +6,10 @@ plus the targeted service boundaries in ``boundary_errors``.
 
 Ratcheted per file (existing counts may only shrink, new files start at zero):
 ``graph_api_imports`` (graph/ -> api), ``api_imports`` (any other non-api
-module -> api) and ``deferred_imports`` (imports inside function bodies, not
-counting optional-extra SDKs that must stay lazy).
+module -> api), ``deferred_imports`` (imports inside function bodies, not
+counting optional-extra SDKs that must stay lazy) and ``raw_env_reads``
+(``os.environ.get`` / ``os.getenv`` / ``os.environ[...]`` reads outside the
+typed settings owners in ``SETTINGS_OWNERS``).
 """
 
 from __future__ import annotations
@@ -28,7 +30,11 @@ LIMITS = {
     "deferred_imports": 0,
     "api_imports": 0,
     "graph_api_imports": 0,
+    "raw_env_reads": 0,
 }
+# Environment reads go through agent_bom.core.settings; config.py declares the
+# documented knobs and delegates its parsing there.
+SETTINGS_OWNERS = frozenset({"config.py", "core/settings.py"})
 # Top-level import names that ship only in optional extras (pyproject
 # optional-dependencies) or are probed at runtime. Importing them inside a
 # function keeps a base install working, so they do not count as deferred debt.
@@ -192,6 +198,41 @@ def layer_metrics(path: str, tree: ast.Module) -> dict[str, int]:
     return {name: value for name, value in metrics.items() if value}
 
 
+def raw_env_reads(path: str, tree: ast.Module) -> int:
+    """Reads of the process environment that bypass the typed settings layer."""
+    if path in SETTINGS_OWNERS:
+        return 0
+    os_names: set[str] = set()
+    environ_names: set[str] = set()
+    getenv_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            os_names.update(alias.asname or "os" for alias in node.names if alias.name == "os")
+        elif isinstance(node, ast.ImportFrom) and node.module == "os" and not node.level:
+            environ_names.update(alias.asname or alias.name for alias in node.names if alias.name == "environ")
+            getenv_names.update(alias.asname or alias.name for alias in node.names if alias.name == "getenv")
+
+    def is_os(expr: ast.expr) -> bool:
+        return isinstance(expr, ast.Name) and expr.id in os_names
+
+    def is_environ(expr: ast.expr) -> bool:
+        if isinstance(expr, ast.Name):
+            return expr.id in environ_names
+        return isinstance(expr, ast.Attribute) and expr.attr == "environ" and is_os(expr.value)
+
+    count = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            count += (
+                isinstance(func, ast.Attribute)
+                and ((func.attr == "get" and is_environ(func.value)) or (func.attr == "getenv" and is_os(func.value)))
+            ) or (isinstance(func, ast.Name) and func.id in getenv_names)
+        elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load):
+            count += is_environ(node.value)
+    return count
+
+
 def boundary_errors(path: str, tree: ast.AST) -> list[str]:
     errors = []
     for node in ast.walk(tree):
@@ -280,6 +321,8 @@ def measure(root: Path) -> tuple[dict[str, dict[str, int]], list[str]]:
         text = path.read_text()
         tree = ast.parse(text, filename=str(path))
         metrics[relative] = {"file_lines": len(text.splitlines()), **layer_metrics(relative, tree)}
+        if env_reads := raw_env_reads(relative, tree):
+            metrics[relative]["raw_env_reads"] = env_reads
         errors.extend(boundary_errors(relative, tree))
         for name, start, end in function_spans(tree):
             key = f"{relative}::{name}"

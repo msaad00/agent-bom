@@ -153,10 +153,10 @@ GATEWAY_FAIL_MODE_MATRIX: tuple[SubsystemFailMode, ...] = (
     ),
     SubsystemFailMode(
         subsystem="fleet_quarantine_enforcement",
-        default_posture=FailPosture.OPEN,
+        default_posture=FailPosture.CLOSED,
         follows_gateway_fail_mode=False,
-        control="fleet_enforcement_mode (default: off)",
-        on_failure="Fleet-store errors during the quarantine lookup are logged and never block the relay.",
+        control="fleet_enforcement_mode (default: enforce)",
+        on_failure="Fleet-store lookup failures block in enforce mode and are audited in warn mode; off skips this check.",
     ),
     SubsystemFailMode(
         subsystem="drift_enforcement",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -17,11 +18,11 @@ from agent_bom.runtime.gateway_contracts import AuditSink, UpstreamCaller
 class GatewaySettings:
     """Runtime configuration the caller wires in."""
 
-    registry: UpstreamRegistry
-    policy: dict[str, Any]  # dict passed to check_policy — same shape proxy uses
+    registry: UpstreamRegistry = field(repr=False)
+    policy: dict[str, Any] = field(repr=False)  # dict passed to check_policy — same shape proxy uses
     audit_sink: AuditSink | None = None
     upstream_caller: UpstreamCaller | None = None  # injectable for tests
-    bearer_token: str | None = None
+    bearer_token: str | None = field(default=None, repr=False)
     bearer_token_expires_at: str | None = None
     _bearer_token_deadline: datetime | None = field(default=None, init=False, repr=False)
     # Visual-leak detection on image tool responses (closes the screenshot
@@ -46,10 +47,10 @@ class GatewaySettings:
     graph_reachability_path: Path | None = None
     graph_reachability_enforcement_mode: str = "off"
     graph_reachability_failure_mode: str = "allow"
-    graph_reachability_bundle_url: str = ""
+    graph_reachability_bundle_url: str = field(default="", repr=False)
     graph_reachability_bundle_tenant_id: str = "default"
-    graph_reachability_bundle_signing_key: bytes | None = None
-    graph_reachability_bundle_bearer_token: str = ""
+    graph_reachability_bundle_signing_key: bytes | None = field(default=None, repr=False)
+    graph_reachability_bundle_bearer_token: str = field(default="", repr=False)
     graph_reachability_bundle_poll_interval_seconds: float = 30.0
     graph_reachability_bundle_fetcher: Callable[[], Awaitable[Mapping[str, Any]]] | None = None
     upstream_failure_threshold: int = 3
@@ -83,7 +84,7 @@ class GatewaySettings:
     # above is agent-agnostic; this bundle lets the relay enforce per-agent
     # binding the way the per-MCP proxy does, scoped to the resolved
     # source_agent. Empty list = no control-plane binding (file policy only).
-    control_plane_policies: list[dict[str, Any]] = field(default_factory=list)
+    control_plane_policies: list[dict[str, Any]] = field(default_factory=list, repr=False)
     # Drift-triggered enforcement (#detection→enforcement). When an agent has an
     # open behavioral-drift incident, the tools that incident named as out-of-
     # blueprint violations can be blocked ("enforce") or flagged ("warn") at the
@@ -104,8 +105,8 @@ class GatewaySettings:
     # Defaults to "enforce": quarantine is an explicit operator action, and the
     # minted deny GatewayPolicy only reaches the relay on the control-plane
     # polling path (proxy.py), never on this one — so "off" made the documented
-    # one-click containment a no-op here. The check fails open on store error, so
-    # a fleet-store outage cannot become a fleet-wide outage. Opt out with
+    # one-click containment a no-op here. Store lookup errors block in enforce
+    # mode and remain visible in warn mode. Opt out with
     # ``--fleet-enforcement off`` / AGENT_BOM_GATEWAY_FLEET_ENFORCEMENT=off.
     fleet_enforcement_mode: str = "enforce"
     # Fail-closed posture for the policy engine. "closed" (the secure default,
@@ -120,8 +121,8 @@ class GatewaySettings:
     # an idempotency key. Webhook failures NEVER block the relay (bounded
     # retries + drop-with-warning). Resolved from AGENT_BOM_POLICY_WEBHOOK_URL /
     # AGENT_BOM_POLICY_WEBHOOK_TOKEN when left as ``None``.
-    policy_webhook_url: str | None = None
-    policy_webhook_token: str | None = None
+    policy_webhook_url: str | None = field(default=None, repr=False)
+    policy_webhook_token: str | None = field(default=None, repr=False)
     # OAuth 2.1 Authorization Server (broker AS). When set, the gateway mounts
     # the RFC 8414 metadata / RFC 7591 registration / PKCE authorize+token /
     # JWKS endpoints so standard MCP clients can auto-authenticate, and accepts
@@ -153,3 +154,59 @@ class GatewaySettings:
     dlp_mode: str = "audit"  # "audit" | "enforce"
     dlp_pii_action: str = "redact"  # "redact" | "block"
     dlp_scanners: list[str] = field(default_factory=lambda: ["injection", "pii", "secrets", "payload_vuln"])
+
+
+def validate_gateway_security_settings(settings: GatewaySettings) -> None:
+    """Normalize explicit configuration and reject unsafe values before I/O.
+
+    No environment reads: CLI/env precedence and lazy optional imports remain
+    owned by their existing composition paths. Errors never echo input values.
+    """
+    if settings.oauth_as is not None:
+        raise ValueError(
+            "Embedded OAuth AS is unavailable until trusted client authorization is implemented; "
+            "use configured bearer or API-key authentication"
+        )
+    modes = {
+        "fleet_enforcement_mode": {"off", "warn", "enforce"},
+        "drift_enforcement_mode": {"off", "warn", "enforce"},
+        "anomaly_enforcement_mode": {"off", "warn", "enforce"},
+        "a2a_mutual_auth_enforcement_mode": {"off", "warn", "enforce"},
+        "graph_reachability_enforcement_mode": {"off", "warn", "enforce"},
+        "graph_reachability_failure_mode": {"allow", "deny"},
+        "dlp_mode": {"audit", "enforce"},
+        "dlp_pii_action": {"redact", "block"},
+    }
+    for name, allowed in modes.items():
+        value = getattr(settings, name)
+        normalized = value.strip().lower() if isinstance(value, str) else None
+        if normalized not in allowed:
+            raise ValueError(f"{name} must be one of {', '.join(sorted(allowed))}")
+        setattr(settings, name, normalized)
+    minimums = {
+        "runtime_rate_limit_per_tenant_per_minute": 0,
+        "policy_reload_interval_seconds": 0,
+        "firewall_policy_reload_interval_seconds": 0,
+        "upstream_failure_threshold": 1,
+        "upstream_circuit_cooldown_seconds": 0,
+        "upstream_http_timeout_seconds": 0.001,
+        "upstream_http_max_connections": 1,
+        "upstream_http_max_keepalive_connections": 0,
+        "graph_reachability_bundle_poll_interval_seconds": 0,
+    }
+    integer_fields = {
+        "runtime_rate_limit_per_tenant_per_minute",
+        "policy_reload_interval_seconds",
+        "firewall_policy_reload_interval_seconds",
+        "upstream_failure_threshold",
+        "upstream_http_max_connections",
+        "upstream_http_max_keepalive_connections",
+    }
+    for name, minimum in minimums.items():
+        value = getattr(settings, name)
+        if name in integer_fields and type(value) is not int:
+            raise ValueError(f"{name} must be an integer")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < minimum:
+            raise ValueError(f"{name} must be finite and at least {minimum}")
+    if settings.upstream_http_max_keepalive_connections > settings.upstream_http_max_connections:
+        raise ValueError("upstream_http_max_keepalive_connections must not exceed upstream_http_max_connections")

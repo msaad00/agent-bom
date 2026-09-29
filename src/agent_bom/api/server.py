@@ -1091,14 +1091,9 @@ def configure_api(
     # transient "no auth configured" CRITICAL before a CLI ``--api-key`` flag
     # reconfigures. Logging at lifespan reflects the final effective posture.
 
-    # Refresh runtime-configurable middleware. _replace_middleware inserts at
-    # the front; this call order keeps the coarse per-IP limiter outermost
-    # (capping unauthenticated floods before auth), then auth, then body-size
-    # before the tenant-scoped rate limiter. Large report bodies are only
-    # buffered and inflated after the caller passes authentication.
-    # The authenticated read budget keeps the same 2x relationship to the
-    # anonymous one that the defaults have, so an operator override of
-    # rate_limit_rpm still controls both.
+    # _replace_middleware inserts at the front. Response headers wrap admission:
+    # coarse IP limit, auth, body-size, then tenant-scoped rate limiting. Bodies
+    # are buffered only after auth; authenticated reads retain twice the budget.
     _replace_middleware(
         RateLimitMiddleware,
         scan_rpm=_rate_limit_rpm,
@@ -1119,6 +1114,8 @@ def configure_api(
     _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": API_RESULT_PUSH_MAX_BYTES})
     _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
     _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
+    # Wrap admission denials with security/correlation headers without reading bodies.
+    _replace_middleware(TrustHeadersMiddleware)
     if app.middleware_stack is not None:
         app.middleware_stack = app.build_middleware_stack()
 

@@ -694,11 +694,11 @@ def test_api_key_middleware_blocks_without_key():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy), Route("/health", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy), Route("/health", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test")
+    resp = client.get("/v1/auth/me")
     assert resp.status_code == 401
 
 
@@ -744,14 +744,14 @@ def test_api_key_middleware_exempts_cors_preflight():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy, methods=["GET", "OPTIONS"])])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy, methods=["GET", "OPTIONS"])])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-cors")
 
     client = TestClient(test_app)
     # Preflight without bearer — must NOT 401; CORSMiddleware (in real
     # app stack) will then add Access-Control-Allow-* headers.
     resp = client.options(
-        "/v1/test",
+        "/v1/auth/me",
         headers={
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "GET",
@@ -760,9 +760,9 @@ def test_api_key_middleware_exempts_cors_preflight():
     )
     assert resp.status_code != 401, "OPTIONS preflight must bypass APIKeyMiddleware"
     # Real request (GET) without bearer still 401 — auth boundary intact.
-    assert client.get("/v1/test").status_code == 401
+    assert client.get("/v1/auth/me").status_code == 401
     # Real request with bearer succeeds.
-    assert client.get("/v1/test", headers={"X-API-Key": "test-key-cors"}).status_code == 200
+    assert client.get("/v1/auth/me", headers={"X-API-Key": "test-key-cors"}).status_code == 200
 
 
 def test_configured_app_cors_preflight_survives_auth_and_rate_limit(monkeypatch):
@@ -870,12 +870,37 @@ def test_api_key_middleware_bearer():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
+    resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer test-key-123"})
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("outcome", [401, 403, 404, 429])
+def test_configure_api_keeps_security_headers_on_admission_denials(monkeypatch, outcome):
+    from agent_bom.api.server import app, configure_api
+
+    original = list(app.user_middleware)
+    monkeypatch.setenv("AGENT_BOM_GLOBAL_IP_RATE_LIMIT_RPM", "1" if outcome == 429 else "100")
+    monkeypatch.setattr(APIKeyMiddleware, "_DOCS_DISABLED", outcome == 404)
+    try:
+        configure_api(api_key="denial-header-key", allow_unauthenticated=False)
+        client = TestClient(app)
+        path = "/docs" if outcome == 404 else ("/v1/unclassified-header-test" if outcome == 403 else "/v1/auth/me")
+        headers = {"X-API-Key": "denial-header-key" if outcome == 403 else "invalid-key"}
+        response = client.get(path, headers=headers)
+        if outcome == 429:
+            response = client.get(path, headers=headers)
+        assert response.status_code == outcome
+        assert response.headers["content-security-policy"] == "default-src 'self'"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["x-request-id"]
+    finally:
+        app.user_middleware = original
+        app.middleware_stack = app.build_middleware_stack()
 
 
 def test_configure_api_orders_auth_before_rate_limit_for_tenant_scoping(monkeypatch):
@@ -903,11 +928,11 @@ def test_api_key_middleware_x_api_key():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test", headers={"X-API-Key": "test-key-123"})
+    resp = client.get("/v1/auth/me", headers={"X-API-Key": "test-key-123"})
     assert resp.status_code == 200
 
 
@@ -920,11 +945,11 @@ def test_api_key_middleware_wrong_key():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="correct-key")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test", headers={"Authorization": "Bearer wrong-key"})
+    resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer wrong-key"})
     assert resp.status_code == 401
 
 
@@ -982,12 +1007,12 @@ def test_static_api_key_middleware_fails_closed_when_clustered(monkeypatch):
         return StarletteJSONResponse({"ok": True})
 
     monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
     client = TestClient(test_app)
 
     with pytest.raises(RuntimeError, match="static-key auth is disabled"):
-        client.get("/v1/test", headers={"Authorization": "Bearer static-key"})
+        client.get("/v1/auth/me", headers={"Authorization": "Bearer static-key"})
 
 
 def test_api_key_middleware_rejects_browser_session_without_csrf(monkeypatch):
@@ -1201,12 +1226,12 @@ def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch)
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret-with-32-plus-bytes")
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
     client = TestClient(test_app)
     resp = client.get(
-        "/v1/test",
+        "/v1/auth/me",
         headers={
             "X-Agent-Bom-Role": "analyst",
             "X-Agent-Bom-Tenant-ID": "tenant-alpha",
@@ -1229,12 +1254,12 @@ def test_api_key_middleware_proxy_headers_require_tenant(monkeypatch):
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret-with-32-plus-bytes")
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
     client = TestClient(test_app)
     resp = client.get(
-        "/v1/test",
+        "/v1/auth/me",
         headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Proxy-Secret": "test-proxy-secret-with-32-plus-bytes"},
     )
     assert resp.status_code == 401
@@ -1252,12 +1277,12 @@ def test_api_key_middleware_proxy_headers_reject_weak_secret(monkeypatch):
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "short")
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
     client = TestClient(test_app)
     resp = client.get(
-        "/v1/test",
+        "/v1/auth/me",
         headers={
             "X-Agent-Bom-Role": "viewer",
             "X-Agent-Bom-Tenant-ID": "tenant-alpha",
@@ -1280,12 +1305,12 @@ def test_api_key_middleware_proxy_headers_require_pinned_issuer(monkeypatch):
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", secret)
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "corp-oidc-proxy")
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
     client = TestClient(test_app)
     resp = client.get(
-        "/v1/test",
+        "/v1/auth/me",
         headers={
             "X-Agent-Bom-Role": "viewer",
             "X-Agent-Bom-Tenant-ID": "tenant-alpha",
@@ -1527,7 +1552,7 @@ def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
     async def dummy(request):
         return StarletteJSONResponse({"tenant_id": request.state.tenant_id, "role": request.state.api_key_role})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom", tenant_claim="org_slug")
@@ -1539,7 +1564,7 @@ def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
         ),
     ):
         client = TestClient(test_app)
-        resp = client.get("/v1/test", headers={"Authorization": "Bearer oidc.jwt"})
+        resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer oidc.jwt"})
 
     assert resp.status_code == 200
     assert resp.json() == {"tenant_id": "tenant-zeta", "role": "analyst"}
@@ -1554,7 +1579,7 @@ def test_api_key_middleware_oidc_routes_token_to_tenant_bound_issuer():
     async def dummy(request):
         return StarletteJSONResponse({"tenant_id": request.state.tenant_id, "role": request.state.api_key_role})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     cfg = OIDCConfig(
@@ -1576,7 +1601,7 @@ def test_api_key_middleware_oidc_routes_token_to_tenant_bound_issuer():
         ),
     ):
         client = TestClient(test_app)
-        resp = client.get("/v1/test", headers={"Authorization": f"Bearer {token}"})
+        resp = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
 
     assert resp.status_code == 200
     assert resp.json() == {"tenant_id": "tenant-alpha", "role": "analyst"}
@@ -1631,7 +1656,7 @@ def test_api_key_middleware_oidc_requires_explicit_role_claim_when_enabled():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
     cfg = OIDCConfig(
@@ -1647,7 +1672,7 @@ def test_api_key_middleware_oidc_requires_explicit_role_claim_when_enabled():
         ),
     ):
         client = TestClient(test_app)
-        resp = client.get("/v1/test", headers={"Authorization": "Bearer oidc.jwt"})
+        resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer oidc.jwt"})
 
     assert resp.status_code == 401
     assert "invalid API key" in resp.json()["detail"]
@@ -1747,10 +1772,10 @@ def test_rate_limit_middleware_uses_postgres_store_when_available(monkeypatch):
 
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
     with patch("agent_bom.api.middleware.PostgresRateLimitStore", return_value=fake_store):
-        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
         test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
         client = TestClient(test_app)
-        resp = client.get("/v1/test")
+        resp = client.get("/v1/auth/me")
 
     assert resp.status_code == 200
     fake_store.hit.assert_called_once()
@@ -1767,11 +1792,11 @@ def test_rate_limit_middleware_fails_closed_when_postgres_store_unavailable(monk
 
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
     with patch("agent_bom.api.middleware.PostgresRateLimitStore", side_effect=RuntimeError("boom")):
-        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
         test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
         client = TestClient(test_app)
         with pytest.raises(RuntimeError, match="Configured Postgres rate limiter could not initialize"):
-            client.get("/v1/test")
+            client.get("/v1/auth/me")
 
 
 def test_rate_limit_middleware_can_fail_closed_when_shared_store_required(monkeypatch):
@@ -1784,11 +1809,11 @@ def test_rate_limit_middleware_can_fail_closed_when_shared_store_required(monkey
         return StarletteJSONResponse({"ok": True})
 
     monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
     client = TestClient(test_app)
     try:
-        client.get("/v1/test")
+        client.get("/v1/auth/me")
         raise AssertionError("expected shared rate-limit initialization to fail")
     except RuntimeError as exc:
         assert "Shared rate limiting is required" in str(exc)
@@ -1805,11 +1830,11 @@ def test_rate_limit_middleware_respects_explicit_shared_rate_limit_requirement(m
 
     monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "1")
     with patch("agent_bom.api.middleware.PostgresRateLimitStore", side_effect=RuntimeError("boom")):
-        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
         test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
         client = TestClient(test_app)
         try:
-            client.get("/v1/test")
+            client.get("/v1/auth/me")
             raise AssertionError("expected shared rate-limit initialization to fail")
         except RuntimeError as exc:
             assert "Shared rate limiting is required" in str(exc)
@@ -1824,13 +1849,13 @@ def test_rate_limit_middleware_scopes_by_auth_credential():
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=2)
 
     client = TestClient(test_app)
-    assert client.get("/v1/test", headers={"X-API-Key": "alpha"}).status_code == 200
-    assert client.get("/v1/test", headers={"X-API-Key": "alpha"}).status_code == 200
-    assert client.get("/v1/test", headers={"X-API-Key": "beta"}).status_code == 200
+    assert client.get("/v1/auth/me", headers={"X-API-Key": "alpha"}).status_code == 200
+    assert client.get("/v1/auth/me", headers={"X-API-Key": "alpha"}).status_code == 200
+    assert client.get("/v1/auth/me", headers={"X-API-Key": "beta"}).status_code == 200
 
 
 def test_rate_limit_middleware_ignores_untrusted_tenant_state():
@@ -1843,13 +1868,13 @@ def test_rate_limit_middleware_ignores_untrusted_tenant_state():
         request.state.tenant_id = request.headers.get("X-Agent-Bom-Tenant-ID", "default")
         return StarletteJSONResponse({"ok": True})
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     limiter = RateLimitMiddleware(test_app, scan_rpm=3, read_rpm=2)
     client = TestClient(limiter)
 
-    assert client.get("/v1/test", headers={"X-Agent-Bom-Tenant-ID": "tenant-a"}).status_code == 200
-    assert client.get("/v1/test", headers={"X-Agent-Bom-Tenant-ID": "tenant-b"}).status_code == 200
-    assert client.get("/v1/test", headers={"X-Agent-Bom-Tenant-ID": "tenant-c"}).status_code == 429
+    assert client.get("/v1/auth/me", headers={"X-Agent-Bom-Tenant-ID": "tenant-a"}).status_code == 200
+    assert client.get("/v1/auth/me", headers={"X-Agent-Bom-Tenant-ID": "tenant-b"}).status_code == 200
+    assert client.get("/v1/auth/me", headers={"X-Agent-Bom-Tenant-ID": "tenant-c"}).status_code == 429
 
 
 def test_rate_limit_middleware_scopes_api_keys_by_tenant():
@@ -1869,16 +1894,16 @@ def test_rate_limit_middleware_scopes_api_keys_by_tenant():
     store.add(beta)
     set_key_store(store)
     try:
-        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
         test_app.add_middleware(APIKeyMiddleware, api_key="unused-static-key")
         # These reads resolve to a tenant bucket, so the authenticated budget is
         # the one under test here; read_rpm covers anonymous callers only.
         test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=2, authenticated_read_rpm=2)
 
         client = TestClient(test_app)
-        assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 200
-        assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_beta}"}).status_code == 200
-        assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 429
+        assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 200
+        assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {raw_beta}"}).status_code == 200
+        assert client.get("/v1/auth/me", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 429
     finally:
         set_key_store(original_store)
 
@@ -1990,11 +2015,11 @@ def test_api_key_middleware_rejects_request_when_tenant_rls_bypass_is_active(mon
 
     monkeypatch.setattr(postgres_store_module, "is_tenant_rls_bypassed", lambda: True)
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(middleware_module.APIKeyMiddleware, api_key="test-key-123")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
+    resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer test-key-123"})
 
     assert resp.status_code == 500
     assert "Tenant isolation guard" in resp.json()["detail"]
@@ -2018,11 +2043,11 @@ def test_api_key_middleware_does_not_check_rls_bypass_when_postgres_disabled(mon
 
     import agent_bom.api.middleware as middleware_module
 
-    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app = Starlette(routes=[Route("/v1/auth/me", dummy)])
     test_app.add_middleware(middleware_module.APIKeyMiddleware, api_key="test-key-123")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
+    resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer test-key-123"})
 
     assert resp.status_code == 200
 

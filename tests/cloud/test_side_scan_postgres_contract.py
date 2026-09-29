@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -15,6 +16,30 @@ from agent_bom.cloud.side_scan_lifecycle import (
 )
 
 _requires_postgres = pytest.mark.skipif(not os.environ.get("AGENT_BOM_POSTGRES_URL"), reason="requires migrated private Postgres")
+
+
+@_requires_postgres
+def test_side_scan_global_execution_key_keeps_same_request_tenant_isolated():
+    import psycopg
+
+    from agent_bom.api.postgres_common import _new_application_pool
+
+    scope = dict(provider="aws", account_id="shared-account", target_id="shared-target", collector_id="collector", idempotency_key="same")
+    first = new_side_scan_execution(tenant_id="side-a-" + uuid4().hex, **scope)
+    second = new_side_scan_execution(tenant_id="side-b-" + uuid4().hex, **scope)
+    assert first.execution_id != second.execution_id
+    with _new_application_pool(min_size=1, max_size=2) as pool:
+        store = PostgresSideScanStateStore(pool=pool)
+        assert store.create_or_get(first) == first
+        # The physical UUID is not permission to claim another tenant's state.
+        forged = replace(second, execution_id=first.execution_id, cleanup_ownership=first.cleanup_ownership)
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            store.create_or_get(forged)
+        assert store.get(tenant_id=second.tenant_id, execution_id=first.execution_id) is None
+        assert store.create_or_get(second) == second
+        assert store.create_or_get(first) == first
+        assert store.get(tenant_id=first.tenant_id, execution_id=first.execution_id) == first
+        assert store.count(tenant_id=first.tenant_id) == store.count(tenant_id=second.tenant_id) == 1
 
 
 @_requires_postgres

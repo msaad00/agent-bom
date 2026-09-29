@@ -1134,6 +1134,10 @@ _AUDITED_GLOBAL_TENANT_INDEXES = {
     ("policy_results", "policy_results_pkey"),
     ("proxy_replay_log", "proxy_replay_log_pkey"),
     ("scan_schedules", "scan_schedules_pkey"),
+    # UUID5 includes tenant/provider/account/target/idempotency scope. The live
+    # side-scan contract proves equal requests in different tenants coexist and
+    # a forged execution ID cannot overwrite another tenant's state.
+    ("side_scan_execution_state", "side_scan_execution_state_pkey"),
     ("ticket_links", "ticket_links_pkey"),
     ("ticketing_connections", "ticketing_connections_pkey"),
     # Database-generated surrogate sequence keys; tenant uniqueness is carried

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: priv-app
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: app
+      image: myapp:1.0
+      securityContext:
+        privileged: true
+      resources:
+        limits:
+          cpu: "1"
+          memory: "512Mi"

@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: prod
+spec:
+  replicas: 3
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: myapp:1.0
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            limits:
+              cpu: "1"
+              memory: "256Mi"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-app-pdb
+  namespace: prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: web-app

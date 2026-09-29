@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deploy
+  namespace: prod
+spec:
+  replicas: 3
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: app
+          image: myapp:1.0
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            limits:
+              cpu: "1"
+              memory: "256Mi"

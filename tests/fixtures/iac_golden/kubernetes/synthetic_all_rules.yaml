@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auto-sa
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-binding
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-device-plugin
+rules:
+  - verbs: ["get", "list"]
+  - verbs: ["create", "patch"]
+  - verbs: ["delete"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-only
+spec:
+  policyTypes: ["Ingress"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-deploy
+  namespace: default
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      shareProcessNamespace: true
+      containers:
+        - name: app
+          image: evil.example.com/app
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: true
+            capabilities:
+              add: ["NET_RAW", "sys_admin", "NET_ADMIN", "ALL", "CHOWN"]
+          env:
+            - name: API_KEY
+              value: plaintext
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: s
+                  key: k
+            - not-a-dict
+          ports:
+            - containerPort: 22
+              hostPort: 2222
+            - containerPort: 8080
+          volumeMounts:
+            - name: sock
+              mountPath: /var/run/docker.sock
+            - name: sock-ro
+              mountPath: /var/run/docker.sock
+              readOnly: true
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+        - not-a-container
+      initContainers:
+        - name: init
+          image: busybox:latest
+          securityContext:
+            allowPrivilegeEscalation: true
+          resources:
+            requests:
+              amd.com/gpu: 1
+      volumes:
+        - name: scratch
+          emptyDir: {}
+        - name: sized
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: host
+          hostPath:
+            path: /etc
+        - name: nvidia
+          hostPath:
+            path: /dev/nvidia0
+        - name: driver
+          hostPath:
+            path: /proc/driver/nvidia/gpus
+        - bad-volume
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: covered-deploy
+  namespace: prod
+  labels:
+    app: covered-deploy
+spec:
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution: []
+      containers:
+        - name: good
+          image: ghcr.io/org/app:1.2.3
+          securityContext:
+            readOnlyRootFilesystem: true
+          resources:
+            limits:
+              cpu: "1"
+          livenessProbe:
+            httpGet:
+              path: /
+          readinessProbe:
+            httpGet:
+              path: /
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb
+spec:
+  selector:
+    matchLabels:
+      app: covered-deploy
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: c
+              image: nginx
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bare-pod
+spec:
+  containers:
+    - name: p
+      image: registry.k8s.io/pause:3.9
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: empty-spec
+spec: {}
+---
+just a string document
+---

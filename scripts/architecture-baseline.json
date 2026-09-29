@@ -2867,22 +2867,8 @@
       "complexity": 29,
       "function_lines": 307
     },
-    "iac/kubernetes.py": {
-      "file_lines": 875
-    },
-    "iac/kubernetes.py::scan_k8s_manifest": {
-      "complexity": 66,
-      "function_lines": 736
-    },
     "iac/terraform_ai.py::scan_terraform_ai": {
       "function_lines": 90
-    },
-    "iac/terraform_security.py": {
-      "file_lines": 1508
-    },
-    "iac/terraform_security.py::scan_terraform_security": {
-      "complexity": 115,
-      "function_lines": 1252
     },
     "identity/entra_nhi.py": {
       "deferred_imports": 2

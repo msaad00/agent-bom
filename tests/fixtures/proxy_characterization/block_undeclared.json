@@ -1,0 +1,327 @@
+{
+  "audit": [
+    {
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "ts": "<volatile>",
+      "type": "mcp_execution_posture"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "5e35bcf9e1095dc8c089b1934d7922b374855214daf77669258f74ac32059921",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:echo",
+            "label": "echo",
+            "source_ref": {
+              "id": "echo",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "5e35bcf9e1095dc8c089b1934d7922b374855214daf77669258f74ac32059921",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "echo",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 1,
+      "payload_sha256": "5e35bcf9e1095dc8c089b1934d7922b374855214daf77669258f74ac32059921",
+      "policy": "blocked",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "echo",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "648a6e73f46f5600a5479fcbaab93e5ec6c9ecaf4f1d1a676347ff0f77f5b014",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "tool_call:proxy_tool_call_648a6e73f46f5600a5479fcbaab93e5ec6c9ecaf4f1d1a676347ff0f77f5b014_anonymous_tool_invoked_tool_tool_"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:mystery",
+            "label": "mystery",
+            "source_ref": {
+              "id": "mystery",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "648a6e73f46f5600a5479fcbaab93e5ec6c9ecaf4f1d1a676347ff0f77f5b014",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "tool_call:proxy_tool_call_648a6e73f46f5600a5479fcbaab93e5ec6c9ecaf4f1d1a676347ff0f77f5b014_anonymous_tool_invoked_tool_tool_",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "mystery",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 3,
+      "payload_sha256": "648a6e73f46f5600a5479fcbaab93e5ec6c9ecaf4f1d1a676347ff0f77f5b014",
+      "policy": "blocked",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "mystery",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "agent_id": "anonymous",
+      "agentic_identity_graph": {
+        "edges": [
+          {
+            "evidence": {
+              "event_id": "82112b56d736901bfa10d4e3123262709ce138ca932b6d4ce2b07b8a768de182",
+              "source": "proxy_tool_call",
+              "tenant_id": "default"
+            },
+            "relationship": "called",
+            "source": "***REDACTED***"
+          }
+        ],
+        "nodes": [
+          {
+            "entity_type": "tool",
+            "id": "tool:tool:tool:invoked_tool:echo",
+            "label": "echo",
+            "source_ref": {
+              "id": "echo",
+              "role": "invoked_tool",
+              "source_field": "tool",
+              "type": "tool"
+            }
+          },
+          {
+            "attributes": {
+              "event_id": "82112b56d736901bfa10d4e3123262709ce138ca932b6d4ce2b07b8a768de182",
+              "source": "proxy_tool_call"
+            },
+            "entity_type": "tool_call",
+            "id": "***REDACTED***",
+            "label": "Tool call"
+          }
+        ],
+        "schema_version": "agentic_identity_graph.v1",
+        "source": "proxy_tool_call"
+      },
+      "event_relationships": {
+        "normalization_version": "1",
+        "source": "proxy_tool_call",
+        "targets": [
+          {
+            "id": "echo",
+            "role": "invoked_tool",
+            "source_field": "tool",
+            "type": "tool"
+          }
+        ]
+      },
+      "message_id": 4,
+      "payload_sha256": "82112b56d736901bfa10d4e3123262709ce138ca932b6d4ce2b07b8a768de182",
+      "policy": "allowed",
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "tenant_id": "default",
+      "tool": "echo",
+      "ts": "<volatile>",
+      "type": "tools/call"
+    },
+    {
+      "audit_buffer_bytes": 0,
+      "audit_circuit_open": 0,
+      "audit_dlq_bytes": 0,
+      "audit_push_backoff_seconds": 0,
+      "audit_push_failures": 0,
+      "audit_spillover_bytes": 0,
+      "blocked_by_reason": {
+        "undeclared": 2
+      },
+      "blocked_runtime_alerts": 0,
+      "calls_by_tool": {
+        "echo": 1
+      },
+      "execution_posture": {
+        "mode": "observation_only",
+        "sandbox_evidence": {
+          "enabled": false
+        }
+      },
+      "last_decision": "allowed:echo",
+      "latency": {
+        "avg_ms": "<volatile>",
+        "count": 1,
+        "max_ms": "<volatile>",
+        "min_ms": "<volatile>",
+        "p50_ms": "<volatile>",
+        "p95_ms": "<volatile>"
+      },
+      "latest_runtime_alert_at": "<volatile>",
+      "messages_client_to_server": 5,
+      "messages_server_to_client": 2,
+      "policy_fetch_failures": 0,
+      "prev_hash": "<volatile>",
+      "record_hash": "<volatile>",
+      "record_hash_algorithm": "aes-cmac-128",
+      "relay_errors": 0,
+      "replay_rejections": 0,
+      "runtime_alerts": 0,
+      "runtime_alerts_by_detector": {},
+      "runtime_alerts_by_severity": {},
+      "total_blocked": 2,
+      "total_tool_calls": 1,
+      "ts": "<volatile>",
+      "type": "proxy_summary",
+      "uptime_seconds": "<volatile>"
+    }
+  ],
+  "client_frames": [
+    {
+      "error": {
+        "code": -32600,
+        "message": "Tool 'echo' blocked because no tools/list declarations are available"
+      },
+      "id": 1,
+      "jsonrpc": "2.0"
+    },
+    {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "tools": [
+          {
+            "name": "echo"
+          },
+          {
+            "name": "read_file"
+          },
+          {
+            "name": "leak"
+          },
+          {
+            "name": "crash"
+          },
+          {
+            "name": "delete_file"
+          }
+        ]
+      }
+    },
+    {
+      "error": {
+        "code": -32600,
+        "message": "Tool 'mystery' not in declared tools/list"
+      },
+      "id": 3,
+      "jsonrpc": "2.0"
+    },
+    {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "result": {
+        "content": [
+          {
+            "text": "ok:echo",
+            "type": "text"
+          }
+        ]
+      }
+    }
+  ],
+  "control_plane_pushes": [],
+  "exit_code": 0,
+  "server_frames": [
+    {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "method": "tools/list"
+    },
+    {
+      "id": 4,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "arguments": {
+          "text": "late"
+        },
+        "name": "echo"
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "test/exit"
+    }
+  ]
+}

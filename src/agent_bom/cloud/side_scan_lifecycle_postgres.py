@@ -5,6 +5,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Iterator
 
+from agent_bom.api import postgres_common, storage_schema
+
 from .side_scan_lifecycle_models import (
     SideScanExecutionRecord,
     SideScanStateConflictError,
@@ -21,27 +23,24 @@ class PostgresSideScanStateStore:
 
     def __init__(self, *, pool: Any | None = None) -> None:
         if pool is None:
-            from agent_bom.api.postgres_common import _get_pool
-
-            pool = _get_pool()
+            pool = postgres_common._get_pool()
         self._pool = pool
         self._initialize()
 
     @contextmanager
     def _tenant_connection(self, tenant_id: str) -> Iterator[Any]:
-        from agent_bom.api.postgres_common import _tenant_connection, reset_current_tenant, set_current_tenant
-
-        token = set_current_tenant(tenant_id)
+        token = postgres_common.set_current_tenant(tenant_id)
         try:
-            with _tenant_connection(self._pool) as connection:
+            with postgres_common._tenant_connection(self._pool) as connection:
                 yield connection
         finally:
-            reset_current_tenant(token)
+            postgres_common.reset_current_tenant(token)
 
     def _initialize(self) -> None:
-        from agent_bom.api.postgres_common import _ensure_tenant_rls
-
         with self._pool.connection() as connection:
+            if storage_schema.postgres_deployment_configured():
+                storage_schema.ensure_postgres_schema_version(connection, "side_scan_lifecycle")
+                return
             connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("agent_bom.schema.side_scan_execution_state",))
             connection.execute(
                 """
@@ -67,7 +66,7 @@ class PostgresSideScanStateStore:
                 "CREATE INDEX IF NOT EXISTS idx_side_scan_recent "
                 "ON side_scan_execution_state (tenant_id, updated_at DESC, execution_id DESC)"
             )
-            _ensure_tenant_rls(connection, self.table, "tenant_id")
+            postgres_common._ensure_tenant_rls(connection, self.table, "tenant_id")
             connection.commit()
 
     @staticmethod

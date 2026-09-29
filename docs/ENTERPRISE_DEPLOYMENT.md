@@ -858,3 +858,16 @@ For authenticated Jamf Pro and CrowdStrike Falcon collection, use
 encryption key, connect with read-only privileges, sync, then inspect the scoped
 inventory artifact and collection gaps. Deployment wrappers and live inventory
 collection have separate credential and evidence boundaries.
+
+### Side-scan lifecycle storage
+
+Before upgrading a Postgres control plane, run the deployment's Alembic upgrade
+with its migration credentials. Revision `20260929_04` provisions side-scan
+execution and cleanup state, indexes, tenant RLS and application DML grants.
+The runtime application role only checks the schema version; missing migrations
+fail startup instead of requesting schema-creation privileges. Rollback preserves
+execution and cleanup evidence.
+
+Run an explicitly authorized side-scan to produce its lifecycle record, then
+inspect completion and cleanup status before retrying failed work. The storage
+contract does not establish live AWS, Azure or GCP execution proof.

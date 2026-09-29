@@ -419,7 +419,7 @@ def _factory_lifecycle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[
         _capture(log, "ephemeral.reset_new", lambda: get_side_scan_state_store() is not mem)
         reset_side_scan_state_store()
         monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://fake-host/fake")
-        monkeypatch.setattr(postgres_common, "_get_pool", lambda: _FakePool([], []))
+        monkeypatch.setattr(postgres_common, "_get_pool", lambda: _FakePool([], [(1, [(1,)])]))
         monkeypatch.setattr(postgres_common, "_ensure_tenant_rls", lambda *_a: None)
         _capture(log, "postgres", lambda: type(get_side_scan_state_store()).__name__)
         sentinel = InMemorySideScanStateStore()

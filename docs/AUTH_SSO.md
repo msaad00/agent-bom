@@ -14,6 +14,12 @@ this path is the fastest for a solo self-hoster.
 
 ---
 
+Public health, documentation, and login routes exempt only their declared HTTP
+methods from authentication (HEAD follows GET). An added method on the same
+URL fails closed through normal authentication; login/logout handlers still
+validate their own credentials, state, and CSRF requirements. The operation
+inventory lives in `api/route_policy.py` and is checked against mounted routes.
+
 ## The command
 
 ```bash

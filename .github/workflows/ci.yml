@@ -594,6 +594,11 @@ jobs:
           cd ui
           npm run verify:toolchain
 
+      - name: Verify development server startup
+        run: |
+          cd ui
+          node scripts/smoke-dev-startup.mjs
+
       - name: UI lint
         run: |
           cd ui

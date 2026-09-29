@@ -12,13 +12,9 @@ from typing import Any
 
 from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET, MCP_MAX_RESPONSE_CHARS
 from agent_bom.graph.completeness import graph_completeness
+from agent_bom.graph.edge_lookup import _build_edge_lookup, _EdgeLookup
+from agent_bom.graph.exposure import _exposure_path_for_attack_path, _exposure_ref_for_node, _exposure_relationships_for_path
 from agent_bom.graph.path_derivation import _derived_attack_paths, _enrich_loaded_graph_runtime_evidence
-from agent_bom.graph.path_evidence import (
-    exposure_advisory_evidence,
-    exposure_evidence_dimensions,
-    finding_severity_for_path,
-    qualify_exposure_reachability,
-)
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_RESOURCE,
@@ -161,93 +157,54 @@ async def graph_correlation_status_impl(
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 
-def _node_role(node: Any) -> str:
-    entity_type = getattr(node, "entity_type", "")
-    value = entity_type.value if hasattr(entity_type, "value") else str(entity_type)
-    return value or "unknown"
+# Retain private compatibility helpers while keeping the projection canonical.
+_node_ref = _exposure_ref_for_node
+_relationship_refs = _exposure_relationships_for_path
 
 
-def _node_ref(node_id: str, nodes_by_id: dict[str, Any]) -> dict[str, Any]:
-    node = nodes_by_id.get(node_id)
-    if node is None:
-        return {"id": node_id, "label": node_id, "role": "unknown", "entityType": "unknown"}
-    return {
-        "id": node.id,
-        "label": node.label,
-        "rawLabel": node.label,
-        "entityType": _node_role(node),
-        "role": _node_role(node),
-        "severity": getattr(node, "severity", ""),
-        "riskScore": float(getattr(node, "risk_score", 0.0) or 0.0),
-        "risk_assessment": getattr(node, "risk_assessment", {"status": "not_assessed", "basis": None, "scope": None}),
-    }
-
-
-def _relationship_refs(path: Any, edges: list[Any]) -> list[dict[str, Any]]:
-    edge_ids = set(getattr(path, "edges", []) or [])
-    hop_pairs = set(zip(getattr(path, "hops", [])[:-1], getattr(path, "hops", [])[1:]))
-    refs: list[dict[str, Any]] = []
-    for edge in edges:
-        edge_id = str(getattr(edge, "id", ""))
-        source = str(getattr(edge, "source", ""))
-        target = str(getattr(edge, "target", ""))
-        reverse_pair = getattr(edge, "direction", "") == "bidirectional" and (target, source) in hop_pairs
-        if edge_id not in edge_ids and (source, target) not in hop_pairs and not reverse_pair:
-            continue
-        relationship = getattr(edge, "relationship", "")
-        relationship_value = relationship.value if hasattr(relationship, "value") else str(relationship)
-        refs.append(
-            {
-                "id": edge_id,
-                "source": source,
-                "target": target,
-                "relationship": relationship_value,
-                "direction": str(getattr(edge, "direction", "")) or "unknown",
-                "traversable": bool(getattr(edge, "traversable", False)),
-                "confidence": float(getattr(edge, "confidence", 1.0) or 0.0),
-            }
-        )
-    return refs
-
-
-def _severity_for_path(path: Any, nodes_by_id: dict[str, Any]) -> str:
-    return finding_severity_for_path(path, nodes_by_id)
-
-
-def _exposure_path_payload(path: Any, *, nodes_by_id: dict[str, Any], edges: list[Any], rank: int, scan_id: str) -> dict[str, Any]:
-    from agent_bom.graph.hop_evidence import exposure_hop_evidence
-
-    hops = [_node_ref(hop, nodes_by_id) for hop in getattr(path, "hops", []) or []]
-    source = _node_ref(str(getattr(path, "source", "") or ""), nodes_by_id) if getattr(path, "source", "") else (hops[0] if hops else {})
-    target = _node_ref(str(getattr(path, "target", "") or ""), nodes_by_id) if getattr(path, "target", "") else (hops[-1] if hops else {})
-    relationships = _relationship_refs(path, edges)
-    target_node = nodes_by_id.get(str(getattr(path, "target", "") or ""))
-    advisory = exposure_advisory_evidence(target_node)
-    return qualify_exposure_reachability(
-        {
-            "id": f"{source.get('id', '')}::{target.get('id', '')}::{'->'.join(getattr(path, 'hops', []) or [])}",
-            "rank": rank,
-            "label": getattr(path, "summary", "") or "Exposure path",
-            "summary": getattr(path, "summary", ""),
-            "riskScore": float(getattr(path, "composite_risk", 0.0) or 0.0),
-            "severity": _severity_for_path(path, nodes_by_id),
-            "source": source,
-            "target": target,
-            "hops": hops,
-            "relationships": relationships,
-            "nodeIds": list(getattr(path, "hops", []) or []),
-            "edgeIds": [relationship["id"] for relationship in relationships if relationship.get("id")],
-            "findings": list(getattr(path, "vuln_ids", []) or []),
-            "reachableTools": list(getattr(path, "tool_exposure", []) or []),
-            "exposedCredentials": list(getattr(path, "credential_exposure", []) or []),
-            "reachability": str(getattr(path, "reachability", "unknown") or "unknown"),
-            "reachabilityBasis": list(getattr(path, "reachability_basis", []) or []),
-            "hopEvidence": exposure_hop_evidence(path),
-            "evidenceDimensions": exposure_evidence_dimensions(path, target_node, relationships=relationships),
-            **({"evidence": advisory} if advisory is not None else {}),
-            "provenance": {"source": "mcp_exposure_paths", "scanId": scan_id},
-        }
+def _exposure_path_payload(
+    path: Any,
+    *,
+    nodes_by_id: dict[str, Any],
+    edges: list[Any],
+    rank: int,
+    scan_id: str,
+    edge_lookup: _EdgeLookup | None = None,
+) -> dict[str, Any]:
+    payload = _exposure_path_for_attack_path(
+        path,
+        nodes_by_id=nodes_by_id,
+        edges=edges,
+        rank=rank,
+        scan_id=scan_id,
+        edge_lookup=edge_lookup,
     )
+    payload["provenance"] = {"source": "mcp_exposure_paths", "scanId": scan_id}
+    return payload
+
+
+def _project_exposure_page(
+    paths: list[Any],
+    *,
+    nodes: list[Any],
+    edges: list[Any],
+    offset: int,
+    scan_id: str,
+) -> list[dict[str, Any]]:
+    """Index hydrated evidence once, then project only each path's hop edges."""
+    nodes_by_id = {node.id: node for node in nodes}
+    edge_lookup = _build_edge_lookup(edges)
+    return [
+        _exposure_path_payload(
+            path,
+            nodes_by_id=nodes_by_id,
+            edges=edges,
+            rank=offset + index + 1,
+            scan_id=scan_id,
+            edge_lookup=edge_lookup,
+        )
+        for index, path in enumerate(paths)
+    ]
 
 
 def _candidate_matches_path(candidate: str, path: dict[str, Any]) -> bool:
@@ -266,10 +223,10 @@ def _candidate_matches_path(candidate: str, path: dict[str, Any]) -> bool:
     for endpoint in ("source", "target"):
         value = path.get(endpoint)
         if isinstance(value, dict):
-            haystack.extend(str(value.get(key, "")) for key in ("id", "label", "role"))
+            haystack.extend(str(value.get(key, "")) for key in ("id", "label", "role", "entityType"))
     for hop in path.get("hops", []):
         if isinstance(hop, dict):
-            haystack.extend(str(hop.get(key, "")) for key in ("id", "label", "role"))
+            haystack.extend(str(hop.get(key, "")) for key in ("id", "label", "role", "entityType"))
     return any(needle in value.lower() for value in haystack)
 
 
@@ -432,7 +389,6 @@ async def exposure_paths_for_tenant(
         final_identity = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=pinned_scan_id)
         if final_identity != (pinned_scan_id, generation) or (paths and not generation):
             return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
-        nodes_by_id = {node.id: node for node in nodes}
         payload = {
             "schema_version": "v1",
             "tool": "exposure_paths",
@@ -443,10 +399,7 @@ async def exposure_paths_for_tenant(
             "total": total,
             "count_metadata": {"source": path_source, "total_is_lower_bound": derivation_truncated},
             "filters": {"limit": limit, "min_risk": min_risk},
-            "paths": [
-                _exposure_path_payload(path, nodes_by_id=nodes_by_id, edges=edges, rank=offset + index + 1, scan_id=effective_scan_id)
-                for index, path in enumerate(ranked_paths)
-            ],
+            "paths": _project_exposure_page(ranked_paths, nodes=nodes, edges=edges, offset=offset, scan_id=effective_scan_id),
             "nodes": [node.to_dict() for node in nodes],
             "edges": [edge.to_dict() for edge in edges],
             "stats": stats,

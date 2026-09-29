@@ -20,6 +20,51 @@ class RoutePolicy:
     exact: bool = False
 
 
+# Public access is an operation contract, never permission for every future
+# method mounted at a health/login path. Login/logout handlers retain their
+# credential, state and CSRF checks; HEAD shares the public GET disposition.
+PUBLIC_OPERATIONS: frozenset[tuple[str, str]] = frozenset(
+    [
+        ("GET", path)
+        for path in (
+            "/",
+            "/health",
+            "/healthz",
+            "/livez",
+            "/ping",
+            "/readyz",
+            "/version",
+            "/brand/mark.svg",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/v1/auth/oidc/login",
+            "/v1/auth/oidc/callback",
+            "/v1/auth/snowflake/login",
+            "/v1/auth/snowflake/callback",
+            "/v1/auth/saml/metadata",
+        )
+    ]
+    + [
+        ("POST", path)
+        for path in (
+            "/v1/auth/dev-session",
+            "/v1/auth/session",
+            "/v1/auth/trial/oidc/start",
+            "/v1/auth/trial/oidc/start-form",
+            "/v1/auth/saml/relay-state",
+            "/v1/auth/saml/login",
+        )
+    ]
+    + [("DELETE", "/v1/auth/session")]
+)
+
+
+def public_operation(method: str, path: str) -> bool:
+    """Whether this exact operation is intentionally anonymous."""
+    return (_method(method), path) in PUBLIC_OPERATIONS
+
+
 ROUTE_POLICIES: tuple[RoutePolicy, ...] = (
     RoutePolicy("GET", "/v1/observability/adoption", "admin", "audit:read"),
     RoutePolicy("POST", "/v1/observability/adoption/events", "analyst", "scan:write"),

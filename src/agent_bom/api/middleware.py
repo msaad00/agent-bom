@@ -33,7 +33,16 @@ from agent_bom.api.browser_session import (
     verify_browser_session_token,
     verify_csrf,
 )
-from agent_bom.api.route_policy import ROLE_RULES, SCOPE_RULES, request_scopes_allow, required_role, required_scope, scope_catalog
+from agent_bom.api.route_policy import (
+    PUBLIC_OPERATIONS,
+    ROLE_RULES,
+    SCOPE_RULES,
+    public_operation,
+    request_scopes_allow,
+    required_role,
+    required_scope,
+    scope_catalog,
+)
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -1101,54 +1110,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     # Set AGENT_BOM_DISABLE_DOCS=1 in production to block /docs and /redoc
     _DOCS_DISABLED = os.environ.get("AGENT_BOM_DISABLE_DOCS", "").strip() in ("1", "true", "yes")
-    _EXEMPT_PATHS = (
-        {
-            "/",
-            "/health",
-            "/healthz",
-            "/livez",
-            "/ping",
-            "/readyz",
-            "/version",
-            "/brand/mark.svg",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/v1/auth/dev-session",
-            "/v1/auth/session",
-            "/v1/auth/oidc/login",
-            "/v1/auth/oidc/callback",
-            "/v1/auth/trial/oidc/start",
-            "/v1/auth/trial/oidc/start-form",
-            "/v1/auth/snowflake/login",
-            "/v1/auth/snowflake/callback",
-            "/v1/auth/saml/metadata",
-            "/v1/auth/saml/relay-state",
-            "/v1/auth/saml/login",
-        }
-        if not _DOCS_DISABLED
-        else {
-            "/",
-            "/health",
-            "/healthz",
-            "/livez",
-            "/ping",
-            "/readyz",
-            "/version",
-            "/brand/mark.svg",
-            "/v1/auth/dev-session",
-            "/v1/auth/session",
-            "/v1/auth/oidc/login",
-            "/v1/auth/oidc/callback",
-            "/v1/auth/trial/oidc/start",
-            "/v1/auth/trial/oidc/start-form",
-            "/v1/auth/snowflake/login",
-            "/v1/auth/snowflake/callback",
-            "/v1/auth/saml/metadata",
-            "/v1/auth/saml/relay-state",
-            "/v1/auth/saml/login",
-        }
-    )
+    _EXEMPT_PATHS = {path for _method, path in PUBLIC_OPERATIONS}
+    if _DOCS_DISABLED:
+        _EXEMPT_PATHS -= {"/docs", "/redoc", "/openapi.json"}
 
     @staticmethod
     def _is_dashboard_public_request(path: str, method: str) -> bool:
@@ -1359,7 +1323,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         if managed_trial_enabled() and not managed_trial_route_allowed(request.method, request.url.path):
             return JSONResponse(status_code=403, content={"detail": "This API route is disabled in managed trial mode."})
-        if request.url.path in self._EXEMPT_PATHS:
+        if request.url.path in self._EXEMPT_PATHS and public_operation(request.method, request.url.path):
             return await call_next(request)
         if self._is_dashboard_public_request(request.url.path, request.method):
             return await call_next(request)

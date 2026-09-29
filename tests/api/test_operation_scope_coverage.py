@@ -179,6 +179,7 @@ def test_viewer_summary_does_not_advertise_audit_access():
 
 
 def mounted_operations():
+    from agent_bom.api.route_policy import public_operation
     from agent_bom.api.server import app
 
     # New FastAPI versions retain lazy included routers; old supported versions
@@ -193,7 +194,7 @@ def mounted_operations():
         (method, path)
         for path, methods in operations
         for method in methods or ()
-        if path not in APIKeyMiddleware._EXEMPT_PATHS and path not in {"/v1/auth/me", "/docs/oauth2-redirect"} and path != "/{path:path}"
+        if not public_operation(method, path) and path not in {"/v1/auth/me", "/docs/oauth2-redirect"} and path != "/{path:path}"
     ]
 
 

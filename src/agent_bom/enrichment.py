@@ -23,14 +23,14 @@ from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpress
 from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
 from agent_bom.core.errors import DegradedCoverage, UpstreamError, UpstreamInvalidResponseError, UpstreamRateLimitedError
-from agent_bom.scanners.enrichment_apply import apply_intel, apply_kev_entry, vuln_cve_ids
-from agent_bom.scanners.enrichment_apply import calculate_exploitability as calculate_exploitability
 from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability, compute_confidence
+from agent_bom.scanners.enrichment_apply import apply_intel, apply_kev_entry, vuln_cve_ids
+from agent_bom.scanners.enrichment_apply import calculate_exploitability as calculate_exploitability
 from agent_bom.scanners.state import record_degraded_coverage, record_scan_warning
-from agent_bom.storage import state_home
 from agent_bom.scanners.upstream import upstream_request
+from agent_bom.storage import state_home
 
 
 def _finalize_confidence(vulnerabilities: list[Vulnerability]) -> None:

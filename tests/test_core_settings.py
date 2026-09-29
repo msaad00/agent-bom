@@ -194,3 +194,16 @@ def test_errors_truncate_and_neutralize_control_characters(monkeypatch):
     message = str(exc.value)
     assert "\x1b" not in message
     assert len(message) < 250
+
+
+def test_duration_rejects_overflow_instead_of_returning_infinity(monkeypatch):
+    monkeypatch.setenv(NAME, "9" * 400 + "d")
+    with pytest.raises(SettingError):
+        env_duration(NAME, 30)
+
+
+def test_invalid_secret_setting_does_not_log_its_default(monkeypatch, caplog):
+    monkeypatch.setenv("CUSTOM_SECRET", "invalid")
+    fallback = "fallback-credential-sensitive"
+    assert env_enum("CUSTOM_SECRET", fallback, {"supported"}, on_invalid="default") == fallback
+    assert fallback not in caplog.text

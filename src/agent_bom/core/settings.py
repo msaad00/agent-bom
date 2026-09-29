@@ -80,7 +80,9 @@ def _invalid(name: str, raw: str, expected: str, on_invalid: OnInvalid, default:
         raise SettingError(name, raw, expected)
     if (name, raw) not in _warned:
         _warned.add((name, raw))
-        logger.warning("Ignoring invalid value for %s: %s; expected %s; using %r", name, _shown(name, raw), expected, default)
+        logger.warning(
+            "Ignoring invalid value for %s: %s; expected %s; using %s", name, _shown(name, raw), expected, _shown(name, str(default))
+        )
 
 
 @overload
@@ -223,7 +225,7 @@ def env_duration(
         _invalid(name, value, expected, on_invalid, default)
         return default
     seconds = float(match.group(1)) * _DURATION_SECONDS[(match.group(2) or "s").lower()]
-    if not _in_range(seconds, minimum, maximum):
+    if not math.isfinite(seconds) or not _in_range(seconds, minimum, maximum):
         _invalid(name, value, expected, on_invalid, default)
         return default
     return seconds

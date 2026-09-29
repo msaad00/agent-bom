@@ -344,6 +344,8 @@ def test_raw_env_reads_bootstrap_once_then_only_shrink():
     assert baseline_growth({"old.py": {"raw_env_reads": 5}}, previous, ratcheted_metrics={"raw_env_reads"})
     assert baseline_growth({"new.py": {"raw_env_reads": 1}}, previous, ratcheted_metrics={"raw_env_reads"})
     assert not baseline_growth({"old.py": {"raw_env_reads": 3}}, previous, ratcheted_metrics={"raw_env_reads"})
+
+
 def test_broad_except_counts_every_broad_handler_but_not_specific_ones(tmp_path):
     source = (
         "def f():\n"

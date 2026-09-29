@@ -560,7 +560,7 @@ def test_api_key_middleware_accepts_oidc_bearer_without_static_api_key(monkeypat
 
     app = FastAPI()
 
-    @app.get("/secure")
+    @app.get("/v1/auth/me")
     async def secure(request: Request):
         return {
             "tenant_id": request.state.tenant_id,
@@ -578,7 +578,7 @@ def test_api_key_middleware_accepts_oidc_bearer_without_static_api_key(monkeypat
     )
 
     client = TestClient(app)
-    resp = client.get("/secure", headers={"Authorization": "Bearer token"})
+    resp = client.get("/v1/auth/me", headers={"Authorization": "Bearer token"})
     assert resp.status_code == 200
     assert resp.json() == {
         "tenant_id": "default",

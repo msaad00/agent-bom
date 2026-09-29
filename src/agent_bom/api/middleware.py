@@ -1310,13 +1310,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         return await self._call_with_tenant_context(request, call_next)
 
     async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
-        # CORS preflight (OPTIONS) MUST bypass auth: browsers do not attach
-        # Authorization headers to preflights (CORS spec / Fetch §3.2.2).
-        # Rejecting them with 401 before CORSMiddleware runs blocks every
-        # cross-origin dashboard / SaaS UI / SDK from talking to the API —
-        # the actual request never fires because the preflight failed.
-        # CORSMiddleware will reply with the right Access-Control-Allow-*
-        # headers for the configured origin set.
+        if self._DOCS_DISABLED and request.url.path in {"/docs", "/redoc", "/openapi.json"}:
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        # CORS preflight MUST bypass auth: browsers omit Authorization headers
+        # (Fetch §3.2.2). A 401 here prevents the actual cross-origin request.
+        # CORSMiddleware supplies Access-Control-Allow-* for configured origins;
+        # authentication still applies to the subsequent application request.
         if request.method == "OPTIONS" and "origin" in request.headers and "access-control-request-method" in request.headers:
             return await call_next(request)
         from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_route_allowed

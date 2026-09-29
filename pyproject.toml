@@ -615,6 +615,7 @@ ignore = []
 "src/agent_bom/output/html/*.py" = ["E501", "F541"]  # Inline HTML/CSS/JS template strings cannot be wrapped; f-prefix is load-bearing (unescapes `{{`)
 "scripts/generate_doc_architecture_svgs.py" = ["E501"]  # SVG coordinate strings are intentionally single-line
 "tests/fixtures/analysis_characterization/**" = ["I001"]  # Golden analyzer inputs: reordering imports shifts the recorded line numbers
+"tests/fixtures/taint_characterization/**" = ["I001"]  # Golden taint inputs: reordering imports shifts the recorded line numbers
 # T201 allowlist — places where bare `print()` is legitimately the contract:
 "scripts/*.py" = ["T201"]  # Ops scripts — stdout is the documented interface
 "tests/**/*.py" = ["T201"]  # Pytest assertions + debug tracebacks

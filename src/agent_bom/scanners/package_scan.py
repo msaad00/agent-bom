@@ -61,6 +61,7 @@ from agent_bom.package_utils import (
     canonical_package_key,
     debian_release_branch,
     normalize_package_name,
+    package_purl,
     ubuntu_release_branch,
 )
 from agent_bom.pci_dss import tag_blast_radius as tag_pci_dss
@@ -1409,31 +1410,21 @@ async def scan_packages(
                     )
                     if installed_ver:
                         pkg.version = installed_ver
-                        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{installed_ver}"
+                        pkg.purl = package_purl(pkg.name, installed_ver, pkg.ecosystem)
                         pkg.version_source = "installed"
                         local_resolved += 1
 
-            # Resolve npm packages from the target project directory.
-            npm_unresolved = [p for p in unresolved if p.ecosystem.lower() == "npm"]
-            if npm_unresolved and target_dir:
-                npm_versions = resolve_npm_versions(Path(target_dir))
-                for pkg in npm_unresolved:
-                    installed_ver = npm_versions.get(pkg.name)
+            # Resolve npm and Go packages from the target project directory.
+            for local_ecosystem, resolve_local_versions in (("npm", resolve_npm_versions), ("go", resolve_go_versions)):
+                eco_unresolved = [p for p in unresolved if p.ecosystem.lower() == local_ecosystem]
+                if not (eco_unresolved and target_dir):
+                    continue
+                local_versions = resolve_local_versions(Path(target_dir))
+                for pkg in eco_unresolved:
+                    installed_ver = local_versions.get(pkg.name)
                     if installed_ver:
                         pkg.version = installed_ver
-                        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{installed_ver}"
-                        pkg.version_source = "installed"
-                        local_resolved += 1
-
-            # Resolve Go packages from the target project directory.
-            go_unresolved = [p for p in unresolved if p.ecosystem.lower() == "go"]
-            if go_unresolved and target_dir:
-                go_versions = resolve_go_versions(Path(target_dir))
-                for pkg in go_unresolved:
-                    installed_ver = go_versions.get(pkg.name)
-                    if installed_ver:
-                        pkg.version = installed_ver
-                        pkg.purl = f"pkg:{pkg.ecosystem}/{pkg.name}@{installed_ver}"
+                        pkg.purl = package_purl(pkg.name, installed_ver, pkg.ecosystem)
                         pkg.version_source = "installed"
                         local_resolved += 1
 

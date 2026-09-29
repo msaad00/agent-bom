@@ -37,7 +37,7 @@ from typing import Optional
 from agent_bom.config import _bool
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.oci_parser import is_node_package_manifest_path
-from agent_bom.package_utils import parse_debian_source_name
+from agent_bom.package_utils import package_purl, parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
 from agent_bom.scanners.risk import cvss_to_severity, severity_from_label
 from agent_bom.security import validate_image_ref
@@ -503,7 +503,7 @@ def _packages_from_tar(tar_path: Path) -> list[Package]:
                 name=name,
                 version=version,
                 ecosystem=ecosystem,
-                purl=purl or f"pkg:{ecosystem}/{name}@{version}",
+                purl=purl or package_purl(name, version, ecosystem),
                 is_direct=False,
                 resolved_from_registry=False,
                 source_package=source_package,

@@ -41,6 +41,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from agent_bom.core.severity import severity_fix_priority
+
 # Guardrail principle tags. Kept explicit so the HTML / MCP output can
 # filter and group findings by principle (Zero Trust view, Defense in
 # Depth view, etc.).
@@ -61,18 +63,6 @@ GUARDRAIL_TAGS = {
     "availability",
 }
 
-# Severity → priority map (1 = critical fix first, 4 = low / advisory).
-_SEVERITY_PRIORITY = {
-    "critical": 1,
-    "high": 1,
-    "medium": 2,
-    "low": 3,
-    "info": 4,
-    "informational": 4,
-    "unknown": 3,
-    "": 3,
-}
-
 # Doc root URLs per cloud. Specific check URLs are built from these by
 # ``_docs_url``; checks without a section-specific anchor fall back to the
 # root page.
@@ -85,7 +75,7 @@ _DOC_ROOTS = {
 
 
 def _priority_for(severity: str) -> int:
-    return _SEVERITY_PRIORITY.get((severity or "").lower(), 3)
+    return severity_fix_priority(severity)
 
 
 def _docs_url(cloud: str, check_id: str) -> str:

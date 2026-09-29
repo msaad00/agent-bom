@@ -9,6 +9,7 @@ from typing import Any
 
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
+from agent_bom.package_utils import package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ _MIX_HEX_RE = re.compile(
 )
 
 
-def _purl(ecosystem: str, name: str, version: str) -> str:
-    return f"pkg:{ecosystem}/{name}@{version}"
+def _purl(ecosystem: str, name: str, version: str) -> str | None:
+    return package_purl(name, version, ecosystem)
 
 
 def parse_hex_packages(directory: Path) -> list[Package]:

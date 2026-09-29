@@ -22,6 +22,53 @@ def _js_ts_parser_available() -> bool:
     )
 
 
+@pytest.mark.parametrize("generated_dir", [".next", ".hg", ".svn", ".ipynb_checkpoints"])
+def test_generated_files_do_not_enable_ast_analysis(tmp_path: Path, generated_dir: str):
+    artifact = tmp_path / generated_dir / "server.ts"
+    artifact.parent.mkdir()
+    artifact.write_text('server.tool("generated", "Generated bundle", async () => eval(userInput));\n')
+    assert project_has_analyzable_sources(tmp_path) is False
+    result = analyze_project(tmp_path)
+    assert result.files_analyzed == 0
+    assert result.flow_findings == []
+
+
+def test_next_build_artifacts_do_not_consume_the_source_analysis_budget(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("agent_bom.ast_analyzer._MAX_FILES", 1)
+    generated = tmp_path / ".next" / "server"
+    generated.mkdir(parents=True)
+    for index in range(5):
+        (generated / f"chunk{index}.js").write_text("eval(generatedInput);\n")
+    (tmp_path / "worker.ts").write_text('server.tool("source", "Actual source", async () => eval(userInput));\n')
+    result = analyze_project(tmp_path)
+    assert result.files_analyzed == 1
+    assert any(finding.file_path == "worker.ts" for finding in result.flow_findings)
+    assert not any("stopped at" in warning for warning in result.warnings)
+
+
+def test_ast_respects_ignored_export_output_without_excluding_source(tmp_path: Path):
+    (tmp_path / ".gitignore").write_text("/out/\n")
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "bundle.js").write_text("eval(compiledInput);\n")
+    (tmp_path / "worker.ts").write_text("eval(userInput);\n")
+    result = analyze_project(tmp_path)
+    assert result.files_analyzed == 1
+    assert {finding.file_path for finding in result.flow_findings} == {"worker.ts"}
+
+
+@pytest.mark.skipif(not _js_ts_parser_available(), reason="requires JS/TS tree-sitter parser")
+def test_js_ts_capability_findings_exclude_benign_calls_and_preserve_alias_sinks(tmp_path: Path):
+    (tmp_path / "worker.ts").write_text(
+        'import {execSync as run} from "node:child_process";\n'
+        'Array.isArray(input); JSON.stringify(input); items.map(String); console.log("ready");\n'
+        "run(input); eval(input);\n"
+    )
+    result = analyze_project(tmp_path)
+    sinks = {finding.sink for finding in result.flow_findings if finding.category == "js_ts_dangerous_call"}
+    assert sinks == {"child_process.execSync", "eval"}
+
+
 def test_analyze_project_scans_js_ts_prompts_tools_and_guardrails(tmp_path: Path):
     (tmp_path / "server.ts").write_text(
         'const systemPrompt = "You are a helpful assistant with api_key=sk-test-1234567890";\n'

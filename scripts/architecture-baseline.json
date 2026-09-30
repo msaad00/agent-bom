@@ -140,7 +140,7 @@
     "api/compliance_hub_store.py": {
       "broad_except": 1,
       "deferred_imports": 21,
-      "file_lines": 2260,
+      "file_lines": 2254,
       "raw_env_reads": 5
     },
     "api/compliance_hub_store.py::collect_scope_filtered_page": {
@@ -294,7 +294,7 @@
     "api/graph_store.py": {
       "broad_except": 1,
       "deferred_imports": 7,
-      "file_lines": 2614
+      "file_lines": 2612
     },
     "api/graph_store.py::SQLiteGraphStore._frontier_edge_query": {
       "function_lines": 81
@@ -379,7 +379,7 @@
     "api/middleware.py": {
       "broad_except": 4,
       "deferred_imports": 44,
-      "file_lines": 2574,
+      "file_lines": 2573,
       "raw_env_reads": 21
     },
     "api/middleware.py::APIKeyMiddleware._resolve_oidc_bearer": {
@@ -1024,7 +1024,7 @@
     "api/server.py": {
       "broad_except": 15,
       "deferred_imports": 83,
-      "file_lines": 1800,
+      "file_lines": 1797,
       "raw_env_reads": 32
     },
     "api/server.py::_cleanup_tick": {
@@ -1039,7 +1039,7 @@
       "function_lines": 389
     },
     "api/server.py::configure_api": {
-      "function_lines": 88
+      "function_lines": 85
     },
     "api/session_authorization.py": {
       "deferred_imports": 2
@@ -1158,7 +1158,7 @@
     },
     "ast/js_ts/engine.py": {
       "deferred_imports": 4,
-      "file_lines": 881
+      "file_lines": 879
     },
     "ast/js_ts/facade.py": {
       "deferred_imports": 2,
@@ -1230,12 +1230,8 @@
       "function_lines": 88
     },
     "ast_python_analysis.py": {
-      "file_lines": 2447,
+      "file_lines": 2428,
       "raw_env_reads": 1
-    },
-    "ast_python_analysis.py::_analyze_file": {
-      "complexity": 53,
-      "function_lines": 353
     },
     "ast_python_analysis.py::_build_call_graph": {
       "complexity": 16,
@@ -1244,28 +1240,6 @@
     "ast_python_analysis.py::_build_function_cfg_edges": {
       "complexity": 18,
       "function_lines": 83
-    },
-    "ast_python_analysis.py::_build_taint_findings": {
-      "complexity": 114,
-      "function_lines": 540
-    },
-    "ast_python_analysis.py::_build_taint_findings.analyze_function": {
-      "complexity": 71,
-      "function_lines": 399
-    },
-    "ast_python_analysis.py::_build_taint_findings.analyze_function.call_taint": {
-      "complexity": 27,
-      "function_lines": 183
-    },
-    "ast_python_analysis.py::_build_taint_findings.analyze_function.expr_taint": {
-      "complexity": 21
-    },
-    "ast_python_analysis.py::_build_taint_findings.analyze_function.walk_statements": {
-      "complexity": 20,
-      "function_lines": 122
-    },
-    "ast_python_analysis.py::_build_taint_findings.validator_param_names": {
-      "complexity": 19
     },
     "ast_python_analysis.py::_call_has_tainted_argument": {
       "complexity": 19
@@ -1460,11 +1434,11 @@
     },
     "cli/_doctor.py": {
       "broad_except": 9,
-      "deferred_imports": 14
+      "deferred_imports": 15
     },
     "cli/_doctor.py::doctor_cmd": {
       "complexity": 34,
-      "function_lines": 300
+      "function_lines": 267
     },
     "cli/_endpoint_connectors.py": {
       "raw_env_reads": 2
@@ -1561,7 +1535,7 @@
       "deferred_imports": 3
     },
     "cli/_quickstart.py::_run_quickstart": {
-      "function_lines": 108
+      "function_lines": 101
     },
     "cli/_registry.py": {
       "api_imports": 4,
@@ -2308,10 +2282,12 @@
       "raw_env_reads": 1
     },
     "cloud/side_scan_lifecycle.py": {
-      "api_imports": 4,
-      "deferred_imports": 4,
-      "file_lines": 1282,
+      "api_imports": 1,
+      "deferred_imports": 1,
       "raw_env_reads": 1
+    },
+    "cloud/side_scan_lifecycle_postgres.py": {
+      "api_imports": 1
     },
     "cloud/side_scan_provider_adapters.py": {
       "broad_except": 16,
@@ -2894,8 +2870,8 @@
     },
     "export/destinations.py": {
       "broad_except": 17,
-      "deferred_imports": 4,
-      "file_lines": 1171
+      "deferred_imports": 5,
+      "file_lines": 1166
     },
     "export/destinations.py::BigQueryWarehouseDestination.write_findings": {
       "function_lines": 86
@@ -4194,11 +4170,11 @@
     },
     "output/sarif.py": {
       "deferred_imports": 3,
-      "file_lines": 1256
+      "file_lines": 1255
     },
     "output/sarif.py::_cve_sarif_result": {
       "complexity": 18,
-      "function_lines": 142
+      "function_lines": 135
     },
     "output/scan_document.py": {
       "deferred_imports": 6

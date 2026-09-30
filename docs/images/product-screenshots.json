@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-30T02:54:15.542Z",
-  "source_commit": "54d206488fe032702b8b75f5c8264175a58f2c2d",
+  "captured_at": "2026-09-30T03:10:23.914Z",
+  "source_commit": "da7fbc9e0dabcd3b5a98dc6592910ff23634c001",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:c0042d3ec0573038b48dfdd89aef9dcf5606719830b5a97cd6705d09f223e187",
+  "capture_inputs_sha256": "sha256:8df28c5ce4a96900fd2048669d222c636056bbca3d9ff8e7225eace4b7cb2d49",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -108,7 +108,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.106.1",
-      "sha256": "sha256:87ada7723972b28e14ed8e76338c5deb4f2682af627af5c16377c1ee79bc3ae9"
+      "sha256": "sha256:92ba4f52ee314eda7cd2735ce8484c3739c58e6958b893cbad7128d5a6409827"
     },
     {
       "presentation": "dark desktop",
@@ -124,7 +124,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.1",
-      "sha256": "sha256:470e020461a4717c3a30fc9da63d121e7d1ff39c69b12faccfb774c6b9f64542"
+      "sha256": "sha256:0aaf04cd742d6c8fa0abddfc15fa4f851423a6dceda21902e57e4bbbf4eef64f"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.106.1",
-      "sha256": "sha256:9a0307c348d3eabf7dc5bdebad6e27166e42124c44849f9daad7c377a2131b8a"
+      "sha256": "sha256:4a7bddb5598739969a10a4b1a146b7a66c7160e519a7250558ec1b22aad7e523"
     },
     {
       "presentation": "dark mobile",
@@ -257,7 +257,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.106.1",
-      "sha256": "sha256:4a290768801035c951fa4f8735ca55f767500d54830541dd79f4760a5b1bdfdd"
+      "sha256": "sha256:b3603e052b495a6ce0802767412bcafaec66fa8f32433b7538a25a52a7b76c26"
     },
     {
       "presentation": "dark desktop",

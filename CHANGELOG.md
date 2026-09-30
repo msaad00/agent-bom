@@ -29,6 +29,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Resolve CommonJS namespace aliases for command-execution analysis, including `node:child_process`. Readiness checks distinguish the OSV lookup cache from the vulnerability database and report the same database staleness threshold used by scans.
+
 - Malformed CloudFormation template, resource and policy containers no longer abort a repository scan. Reports retain findings from valid resources and mark unevaluated input as partial coverage; IAM policies with a single Statement object are evaluated.
 
 - Preserve the finding occurrence and source scan across graph investigation. Exact snapshot and canonical entity links work across Context Map and Agent Mesh without substituting another entity when a lookup fails.

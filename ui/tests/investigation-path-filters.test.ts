@@ -48,9 +48,9 @@ describe("investigation-path-filters", () => {
     path({ hops: ["pkg-1", "agent-1"], composite_risk: 3.1 }),
   ];
 
-  it("filters by severity band derived from composite risk", () => {
+  it("filters by finding severity rather than composite risk", () => {
     const critical = filterAttackPathsForInvestigation(paths, nodes, {
-      severity: "critical",
+      severity: "high",
       layer: null,
       evidenceTier: null,
       environment: null,
@@ -86,4 +86,25 @@ describe("investigation-path-filters", () => {
     ]);
     expect(collectPathEnvironments([path({ hops: ["agent-dims"] })], dimsOnly)).toEqual(["staging"]);
   });
+});
+
+
+it("never promotes high priority into critical finding severity", () => {
+  const nodes = new Map([["asset", node("asset", "cloud_resource")], ["finding", { ...node("finding", "vulnerability"), severity: "low" }]]);
+  const filters = { severity: "critical", layer: null, evidenceTier: null, environment: null };
+  expect(filterAttackPathsForInvestigation([path({ hops: ["asset", "finding"], composite_risk: 95 })], nodes, filters)).toEqual([]);
+});
+
+it("retains a critical finding even when its path priority is low", () => {
+  const nodes = new Map([["finding", { ...node("finding", "misconfiguration"), severity: "critical" }]]);
+  const candidate = path({ hops: ["finding"], composite_risk: 2 });
+  expect(filterAttackPathsForInvestigation([candidate], nodes, { severity: "critical", layer: null, evidenceTier: null, environment: null })).toEqual([candidate]);
+});
+
+
+it("preserves explicit unknown severity and never substitutes an asset risk", () => {
+  const nodes = new Map([["asset", { ...node("asset", "cloud_resource"), severity: "critical" }], ["finding", { ...node("finding", "vulnerability"), severity: "critical" }]]);
+  const filters = { severity: "critical", layer: null, evidenceTier: null, environment: null };
+  expect(filterAttackPathsForInvestigation([path({ hops: ["asset"], composite_risk: 100 })], nodes, filters)).toEqual([]);
+  expect(filterAttackPathsForInvestigation([path({ hops: ["finding"], severity: "unknown", composite_risk: 100 })], nodes, filters)).toEqual([]);
 });

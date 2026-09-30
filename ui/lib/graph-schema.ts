@@ -447,6 +447,8 @@ export interface GraphHopEvidence {
 }
 
 export interface AttackPath {
+  /** Server-ranked finding severity; never inferred from composite_risk. */
+  severity?: string;
   source: string;
   target: string;
   hops: string[];

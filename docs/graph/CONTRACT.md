@@ -634,3 +634,29 @@ do not poll. Session changes discard pending results; denied access stops
 background retries until the session changes or a manual retry. Failed checks or
 a selected snapshot outside the bounded list mean freshness is unknown. Correlated
 and scan snapshots are not mixed, and scenario views do not offer this switch.
+
+## Attack-path queue coverage
+
+Investigation filters apply to loaded queue pages and enriched priority cards.
+An empty filtered page does not establish that the snapshot has no matching
+path. **Load next 25 paths** fetches one more bounded page while retaining the
+filters. Loaded matches and unexamined pages are reported separately; the UI
+does not invent a total matching count for evidence it has not loaded. Completing
+the available pages does not override a bounded server ranking window or partial
+source analysis. Page failures retain the loaded investigation and permit retry.
+
+Additional pages must match the tenant, scan ID and recorded creation time and
+advance to the requested next offset. Navigation cancels outstanding continuation
+requests; a changed authenticated session remounts the investigation. These are
+read-only browser consistency checks, not a replacement for backend authorization
+or a cryptographic snapshot-generation pin.
+
+Severity filters use server-authored finding severity, or the highest recorded
+finding-node severity for older responses. A path priority score, an asset risk
+score or missing severity never supplies a critical finding classification.
+
+The ranked path response retains edges between consecutive hops in their stored
+direction. A bidirectional edge remains available when a path traverses it in
+reverse; a reversed directed edge and unrelated chords are excluded. Retaining a
+relationship witness does not turn inventory into observed execution, effective
+permission or confirmed exploitation.

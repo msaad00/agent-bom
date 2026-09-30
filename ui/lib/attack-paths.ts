@@ -807,6 +807,12 @@ export function mergeAttackPathGraphPages(
   current: UnifiedGraphResponse,
   next: UnifiedGraphResponse,
 ): UnifiedGraphResponse {
+  if (current.scan_id !== next.scan_id || current.tenant_id !== next.tenant_id || current.created_at !== next.created_at) {
+    throw new Error("The path page belongs to a different snapshot. Reload the investigation before continuing.");
+  }
+  if (next.pagination.offset !== current.pagination.offset + current.pagination.limit) {
+    throw new Error("The path page did not advance as requested. Retry to continue the investigation.");
+  }
   const nodeIds = new Set(current.nodes.map((node) => node.id));
   const edgeIds = new Set(current.edges.map((edge) => edge.id));
   const pathKeys = new Set(current.attack_paths.map((path) => attackPathKey(path)));
@@ -825,7 +831,7 @@ export function mergeAttackPathGraphPages(
     stats: {
       ...current.stats,
       ...next.stats,
-      attack_path_count: next.pagination.total,
+      attack_path_count: next.stats.attack_path_count,
     },
   };
 }

@@ -4,6 +4,7 @@
  */
 
 import type { InvestigationPresetFilters } from "@/components/graph-preset-controls";
+import { exposureSeverityRank } from "@/lib/exposure-path";
 import type { AttackPath, UnifiedNode } from "@/lib/graph-schema";
 import { GRAPH_NODE_KIND_META, type GraphNodeKindKey } from "@/lib/graph-schema";
 
@@ -15,11 +16,15 @@ function nodeKindKey(entityType: string): GraphNodeKindKey | null {
   return null;
 }
 
-function pathSeverity(path: AttackPath): string {
-  if (path.composite_risk >= 9) return "critical";
-  if (path.composite_risk >= 7) return "high";
-  if (path.composite_risk >= 4) return "medium";
-  return "low";
+function pathSeverity(path: AttackPath, nodeById: Map<string, UnifiedNode>): string {
+  // The server's finding severity is independent of the path priority scale.
+  if (path.severity !== undefined) return path.severity.toLowerCase();
+  const findings = path.hops.flatMap(id => {
+    const node = nodeById.get(id);
+    return node && ["vulnerability", "misconfiguration"].includes(String(node.entity_type))
+      && ["critical", "high", "medium", "low", "none"].includes(node.severity.toLowerCase()) ? [node.severity.toLowerCase()] : [];
+  });
+  return findings.sort((a, b) => exposureSeverityRank(b) - exposureSeverityRank(a))[0] ?? "unknown";
 }
 
 function hopEvidenceTier(
@@ -62,7 +67,7 @@ export function filterAttackPathsForInvestigation(
   if (!hasAny) return paths;
 
   return paths.filter((path) => {
-    if (filters.severity && pathSeverity(path) !== filters.severity.toLowerCase()) {
+    if (filters.severity && pathSeverity(path, nodeById) !== filters.severity.toLowerCase()) {
       return false;
     }
 

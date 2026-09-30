@@ -1621,3 +1621,69 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    for (const mode of ["filter", "finding"] as const) {
+    test(`filtered queue reaches later-page evidence ${mode} ${theme} ${width}`, async ({ page }, testInfo) => {
+      await routeCockpit(page);
+      await page.route("**/v1/graph/presets", route => route.fulfill({ json: [] }));
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      const graph = buildCockpitGraph();
+      const paths = Array.from({ length: 26 }, (_, index) => {
+        const source = `agent:paged-${index}`;
+        const target = `finding:paged-${index}`;
+        const agent = node(source, "agent", `Page agent ${index}`);
+        agent.attributes = { evidence_tier: index === 25 ? "static_scan" : "runtime_observed" };
+        graph.nodes.push(agent, node(target, "vulnerability", `Page finding ${index}`, "high", 7));
+        graph.edges.push(edge(source, target, "vulnerable_to"));
+        return { ...graph.attack_paths[0]!, source, target, hops: [source, target], edges: ["vulnerable_to"],
+          composite_risk: 8, summary: `Page occurrence ${index}`, vuln_ids: [`page-finding-${index}`] };
+      });
+      await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({ json: {
+        scan_id: scanId, tenant_id: "default", created_at: createdAt, cards: [], attack_campaigns: [],
+        summary: { total_paths: 26, matched_paths: 26, returned_paths: 0, highest_risk: 8, covered_findings: 26, node_count: graph.nodes.length, edge_count: graph.edges.length },
+      } }));
+      const offsets: number[] = [];
+      let failNext = theme === "dark" && width === 1440;
+      await page.route("**/v1/graph/attack-paths?**", route => {
+        const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
+        offsets.push(offset);
+        if (offset === 25 && failNext) { failNext = false; return route.fulfill({ status: 503, json: { detail: "Temporarily unavailable" } }); }
+        const selected = paths.slice(offset, offset + 25);
+        const ids = new Set(selected.flatMap(path => path.hops));
+        return route.fulfill({ json: { ...graph, attack_paths: selected,
+          nodes: graph.nodes.filter(item => ids.has(item.id)), edges: graph.edges.filter(item => ids.has(item.source) && ids.has(item.target)),
+          pagination: { total: 26, offset, limit: 25, has_more: offset === 0 },
+          completeness: { returned: selected.length, total: 26, truncated: offset === 0 },
+        } });
+      });
+      await page.goto(`/security-graph?lens=attack-path&scan=${scanId}${mode === "finding" ? "&cve=page-finding-25" : ""}`);
+      if (mode === "filter") {
+        if (width < 1024) await page.getByRole("button", { name: /Paths & filters/ }).click();
+        await page.getByText("Filters & presets", { exact: true }).click();
+        await page.getByRole("button", { name: "Static", exact: true }).click();
+      }
+      await expect(page.getByRole("heading", { name: "No matching paths in loaded pages" })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath(`filtered-path-empty-${mode}-${theme}-${width}.png`), fullPage: true });
+      await page.getByRole("button", { name: "Load next 25 paths", exact: true }).click();
+      if (theme === "dark" && width === 1440) {
+        await expect(page.getByRole("alert").filter({ hasText: "Loaded evidence is retained" })).toBeVisible();
+        await page.getByRole("button", { name: "Load next 25 paths", exact: true }).click();
+      }
+      const workspace = page.getByLabel("Investigation workspace");
+      if (width < 1024) await workspace.getByRole("button", { name: /Paths & filters/ }).click();
+      else await workspace.locator("summary").filter({ hasText: "1 path selected" }).click();
+      await expect(page.getByLabel("Attack path queue")).toContainText(/Page agent 25/i);
+      expect(offsets).toEqual(theme === "dark" && width === 1440 ? [0, 25, 25] : [0, 25]);
+      await expect(page.getByRole("button", { name: "Load next 25 paths", exact: true })).toHaveCount(0);
+      await page.getByLabel("Attack path queue").getByRole("button", { name: /Page agent 25/i }).click();
+      await expect(page.getByTestId("selected-exposure-path")).toContainText(/Page agent 25/i);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`filtered-path-queue-${mode}-${theme}-${width}.png`), fullPage: true });
+    });
+  }
+}
+}

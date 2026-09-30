@@ -1197,13 +1197,13 @@ export const api = {
     scanId?: string | undefined;
     offset?: number | undefined;
     limit?: number | undefined;
-  }) => {
+  }, options?: { signal?: AbortSignal }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     const qs = params.toString();
-    return get<UnifiedGraphResponse>(`/v1/graph/attack-paths${qs ? `?${qs}` : ""}`);
+    return get<UnifiedGraphResponse>(`/v1/graph/attack-paths${qs ? `?${qs}` : ""}`, options);
   },
 
   /** Ranked ExposurePath queue (agent-native lens) over REST — GET /v1/graph/exposure-paths */

@@ -1107,6 +1107,20 @@ describe("mergeAttackPathGraphPages", () => {
       pagination,
     });
 
+  it.each(["scan_id", "tenant_id", "created_at"] as const)("rejects pages from a different %s", field => {
+    const first = page([], [], [], { total: 2, offset: 0, limit: 1, has_more: true });
+    const second = { ...page([], [], [], { total: 2, offset: 1, limit: 1, has_more: false }), [field]: "different" };
+    expect(() => mergeAttackPathGraphPages(first, second)).toThrow(/different snapshot/);
+    expect(first.attack_paths).toEqual([]);
+  });
+
+  it("rejects a repeated or skipped page", () => {
+    const first = page([], [], [], { total: 4, offset: 0, limit: 1, has_more: true });
+    for (const offset of [0, 2]) {
+      expect(() => mergeAttackPathGraphPages(first, page([], [], [], { total: 4, offset, limit: 1, has_more: true }))).toThrow(/did not advance/);
+    }
+  });
+
   it("appends unique paths/nodes/edges and keeps latest pagination", () => {
     const first = page([path("a", "b", 9)], ["a", "b"], ["e1"], {
       total: 3,

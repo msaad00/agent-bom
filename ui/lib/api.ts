@@ -1001,12 +1001,12 @@ export const api = {
   },
 
   /** List persisted unified graph snapshots */
-  getGraphSnapshots: (limit = 50, windowDays?: number) => {
+  getGraphSnapshots: (limit = 50, windowDays?: number, options?: { signal?: AbortSignal }) => {
     const params = new URLSearchParams({ limit: String(limit) });
     // Default read-window (#4009): omit for the server default (~90d); pass 0 to
     // widen to all retained snapshots so old history is never silently hidden.
     if (windowDays != null) params.set("window_days", String(windowDays));
-    return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`);
+    return get<GraphSnapshot[]>(`/v1/graph/snapshots?${params.toString()}`, options);
   },
 
   /** Correlate 2-32 exact immutable graph snapshots into one provenance-rich snapshot. */

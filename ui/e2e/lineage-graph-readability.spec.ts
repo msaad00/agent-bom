@@ -35,6 +35,38 @@ for (const theme of ["light", "dark"] as const) for (const width of [390, 1440])
     expect(new URL(bundle.return_url).searchParams.get("node")).toBe(root.id);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   });
+  test(`new snapshot preserves the pinned investigation ${theme} ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeGraphPage(page);
+    let available = false;
+    const current = { scan_id: scanId, created_at: createdAt, snapshot_kind: "scan", node_count: 37, edge_count: 36, risk_summary: {} };
+    const latest = { ...current, scan_id: "new-saved-snapshot", created_at: "2026-05-08T17:00:00Z" };
+    await page.route("**/v1/graph/snapshots?**", route => route.fulfill({ json: available ? [latest, current] : [current] }));
+    await page.route("**/v1/graph?**", route => route.fulfill({ json: { ...buildDenseGraph(), scan_id: new URL(route.request().url()).searchParams.get("scan_id") || scanId } }));
+    await page.clock.install();
+    await page.goto(`/graph?lens=lineage&scan=${scanId}`);
+    const canvas = page.locator(".react-flow").last();
+    await expect(page.getByTestId("rf__node-agent:desktop")).toBeVisible();
+    if (width === 1440) await page.getByTestId("rf__node-agent:desktop").click();
+    await settledViewportZoom(page);
+    const before = await canvas.locator(".react-flow__viewport").getAttribute("style");
+    available = true;
+    await page.clock.fastForward(30_000);
+    const updates = page.getByRole("complementary", { name: "Saved snapshot updates" });
+    const open = updates.getByRole("link", { name: "Open newer snapshot" });
+    await expect(open).toBeVisible();
+    if (width === 390) expect((await updates.getByRole("status").boundingBox())!.width).toBeGreaterThan(280);
+    expect(new URL(page.url()).searchParams.get("scan")).toBe(scanId);
+    if (width === 1440) await expect(page.getByTestId("graph-entity-drawer")).toBeVisible();
+    expect(await canvas.locator(".react-flow__viewport").getAttribute("style")).toBe(before);
+    await updates.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`snapshot-update-${theme}-${width}.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await open.click();
+    await expect(page).toHaveURL(/scan=new-saved-snapshot/);
+    await expect(page.getByLabel("Graph snapshot", { exact: true })).toHaveValue(latest.scan_id);
+  });
 }
 
 async function settledViewportZoom(page: Page): Promise<number> {

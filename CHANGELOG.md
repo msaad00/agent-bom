@@ -13,6 +13,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Export a selected graph entity's loaded recorded relationships as an investigation JSON bundle. Preserve the snapshot generation, canonical entity/finding identifiers, relationship evidence, page completeness and a return link; disclose unknown collection coverage and unsigned local-export provenance.
 
+- Saved graph views notify when a newer snapshot of the same kind is available. Open it explicitly or keep the current investigation; background metadata checks preserve the pinned snapshot, selection and viewport.
+
 ## [0.107.0] - 2026-09-30
 
 ### Added

@@ -33,7 +33,7 @@ signed release evidence.
 | Packaged dashboard | `uv run python scripts/verify_release_wheel.py dist` | Every wheel passes the same dashboard and CSP contract used by the manual publish targets. |
 | PyPI smoke | `python -m venv /tmp/agent-bom-smoke && /tmp/agent-bom-smoke/bin/pip install agent-bom==<version> && /tmp/agent-bom-smoke/bin/agent-bom --version` | Published package installs in a fresh environment. |
 | Registry surface freshness (post-publish) | `gh workflow run surface-freshness.yml` | Compares distribution surfaces with the latest published release and its exact packaged MCP schemas. Inspect the `surface-freshness-evidence` artifact and drift issue; asynchronous rebuild acceptance is not release completion. |
-| Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a real inventory report, graph, and posture with no coverage warnings; package-CVE lookup is skipped because a fresh install has no local database. Run `agent-bom scan --demo --offline` separately for bundled CVE proof. |
+| Quickstart E2E | `agent-bom quickstart --run --offline --force --sample-dir /tmp/agent-bom-quickstart` | Generates a sample inventory report and reads back its saved graph. Offline package-CVE lookup is explicitly skipped; zero CVEs is not a clean verdict. Review `scan_run` and `coverage_warnings`, then scan your own repository. Run `agent-bom scan --demo --offline` separately for bundled CVE proof. |
 | Hosted preflight | `python scripts/deploy/hosted_poc_preflight.py --write-secret` | Hosted compose has an HTTPS URL, no unauth mode, non-placeholder secrets, private API/UI binds, and safe CORS. |
 
 Do not publish a release as hosted-ready when any required line above is red.
@@ -89,12 +89,16 @@ an automatic grant just to make a catalog scan pass.
 
 ### Source-to-published storefront transition
 
-During the four-PR sequence, code freeze, and after publication, the committed
-README surfaces use lifecycle-neutral wording: examples target the forward
-version, and operators must verify registry availability before copying an
-exact pin. Branch and matching-tag checks require that neutral state, so the
-public repository remains accurate without a fifth post-release documentation
-change.
+Source-built manifests and the Docker Hub storefront track the source version
+being prepared. The storefront uses lifecycle-neutral wording until its image
+is published. Copy-paste commands that fetch released artifacts instead track
+`PUBLISHED_VERSION`, so README Action references, pull-only image pins and Helm
+install commands continue to name an available release during preparation.
+
+After publication, the release workflow opens a follow-up pull request using
+`python scripts/bump-version.py --published <version>` to advance those
+copy-paste surfaces and the Docker MCP pin. Review that generated update and
+verify the published artifacts before merging it.
 
 The protected release workflow then renders a temporary published copy with
 `scripts/render_docker_storefront.py`, promotes exactly the matching version to

@@ -7,11 +7,21 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.107.0] - 2026-09-30
 
 ### Added
 
+- Guided first scans connect an empty workspace to scan and connection actions, with browser-local report previews and an explicit return to live evidence. CLI quickstart prints the saved report, package-CVE coverage boundary and exact graph snapshot link.
+- Context Map supports Auto, Horizontal and Vertical layouts, bounded recorded-relationship inspection, and separate Fit all and Readable view controls. Collapse preserves independently loaded branches and reframes the remaining canvas.
+- Local readiness checks work without network probes and retain skipped or incomplete states. Imported reports disclose partial or unknown collection coverage; file timestamps remain distinct from successful live scans.
+- Export and validate an experimental per-agent BOM from an exact agent in a completed scan through CLI, API and dashboard. The profile retains source and coverage references; structural validation does not establish evidence authenticity or compliance.
 - Authenticated read-only Jamf Pro and CrowdStrike Falcon inventory sync with encrypted credentials, resumable collection, tenant-isolated SQLite/Postgres evidence and explicit freshness/collection gaps. Manage connections through the API, CLI and a bounded Connections → Endpoints tab; inspect inventory and run authorized syncs through MCP. Sensor health remains distinct from policy compliance.
+
+### Security
+
+- Bind anonymous API exemptions to exact HTTP operations and reject unclassified protected operations. Scope scheduled work, source records and export operations to explicit tenant authority; revalidate stored credentials on active streams and reconnects.
+- Reject malformed entries throughout browser-imported reports, including decoded structural keys, oversized UTF-8 input, invalid exposure labels and inconsistent severity totals. Rejection messages do not echo report contents.
+- Keep trace correlation tied to the submitted input and authenticated session. Invalid gateway enforcement settings fail before startup, and failed visual screening withholds upstream results.
 
 ### Changed
 
@@ -21,6 +31,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Malformed CloudFormation template, resource and policy containers no longer abort a repository scan. Reports retain findings from valid resources and mark unevaluated input as partial coverage; IAM policies with a single Statement object are evaluated.
 
+- Preserve the finding occurrence and source scan across graph investigation. Exact snapshot and canonical entity links work across Context Map and Agent Mesh without substituting another entity when a lookup fails.
+- Show recorded relationship endpoint labels, direction and canonical identifiers with bounded incident pages. Preserve loaded pages across responsive layouts and disclose unavailable labels, unknown totals and stale evidence.
+- Serialize finding ingest across replicas and share atomic ledger/current-state writes. Tenant-scoped job keys, owned dispatch leases and generation-fenced graph rollback preserve concurrent work.
+- Align REST and MCP graph exposure evidence, preserve cloud resource scope and native identity in graph joins, and bound page projection work.
+- Exclude generated source trees and benign JavaScript calls from relevant scanner analysis; preserve explicit coverage gaps when analysis is incomplete.
 - `POST /v1/scan` now runs the same secret scan as `agent-bom scan -p` for `agent_projects` and `filesystem_paths`, not only for `repo_url` clones.
 - MCP `scan` queries vulnerability sources online by default (honoring `AGENT_BOM_OFFLINE`), returns a bounded, always-valid JSON summary with paged `result_id`/`section` follow-ups (`detail="full"` for the whole document), sets `isError` on incomplete or failed scans, and accepts extra workspace roots via `AGENT_BOM_MCP_WORKSPACE_ROOTS` or `agent-bom mcp server --workspace-root`.
 - `--external-scan` no longer disables project auto-detection (IaC, SAST, secrets); when another input does skip it, the scan warns.
@@ -3765,7 +3780,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.106.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.107.0...HEAD
+[0.107.0]: https://github.com/msaad00/agent-bom/compare/v0.106.1...v0.107.0
 [0.106.1]: https://github.com/msaad00/agent-bom/compare/v0.105.0...v0.106.1
 [0.105.0]: https://github.com/msaad00/agent-bom/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/msaad00/agent-bom/compare/v0.103.2...v0.104.0

@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-29T06:32:00.450Z",
-  "source_commit": "957f3b2fbfb4963f5de3fa4c8a39ac44fd8fb254",
+  "captured_at": "2026-09-30T02:54:15.542Z",
+  "source_commit": "54d206488fe032702b8b75f5c8264175a58f2c2d",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:29851d3c8b5ec9c718dfc120d99d5e164ec8905486545b24daa1009ee5dd4155",
+  "capture_inputs_sha256": "sha256:c0042d3ec0573038b48dfdd89aef9dcf5606719830b5a97cd6705d09f223e187",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -84,7 +84,7 @@
       "page": "/scan?id=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic scan receipt with explicit partial coverage and one recorded agent identity selected for composition export",
       "visible_version": "0.106.1",
-      "sha256": "sha256:1d66fad1143d2337c26662568e6f72badacc708ca797e86e23fecc27dbdc3829"
+      "sha256": "sha256:66e542a147eb93648273d40808166e8fa9328263319e7bad07d20f8d5b47b44f"
     },
     {
       "presentation": "dark desktop",
@@ -92,7 +92,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.106.1",
-      "sha256": "sha256:76acab40bb27ef03f02579e0690de045822d5e9a9c98502213757bc3b4908cb3"
+      "sha256": "sha256:5bcfb516f1b30dac3bda028f0aa951c6516e0e1d9d3e4a98ccbf77ac0ddb721b"
     },
     {
       "presentation": "dark desktop",
@@ -257,7 +257,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.106.1",
-      "sha256": "sha256:b3603e052b495a6ce0802767412bcafaec66fa8f32433b7538a25a52a7b76c26"
+      "sha256": "sha256:4a290768801035c951fa4f8735ca55f767500d54830541dd79f4760a5b1bdfdd"
     },
     {
       "presentation": "dark desktop",

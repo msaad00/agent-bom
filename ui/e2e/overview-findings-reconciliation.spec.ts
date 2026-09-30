@@ -653,6 +653,8 @@ for (const theme of ["light", "dark"] as const) {
       await evidence.getByText(/Collection details/).click();
       await expect(evidence).toContainText("advisories: unavailable");
       await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+      await expect(page.getByTestId("overview-freshness")).toContainText("Report timestamp");
+      await expect(page.getByText("Last successful scan", { exact: true })).toHaveCount(0);
       await capture(page, testInfo, `import-coverage-${theme}-${width}.png`);
       await expect(page.getByRole("heading", { name: "Start with evidence" })).toHaveCount(0);
       expect(writes).toEqual([]);

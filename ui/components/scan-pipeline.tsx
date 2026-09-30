@@ -20,6 +20,8 @@ import {
   Position,
   ReactFlowProvider,
   useReactFlow,
+  getNodesBounds,
+  getViewportForBounds,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -50,13 +52,18 @@ import {
   type PipelineNodeKind,
   type ScannerDomain,
 } from "@/lib/scan-pipeline-graph";
-import { CONTROLS_CLASS, graphNodeDisplayLabels, readableGraphEdges } from "@/lib/graph-utils";
+import {
+  CONTROLS_CLASS,
+  graphNodeDisplayLabels,
+  readableGraphEdges,
+} from "@/lib/graph-utils";
 
 // ── Step node component ─────────────────────────────────────────────────────
 
 interface PipelineNodeData {
   [key: string]: unknown;
   nodeId: string;
+  compact?: boolean;
   stepId: string;
   label: string;
   description: string;
@@ -139,7 +146,7 @@ function LaneFindings({ data }: { data: PipelineNodeData }) {
   if (data.findings == null) {
     return (
       <p className="text-xs text-[var(--text-tertiary)]">
-        {data.status === "running" ? "scanning…" : data.detail ?? "—"}
+        {data.status === "running" ? "scanning…" : (data.detail ?? "—")}
       </p>
     );
   }
@@ -165,10 +172,50 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
   const StepIcon = NODE_ICONS[data.nodeId] ?? NODE_ICONS[data.stepId] ?? Shield;
   const isScanner = data.kind === "scanner";
 
+  if (data.compact)
+    return (
+      <div
+        role={data.onActivate ? "button" : undefined}
+        tabIndex={data.onActivate ? 0 : undefined}
+        aria-label={data.onActivate ? `Inspect ${data.label}` : undefined}
+        onKeyDown={(event) => {
+          if (data.onActivate && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            event.stopPropagation();
+            data.onActivate();
+          }
+        }}
+        className={`flex h-14 w-40 items-center gap-2 rounded-xl border-2 px-2 ${style.border} ${style.bg}`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!bg-[var(--border-strong)]"
+        />
+        <StepIcon className="h-4 w-4 shrink-0" />
+        <span
+          data-pipeline-label
+          className="min-w-0 flex-1 text-sm font-semibold leading-tight"
+        >
+          {data.label}
+        </span>
+        <StatusIcon
+          aria-label={data.status}
+          className={`h-3.5 w-3.5 shrink-0 ${style.iconColor}`}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!bg-[var(--border-strong)]"
+        />
+      </div>
+    );
+
   const duration =
     data.completedAt && data.startedAt
       ? (
-          (new Date(data.completedAt).getTime() - new Date(data.startedAt).getTime()) /
+          (new Date(data.completedAt).getTime() -
+            new Date(data.startedAt).getTime()) /
           1000
         ).toFixed(1)
       : null;
@@ -187,10 +234,16 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
         }
       }}
       className={`rounded-2xl border-2 ${style.border} ${style.bg} w-[240px] cursor-pointer overflow-hidden shadow-lg shadow-[var(--shadow-color)] transition-shadow ${
-        data.selected ? "ring-2 ring-emerald-400/70 ring-offset-1 ring-offset-transparent" : ""
+        data.selected
+          ? "ring-2 ring-emerald-400/70 ring-offset-1 ring-offset-transparent"
+          : ""
       }`}
     >
-      <Handle type="target" position={Position.Left} className="!bg-[var(--border-strong)]" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!bg-[var(--border-strong)]"
+      />
 
       <div className="border-b border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-2">
         <div className="flex items-center gap-2">
@@ -198,7 +251,10 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
             <StepIcon className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-[var(--foreground)]">
+            <span
+              data-pipeline-label
+              className="block truncate text-sm font-semibold text-[var(--foreground)]"
+            >
               {data.label}
             </span>
           </div>
@@ -212,7 +268,9 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
         ) : (
           <>
             <p className="text-xs leading-tight text-[var(--text-tertiary)]">
-              {data.status !== "pending" && data.message ? data.message : data.description}
+              {data.status !== "pending" && data.message
+                ? data.message
+                : data.description}
             </p>
 
             {data.stats && Object.keys(data.stats).length > 0 && (
@@ -238,13 +296,19 @@ function PipelineNode({ data }: { data: PipelineNodeData }) {
             )}
 
             {duration && (
-              <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">{duration}s</p>
+              <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">
+                {duration}s
+              </p>
             )}
           </>
         )}
       </div>
 
-      <Handle type="source" position={Position.Right} className="!bg-[var(--border-strong)]" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!bg-[var(--border-strong)]"
+      />
     </div>
   );
 }
@@ -274,16 +338,31 @@ function ScanPipelineInner({
   onStepClick,
   interactive = true,
 }: ScanPipelineProps) {
+  const [overview, setOverview] = useState(false);
   const { rawNodes, rawEdges } = useMemo(() => {
-    const built = buildPipelineGraph({ steps, lanes, selectedNodeId: selectedStepId });
-    return { rawNodes: built.nodes.map(node => ({ ...node, data: { ...node.data, onActivate: onStepClick ? () => onStepClick(node.id) : undefined } })), rawEdges: built.edges };
-  }, [steps, lanes, selectedStepId, onStepClick]);
+    const built = buildPipelineGraph({
+      steps,
+      lanes,
+      selectedNodeId: selectedStepId,
+    });
+    return {
+      rawNodes: built.nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          compact: overview,
+          onActivate: onStepClick ? () => onStepClick(node.id) : undefined,
+        },
+      })),
+      rawEdges: built.edges,
+    };
+  }, [steps, lanes, selectedStepId, onStepClick, overview]);
 
   const { nodes, edges } = useGraphLayout("sankey", rawNodes, rawEdges, {
     sankey: {
-      nodeWidth: 240,
-      nodeHeight: 150,
-      columnGap: 64,
+      nodeWidth: overview ? 160 : 240,
+      nodeHeight: overview ? 56 : 150,
+      columnGap: overview ? 24 : 64,
       rowGap: 16,
     },
   });
@@ -300,28 +379,38 @@ function ScanPipelineInner({
   const frameRef = useRef<HTMLDivElement>(null);
   const focusedStageRef = useRef<string | null>(null);
   const framingRequestRef = useRef(0);
-  const [overview, setOverview] = useState(false);
   const focusReadable = useCallback(async () => {
     const request = ++framingRequestRef.current;
     setOverview(false);
     // fitView waits for controlled nodes to be measured before reading bounds.
-    await fitView({ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2, duration: selectedStepId ? 200 : 0 });
+    await fitView({
+      nodes: [{ id: selectedStepId ?? "discovery" }],
+      minZoom: 1,
+      maxZoom: 1,
+      padding: 0.2,
+      duration: selectedStepId ? 200 : 0,
+    });
     if (selectedStepId || request !== framingRequestRef.current) return;
     const start = getNode("discovery");
     if (!start || !frameRef.current) return;
     // Start at the left edge so the remaining width explains the forward flow.
     // Later selected stages remain centered for inspection.
-    void setViewport({
-      x: 24 - start.position.x,
-      y: (frameRef.current.clientHeight - (start.measured?.height ?? 150)) / 2 - start.position.y,
-      zoom: 1,
-    }, { duration: 200 });
+    void setViewport(
+      {
+        x: 24 - start.position.x,
+        y:
+          (frameRef.current.clientHeight - (start.measured?.height ?? 150)) /
+            2 -
+          start.position.y,
+        zoom: 1,
+      },
+      { duration: 200 },
+    );
   }, [fitView, getNode, selectedStepId, setViewport]);
-  const fitOverview = useCallback((duration = 200) => {
+  const fitOverview = useCallback(() => {
     framingRequestRef.current++;
     setOverview(true);
-    void fitView({ padding: 0.16, minZoom: 0.1, maxZoom: 1, duration });
-  }, [fitView]);
+  }, []);
   useEffect(() => {
     const stage = selectedStepId ?? "start";
     if (!viewportInitialized || focusedStageRef.current === stage) return;
@@ -329,11 +418,26 @@ function ScanPipelineInner({
       focusedStageRef.current = stage;
       // Wide frames open on every stage; narrow frames keep labels legible.
       const wide = (frameRef.current?.clientWidth ?? 0) >= FIT_ALL_MIN_WIDTH_PX;
-      if (!selectedStepId && wide) fitOverview(0);
+      if (!selectedStepId && wide) fitOverview();
       else void focusReadable();
     });
     return () => cancelAnimationFrame(frame);
   }, [viewportInitialized, selectedStepId, focusReadable, fitOverview]);
+
+  // Overview cards have fixed dimensions. Fit their new layout directly so
+  // an earlier React Flow measurement cannot restore the expanded-card bounds.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!overview || !viewportInitialized || !frame) return;
+    const bounds = getNodesBounds(nodes.map(node => ({ ...node, width: 160, height: 56 })));
+    const fit = () => {
+      void setViewport(getViewportForBounds(bounds, frame.clientWidth, frame.clientHeight, 0.1, 1, 0.06));
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [overview, nodes, viewportInitialized, setViewport]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -351,7 +455,12 @@ function ScanPipelineInner({
         // The default viewport is framed after node measurement above.
         // An explicitly selected initial stage can use React Flow's queued fit.
         fitView={Boolean(selectedStepId)}
-        fitViewOptions={{ nodes: [{ id: selectedStepId ?? "discovery" }], minZoom: 1, maxZoom: 1, padding: 0.2 }}
+        fitViewOptions={{
+          nodes: [{ id: selectedStepId ?? "discovery" }],
+          minZoom: 1,
+          maxZoom: 1,
+          padding: 0.2,
+        }}
         minZoom={0.1}
         maxZoom={1.5}
         panOnDrag={interactive}
@@ -377,8 +486,11 @@ function ScanPipelineInner({
             <Move className="h-3 w-3" aria-hidden="true" />
             Pan to explore · select a stage to inspect
           </span>
-          <button type="button" onClick={overview ? focusReadable : () => fitOverview()}
-            className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]">
+          <button
+            type="button"
+            onClick={overview ? focusReadable : () => fitOverview()}
+            className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2.5 py-1.5 font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)]"
+          >
             {overview ? "Readable view" : "Fit overview"}
           </button>
         </div>

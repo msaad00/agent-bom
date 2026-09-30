@@ -15,6 +15,7 @@ import {
   type InventorySummaryResponse,
   type InventorySummaryFilters,
 } from "@/lib/api";
+import { FirstScanGuide } from "@/components/first-scan-guide";
 import { OverviewHistory } from "@/components/overview-history";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
@@ -411,6 +412,12 @@ export default function Dashboard() {
         <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
         <Link href="/connections" className="max-w-full text-sm text-emerald-800 dark:text-emerald-300">Manage sources →</Link>
       </header>
+
+      {importedReport && <button type="button" onClick={() => setImportedReport(null)} className="text-sm text-emerald-800 dark:text-emerald-300">Return to live overview</button>}
+      {!importedReport && !jobsLoading && !postureOverviewLoading && !overviewUnavailable
+        && effectiveRecentJobs.length === 0 && overview?.headline.scans === 0 && overview.finding_counts?.total === 0
+        && !overview.coverage?.some((lane) => lane.count_exact === false || lane.evidence_status === "partial" || lane.evidence_status === "unavailable")
+        && <FirstScanGuide onImport={setImportedReport} />}
 
       {!importedReport && (overviewUnavailable || (overviewRefreshing && overview)) && (
         <p role="status" className="text-sm text-ink-secondary">

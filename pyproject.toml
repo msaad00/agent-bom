@@ -126,6 +126,8 @@ azure = [
     "azure-storage-queue>=12.9",
     # Scheduled findings export to an Azure Blob sink (#4040).
     "azure-storage-blob>=12.19",
+    # msrest -> requests-oauthlib; exclude the vulnerable OAuthlib 3.x line.
+    "oauthlib>=4.0.0",
     "six>=1.17.0",
 ]
 gcp = [
@@ -157,9 +159,8 @@ gcp = [
     "google-cloud-org-policy>=1.11",
 ]
 coreweave = []  # kubectl only — no pip packages
-# databricks-sdk: CIS/control-plane discovery. databricks-sql-connector: the
-# DBAPI path the scheduled findings export writes through (#4040).
-databricks = ["databricks-sdk>=0.20", "databricks-sql-connector>=3.0"]
+# CIS/control-plane discovery; scheduled warehouse exports use the HTTPS API.
+databricks = ["databricks-sdk>=0.20"]
 snowflake = ["snowflake-connector-python>=3.6"]
 nebius = ["requests>=2.33.0"]  # GHSA-9hjg-9r4m-mvj7 (session cookie leak)
 huggingface = ["huggingface-hub>=0.20"]

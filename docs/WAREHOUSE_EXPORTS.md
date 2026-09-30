@@ -40,8 +40,17 @@ and audits the run as `indeterminate`, never `failure`, without risking a late
 pointer to deleted data. Cleanup failures are logged and never replace the
 primary export error.
 
-Databricks uses explicit connector autocommit for these single-statement Delta
-writes. It does not claim a multi-statement transaction: correctness comes from
+Databricks uses the HTTPS Statement Execution API for single-statement Delta
+writes. Configure the workspace hostname and a SQL warehouse HTTP path
+(`/sql/1.0/warehouses/<warehouse-id>`) with a stored access token. All-purpose
+cluster HTTP paths are not supported. Values are bound as named parameters;
+batches contain at most 100 rows and requests are capped at 8 MiB. A statement
+is polled for up to two minutes; expiration requests cancellation but never
+assumes that cancellation rolled back a write. Accepted writes are not
+resubmitted after response loss. Use the publication marker to reconcile an
+indeterminate run before retrying.
+
+The exporter does not claim a multi-statement transaction: correctness comes from
 immutable attempts plus the one-statement manifest pointer, so it also works on
 warehouses that do not meet Databricks' catalog-managed transaction preview
 requirements.

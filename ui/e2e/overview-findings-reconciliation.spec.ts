@@ -606,3 +606,45 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`first evidence handoff in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.setViewportSize({ width, height: 1000 });
+      await routeProductFixture(page);
+      await page.route("**/v1/auth/me", (route) => route.fulfill({ json: {
+        authenticated: true, auth_required: false, configured_modes: [], recommended_ui_mode: "no_auth",
+        role: "analyst", tenant_id: "empty-tenant", memberships: [], role_summary: { capabilities: ["scan.run"] },
+      } }));
+      await page.route("**/v1/jobs", (route) => route.fulfill({ json: { jobs: [] } }));
+      await page.route("**/v1/posture/counts", (route) => route.fulfill({ json: {
+        critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0,
+        compound_issues: 0, scan_count: 0, scan_sources: [], services: {}, deployment_mode: "local",
+      } }));
+      await page.route("**/v1/overview", (route) => route.fulfill({ json: {
+        ...OVERVIEW,
+        posture: { grade: "—", score: null, summary: "No completed scan evidence.", breakdown: [] },
+        headline: { critical: 0, high: 0, critical_high: 0, kev: 0, credential_exposed: 0, scans: 0, latest_scan_at: null, hub_findings: 0 },
+        finding_counts: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 },
+        coverage: [], top_risks: [],
+      } }));
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "Start with evidence" })).toBeVisible();
+      const start = page.getByRole("link", { name: "Choose a scan target" });
+      await expect(start).toHaveAttribute("href", "/scan");
+      const guide = page.getByRole("region", { name: "Start with evidence" });
+      await expect(guide).toBeVisible();
+      expect(await guide.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await capture(page, testInfo, `first-evidence-${theme}-${width}.png`);
+      const writes: string[] = [];
+      page.on("request", (request) => { if (["POST", "PUT", "PATCH"].includes(request.method())) writes.push(request.url()); });
+      await page.getByLabel("Choose report.json").setInputFiles({ name: "report.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ agents: [], blast_radius: [], scan_timestamp: "2026-09-29T00:00:00Z" })) });
+      await expect(page.getByLabel("Evidence scopes")).toContainText("Imported report");
+      await expect(page.getByRole("heading", { name: "Start with evidence" })).toHaveCount(0);
+      expect(writes).toEqual([]);
+      await page.getByRole("button", { name: "Return to live overview" }).click();
+      await expect(page.getByRole("heading", { name: "Start with evidence" })).toBeVisible();
+    });
+  }
+}

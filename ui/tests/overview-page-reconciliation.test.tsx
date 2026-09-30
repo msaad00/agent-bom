@@ -135,6 +135,25 @@ describe("Overview canonical finding counts", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it.each([
+    [{ outcome: "partial", requested_scope_count: 2, complete_scope_count: 1, incomplete_scope_count: 1 }, "Collection partial"],
+    [{ outcome: "failed" }, "Collection failed"],
+    [undefined, "Collection coverage unknown"],
+    [{ outcome: "complete", requested_scope_count: 2, complete_scope_count: 1, incomplete_scope_count: 1 }, "Collection metadata inconsistent"],
+    [{ outcome: "complete", issues: [{ code: "offline_db_unavailable", stage: "scan", source: "osv", message: "Advisory database unavailable", severity: "warning", affects_coverage: true }] }, "Collection metadata inconsistent"],
+  ])("discloses imported collection coverage independently of zero findings (%j)", async (scan_run, status) => {
+    apiMock.listJobs.mockRejectedValue(new Error("jobs unavailable"));
+    render(<Dashboard />);
+    const input = await screen.findByLabelText("Choose report.json");
+    const report = new File([JSON.stringify({ agents: [], blast_radius: [], scan_run })], "partial.json", { type: "application/json" });
+    fireEvent.change(input, { target: { files: [report] } });
+    const evidence = await screen.findByRole("region", { name: "Imported collection evidence" });
+    expect(evidence).toHaveTextContent(status);
+    expect(evidence).toHaveTextContent("An empty finding list is not a clean security verdict");
+    expect(evidence).toHaveTextContent("Reported by this file");
+    expect(apiMock.getScan).not.toHaveBeenCalled();
+  });
+
   it.each(["2026-07-01T00:00:00Z", undefined])("does not mix tenant posture with an imported offline report (timestamp %s)", async (timestamp) => {
     apiMock.listJobs.mockRejectedValue(new Error("jobs unavailable"));
     render(<Dashboard />);

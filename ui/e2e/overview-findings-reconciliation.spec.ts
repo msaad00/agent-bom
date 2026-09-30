@@ -644,8 +644,16 @@ for (const theme of ["light", "dark"] as const) {
       await expect(guide.getByRole("alert")).toContainText("agents[200]: must be an object");
       await expect(page.getByRole("heading", { name: "Start with evidence" })).toBeVisible();
       await capture(page, testInfo, `report-rejected-${theme}-${width}.png`);
-      await page.getByLabel("Choose report.json").setInputFiles({ name: "report.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ agents: [], blast_radius: [], scan_timestamp: "2026-09-29T00:00:00Z" })) });
+      await page.getByLabel("Choose report.json").setInputFiles({ name: "report.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ agents: [], blast_radius: [], scan_timestamp: "2026-09-29T00:00:00Z", scan_run: { outcome: "partial", requested_scope_count: 2, complete_scope_count: 1, incomplete_scope_count: 1, scopes: [{ name: "repository", status: "complete", requested: true }, { name: "advisories", status: "unavailable", requested: true }], issues: [{ code: "offline_db_unavailable", message: "Advisory database unavailable", affects_coverage: true }] } })) });
       await expect(page.getByLabel("Evidence scopes")).toContainText("Imported report");
+      const evidence = page.getByRole("region", { name: "Imported collection evidence" });
+      await expect(evidence).toContainText("Collection partial");
+      await expect(evidence).toContainText("1 of 2 requested scopes complete · 1 incomplete");
+      await expect(evidence).toContainText("An empty finding list is not a clean security verdict");
+      await evidence.getByText(/Collection details/).click();
+      await expect(evidence).toContainText("advisories: unavailable");
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+      await capture(page, testInfo, `import-coverage-${theme}-${width}.png`);
       await expect(page.getByRole("heading", { name: "Start with evidence" })).toHaveCount(0);
       expect(writes).toEqual([]);
       await page.getByRole("button", { name: "Return to live overview" }).click();

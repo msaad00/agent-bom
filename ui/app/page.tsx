@@ -1,5 +1,6 @@
 "use client";
 
+import { LocalReportEvidence } from "@/components/local-report-evidence";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -414,6 +415,7 @@ export default function Dashboard() {
       </header>
 
       {importedReport && <button type="button" onClick={() => setImportedReport(null)} className="text-sm text-emerald-800 dark:text-emerald-300">Return to live overview</button>}
+      {importedReport && <LocalReportEvidence report={importedReport} />}
       {!importedReport && !jobsLoading && !postureOverviewLoading && !overviewUnavailable
         && effectiveRecentJobs.length === 0 && overview?.headline.scans === 0 && overview.finding_counts?.total === 0
         && !overview.coverage?.some((lane) => lane.count_exact === false || lane.evidence_status === "partial" || lane.evidence_status === "unavailable")

@@ -53,7 +53,7 @@ function ContextViewportControls({ selectedId }: { selectedId: string }) {
   const { fitView } = useReactFlow();
   return <Panel position="top-right" className="flex items-center gap-1 rounded-lg border border-outline bg-surface p-1 text-xs">
     <span className="hidden px-1 text-ink-secondary sm:inline">Pan to explore</span>
-    <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Fit all entities" onClick={() => void fitView({ padding: 0.1, minZoom: 0.15, maxZoom: 1, duration: 200 })}>Fit all</button>
+    <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Fit all entities" onClick={() => void fitView({ padding: 0.1, minZoom: 0.01, maxZoom: 1, duration: 200 })}>Fit all</button>
     <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Readable view of selected entity" onClick={() => void fitView({ nodes: [{ id: selectedId }], padding: 0.15, minZoom: 0.75, maxZoom: 1, duration: 200 })}>Readable view</button>
   </Panel>;
 }
@@ -235,7 +235,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="context-map-panels">
       <div ref={layout.canvasRef} aria-label="Persisted neighborhood canvas" data-layout-direction={layout.direction} className="context-map-canvas">
-        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction, viewportRevision])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
+        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction, viewportRevision])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.01} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <ContextViewportControls selectedId={selectedId || focus} />
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP * 1.5} size={0.5} /><Controls className={CONTROLS_CLASS} />

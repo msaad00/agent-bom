@@ -9,6 +9,57 @@ function report(score: unknown = null) {
 }
 
 describe("CLI JSON report import", () => {
+  it.each([200, 800])("rejects malformed agents beyond index %s", (index) => {
+    const data = report();
+    const agents: unknown[] = Array.from({ length: index + 1 }, () => data.agents[0]);
+    agents[index] = { name: "unchecked", agent_type: "custom", mcp_servers: null };
+    expect(validateScanReport(JSON.stringify({ ...data, agents })).ok).toBe(false);
+  });
+  it.each([500, 1200])("rejects malformed blast entries beyond index %s", (index) => {
+    const data = report();
+    const blast_radius: unknown[] = Array.from({ length: index + 1 }, () => data.blast_radius[0]);
+    blast_radius[index] = null;
+    expect(validateScanReport(JSON.stringify({ ...data, blast_radius })).ok).toBe(false);
+  });
+  it("normalizes current CLI tool aliases throughout a larger report", () => {
+    const data = report();
+    const blast = { ...data.blast_radius[0], reachable_tools: undefined, exposed_tools: ["read_file"] };
+    const parsed = validateScanReport(JSON.stringify({ ...data, blast_radius: Array.from({ length: 750 }, () => blast) }));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      const result = parsed.data as { blast_radius: Array<{ reachable_tools: string[] }> };
+      expect(result.blast_radius.every((entry) => entry.reachable_tools?.[0] === "read_file")).toBe(true);
+    }
+  });
+  it.each([0.5, Number.MAX_SAFE_INTEGER + 1])("rejects invalid canonical count %s", (count) => {
+    expect(validateScanReport(JSON.stringify({ ...report(), finding_summary: { total: count, by_severity: { high: count } } })).ok).toBe(false);
+  });
+  it("rejects inconsistent severity totals", () => {
+    expect(validateScanReport(JSON.stringify({ ...report(), finding_summary: { total: 1, by_severity: { high: 2 } } })).ok).toBe(false);
+  });
+  it.each(["affected_agents", "affected_servers", "exposed_credentials", "reachable_tools", "exposed_tools"])("rejects non-string %s entries before dashboard aggregation", (field) => {
+    const data = report();
+    Object.assign(data.blast_radius[0]!, { [field]: [{}] });
+    expect(validateScanReport(JSON.stringify(data)).ok).toBe(false);
+  });
+  it.each(["package", "canonical_id", "fixed_version", "impact_category"])("rejects malformed exposure label %s", (field) => {
+    const data = report();
+    Object.assign(data.blast_radius[0]!, { [field]: {} });
+    expect(validateScanReport(JSON.stringify(data)).ok).toBe(false);
+  });
+  it("bounds UTF-8 bytes independently from string length", () => {
+    expect(validateScanReport(JSON.stringify({ ...report(), notes: "🌍".repeat(3 * 1024 * 1024) })).ok).toBe(false);
+  });
+  it("checks the byte limit even when called without a File object", () => {
+    expect(validateScanReport(JSON.stringify({ ...report(), notes: "x".repeat(10 * 1024 * 1024) })).ok).toBe(false);
+  });
+  it("accepts reserved words as ordinary string values", () => {
+    expect(validateScanReport(JSON.stringify({ ...report(), notes: "constructor" })).ok).toBe(true);
+  });
+  it.each(["__proto__", "constructor", "prototype"])("rejects escaped structural key %s", (key) => {
+    const escaped = [...key].map((letter) => `\\u${letter.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+    expect(validateScanReport(JSON.stringify(report()).replace('"agents":', `"${escaped}":{},"agents":`)).ok).toBe(false);
+  });
   it("accepts unrated advisories emitted by the CLI", () => {
     const data = report();
     data.agents[0]!.mcp_servers[0]!.packages[0]!.vulnerabilities[0]!.severity = "unknown";

@@ -329,3 +329,59 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`pipeline overview capture contains the whole readable DAG ${theme}`, async ({
+    page,
+  }, testInfo) => {
+    await routeJobs(page);
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await page.goto("/jobs?capture=1");
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute("data-theme", value),
+      theme,
+    );
+    const panel = page.getByTestId("job-pipeline-job-prod-cloud");
+    const flow = panel.locator(".react-flow");
+    await expect(flow.locator(".react-flow__node")).toHaveCount(10);
+    await expect(flow.locator(".react-flow__edge")).toHaveCount(13);
+    const framing = () =>
+      flow.evaluate((frame) => {
+        const bounds = frame.getBoundingClientRect();
+        const zoom = new DOMMatrixReadOnly(
+          getComputedStyle(frame.querySelector(".react-flow__viewport")!)
+            .transform,
+        ).a;
+        const nodes = [...frame.querySelectorAll(".react-flow__node")];
+        return {
+          outside: nodes.filter((node) => {
+            const b = node.getBoundingClientRect();
+            return (
+              b.left < bounds.left ||
+              b.right > bounds.right ||
+              b.top < bounds.top ||
+              b.bottom > bounds.bottom
+            );
+          }).length,
+          font: Math.min(
+            ...nodes.map(
+              (node) =>
+                parseFloat(
+                  getComputedStyle(
+                    node.querySelector("[data-pipeline-label]") ??
+                      node.querySelector("span")!,
+                  ).fontSize,
+                ) * zoom,
+            ),
+          ),
+        };
+      });
+    await expect.poll(async () => (await framing()).outside).toBe(0);
+    await expect
+      .poll(async () => (await framing()).font)
+      .toBeGreaterThanOrEqual(12);
+    await panel.screenshot({
+      path: testInfo.outputPath(`pipeline-overview-${theme}.png`),
+    });
+  });
+}

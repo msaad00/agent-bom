@@ -3313,6 +3313,47 @@ async function main() {
       // The container appears before React Flow finishes measuring its DAG.
       await expect(pipeline.locator(".react-flow__node:visible")).toHaveCount(10);
       await expect(pipeline.locator(".react-flow__edge")).toHaveCount(13);
+        // Count is insufficient: off-canvas nodes are still DOM-visible.
+        const fit = pipeline.getByRole("button", {
+          name: "Fit overview",
+          exact: true,
+        });
+        if (await fit.isVisible()) await fit.click();
+        await expect
+          .poll(() =>
+            pipeline.locator(".react-flow").evaluate((frame) => {
+              const bounds = frame.getBoundingClientRect();
+              return [...frame.querySelectorAll(".react-flow__node")].filter(
+                (node) => {
+                  const b = node.getBoundingClientRect();
+                  return (
+                    b.left < bounds.left ||
+                    b.right > bounds.right ||
+                    b.top < bounds.top ||
+                    b.bottom > bounds.bottom
+                  );
+                },
+              ).length;
+            }),
+          )
+          .toBe(0);
+        await expect
+          .poll(() =>
+            pipeline.locator(".react-flow").evaluate((frame) => {
+              const zoom = new DOMMatrixReadOnly(
+                getComputedStyle(frame.querySelector(".react-flow__viewport"))
+                  .transform,
+              ).a;
+              return Math.min(
+                ...[...frame.querySelectorAll("[data-pipeline-label]")].map(
+                  (label) =>
+                    parseFloat(getComputedStyle(label).fontSize) * zoom,
+                ),
+              );
+            }),
+          )
+          .toBeGreaterThanOrEqual(12);
+
       await jobsPage.getByText("Timing & activity", { exact: true }).scrollIntoViewIfNeeded();
       await jobsPage.evaluate(() => window.scrollBy({ top: -540, behavior: "instant" }));
     }, {

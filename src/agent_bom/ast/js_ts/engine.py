@@ -255,6 +255,12 @@ def _is_dangerous_reference(reference_name: str) -> bool:
     return reference_name.startswith(_DANGEROUS_CALL_PREFIXES)
 
 
+def _register_namespace_alias(analysis: JSTSAstAnalysis, alias: str, module_name: str) -> None:
+    analysis.imported_module_refs[alias] = JSImportRef(module_name=_normalize_module_name(module_name))
+    if canonical := _canonical_namespace(module_name):
+        analysis.namespace_aliases[alias] = canonical
+
+
 def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:
     for node in _iter_nodes(root):
         if node.type != "import_statement":
@@ -288,8 +294,7 @@ def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSA
                         module_name=_normalize_module_name(module_name),
                         exported_name=imported_name,
                     )
-                    canonical = _canonical_function_call(module_name, imported_name)
-                    if canonical:
+                    if canonical := _canonical_function_call(module_name, imported_name):
                         analysis.function_aliases[alias] = canonical
             elif child.type == "namespace_import":
                 alias_nodes = [
@@ -297,12 +302,7 @@ def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSA
                 ]
                 if not alias_nodes:
                     continue
-                analysis.imported_module_refs[_identifier_like_text(alias_nodes[-1], source)] = JSImportRef(
-                    module_name=_normalize_module_name(module_name)
-                )
-                canonical = _canonical_namespace(module_name)
-                if canonical:
-                    analysis.namespace_aliases[_identifier_like_text(alias_nodes[-1], source)] = canonical
+                _register_namespace_alias(analysis, _identifier_like_text(alias_nodes[-1], source), module_name)
             elif child.type == "identifier":
                 alias = _identifier_like_text(child, source)
                 analysis.imported_function_refs[alias] = JSImportRef(
@@ -357,8 +357,7 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                         module_name=_normalize_module_name(module_name),
                         exported_name=imported_name,
                     )
-                    canonical = _canonical_function_call(module_name, imported_name)
-                    if canonical:
+                    if canonical := _canonical_function_call(module_name, imported_name):
                         analysis.function_aliases[alias] = canonical
                 elif child.type in {"identifier", "shorthand_property_identifier_pattern"}:
                     imported_name = _identifier_like_text(child, source)
@@ -366,8 +365,7 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                         module_name=_normalize_module_name(module_name),
                         exported_name=imported_name,
                     )
-                    canonical = _canonical_function_call(module_name, imported_name)
-                    if canonical:
+                    if canonical := _canonical_function_call(module_name, imported_name):
                         analysis.function_aliases[imported_name] = canonical
         elif name_node.type == "identifier":
             alias = _identifier_like_text(name_node, source)
@@ -375,10 +373,7 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                 module_name=_normalize_module_name(module_name),
                 exported_name="default",
             )
-            analysis.imported_module_refs[alias] = JSImportRef(module_name=_normalize_module_name(module_name))
-            canonical = _canonical_namespace(module_name)
-            if canonical:
-                analysis.namespace_aliases[alias] = canonical
+            _register_namespace_alias(analysis, alias, module_name)
 
 
 def _propagate_alias_assignments(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:

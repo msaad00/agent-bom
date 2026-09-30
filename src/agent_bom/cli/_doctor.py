@@ -301,14 +301,11 @@ def _print_section(console: Console, title: str, checks: list[tuple[str, str, st
 
 def _vuln_db_check() -> tuple[str, str, str]:
     """Report the local vulnerability DB with the same staleness rule scans apply."""
-    try:
-        from agent_bom.vuln_freshness import compute_freshness, db_stale_days_threshold, db_staleness
+    from agent_bom.vuln_freshness import compute_freshness, db_stale_days_threshold, db_staleness
 
-        freshness = compute_freshness()
-        stale, age_days = db_staleness(freshness)
-        threshold = db_stale_days_threshold()
-    except Exception:
-        return ("Vuln DB", "not available", "info")
+    freshness = compute_freshness()
+    stale, age_days = db_staleness(freshness)
+    threshold = db_stale_days_threshold()
     if freshness.mode == "live":
         return ("Vuln DB", "not synced — scans query OSV/GHSA/NVD live; run `agent-bom db update` for offline scans", "info")
     if age_days is None:

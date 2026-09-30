@@ -45,7 +45,7 @@
     "sigma": "^3.0.3"
   },
   "overrides": {
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "postcss": "8.5.23",
     "minimatch@3.1.5": "10.2.5",
     "sharp": "^0.35.4",

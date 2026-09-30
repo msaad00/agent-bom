@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from click.testing import CliRunner
@@ -10,7 +12,9 @@ from agent_bom.models import Agent, AgentType, MCPServer
 
 
 @pytest.fixture(autouse=True)
-def deterministic_doctor_environment(monkeypatch):
+def deterministic_doctor_environment(monkeypatch, tmp_path):
+    monkeypatch.setattr("agent_bom.db.schema.DB_PATH", tmp_path / "no-vulns.db")
+    monkeypatch.delenv("AGENT_BOM_DB_STALE_DAYS", raising=False)
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
     monkeypatch.delenv("AGENT_BOM_DB", raising=False)
     monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: object())
@@ -80,6 +84,40 @@ def test_offline_doctor_never_probes_network_or_database(monkeypatch, database_v
         assert "Local checks complete" in result.output
         assert "not assessed" in result.output
         assert "Ready to scan." not in result.output
+
+
+def _write_vuln_db(path, *, age_days: int) -> None:
+    synced = (datetime.now(timezone.utc) - timedelta(days=age_days)).isoformat()
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE sync_meta (source TEXT PRIMARY KEY, last_synced TEXT, record_count INTEGER)")
+    conn.execute("INSERT INTO sync_meta VALUES ('osv', ?, 1200)", (synced,))
+    conn.commit()
+    conn.close()
+
+
+@pytest.mark.parametrize(("age_days", "status", "warnings"), [(42, "stale", 1), (2, "fresh", 0)])
+def test_offline_doctor_reports_vuln_db_freshness_used_by_scans(monkeypatch, tmp_path, age_days, status, warnings):
+    db_path = tmp_path / "vulns.db"
+    _write_vuln_db(db_path, age_days=age_days)
+    monkeypatch.setattr("agent_bom.db.schema.DB_PATH", db_path)
+
+    result = CliRunner().invoke(main, ["--agent-mode", "doctor", "--offline"])
+
+    assert result.exit_code == 0, result.output
+    assert data_warnings(result) == warnings
+    assert f"{status} (1,200 records, {age_days}d old; threshold 14d)" in result.stdout
+
+
+def test_doctor_does_not_warn_when_vuln_db_was_never_synced():
+    result = CliRunner().invoke(main, ["--agent-mode", "doctor", "--offline"])
+
+    assert result.exit_code == 0, result.output
+    assert data_warnings(result) == 0
+    assert "scans query OSV/GHSA/NVD live" in result.stdout
+
+
+def data_warnings(result) -> int:
+    return json.loads(result.stdout)["data"]["warnings"]
 
 
 def test_offline_doctor_preserves_local_warnings(monkeypatch):

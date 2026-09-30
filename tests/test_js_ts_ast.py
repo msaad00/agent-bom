@@ -45,6 +45,18 @@ def test_analyze_js_ts_block_resolves_destructured_require_alias():
     assert analysis.function_aliases["runNow"] == "child_process.spawnSync"
 
 
+@pytest.mark.parametrize("module_name", ["child_process", "node:child_process"])
+def test_analyze_js_ts_block_resolves_namespace_require_alias(module_name):
+    analysis = analyze_js_ts_block(
+        f'const cp = require("{module_name}"); cp.execSync("id");',
+        language_hint="javascript",
+    )
+
+    assert "child_process.execSync" in analysis.call_names
+    assert analysis.namespace_aliases["cp"] == "child_process"
+    assert analysis.imported_module_refs["cp"].module_name == "child_process"
+
+
 def test_analyze_js_ts_block_propagates_dangerous_alias_assignments():
     analysis = analyze_js_ts_block(
         'import { execSync } from "node:child_process"; const run = execSync; run("id");',

@@ -47,7 +47,9 @@ def doctor_cmd(offline: bool = False) -> None:
     # agent-bom version
     core_checks.append(("agent-bom", __version__, "ok"))
 
-    # Local vulnerability DB — check the same path ScanCache() uses
+    core_checks.append(_vuln_db_check())
+
+    # OSV lookup cache — check the same path ScanCache() uses
     try:
         from pathlib import Path
 
@@ -64,15 +66,15 @@ def doctor_cmd(offline: bool = False) -> None:
                 _conn.close()
                 entry_count = _row[0] if _row else 0
                 if entry_count == 0:
-                    core_checks.append(("Local DB", f"exists but empty ({size_kb} KB) — run a scan to populate", "info"))
+                    core_checks.append(("Scan cache", f"exists but empty ({size_kb} KB) — run a scan to populate", "info"))
                 else:
-                    core_checks.append(("Local DB", f"exists ({size_kb} KB, {entry_count} cached entries)", "ok"))
+                    core_checks.append(("Scan cache", f"exists ({size_kb} KB, {entry_count} cached entries)", "ok"))
             except Exception:
-                core_checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))
+                core_checks.append(("Scan cache", f"exists ({size_kb} KB)", "ok"))
         else:
-            core_checks.append(("Local DB", "not yet created (run a scan first)", "info"))
+            core_checks.append(("Scan cache", "not yet created (run a scan first)", "info"))
     except Exception:
-        core_checks.append(("Local DB", "not available", "info"))
+        core_checks.append(("Scan cache", "not available", "info"))
 
     core_checks.append(_network_check(offline))
 
@@ -295,6 +297,26 @@ def _print_section(console: Console, title: str, checks: list[tuple[str, str, st
             icon = "[dim]○[/dim]"
         console.print(f"    {icon}  {escape(label + ':'):<20s} {escape(value)}")
     console.print()
+
+
+def _vuln_db_check() -> tuple[str, str, str]:
+    """Report the local vulnerability DB with the same staleness rule scans apply."""
+    try:
+        from agent_bom.vuln_freshness import compute_freshness, db_stale_days_threshold, db_staleness
+
+        freshness = compute_freshness()
+        stale, age_days = db_staleness(freshness)
+        threshold = db_stale_days_threshold()
+    except Exception:
+        return ("Vuln DB", "not available", "info")
+    if freshness.mode == "live":
+        return ("Vuln DB", "not synced — scans query OSV/GHSA/NVD live; run `agent-bom db update` for offline scans", "info")
+    if age_days is None:
+        return ("Vuln DB", "sync time unknown — run `agent-bom db update`", "warn")
+    records = f"{freshness.record_count:,} records, " if freshness.record_count else ""
+    if stale:
+        return ("Vuln DB", f"stale ({records}{age_days}d old; threshold {threshold}d) — run `agent-bom db update`", "warn")
+    return ("Vuln DB", f"fresh ({records}{age_days}d old; threshold {threshold}d)", "ok")
 
 
 def _network_check(offline: bool) -> tuple[str, str, str]:

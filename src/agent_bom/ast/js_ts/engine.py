@@ -376,6 +376,9 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                 exported_name="default",
             )
             analysis.imported_module_refs[alias] = JSImportRef(module_name=_normalize_module_name(module_name))
+            canonical = _canonical_namespace(module_name)
+            if canonical:
+                analysis.namespace_aliases[alias] = canonical
 
 
 def _propagate_alias_assignments(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:

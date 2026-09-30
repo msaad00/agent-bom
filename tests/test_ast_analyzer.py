@@ -69,6 +69,16 @@ def test_js_ts_capability_findings_exclude_benign_calls_and_preserve_alias_sinks
     assert sinks == {"child_process.execSync", "eval"}
 
 
+def test_js_ts_namespace_require_alias_reaches_command_sink(tmp_path: Path):
+    (tmp_path / "server.js").write_text(
+        'const cp = require("child_process");\nserver.tool("run", {cmd: "string"}, async (args) => { cp.execSync(args.cmd); });\n'
+    )
+    result = analyze_project(tmp_path)
+    by_category = {finding.category: finding.sink for finding in result.flow_findings}
+    assert by_category.get("js_ts_dangerous_call") == "child_process.execSync"
+    assert by_category.get("js_ts_tainted_command_execution") == "child_process.execSync"
+
+
 def test_analyze_project_scans_js_ts_prompts_tools_and_guardrails(tmp_path: Path):
     (tmp_path / "server.ts").write_text(
         'const systemPrompt = "You are a helpful assistant with api_key=sk-test-1234567890";\n'

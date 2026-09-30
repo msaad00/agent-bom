@@ -369,9 +369,9 @@ def _build_registry() -> tuple[Capability, ...]:
         # ---- Vuln-DB cache + freshness (data present) ------------------------
         Capability(
             key="vuln_db_cache",
-            name="Local vuln-DB cache",
+            name="Local OSV lookup cache",
             group="data",
-            does="Serves CVE matches from a local cache for fast, offline-capable scans.",
+            does="Reuses recent OSV lookup results so repeat scans make fewer network calls.",
             condition="data present: a populated local cache; freshness within threshold",
             unlock="run a scan to populate it, or `agent-bom db update` to refresh",
             env_vars=("AGENT_BOM_SCAN_CACHE", "AGENT_BOM_VULN_DB_MAX_AGE_HOURS", "AGENT_BOM_VULN_DB_OFFLINE"),

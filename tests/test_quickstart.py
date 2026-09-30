@@ -127,6 +127,33 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
     assert "Run the gateway baseline (audit):" in result.output
 
 
+@pytest.mark.parametrize("offline", [True, False])
+def test_quickstart_handoff_identifies_artifact_scope_and_snapshot(tmp_path, _fake_scan, monkeypatch, offline):
+    from urllib.parse import parse_qs, urlsplit
+
+    scan_id = "scan /one?&next=other"
+    monkeypatch.setattr(
+        "agent_bom.cli._quickstart._verify_persisted_graph",
+        lambda **kwargs: {"scan_id": scan_id, "nodes": 3, "edges": 2},
+    )
+    sample_dir = tmp_path / "sample with spaces"
+    args = ["quickstart", "--run", "--sample-dir", str(sample_dir), "--port", "8522"]
+    if offline:
+        args.append("--offline")
+    result = CliRunner().invoke(main, args)
+    assert result.exit_code == 0, result.output
+    assert f"JSON report: {(sample_dir / 'agent-bom-report.json').resolve()}" in result.output
+    graph_url = next(line.split("Security graph: ", 1)[1] for line in result.output.splitlines() if "Security graph: " in line)
+    assert urlsplit(graph_url).netloc == "127.0.0.1:8522"
+    assert parse_qs(urlsplit(graph_url).query) == {"lens": ["lineage"], "scan": [scan_id]}
+    assert "Sample evidence; this does not assess your environment." in result.output
+    if offline:
+        assert "Package-CVE lookup: skipped (offline inventory); zero CVEs is not a clean verdict." in result.output
+    else:
+        assert "Package-CVE lookup: requested; inspect scan_run and coverage_warnings in the JSON report." in result.output
+    assert "agent-bom scan . -f json -o agent-bom-report.json" in result.output
+
+
 def test_quickstart_run_prints_the_configured_control_plane_database(tmp_path, _fake_scan, monkeypatch):
     sample_dir = tmp_path / "stack"
     control_plane_db = tmp_path / "configured-control-plane.db"

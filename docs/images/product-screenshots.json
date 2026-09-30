@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-30T03:10:23.914Z",
-  "source_commit": "da7fbc9e0dabcd3b5a98dc6592910ff23634c001",
+  "captured_at": "2026-09-30T03:23:21.342Z",
+  "source_commit": "1b9ce23ddf19fd8307b0d82ba070ba960a207a85",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:8df28c5ce4a96900fd2048669d222c636056bbca3d9ff8e7225eace4b7cb2d49",
+  "capture_inputs_sha256": "sha256:400fa7645e7e832747fb1e544181cb3c179e9ecd544dc72015d2b34dc4275e28",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -124,7 +124,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.106.1",
-      "sha256": "sha256:0aaf04cd742d6c8fa0abddfc15fa4f851423a6dceda21902e57e4bbbf4eef64f"
+      "sha256": "sha256:470e020461a4717c3a30fc9da63d121e7d1ff39c69b12faccfb774c6b9f64542"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.106.1",
-      "sha256": "sha256:4a7bddb5598739969a10a4b1a146b7a66c7160e519a7250558ec1b22aad7e523"
+      "sha256": "sha256:f7e9a0b186af0372492fbdade00ca0c241f40b4738fdf0417a3e7f64f9df650d"
     },
     {
       "presentation": "dark mobile",
@@ -217,7 +217,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.1",
-      "sha256": "sha256:4185b1e7268b08cf447f9f23db34aea91fd579062060b12d1fa7abd277212268"
+      "sha256": "sha256:fafbc50bd1c5b4fb77dfd049fdec5b79a2271264271d2f8625639ace2de827de"
     },
     {
       "presentation": "dark desktop 1512x811",

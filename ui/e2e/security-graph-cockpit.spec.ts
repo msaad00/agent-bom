@@ -1576,3 +1576,48 @@ test("environment scope filtering stays bounded with 3000 returned scopes", asyn
   console.info("Scope filter fixture max milliseconds:", Math.max(...durations).toFixed(1));
   await testInfo.attach("filter-timing-fixture", { body: JSON.stringify({ scopes: 3000, samples_ms: durations, max_ms: Math.max(...durations), note: "Local browser automation with mocked API; excludes production backend latency." }), contentType: "application/json" });
 });
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`finding returns from linked asset with original scope ${theme} ${width}`, async ({ page }, testInfo) => {
+      await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.setViewportSize({ width, height: 1000 });
+      await routeCockpit(page, undefined, { emptyFocusResults: true });
+      await page.route("**/v1/posture", (route) => route.fulfill({ status: 503, json: { detail: "No posture fixture" } }));
+      await page.route("**/v1/graph/correlations?**", (route) => route.fulfill({ json: { items: [], count: 0 } }));
+      const linkedGraph = buildCockpitGraph();
+      await page.route("**/v1/graph/query", (route) => route.fulfill({ json: { ...linkedGraph, root_id: "pkg:form-data", truncated: false } }));
+      await page.route("**/v1/graph/node/*?**", (route) => route.fulfill({ json: {
+        node: linkedGraph.nodes.find((node) => node.id === "pkg:form-data"),
+        edges_in: [], edges_out: [], neighbors: [], sources: [], impact: { upstream_agents: [], affected_count: 0 },
+      } }));
+      const finding = "occurrence/one&exact";
+      const params = new URLSearchParams({ lens: "attack-path", scan: scanId, finding_scan: scanId, finding, node: "pkg:form-data" });
+      await page.goto(`/security-graph?${params}`);
+      await expect(page.getByRole("complementary", { name: "Finding investigation context" })).toBeVisible();
+      await page.getByRole("link", { name: "Inspect linked asset" }).click();
+      await expect.poll(() => new URL(page.url()).searchParams.get("lens")).toBe("lineage");
+      await expect(page.getByRole("link", { name: "Return to finding" })).toBeVisible();
+      const context = page.getByRole("complementary", { name: "Finding investigation context" });
+      await expect(context).toContainText(scanId);
+      expect(await context.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      if (width === 390) await page.getByTestId("graph-entity-drawer").getByRole("button", { name: "Close", exact: true }).last().click();
+      await page.screenshot({ path: testInfo.outputPath(`finding-return-${theme}-${width}.png`), fullPage: true });
+      const reads: URL[] = [];
+      await page.route("**/v1/findings**", (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname === "/v1/findings") reads.push(url);
+        return route.fulfill({ json: { findings: [], triage: [], count: 0, total: 0, has_more: false, warnings: [] } });
+      });
+      await page.getByRole("link", { name: "Return to finding" }).click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/findings");
+      await expect.poll(() => reads.length).toBeGreaterThan(0);
+      expect(reads[0]!.searchParams.get("scan_id")).toBe(scanId);
+      expect(reads[0]!.searchParams.get("q")).toBe(finding);
+      expect(reads[0]!.searchParams.get("window_days")).toBe("0");
+      await page.goBack();
+      await expect(page.getByRole("link", { name: "Return to finding" })).toBeVisible();
+      expect(new URL(page.url()).searchParams.get("finding_scan")).toBe(scanId);
+    });
+  }
+}

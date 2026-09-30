@@ -45,6 +45,7 @@ import {
   GraphScenarioComparisonPanel,
   GraphScenarioSelector,
 } from "@/components/graph-scenario-comparison";
+import { withFindingContext } from "@/lib/finding-investigation-href";
 import { GraphEntityDrawer } from "@/components/graph-entity-drawer";
 import {
   GraphRollupDecisionSurface,
@@ -1639,13 +1640,13 @@ function GraphPageInner() {
       nextParams.delete("rollup_node");
     }
     const next = nextParams.toString();
-    const url = next ? `${pathname}?${next}` : pathname;
+    const url = withFindingContext(next ? `${pathname}?${next}` : pathname, currentSearch);
     // Filters are client state. Synchronize their shareable URL without an
     // App Router navigation/server-component request on every interaction.
     // Next integrates native history updates with useSearchParams.
     if (lastSyncedUrlRef.current === url) return;
     lastSyncedUrlRef.current = url;
-    if (next === currentSearch.toString()) return;
+    if (url === `${pathname}${window.location.search}`) return;
     history.replaceState(null, "", url);
   }, [
     activeScopePreset,

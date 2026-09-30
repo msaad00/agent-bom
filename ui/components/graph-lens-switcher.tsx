@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { withFindingContext } from "@/lib/finding-investigation-href";
 import { InsightLayerToggle } from "@/components/insight-layer-toggle";
 import { GraphLegendDock } from "@/components/graph-chrome";
 import { ASSET_DRIFT_GRAPH_SCOPE_PARAM } from "@/components/lineage-filter";
@@ -156,7 +157,7 @@ export function buildInvestigationLensHref(
     params.set(key, value);
   }
   const query = params.toString();
-  return query ? `${pathname}?${query}` : (pathname ?? targetHref);
+  return withFindingContext(query ? `${pathname}?${query}` : (pathname ?? targetHref), current);
 }
 
 interface GraphLensSwitcherProps {

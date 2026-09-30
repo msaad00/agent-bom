@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 
+import { FindingInvestigationContext } from "@/components/finding-investigation-context";
 import { GraphPanelSkeleton } from "@/components/graph-state-panels";
 import GraphPageClient from "./graph-page-client";
 
@@ -51,7 +52,5 @@ const ContextLensView = dynamic(
 
 export function GraphSurface() {
   const lens = useSearchParams()?.get("lens");
-  if (lens === "mesh") return <MeshLensView />;
-  if (lens === "context") return <ContextLensView />;
-  return <GraphPageClient />;
+  return <><FindingInvestigationContext />{lens === "mesh" ? <MeshLensView /> : lens === "context" ? <ContextLensView /> : <GraphPageClient />}</>;
 }

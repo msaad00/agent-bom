@@ -291,7 +291,7 @@ export function OverviewCockpit({
       <section aria-label="Risk overview" className="@container min-w-0 rounded-2xl border border-outline-strong bg-surface p-4 sm:p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className={SECTION_TITLE_CLASS}>Risk overview</h2>
-          <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} />
+          <FreshnessStatus latestScan={latestScan} scans={scans} loading={loading} localReport={localReport} />
         </div>
         <DetailTabs ariaLabel="Risk overview views" value={riskTab} onChange={setRiskTab}
           tabs={[{ key: "posture", label: "Posture" }, { key: "risks", label: "Top risks" }, { key: "assets", label: "Assets & coverage" }]} />
@@ -361,12 +361,14 @@ function FreshnessStatus({
   latestScan,
   scans,
   loading,
+  localReport,
 }: {
   latestScan: string | null;
   scans: number | null;
   loading: boolean;
+  localReport: boolean;
 }) {
-  const label = loading
+  const label = localReport ? (latestScan ? "Report timestamp" : "Report timestamp unavailable") : loading
     ? "Loading scan evidence"
     : latestScan
     ? "Last successful scan"
@@ -382,7 +384,7 @@ function FreshnessStatus({
     >
       <div className="flex items-center gap-2">
         <span
-          className={`h-2 w-2 rounded-full ${latestScan ? "bg-emerald-500" : "bg-ink-tertiary"}`}
+          className={`h-2 w-2 rounded-full ${latestScan && !localReport ? "bg-emerald-500" : "bg-ink-tertiary"}`}
           aria-hidden="true"
         />
         <span className="text-xs font-semibold text-foreground">{label}</span>
@@ -397,7 +399,7 @@ function FreshnessStatus({
         </time>
       ) : (
         <span className="text-xs text-ink-secondary">
-          {scans === 0 ? "Run a scan to establish freshness." : "The current evidence has no observed scan timestamp."}
+          {localReport ? "No timestamp reported in this file." : scans === 0 ? "Run a scan to establish freshness." : "The current evidence has no observed scan timestamp."}
         </span>
       )}
     </div>

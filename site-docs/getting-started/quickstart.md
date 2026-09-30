@@ -51,6 +51,14 @@ agent-bom scan -f sarif -o findings.sarif
 agent-bom scan -f cyclonedx -o bom.json
 ```
 
+On an empty or offline dashboard, use **Preview a saved report** to choose
+`report.json`. The browser checks every agent and exposure entry, validates
+finding totals, and rejects files larger than 10 MB before previewing them.
+Rejected reports leave the current view intact. This preview does not upload
+evidence or populate the control-plane graph; use **Return to live overview**
+to leave it, or ingest the report's evidence through a supported control-plane
+workflow.
+
 ## Ingest external scanner or SARIF evidence
 
 When an SCA, SBOM, or SAST tool already

@@ -97,5 +97,5 @@ def test_cfn_docker_helm_corpus_fires_every_rule() -> None:
     assert len(docker_rules) == 21  # DOCKER-016 is documented but never emitted
     assert len(helm_rules) == 13
     assert cfn_rules | docker_rules | helm_rules <= fired
-    assert any(isinstance(v, dict) and "exception" in v for v in expected.values())
+    assert all(isinstance(v, list) for v in expected.values())
     assert len(expected) >= 100

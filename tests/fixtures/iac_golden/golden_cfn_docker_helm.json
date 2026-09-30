@@ -1258,23 +1258,11 @@
  "cloudformation/synthetic_empty.yaml": [],
  "cloudformation/synthetic_intrinsic_tag.yaml": [],
  "cloudformation/synthetic_invalid.json": [],
- "cloudformation/synthetic_list_template.yaml": {
-  "exception": "AttributeError",
-  "message": "'list' object has no attribute 'get'"
- },
+ "cloudformation/synthetic_list_template.yaml": [],
  "cloudformation/synthetic_null_resources.yaml": [],
- "cloudformation/synthetic_policy_doc_string.yaml": {
-  "exception": "AttributeError",
-  "message": "'str' object has no attribute 'get'"
- },
- "cloudformation/synthetic_props_list.yaml": {
-  "exception": "AttributeError",
-  "message": "'list' object has no attribute 'get'"
- },
- "cloudformation/synthetic_resource_not_dict.yaml": {
-  "exception": "AttributeError",
-  "message": "'str' object has no attribute 'get'"
- },
+ "cloudformation/synthetic_policy_doc_string.yaml": [],
+ "cloudformation/synthetic_props_list.yaml": [],
+ "cloudformation/synthetic_resource_not_dict.yaml": [],
  "dockerfile/harvested_0366d05f3d8f4a18.Dockerfile": [
   {
    "atlas_techniques": [],

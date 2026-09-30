@@ -4,6 +4,7 @@ import { GraphRecordedRelationships, GraphRecordedRelationshipScope } from "@/co
 import { api } from "@/lib/api";
 import type { GraphIncidentPage } from "@/lib/api-types";
 import { ApiError } from "@/lib/api-errors";
+import * as bundleExport from "@/lib/graph-investigation-bundle";
 vi.mock("@/lib/api", () => ({ api: { getGraphIncidentEdges: vi.fn() } }));
 vi.mock("@/components/auth-provider", () => ({ useAuthState: () => ({ loading: false, session: { tenant_id: "t-1", role: "analyst" } }) }));
 const fetchPage = vi.mocked(api.getGraphIncidentEdges);
@@ -62,4 +63,19 @@ it("does not treat a failed read as a completed empty neighborhood", async () =>
   await screen.findByRole("alert");
   expect(screen.queryByText(/End of recorded pages/)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Retry relationships" })).toBeEnabled();
+  fireEvent.click(screen.getByText("Export investigation"));
+  expect(screen.getByRole("button", { name: "Download investigation JSON" })).toBeDisabled();
+});
+
+it("exports only the loaded pinned investigation after a deliberate click", async () => {
+  const download = vi.spyOn(bundleExport, "downloadGraphInvestigation").mockImplementation(() => {});
+  fetchPage.mockResolvedValue(page("more"));
+  render(<GraphRecordedRelationshipScope scanId="s-1" nodeId="agent:one"><GraphRecordedRelationships scanId="s-1" nodeId="agent:one" /></GraphRecordedRelationshipScope>);
+  await screen.findByText("Recorded server name");
+  expect(download).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText("Export investigation"));
+  fireEvent.click(screen.getByRole("button", { name: "Download investigation JSON" }));
+  expect(download).toHaveBeenCalledWith(expect.objectContaining({ selection: expect.objectContaining({ scan_id: "s-1", node_id: "agent:one", snapshot_generation: generation }), scope: expect.objectContaining({ more_relationships_available: true }) }));
+  expect(fetchPage).toHaveBeenCalledTimes(1);
+  download.mockRestore();
 });

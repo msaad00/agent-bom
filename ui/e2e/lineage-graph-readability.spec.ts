@@ -1,8 +1,41 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const scanId = "scan-dense-graph";
 const previousScanId = "scan-dense-graph-prev";
 const createdAt = "2026-05-08T16:00:00Z";
+
+for (const theme of ["light", "dark"] as const) for (const width of [390, 1440]) {
+  test(`download a pinned graph investigation ${theme} ${width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeGraphPage(page);
+    const root = node("agent:desktop", "agent", "Desktop Agent");
+    const finding = node("finding:fixture", "vulnerability", "Fixture finding", "high");
+    await page.route("**/v1/graph/incident-edges?**", route => route.fulfill({ json: {
+      scan_id: scanId, snapshot_generation: "a".repeat(32), node_id: root.id, found: true,
+      direction: "both", limit: 24, node: root, nodes: [finding], edges: [edge(root.id, finding.id, "vulnerable_to")], next_cursor: "more",
+      completeness: { complete: false, status: "truncated", truncated: true, sampled: false, returned: 1, total: null, scope: "incident_edge_page", missing_endpoint_count: 0 },
+    } }));
+    await page.goto(`/graph?scan=${scanId}`);
+    await page.getByTestId("rf__node-agent:desktop").click();
+    await page.getByTestId("graph-drawer-tab-relationships").click();
+    await expect(page.getByText("1 loaded relationships · total unknown")).toBeVisible();
+    await page.getByText("Export investigation", { exact: true }).click();
+    const button = page.getByRole("button", { name: "Download investigation JSON" });
+    await button.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`investigation-export-${theme}-${width}.png`) });
+    const pending = page.waitForEvent("download");
+    await button.click();
+    const download = await pending;
+    const bundle = JSON.parse(await readFile((await download.path())!, "utf8"));
+    expect(bundle.selection).toMatchObject({ scan_id: scanId, node_id: root.id, snapshot_generation: "a".repeat(32), finding_node_ids: [finding.id] });
+    expect(bundle.scope).toMatchObject({ more_relationships_available: true, collection_coverage: "unknown" });
+    expect(bundle.relationships[0].source).toBe(root.id);
+    expect(new URL(bundle.return_url).searchParams.get("node")).toBe(root.id);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+}
 
 async function settledViewportZoom(page: Page): Promise<number> {
   let previous = "";

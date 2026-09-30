@@ -19,6 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- Require urllib3 2.8.0 or newer for HTTPS proxy TLS isolation, bounded chunk-size parsing and terminating Deflate streams (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689).
 - Bind anonymous API exemptions to exact HTTP operations and reject unclassified protected operations. Scope scheduled work, source records and export operations to explicit tenant authority; revalidate stored credentials on active streams and reconnects.
 - Reject malformed entries throughout browser-imported reports, including decoded structural keys, oversized UTF-8 input, invalid exposure labels and inconsistent severity totals. Rejection messages do not echo report contents.
 - Keep trace correlation tied to the submitted input and authenticated session. Invalid gateway enforcement settings fail before startup, and failed visual screening withholds upstream results.

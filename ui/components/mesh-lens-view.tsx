@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { requestedGraphRoot } from "@/lib/graph-root";
 import { api, type GraphSnapshot } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
@@ -22,7 +23,7 @@ function OwnedMesh({ owner }: { owner: string }) {
   const [scanId, setScanId] = useState(params?.get("scan") ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const requestedAgent = params?.get("agent") ?? params?.get("root") ?? params?.get("node") ?? "";
+  const requestedAgent = requestedGraphRoot(params);
   useEffect(() => {
     let active = true;
     api.getGraphSnapshots(50, 0).then(data => {

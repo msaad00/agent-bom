@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Background, BaseEdge, Controls, EdgeLabelRenderer, ReactFlow, getBezierPath, type EdgeProps, type Node, type NodeProps, Handle, Position } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useSearchParams } from "next/navigation";
+import { requestedGraphRoot } from "@/lib/graph-root";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { buildGraphInvestigationHref } from "@/lib/attack-paths";
 import { api, type JobListItem } from "@/lib/api";
@@ -68,7 +69,7 @@ export function PersistedContextView() {
   const { session, loading } = useAuthState();
   if (loading || !session) return <p role="status" className="p-4">Resolving access to persisted evidence…</p>;
   const owner = JSON.stringify(session);
-  return <OwnedContextView key={JSON.stringify([owner, params?.get("scan")])} owner={owner} />;
+  return <OwnedContextView key={JSON.stringify([owner, params?.get("scan"), requestedGraphRoot(params)])} owner={owner} />;
 }
 
 function OwnedContextView({ owner }: { owner: string }) {
@@ -76,7 +77,8 @@ function OwnedContextView({ owner }: { owner: string }) {
   const [jobOffset, setJobOffset] = useState(0);
   const [jobTotal, setJobTotal] = useState(0);
   const [jobs, setJobs] = useState<JobListItem[]>([]);
-  const [jobId, setJobId] = useState("");
+  const [jobId, setJobId] = useState(params?.get("scan") ?? "");
+  const requestedRoot = requestedGraphRoot(params);
   const [snapshot, setSnapshot] = useState<{ jobId: string; scanId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -117,7 +119,7 @@ function OwnedContextView({ owner }: { owner: string }) {
     <details className="context-popover"><summary className="context-action inline-flex cursor-pointer items-center gap-2">Other views <ChevronDown size={14} aria-hidden="true" /></summary><div className="context-popover-panel"><GraphLensSwitcher variant="compact" scanId={scanId || undefined} /></div></details></div>
     {(jobOffset > 0 || jobOffset + 24 < jobTotal) && <div className="flex gap-2">{jobOffset > 0 && <button className="context-action" onClick={() => setJobOffset(offset => Math.max(0, offset - 24))}>Previous scans</button>}{jobOffset + 24 < jobTotal && <button className="context-action" onClick={() => setJobOffset(offset => offset + 24)}>Next scans</button>}</div>}</header>
     {error && <p role="alert">{error}</p>}
-    {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId])} scanId={scanId} owner={owner} /> : <p role="status">{jobId ? "Resolving snapshot…" : "Choose a completed scan to inspect persisted relationships."}</p>}
+    {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId, requestedRoot])} scanId={scanId} owner={owner} initialRootId={requestedRoot} /> : <p role="status">{jobId ? "Resolving snapshot…" : "Choose a completed scan to inspect persisted relationships."}</p>}
   </section>;
 }
 

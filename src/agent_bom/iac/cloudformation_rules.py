@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from agent_bom.iac.cloudformation_input import input_mapping, mapping_sequence, policy_statements
 from agent_bom.iac.models import IaCFinding
 
 # Secret patterns in parameter defaults
@@ -33,7 +34,7 @@ class CfnResource:
     """One ``Resources`` entry as the rule checks see it."""
 
     logical_id: Any
-    props: Any
+    props: dict[str, Any]
     file_str: str
     line: int
 
@@ -81,7 +82,7 @@ def cfn_002(res: CfnResource) -> list[IaCFinding]:
 def cfn_003(res: CfnResource) -> list[IaCFinding]:
     """CFN-003: Security group with 0.0.0.0/0 on non-standard ports."""
     findings: list[IaCFinding] = []
-    for rule in res.props.get("SecurityGroupIngress", []):
+    for rule in mapping_sequence(res.props.get("SecurityGroupIngress", []), res.file_str):
         if not isinstance(rule, dict):
             continue
         cidr = rule.get("CidrIp", "")
@@ -113,15 +114,8 @@ def cfn_003(res: CfnResource) -> list[IaCFinding]:
 def cfn_004(res: CfnResource) -> list[IaCFinding]:
     """CFN-004: IAM policy with wildcard."""
     findings: list[IaCFinding] = []
-    policy_doc = res.props.get("PolicyDocument") or {}
-    policies = res.props.get("Policies", [])
-    docs = [policy_doc] if policy_doc else []
-    for p in policies:
-        if isinstance(p, dict) and p.get("PolicyDocument"):
-            docs.append(p["PolicyDocument"])
-
-    for doc in docs:
-        for stmt in doc.get("Statement", []):
+    for statements in policy_statements(res.props, res.file_str):
+        for stmt in statements:
             if not isinstance(stmt, dict):
                 continue
             action = stmt.get("Action", "")
@@ -244,7 +238,9 @@ def cfn_010(res: CfnResource) -> list[IaCFinding]:
 def cfn_011(res: CfnResource) -> list[IaCFinding]:
     """CFN-011: S3 bucket without versioning enabled."""
     findings: list[IaCFinding] = []
-    versioning = res.props.get("VersioningConfiguration", {}) or {}
+    versioning = input_mapping(res.props.get("VersioningConfiguration", {}), res.file_str)
+    if versioning is None:
+        return []
     status = versioning.get("Status", "")
     if not isinstance(status, str) or status.lower() != "enabled":
         findings.append(
@@ -288,7 +284,7 @@ def cfn_012(res: CfnResource) -> list[IaCFinding]:
 def cfn_013(res: CfnResource) -> list[IaCFinding]:
     """CFN-013: Security group with 0.0.0.0/0 on non-HTTP port."""
     findings: list[IaCFinding] = []
-    for rule in res.props.get("SecurityGroupIngress", []):
+    for rule in mapping_sequence(res.props.get("SecurityGroupIngress", []), res.file_str):
         if not isinstance(rule, dict):
             continue
         cidr = rule.get("CidrIp", "")
@@ -324,15 +320,8 @@ def cfn_013(res: CfnResource) -> list[IaCFinding]:
 def cfn_014(res: CfnResource) -> list[IaCFinding]:
     """CFN-014: IAM policy with Action: "*"."""
     findings: list[IaCFinding] = []
-    policy_doc = res.props.get("PolicyDocument") or {}
-    policies = res.props.get("Policies", [])
-    docs = [policy_doc] if policy_doc else []
-    for p in policies:
-        if isinstance(p, dict) and p.get("PolicyDocument"):
-            docs.append(p["PolicyDocument"])
-
-    for doc in docs:
-        for stmt in doc.get("Statement", []):
+    for statements in policy_statements(res.props, res.file_str):
+        for stmt in statements:
             if not isinstance(stmt, dict):
                 continue
             action = stmt.get("Action", "")
@@ -500,8 +489,9 @@ def cfn_020(res: CfnResource) -> list[IaCFinding]:
 def cfn_007(parameters: Any, content: str, file_str: str) -> list[IaCFinding]:
     """CFN-007: Hardcoded secrets in Parameters."""
     findings: list[IaCFinding] = []
-    for param_name, param_def in parameters.items():
-        if not isinstance(param_def, dict):
+    for param_name, value in parameters.items():
+        param_def = input_mapping(value, file_str)
+        if param_def is None:
             continue
         default = param_def.get("Default", "")
         if isinstance(default, str) and default and _SECRET_PATTERNS.search(param_name):

@@ -19,6 +19,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Malformed CloudFormation template, resource and policy containers no longer abort a repository scan. Reports retain findings from valid resources and mark unevaluated input as partial coverage; IAM policies with a single Statement object are evaluated.
+
 - `POST /v1/scan` now runs the same secret scan as `agent-bom scan -p` for `agent_projects` and `filesystem_paths`, not only for `repo_url` clones.
 - MCP `scan` queries vulnerability sources online by default (honoring `AGENT_BOM_OFFLINE`), returns a bounded, always-valid JSON summary with paged `result_id`/`section` follow-ups (`detail="full"` for the whole document), sets `isError` on incomplete or failed scans, and accepts extra workspace roots via `AGENT_BOM_MCP_WORKSPACE_ROOTS` or `agent-bom mcp server --workspace-root`.
 - `--external-scan` no longer disables project auto-detection (IaC, SAST, secrets); when another input does skip it, the scan warns.

@@ -62,7 +62,7 @@ def _sarif_fingerprint_fields(
     start_line: int = 1,
 ) -> dict[str, dict[str, str]]:
     """Return SARIF fingerprints and GitHub partialFingerprints for dedup."""
-    return {
+    fields = {
         "fingerprints": {
             "agent-bom/v1": hashlib.sha256(stable_input.encode()).hexdigest(),
         },
@@ -70,6 +70,9 @@ def _sarif_fingerprint_fields(
             "primaryLocationLineHash": hashlib.sha256(f"{artifact_uri}:{start_line}".encode()).hexdigest(),
         },
     }
+    if artifact_uri.startswith("self-scan://"):
+        fields.pop("partialFingerprints")
+    return fields
 
 
 # GitHub Security tab uses security-severity (0.0–10.0) for granular sorting.
@@ -577,14 +580,7 @@ def _cve_sarif_result(
         "kind": kind,
         "message": {"text": sanitize_advisory_text("title", message_text, fallback=f"{rule_id} package vulnerability")},
         **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=config_path, start_line=start_line),
-        "locations": [
-            {
-                "physicalLocation": {
-                    "artifactLocation": {"uri": config_path, "uriBaseId": "%SRCROOT%"},
-                    "region": {"startLine": start_line, "startColumn": 1},
-                },
-            }
-        ],
+        "locations": [_sarif_location(config_path, start_line)],
     }
     related_locations = _exposure_related_locations(exposure_path)
     if related_locations:
@@ -706,7 +702,10 @@ class _SarifCatalog:
         return True
 
 
-def _physical_location(uri: str, start_line: Any) -> dict[str, Any]:
+def _sarif_location(uri: str, start_line: Any) -> dict[str, Any]:
+    # Installed distributions have an inventory identity, not a checkout file.
+    if uri.startswith("self-scan://"):
+        return {"logicalLocations": [{"fullyQualifiedName": uri}]}
     return {
         "physicalLocation": {
             "artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"},
@@ -910,7 +909,7 @@ def _unified_finding_result(finding: Finding, rule_id: str, level: str, evidence
         "properties": _unified_finding_properties(finding, rule_id, evidence),
     }
     if file_path is not None:
-        finding_result["locations"] = [_physical_location(file_path, start_line)]
+        finding_result["locations"] = [_sarif_location(file_path, start_line)]
     else:
         asset_name = sanitize_advisory_text("title", finding.asset.name, fallback=finding.asset.asset_type)
         finding_result["locations"] = [{"logicalLocations": [{"name": asset_name, "kind": finding.asset.asset_type}]}]
@@ -987,7 +986,7 @@ def _add_iac_results(catalog: _SarifCatalog, report: AIBOMReport) -> None:
                     )
                 },
                 **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
-                "locations": [_physical_location(file_path, line_num)],
+                "locations": [_sarif_location(file_path, line_num)],
             }
         )
 
@@ -1045,7 +1044,7 @@ def _add_ai_inventory_results(catalog: _SarifCatalog, report: AIBOMReport) -> No
                 "kind": "fail",
                 "message": {"text": desc},
                 **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=file_path, start_line=line_num),
-                "locations": [_physical_location(file_path, comp.get("line", 1))],
+                "locations": [_sarif_location(file_path, comp.get("line", 1))],
             }
         )
 
@@ -1131,7 +1130,7 @@ def _cis_result(check: dict[str, Any], cloud_key: str, rule_id: str, level: str)
             )
         },
         **_sarif_fingerprint_fields(stable_input=fp_input, artifact_uri=artifact_uri, start_line=1),
-        "locations": [_physical_location(artifact_uri, 1)],
+        "locations": [_sarif_location(artifact_uri, 1)],
         "properties": _cis_result_properties(check),
     }
 

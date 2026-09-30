@@ -594,3 +594,24 @@ These keys differ from older name-based snapshots. Rebuild a snapshot from its
 source report to adopt them; historical snapshots and their saved node links
 retain their original IDs. No implicit cross-cloud identity equivalence is
 inferred from matching names.
+
+## Portable investigations
+
+Select an entity in a saved graph, open **Relationships → Export investigation**,
+then choose **Download investigation JSON**. The local JSON file contains the
+loaded relationship pages, exact scan/entity IDs, snapshot generation, finding
+node IDs, any originating finding context, source labels and relationship evidence.
+Load more relationships before downloading to include a wider neighborhood.
+
+Use `return_url` to reopen the selected entity on the original control plane.
+Access and snapshot retention are still required. The bundle preserves the
+generation at export time; a later replacement under the same scan ID can change
+what the link shows. Compare the recorded generation before treating a reopened
+view as the same evidence.
+
+This is an unsigned browser export of existing authenticated API results, not an
+independent attestation or a full-snapshot export. It includes entity names and
+source metadata. Page completeness and missing endpoints are retained; collection
+coverage stays unknown. Recorded edges do not prove execution, exploitation or
+successful access. Unavailable, stale or currently loading relationship reads
+cannot be exported. No write to the control plane or automatic upload occurs.

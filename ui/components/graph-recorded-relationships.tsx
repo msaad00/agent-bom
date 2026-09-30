@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { useAuthState } from "@/components/auth-provider";
 import { useIncidentNeighborhood } from "@/hooks/use-incident-neighborhood";
 import { contextRelationshipLabel } from "@/lib/context-graph";
+import { buildGraphInvestigationBundle, downloadGraphInvestigation } from "@/lib/graph-investigation-bundle";
 
 type Props = { scanId: string; nodeId: string; onInspectNode?: ((id: string) => void) | undefined };
 
@@ -25,8 +26,9 @@ function RelationshipScope({ scanId, nodeId, owner, children }: Props & { owner:
   return <RelationshipContext.Provider value={{ ...graph, activate }}>{children}</RelationshipContext.Provider>;
 }
 
-export function GraphRecordedRelationships({ nodeId, onInspectNode }: Props) {
+export function GraphRecordedRelationships({ scanId, nodeId, onInspectNode }: Props) {
   const graph = useContext(RelationshipContext);
+  const [exportError, setExportError] = useState(false);
   const activate = graph?.activate;
   useEffect(() => { activate?.(); }, [activate]);
   if (!graph) return <p role="status" className="text-xs text-ink-secondary">Resolving access to recorded relationships…</p>;
@@ -40,6 +42,18 @@ export function GraphRecordedRelationships({ nodeId, onInspectNode }: Props) {
     <p role="status" className="text-ink-secondary">
       {graph.busy && !lastPage ? "Loading recorded relationships…" : `${edges.length} loaded relationships · total unknown`}
     </p>
+    <details className="rounded-lg border border-outline p-3">
+      <summary className="cursor-pointer font-medium">Export investigation</summary>
+      <p className="my-2 text-ink-secondary">Save loaded relationships, evidence receipts, canonical IDs and a return link as JSON. Includes entity names and source metadata. Load more relationships first for a wider record.</p>
+      <button type="button" className="rounded border border-outline px-3 py-2 disabled:opacity-50"
+        disabled={graph.busy || Boolean(graph.error) || graph.stale || !lastPage}
+        onClick={() => {
+          setExportError(false);
+          try { downloadGraphInvestigation(buildGraphInvestigationBundle(scanId, nodeId, graph.pages, window.location.href)); }
+          catch { setExportError(true); }
+        }}>Download investigation JSON</button>
+      {exportError && <p role="alert">Unable to export this investigation. Reload its recorded relationships and retry.</p>}
+    </details>
     {graph.error && <div role="alert" className="space-y-2 text-ink-secondary">
       <p>{graph.error}</p>
       <button type="button" className="rounded border border-outline px-3 py-2" disabled={graph.busy} onClick={() => graph.stale ? graph.restart() : void graph.load(nodeId, lastPage?.next_cursor ?? undefined)}>Retry relationships</button>

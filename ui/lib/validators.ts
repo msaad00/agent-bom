@@ -41,20 +41,16 @@ function isString(v: unknown): v is string {
   return typeof v === "string";
 }
 
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every(isString);
+}
+
 function isFiniteNum(v: unknown): v is number {
   return typeof v === "number" && isFinite(v);
 }
 
-/** Detect prototype-pollution keys anywhere in the JSON text. */
-function hasPollutionKeys(jsonText: string): boolean {
-  return (
-    jsonText.includes('"__proto__"') ||
-    jsonText.includes('"constructor"') ||
-    // Allow the word "prototype" in values like package names, but
-    // explicitly exclude it as a JSON key (preceded by `"prototype"`).
-    /"\bprototype\b"\s*:/.test(jsonText)
-  );
-}
+const isCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
 /** Validate a single vulnerability object. Returns an error string or null. */
 function validateVuln(v: unknown, path: string): string | null {
@@ -117,14 +113,21 @@ function validateBlast(b: unknown, path: string): string | null {
   if (!isString(b.vulnerability_id) || !b.vulnerability_id)
     return `${path}.vulnerability_id: must be a non-empty string`;
   if (!isString(b.severity)) return `${path}.severity: must be a string`;
-  if (!isArray(b.affected_agents)) return `${path}.affected_agents: must be an array`;
-  if (!isArray(b.exposed_credentials)) return `${path}.exposed_credentials: must be an array`;
+  if (!isStringArray(b.affected_agents)) return `${path}.affected_agents: must be an array of strings`;
+  if (!isStringArray(b.exposed_credentials)) return `${path}.exposed_credentials: must be an array of strings`;
   // Current CLI exports expose this relationship as exposed_tools; normalize
   // the older UI name only when absent, without hiding malformed input.
   if (b.reachable_tools === undefined && isArray(b.exposed_tools)) {
     b.reachable_tools = b.exposed_tools;
   }
-  if (!isArray(b.reachable_tools)) return `${path}.reachable_tools: must be an array`;
+  if (!isStringArray(b.reachable_tools)) return `${path}.reachable_tools: must be an array of strings`;
+  for (const field of ["affected_servers", "exposed_tools"]) {
+    if (b[field] != null && !isStringArray(b[field])) return `${path}.${field}: must be an array of strings`;
+  }
+  for (const field of ["package", "canonical_id", "fixed_version", "impact_category"]) {
+    if (b[field] != null && !isString(b[field])) return `${path}.${field}: must be a string`;
+  }
+  if (b.risk_score != null && !isFiniteNum(b.risk_score)) return `${path}.risk_score: must be a finite number`;
   if (b.blast_score !== undefined && !isFiniteNum(b.blast_score))
     return `${path}.blast_score: must be a finite number`;
   if (b.cvss_score != null && !isFiniteNum(b.cvss_score))
@@ -141,17 +144,25 @@ function validateBlast(b: unknown, path: string): string | null {
  * On failure returns an error string suitable for display to the user.
  */
 export function validateScanReport(jsonText: string): ValidationResult {
-  // 1. Pollution check on raw text (before parsing)
-  if (hasPollutionKeys(jsonText)) {
-    return { ok: false, error: "Invalid report: unexpected structural keys." };
+  // Guard direct callers as well as FileReader, using UTF-8 bytes rather than
+  // only JavaScript string length. All accepted records are validated below.
+  if (jsonText.length > MAX_IMPORT_BYTES || new TextEncoder().encode(jsonText).byteLength > MAX_IMPORT_BYTES) {
+    return { ok: false, error: "Report exceeds the maximum size of 10 MB." };
   }
 
-  // 2. Parse JSON
   let parsed: unknown;
+  let unsafeKey = false;
   try {
-    parsed = JSON.parse(jsonText);
-  } catch (e) {
-    return { ok: false, error: `Invalid JSON: ${(e as Error).message}` };
+    parsed = JSON.parse(jsonText, (key, value: unknown) => {
+      // The parser decodes escaped keys; reserved words in values stay valid.
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        unsafeKey = true;
+        throw new Error("Unsafe structural key");
+      }
+      return value;
+    });
+  } catch {
+    return { ok: false, error: unsafeKey ? "Invalid report: unexpected structural keys." : "Invalid JSON report." };
   }
 
   // 3. Top-level shape
@@ -175,24 +186,22 @@ export function validateScanReport(jsonText: string): ValidationResult {
   // Canonical totals are rendered directly for an imported report.
   if (parsed.finding_summary !== undefined) {
     const summary = parsed.finding_summary;
-    if (!isPlainObject(summary) || !isFiniteNum(summary.total) || summary.total < 0 || !isPlainObject(summary.by_severity)) {
-      return { ok: false, error: "finding_summary: must contain numeric total and severity counts" };
+    if (!isPlainObject(summary) || !isCount(summary.total) || !isPlainObject(summary.by_severity)) {
+      return { ok: false, error: "finding_summary: must contain non-negative safe integer counts" };
     }
-    if (Object.values(summary.by_severity).some((count) => !isFiniteNum(count) || count < 0)) {
-      return { ok: false, error: "finding_summary.by_severity: counts must be finite non-negative numbers" };
+    const counts = Object.values(summary.by_severity);
+    if (!counts.every(isCount) || counts.reduce((sum, count) => sum + count, 0) !== summary.total) {
+      return { ok: false, error: "finding_summary.by_severity: non-negative safe integer counts must sum to total" };
     }
   }
 
-  // 6. Validate agents (cap validation at first 200 for perf)
-  const agentLimit = Math.min(parsed.agents.length, 200);
-  for (let i = 0; i < agentLimit; i++) {
+  // Never pass an unchecked tail into dashboard aggregation functions.
+  for (let i = 0; i < parsed.agents.length; i++) {
     const err = validateAgent(parsed.agents[i], `agents[${i}]`);
     if (err) return { ok: false, error: err };
   }
 
-  // 7. Validate blast_radius (cap at first 500)
-  const blastLimit = Math.min(parsed.blast_radius.length, 500);
-  for (let i = 0; i < blastLimit; i++) {
+  for (let i = 0; i < parsed.blast_radius.length; i++) {
     const err = validateBlast(parsed.blast_radius[i], `blast_radius[${i}]`);
     if (err) return { ok: false, error: err };
   }

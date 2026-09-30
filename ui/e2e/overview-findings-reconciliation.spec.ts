@@ -639,6 +639,11 @@ for (const theme of ["light", "dark"] as const) {
       await capture(page, testInfo, `first-evidence-${theme}-${width}.png`);
       const writes: string[] = [];
       page.on("request", (request) => { if (["POST", "PUT", "PATCH"].includes(request.method())) writes.push(request.url()); });
+      const invalidAgents = Array.from({ length: 200 }, () => ({ name: "valid", agent_type: "custom", mcp_servers: [] }));
+      await page.getByLabel("Choose report.json").setInputFiles({ name: "invalid-report.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ agents: [...invalidAgents, null], blast_radius: [] })) });
+      await expect(guide.getByRole("alert")).toContainText("agents[200]: must be an object");
+      await expect(page.getByRole("heading", { name: "Start with evidence" })).toBeVisible();
+      await capture(page, testInfo, `report-rejected-${theme}-${width}.png`);
       await page.getByLabel("Choose report.json").setInputFiles({ name: "report.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ agents: [], blast_radius: [], scan_timestamp: "2026-09-29T00:00:00Z" })) });
       await expect(page.getByLabel("Evidence scopes")).toContainText("Imported report");
       await expect(page.getByRole("heading", { name: "Start with evidence" })).toHaveCount(0);

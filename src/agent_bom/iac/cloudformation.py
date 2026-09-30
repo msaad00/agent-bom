@@ -43,6 +43,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from agent_bom.iac.cloudformation_input import input_mapping, report_input_gap
 from agent_bom.iac.cloudformation_rules import (
     _SECRET_PATTERNS,
     CfnResource,
@@ -160,28 +161,39 @@ def scan_cloudformation(path: Path) -> list[IaCFinding]:
         Findings with rule IDs ``CFN-001`` through ``CFN-020``.
     """
     template = _load_template(path)
+    file_str = str(path)
+    template = input_mapping(template, file_str)
     if template is None:
         return []
 
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
+        report_input_gap(file_str)
         return []
 
-    file_str = str(path)
     findings: list[IaCFinding] = []
-    resources = template.get("Resources", {}) or {}
+    resources = input_mapping(template.get("Resources", {}), file_str)
 
-    for logical_id, resource in resources.items():
-        rtype = resource.get("Type", "")
-        props = resource.get("Properties", {}) or {}
+    for logical_id, value in (resources or {}).items():
+        resource = input_mapping(value, file_str)
+        if resource is None:
+            continue
+        rtype = resource.get("Type")
+        if not isinstance(rtype, str) or not rtype:
+            report_input_gap(file_str)
+            continue
+        props = input_mapping(resource.get("Properties", {}), file_str)
+        if props is None:
+            continue
         line = _find_line(content, logical_id)
-        checks = _CHECKS_BY_TYPE.get(rtype, ()) if isinstance(rtype, str) else ()
+        checks = _CHECKS_BY_TYPE.get(rtype, ())
         res = CfnResource(logical_id=logical_id, props=props, file_str=file_str, line=line)
         for check in checks:
             findings.extend(check(res))
 
-    parameters = template.get("Parameters", {}) or {}
-    findings.extend(cfn_007(parameters, content, file_str))
+    parameters = input_mapping(template.get("Parameters", {}), file_str)
+    if parameters is not None:
+        findings.extend(cfn_007(parameters, content, file_str))
 
     return findings

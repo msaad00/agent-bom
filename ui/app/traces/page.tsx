@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, type ChangeEvent } from "react";
+import { Suspense, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -15,7 +15,8 @@ import {
 
 import { useSearchParams } from "next/navigation";
 
-import { api, type TraceIngestResponse } from "@/lib/api";
+import { useTraceIntake } from "@/hooks/use-trace-intake";
+import { useAuthState } from "@/components/auth-provider";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { TraceExplorerPanel } from "@/components/trace-explorer-panel";
 import { HitlApprovalQueuePanel } from "@/components/hitl-approval-queue-panel";
@@ -49,39 +50,8 @@ function TracesPageContent() {
   const searchParams = useSearchParams();
   const { counts } = useDeploymentContext();
   const [mode, setMode] = useState<"explorer" | "queue" | "ingest">("explorer");
-  const [payload, setPayload] = useState(SAMPLE_PAYLOAD);
-  const [result, setResult] = useState<TraceIngestResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { payload, source, result, loading, reading, error, replacePayload, handleFile, submit } = useTraceIntake(SAMPLE_PAYLOAD);
   const tracesUnavailable = counts ? !counts.has_traces : false;
-
-  async function submit() {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      setResult(await api.ingestTraces(JSON.parse(payload)));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onerror = () => setError("Failed to read trace export.");
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setPayload(reader.result);
-        setError(null);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = "";
-  };
 
   return (
     <div className="space-y-6">
@@ -158,10 +128,10 @@ function TracesPageContent() {
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]">
                 <FileUp className="h-3.5 w-3.5" />
                 Upload JSON
-                <input type="file" accept=".json,application/json" className="hidden" onChange={handleFile} />
+                <input type="file" accept=".json,application/json" className="sr-only" onChange={handleFile} />
               </label>
               <button
-                onClick={() => setPayload(SAMPLE_PAYLOAD)}
+                onClick={() => replacePayload(SAMPLE_PAYLOAD, "Bundled sample")}
                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)] transition-colors hover:bg-[var(--surface-muted)]"
               >
                 <PlayCircle className="h-3.5 w-3.5" />
@@ -170,9 +140,14 @@ function TracesPageContent() {
             </div>
           </div>
 
+          <p role="status" className="mt-4 text-xs text-[var(--text-secondary)]">
+            Input: {source}{reading ? " · Reading file…" : ""}. Files stay local until Run correlation sends this payload to the control plane.
+            Derived runtime evidence and cost records may be stored. Browser limit: 10 MB.
+          </p>
           <textarea
             value={payload}
-            onChange={(e) => setPayload(e.target.value)}
+            onChange={(e) => replacePayload(e.target.value)}
+            aria-label="Trace JSON payload"
             rows={18}
             className="mt-4 w-full resize-none rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-xs leading-6 text-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-emerald-500"
             spellCheck={false}
@@ -181,7 +156,7 @@ function TracesPageContent() {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               onClick={submit}
-              disabled={loading}
+              disabled={loading || reading}
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -210,8 +185,8 @@ function TracesPageContent() {
           )}
 
           {error && (
-            <div className="mt-4 rounded-2xl border border-red-900/50 bg-red-950/30 px-4 py-3">
-              <div className="flex items-center gap-2 text-sm text-red-400">
+            <div role="alert" className="mt-4 break-words rounded-2xl border border-red-800/40 bg-red-50 px-4 py-3 dark:bg-red-950/30">
+              <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
                 <AlertTriangle className="h-4 w-4" />
                 {error}
               </div>
@@ -227,8 +202,8 @@ function TracesPageContent() {
                 </div>
                 <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3">
                   <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Flagged calls</div>
-                  <div className={`mt-2 text-2xl font-semibold ${result.flagged.length > 0 ? "text-red-400" : "text-emerald-400"}`}>
-                    {result.flagged.length}
+                  <div className={`mt-2 text-2xl font-semibold ${result.traces === 0 ? "text-[var(--text-secondary)]" : result.flagged.length > 0 ? "text-red-400" : "text-emerald-400"}`}>
+                    {result.traces === 0 ? "—" : result.flagged.length}
                   </div>
                 </div>
               </div>
@@ -239,15 +214,19 @@ function TracesPageContent() {
                 </div>
               ) : null}
 
-              {result.flagged.length === 0 ? (
+              {result.traces === 0 ? (
+                <p className="rounded-xl border border-amber-700/40 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                  No tool-call evidence was parsed. Check the span names and tool attributes; this is not a clean security verdict.
+                </p>
+              ) : result.flagged.length === 0 ? (
                 <div className="rounded-2xl border border-emerald-900/40 bg-emerald-950/20 px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-emerald-400">
                     <CheckCircle2 className="h-4 w-4" />
-                    No vulnerable tool calls were flagged in this payload.
+                    No matches to known vulnerable assets were returned for this payload. Scan coverage and completeness are not established by this result.
                   </div>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-[var(--border-subtle)]">
+                <div className="overflow-x-auto rounded-2xl border border-[var(--border-subtle)]">
                   <table className="w-full text-sm">
                     <thead className="bg-[var(--surface)] border-b border-[var(--border-subtle)]">
                       <tr>
@@ -311,5 +290,6 @@ function TracesPageContent() {
 }
 
 export default function TracesPage() {
-  return <Suspense fallback={<p>Loading activity scope…</p>}><TracesPageContent /></Suspense>;
+  const { session } = useAuthState();
+  return <Suspense fallback={<p>Loading activity scope…</p>}><TracesPageContent key={JSON.stringify(session)} /></Suspense>;
 }

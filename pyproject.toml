@@ -60,7 +60,7 @@ dependencies = [
     "urllib3>=2.8.0",  # CVE-2026-97687, CVE-2026-97689 (proxy TLS isolation and chunk parsing)
     # NOTE: nltk pin removed — safety (which pulled nltk) was replaced by pip-audit.
     # nltk is not imported by agent-bom. Keeping it added 3 CVEs to Docker images.
-    "pyjwt>=2.13.0",  # CVE-2026-32597 (crit header bypass), PYSEC-2026-175..179 — transitive via auth
+    "pyjwt>=2.15.0",  # CVE-2026-101918 (nested JWT payload error handling)
     "tornado>=6.5.7",  # CVE-2026-49854, CVE-2026-49853, CVE-2026-49855, GHSA-pw6j-qg29-8w7f — transitive via streamlit
     # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
     # Tracked: https://github.com/msaad00/agent-bom/issues/930
@@ -212,7 +212,7 @@ lake = [
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 interactive = ["prompt-toolkit>=3.0"]
 oidc = [
-    "PyJWT>=2.13.0",  # PYSEC-2026-175..179
+    "PyJWT>=2.15.0",  # CVE-2026-101918
     "cryptography>=50.0.0",  # CVE-2026-69247 and older non-contiguous-buffer advisories.
 ]
 saml = [

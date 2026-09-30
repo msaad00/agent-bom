@@ -252,7 +252,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
             {lastPage?.next_cursor && <button className="context-action" disabled={graph.busy || graph.capped || graph.stale} onClick={() => void graph.load(selected.id, lastPage.next_cursor!)}>Load more relationships</button>}
             {!!pages.length && selected.id !== rootId && <button className="context-action" onClick={() => { graph.collapse(selected.id); setFocusId(null); setViewportRevision(value => value + 1); }}>Collapse connections</button>}
           </div>
-          {!!pages.length && selected.id !== rootId && <p className="text-xs">Collapse also clears later expansions.</p>}
+          {!!pages.length && selected.id !== rootId && <p className="text-xs">Independent branches stay loaded.</p>}
           <LoadedRelationshipList key={selected.id} nodeId={selected.id} incident={incident} label={label} onSelect={setSelectedEdge} />
         </> : <p>Choose a persisted agent to begin.</p>}
         <details><summary className="cursor-pointer font-semibold">Loaded entities ({graph.nodes.length})</summary>

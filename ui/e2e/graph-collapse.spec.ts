@@ -33,6 +33,7 @@ for (const theme of ["light", "dark"]) for (const width of [390, 1440]) {
     await inspector.getByRole("button", { name: "Load more relationships", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "loaded entities" })).toContainText("6 loaded entities · 5 loaded relationships");
     await inspector.getByRole("button", { name: "left server:left", exact: true }).click();
+    await expect(inspector.getByText("Independent branches stay loaded.", { exact: true })).toBeVisible();
     await inspector.getByRole("button", { name: "Collapse connections", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "loaded entities" })).toContainText("5 loaded entities · 4 loaded relationships");
     await expect(inspector.getByRole("button", { name: "right-child server:right-child", exact: true })).toBeVisible();

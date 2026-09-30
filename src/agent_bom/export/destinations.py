@@ -831,7 +831,7 @@ class DatabricksWarehouseDestination:
     """Stage findings in Delta and publish a complete attempt pointer.
 
     Mirrors :class:`SnowflakeWarehouseDestination`: a DBAPI connection is opened
-    once from the connect-once connection (``databricks-sql-connector``,
+    once from the connect-once connection (Statement Execution API,
     key/OAuth token from the stored secret — no per-run credential). Rows land
     in an attempt-scoped Delta staging table through bounded, parameterized
     ``executemany`` calls. One atomic manifest INSERT publishes the complete
@@ -1032,17 +1032,12 @@ def _default_bigquery_scope_job_config(tenant_id: str, run_id: str, attempt_id: 
 
 
 def _default_databricks_connection(config: dict[str, Any], secret: str | None) -> Any:
-    try:
-        from databricks import sql as databricks_sql
-    except ImportError as exc:  # pragma: no cover - optional extra
-        raise ExportDestinationError(
-            "Databricks export requires databricks-sql-connector; install with: pip install 'agent-bom[databricks]'"
-        ) from exc
-    return databricks_sql.connect(
-        server_hostname=config["server_hostname"],
+    from agent_bom.export.databricks_statement import DatabricksStatementConnection
+
+    return DatabricksStatementConnection(
+        host=config["server_hostname"],
         http_path=config["http_path"],
-        access_token=secret or "",
-        autocommit=True,
+        token=secret or "",
     )
 
 

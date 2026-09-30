@@ -43,7 +43,7 @@ repos:
           - types-pyyaml==6.0.12.20260906
           - anyio==4.15.1
           - cryptography==50.0.1
-          - pyjwt==2.14.0
+          - pyjwt==2.15.1
           - fastapi==0.141.1
           - starlette==1.6.0
         pass_filenames: true

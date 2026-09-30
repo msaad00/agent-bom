@@ -125,7 +125,9 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
     selected: set[Path] = set()
 
     for changed in changed_files:
-        normalized = Path(changed.as_posix().lstrip("./"))
+        normalized = Path(changed.as_posix().removeprefix("./"))
+        if normalized.as_posix() in {"pyproject.toml", "uv.lock", ".pre-commit-config.yaml", "Makefile", ".github/workflows/ci.yml"}:
+            selected.update(candidate for candidate in available if candidate.name == "test_toolchain_pin_agreement.py")
         if normalized.as_posix().startswith(("src/agent_bom/ast/", "src/agent_bom/ast_", "tests/fixtures/analysis_characterization")):
             selected.update(
                 candidate

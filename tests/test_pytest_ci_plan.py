@@ -2,12 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from scripts.pytest_ci_plan import discover_test_files, plan_shards, select_targeted_tests
 
 
 def _write(path: Path, lines: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("x\n" * lines, encoding="utf-8")
+
+
+@pytest.mark.parametrize("source", ["pyproject.toml", "uv.lock", ".pre-commit-config.yaml", "Makefile", ".github/workflows/ci.yml"])
+def test_dependency_and_checker_changes_select_pin_agreement(tmp_path: Path, source: str) -> None:
+    contract = tmp_path / "tests/test_toolchain_pin_agreement.py"
+    _write(contract, 1)
+    _write(tmp_path / "tests/test_unrelated.py", 1)
+
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == [contract]
 
 
 def test_shard_plan_is_deterministic_disjoint_and_complete(tmp_path: Path) -> None:

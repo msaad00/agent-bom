@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
-import time
 from contextlib import ExitStack
+
+from agent_bom.storage.sqlite_wal import enable_wal
 
 
 def open_wal_connection(path: str, *, normal_sync: bool = False) -> sqlite3.Connection:
@@ -17,16 +18,7 @@ def open_wal_connection(path: str, *, normal_sync: bool = False) -> sqlite3.Conn
     with ExitStack() as cleanup:
         conn = sqlite3.connect(path, timeout=0.05, check_same_thread=False)
         cleanup.callback(conn.close)
-        deadline = time.monotonic() + 30
-        while True:
-            try:
-                conn.execute("PRAGMA journal_mode=WAL")
-                break
-            except sqlite3.OperationalError as exc:
-                remaining = deadline - time.monotonic()
-                if getattr(exc, "sqlite_errorcode", 0) & 0xFF != sqlite3.SQLITE_BUSY or remaining <= 0:
-                    raise
-                time.sleep(min(0.05, remaining))
+        enable_wal(conn)
         conn.execute("PRAGMA busy_timeout=30000")
         if normal_sync:
             conn.execute("PRAGMA synchronous=NORMAL")

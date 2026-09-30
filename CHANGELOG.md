@@ -31,6 +31,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Self-scan SARIF advisories retain their installed-environment identity as a logical location, avoiding GitHub's rejection of non-file source URIs. Real package manifest paths and lines remain physical locations.
+- Retry bounded SQLite WAL startup contention when graph reads overlap initial graph creation; close failed startup connections and continue to reject non-contention database errors.
+
 - Resolve CommonJS namespace aliases for command-execution analysis, including `node:child_process`. Readiness checks distinguish the OSV lookup cache from the vulnerability database and report the same database staleness threshold used by scans.
 
 - Malformed CloudFormation template, resource and policy containers no longer abort a repository scan. Reports retain findings from valid resources and mark unevaluated input as partial coverage; IAM policies with a single Statement object are evaluated.

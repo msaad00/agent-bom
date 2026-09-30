@@ -61,16 +61,22 @@ def test_wal_startup_contention_and_failed_connection_cleanup(monkeypatch, store
 
 def test_wal_contention_budget_expires_and_closes_connection(monkeypatch):
     from agent_bom.api.storage import sqlite_connection
+    from agent_bom.storage import sqlite_wal
 
     class Connection:
         closed = False
         attempts = 0
 
         def execute(self, statement):
+            if statement.startswith("PRAGMA busy_timeout"):
+                return self
             self.attempts += 1
             error = sqlite3.OperationalError("injected persistent contention")
             error.sqlite_errorcode = sqlite3.SQLITE_BUSY
             raise error
+
+        def fetchone(self):
+            return (50,)
 
         def close(self):
             self.closed = True
@@ -79,8 +85,8 @@ def test_wal_contention_budget_expires_and_closes_connection(monkeypatch):
     clock = iter([0.0, 29.0, 30.0])
     sleeps = []
     monkeypatch.setattr(sqlite3, "connect", lambda *args, **kwargs: connection)
-    monkeypatch.setattr(sqlite_connection.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(sqlite_connection.time, "sleep", sleeps.append)
+    monkeypatch.setattr(sqlite_wal.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(sqlite_wal.time, "sleep", sleeps.append)
     with pytest.raises(sqlite3.OperationalError, match="persistent contention"):
         sqlite_connection.open_wal_connection("unused")
     assert connection.attempts == 2

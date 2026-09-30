@@ -32,6 +32,22 @@ coverage named; it must not be interpreted as a clean zero-finding result.
 
 ## 1. Run the release-pinned demo
 
+For an installation check in a restricted or disconnected environment, run:
+
+```bash
+agent-bom doctor --offline
+agent-bom --agent-mode doctor --offline > readiness.json
+```
+
+This inspects local configuration, installed tools and SDK metadata without OSV
+or Postgres connections. The JSON artifact reports `readiness_scope: local_only`
+and `checks_passed` for the checks performed. `ready` remains `false`: skipped
+network and database probes do not establish full readiness. Visible SDK and
+provider API warnings count toward the summary. Configured credentials are
+presence checks, not authenticated-provider evidence. When connections are
+available, run `agent-bom doctor` to check OSV and any configured Postgres database.
+For a reproducible scan artifact while offline, continue with the demo below.
+
 The sample deliberately contains blocking findings, so status `1` is expected.
 It is not a scanner crash; the printed report is complete and the status is the security verdict.
 

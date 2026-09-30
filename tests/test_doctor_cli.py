@@ -1,9 +1,99 @@
 from __future__ import annotations
 
+import json
+
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.models import Agent, AgentType, MCPServer
+
+
+@pytest.fixture(autouse=True)
+def deterministic_doctor_environment(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: object())
+    monkeypatch.setattr("agent_bom.discovery.discover_global_configs", lambda **kwargs: [])
+    monkeypatch.setattr("agent_bom.cloud_sdk_freshness.cloud_sdk_posture", lambda: {"sdks": []})
+    monkeypatch.setattr("agent_bom.cloud_sdk_freshness.cloud_api_deprecation_posture", lambda: {"apis": []})
+    monkeypatch.setattr("agent_bom.cloud_sdk_freshness.cloud_sdk_pin_drift", lambda: {"sdks": [], "last_checked": None})
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_doctor_counts_visible_sdk_warnings_in_readiness(monkeypatch, offline):
+    monkeypatch.setattr(
+        "agent_bom.cloud_sdk_freshness.cloud_sdk_posture",
+        lambda: {
+            "sdks": [
+                {
+                    "status": "outdated",
+                    "installed_version": "1.0",
+                    "recommended_floor": "2.0",
+                    "distribution": "example-sdk",
+                    "provider": "aws",
+                }
+            ]
+        },
+    )
+    result = CliRunner().invoke(main, ["--agent-mode", "doctor"] + (["--offline"] if offline else []))
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["warnings"] == 1
+    assert data["checks_passed"] is False
+    assert data["ready"] is False
+
+
+@pytest.mark.parametrize("database_variable", ["AGENT_BOM_POSTGRES_URL", "AGENT_BOM_DB"])
+@pytest.mark.parametrize("agent_mode", [False, True])
+def test_offline_doctor_never_probes_network_or_database(monkeypatch, database_variable, agent_mode):
+    attempts = []
+
+    def forbidden_probe(*args, **kwargs):
+        attempts.append("network or database probe")
+        raise AssertionError("offline doctor must not connect")
+
+    monkeypatch.setenv(database_variable, "postgresql://private-user:private-password@private-host/app")
+    monkeypatch.setattr("urllib.request.urlopen", forbidden_probe)
+    monkeypatch.setattr("socket.socket.connect", forbidden_probe)
+    monkeypatch.setattr("agent_bom.storage.postgres_capabilities.probe_postgres_portability", forbidden_probe)
+    monkeypatch.setattr("agent_bom.discovery.discover_global_configs", lambda **kwargs: [])
+    args = (["--agent-mode"] if agent_mode else []) + ["doctor", "--offline"]
+
+    result = CliRunner().invoke(main, args)
+
+    assert result.exit_code == 0, result.output
+    assert attempts == []
+    assert "private-password" not in result.output
+    assert "private-host" not in result.output
+    if agent_mode:
+        envelope = json.loads(result.stdout)
+        data = envelope["data"]
+        assert data["readiness_scope"] == "local_only"
+        assert data["ready"] is False  # Skipped probes cannot certify full readiness.
+        assert data["checks_passed"] is True
+        assert data["postgres_portability"]["status"] == "not_assessed"
+        assert data["postgres_portability"]["evidence"] == "offline"
+        assert any(row["label"] == "Network" and row["status"] == "info" for row in data["core"])
+        assert envelope["summary"]["ready"] is False
+    else:
+        assert "Local checks complete" in result.output
+        assert "not assessed" in result.output
+        assert "Ready to scan." not in result.output
+
+
+def test_offline_doctor_preserves_local_warnings(monkeypatch):
+    def failing_discovery(**kwargs):
+        raise RuntimeError("private local path")
+
+    monkeypatch.setattr("agent_bom.discovery.discover_global_configs", failing_discovery)
+    result = CliRunner().invoke(main, ["--agent-mode", "doctor", "--offline"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert data["checks_passed"] is False
+    assert data["ready"] is False
+    assert data["warnings"] >= 1
+    assert "private local path" not in result.output
 
 
 def test_doctor_uses_supported_osv_health_probe(monkeypatch):

@@ -16,12 +16,16 @@ from agent_bom.storage import state_home
 
 
 @click.command("doctor")
-def doctor_cmd() -> None:
+@click.option("--offline", is_flag=True, help="Check local installation only; skip network and database connections.")
+def doctor_cmd(offline: bool = False) -> None:
     """Check environment readiness for scanning.
 
     \b
     Verifies:  Python, agent-bom version, local vuln DB, network,
                Docker, kubectl, MCP configs, API keys.
+
+    Use --offline for local diagnostics without OSV or Postgres connections.
+    Skipped probes do not establish network or database readiness.
     """
     console = Console()
     console.print()
@@ -34,8 +38,6 @@ def doctor_cmd() -> None:
     cloud_sdk_checks: list[tuple[str, str, str]] = []
     cloud_api_checks: list[tuple[str, str, str]] = []
     pin_drift_checks: list[tuple[str, str, str]] = []
-    postgres_checks: list[tuple[str, str, str]] = []
-    postgres_payload: dict[str, object] | None = None
 
     # Python version
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -72,21 +74,7 @@ def doctor_cmd() -> None:
     except Exception:
         core_checks.append(("Local DB", "not available", "info"))
 
-    # Network — OSV API
-    try:
-        import json
-        import urllib.request
-
-        request = urllib.request.Request(  # nosec B310 — hardcoded HTTPS URL
-            "https://api.osv.dev/v1/query",
-            data=json.dumps({"package": {"name": "jinja2", "ecosystem": "PyPI"}, "version": "3.1.4"}).encode(),
-            headers={"Content-Type": "application/json", "User-Agent": "agent-bom-doctor"},
-            method="POST",
-        )
-        urllib.request.urlopen(request, timeout=5)  # nosec B310 — hardcoded HTTPS URL
-        core_checks.append(("Network", "api.osv.dev reachable", "ok"))
-    except Exception:
-        core_checks.append(("Network", "api.osv.dev unreachable", "warn"))
+    core_checks.append(_network_check(offline))
 
     # Docker
     docker_path = shutil.which("docker")
@@ -200,41 +188,16 @@ def doctor_cmd() -> None:
     except Exception:
         pin_drift_checks.append(("Cloud SDK pin drift", "check unavailable", "info"))
 
-    postgres_url = env_raw("AGENT_BOM_POSTGRES_URL", "")
-    database_url = env_raw("AGENT_BOM_DB", "")
-    if postgres_url or database_url.startswith(("postgres://", "postgresql://")):
-        from agent_bom.storage.postgres_capabilities import probe_postgres_portability
+    postgres_checks, postgres_payload = _postgres_checks(offline)
 
-        probe = probe_postgres_portability()
-        postgres_payload = probe.to_dict()
-        probe_status = "ok" if probe.status == "ready" else "warn"
-        postgres_checks.extend(
-            [
-                ("Provider", probe.provider, probe_status),
-                ("Evidence", probe.evidence, "ok" if probe.evidence == "controlled_verified" else "info"),
-                ("Contract", probe.contract, "ok"),
-                ("Server", probe.server_version or "unavailable", probe_status),
-                ("TLS", "active" if probe.tls else "inactive or unavailable", probe_status),
-                (
-                    "Runtime role",
-                    "RLS-safe" if probe.runtime_role_rls_safe else "unsafe or unavailable",
-                    probe_status,
-                ),
-                (
-                    "Migrations",
-                    "present" if probe.alembic_schema_present and probe.control_plane_schema_present else "missing or unavailable",
-                    probe_status,
-                ),
-                (
-                    "Maintenance role",
-                    "configured" if probe.maintenance_role_configured else "not configured",
-                    "ok" if probe.maintenance_role_configured else "warn",
-                ),
-            ]
-        )
-
-    checks = [*core_checks, *runtime_checks, *platform_checks, *postgres_checks]
+    checks = [*core_checks, *runtime_checks, *platform_checks, *cloud_sdk_checks, *cloud_api_checks, *pin_drift_checks, *postgres_checks]
     warns = sum(1 for _, _, s in checks if s == "warn")
+    readiness = {
+        "readiness_scope": "local_only" if offline else "configured_probes",
+        "checks_passed": warns == 0,
+        "ready": not offline and warns == 0,
+        "warnings": warns,
+    }
 
     from agent_bom.cli._agent_mode import agent_mode_requested
 
@@ -267,10 +230,9 @@ def doctor_cmd() -> None:
                 "postgres_portability": postgres_payload,
                 "capabilities": capabilities,
                 "coverage": coverage,
-                "ready": warns == 0,
-                "warnings": warns,
+                **readiness,
             },
-            summary={"warnings": warns, "ready": warns == 0},
+            summary=readiness,
         )
         return
 
@@ -306,7 +268,11 @@ def doctor_cmd() -> None:
 
     console.print()
 
-    if warns == 0:
+    if offline:
+        console.print("  Local checks complete; network and database readiness not assessed.")
+        if warns:
+            console.print(f"  [yellow]{warns} local warning(s) — scanning may be limited.[/yellow]")
+    elif warns == 0:
         console.print("  [green]Ready to scan.[/green]")
     else:
         console.print(f"  [yellow]{warns} warning(s) — scanning may be limited.[/yellow]")
@@ -329,3 +295,69 @@ def _print_section(console: Console, title: str, checks: list[tuple[str, str, st
             icon = "[dim]○[/dim]"
         console.print(f"    {icon}  {escape(label + ':'):<20s} {escape(value)}")
     console.print()
+
+
+def _network_check(offline: bool) -> tuple[str, str, str]:
+    """Probe OSV only when connections are explicitly allowed by the mode."""
+    if offline:
+        return ("Network", "not assessed (--offline)", "info")
+    else:
+        # Network — OSV API
+        try:
+            import json
+            import urllib.request
+
+            request = urllib.request.Request(  # nosec B310 — hardcoded HTTPS URL
+                "https://api.osv.dev/v1/query",
+                data=json.dumps({"package": {"name": "jinja2", "ecosystem": "PyPI"}, "version": "3.1.4"}).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": "agent-bom-doctor"},
+                method="POST",
+            )
+            urllib.request.urlopen(request, timeout=5)  # nosec B310 — hardcoded HTTPS URL
+            return ("Network", "api.osv.dev reachable", "ok")
+        except Exception:
+            return ("Network", "api.osv.dev unreachable", "warn")
+
+
+def _postgres_checks(offline: bool) -> tuple[list[tuple[str, str, str]], dict[str, object] | None]:
+    """Keep offline diagnostics separate from a configured database probe."""
+    postgres_checks: list[tuple[str, str, str]] = []
+    postgres_payload: dict[str, object] | None = None
+    postgres_url = env_raw("AGENT_BOM_POSTGRES_URL", "")
+    database_url = env_raw("AGENT_BOM_DB", "")
+    postgres_configured = bool(postgres_url or database_url.startswith(("postgres://", "postgresql://")))
+    if offline:
+        postgres_payload = {"status": "not_assessed", "evidence": "offline", "configured": postgres_configured}
+        postgres_checks.append(("Connection", "not assessed (--offline)", "info"))
+    elif postgres_configured:
+        from agent_bom.storage.postgres_capabilities import probe_postgres_portability
+
+        probe = probe_postgres_portability()
+        postgres_payload = probe.to_dict()
+        probe_status = "ok" if probe.status == "ready" else "warn"
+        postgres_checks.extend(
+            [
+                ("Provider", probe.provider, probe_status),
+                ("Evidence", probe.evidence, "ok" if probe.evidence == "controlled_verified" else "info"),
+                ("Contract", probe.contract, "ok"),
+                ("Server", probe.server_version or "unavailable", probe_status),
+                ("TLS", "active" if probe.tls else "inactive or unavailable", probe_status),
+                (
+                    "Runtime role",
+                    "RLS-safe" if probe.runtime_role_rls_safe else "unsafe or unavailable",
+                    probe_status,
+                ),
+                (
+                    "Migrations",
+                    "present" if probe.alembic_schema_present and probe.control_plane_schema_present else "missing or unavailable",
+                    probe_status,
+                ),
+                (
+                    "Maintenance role",
+                    "configured" if probe.maintenance_role_configured else "not configured",
+                    "ok" if probe.maintenance_role_configured else "warn",
+                ),
+            ]
+        )
+
+    return postgres_checks, postgres_payload

@@ -15,6 +15,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Saved graph views notify when a newer snapshot of the same kind is available. Open it explicitly or keep the current investigation; background metadata checks preserve the pinned snapshot, selection and viewport.
 
+### Fixed
+
+- Keep filtered attack-path investigations pageable when no loaded path matches. Retain loaded evidence after a failed page request and reject pages from a different tenant or snapshot.
+- Use finding severity for investigation filters independently of path priority, and preserve recorded bidirectional witnesses when an attack path traverses them in reverse.
+
 ## [0.107.0] - 2026-09-30
 
 ### Added

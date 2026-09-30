@@ -39,7 +39,8 @@ import {
   GraphCorrelationWorkflow,
   type GraphCorrelationOutcome,
 } from "@/components/graph-correlation-workflow";
-import { GraphCompletenessBanner } from "@/components/graph-completeness-banner";
+import { GraphPathQueueContinuation } from "@/components/graph-path-queue-continuation";
+import { useAuthState } from "@/components/auth-provider";
 import {
   GraphPresetControls,
   type InvestigationPresetFilters,
@@ -143,6 +144,8 @@ function AttackPathInvestigationContent() {
   const [showAllSnapshots, setShowAllSnapshots] = useState(false);
   const [visibleAttackPathCount, setVisibleAttackPathCount] = useState(ATTACK_PATH_QUEUE_PAGE_SIZE);
   const [loadingMorePaths, setLoadingMorePaths] = useState(false);
+  const [morePathsError, setMorePathsError] = useState<string | null>(null);
+  const pathPageRequest = useRef<AbortController | null>(null);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const [pathView, setPathView] = useState<ExposurePathView>("path");
   const [investigationFilters, setInvestigationFilters] =
@@ -300,6 +303,7 @@ function AttackPathInvestigationContent() {
     }
 
     let cancelled = false;
+    setMorePathsError(null);
 
     setGraphData(null);
     setFixFirstView(null);
@@ -356,6 +360,8 @@ function AttackPathInvestigationContent() {
     void loadFixFirstEnrichment();
     return () => {
       cancelled = true;
+      pathPageRequest.current?.abort();
+      pathPageRequest.current = null;
     };
   }, [focus.agentName, focus.cve, focus.findingId, focus.nodeId, focus.packageName, selectedScanId]);
 
@@ -465,16 +471,8 @@ function AttackPathInvestigationContent() {
   const filtersNarrowQueue =
     Boolean(selectedCampaign?.member_paths?.length) ||
     Object.values(investigationFilters).some((value) => Boolean(value));
-  const pathHasMoreFromApi = Boolean(graphData?.pagination?.has_more) && !filtersNarrowQueue;
+  const pathHasMoreFromApi = Boolean(graphData?.pagination?.has_more);
   const hiddenLoadedAttackPathCount = Math.max(0, attackPaths.length - visibleAttackPaths.length);
-  const hiddenAttackPathCount =
-    hiddenLoadedAttackPathCount +
-    (pathHasMoreFromApi
-      ? Math.max(
-          0,
-          (graphData?.pagination?.total ?? attackPaths.length) - attackPaths.length,
-        )
-      : 0);
 
   const loadMoreAttackPaths = useCallback(async () => {
     if (hiddenLoadedAttackPathCount > 0) {
@@ -483,36 +481,45 @@ function AttackPathInvestigationContent() {
       );
       return;
     }
-    if (!pathHasMoreFromApi || !selectedScanId || !graphData || loadingMorePaths) return;
+    if (!pathHasMoreFromApi || !selectedScanId || !graphData || pathPageRequest.current) return;
     const offset = graphData.pagination?.offset ?? 0;
     const limit = graphData.pagination?.limit ?? ATTACK_PATH_FETCH_PAGE;
     // Server has_more uses offset+limit < total; advance by the requested page size.
     const nextOffset = offset + limit;
+    const controller = new AbortController();
+    pathPageRequest.current = controller;
     setLoadingMorePaths(true);
+    setMorePathsError(null);
     try {
       const nextPage = await api.getGraphAttackPaths({
         scanId: selectedScanId,
         offset: nextOffset,
         limit: ATTACK_PATH_FETCH_PAGE,
-      });
-      setGraphData((current) =>
-        current ? mergeAttackPathGraphPages(current, nextPage) : nextPage,
-      );
+      }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      // Validate before scheduling a state update; preserve loaded evidence on mismatch.
+      const merged = mergeAttackPathGraphPages(graphData, nextPage);
+      setGraphData(merged);
       setVisibleAttackPathCount((current) => current + ATTACK_PATH_QUEUE_PAGE_SIZE);
     } catch (error) {
-      setGraphLoadError(userFacingApiErrorMessage(error, "Failed to load more attack paths"));
-      setApiErrorKind(_classifyGraphErrorKind(error));
+      if (!controller.signal.aborted) setMorePathsError(userFacingApiErrorMessage(error, "Failed to load more attack paths"));
     } finally {
-      setLoadingMorePaths(false);
+      if (pathPageRequest.current === controller) {
+        pathPageRequest.current = null;
+        setLoadingMorePaths(false);
+      }
     }
   }, [
     attackPaths.length,
     graphData,
     hiddenLoadedAttackPathCount,
-    loadingMorePaths,
     pathHasMoreFromApi,
     selectedScanId,
   ]);
+
+  const queueContinuation = <GraphPathQueueContinuation graph={graphData} matches={attackPaths.length}
+    hiddenMatches={hiddenLoadedAttackPathCount} narrowed={filtersNarrowQueue || hasFocusContext}
+    loading={loadingMorePaths} error={morePathsError} onMore={() => void loadMoreAttackPaths()} />;
 
   const rankedRows = useMemo<RankedPathRow[]>(
     () =>
@@ -945,13 +952,14 @@ function AttackPathInvestigationContent() {
             <GraphAnalysisStatusBanner status={graphData?.stats.analysis_status?.attack_path_fusion} />
           </div>
           <GraphEmptyState
-            title={relatedPackagePathsHref ? "No path is linked to this finding record" : emptyGraphState.title}
-            detail={relatedPackagePathsHref
+            title={pathHasMoreFromApi ? "No matching paths in loaded pages" : relatedPackagePathsHref ? "No path is linked to this finding record" : emptyGraphState.title}
+            detail={pathHasMoreFromApi ? "Continue through the queue to check later pages against this focus. Unloaded paths remain unknown." : relatedPackagePathsHref
               ? "Paths match this package and advisory in the selected snapshot, but their evidence does not link the selected finding record. Open that broader context explicitly."
               : emptyGraphState.detail}
             suggestions={emptyGraphState.suggestions}
             command="agent-bom scan -p . -f graph"
           />
+          {queueContinuation}
           <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
             {focus.nodeId ? (
               <Link href={buildFindingAssetHref({ findingScanId: searchParams.get("finding_scan") || focus.scanId, nodeId: focus.nodeId, findingId: focus.findingId, scanId: selectedScanId })} className="sg-action">
@@ -1004,8 +1012,8 @@ function AttackPathInvestigationContent() {
             />
           </InvestigationFilterDrawer>
           <GraphEmptyState
-            title="No paths match the current investigation filters"
-            detail="Clear severity, layer, evidence, or environment chips to restore the ranked path queue."
+            title={pathHasMoreFromApi ? "No matching paths in loaded pages" : "No paths match the current investigation filters"}
+            detail={pathHasMoreFromApi ? "Continue through the queue with these filters. Matches outside loaded pages are unknown." : "No loaded paths match. Clear severity, layer, evidence, or environment chips to widen the queue."}
             suggestions={[
               "Clear one filter chip at a time to widen the queue.",
               "Load a saved preset that matches this estate.",
@@ -1019,6 +1027,7 @@ function AttackPathInvestigationContent() {
           >
             Clear investigation filters
           </button>
+          {queueContinuation}
         </section>
       ) : showCorrelationOverview ? null : (
         <InvestigationPathWorkspace
@@ -1066,24 +1075,7 @@ function AttackPathInvestigationContent() {
               ) : null}
             </>
           }
-          queueFooter={
-            hiddenAttackPathCount > 0 || loadingMorePaths ? (
-              <div className="mt-4">
-                <GraphCompletenessBanner
-                  visibleCount={visibleAttackPaths.length}
-                  omittedCount={Math.max(hiddenAttackPathCount, loadingMorePaths ? 1 : 0)}
-                  loadMoreLabel={
-                    loadingMorePaths
-                      ? "Loading more paths…"
-                      : `Show ${Math.min(ATTACK_PATH_QUEUE_PAGE_SIZE, Math.max(hiddenAttackPathCount, 1))} more`
-                  }
-                  onLoadMore={() => {
-                    void loadMoreAttackPaths();
-                  }}
-                />
-              </div>
-            ) : null
-          }
+          queueFooter={queueContinuation}
           detail={
             selectedExposurePath ? (
               <ExposurePathCommandCenter
@@ -1284,9 +1276,10 @@ function AttackPathInvestigationContent() {
 }
 
 function SecurityGraphPageContent() {
+  const { session } = useAuthState();
   const searchParams = useSearchParams();
   return resolveSecurityGraphSurface(searchParams) === "attack-path"
-    ? <><FindingInvestigationContext /><AttackPathInvestigationContent /></>
+    ? <><FindingInvestigationContext /><AttackPathInvestigationContent key={JSON.stringify(session)} /></>
     : <GraphSurface />;
 }
 

@@ -6,6 +6,7 @@ import type { GraphNodeDetailResponse } from "@/lib/api-types";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Loader2, Network, Radar, ShieldAlert } from "lucide-react";
 
+import { GraphRecordedRelationships, GraphRecordedRelationshipScope } from "@/components/graph-recorded-relationships";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import type { LineageNodeData } from "@/components/lineage-nodes";
 import { api } from "@/lib/api";
@@ -71,11 +72,9 @@ export function GraphEntityDrawer({
     ? loadedDetail.response : null;
   const enriched = useMemo(() => detail ? mergeGraphNodeDetail(data, detail) : data, [data, detail]);
   const pathname = usePathname();
-  const [showAllRelationships, setShowAllRelationships] = useState(false);
 
   useEffect(() => {
     setLoadedDetail(null);
-    setShowAllRelationships(false);
     setLoading(false);
     if (!enrich || !scanId || !nodeId) return;
     let cancelled = false;
@@ -111,28 +110,9 @@ export function GraphEntityDrawer({
   );
   const evidenceLabel = evidenceTierLabel(enriched);
 
-  const relationships = detail && detail.node.id === nodeId
-    ? [...new Map([...detail.edges_in, ...detail.edges_out].map((edge) => [edge.id, edge])).values()] : [];
-  const relationshipSlot = relationships.length > 0 ? (
-    <div className="space-y-2">
-      <p className="text-xs text-ink-secondary">Direct relationships · {relationships.length} returned</p>
-      {(showAllRelationships ? relationships : relationships.slice(0, 8)).map((edge) => {
-        const incoming = edge.target === nodeId;
-        const neighbor = incoming ? edge.source : edge.target;
-        const label = `${incoming ? "Incoming" : "Outgoing"} · ${edge.relationship.replaceAll("_", " ")} · ${neighbor}`;
-        return onInspectNode ? (
-          <button key={edge.id} type="button" onClick={() => onInspectNode(neighbor)}
-            className="block w-full break-words rounded-lg border border-outline p-2 text-left text-xs text-foreground hover:bg-surface-muted">
-            {label}
-          </button>
-        ) : <p key={edge.id} className="break-words text-xs text-ink-secondary">{label}</p>;
-      })}
-      {relationships.length > 8 && <button type="button" aria-expanded={showAllRelationships}
-        className="text-xs text-emerald-700 dark:text-emerald-300" onClick={() => setShowAllRelationships(!showAllRelationships)}>
-        {showAllRelationships ? "Show fewer relationships" : `Show all ${relationships.length} relationships`}
-      </button>}
-    </div>
-  ) : undefined;
+  const relationshipSlot = enrich && scanId && nodeId
+    ? <GraphRecordedRelationships key={`${scanId}:${nodeId}`} scanId={scanId} nodeId={nodeId} onInspectNode={onInspectNode} />
+    : undefined;
   const showNextAction = !(pathname === "/graph" && nextAction.label === "Inspect in lineage");
 
   const locationValue = (...keys: string[]) => {
@@ -255,7 +235,7 @@ export function GraphEntityDrawer({
     </div>
   );
 
-  return (
+  const panel = (
     <LineageDetailPanel
       data={enriched}
       onClose={onClose}
@@ -268,4 +248,7 @@ export function GraphEntityDrawer({
       footerSlot={footerSlot}
     />
   );
+  return enrich && scanId && nodeId
+    ? <GraphRecordedRelationshipScope scanId={scanId} nodeId={nodeId}>{panel}</GraphRecordedRelationshipScope>
+    : panel;
 }

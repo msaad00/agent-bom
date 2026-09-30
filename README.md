@@ -73,6 +73,8 @@ agent-bom scan . -f json -o scan.json
 
 Open `scan.json` for findings and assessment coverage. For pull requests, use `agent-bom scan . -f sarif -o findings.sarif` and [upload the artifact in CI](docs/FIRST_RUN.md#5-gate-ci-on-the-result).
 
+For sample inventory and an exact graph link, run `agent-bom quickstart --run --offline`. It skips package-CVE lookup; use the bundled demo for advisory-backed examples. [Follow the first-run handoff](docs/FIRST_RUN.md#2-inspect-the-bundled-sample-project).
+
 <details>
 <summary>No project handy? Scan the bundled sample estate offline</summary>
 
@@ -155,8 +157,6 @@ Follow **CVE-2023-4863 in pillow@9.0.0** through recorded relationships between 
 Inspect the source receipts and carry the selected finding into remediation. A recorded path does not by itself prove exploitation or successful data access.
 
 <a href="docs/images/correlation-graph-live.png"><img src="docs/images/correlation-graph-live.png" alt="Reference lab path linking a Pillow advisory, workload identity and modeled data asset" width="1440"></a>
-
-Inspect each hop’s source evidence, permissions and remediation. This reference lab uses modeled infrastructure; select the image for full-size detail.
 
 <details>
 <summary>Explore graph navigation, permissions and evidence</summary>

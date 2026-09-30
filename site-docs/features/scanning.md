@@ -120,6 +120,12 @@ block. Language-package coverage is unaffected by this switch.
 
 ## IaC and cloud posture
 
+When a CloudFormation template contains unreadable or malformed containers,
+the scan keeps findings from valid resources and emits a coverage warning for
+checks it could not evaluate. Inspect `coverage_warnings` and `scan_run.outcome`
+in the JSON report before treating a scan as complete. This static check does
+not resolve CloudFormation references or establish deployed cloud posture.
+
 Use `agent-bom iac` as the pre-cloud gate for Terraform, CloudFormation,
 Kubernetes, Helm-rendered manifests, and Dockerfiles. Use `agent-bom
 cis-benchmark` as the runtime posture check for deployed cloud state. The

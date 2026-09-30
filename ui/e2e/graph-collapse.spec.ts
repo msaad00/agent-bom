@@ -54,6 +54,10 @@ for (const theme of ["light", "dark"]) for (const width of [390, 1440]) {
       const bounds = element.closest('.context-map-canvas')!.getBoundingClientRect();
       return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
     })).toBe(true);
+    await expect.poll(() => page.locator('.react-flow__node[data-id="server:left"] [data-testid="context-overview-title"]').evaluate(element => {
+      const node = element.closest<HTMLElement>(".react-flow__node")!;
+      return parseFloat(getComputedStyle(element).fontSize) * node.getBoundingClientRect().width / node.offsetWidth;
+    })).toBeGreaterThanOrEqual(12);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
     await page.screenshot({ path: testInfo.outputPath(`collapse-${theme}-${width}.png`), fullPage: true });

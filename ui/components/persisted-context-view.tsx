@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight, ChevronDown, Maximize2, Minimize2, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Background, BaseEdge, Controls, EdgeLabelRenderer, ReactFlow, getBezierPath, type EdgeProps, type Node, type NodeProps, Handle, Position } from "@xyflow/react";
+import { Background, BaseEdge, Controls, EdgeLabelRenderer, Panel, ReactFlow, useReactFlow, getBezierPath, type EdgeProps, type Node, type NodeProps, Handle, Position } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useSearchParams } from "next/navigation";
 import { requestedGraphRoot } from "@/lib/graph-root";
@@ -48,6 +48,15 @@ function ContextRecordedEdge(props: EdgeProps) {
     </div></EdgeLabelRenderer>}</>;
 }
 const contextEdgeTypes = { smoothstep: ContextRecordedEdge };
+
+function ContextViewportControls({ selectedId }: { selectedId: string }) {
+  const { fitView } = useReactFlow();
+  return <Panel position="top-right" className="flex items-center gap-1 rounded-lg border border-outline bg-surface p-1 text-xs">
+    <span className="hidden px-1 text-ink-secondary sm:inline">Pan to explore</span>
+    <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Fit all entities" onClick={() => void fitView({ padding: 0.1, minZoom: 0.01, maxZoom: 1, duration: 200 })}>Fit all</button>
+    <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Readable view of selected entity" onClick={() => void fitView({ nodes: [{ id: selectedId }], padding: 0.15, minZoom: 0.75, maxZoom: 1, duration: 200 })}>Readable view</button>
+  </Panel>;
+}
 
 function ContextOverviewNode({ data, selected, targetPosition, sourcePosition }: NodeProps<Node<LineageNodeData>>) {
   const Icon = entityIcon(data.nodeType);
@@ -135,6 +144,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [expandedCanvas, setExpandedCanvas] = useState(false);
+  const [viewportRevision, setViewportRevision] = useState(0);
   const [loadedQuery, setLoadedQuery] = useState("");
   useEffect(() => {
     const controller = new AbortController();
@@ -225,8 +235,9 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="context-map-panels">
       <div ref={layout.canvasRef} aria-label="Persisted neighborhood canvas" data-layout-direction={layout.direction} className="context-map-canvas">
-        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.15} nodesDraggable={false}
+        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction, viewportRevision])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.01} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
+          <ContextViewportControls selectedId={selectedId || focus} />
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP * 1.5} size={0.5} /><Controls className={CONTROLS_CLASS} />
         </ReactFlow>}
       </div>
@@ -239,9 +250,9 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
           <div className="flex flex-wrap gap-2"><button className="context-action" onClick={() => setFocusId(selected.id)}>Focus here</button>
             {!lastPage && <button className="context-action" disabled={graph.busy || graph.capped || graph.stale} onClick={() => void graph.load(selected.id)}>Expand connections</button>}
             {lastPage?.next_cursor && <button className="context-action" disabled={graph.busy || graph.capped || graph.stale} onClick={() => void graph.load(selected.id, lastPage.next_cursor!)}>Load more relationships</button>}
-            {!!pages.length && selected.id !== rootId && <button className="context-action" onClick={() => { graph.collapse(selected.id); setFocusId(null); }}>Collapse connections</button>}
+            {!!pages.length && selected.id !== rootId && <button className="context-action" onClick={() => { graph.collapse(selected.id); setFocusId(null); setViewportRevision(value => value + 1); }}>Collapse connections</button>}
           </div>
-          {!!pages.length && selected.id !== rootId && <p className="text-xs">Collapse also clears later expansions.</p>}
+          {!!pages.length && selected.id !== rootId && <p className="text-xs">Independent branches stay loaded.</p>}
           <LoadedRelationshipList key={selected.id} nodeId={selected.id} incident={incident} label={label} onSelect={setSelectedEdge} />
         </> : <p>Choose a persisted agent to begin.</p>}
         <details><summary className="cursor-pointer font-semibold">Loaded entities ({graph.nodes.length})</summary>

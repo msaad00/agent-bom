@@ -143,6 +143,16 @@ test("high-degree Context starts compact and focuses a returned canonical entity
   expect(incidentRequests).toBe(requestsBeforePaging);
   await page.getByRole("button", { name: "Expand canvas", exact: true }).click();
   await expect(page.locator(".react-flow__node")).toHaveCount(24);
+  await page.getByRole("group", { name: "Graph layout" }).getByRole("button", { name: "Vertical", exact: true }).click();
+  await page.getByRole("button", { name: "Fit all entities", exact: true }).click();
+  await expect.poll(() => canvas.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return [...element.querySelectorAll(".react-flow__node")].every(node => {
+      const box = node.getBoundingClientRect();
+      return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
+    });
+  })).toBe(true);
+
   await page.getByRole("button", { name: "Compact canvas", exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "Agent neighborhood inspector" });
   await inspector.getByText(/^Loaded entities \(\d+\)$/).click();

@@ -1,9 +1,9 @@
 {
   "release_version": "0.106.1",
-  "captured_at": "2026-09-30T05:25:26.368Z",
-  "source_commit": "0b3e9c4ae0412674dc7f73a032ed3229960113aa",
+  "captured_at": "2026-09-30T05:55:25.171Z",
+  "source_commit": "a1c430b83cf10ff2ffbad7986f5628d9d2edafcb",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:c7d9340833532ec6b9f72df1e008383fd564be3df2bb3fb94fcff764697d855f",
+  "capture_inputs_sha256": "sha256:3ae41510cdb4671bd540cb36f0695cd094498a0c452a878fb16b8309b353ebfd",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -108,7 +108,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.106.1",
-      "sha256": "sha256:87ada7723972b28e14ed8e76338c5deb4f2682af627af5c16377c1ee79bc3ae9"
+      "sha256": "sha256:47e2073853e26ba5c47558b3ce002aac189ab6b2fbcad7b10e0dd7ee41a63a44"
     },
     {
       "presentation": "dark desktop",
@@ -209,7 +209,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.106.1",
-      "sha256": "sha256:9a0307c348d3eabf7dc5bdebad6e27166e42124c44849f9daad7c377a2131b8a"
+      "sha256": "sha256:4a7bddb5598739969a10a4b1a146b7a66c7160e519a7250558ec1b22aad7e523"
     },
     {
       "presentation": "dark mobile",
@@ -217,7 +217,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.106.1",
-      "sha256": "sha256:4185b1e7268b08cf447f9f23db34aea91fd579062060b12d1fa7abd277212268"
+      "sha256": "sha256:fafbc50bd1c5b4fb77dfd049fdec5b79a2271264271d2f8625639ace2de827de"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -249,7 +249,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.106.1",
-      "sha256": "sha256:5f4776aea7c1b7d15a3f0c329a1862dde288a55d048c17720a33035970def9c7"
+      "sha256": "sha256:a813ce70bf202d3fc8559053ecc0e9fa4e2df420e6ef8141a5d30df650f58000"
     },
     {
       "presentation": "light desktop",
@@ -257,7 +257,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.106.1",
-      "sha256": "sha256:b3603e052b495a6ce0802767412bcafaec66fa8f32433b7538a25a52a7b76c26"
+      "sha256": "sha256:675c76b43ad9c22e761d6d847f8ce9637a1c2a60052d5392ad66aac41559c013"
     },
     {
       "presentation": "dark desktop",

@@ -311,8 +311,10 @@ identically named agents from different sources remain distinct.
 
 The initial view requests one page of up to 24 recorded relationships. Select a
 node and choose **Expand connections** for its first page, or **Load more
-relationships** for its continuation. **Collapse connections** removes that
-expansion and later expansions; **Focus here** shows the selected node and its immediate recorded neighbors.
+relationships** for its continuation. **Collapse connections** removes the selected
+node's loaded pages and expansions that depend solely on them. Independent branches,
+shared descendants and later root pages stay loaded. **Focus here** shows the selected
+node and its immediate recorded neighbors.
 **Back to neighborhood** restores the loaded overview without fetching again or
 discarding earlier expansions. Browsing scan pages preserves the current selection;
 choosing a different scan replaces it. Switching graph lenses retains the selected snapshot.
@@ -325,7 +327,10 @@ The canvas initially shows at most eight nodes and 12 relationships.
 cached nodes searchable by name or exact ID and grouped by entity type, without
 fitting the whole graph on screen. Select a node or edge to inspect recorded
 relationships; the overview keeps relationship labels in the inspector to avoid
-covering nearby cards. Counts cover
+covering nearby cards. **Fit all** frames the nodes currently on the canvas;
+large layouts may use smaller labels. **Readable view** centers the selected entity
+at readable zoom. Neither control fetches additional evidence or raises the canvas
+limits. Counts cover
 loaded evidence only; unqueried relationships and collection coverage remain
 unknown. A new snapshot generation clears the workspace and requires a restart.
 There is no automatic multi-hop collection or full-graph download in this mode.

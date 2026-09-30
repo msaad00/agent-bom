@@ -62,3 +62,53 @@ it("bounds the cache to ten pages and collapses added-node evidence", async () =
   act(() => result.current.collapse("node:0"));
   expect(result.current.pages).toHaveLength(1); expect(result.current.nodes.some(node => node.id === "node:0")).toBe(false);
 });
+
+function branchPage(id: string, children: string[], next: string | null = null): GraphIncidentPage {
+  const template = page(id, next);
+  return { ...template, nodes: children.map(child => ({ ...template.node!, id: child })),
+    edges: children.map(child => ({ ...template.edges[0]!, source: id, target: child })) };
+}
+
+it("collapses one expansion without discarding sibling expansions or later root pages", async () => {
+  fetchPage.mockResolvedValueOnce(branchPage("root", ["left", "right"], "root-next"))
+    .mockResolvedValueOnce(branchPage("left", ["left-child"]))
+    .mockResolvedValueOnce(branchPage("right", ["right-child"]))
+    .mockResolvedValueOnce(branchPage("root", ["later-root-neighbor"]));
+  const { result } = renderHook(() => useIncidentNeighborhood("persisted-scan", "root", "both", "tenant-a"));
+  await waitFor(() => expect(result.current.pages).toHaveLength(1));
+  await act(() => result.current.load("left"));
+  await act(() => result.current.load("right"));
+  await act(() => result.current.load("root", "root-next"));
+  act(() => result.current.collapse("left"));
+  expect(result.current.pages.map(item => item.node_id)).toEqual(["root", "right", "root"]);
+  expect(result.current.nodes.map(item => item.id)).toContain("right-child");
+  expect(result.current.nodes.map(item => item.id)).toContain("later-root-neighbor");
+  expect(result.current.nodes.map(item => item.id)).not.toContain("left-child");
+  expect(fetchPage).toHaveBeenCalledTimes(4);
+});
+
+it("prunes orphan expansions while retaining a descendant reachable through a sibling", async () => {
+  fetchPage.mockResolvedValueOnce(branchPage("root", ["left", "right"]))
+    .mockResolvedValueOnce(branchPage("left", ["orphan", "shared"]))
+    .mockResolvedValueOnce(branchPage("orphan", ["orphan-child"]))
+    .mockResolvedValueOnce(branchPage("shared", ["shared-child"]))
+    .mockResolvedValueOnce(branchPage("right", ["shared"]));
+  const { result } = renderHook(() => useIncidentNeighborhood("persisted-scan", "root", "both", "tenant-a"));
+  await waitFor(() => expect(result.current.pages).toHaveLength(1));
+  for (const id of ["left", "orphan", "shared", "right"]) await act(() => result.current.load(id));
+  act(() => result.current.collapse("left"));
+  expect(result.current.pages.map(item => item.node_id)).toEqual(["root", "shared", "right"]);
+  expect(result.current.nodes.map(item => item.id)).toContain("shared-child");
+  expect(result.current.nodes.map(item => item.id)).not.toContain("orphan-child");
+});
+
+it("does not discard evidence when asked to collapse an unloaded entity or the root", async () => {
+  fetchPage.mockResolvedValueOnce(branchPage("root", ["left"])).mockResolvedValueOnce(branchPage("left", ["leaf"]));
+  const { result } = renderHook(() => useIncidentNeighborhood("persisted-scan", "root", "both", "tenant-a"));
+  await waitFor(() => expect(result.current.pages).toHaveLength(1));
+  await act(() => result.current.load("left"));
+  act(() => result.current.collapse("not-loaded"));
+  expect(result.current.pages).toHaveLength(2);
+  act(() => result.current.collapse("root"));
+  expect(result.current.pages).toHaveLength(2);
+});

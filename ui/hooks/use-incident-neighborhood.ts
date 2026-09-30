@@ -12,6 +12,28 @@ export type IncidentDirection = "in" | "out" | "both";
 interface State { scope: string; pages: GraphIncidentPage[]; busy: boolean; error: string | null; stale: boolean }
 const empty = (scope: string): State => ({ scope, pages: [], busy: false, error: null, stale: false });
 
+/** Keep independent branches and root continuations; discard only orphan expansions. */
+function collapsePages(pages: GraphIncidentPage[], rootId: string, nodeId: string): GraphIncidentPage[] {
+  const candidates = pages.filter(page => page.node_id !== nodeId);
+  const reachable = new Set([rootId]);
+  const retained = new Set<GraphIncidentPage>();
+  // At most ten pages. Repeat because a child may have loaded before a second
+  // branch supplied the connection that keeps it reachable after collapse.
+  for (let pass = 0; pass < candidates.length; pass++) {
+    let changed = false;
+    for (const page of candidates) {
+      if (retained.has(page) || !reachable.has(page.node_id)) continue;
+      retained.add(page); changed = true;
+      for (const edge of page.edges) {
+        if (edge.source === page.node_id) reachable.add(edge.target);
+        if (edge.target === page.node_id) reachable.add(edge.source);
+      }
+    }
+    if (!changed) break;
+  }
+  return candidates.filter(page => retained.has(page));
+}
+
 /** One snapshot generation per workspace, including first pages of other nodes. */
 export function useIncidentNeighborhood(scanId: string, rootId: string, direction: IncidentDirection, owner: string, enabled = true) {
   const scope = JSON.stringify([owner, scanId, rootId, direction]);
@@ -67,6 +89,10 @@ export function useIncidentNeighborhood(scanId: string, rootId: string, directio
   }, [visible.pages]);
   return { ...visible, ...graph, capped: visible.pages.length >= INCIDENT_CACHE_PAGE_LIMIT || graph.edges.length >= INCIDENT_CACHE_EDGE_LIMIT,
     load, restart: () => { publish(empty(scope)); void load(rootId, undefined, true); },
-    collapse: (nodeId: string) => { request.current?.controller.abort(); ++sequence.current; publish({ ...current.current, busy: false, pages: current.current.pages.slice(0, current.current.pages.findIndex(page => page.node_id === nodeId)) }); },
+    collapse: (nodeId: string) => {
+      if (nodeId === rootId || current.current.scope !== scope || !current.current.pages.some(page => page.node_id === nodeId)) return;
+      request.current?.controller.abort(); ++sequence.current;
+      publish({ ...current.current, busy: false, pages: collapsePages(current.current.pages, rootId, nodeId) });
+    },
   };
 }

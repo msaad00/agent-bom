@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, Sequence
 
-from agent_bom.storage import state_home
+from agent_bom.storage import sqlite_wal, state_home
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -375,7 +375,7 @@ def default_graph_db_path() -> Path:
 
 def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) -> None:
     """Ensure tables exist and schema is current."""
-    conn.execute("PRAGMA journal_mode=WAL")
+    sqlite_wal.enable_wal(conn, wait_seconds=10.0)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(_CREATE_TABLES)

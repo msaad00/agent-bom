@@ -16,6 +16,7 @@ import threading
 import time
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -319,22 +320,19 @@ class SQLiteGraphStore:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self._db_path = Path(db_path or sqlite_graph_store.default_graph_db_path()).expanduser()
 
-    def _exists(self) -> bool:
-        return self._db_path.exists()
-
-    def _ensure_parent(self) -> None:
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-
     def _open_rw_conn(self) -> sqlite3.Connection:
-        self._ensure_parent()
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        sqlite_graph_store._init_db(conn)
-        conn.execute(_CREATE_PRESET_TABLE_SQLITE)
-        conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
-        sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
-        conn.commit()
-        return conn
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        with ExitStack() as cleanup:
+            conn = sqlite3.connect(str(self._db_path), timeout=10)
+            cleanup.callback(conn.close)
+            conn.row_factory = sqlite3.Row
+            sqlite_graph_store._init_db(conn)
+            conn.execute(_CREATE_PRESET_TABLE_SQLITE)
+            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+            sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
+            conn.commit()
+            cleanup.pop_all()
+            return conn
 
     def _ensure_schema_initialized(self) -> None:
         """Apply schema init + legacy-tenant backfill once per process.
@@ -363,7 +361,7 @@ class SQLiteGraphStore:
                 conn.close()
 
     def _open_ro_conn(self) -> sqlite3.Connection | None:
-        if not self._exists():
+        if not self._db_path.exists():
             return None
         self._ensure_schema_initialized()
         try:

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import { FindingInvestigationContext } from "@/components/finding-investigation-context";
 import { GraphPanelSkeleton } from "@/components/graph-state-panels";
+import { GraphSnapshotUpdates } from "@/components/graph-snapshot-updates";
 import GraphPageClient from "./graph-page-client";
 
 // One graph surface, several lenses selected by URL params. Lineage (default)
@@ -52,5 +53,5 @@ const ContextLensView = dynamic(
 
 export function GraphSurface() {
   const lens = useSearchParams()?.get("lens");
-  return <><FindingInvestigationContext />{lens === "mesh" ? <MeshLensView /> : lens === "context" ? <ContextLensView /> : <GraphPageClient />}</>;
+  return <><FindingInvestigationContext /><GraphSnapshotUpdates />{lens === "mesh" ? <MeshLensView /> : lens === "context" ? <ContextLensView /> : <GraphPageClient />}</>;
 }

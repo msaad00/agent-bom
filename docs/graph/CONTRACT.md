@@ -615,3 +615,22 @@ source metadata. Page completeness and missing endpoints are retained; collectio
 coverage stays unknown. Recorded edges do not prove execution, exploitation or
 successful access. Unavailable, stale or currently loading relationship reads
 cannot be exported. No write to the control plane or automatic upload occurs.
+
+## Saved snapshot updates
+
+Saved graph views remain pinned while new scans finish. While a graph view is
+visible, the dashboard checks up to 40 recent saved snapshot records every 30
+seconds, with a manual **Check for updates** action. This interval is a polling
+policy, not an end-to-end latency guarantee. Running scan progress is separate.
+
+When a newer snapshot of the same kind is available, choose **Open newer
+snapshot** or **Keep current**. Switching reloads the selected view and retains
+its URL filters and entity/finding context. A missing entity in the new snapshot
+remains missing; it must not be replaced with an unrelated entity. New snapshots
+can cover a different source scope; inspect their evidence before comparing them.
+
+Background checks do not replace graph data, selection or viewport. Hidden tabs
+do not poll. Session changes discard pending results; denied access stops
+background retries until the session changes or a manual retry. Failed checks or
+a selected snapshot outside the bounded list mean freshness is unknown. Correlated
+and scan snapshots are not mixed, and scenario views do not offer this switch.

@@ -39,6 +39,21 @@ for (const theme of ["light", "dark"]) for (const width of [390, 1440]) {
     await expect(inspector.getByRole("button", { name: "later server:later", exact: true })).toBeVisible();
     await expect(inspector.getByRole("button", { name: "left-child server:left-child", exact: true })).toHaveCount(0);
     expect(requests).toBe(4);
+    const canvas = page.getByLabel("Persisted neighborhood canvas", { exact: true });
+    await page.getByRole("button", { name: "Fit all entities", exact: true }).click();
+    await expect.poll(() => canvas.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      return [...element.querySelectorAll(".react-flow__node")].every(node => {
+        const box = node.getBoundingClientRect();
+        return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
+      });
+    })).toBe(true);
+    await page.getByRole("button", { name: "Readable view of selected entity", exact: true }).click();
+    await expect.poll(() => page.locator('.react-flow__node[data-id="server:left"]').evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const bounds = element.closest('.context-map-canvas')!.getBoundingClientRect();
+      return box.x >= bounds.x && box.right <= bounds.right && box.y >= bounds.y && box.bottom <= bounds.bottom;
+    })).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
     await page.screenshot({ path: testInfo.outputPath(`collapse-${theme}-${width}.png`), fullPage: true });

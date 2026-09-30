@@ -166,6 +166,8 @@ describe("Overview canonical finding counts", () => {
     expect(screen.queryByText("Current findings · configured window")).not.toBeInTheDocument();
     expect(screen.queryByText("12 scans")).not.toBeInTheDocument();
     expect(screen.queryByText("Recent scans & activity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Last successful scan")).not.toBeInTheDocument();
+    expect(screen.getByTestId("overview-freshness")).toHaveTextContent(timestamp ? "Report timestamp" : "Report timestamp unavailable");
     expect(screen.queryByText("Activity fixture")).not.toBeInTheDocument();
     expect(cockpitProps.mock.lastCall?.[0]).toMatchObject({ localReport: true, critical: 2, high: 16, severity: { total: 23, high: 16 } });
     expect(screen.getByText("Posture unavailable")).toBeVisible();

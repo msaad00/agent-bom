@@ -123,6 +123,29 @@ or attach deterministic output to an issue.
 
 ## 2. Inspect the Bundled Sample Project
 
+For a single-command sample scan with a persisted graph:
+
+```bash
+agent-bom quickstart --run --offline
+```
+
+The final handoff prints the absolute JSON report path, the database-backed
+control-plane command, and a graph URL pinned to the snapshot just read back.
+Start that command before opening the URL. A missing or incomplete persisted
+graph fails the quickstart instead of printing a successful handoff.
+
+This is sample evidence, not an assessment of your environment. Offline
+quickstart inventories the sample and skips package-CVE lookup; zero CVEs is
+not a clean verdict. Use `agent-bom scan --demo --offline` for bundled advisory
+proof, or omit `--offline` to request live lookup. In the resulting JSON, review
+`scan_run` and `coverage_warnings` before interpreting counts. Then scan your
+own repository from its root:
+
+```bash
+agent-bom scan . -f json -o agent-bom-report.json
+```
+
+
 From any directory after installing `agent-bom`:
 
 ```bash

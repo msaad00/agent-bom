@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [0.107.1] - 2026-09-30
 
+### Fixed
+
+- Keep SQLite graph startup metadata repairs indexed after migration, and reinitialize read schema state when a database is replaced at the same path. Late legacy relationship metadata remains repairable.
+
 ### Security
 
 - Require Tornado 6.5.10, including the 6.5.9 security fixes and follow-up static-file compatibility repair.

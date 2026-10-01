@@ -58,7 +58,7 @@ def verify_release_candidate(
     if not isinstance(main_sha, str) or main_sha.lower() != expected_sha:
         raise ReleaseProofError(f"candidate {expected_sha} does not equal current {branch}")
 
-    query = urlencode({"branch": branch, "event": "push", "per_page": 100})
+    query = urlencode({"branch": branch, "event": "push", "head_sha": expected_sha, "per_page": 100})
     runs_endpoint = f"/repos/{repo}/actions/workflows/{quote(workflow, safe='')}/runs?{query}"
     runs_payload = _fetch_safely(fetch_json, runs_endpoint)
     runs = runs_payload.get("workflow_runs")

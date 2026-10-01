@@ -7,9 +7,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.107.1] - 2026-09-30
+## [0.107.2] - 2026-10-01
+
+Version 0.107.1 was tagged but not published; its prepared changes are included here.
 
 ### Fixed
+
+- Query release CI by the candidate commit so unrelated workflow history cannot hide its successful main run; retain exact-main and completed-success checks.
 
 - Queue same-process SQLite graph mutations in arrival order before schema setup, preserving bounded contention errors, failed-producer rollback and concurrent initialized readers.
 
@@ -3829,8 +3833,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.107.1...HEAD
-[0.107.1]: https://github.com/msaad00/agent-bom/compare/v0.107.0...v0.107.1
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.107.2...HEAD
+[0.107.2]: https://github.com/msaad00/agent-bom/compare/v0.107.0...v0.107.2
 [0.107.0]: https://github.com/msaad00/agent-bom/compare/v0.106.1...v0.107.0
 [0.106.1]: https://github.com/msaad00/agent-bom/compare/v0.105.0...v0.106.1
 [0.105.0]: https://github.com/msaad00/agent-bom/compare/v0.104.0...v0.105.0

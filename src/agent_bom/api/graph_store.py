@@ -12,7 +12,6 @@ import base64
 import json
 import re
 import sqlite3
-import threading
 import time
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
@@ -23,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
 from agent_bom.db import graph_store as sqlite_graph_store
+from agent_bom.db.graph_bootstrap import ensure_read_schema
 from agent_bom.db.graph_revision import read_snapshot_identity
 from agent_bom.graph import (
     AttackPath,
@@ -99,14 +99,6 @@ USING fts5(
     search_text
 )
 """
-
-# Schema init + legacy-tenant backfill are DML that take the WAL write lock. The
-# read path used to run them on every ``_open_ro_conn`` call, so a single read
-# could stall behind the write lock for seconds under load. Run them once per
-# process per database path instead; the write path still re-applies them on
-# every ``_open_rw_conn`` so newly created databases stay current.
-_SCHEMA_INIT_LOCK = threading.Lock()
-_SCHEMA_INITIALIZED_PATHS: set[str] = set()
 
 
 def _escape_like_query(query: str) -> str:
@@ -334,36 +326,10 @@ class SQLiteGraphStore:
             cleanup.pop_all()
             return conn
 
-    def _ensure_schema_initialized(self) -> None:
-        """Apply schema init + legacy-tenant backfill once per process.
-
-        This is the DML that ``_open_ro_conn`` previously ran on every read,
-        taking the WAL write lock each time. Running it once (through a
-        read-write connection identical to ``_open_rw_conn``) leaves the read
-        path free of the write lock while keeping the on-disk schema current.
-        """
-        key = str(self._db_path)
-        if key in _SCHEMA_INITIALIZED_PATHS:
-            return
-        with _SCHEMA_INIT_LOCK:
-            if key in _SCHEMA_INITIALIZED_PATHS:
-                return
-            conn = self._open_rw_conn()
-            try:
-                _SCHEMA_INITIALIZED_PATHS.add(key)
-                # The DDL replay above re-runs every CREATE INDEX, and SQLite
-                # documents a stats refresh as the thing to do after a schema
-                # change. It also means a store that has only ever been read in
-                # this process still gets statistics, so the node-read plans do
-                # not depend on a write having happened first.
-                sqlite_graph_store.refresh_query_planner_stats(conn)
-            finally:
-                conn.close()
-
     def _open_ro_conn(self) -> sqlite3.Connection | None:
         if not self._db_path.exists():
             return None
-        self._ensure_schema_initialized()
+        ensure_read_schema(self._db_path, self._open_rw_conn, sqlite_graph_store.refresh_query_planner_stats)
         try:
             conn = sqlite3.connect(f"{self._db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=10)
         except sqlite3.OperationalError:

@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, Sequence
 
+from agent_bom.db.graph_bootstrap import backfill_edge_metadata
 from agent_bom.db.graph_revision import ensure_sqlite_revisions, revision_tokens
 from agent_bom.storage import sqlite_wal, state_home
 
@@ -416,8 +417,7 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     for column, statement in edge_migrations.items():
         if column not in edge_columns:
             conn.execute(statement)
-    conn.execute("UPDATE graph_edges SET valid_from = first_seen WHERE valid_from = '' OR valid_from IS NULL")
-    conn.execute("UPDATE graph_edges SET source_scan_id = scan_id WHERE source_scan_id = '' OR source_scan_id IS NULL")
+    backfill_edge_metadata(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_valid ON graph_edges(tenant_id, valid_from, valid_to)")
     # Backfill the per-hop traversal indexes onto stores created before them.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan_source ON graph_edges(tenant_id, scan_id, source_id)")

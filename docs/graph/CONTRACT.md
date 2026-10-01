@@ -783,3 +783,5 @@ Exhausting this bounded set of node pages does not establish source collection
 coverage, effective permission or successful execution. Use the retained scope
 and completeness when building an integration, then qualify its workload against
 the intended database and deployment profile.
+
+SQLite startup repairs for missing relationship time/source metadata use partial indexes; normalized edges do not require repeated full-table scans. The read initialization cache tracks the database file identity, so an offline replacement at the same path receives schema initialization. Replace SQLite files only with all database connections stopped; this is not live restore or failover support. The additive indexes may remain after rollback.

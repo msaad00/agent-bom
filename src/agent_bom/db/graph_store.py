@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, S
 
 from agent_bom.db.graph_bootstrap import backfill_edge_metadata
 from agent_bom.db.graph_revision import ensure_sqlite_revisions, revision_tokens
+from agent_bom.db.graph_write_admission import graph_writer_admission
 from agent_bom.storage import sqlite_wal, state_home
 
 if TYPE_CHECKING:
@@ -692,25 +693,20 @@ def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, No
     # estate with an empty graph. ``:memory:`` has no parent to create.
     if target != ":memory:":
         Path(target).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(target, timeout=10)
-    conn.row_factory = sqlite3.Row
-    completed = False
-    try:
-        _init_db(conn)
-        yield conn
-        completed = True
-    finally:
-        # Only on a clean exit. The refresh commits, so running it unconditionally
-        # would turn a failed partial graph write into a committed one —
-        # save_graph_streaming relies on closing without a commit to restore the
-        # prior snapshot when a producer raises mid-flush.
-        #
-        # A clean exit is also where the row counts have just changed, and it
-        # matches the refresh-before-close pattern SQLite documents for
-        # short-lived connections. Readers open afterwards, so they see it.
-        if completed:
-            refresh_query_planner_stats(conn)
-        conn.close()
+    with graph_writer_admission(db_path):
+        conn = sqlite3.connect(target, timeout=10)
+        conn.row_factory = sqlite3.Row
+        completed = False
+        try:
+            _init_db(conn)
+            yield conn
+            completed = True
+        finally:
+            # Stats refresh commits: skip it after producer failure so closing
+            # rolls back the partial write and preserves the previous snapshot.
+            if completed:
+                refresh_query_planner_stats(conn)
+            conn.close()
 
 
 def normalize_snapshot_kind(snapshot_kind: str) -> str:

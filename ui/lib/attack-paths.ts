@@ -843,7 +843,6 @@ export interface GraphPathQueueCounts {
   returnedRows: number;
   renderedRows: number;
   queueRows: number;
-  additionalPriorityRows: number;
   truncated: boolean;
 }
 
@@ -851,23 +850,19 @@ export interface GraphPathQueueCounts {
 export function graphPathQueueCounts(
   graph: UnifiedGraphResponse | null | undefined,
   renderedRows: number,
-  priorityPaths: AttackPath[] = [],
 ): GraphPathQueueCounts {
   const metadata = graph?.count_metadata;
   const snapshotTotal = metadata?.snapshot_total ?? graph?.pagination?.total ?? 0;
   const source = metadata?.source;
   const queueKeys = new Set((graph?.attack_paths ?? []).map(attackPathKey));
-  const priorityKeys = new Set(priorityPaths.map(attackPathKey));
-  const additionalPriorityRows = [...priorityKeys].filter((key) => !queueKeys.has(key)).length;
   return {
     snapshotTotal,
     materializedPaths:
       metadata?.materialized_paths ?? (source === "persisted_graph_paths" ? snapshotTotal : 0),
     derivedPaths:
       metadata?.derived_paths ?? (source === "derived_graph_paths" ? snapshotTotal : 0),
-    returnedRows: queueKeys.size + additionalPriorityRows,
+    returnedRows: queueKeys.size,
     queueRows: queueKeys.size,
-    additionalPriorityRows,
     renderedRows: Math.max(0, renderedRows),
     truncated: Boolean(graph?.completeness?.truncated ?? graph?.pagination?.has_more),
   };

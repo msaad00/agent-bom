@@ -8,8 +8,10 @@ DECLARE previous_graph_bypass TEXT := current_setting('app.bypass_rls', true);
 BEGIN
   IF to_regclass('public.graph_snapshots') IS NOT NULL THEN
     ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT '';
+    ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS read_revision TEXT NOT NULL DEFAULT '';
     PERFORM set_config('app.bypass_rls', '1', true);
     UPDATE graph_snapshots SET snapshot_generation=replace(gen_random_uuid()::text, '-', '') WHERE snapshot_generation='';
+    UPDATE graph_snapshots SET read_revision=replace(gen_random_uuid()::text, '-', '') WHERE read_revision='';
     PERFORM set_config('app.bypass_rls', COALESCE(previous_graph_bypass, '0'), true);
   END IF;
   IF to_regclass('public.graph_edges') IS NOT NULL THEN
@@ -429,11 +431,13 @@ VALUES ('agent_identities',2,now())
 ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,excluded.version),updated_at=excluded.updated_at;
 
 -- Preserve older readiness until the full graph v4 migration exists; never
--- downgrade its marker on runtime replay. Generation upgrades that schema to v5.
-UPDATE control_plane_schema_versions SET version=5,updated_at=now()
-WHERE component='graph' AND version>=4 AND version<5
+-- downgrade its marker on replay. Ownership and committed read tokens require v6.
+UPDATE control_plane_schema_versions SET version=6,updated_at=now()
+WHERE component='graph' AND version>=4 AND version<6
   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public'
-              AND table_name='graph_snapshots' AND column_name='snapshot_generation');
+              AND table_name='graph_snapshots' AND column_name='snapshot_generation')
+  AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+              AND table_name='graph_snapshots' AND column_name='read_revision');
 
 -- Immutable BOM history and operator-recorded lifecycle.
 CREATE TABLE IF NOT EXISTS agent_lifecycle_records (

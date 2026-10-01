@@ -8,17 +8,19 @@ from fastapi import HTTPException
 
 from agent_bom.api.graph_scan_ids import resolve_graph_scan_id
 
+_PIN_UNSUPPORTED = "Generation-pinned pages require SQLite or Postgres; the experimental Neptune backend does not support them."
+
 
 def pin_generation(store: Any, *, tenant: str, scan_id: str, generation: str | None, offset: int) -> tuple[str, str]:
     if offset and not generation:
         raise HTTPException(422, "Continuation requires snapshot_generation from the first page; restart the query.")
     reader = getattr(store, "snapshot_identity", None)
     if not callable(reader):
-        raise HTTPException(501, "This graph backend does not support generation-pinned pages.")
+        raise HTTPException(501, _PIN_UNSUPPORTED)
     try:
         identity = reader(tenant_id=tenant, scan_id=resolve_graph_scan_id(tenant, scan_id), for_paging=True)
     except NotImplementedError as exc:
-        raise HTTPException(501, "This graph backend does not support generation-pinned pages.") from exc
+        raise HTTPException(501, _PIN_UNSUPPORTED) from exc
     if generation is not None and (not generation or generation != identity[1]):
         raise HTTPException(409, "Graph snapshot changed; restart the query from its first page.")
     return identity

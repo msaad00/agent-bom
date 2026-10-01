@@ -350,7 +350,18 @@ def test_generation_backfill_under_non_superuser_migration_owner(monkeypatch, up
                 assert len(generations) == 2
                 assert all(len(row[0]) == 32 for row in generations)
                 assert generations[0] != generations[1]
-                assert conn.execute("SELECT version FROM control_plane_schema_versions WHERE component='graph'").fetchone()[0] == 5
+                revisions = conn.execute("SELECT read_revision FROM graph_snapshots ORDER BY tenant_id").fetchall()
+                assert len(revisions) == 2
+                assert all(len(row[0]) == 32 for row in revisions)
+                assert revisions[0] != revisions[1]
+                assert revisions != generations
+                assert conn.execute("SELECT version FROM control_plane_schema_versions WHERE component='graph'").fetchone()[0] == 6
+                conn.commit()  # Release read locks before replaying DDL in another connection.
+                # Replaying bootstrap must preserve both ownership and read tokens.
+                with psycopg.connect(owner_url) as replay:
+                    replay.execute((root / "deploy/supabase/postgres/runtime-schema.sql").read_text())
+                assert conn.execute("SELECT read_revision FROM graph_snapshots ORDER BY tenant_id").fetchall() == revisions
+                assert conn.execute("SELECT snapshot_generation FROM graph_snapshots ORDER BY tenant_id").fetchall() == generations
         finally:
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
             admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(owner)))

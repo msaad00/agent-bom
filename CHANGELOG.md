@@ -27,6 +27,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Keep blast-radius counts, bounded canvases and entity details on one committed snapshot revision. Preserve recorded context relationships and disclose traversal lower bounds separately from the visible map.
 
 - Pin graph, search, agent-selector, attack-path and rollup continuation to committed read revisions, separately from write ownership. Reject replaced snapshots and preserve evidence-first queue order in the investigation UI.
+- Backfill committed graph read revisions through PostgreSQL bootstrap as well as migrations; preserve tokens on replay. Count only authoritative queue paths in investigation headings and retain actionable guidance for unsupported backend paging.
 - Serialize SQLite graph schema inspection and backfill with other writers to prevent startup lock-upgrade races during concurrent ingestion.
 - Avoid repeated normalization of absent exposure attributes during cold graph rollups while retaining aggregate counts and filter semantics.
 - Keep routine snapshot polling out of the graph layout; show update controls when a newer snapshot or a failed check needs attention.

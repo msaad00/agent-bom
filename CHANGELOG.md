@@ -16,6 +16,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Map bounded, explicitly configured warehouse-export rows into versioned graph evidence through `agent-bom ingest warehouse`, preserving tenant-scoped identities, recorded context and observation times with unknown collection coverage.
+
 - Add independent-process graph storage qualification, content-verified restart receipts and an authenticated public-contract consumer probe with bounded, revision-pinned evidence pages.
 
 - Version the graph interchange and node-evidence provenance contracts. Preserve recorded source and observation metadata across graph JSON, REST, MCP and entity details without treating collector names as successful execution.

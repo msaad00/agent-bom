@@ -7,7 +7,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.107.1] - 2026-09-30
 
 ### Security
 
@@ -3817,7 +3817,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.107.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.107.1...HEAD
+[0.107.1]: https://github.com/msaad00/agent-bom/compare/v0.107.0...v0.107.1
 [0.107.0]: https://github.com/msaad00/agent-bom/compare/v0.106.1...v0.107.0
 [0.106.1]: https://github.com/msaad00/agent-bom/compare/v0.105.0...v0.106.1
 [0.105.0]: https://github.com/msaad00/agent-bom/compare/v0.104.0...v0.105.0

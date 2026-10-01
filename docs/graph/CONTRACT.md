@@ -785,3 +785,5 @@ and completeness when building an integration, then qualify its workload against
 the intended database and deployment profile.
 
 SQLite startup repairs for missing relationship time/source metadata use partial indexes; normalized edges do not require repeated full-table scans. The read initialization cache tracks the database file identity, so an offline replacement at the same path receives schema initialization. Replace SQLite files only with all database connections stopped; this is not live restore or failover support. The additive indexes may remain after rollback.
+
+Storage qualification uses the same content, tenant, revision and non-overlapping-page checks in thread and process modes. Private failure receipts retain the worker stage, completed-operation counters, elapsed time and allowlisted SQLite error codes/names, without raw exception messages, SQL or connection strings. A failed worker stops the run; contention errors are failures, not successful reads or silently retried operations. Successful bounded runs do not explain a historical failure whose receipt lacks diagnostic detail.

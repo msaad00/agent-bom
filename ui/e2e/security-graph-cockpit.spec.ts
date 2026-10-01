@@ -980,7 +980,7 @@ test("ranked paths reach the first viewport instead of sitting under a tower of 
 
   const paths = page.getByText(/\d+ shown · \d+ loaded paths/).first();
   await expect(paths).toBeVisible();
-  await expect(page.getByText(/from the path queue \+ \d+ additional priority paths/)).toBeVisible();
+  await expect(page.getByText(/2 from the path queue/)).toBeVisible();
   const box = await paths.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.y).toBeLessThan(900);

@@ -3,6 +3,7 @@
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 
@@ -95,8 +96,9 @@ def test_graph_startup_closes_connection_on_failure(tmp_path, monkeypatch, api_s
     monkeypatch.setattr(sqlite3, "connect", connect)
     if code == sqlite3.SQLITE_BUSY:
         clock = iter([0.0, 9.0, 10.0])
-        monkeypatch.setattr(sqlite_wal.time, "monotonic", lambda: next(clock))
-        monkeypatch.setattr(sqlite_wal.time, "sleep", lambda _: None)
+        # Replace this helper's clock, not the process-wide time module: graph
+        # admission and pytest may also read monotonic time during this call.
+        monkeypatch.setattr(sqlite_wal, "time", SimpleNamespace(monotonic=lambda: next(clock), sleep=lambda _: None))
     with pytest.raises(sqlite3.OperationalError, match="injected graph startup failure"):
         if api_store:
             SQLiteGraphStore(tmp_path / "graph.db")._open_rw_conn()

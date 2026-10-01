@@ -325,6 +325,22 @@ jobs:
         if: always() && hashFiles('self-scan.sarif') != ''
         run: uv run python scripts/filter_first_party_skill_sarif.py self-scan.sarif
 
+      - name: Preserve and prepare installed-package evidence locations
+        if: always() && hashFiles('self-scan.sarif') != ''
+        run: |
+          cp self-scan.sarif self-scan-original.sarif
+          python3 scripts/prepare_self_scan_sarif.py self-scan.sarif --evidence self-scan-findings.jsonl
+
+      - name: Retain self-scan evidence
+        if: always() && hashFiles('self-scan.sarif') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: self-scan-evidence
+          path: |
+            self-scan.sarif
+            self-scan-original.sarif
+            self-scan-findings.jsonl
+
       - name: Upload SARIF to code-scanning
         if: always() && hashFiles('self-scan.sarif') != ''
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2

@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Queue same-process SQLite graph mutations in arrival order before schema setup, preserving bounded contention errors, failed-producer rollback and concurrent initialized readers.
+
 - Keep SQLite graph startup metadata repairs indexed after migration, and reinitialize read schema state when a database is replaced at the same path. Late legacy relationship metadata remains repairable.
 
 ### Security

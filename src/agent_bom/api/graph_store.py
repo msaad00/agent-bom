@@ -15,7 +15,7 @@ import sqlite3
 import time
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.db.graph_bootstrap import ensure_read_schema
 from agent_bom.db.graph_revision import read_snapshot_identity
+from agent_bom.db.graph_write_admission import graph_writer_admission
 from agent_bom.graph import (
     AttackPath,
     EntityType,
@@ -314,7 +315,7 @@ class SQLiteGraphStore:
 
     def _open_rw_conn(self) -> sqlite3.Connection:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        with ExitStack() as cleanup:
+        with graph_writer_admission(self._db_path), ExitStack() as cleanup:
             conn = sqlite3.connect(str(self._db_path), timeout=10)
             cleanup.callback(conn.close)
             conn.row_factory = sqlite3.Row
@@ -325,6 +326,15 @@ class SQLiteGraphStore:
             conn.commit()
             cleanup.pop_all()
             return conn
+
+    @contextmanager
+    def _write_conn(self) -> Iterator[sqlite3.Connection]:
+        with graph_writer_admission(self._db_path):
+            conn = self._open_rw_conn()
+            try:
+                yield conn
+            finally:
+                conn.close()
 
     def _open_ro_conn(self) -> sqlite3.Connection | None:
         if not self._db_path.exists():
@@ -430,8 +440,7 @@ class SQLiteGraphStore:
     def delete_tenant(self, *, tenant_id: str = "") -> int:
         """Delete graph rows for one tenant and return the number of rows removed."""
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
-        conn = self._open_rw_conn()
-        try:
+        with self._write_conn() as conn:
             total = 0
             for table in (
                 "graph_node_search",
@@ -446,14 +455,11 @@ class SQLiteGraphStore:
                 total += max(cursor.rowcount, 0)
             conn.commit()
             return total
-        finally:
-            conn.close()
 
     def delete_snapshot(self, *, tenant_id: str, scan_id: str, expected_generation: str | None = None) -> int:
         """Atomically remove one tenant-scoped snapshot and all projections."""
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
-        conn = self._open_rw_conn()
-        try:
+        with self._write_conn() as conn:
             # Serialize the ownership check with every SQLite writer, including
             # other processes. Never authorize deletion from a stale read.
             conn.execute("BEGIN IMMEDIATE")
@@ -481,8 +487,6 @@ class SQLiteGraphStore:
                 total += max(cursor.rowcount, 0)
             conn.commit()
             return total
-        finally:
-            conn.close()
 
     @staticmethod
     def _node_from_row(row: sqlite3.Row) -> UnifiedNode:
@@ -2522,15 +2526,12 @@ class SQLiteGraphStore:
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
-        conn = self._open_rw_conn()
-        try:
+        with self._write_conn() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO graph_filter_presets VALUES (?, ?, ?, ?, ?)",
                 (name, tenant_id, description, json.dumps(filters), created_at),
             )
             conn.commit()
-        finally:
-            conn.close()
 
     def list_presets(self, *, tenant_id: str) -> list[dict[str, Any]]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
@@ -2556,13 +2557,10 @@ class SQLiteGraphStore:
 
     def delete_preset(self, *, tenant_id: str, name: str) -> bool:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
-        conn = self._open_rw_conn()
-        try:
+        with self._write_conn() as conn:
             cursor = conn.execute(
                 "DELETE FROM graph_filter_presets WHERE name = ? AND tenant_id = ?",
                 (name, tenant_id),
             )
             conn.commit()
             return cursor.rowcount > 0
-        finally:
-            conn.close()

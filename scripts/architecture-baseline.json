@@ -294,7 +294,7 @@
     "api/graph_store.py": {
       "broad_except": 1,
       "deferred_imports": 7,
-      "file_lines": 2568
+      "file_lines": 2566
     },
     "api/graph_store.py::SQLiteGraphStore._frontier_edge_query": {
       "function_lines": 81
@@ -2529,7 +2529,7 @@
       "api_imports": 2,
       "broad_except": 2,
       "deferred_imports": 4,
-      "file_lines": 2373,
+      "file_lines": 2369,
       "raw_env_reads": 4
     },
     "db/graph_store.py::_init_db": {

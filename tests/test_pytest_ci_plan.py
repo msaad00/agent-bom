@@ -268,3 +268,28 @@ def test_job_storage_changes_select_tenant_lifecycle_and_correlation_callers(tmp
         _write(path, 1)
     for source in ["store.py", "stores.py", "postgres_job_store.py", "scan_queue.py", "storage/jobs.py", "storage/job_cache.py"]:
         assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == sorted(expected)
+
+
+def test_graph_storage_edits_include_startup_and_writer_contracts(tmp_path: Path) -> None:
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_graph_wal_startup.py",
+            "test_graph_writer_admission.py",
+            "test_graph_bootstrap_cost.py",
+            "test_graph_initialization_lock.py",
+            "test_graph_store_streamed_persistence.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    _write(tmp_path / "tests/test_unrelated.py", 1)
+    for source in (
+        "src/agent_bom/db/graph_store.py",
+        "src/agent_bom/db/graph_bootstrap.py",
+        "src/agent_bom/db/graph_revision.py",
+        "src/agent_bom/db/graph_write_admission.py",
+        "src/agent_bom/api/graph_store.py",
+        "src/agent_bom/storage/sqlite_wal.py",
+    ):
+        assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

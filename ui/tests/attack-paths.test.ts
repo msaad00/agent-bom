@@ -1173,7 +1173,6 @@ describe("graphPathQueueCounts", () => {
       derivedPaths: 0,
       returnedRows: 3,
       queueRows: 3,
-      additionalPriorityRows: 0,
       renderedRows: 2,
       truncated: true,
     });
@@ -1202,12 +1201,12 @@ describe("initial investigation direction", () => {
   });
 });
 
-it("counts the unique union of queue and fix-first paths without inflating the snapshot", () => {
+it("counts only authoritative queue paths without inflating the snapshot", () => {
   const path = (id: string) => ({ source: id, target: "target", hops: [id, "target"], edges: [], composite_risk: 1 }) as unknown as AttackPath;
-  const a = path("a"), b = path("b"), c = path("c");
+  const a = path("a"), b = path("b");
   const graph = { attack_paths: [a, b], pagination: { total: 100, has_more: true } } as unknown as import("@/lib/api-types").UnifiedGraphResponse;
-  expect(graphPathQueueCounts(graph, 3, [b, c, c])).toMatchObject({
-    returnedRows: 3, renderedRows: 3, snapshotTotal: 100, queueRows: 2, additionalPriorityRows: 1,
+  expect(graphPathQueueCounts(graph, 2)).toMatchObject({
+    returnedRows: 2, renderedRows: 2, snapshotTotal: 100, queueRows: 2,
   });
 });
 

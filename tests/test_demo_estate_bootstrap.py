@@ -1023,11 +1023,18 @@ def _full_graph(client: TestClient) -> dict:
     seen: set[str] = set()
     payload: dict = {}
     cursor: str | None = None
+    identity: dict[str, str] = {}
     for _page in range(20):  # bounded so a paging bug fails rather than hangs
-        params: dict[str, object] = {"limit": 5000}
+        params: dict[str, object] = {"limit": 5000, **identity}
         if cursor:
             params["cursor"] = cursor
-        payload = client.get("/v1/graph", headers=VIEWER, params=params).json()
+        response = client.get("/v1/graph", headers=VIEWER, params=params)
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        current = {key: payload[key] for key in ("scan_id", "snapshot_generation")}
+        assert current["snapshot_generation"]
+        assert not identity or identity == current
+        identity = current
         for node in payload.get("nodes") or []:
             node_id = node.get("id")
             if node_id not in seen:

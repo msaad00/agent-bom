@@ -781,8 +781,8 @@
     },
     "api/routes/graph.py": {
       "broad_except": 3,
-      "deferred_imports": 29,
-      "file_lines": 3925,
+      "deferred_imports": 28,
+      "file_lines": 3845,
       "raw_env_reads": 1
     },
     "api/routes/graph.py::get_graph": {
@@ -798,7 +798,7 @@
       "function_lines": 137
     },
     "api/routes/graph.py::query_graph": {
-      "function_lines": 114
+      "function_lines": 84
     },
     "api/routes/graph_correlations.py": {
       "broad_except": 1

@@ -749,9 +749,33 @@ test("mobile ranked path selection moves the ordered path into view", async ({ p
   await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
 });
 
+test("priority enrichment cannot replace or inflate the authoritative path queue", async ({ page }) => {
+  await routeCockpit(page);
+  const graph = buildCockpitGraph();
+  const extra = { ...graph.attack_paths[0]!, source: "repo:outside", hops: ["repo:outside", "ci:outside"] };
+  await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", created_at: createdAt, attack_campaigns: [],
+    summary: { total_paths: 3, matched_paths: 3, returned_paths: 1, highest_risk: 99, covered_findings: 0, node_count: 2, edge_count: 1 },
+    focus: { cve: "", package: "", agent: "" },
+    cards: [{ id: "outside", rank: 1, title: "Outside queue", summary: "Separate enrichment",
+      attack_path: extra, nodes: [node("repo:outside", "directory", "Outside repository"), node("ci:outside", "ci_job", "Outside build")],
+      sequence_labels: [], risk_reasons: [], next_actions: [],
+      affected: { agents: [], servers: [], packages: [], findings: [], credentials: [], tools: [] } }],
+  } }));
+  await page.goto("/security-graph?lens=attack-path");
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { name: "2 shown · 2 loaded paths" })).toBeVisible();
+  const queue = page.getByLabel("Attack path queue");
+  await expect(queue.getByText("Outside repository", { exact: false })).toHaveCount(0);
+  await queue.getByRole("button", { name: /#1 FIX FIRST/i }).click();
+  const detail = page.getByRole("region", { name: "Selected path detail" });
+  await expect(detail).toContainText("claude-desktop");
+  await expect(detail).not.toContainText("Outside repository");
+});
+
 for (const theme of ["light", "dark"] as const) {
 for (const width of [1440, 390]) {
-test(`a priority path outside the queue page loads its exact graph in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+test(`a selected queue path missing from the canvas loads its exact graph in ${theme} at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: width < 640 ? 844 : 960 });
   await page.addInitScript((value) => window.localStorage.setItem("agent-bom-theme", value), theme === "light" ? "dark" : "light");
   await routeCockpit(page);
@@ -766,6 +790,11 @@ test(`a priority path outside the queue page loads its exact graph in ${theme} a
     cards: [{ id: "isolated", rank: 1, title: "Isolated build path", summary: "Recorded build relationship",
       attack_path: path, nodes: [source, target], sequence_labels: [], risk_reasons: [], next_actions: [],
       affected: { agents: [], servers: [], packages: [], findings: [], credentials: [], tools: [] } }],
+  } }));
+  // Keep selection authoritative while exercising hydration of absent canvas nodes.
+  await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: {
+    ...buildCockpitGraph(), attack_paths: [path, buildCockpitGraph().attack_paths[0]],
+    pagination: { total: 2, offset: 0, limit: 100, has_more: false },
   } }));
   const queries: Record<string, unknown>[] = [];
   await page.route("**/v1/graph/query", (route) => {
@@ -951,7 +980,7 @@ test("ranked paths reach the first viewport instead of sitting under a tower of 
 
   const paths = page.getByText(/\d+ shown · \d+ loaded paths/).first();
   await expect(paths).toBeVisible();
-  await expect(page.getByText(/from the path queue \+ \d+ additional priority paths/)).toBeVisible();
+  await expect(page.getByText(/2 from the path queue/)).toBeVisible();
   const box = await paths.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.y).toBeLessThan(900);
@@ -1183,6 +1212,10 @@ for (const theme of ["light", "dark"] as const) {
         nodes: graph.nodes, sequence_labels: [], risk_reasons: [], next_actions: [],
         affected: { agents: [], servers: [], packages: [], findings: [], credentials: [], tools: [] } }],
     } }));
+    await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: {
+      ...graph, attack_paths: [extra, ...graph.attack_paths],
+      pagination: { total: 3, offset: 0, limit: 100, has_more: false },
+    } }));
     let attempts = 0;
     await page.route("**/v1/graph/node/*/neighbors?**", route => {
       attempts += 1;
@@ -1192,7 +1225,7 @@ for (const theme of ["light", "dark"] as const) {
     });
     await page.goto("/security-graph?lens=attack-path");
     await expect(page.getByRole("heading", { name: "3 shown · 3 loaded paths" })).toBeVisible();
-    await expect(page.getByText(/2 from the path queue \+ 1 additional priority paths/)).toBeVisible();
+    await expect(page.getByText(/3 from the path queue/)).toBeVisible();
     await page.getByLabel("Attack path queue").getByRole("button", { name: /#1 fix first/ }).click();
     await page.getByRole("button", { name: "List", exact: true }).click();
     const explorer = page.getByRole("region", { name: "Expand path neighbors" });

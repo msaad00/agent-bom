@@ -6614,6 +6614,19 @@
             "title": "Scan Id",
             "type": "string"
           },
+          "snapshot_generation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expected read revision; replacement returns 409",
+            "title": "Snapshot Generation"
+          },
           "static_only": {
             "default": false,
             "title": "Static Only",
@@ -30042,6 +30055,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot Generation"
+            }
+          },
+          {
             "description": "Maximum reverse BFS depth",
             "in": "query",
             "name": "max_depth",
@@ -30336,6 +30366,23 @@
               "description": "Scan ID",
               "title": "Scan Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot Generation"
+            }
           }
         ],
         "responses": {
@@ -30491,6 +30538,23 @@
               ],
               "description": "Scan ID",
               "title": "Scan Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshot Generation"
             }
           }
         ],

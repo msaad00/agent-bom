@@ -539,8 +539,8 @@ function AttackPathInvestigationContent() {
     [fixFirstCards, graphNodeById, visibleAttackPaths],
   );
   const pathQueueCounts = useMemo(
-    () => graphPathQueueCounts(graphData, rankedRows.length, fixFirstCards.map((card) => card.attack_path)),
-    [graphData, rankedRows.length, fixFirstCards],
+    () => graphPathQueueCounts(graphData, rankedRows.length),
+    [graphData, rankedRows.length],
   );
 
   const selectedAttackPath = useMemo(
@@ -1029,7 +1029,7 @@ function AttackPathInvestigationContent() {
             setPathView("path");
           }}
           title={`${pathQueueCounts.renderedRows} shown · ${pathQueueCounts.returnedRows} loaded paths`}
-          subtitle={`${pathQueueCounts.queueRows} from the path queue + ${pathQueueCounts.additionalPriorityRows} additional priority paths. ${pathQueueCounts.snapshotTotal} snapshot paths${pathQueueCounts.truncated ? "; more queue paths available" : ""}. Select a path to inspect.${
+          subtitle={`${pathQueueCounts.queueRows} from the path queue. ${pathQueueCounts.snapshotTotal} snapshot paths${pathQueueCounts.truncated ? "; more queue paths available" : ""}. Select a path to inspect.${
             loadingFixFirst
               ? " Ranked paths are ready; fix guidance is still loading."
               : fixFirstLoadError

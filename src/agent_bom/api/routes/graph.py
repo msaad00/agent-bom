@@ -45,6 +45,7 @@ from starlette.responses import JSONResponse, Response
 
 from agent_bom.api.graph_generation import optional_generation, pin_generation, verify_generation
 from agent_bom.api.graph_paging import _coalesce_alias, _enforce_node_offset_cap, _page_meta, _paginate
+from agent_bom.api.graph_query import GraphQueryRequest, _filtered_query_graph, query_payload
 from agent_bom.api.graph_store import containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStore, NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
@@ -63,7 +64,7 @@ from agent_bom.graph import (
     UnifiedNode,
 )
 from agent_bom.graph.analysis import analysis_status_map_to_dict
-from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
+from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.exposure import _exposure_path_for_attack_path as _exposure_path_for_attack_path
 from agent_bom.graph.exposure import _exposure_ref_for_node as _exposure_ref_for_node
 from agent_bom.graph.exposure import _finding_ids_for_nodes as _finding_ids_for_nodes
@@ -1468,27 +1469,6 @@ class PresetCreate(BaseModel):
     filters: dict
 
 
-class GraphQueryRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    roots: list[str] = Field(..., min_length=1, description="One or more starting node IDs")
-    scan_id: str = ""
-    direction: Literal["forward", "reverse", "both"] = "forward"
-    max_depth: int = Field(4, ge=1, le=10)
-    max_nodes: int = Field(500, ge=1, le=5000)
-    max_edges: int = Field(10_000, ge=1, le=25_000)
-    timeout_ms: int = Field(2500, ge=100, le=5000)
-    traversable_only: bool = False
-    static_only: bool = False
-    dynamic_only: bool = False
-    include_roots: bool = True
-    include_attack_paths: bool = False
-    min_severity: str = ""
-    entity_types: list[str] = Field(default_factory=list)
-    relationship_types: list[str] = Field(default_factory=list)
-    compliance_prefixes: list[str] = Field(default_factory=list)
-    data_sources: list[str] = Field(default_factory=list)
-
-
 class GraphDeployDecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -1526,67 +1506,6 @@ def _raise_mcp_error_as_http(payload: dict[str, Any]) -> None:
         "internal": 500,
     }
     raise HTTPException(status_code=status_by_category.get(category, 500), detail=error)
-
-
-def _node_matches_query(
-    node: UnifiedNode,
-    *,
-    entity_types: set[str],
-    min_severity_rank: int,
-    compliance_prefixes: set[str],
-    data_sources: set[str],
-) -> bool:
-    from agent_bom.graph.severity_floor import node_passes_severity_floor
-
-    if entity_types:
-        entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
-        if entity_type not in entity_types:
-            return False
-    # This used a local predicate that knew only two of the three rated entity
-    # types, so a drift incident below the floor stayed on the page here and was
-    # dropped by the stores.
-    if not node_passes_severity_floor(entity_type=node.entity_type, severity=node.severity, min_severity_rank=min_severity_rank):
-        return False
-    if compliance_prefixes:
-        prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
-        if not prefixes.intersection(compliance_prefixes):
-            return False
-    if data_sources and not set(node.data_sources).intersection(data_sources):
-        return False
-    return True
-
-
-def _filtered_query_graph(
-    graph: UnifiedGraph,
-    *,
-    roots: list[str],
-    entity_types: set[str],
-    min_severity_rank: int,
-    compliance_prefixes: set[str],
-    data_sources: set[str],
-) -> UnifiedGraph:
-    filtered = UnifiedGraph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at)
-    keep_ids = {
-        node.id
-        for node in graph.nodes.values()
-        if _node_matches_query(
-            node,
-            entity_types=entity_types,
-            min_severity_rank=min_severity_rank,
-            compliance_prefixes=compliance_prefixes,
-            data_sources=data_sources,
-        )
-    }
-    keep_ids.update(root for root in roots if root in graph.nodes)
-
-    for node_id in keep_ids:
-        node = graph.nodes.get(node_id)
-        if node:
-            filtered.add_node(node)
-    for edge in graph.edges:
-        if edge.source in keep_ids and edge.target in keep_ids:
-            filtered.add_edge(edge)
-    return filtered
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1797,7 +1716,7 @@ async def get_graph(
     ``completeness`` for whether the load was bounded and why —
     ``completeness.total`` always reconciles with ``stats.total_nodes_source``.
     """
-    from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions
+    from agent_bom.graph import SEVERITY_RANK
 
     _enforce_node_offset_cap(offset, cursor)
     tenant = _tenant(request)
@@ -2403,19 +2322,39 @@ async def get_graph_impact(
     request: Request,
     node: str = Query(..., description="Node ID to compute impact for"),
     scan_id: Optional[str] = Query(None, description="Scan ID"),
+    snapshot_generation: Optional[str] = Query(None, max_length=128),
     max_depth: int = Query(4, ge=1, le=10, description="Maximum reverse BFS depth"),
 ) -> dict:
     """Compute blast radius of a node — what depends on it?"""
+    graph_store = _get_graph_store_or_503()
+    tenant_id = _tenant(request)
+    identity = await _graph_store_call(
+        optional_generation, graph_store, tenant=tenant_id, scan_id=scan_id or "", generation=snapshot_generation, offset=0
+    )
     impact = await _graph_store_call(
-        _get_graph_store_or_503().impact_of,
-        scan_id=scan_id or "",
-        tenant_id=_tenant(request),
+        graph_store.impact_of,
+        scan_id=identity[0] if identity else scan_id or "",
+        tenant_id=tenant_id,
         node_id=node,
         max_depth=max_depth,
     )
     if impact is None:
         raise HTTPException(status_code=404, detail=f"Node '{node}' not found")
-    return impact
+    if identity:
+        await _graph_store_call(verify_generation, graph_store, tenant=tenant_id, identity=identity, has_rows=True)
+    return {
+        **impact,
+        "scan_id": identity[0] if identity else scan_id or "",
+        "tenant_id": tenant_id,
+        "snapshot_generation": identity[1] if identity else None,
+        "interpretation": {
+            "basis": "recorded_reverse_reachability",
+            "execution": "not_established",
+            "collection_coverage": "unknown",
+            "traversable_only": False,
+            "max_depth": max_depth,
+        },
+    }
 
 
 @router.get("/graph/search", tags=["graph"])
@@ -2621,11 +2560,16 @@ async def list_graph_agents(
 async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     """Run a bounded programmable traversal over the canonical graph."""
     graph_store = _get_graph_store_or_503()
+    tenant_id = _tenant(request)
+    identity = await _graph_store_call(
+        optional_generation, graph_store, tenant=tenant_id, scan_id=body.scan_id or "", generation=body.snapshot_generation, offset=0
+    )
+    scan_id = identity[0] if identity else body.scan_id or ""
     budget = _enforce_graph_query_budget(body)
     root_nodes = await _graph_store_call(
         graph_store.nodes_by_ids,
-        scan_id=body.scan_id or "",
-        tenant_id=_tenant(request),
+        scan_id=scan_id,
+        tenant_id=tenant_id,
         node_ids=set(body.roots),
     )
     known_roots = {node.id for node in root_nodes}
@@ -2637,8 +2581,8 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     deadline = time.monotonic() + (body.timeout_ms / 1000)
     traversal_graph, depth_by_node, truncated = await _graph_store_call(
         graph_store.traverse_subgraph,
-        scan_id=body.scan_id or "",
-        tenant_id=_tenant(request),
+        scan_id=scan_id,
+        tenant_id=tenant_id,
         roots=body.roots,
         direction=body.direction,
         max_depth=body.max_depth,
@@ -2653,8 +2597,6 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     )
 
     depth_limited = bool(getattr(traversal_graph.completeness, "depth_limited", False))
-    bounded = truncated or depth_limited
-
     filtered_graph = _filtered_query_graph(
         traversal_graph,
         roots=body.roots,
@@ -2668,8 +2610,8 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     if body.include_attack_paths:
         root_attack_paths = await _graph_store_call(
             graph_store.attack_paths_for_sources,
-            scan_id=body.scan_id or "",
-            tenant_id=_tenant(request),
+            scan_id=scan_id,
+            tenant_id=tenant_id,
             source_ids=set(body.roots),
         )
         # Keep every path rooted at a queried node, even when intermediate hops
@@ -2682,8 +2624,8 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         missing_hop_ids = {hop for ap in root_paths for hop in ap.hops} - set(filtered_graph.nodes)
         backfilled_nodes = await _graph_store_call(
             graph_store.nodes_by_ids,
-            scan_id=body.scan_id or "",
-            tenant_id=_tenant(request),
+            scan_id=scan_id,
+            tenant_id=tenant_id,
             node_ids=missing_hop_ids,
         )
         nodes_by_id = {**filtered_graph.nodes, **{node.id: node for node in backfilled_nodes}}
@@ -2694,44 +2636,11 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             scan_id=filtered_graph.scan_id,
         )
 
-    return {
-        "scan_id": filtered_graph.scan_id,
-        "tenant_id": filtered_graph.tenant_id,
-        "roots": body.roots,
-        "direction": body.direction,
-        "max_depth": body.max_depth,
-        "max_nodes": body.max_nodes,
-        "max_edges": body.max_edges,
-        "timeout_ms": body.timeout_ms,
-        "budget": budget,
-        "truncated": truncated,
-        "depth_limited": depth_limited,
-        "missing_roots": [],
-        "depth_by_node": {node_id: depth for node_id, depth in depth_by_node.items() if node_id in filtered_graph.nodes},
-        "nodes": [node.to_dict() for node in filtered_graph.nodes.values()],
-        "edges": [edge.to_dict() for edge in filtered_graph.edges],
-        "attack_paths": attack_paths,
-        "stats": filtered_graph.stats(),
-        "filters": GraphFilterOptions(
-            max_depth=body.max_depth,
-            min_severity=body.min_severity,
-            relationship_types=rel_types or set(),
-            static_only=body.static_only,
-            dynamic_only=body.dynamic_only,
-            include_ids=set(body.roots),
-        ).to_dict(),
-        # The traversal's own completeness carries a loss the `truncated` bool
-        # does not: a walk that stopped at `max_depth` with reachable nodes
-        # still unwalked. Reading only the bool reported such a walk as a
-        # complete answer, which is how a bounded traversal comes to read as
-        # "there is no attack path past here".
-        "completeness": graph_completeness(
-            returned=len(filtered_graph.nodes),
-            total=None if bounded else filtered_graph.stats().get("node_count", len(filtered_graph.nodes)),
-            truncated=bounded,
-            reason=bounded_walk_reason(truncated=truncated, depth_limited=depth_limited),
-        ),
-    }
+    if identity:
+        await _graph_store_call(verify_generation, graph_store, tenant=tenant_id, identity=identity, has_rows=bool(filtered_graph.nodes))
+    return query_payload(
+        body, filtered_graph, depth_by_node, truncated, depth_limited, attack_paths, budget, rel_types, identity[1] if identity else None
+    )
 
 
 @router.get("/graph/node-context", tags=["graph"])
@@ -2740,18 +2649,29 @@ async def get_graph_node(
     request: Request,
     node_id: GraphIdentifier,
     scan_id: Optional[GraphIdentifier] = Query(None, description="Scan ID"),
+    snapshot_generation: Optional[str] = Query(None, max_length=128),
 ) -> dict:
     """Get a single node with its edges, neighbors, and impact stats."""
+    graph_store = _get_graph_store_or_503()
+    tenant_id = _tenant(request)
+    identity = await _graph_store_call(
+        optional_generation, graph_store, tenant=tenant_id, scan_id=scan_id or "", generation=snapshot_generation, offset=0
+    )
     node_context = await _graph_store_call(
-        _get_graph_store_or_503().node_context,
-        scan_id=scan_id or "",
-        tenant_id=_tenant(request),
+        graph_store.node_context,
+        scan_id=identity[0] if identity else scan_id or "",
+        tenant_id=tenant_id,
         node_id=node_id,
     )
     if node_context is None:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
 
+    if identity:
+        await _graph_store_call(verify_generation, graph_store, tenant=tenant_id, identity=identity, has_rows=True)
     return {
+        "scan_id": identity[0] if identity else scan_id or "",
+        "tenant_id": tenant_id,
+        "snapshot_generation": identity[1] if identity else None,
         "node": node_context["node"].to_dict(),
         "edges_out": [edge.to_dict() for edge in node_context["edges_out"]],
         "edges_in": [edge.to_dict() for edge in node_context["edges_in"]],

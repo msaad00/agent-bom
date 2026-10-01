@@ -25,6 +25,8 @@ behavior for that path.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tracemalloc
 from collections.abc import Iterator
 from pathlib import Path
@@ -410,9 +412,44 @@ def _peak_store_backed(n: int) -> int:
     return peak
 
 
+def _isolated_peak(kind: str, size: int) -> int:
+    # Each measurement starts after imports in a fresh interpreter. Parent pytest
+    # plugins, background allocations and tracing state cannot enter this peak.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys; ns = runpy.run_path(sys.argv[1]); "
+            "fn = {'full': ns['_peak_full_in_ram'], 'store': ns['_peak_store_backed']}[sys.argv[2]]; "
+            "print(fn(int(sys.argv[3])))",
+            str(Path(__file__).resolve()),
+            kind,
+            str(size),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return int(result.stdout.strip())
+
+
+def test_memory_probe_excludes_parent_allocations_and_preserves_tracing() -> None:
+    already_tracing = tracemalloc.is_tracing()
+    tracemalloc.start()
+    try:
+        unrelated = bytearray(8_000_000)
+        peak = _isolated_peak("store", 200)
+        assert tracemalloc.is_tracing(), "Measurement stopped its caller's tracing"
+        assert 0 < peak < len(unrelated), "Parent allocations contaminated the measurement"
+    finally:
+        if not already_tracing:
+            tracemalloc.stop()
+
+
 def test_store_backed_peak_is_sublinear_vs_full_in_ram() -> None:
-    small_full, small_store = _peak_full_in_ram(2000), _peak_store_backed(2000)
-    large_full, large_store = _peak_full_in_ram(8000), _peak_store_backed(8000)
+    small_full, small_store = _isolated_peak("full", 2000), _isolated_peak("store", 2000)
+    large_full, large_store = _isolated_peak("full", 8000), _isolated_peak("store", 8000)
 
     ratio_small = small_store / small_full
     ratio_large = large_store / large_full
@@ -421,18 +458,9 @@ def test_store_backed_peak_is_sublinear_vs_full_in_ram() -> None:
     # the full node set — its peak is a small fraction of the full in-RAM graph.
     assert ratio_small < 0.6, f"store/full peak ratio too high at N=2000: {ratio_small:.3f}"
     assert ratio_large < 0.6, f"store/full peak ratio too high at N=8000: {ratio_large:.3f}"
-    # The sub-linear claim is carried by the two bounds above, not by comparing
-    # the ratios to each other. That comparison was tried twice and flaked twice:
-    # tracemalloc peaks under xdist capture whatever else the worker is doing, so
-    # the same tree measures 0.175 -> 0.042 on a quiet machine and 0.175 -> 0.246
-    # on a loaded one. Widening the slack a third time would tune the threshold
-    # until it stops complaining rather than assert something true.
-    #
-    # What survives the noise is the property that matters: at 4x the nodes the
-    # store-backed peak is still a small fraction of the full in-RAM graph. If the
-    # container ever started holding the whole node set, ratio_large would go to
-    # ~1.0 and the bound above fails by a wide margin — which is the regression
-    # this test exists to catch.
+    # Keep the existing scaling bound as well as both absolute ratio limits.
+    # Process isolation removes unrelated worker allocations without relaxing
+    # the memory budget or reducing the graph sizes.
     assert ratio_large < ratio_small + 0.45, (
         f"store peak approached the full in-RAM graph as N grew: {ratio_small:.3f} -> {ratio_large:.3f}"
     )

@@ -645,11 +645,11 @@ does not invent a total matching count for evidence it has not loaded. Completin
 the available pages does not override a bounded server ranking window or partial
 source analysis. Page failures retain the loaded investigation and permit retry.
 
-Additional pages must match the tenant, scan ID and recorded creation time and
-advance to the requested next offset. Navigation cancels outstanding continuation
-requests; a changed authenticated session remounts the investigation. These are
-read-only browser consistency checks, not a replacement for backend authorization
-or a cryptographic snapshot-generation pin.
+Additional pages must match the tenant, resolved scan ID and committed read
+revision, and advance to the requested next offset. Navigation cancels outstanding
+continuation requests; a changed authenticated session remounts the investigation.
+The backend rejects replaced revisions. Revision tokens are consistency controls,
+not cryptographic attestations or a replacement for authorization.
 
 Severity filters use server-authored finding severity, or the highest recorded
 finding-node severity for older responses. A path priority score, an asset risk
@@ -747,3 +747,39 @@ reports execution as not established and collection coverage as unknown. A
 truncated or unknown completeness result is a lower bound. The dashboard starts
 with a four-node canvas and displays its visible count separately from the
 larger impact scope; a small map does not imply a small blast radius.
+
+### Independent process and consumer qualification
+
+Use `--executor processes` on the storage qualification command to create four
+spawned workers, each with its own connections: one writer and one reader for
+each of two tenants. The workload starts after all workers are ready. Receipts
+include process IDs, operation counts, rejected stale continuations and maximum
+operation latency. A failed worker fails the command; its error class is retained
+without raw database exception text. Existing receipt files are never overwritten.
+
+New checkpoints also contain a deterministic graph-content digest. Repeat
+`--verify-checkpoint` after a database restart to detect content changes even when
+row counts match. This local digest is an integrity comparison, not a signed or
+independently collected audit record. Older count/revision-only checkpoints remain
+readable and provide only their original checks.
+
+A separate consumer probes the public HTTP contract without importing server
+graph models. Create a viewer API key, keep it in a private file, and run:
+
+```bash
+python scripts/qualify_graph_consumer.py --url https://control-plane.example \
+  --token-file /secure/viewer-key --scan-id <snapshot-id> \
+  --page-size 100 --max-pages 2 --output /secure/graph-consumer-receipt.json
+```
+
+Replace `<snapshot-id>` with a saved scan ID. The command uses verified HTTPS
+(HTTP is accepted only on loopback), follows no redirects, and writes a new
+mode-0600 receipt containing the authorized response pages and their hashes.
+Protect this artifact as inventory evidence. It verifies supported contract
+versions, stable identities, provenance, relationship direction and one pinned
+tenant/snapshot revision. On 409, discard the attempted read and restart; the
+consumer never joins changed revisions. Unknown kinds or versions fail closed.
+Exhausting this bounded set of node pages does not establish source collection
+coverage, effective permission or successful execution. Use the retained scope
+and completeness when building an integration, then qualify its workload against
+the intended database and deployment profile.

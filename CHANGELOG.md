@@ -16,6 +16,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Add independent-process graph storage qualification, content-verified restart receipts and an authenticated public-contract consumer probe with bounded, revision-pinned evidence pages.
+
 - Version the graph interchange and node-evidence provenance contracts. Preserve recorded source and observation metadata across graph JSON, REST, MCP and entity details without treating collector names as successful execution.
 
 - Export a selected graph entity's loaded recorded relationships as an investigation JSON bundle. Preserve the snapshot generation, canonical entity/finding identifiers, relationship evidence, page completeness and a return link; disclose unknown collection coverage and unsigned local-export provenance.

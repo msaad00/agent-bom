@@ -707,10 +707,19 @@ jobs:
           exit 1
 
   published-image-scan-gate:
-    name: Published image scan gate
+    name: Published image scan gate — ${{ matrix.platform }}
     needs: docker-publish
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
     permissions:
       contents: read
       security-events: write
@@ -731,7 +740,23 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Pull published API image
-        run: docker pull agentbom/agent-bom:${{ steps.meta.outputs.version }}
+        id: image
+        env:
+          IMAGE_TAG: agentbom/agent-bom:${{ steps.meta.outputs.version }}
+          IMAGE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          docker pull --platform "$IMAGE_PLATFORM" "$IMAGE_TAG"
+          docker image inspect "$IMAGE_TAG" > image-identity.json
+          IMAGE_ID=$(docker image inspect "$IMAGE_TAG" --format '{{.Id}}')
+          ACTUAL_PLATFORM=$(docker image inspect "$IMAGE_TAG" --format '{{.Os}}/{{.Architecture}}')
+          test "$ACTUAL_PLATFORM" = "$IMAGE_PLATFORM"
+          case "$IMAGE_ID" in
+            sha256:*) ;;
+            *) echo "::error::Published image has no immutable identity"; exit 1 ;;
+          esac
+          echo "id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "arch=${IMAGE_PLATFORM#linux/}" >> "$GITHUB_OUTPUT"
 
       - name: Install Trivy
         run: |
@@ -746,53 +771,51 @@ jobs:
           sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
           trivy --version
 
-      - name: Trivy scan gate (published image)
-        # Cross-check the Docker Hub image after push. Severity threshold is
-        # configurable via the RELEASE_IMAGE_SCAN_FAIL_SEVERITIES repository
-        # variable (default CRITICAL,HIGH). Unfixable OS/package CVEs listed in
-        # .image-scan-ignore are excluded from the gate.
+      - name: Collect published image vulnerability evidence
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.id }}
         run: |
           set -euo pipefail
-          IMAGE="agentbom/agent-bom:${{ steps.meta.outputs.version }}"
-          trivy image "$IMAGE" \
+          trivy image "$IMAGE_ID" \
+            --image-src docker \
             --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" \
-            --ignore-unfixed \
-            --ignorefile .image-scan-ignore \
-            --exit-code 1 \
-            --format table
-          trivy image "$IMAGE" \
-            --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" \
-            --ignore-unfixed \
-            --ignorefile .image-scan-ignore \
-            --format json \
-            -o trivy-published-image.json
-          trivy image "$IMAGE" \
-            --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" \
-            --ignore-unfixed \
-            --ignorefile .image-scan-ignore \
-            --format sarif \
-            -o trivy-published-image.sarif
+            --ignore-unfixed --ignorefile .image-scan-ignore \
+            --format json -o trivy-published-image.json
+
+      - name: Convert published image report to SARIF
+        run: trivy convert --format sarif -o trivy-published-image.sarif trivy-published-image.json
 
       - name: Upload Trivy SARIF to GitHub Security tab
         if: always() && hashFiles('trivy-published-image.sarif') != ''
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: trivy-published-image.sarif
-          category: release-published-image-trivy
+          category: release-published-image-trivy-${{ matrix.arch }}
 
       - name: Scan published API image with agent-bom (evidence)
-        run: uv run agent-bom image agentbom/agent-bom:${{ steps.meta.outputs.version }} --format json --output published-image-self-scan.json
+        if: always() && steps.image.outcome == 'success'
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.id }}
+        run: uv run agent-bom image "$IMAGE_ID" --ignore .image-scan-ignore --exclude-unfixable --fail-on-severity medium --format json --output published-image-self-scan.json
 
       - name: Upload published image scan artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: published-image-scan
+          name: published-image-scan-${{ matrix.arch }}
           path: |
+            image-identity.json
             trivy-published-image.json
             trivy-published-image.sarif
             published-image-self-scan.json
           if-no-files-found: warn
+
+      - name: Enforce published image vulnerability policy
+        if: always()
+        run: |
+          # Missing or malformed reports fail closed. Retain reports before failing.
+          trivy convert --format table --exit-code 1 \
+            --severity "${RELEASE_IMAGE_SCAN_FAIL_SEVERITIES}" trivy-published-image.json
 
   helm-publish:
     name: Publish Helm chart to OCI

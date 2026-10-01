@@ -54,16 +54,21 @@ jobs:
         id: image
         run: |
           set -euo pipefail
+          docker image inspect agentbom/agent-bom:latest > image-identity.json
           IMAGE_ID=$(docker image inspect agentbom/agent-bom:latest --format '{{.Id}}')
           case "$IMAGE_ID" in
             sha256:*) ;;
             *) echo "::error::Pulled image has no immutable sha256 identity"; exit 1 ;;
           esac
+          ACTUAL_PLATFORM=$(docker image inspect agentbom/agent-bom:latest --format '{{.Os}}/{{.Architecture}}')
+          test "$ACTUAL_PLATFORM" = "${{ matrix.platform }}"
           echo "id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
           echo "Scanning agentbom/agent-bom:latest at $IMAGE_ID for ${{ matrix.platform }}"
 
       - name: Container image scan table (fixable MEDIUM+)
         id: image_scan_table
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.id }}
         continue-on-error: true
         # Self-hosted image gate (dogfood). agent-bom reads the pulled image
         # from the local Docker daemon (via docker save). Native OS-layer
@@ -71,18 +76,20 @@ jobs:
         # (agent-bom has no separate UNKNOWN tier), unfixable findings excluded
         # (= ignore-unfixed), and the .image-scan-ignore CVE allowlist.
         run: |
-          uv run agent-bom image agentbom/agent-bom:latest \
+          uv run agent-bom image "$IMAGE_ID" \
             --ignore .image-scan-ignore \
             --exclude-unfixable \
             --fail-on-severity medium
 
       - name: Container image scan SARIF
         id: image_scan_sarif
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.id }}
         continue-on-error: true
         # Non-gating SARIF export for the GitHub Security tab. Same scan policy
         # as the table gate above; emits the same allowlist-filtered findings.
         run: |
-          uv run agent-bom image agentbom/agent-bom:latest \
+          uv run agent-bom image "$IMAGE_ID" \
             --ignore .image-scan-ignore \
             --exclude-unfixable \
             -f sarif -o image-scan-${{ matrix.sarif_category }}.sarif
@@ -101,7 +108,21 @@ jobs:
 
       - name: Normalize container SARIF for GitHub
         if: always() && steps.sarif.outputs.exists == 'true'
-        run: uv run python scripts/normalize_container_sarif_for_github.py "${{ steps.sarif.outputs.path }}"
+        run: |
+          cp "${{ steps.sarif.outputs.path }}" "original-${{ steps.sarif.outputs.path }}"
+          uv run python scripts/normalize_container_sarif_for_github.py "${{ steps.sarif.outputs.path }}"
+
+      - name: Retain original container scan evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-rescan-${{ matrix.sarif_category }}
+          path: |
+            image-identity.json
+            original-image-scan-${{ matrix.sarif_category }}.sarif
+            image-scan-${{ matrix.sarif_category }}.sarif
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload SARIF to GitHub Security tab
         if: always() && steps.sarif.outputs.exists == 'true'

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import yaml
@@ -64,6 +65,23 @@ def test_exact_main_completed_success_is_accepted() -> None:
         "run_id": 123,
         "run_url": "https://github.com/msaad00/agent-bom/actions/runs/123",
     }
+
+
+def test_candidate_run_is_found_when_unfiltered_history_omits_it() -> None:
+    checker = _load_script()
+
+    def fetch(endpoint: str) -> dict[str, Any]:
+        if "/git/ref/heads/" in endpoint:
+            return {"object": {"sha": SHA}}
+        query = parse_qs(urlsplit(endpoint).query)
+        # A busy workflow's first history page need not contain this commit.
+        rows = [_run()] if query.get("head_sha") == [SHA] else [_run(head_sha="e" * 40)]
+        return {"workflow_runs": rows}
+
+    proof = checker.verify_release_candidate(repo="msaad00/agent-bom", sha=SHA, fetch_json=fetch)
+
+    assert proof["sha"] == SHA
+    assert proof["run_id"] == 123
 
 
 def test_stale_candidate_sha_is_rejected_before_ci_lookup() -> None:

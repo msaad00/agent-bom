@@ -17,6 +17,10 @@ Optional overlay failures retain their existing isolation and analysis status.
 
 Package/advisory provenance belongs to `graph/package_projection.py`; runtime
 identity and incident observations belong to `graph/runtime_projection.py`.
+`graph/cloud_context.py` owns provider inventory normalization, recorded exposure,
+account ownership, environment labels and identity-policy inputs. These helpers
+retain unknown values and source evidence; they do not collect cloud data or
+establish effective authorization. The builder retains compatible helper exports.
 Shared helpers and resource aliases remain graph-owned without importing the
 builder or API adapters. Static package reachability and runtime observations
 keep distinct evidence fields and relationship types. Existing report callers

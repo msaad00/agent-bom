@@ -1,0 +1,4936 @@
+{
+  "aws": {
+    "analysis_status": {
+      "attack_path_fusion": {
+        "limits": {
+          "max_depth": 8,
+          "max_entries": 200,
+          "max_nodes": 5000,
+          "max_paths": 50,
+          "max_visited_per_entry": 2000
+        },
+        "observed": {
+          "candidate_path_count": 0,
+          "entry_count": 2,
+          "evaluated_entry_count": 2,
+          "node_count": 14,
+          "result_count": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      },
+      "effective_permissions": {
+        "limits": {
+          "max_depth": 6,
+          "max_permission_witnesses": 16,
+          "max_principals": 5000
+        },
+        "observed": {
+          "admin_principals": 0,
+          "conditional_admin_principals": 0,
+          "has_permission_edges": 0,
+          "inactive_source_edges": 0,
+          "invalid_source_validity": 0,
+          "principal_count": 1,
+          "privilege_escalations": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      }
+    },
+    "attack_campaigns": [],
+    "attack_paths": [],
+    "completeness": {
+      "complete": true,
+      "returned": 0,
+      "sampled": false,
+      "status": "complete",
+      "total": 0,
+      "truncated": false
+    },
+    "created_at": "2026-09-30T12:00:00+00:00",
+    "edges": [
+      {
+        "activity_id": 1,
+        "canonical_id": "fd769ebc-33ef-501a-967a-77f1aabe1eca",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:s3:bucket:aws-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "target_id": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "1bea890d-6fc4-512f-9360-94c4d23861c7",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:s3:bucket:aws-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "target_id": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "fd706e4a-7086-54e3-9f9d-7a9e2bf1308d",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:s3:bucket:known-private",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:known-private",
+        "target_id": "cloud_resource:aws:s3:bucket:known-private",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "2f70c160-dbfe-5255-8255-5b601405326c",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:s3:bucket:known-private",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:known-private",
+        "target_id": "cloud_resource:aws:s3:bucket:known-private",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "97a1192c-ab2d-5650-9f27-8258100f5238",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:s3:bucket:unknown-exposure",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "target_id": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "4db990a1-cc81-59f7-87db-92f8e1cd6c6f",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:s3:bucket:unknown-exposure",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "target_id": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "b1a747ce-1b1e-57d6-a1e6-4c6dbca3328b",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:s3:bucket:known-public",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:known-public",
+        "target_id": "cloud_resource:aws:s3:bucket:known-public",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "202b8bb6-2c82-528b-a887-3612bd102ce1",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:s3:bucket:known-public",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:s3:bucket:known-public",
+        "target_id": "cloud_resource:aws:s3:bucket:known-public",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "e2bd9198-e7c7-5db8-adec-ed4ba3157f58",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "target_id": "cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "8ccc1dbc-c3d5-51c2-a4b6-f4e49d821b92",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "target_id": "cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "b07cf81e-d25b-5020-b7fa-d7700b388c21",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "target_id": "cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "11ad9a10-2f86-5071-801f-4e1f3254cb5a",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "target_id": "cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "04c934f3-aad8-55fd-a042-1e0aeb76a3ca",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:aws:123456789012:cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "target_id": "cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "0e6fb802-11e7-5c16-ba3c-970579284cf8",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "target_id": "cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "981b6734-6ec7-57a7-959f-bebb59580f33",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:aws:s3:bucket:aws-bucket:data_store:cloud_resource:aws:s3:bucket:aws-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "source_id": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:aws:s3:bucket:aws-bucket",
+        "target_id": "data_store:cloud_resource:aws:s3:bucket:aws-bucket",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "6df4897e-2a76-5c10-adb1-1ee11b490e72",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:aws:s3:bucket:known-private:data_store:cloud_resource:aws:s3:bucket:known-private",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:aws:s3:bucket:known-private",
+        "source_id": "cloud_resource:aws:s3:bucket:known-private",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:aws:s3:bucket:known-private",
+        "target_id": "data_store:cloud_resource:aws:s3:bucket:known-private",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "004cc30b-aad7-585c-9065-534f5f15c6a5",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:aws:s3:bucket:unknown-exposure:data_store:cloud_resource:aws:s3:bucket:unknown-exposure",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "source_id": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:aws:s3:bucket:unknown-exposure",
+        "target_id": "data_store:cloud_resource:aws:s3:bucket:unknown-exposure",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "3e575718-62e7-5adb-be34-f8aed15b8767",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:aws:s3:bucket:known-public:data_store:cloud_resource:aws:s3:bucket:known-public",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:aws:s3:bucket:known-public",
+        "source_id": "cloud_resource:aws:s3:bucket:known-public",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:aws:s3:bucket:known-public",
+        "target_id": "data_store:cloud_resource:aws:s3:bucket:known-public",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "89e6e4ca-62d1-5d64-a621-93ee29030a5a",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "reason": "internet_exposed_data_store"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "exposed_to:cloud_resource:aws:s3:bucket:known-public:data_store:cloud_resource:aws:s3:bucket:known-public",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "exposed_to",
+        "source": "cloud_resource:aws:s3:bucket:known-public",
+        "source_id": "cloud_resource:aws:s3:bucket:known-public",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:aws:s3:bucket:known-public",
+        "target_id": "data_store:cloud_resource:aws:s3:bucket:known-public",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 6.0
+      }
+    ],
+    "interaction_risks": [],
+    "nodes": [
+      {
+        "attributes": {
+          "evidence_tier": "static_scan",
+          "provider": "aws",
+          "source": "cloud-inventory"
+        },
+        "canonical_id": "302cd1c9-8889-59af-b468-bafd8f028957",
+        "category_uid": 0,
+        "class_uid": 0,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {},
+        "entity_type": "provider",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "provider:aws",
+        "label": "aws",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 1
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "unknown",
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "source": "cloud-inventory"
+        },
+        "canonical_id": "168fc6ee-567e-58fb-9868-c3b19605aa9c",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "identity"
+        },
+        "entity_type": "account",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "account:aws:123456789012",
+        "label": "123456789012",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "s3",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_id": "aws-bucket",
+          "resource_kind": "s3-bucket",
+          "resource_name": "aws-bucket",
+          "resource_type": "bucket",
+          "tags": {
+            "environment": "prod",
+            "owner": "team-a"
+          }
+        },
+        "canonical_id": "6a3e88f1-f9ad-502e-8f7c-67572837ec53",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "surface": "s3"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:s3:bucket:aws-bucket",
+        "label": "s3 bucket: aws-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "s3",
+          "environment": "",
+          "evidence_tier": "static_scan",
+          "internet_exposed": false,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {
+              "publicly_accessible": false
+            },
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_id": "known-private",
+          "resource_kind": "s3-bucket",
+          "resource_name": "known-private",
+          "resource_type": "bucket",
+          "tags": {}
+        },
+        "canonical_id": "3f0f67bc-2c1e-5828-88b2-2f6b2b790e4d",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "s3"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:s3:bucket:known-private",
+        "label": "s3 bucket: known-private",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "s3",
+          "environment": "",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {
+              "publicly_accessible": "unknown"
+            },
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_id": "unknown-exposure",
+          "resource_kind": "s3-bucket",
+          "resource_name": "unknown-exposure",
+          "resource_type": "bucket",
+          "tags": {}
+        },
+        "canonical_id": "91e05c05-346a-5f4b-a733-567fdcc7b097",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "s3"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:s3:bucket:unknown-exposure",
+        "label": "s3 bucket: unknown-exposure",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "s3",
+          "environment": "",
+          "evidence_tier": "static_scan",
+          "internet_exposed": true,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {
+              "publicly_accessible": true
+            },
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_id": "known-public",
+          "resource_kind": "s3-bucket",
+          "resource_name": "known-public",
+          "resource_type": "bucket",
+          "tags": {}
+        },
+        "canonical_id": "48947f00-b87b-5f05-9b21-986ffc35cf92",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "s3"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:s3:bucket:known-public",
+        "label": "s3 bucket: known-public",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "ec2",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "iam_instance_profile": "",
+          "image_id": "",
+          "instance_type": "",
+          "location": "us-east-1",
+          "network": "",
+          "network_tags": [],
+          "private_ip": "",
+          "public_ip": "",
+          "resource_id": "i-1",
+          "resource_kind": "ec2-instance",
+          "resource_name": "aws-vm",
+          "resource_type": "instance",
+          "security_group_ids": [],
+          "service_accounts": [],
+          "state": "",
+          "vpc_id": ""
+        },
+        "canonical_id": "5597b2cb-bc3d-5691-943a-c53e4d1a29ee",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "surface": "ec2"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:ec2:instance:i-1",
+        "label": "ec2: aws-vm",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "rds",
+          "encrypted": false,
+          "engine": "postgres",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": true,
+          "location": "us-east-1",
+          "resource_id": "aws-db",
+          "resource_kind": "rds-instance",
+          "resource_name": "aws-db",
+          "resource_type": "database",
+          "runtime": ""
+        },
+        "canonical_id": "6e3f2b11-53c1-5c7c-9427-4411f0d55296",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "surface": "rds"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:rds:database:scoped/123456789012/us-east-1//name/aws-db",
+        "label": "rds database: aws-db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "eks",
+          "encrypted": false,
+          "engine": "",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": false,
+          "location": "us-east-1",
+          "resource_id": "aws-eks",
+          "resource_kind": "eks-cluster",
+          "resource_name": "aws-eks",
+          "resource_type": "container_cluster",
+          "runtime": ""
+        },
+        "canonical_id": "5e8e0a0a-2651-5781-b84f-0fec15b282d6",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "surface": "eks"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:eks:container_cluster:scoped/123456789012/us-east-1//name/aws-eks",
+        "label": "eks cluster: aws-eks",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "cloud_provider": "aws",
+          "cloud_service": "ecr",
+          "encrypted": false,
+          "engine": "",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": false,
+          "location": "us-east-1",
+          "resource_id": "aws-ecr",
+          "resource_kind": "ecr-repository",
+          "resource_name": "aws-ecr",
+          "resource_type": "container_registry",
+          "runtime": ""
+        },
+        "canonical_id": "d51122cb-5b5c-5aa6-a7eb-6a7b96dc7fc7",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "surface": "ecr"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:ecr:container_registry:scoped/123456789012/us-east-1//name/aws-ecr",
+        "label": "container registry: aws-ecr",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "backed_by": "cloud_resource:aws:s3:bucket:aws-bucket",
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_name": "aws-bucket"
+        },
+        "canonical_id": "589e0b97-794e-5639-9744-e60598b8cd6e",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "environment": "prod",
+          "surface": "s3"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:aws:s3:bucket:aws-bucket",
+        "label": "data: s3 bucket: aws-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "backed_by": "cloud_resource:aws:s3:bucket:known-private",
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "internet_exposed": false,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {
+              "publicly_accessible": false
+            },
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_name": "known-private"
+        },
+        "canonical_id": "2f8971a1-2588-5610-941b-5bcf50fe4981",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "s3"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:aws:s3:bucket:known-private",
+        "label": "data: s3 bucket: known-private",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "backed_by": "cloud_resource:aws:s3:bucket:unknown-exposure",
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {
+              "publicly_accessible": "unknown"
+            },
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_name": "unknown-exposure"
+        },
+        "canonical_id": "fe328b25-6853-569f-aba3-b2696df5a1d8",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "s3"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:aws:s3:bucket:unknown-exposure",
+        "label": "data: s3 bucket: unknown-exposure",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "backed_by": "cloud_resource:aws:s3:bucket:known-public",
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "internet_exposed": true,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {
+              "publicly_accessible": true
+            },
+            "source": "cloud-inventory"
+          },
+          "location": "us-east-1",
+          "resource_name": "known-public"
+        },
+        "canonical_id": "9635dd67-0dac-5bc4-858d-ebddfbc0b7bc",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "s3"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:aws:s3:bucket:known-public",
+        "label": "data: s3 bucket: known-public",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      }
+    ],
+    "scan_id": "cloud-context",
+    "schema_version": "agent-bom.graph/v1",
+    "stats": {
+      "analysis_status": {
+        "attack_path_fusion": {
+          "limits": {
+            "max_depth": 8,
+            "max_entries": 200,
+            "max_nodes": 5000,
+            "max_paths": 50,
+            "max_visited_per_entry": 2000
+          },
+          "observed": {
+            "candidate_path_count": 0,
+            "entry_count": 2,
+            "evaluated_entry_count": 2,
+            "node_count": 14,
+            "result_count": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        },
+        "effective_permissions": {
+          "limits": {
+            "max_depth": 6,
+            "max_permission_witnesses": 16,
+            "max_principals": 5000
+          },
+          "observed": {
+            "admin_principals": 0,
+            "conditional_admin_principals": 0,
+            "has_permission_edges": 0,
+            "inactive_source_edges": 0,
+            "invalid_source_validity": 0,
+            "principal_count": 1,
+            "privilege_escalations": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        }
+      },
+      "attack_campaign_count": 0,
+      "attack_path_count": 0,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 0.0,
+      "node_types": {
+        "account": 1,
+        "cloud_resource": 7,
+        "data_store": 5,
+        "provider": 1
+      },
+      "relationship_types": {
+        "contains": 7,
+        "exposed_to": 1,
+        "owns": 7,
+        "stores": 4
+      },
+      "severity_counts": {
+        "info": 4
+      },
+      "total_edges": 19,
+      "total_nodes": 14,
+      "total_nodes_source": 14
+    },
+    "tenant_id": "tenant-a"
+  },
+  "azure": {
+    "analysis_status": {
+      "attack_path_fusion": {
+        "limits": {
+          "max_depth": 8,
+          "max_entries": 200,
+          "max_nodes": 5000,
+          "max_paths": 50,
+          "max_visited_per_entry": 2000
+        },
+        "observed": {
+          "candidate_path_count": 0,
+          "entry_count": 0,
+          "evaluated_entry_count": 0,
+          "node_count": 9,
+          "result_count": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      },
+      "effective_permissions": {
+        "limits": {
+          "max_depth": 6,
+          "max_permission_witnesses": 16,
+          "max_principals": 5000
+        },
+        "observed": {
+          "admin_principals": 0,
+          "conditional_admin_principals": 0,
+          "has_permission_edges": 0,
+          "inactive_source_edges": 0,
+          "invalid_source_validity": 0,
+          "principal_count": 1,
+          "privilege_escalations": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      }
+    },
+    "attack_campaigns": [],
+    "attack_paths": [],
+    "completeness": {
+      "complete": true,
+      "returned": 0,
+      "sampled": false,
+      "status": "complete",
+      "total": 0,
+      "truncated": false
+    },
+    "created_at": "2026-09-30T12:00:00+00:00",
+    "edges": [
+      {
+        "activity_id": 1,
+        "canonical_id": "a1bf9c48-34a0-59c7-be0e-40e9706c68e1",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:azure:sub-1:cloud_resource:azure:storage:bucket:azblob",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:storage:bucket:azblob",
+        "target_id": "cloud_resource:azure:storage:bucket:azblob",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "57e0da47-8190-5c39-8576-0e1fcb9e5013",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:azure:sub-1:cloud_resource:azure:storage:bucket:azblob",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:storage:bucket:azblob",
+        "target_id": "cloud_resource:azure:storage:bucket:azblob",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "e6db37b3-1c3c-59d9-ab6c-416e2a8c6063",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:azure:sub-1:cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "target_id": "cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "dc27ff2b-06b4-57af-b798-b8582fed83d1",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:azure:sub-1:cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "target_id": "cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "100f3ce1-62b8-56bc-8d11-28649acaf83a",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:azure:sub-1:cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "target_id": "cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "d1c6ea2e-8422-53fc-bb7f-e094eec7415a",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:azure:sub-1:cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "target_id": "cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "1b4daf1f-8d6d-59e0-a7d6-f9647853e2f6",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:azure:sub-1:cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "target_id": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "1b319274-2dda-5b56-b751-0289a9a2bb08",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:azure:sub-1:cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:azure:sub-1",
+        "source_id": "account:azure:sub-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "target_id": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "7c56e83d-b90a-5e2f-a477-6f45d98ac900",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:azure:storage:bucket:azblob:data_store:cloud_resource:azure:storage:bucket:azblob",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:azure:storage:bucket:azblob",
+        "source_id": "cloud_resource:azure:storage:bucket:azblob",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:azure:storage:bucket:azblob",
+        "target_id": "data_store:cloud_resource:azure:storage:bucket:azblob",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "7c12328b-5f3b-5551-953f-240386215c7d",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:azure:database:/subscriptions/sub-1/db:data_store:cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "source_id": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "target_id": "data_store:cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      }
+    ],
+    "interaction_risks": [],
+    "nodes": [
+      {
+        "attributes": {
+          "evidence_tier": "static_scan",
+          "provider": "azure",
+          "source": "cloud-inventory"
+        },
+        "canonical_id": "a71492a7-0cf6-522b-ac9f-e54b0a75d97e",
+        "category_uid": 0,
+        "class_uid": 0,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {},
+        "entity_type": "provider",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "provider:azure",
+        "label": "azure",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 1
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "unknown",
+          "cloud_provider": "azure",
+          "evidence_tier": "static_scan",
+          "source": "cloud-inventory"
+        },
+        "canonical_id": "42bc2f49-744e-5111-8755-51d1f5a9bcb4",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "surface": "identity"
+        },
+        "entity_type": "account",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "account:azure:sub-1",
+        "label": "sub-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "cloud_provider": "azure",
+          "cloud_service": "storage",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "eastus",
+          "resource_id": "/subscriptions/sub-1/sa",
+          "resource_kind": "azure-storage-account",
+          "resource_name": "azblob",
+          "resource_type": "bucket",
+          "tags": {
+            "environment": "prod",
+            "owner": "team-a"
+          }
+        },
+        "canonical_id": "c0e66100-4e43-59b0-aaee-df4f06a568af",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "s3"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:azure:storage:bucket:azblob",
+        "label": "storage account: azblob",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "cloud_provider": "azure",
+          "cloud_service": "compute",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "iam_instance_profile": "",
+          "image_id": "",
+          "instance_type": "",
+          "location": "eastus",
+          "network": "",
+          "network_tags": [],
+          "private_ip": "",
+          "public_ip": "",
+          "resource_id": "vm-1",
+          "resource_kind": "azure-vm",
+          "resource_name": "az-vm",
+          "resource_type": "instance",
+          "security_group_ids": [],
+          "service_accounts": [],
+          "state": "",
+          "vpc_id": ""
+        },
+        "canonical_id": "f078cf20-4978-57db-ac11-e42018d6ef4b",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "ec2"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:azure:compute:instance:vm-1",
+        "label": "vm: az-vm",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": false,
+          "location": "eastus",
+          "resource_id": "/subscriptions/sub-1/aks",
+          "resource_kind": "Microsoft.ContainerService/managedClusters",
+          "resource_name": "az-aks",
+          "resource_type": "container_cluster",
+          "tags": {
+            "environment": "prod",
+            "owner": "team-a"
+          }
+        },
+        "canonical_id": "fb279094-26b4-58d4-9428-881238d9809e",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "container"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:azure:container_cluster:/subscriptions/sub-1/aks",
+        "label": "kubernetes cluster: az-aks",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": false,
+          "location": "eastus",
+          "resource_id": "/subscriptions/sub-1/acr",
+          "resource_kind": "Microsoft.ContainerRegistry/registries",
+          "resource_name": "azacr",
+          "resource_type": "container_registry",
+          "tags": {
+            "environment": "prod",
+            "owner": "team-a"
+          }
+        },
+        "canonical_id": "179c1859-3df3-55ab-9918-20cfdaf169aa",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "registry"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:azure:container_registry:/subscriptions/sub-1/acr",
+        "label": "container registry: azacr",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": true,
+          "location": "eastus",
+          "resource_id": "/subscriptions/sub-1/db",
+          "resource_kind": "Microsoft.DocumentDB/databaseAccounts",
+          "resource_name": "az-db",
+          "resource_type": "database",
+          "tags": {
+            "environment": "prod",
+            "owner": "team-a"
+          }
+        },
+        "canonical_id": "8a4008be-d204-556a-b567-7fb33df6c095",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:azure",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "database"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:azure",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "label": "database: az-db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "backed_by": "cloud_resource:azure:storage:bucket:azblob",
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "eastus",
+          "resource_name": "azblob"
+        },
+        "canonical_id": "6fde1721-e6b9-5d5b-a9b1-1a5611615149",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "s3"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:azure:storage:bucket:azblob",
+        "label": "data: storage account: azblob",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "sub-1",
+          "backed_by": "cloud_resource:azure:database:/subscriptions/sub-1/db",
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "eastus",
+          "resource_name": "az-db"
+        },
+        "canonical_id": "b6df3845-4d6b-59c6-96a9-3f2f147f5311",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "azure",
+          "environment": "prod",
+          "surface": "database"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:azure:database:/subscriptions/sub-1/db",
+        "label": "data: database: az-db",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      }
+    ],
+    "scan_id": "cloud-context",
+    "schema_version": "agent-bom.graph/v1",
+    "stats": {
+      "analysis_status": {
+        "attack_path_fusion": {
+          "limits": {
+            "max_depth": 8,
+            "max_entries": 200,
+            "max_nodes": 5000,
+            "max_paths": 50,
+            "max_visited_per_entry": 2000
+          },
+          "observed": {
+            "candidate_path_count": 0,
+            "entry_count": 0,
+            "evaluated_entry_count": 0,
+            "node_count": 9,
+            "result_count": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        },
+        "effective_permissions": {
+          "limits": {
+            "max_depth": 6,
+            "max_permission_witnesses": 16,
+            "max_principals": 5000
+          },
+          "observed": {
+            "admin_principals": 0,
+            "conditional_admin_principals": 0,
+            "has_permission_edges": 0,
+            "inactive_source_edges": 0,
+            "invalid_source_validity": 0,
+            "principal_count": 1,
+            "privilege_escalations": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        }
+      },
+      "attack_campaign_count": 0,
+      "attack_path_count": 0,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 0.0,
+      "node_types": {
+        "account": 1,
+        "cloud_resource": 5,
+        "data_store": 2,
+        "provider": 1
+      },
+      "relationship_types": {
+        "contains": 4,
+        "owns": 4,
+        "stores": 2
+      },
+      "severity_counts": {
+        "info": 2
+      },
+      "total_edges": 10,
+      "total_nodes": 9,
+      "total_nodes_source": 9
+    },
+    "tenant_id": "tenant-a"
+  },
+  "cloud_agent": {
+    "analysis_status": {
+      "attack_path_fusion": {
+        "limits": {
+          "max_depth": 8,
+          "max_entries": 200,
+          "max_nodes": 5000,
+          "max_paths": 50,
+          "max_visited_per_entry": 2000
+        },
+        "observed": {
+          "candidate_path_count": 0,
+          "entry_count": 0,
+          "evaluated_entry_count": 0,
+          "node_count": 9,
+          "result_count": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      },
+      "effective_permissions": {
+        "limits": {
+          "max_depth": 6,
+          "max_permission_witnesses": 16,
+          "max_principals": 5000
+        },
+        "observed": {
+          "admin_principals": 0,
+          "conditional_admin_principals": 0,
+          "has_permission_edges": 1,
+          "inactive_source_edges": 0,
+          "invalid_source_validity": 0,
+          "principal_count": 3,
+          "privilege_escalations": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      }
+    },
+    "attack_campaigns": [],
+    "attack_paths": [],
+    "completeness": {
+      "complete": true,
+      "returned": 0,
+      "sampled": false,
+      "status": "complete",
+      "total": 0,
+      "truncated": false
+    },
+    "created_at": "2026-09-30T12:00:00+00:00",
+    "edges": [
+      {
+        "activity_id": 1,
+        "canonical_id": "22e4328b-d83d-5fc2-a1ba-d69d01e23e5e",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "hosts:provider:aws-bedrock:agent:cloud-assistant",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "hosts",
+        "source": "provider:aws-bedrock",
+        "source_id": "provider:aws-bedrock",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "agent:cloud-assistant",
+        "target_id": "agent:cloud-assistant",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "03257111-865e-5d9d-afb3-8c69d9deadbc",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "provider": "aws",
+          "scope_key": "org_id",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "hosts:provider:aws:org:aws:org-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "hosts",
+        "source": "provider:aws",
+        "source_id": "provider:aws",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "org:aws:org-1",
+        "target_id": "org:aws:org-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "e290103a-5d85-5a84-a8f5-579ea6d182cd",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "provider": "aws",
+          "scope_key": "account_id",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "hosts:provider:aws:account:aws:123456789012",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "hosts",
+        "source": "provider:aws",
+        "source_id": "provider:aws",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "account:aws:123456789012",
+        "target_id": "account:aws:123456789012",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "d9c82239-07b5-5ed9-af5d-c1cfb007a7ba",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "provider": "aws",
+          "scope_key": "org_id",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "part_of:account:aws:123456789012:org:aws:org-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "part_of",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "org:aws:org-1",
+        "target_id": "org:aws:org-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "1acda5dc-8fec-5844-a396-e545864f5908",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "provider": "aws",
+          "scope_key": "account_id",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "hosts:account:aws:123456789012:cloud_resource:aws:bedrock:agent:agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "hosts",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:bedrock:agent:agent-1",
+        "target_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "c0ef872c-bb1d-527a-9c92-acfa39f8cdc2",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "provider": "aws",
+          "scope_key": "account_id",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:aws:123456789012:cloud_resource:aws:bedrock:agent:agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:aws:123456789012",
+        "source_id": "account:aws:123456789012",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:bedrock:agent:agent-1",
+        "target_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "985d4e9b-7e86-5c3b-8de0-defb122599cd",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "provider": "aws",
+          "service": "bedrock",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "hosts:provider:aws:cloud_resource:aws:bedrock:agent:agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "hosts",
+        "source": "provider:aws",
+        "source_id": "provider:aws",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:bedrock:agent:agent-1",
+        "target_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "9e319e6a-486d-5425-a1fd-42de8a155037",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "resource_id": "agent-1",
+          "source": "cloud_origin"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "hosts:cloud_resource:aws:bedrock:agent:agent-1:agent:cloud-assistant",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "hosts",
+        "source": "cloud_resource:aws:bedrock:agent:agent-1",
+        "source_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "agent:cloud-assistant",
+        "target_id": "agent:cloud-assistant",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "a722634d-8dc7-5797-a2ec-0461c8a3cb51",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "principal_type": "iam-role",
+          "source": "cloud_principal"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "member_of:role:aws:role-1:account:aws:123456789012",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "member_of",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "account:aws:123456789012",
+        "target_id": "account:aws:123456789012",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "9593aece-27b7-5604-83df-a498b4170d2c",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "principal_type": "iam-role",
+          "source": "cloud_principal"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "manages:role:aws:role-1:cloud_resource:aws:bedrock:agent:agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "manages",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:bedrock:agent:agent-1",
+        "target_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "7184efae-ee38-5fd3-a856-51a1cfd295c8",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "principal_type": "iam-role",
+          "source": "cloud_principal"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "can_access:role:aws:role-1:cloud_resource:aws:bedrock:agent:agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "can_access",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:bedrock:agent:agent-1",
+        "target_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "ea1b25fa-f816-5e33-9ae9-4532a7af3e42",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "principal_type": "iam-role",
+          "source": "cloud_principal"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "attached:role:aws:role-1:policy:aws:policy-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "attached",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "policy:aws:policy-1",
+        "target_id": "policy:aws:policy-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "44ca5d0d-1408-557c-8527-decf6445a735",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "principal_type": "iam-role",
+          "source": "cloud_principal_trust",
+          "source_field": "",
+          "trusted_principal_type": "role"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cross_account_trust:role:aws:role-1:role:aws:external-role",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "cross_account_trust",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "role:aws:external-role",
+        "target_id": "role:aws:external-role",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "d470f485-cf3d-525b-9902-9404b4d8d30d",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "principal_type": "iam-role",
+          "source": "cloud_principal",
+          "via": "cloud_resource:aws:bedrock:agent:agent-1"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "manages:role:aws:role-1:agent:cloud-assistant",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "manages",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "agent:cloud-assistant",
+        "target_id": "agent:cloud-assistant",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "cc233b89-68af-5533-ace3-e52f423a60b4",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "access": "direct",
+          "permission_derivation": {
+            "basis": "recorded_graph_connections",
+            "path_selection": "one_shortest_path_per_grant_and_access",
+            "paths": [
+              {
+                "access": "direct",
+                "grant_edge_id": "can_access:role:aws:role-1:cloud_resource:aws:bedrock:agent:agent-1",
+                "grant_principal_id": "role:aws:role-1",
+                "source_edge_ids": [
+                  "can_access:role:aws:role-1:cloud_resource:aws:bedrock:agent:agent-1"
+                ]
+              }
+            ],
+            "source_scan_id": "cloud-context",
+            "truncated": false
+          }
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "has_permission:role:aws:role-1:cloud_resource:aws:bedrock:agent:agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "effective-permissions"
+        },
+        "relationship": "has_permission",
+        "source": "role:aws:role-1",
+        "source_id": "role:aws:role-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:aws:bedrock:agent:agent-1",
+        "target_id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 2.0
+      }
+    ],
+    "interaction_risks": [],
+    "nodes": [
+      {
+        "attributes": {
+          "canonical_id": "f33683a4-3732-5173-ac38-2df1f9121542",
+          "evidence_tier": "static_scan",
+          "provider": "aws-bedrock"
+        },
+        "canonical_id": "f33683a4-3732-5173-ac38-2df1f9121542",
+        "category_uid": 0,
+        "class_uid": 0,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan"
+        ],
+        "dimensions": {},
+        "entity_type": "provider",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "provider:aws-bedrock",
+        "label": "aws-bedrock",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 1
+      },
+      {
+        "attributes": {
+          "agent_type": "custom",
+          "canonical_id": "3c42f417-4e49-51b3-904a-84f3e6ba5a64",
+          "cloud_origin": {
+            "location": "us-east-1",
+            "provider": "aws",
+            "resource_id": "agent-1",
+            "resource_type": "agent",
+            "scope": {
+              "account_id": "123456789012",
+              "org_id": "org-1"
+            },
+            "service": "bedrock"
+          },
+          "cloud_principal": {
+            "policies": [
+              {
+                "policy_document": {
+                  "Statement": [
+                    {
+                      "Action": "s3:GetObject",
+                      "Effect": "Allow",
+                      "Resource": "arn:aws:s3:::example/*"
+                    }
+                  ],
+                  "Version": "2012-10-17"
+                },
+                "policy_id": "policy-1"
+              }
+            ],
+            "principal_id": "role-1",
+            "principal_type": "iam-role",
+            "trust_principals": [
+              {
+                "principal_id": "external-role",
+                "principal_type": "role",
+                "relationship": "cross_account_trust"
+              }
+            ]
+          },
+          "cloud_scope": null,
+          "cloud_state": null,
+          "config_path": "",
+          "discovered_at": null,
+          "discovery_provenance": null,
+          "enrollment_name": "",
+          "environment": "",
+          "evidence_tier": "static_scan",
+          "last_seen": null,
+          "mdm_provider": "",
+          "owner": "",
+          "server_count": 0,
+          "source": "aws-bedrock",
+          "source_id": "",
+          "source_ids": {},
+          "stable_id": "",
+          "status": "",
+          "tags": []
+        },
+        "canonical_id": "3c42f417-4e49-51b3-904a-84f3e6ba5a64",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "agent_type": "custom"
+        },
+        "entity_type": "agent",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "agent:cloud-assistant",
+        "label": "cloud-assistant",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "evidence_tier": "static_scan",
+          "provider": "aws",
+          "source": "cloud_origin"
+        },
+        "canonical_id": "302cd1c9-8889-59af-b468-bafd8f028957",
+        "category_uid": 0,
+        "class_uid": 0,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {},
+        "entity_type": "provider",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "provider:aws",
+        "label": "aws",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 1
+      },
+      {
+        "attributes": {
+          "cloud_origin": {
+            "location": "us-east-1",
+            "provider": "aws",
+            "resource_id": "agent-1",
+            "resource_type": "agent",
+            "scope": {
+              "account_id": "123456789012",
+              "org_id": "org-1"
+            },
+            "service": "bedrock"
+          },
+          "cloud_provider": "aws",
+          "cloud_scope": null,
+          "cloud_service": "bedrock",
+          "cloud_state": null,
+          "cloud_timestamps": null,
+          "evidence_tier": "static_scan",
+          "location": "us-east-1",
+          "network": {},
+          "resource_id": "agent-1",
+          "resource_name": "agent-1",
+          "resource_type": "agent",
+          "scope": {
+            "account_id": "123456789012",
+            "org_id": "org-1"
+          }
+        },
+        "canonical_id": "5a0b12fc-04eb-5967-a521-5088157d9045",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "bedrock"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:aws:bedrock:agent:agent-1",
+        "label": "agent-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "cloud_origin": {
+            "location": "us-east-1",
+            "provider": "aws",
+            "resource_id": "agent-1",
+            "resource_type": "agent",
+            "scope": {
+              "account_id": "123456789012",
+              "org_id": "org-1"
+            },
+            "service": "bedrock"
+          },
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "org_id": "org-1",
+          "scope_key": "org_id"
+        },
+        "canonical_id": "008934bb-b842-5b91-8a81-237b35fc4c4d",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "identity"
+        },
+        "entity_type": "org",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "org:aws:org-1",
+        "label": "org-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "account_id": "123456789012",
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "unknown",
+          "cloud_origin": {
+            "location": "us-east-1",
+            "provider": "aws",
+            "resource_id": "agent-1",
+            "resource_type": "agent",
+            "scope": {
+              "account_id": "123456789012",
+              "org_id": "org-1"
+            },
+            "service": "bedrock"
+          },
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "scope_key": "account_id"
+        },
+        "canonical_id": "168fc6ee-567e-58fb-9868-c3b19605aa9c",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "identity"
+        },
+        "entity_type": "account",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "account:aws:123456789012",
+        "label": "123456789012",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "admin_equivalence_basis": "policy_evaluation",
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "not_admin",
+          "cloud_principal": {
+            "policies": [
+              {
+                "policy_document": {
+                  "Statement": [
+                    {
+                      "Action": "s3:GetObject",
+                      "Effect": "Allow",
+                      "Resource": "arn:aws:s3:::example/*"
+                    }
+                  ],
+                  "Version": "2012-10-17"
+                },
+                "policy_id": "policy-1"
+              }
+            ],
+            "principal_id": "role-1",
+            "principal_type": "iam-role",
+            "trust_principals": [
+              {
+                "principal_id": "external-role",
+                "principal_type": "role",
+                "relationship": "cross_account_trust"
+              }
+            ]
+          },
+          "cloud_provider": "aws",
+          "cloud_service": "bedrock",
+          "evidence_tier": "static_scan",
+          "nhi_is_dormant": false,
+          "nhi_is_orphaned": false,
+          "nhi_risk_band": "low",
+          "nhi_risk_factors": [
+            "credential unknown_age"
+          ],
+          "nhi_risk_score": 6,
+          "nhi_unused_permission_count": 0,
+          "principal_id": "role-1",
+          "principal_name": "role-1",
+          "principal_type": "iam-role",
+          "risk_assessment": {
+            "basis": "identity_governance_verdict_scaled_to_10",
+            "scope": "recorded_identity_governance_signals",
+            "scored_value": 0.6,
+            "status": "assessed"
+          },
+          "source_field": "",
+          "tenant_id": ""
+        },
+        "canonical_id": "05d6f6b1-e9e5-52b4-afcb-22300ea8b92c",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "identity"
+        },
+        "entity_type": "role",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "role:aws:role-1",
+        "label": "role-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": "identity_governance_verdict_scaled_to_10",
+          "scope": "recorded_identity_governance_signals",
+          "status": "assessed"
+        },
+        "risk_score": 0.6,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "policy_document": {
+            "Statement": [
+              {
+                "Action": "s3:GetObject",
+                "Effect": "Allow",
+                "Resource": "arn:aws:s3:::example/*"
+              }
+            ],
+            "Version": "2012-10-17"
+          },
+          "policy_id": "policy-1",
+          "policy_name": "policy-1",
+          "privilege_level": "unknown"
+        },
+        "canonical_id": "6040e196-b5a9-5abd-babe-867736257520",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "identity"
+        },
+        "entity_type": "policy",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "policy:aws:policy-1",
+        "label": "policy-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "unknown",
+          "cloud_provider": "aws",
+          "evidence_tier": "static_scan",
+          "nhi_is_dormant": false,
+          "nhi_is_orphaned": false,
+          "nhi_risk_band": "low",
+          "nhi_risk_factors": [
+            "credential unknown_age"
+          ],
+          "nhi_risk_score": 6,
+          "nhi_unused_permission_count": 0,
+          "principal_id": "external-role",
+          "principal_name": "external-role",
+          "principal_type": "role",
+          "risk_assessment": {
+            "basis": "identity_governance_verdict_scaled_to_10",
+            "scope": "recorded_identity_governance_signals",
+            "scored_value": 0.6,
+            "status": "assessed"
+          }
+        },
+        "canonical_id": "f8d63208-2334-5170-9a2b-4dc7aef96021",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "aws-bedrock",
+          "cloud:aws",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "aws",
+          "surface": "identity"
+        },
+        "entity_type": "role",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "aws-bedrock",
+            "cloud:aws",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "role:aws:external-role",
+        "label": "external-role",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": "identity_governance_verdict_scaled_to_10",
+          "scope": "recorded_identity_governance_signals",
+          "status": "assessed"
+        },
+        "risk_score": 0.6,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      }
+    ],
+    "scan_id": "cloud-context",
+    "schema_version": "agent-bom.graph/v1",
+    "stats": {
+      "analysis_status": {
+        "attack_path_fusion": {
+          "limits": {
+            "max_depth": 8,
+            "max_entries": 200,
+            "max_nodes": 5000,
+            "max_paths": 50,
+            "max_visited_per_entry": 2000
+          },
+          "observed": {
+            "candidate_path_count": 0,
+            "entry_count": 0,
+            "evaluated_entry_count": 0,
+            "node_count": 9,
+            "result_count": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        },
+        "effective_permissions": {
+          "limits": {
+            "max_depth": 6,
+            "max_permission_witnesses": 16,
+            "max_principals": 5000
+          },
+          "observed": {
+            "admin_principals": 0,
+            "conditional_admin_principals": 0,
+            "has_permission_edges": 1,
+            "inactive_source_edges": 0,
+            "invalid_source_validity": 0,
+            "principal_count": 3,
+            "privilege_escalations": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        }
+      },
+      "attack_campaign_count": 0,
+      "attack_path_count": 0,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 0.0,
+      "node_types": {
+        "account": 1,
+        "agent": 1,
+        "cloud_resource": 1,
+        "org": 1,
+        "policy": 1,
+        "provider": 2,
+        "role": 2
+      },
+      "relationship_types": {
+        "attached": 1,
+        "can_access": 1,
+        "contains": 1,
+        "cross_account_trust": 1,
+        "has_permission": 1,
+        "hosts": 6,
+        "manages": 2,
+        "member_of": 1,
+        "part_of": 1
+      },
+      "severity_counts": {},
+      "total_edges": 15,
+      "total_nodes": 9,
+      "total_nodes_source": 9
+    },
+    "tenant_id": "tenant-a"
+  },
+  "gcp": {
+    "analysis_status": {
+      "attack_path_fusion": {
+        "limits": {
+          "max_depth": 8,
+          "max_entries": 200,
+          "max_nodes": 5000,
+          "max_paths": 50,
+          "max_visited_per_entry": 2000
+        },
+        "observed": {
+          "candidate_path_count": 0,
+          "entry_count": 0,
+          "evaluated_entry_count": 0,
+          "node_count": 8,
+          "result_count": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      },
+      "effective_permissions": {
+        "limits": {
+          "max_depth": 6,
+          "max_permission_witnesses": 16,
+          "max_principals": 5000
+        },
+        "observed": {
+          "admin_principals": 0,
+          "conditional_admin_principals": 0,
+          "has_permission_edges": 0,
+          "inactive_source_edges": 0,
+          "invalid_source_validity": 0,
+          "principal_count": 1,
+          "privilege_escalations": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      }
+    },
+    "attack_campaigns": [],
+    "attack_paths": [],
+    "completeness": {
+      "complete": true,
+      "returned": 0,
+      "sampled": false,
+      "status": "complete",
+      "total": 0,
+      "truncated": false
+    },
+    "created_at": "2026-09-30T12:00:00+00:00",
+    "edges": [
+      {
+        "activity_id": 1,
+        "canonical_id": "71f73d67-7537-5b53-a72d-f399dfd5ef87",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:gcp:proj-1:cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "target_id": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "5cf49aaa-d2cb-5923-98b6-593819dbb93b",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:gcp:proj-1:cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "target_id": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "73a5f83e-a3bb-5134-849d-986f88788dd0",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:gcp:proj-1:cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "target_id": "cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "31ad6a31-41e4-5432-8ddc-def6f6c0669b",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:gcp:proj-1:cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "target_id": "cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "34d7b1e6-3fb8-50e3-8d31-8f0e532d0dc9",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:gcp:proj-1:cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "target_id": "cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "320469a6-878f-5404-8ef8-79a79ef4771a",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:gcp:proj-1:cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "target_id": "cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "55159ca6-9164-5243-ba6d-ef01dbfda489",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:gcp:proj-1:cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "target_id": "cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "74b61d3e-0299-5a31-b54f-428fd5ed8a97",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "cloud-inventory"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:gcp:proj-1:cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:gcp:proj-1",
+        "source_id": "account:gcp:proj-1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "target_id": "cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "6b9e20e0-8767-53b0-90cd-9f7dfd52c193",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:gcp:gcs:bucket:gcs-bucket:data_store:cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "source_id": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "target_id": "data_store:cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      }
+    ],
+    "interaction_risks": [],
+    "nodes": [
+      {
+        "attributes": {
+          "evidence_tier": "static_scan",
+          "provider": "gcp",
+          "source": "cloud-inventory"
+        },
+        "canonical_id": "7db18bb4-d123-580a-a505-d131e1eb58d8",
+        "category_uid": 0,
+        "class_uid": 0,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {},
+        "entity_type": "provider",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "provider:gcp",
+        "label": "gcp",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 1
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "unknown",
+          "cloud_provider": "gcp",
+          "evidence_tier": "static_scan",
+          "source": "cloud-inventory"
+        },
+        "canonical_id": "fe714866-84cc-5cd6-a8d5-af5d933c0172",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "surface": "identity"
+        },
+        "entity_type": "account",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "account:gcp:proj-1",
+        "label": "proj-1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "cloud_provider": "gcp",
+          "cloud_service": "gcs",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "us-central1",
+          "resource_id": "gcs-bucket",
+          "resource_kind": "gcs-bucket",
+          "resource_name": "gcs-bucket",
+          "resource_type": "bucket",
+          "tags": {
+            "environment": "prod",
+            "owner": "team-a"
+          }
+        },
+        "canonical_id": "c90e2046-41f9-5048-990d-5dd85e33bd52",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "surface": "s3"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "label": "gcs bucket: gcs-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "cloud_provider": "gcp",
+          "cloud_service": "compute",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "iam_instance_profile": "",
+          "image_id": "",
+          "instance_type": "",
+          "location": "us-central1",
+          "network": "",
+          "network_tags": [],
+          "private_ip": "",
+          "public_ip": "",
+          "resource_id": "gce-1",
+          "resource_kind": "gce-instance",
+          "resource_name": "gce-vm",
+          "resource_type": "instance",
+          "security_group_ids": [],
+          "service_accounts": [],
+          "state": "",
+          "vpc_id": ""
+        },
+        "canonical_id": "43945618-40d4-569c-b3fc-af1244edbf4e",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "surface": "ec2"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:gcp:compute:instance:gce-1",
+        "label": "gce: gce-vm",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "cloud_provider": "gcp",
+          "cloud_service": "gke",
+          "encrypted": false,
+          "engine": "",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": false,
+          "location": "us-central1",
+          "resource_id": "gke-1",
+          "resource_kind": "gke-cluster",
+          "resource_name": "gcp-gke",
+          "resource_type": "container_cluster"
+        },
+        "canonical_id": "fdb461b0-bba4-57af-8684-2f24b3504d6e",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "surface": "gke"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:gcp:gke:container_cluster:scoped/proj-1/us-central1//native/gke-1",
+        "label": "gke cluster: gcp-gke",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "cloud_provider": "gcp",
+          "cloud_service": "run",
+          "encrypted": false,
+          "engine": "",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": false,
+          "location": "us-central1",
+          "resource_id": "gcp-run",
+          "resource_kind": "cloud-run-service",
+          "resource_name": "gcp-run",
+          "resource_type": "function"
+        },
+        "canonical_id": "8fd6abb6-0f8f-5bf9-afb2-6906d2d51d6c",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "surface": "run"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:gcp:run:function:scoped/proj-1/us-central1//name/gcp-run",
+        "label": "cloud run service: gcp-run",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "cloud_provider": "gcp",
+          "cloud_service": "cloudsql",
+          "encrypted": false,
+          "engine": "",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "is_data_store": true,
+          "location": "us-central1",
+          "resource_id": "gcp-sql",
+          "resource_kind": "cloud-sql-instance",
+          "resource_name": "gcp-sql",
+          "resource_type": "database"
+        },
+        "canonical_id": "087695e0-ab4d-5584-9f2c-dd0375ddab59",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cloud-inventory:gcp",
+          "mcp-scan"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "surface": "cloudsql"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cloud-inventory:gcp",
+            "mcp-scan"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:gcp:cloudsql:database:scoped/proj-1/us-central1//name/gcp-sql",
+        "label": "cloud sql database: gcp-sql",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "proj-1",
+          "backed_by": "cloud_resource:gcp:gcs:bucket:gcs-bucket",
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "internet_exposure_evidence": {
+            "basis": "recorded_attributes",
+            "inputs": {},
+            "source": "cloud-inventory"
+          },
+          "location": "us-central1",
+          "resource_name": "gcs-bucket"
+        },
+        "canonical_id": "c8559b0e-4b78-5fd5-94fc-d81cb6c72098",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "gcp",
+          "environment": "prod",
+          "surface": "s3"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:gcp:gcs:bucket:gcs-bucket",
+        "label": "data: gcs bucket: gcs-bucket",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      }
+    ],
+    "scan_id": "cloud-context",
+    "schema_version": "agent-bom.graph/v1",
+    "stats": {
+      "analysis_status": {
+        "attack_path_fusion": {
+          "limits": {
+            "max_depth": 8,
+            "max_entries": 200,
+            "max_nodes": 5000,
+            "max_paths": 50,
+            "max_visited_per_entry": 2000
+          },
+          "observed": {
+            "candidate_path_count": 0,
+            "entry_count": 0,
+            "evaluated_entry_count": 0,
+            "node_count": 8,
+            "result_count": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        },
+        "effective_permissions": {
+          "limits": {
+            "max_depth": 6,
+            "max_permission_witnesses": 16,
+            "max_principals": 5000
+          },
+          "observed": {
+            "admin_principals": 0,
+            "conditional_admin_principals": 0,
+            "has_permission_edges": 0,
+            "inactive_source_edges": 0,
+            "invalid_source_validity": 0,
+            "principal_count": 1,
+            "privilege_escalations": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        }
+      },
+      "attack_campaign_count": 0,
+      "attack_path_count": 0,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 0.0,
+      "node_types": {
+        "account": 1,
+        "cloud_resource": 4,
+        "data_store": 2,
+        "provider": 1
+      },
+      "relationship_types": {
+        "contains": 4,
+        "owns": 4,
+        "stores": 1
+      },
+      "severity_counts": {
+        "info": 1
+      },
+      "total_edges": 9,
+      "total_nodes": 8,
+      "total_nodes_source": 8
+    },
+    "tenant_id": "tenant-a"
+  },
+  "snowflake": {
+    "analysis_status": {
+      "attack_path_fusion": {
+        "limits": {
+          "max_depth": 8,
+          "max_entries": 200,
+          "max_nodes": 5000,
+          "max_paths": 50,
+          "max_visited_per_entry": 2000
+        },
+        "observed": {
+          "candidate_path_count": 0,
+          "entry_count": 0,
+          "evaluated_entry_count": 0,
+          "node_count": 6,
+          "result_count": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      },
+      "effective_permissions": {
+        "limits": {
+          "max_depth": 6,
+          "max_permission_witnesses": 16,
+          "max_principals": 5000
+        },
+        "observed": {
+          "admin_principals": 0,
+          "conditional_admin_principals": 0,
+          "has_permission_edges": 0,
+          "inactive_source_edges": 0,
+          "invalid_source_validity": 0,
+          "principal_count": 1,
+          "privilege_escalations": 0
+        },
+        "reason_codes": [],
+        "status": "complete"
+      }
+    },
+    "attack_campaigns": [],
+    "attack_paths": [],
+    "completeness": {
+      "complete": true,
+      "returned": 0,
+      "sampled": false,
+      "status": "complete",
+      "total": 0,
+      "truncated": false
+    },
+    "created_at": "2026-09-30T12:00:00+00:00",
+    "edges": [
+      {
+        "activity_id": 1,
+        "canonical_id": "271a39c9-fad1-5c11-8583-77b2e23aa780",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "snowflake-objects"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:snowflake:ACME-PROD:data_store:snowflake:DB.PUBLIC.ORDERS",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:snowflake:DB.PUBLIC.ORDERS",
+        "target_id": "data_store:snowflake:DB.PUBLIC.ORDERS",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "af48f6b8-05b8-53f3-b0bd-05c4c2e4f1c7",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "snowflake-objects"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:snowflake:ACME-PROD:data_store:snowflake:DB.PUBLIC.ORDERS",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:snowflake:DB.PUBLIC.ORDERS",
+        "target_id": "data_store:snowflake:DB.PUBLIC.ORDERS",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "a3a7afb7-7a08-5471-963b-a5083481aa61",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "snowflake-objects"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:snowflake:ACME-PROD:data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "target_id": "data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "2401cf5d-2184-5a81-94aa-d6706bedda1b",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "snowflake-objects"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:snowflake:ACME-PROD:data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "target_id": "data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "a75edfcd-282e-53ff-a289-25bd453b6852",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "snowflake-services"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:snowflake:ACME-PROD:cloud_resource:snowflake:warehouse:WH1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:snowflake:warehouse:WH1",
+        "target_id": "cloud_resource:snowflake:warehouse:WH1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "46851320-ee73-56d3-bf18-1ecc65d9d6b9",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "snowflake-services"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:snowflake:ACME-PROD:cloud_resource:snowflake:warehouse:WH1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "cloud_resource:snowflake:warehouse:WH1",
+        "target_id": "cloud_resource:snowflake:warehouse:WH1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "5c9e5a56-ec15-5f39-aa7e-7a658575d0c1",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "source": "snowflake-services"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "owns:account:snowflake:ACME-PROD:data_store:snowflake:db:DB",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "owns",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:snowflake:db:DB",
+        "target_id": "data_store:snowflake:db:DB",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "722ee05d-343a-5bea-a438-5dc7c5d922e2",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {
+          "hierarchy": "account_contains_resource",
+          "source": "snowflake-services"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "contains:account:snowflake:ACME-PROD:data_store:snowflake:db:DB",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {},
+        "relationship": "contains",
+        "source": "account:snowflake:ACME-PROD",
+        "source_id": "account:snowflake:ACME-PROD",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:snowflake:db:DB",
+        "target_id": "data_store:snowflake:db:DB",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      },
+      {
+        "activity_id": 1,
+        "canonical_id": "46f610d9-71c6-5105-9276-d453988842c6",
+        "confidence": 1.0,
+        "direction": "directed",
+        "evidence": {},
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "stores:cloud_resource:snowflake:warehouse:WH1:data_store:cloud_resource:snowflake:warehouse:WH1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "provenance": {
+          "source": "cnapp-overlay"
+        },
+        "relationship": "stores",
+        "source": "cloud_resource:snowflake:warehouse:WH1",
+        "source_id": "cloud_resource:snowflake:warehouse:WH1",
+        "source_run_id": "",
+        "source_scan_id": "",
+        "target": "data_store:cloud_resource:snowflake:warehouse:WH1",
+        "target_id": "data_store:cloud_resource:snowflake:warehouse:WH1",
+        "traversable": true,
+        "valid_from": "2026-09-30T12:00:00+00:00",
+        "valid_to": null,
+        "weight": 1.0
+      }
+    ],
+    "interaction_risks": [],
+    "nodes": [
+      {
+        "attributes": {
+          "account_id": "ACME-PROD",
+          "admin_equivalence_resource_scopes": [],
+          "admin_equivalence_status": "unknown",
+          "cloud_provider": "snowflake",
+          "evidence_tier": "static_scan",
+          "risk_assessment": {
+            "basis": null,
+            "scope": null,
+            "status": "not_assessed"
+          },
+          "source": "snowflake-services"
+        },
+        "canonical_id": "5ff3f8b9-8ef4-5c69-b45c-cd1e259e7319",
+        "category_uid": 3,
+        "class_uid": 3001,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan",
+          "snowflake-objects",
+          "snowflake-services"
+        ],
+        "dimensions": {
+          "cloud_provider": "snowflake",
+          "surface": "identity"
+        },
+        "entity_type": "account",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan",
+            "snowflake-objects",
+            "snowflake-services"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "account:snowflake:ACME-PROD",
+        "label": "ACME-PROD",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 300101
+      },
+      {
+        "attributes": {
+          "account_id": "ACME-PROD",
+          "bytes": null,
+          "cloud_provider": "snowflake",
+          "database": "DB",
+          "evidence_tier": "static_scan",
+          "fqn": "DB.PUBLIC.ORDERS",
+          "is_data_store": true,
+          "object_type": "table",
+          "row_count": 100,
+          "schema": "PUBLIC",
+          "snowflake_local_id": "data_store:snowflake:DB.PUBLIC.ORDERS",
+          "snowflake_scope_version": "account-lanes.v1"
+        },
+        "canonical_id": "71df3745-de47-5e66-9134-b6516d4f2bd2",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan",
+          "snowflake-objects",
+          "snowflake-services"
+        ],
+        "dimensions": {
+          "cloud_provider": "snowflake",
+          "surface": "data"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan",
+            "snowflake-objects",
+            "snowflake-services"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:snowflake:DB.PUBLIC.ORDERS",
+        "label": "table: DB.PUBLIC.ORDERS",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "ACME-PROD",
+          "bytes": null,
+          "cloud_provider": "snowflake",
+          "database": "DB",
+          "evidence_tier": "static_scan",
+          "fqn": "DB.PUBLIC.CUSTOMERS",
+          "is_data_store": true,
+          "object_type": "table",
+          "row_count": null,
+          "schema": "PUBLIC",
+          "snowflake_local_id": "data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+          "snowflake_scope_version": "account-lanes.v1"
+        },
+        "canonical_id": "07076ede-4f68-5599-a5c1-97afe3058d60",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan",
+          "snowflake-objects",
+          "snowflake-services"
+        ],
+        "dimensions": {
+          "cloud_provider": "snowflake",
+          "surface": "data"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan",
+            "snowflake-objects",
+            "snowflake-services"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:snowflake:DB.PUBLIC.CUSTOMERS",
+        "label": "table: DB.PUBLIC.CUSTOMERS",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "ACME-PROD",
+          "auto_suspend": null,
+          "cloud_provider": "snowflake",
+          "evidence_tier": "static_scan",
+          "resource_kind": "snowflake-warehouse",
+          "resource_name": "WH1",
+          "resource_type": "warehouse",
+          "size": "X-SMALL",
+          "snowflake_local_id": "cloud_resource:snowflake:warehouse:WH1",
+          "snowflake_scope_version": "account-lanes.v1",
+          "state": null
+        },
+        "canonical_id": "97a46c79-2afe-501e-b94c-913765168ab0",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan",
+          "snowflake-services"
+        ],
+        "dimensions": {
+          "cloud_provider": "snowflake",
+          "surface": "compute"
+        },
+        "entity_type": "cloud_resource",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan",
+            "snowflake-services"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "cloud_resource:snowflake:warehouse:WH1",
+        "label": "warehouse: WH1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "ACME-PROD",
+          "cloud_provider": "snowflake",
+          "database_name": "DB",
+          "evidence_tier": "static_scan",
+          "is_container": true,
+          "is_data_store": true,
+          "object_type": "database",
+          "retention_time": null,
+          "snowflake_local_id": "data_store:snowflake:db:DB",
+          "snowflake_scope_version": "account-lanes.v1"
+        },
+        "canonical_id": "b5715501-3239-5251-89a7-1e127464f90d",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "mcp-scan",
+          "snowflake-services"
+        ],
+        "dimensions": {
+          "cloud_provider": "snowflake",
+          "surface": "data"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "mcp-scan",
+            "snowflake-services"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:snowflake:db:DB",
+        "label": "database: DB",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "",
+        "severity_id": 0,
+        "status": "active",
+        "type_uid": 400101
+      },
+      {
+        "attributes": {
+          "account_id": "ACME-PROD",
+          "backed_by": "cloud_resource:snowflake:warehouse:WH1",
+          "cloud_provider": "snowflake",
+          "evidence_tier": "static_scan",
+          "internet_exposed": null,
+          "resource_name": "WH1"
+        },
+        "canonical_id": "173b5b84-8fd1-5718-883a-84674cf0d3bf",
+        "category_uid": 5,
+        "class_uid": 4001,
+        "compliance_tags": [],
+        "data_sources": [
+          "cnapp-overlay"
+        ],
+        "dimensions": {
+          "cloud_provider": "snowflake",
+          "surface": "compute"
+        },
+        "entity_type": "data_store",
+        "evidence_provenance": {
+          "execution": "not_established",
+          "first_seen": "2026-09-30T12:00:00+00:00",
+          "last_seen": "2026-09-30T12:00:00+00:00",
+          "schema_version": "agent-bom.graph-evidence/v1",
+          "source_snapshot_ids": [],
+          "sources": [
+            "cnapp-overlay"
+          ],
+          "tier": "static_scan",
+          "time_basis": "recorded_observation"
+        },
+        "first_seen": "2026-09-30T12:00:00+00:00",
+        "id": "data_store:cloud_resource:snowflake:warehouse:WH1",
+        "label": "data: warehouse: WH1",
+        "last_seen": "2026-09-30T12:00:00+00:00",
+        "risk_assessment": {
+          "basis": null,
+          "scope": null,
+          "status": "not_assessed"
+        },
+        "risk_score": 0.0,
+        "severity": "info",
+        "severity_id": 1,
+        "status": "active",
+        "type_uid": 400101
+      }
+    ],
+    "scan_id": "cloud-context",
+    "schema_version": "agent-bom.graph/v1",
+    "stats": {
+      "analysis_status": {
+        "attack_path_fusion": {
+          "limits": {
+            "max_depth": 8,
+            "max_entries": 200,
+            "max_nodes": 5000,
+            "max_paths": 50,
+            "max_visited_per_entry": 2000
+          },
+          "observed": {
+            "candidate_path_count": 0,
+            "entry_count": 0,
+            "evaluated_entry_count": 0,
+            "node_count": 6,
+            "result_count": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        },
+        "effective_permissions": {
+          "limits": {
+            "max_depth": 6,
+            "max_permission_witnesses": 16,
+            "max_principals": 5000
+          },
+          "observed": {
+            "admin_principals": 0,
+            "conditional_admin_principals": 0,
+            "has_permission_edges": 0,
+            "inactive_source_edges": 0,
+            "invalid_source_validity": 0,
+            "principal_count": 1,
+            "privilege_escalations": 0
+          },
+          "reason_codes": [],
+          "status": "complete"
+        }
+      },
+      "attack_campaign_count": 0,
+      "attack_path_count": 0,
+      "highest_interaction_risk": 0.0,
+      "interaction_risk_count": 0,
+      "max_attack_path_risk": 0.0,
+      "node_types": {
+        "account": 1,
+        "cloud_resource": 1,
+        "data_store": 4
+      },
+      "relationship_types": {
+        "contains": 4,
+        "owns": 4,
+        "stores": 1
+      },
+      "severity_counts": {
+        "info": 1
+      },
+      "total_edges": 9,
+      "total_nodes": 6,
+      "total_nodes_source": 6
+    },
+    "tenant_id": "tenant-a"
+  }
+}

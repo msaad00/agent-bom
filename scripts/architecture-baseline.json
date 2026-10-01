@@ -3064,7 +3064,7 @@
     },
     "graph/builder.py": {
       "deferred_imports": 20,
-      "file_lines": 5276,
+      "file_lines": 4972,
       "graph_api_imports": 1
     },
     "graph/builder.py::_add_agent_cloud_lineage": {

@@ -793,8 +793,8 @@ test(`a selected queue path missing from the canvas loads its exact graph in ${t
   } }));
   // Keep selection authoritative while exercising hydration of absent canvas nodes.
   await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: {
-    ...buildCockpitGraph(), attack_paths: [path],
-    pagination: { total: 1, offset: 0, limit: 100, has_more: false },
+    ...buildCockpitGraph(), attack_paths: [path, buildCockpitGraph().attack_paths[0]],
+    pagination: { total: 2, offset: 0, limit: 100, has_more: false },
   } }));
   const queries: Record<string, unknown>[] = [];
   await page.route("**/v1/graph/query", (route) => {

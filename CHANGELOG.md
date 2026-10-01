@@ -15,6 +15,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- Validate both published container architectures by immutable image identity, retain vulnerability reports before enforcing release gates, and archive original daily-rescan SARIF evidence.
+
 - Require Tornado 6.5.10, including the 6.5.9 security fixes and follow-up static-file compatibility repair.
 - Preserve installed-package self-scan findings in GitHub uploads by anchoring them to retained generated evidence; keep the original SARIF and the severity gate unchanged.
 

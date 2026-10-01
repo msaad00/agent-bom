@@ -1,0 +1,278 @@
+{
+  "aws": {
+    "cloud_inventory": [
+      {
+        "provider": "aws",
+        "status": "ok",
+        "account_id": "123456789012",
+        "region": "us-east-1",
+        "buckets": [
+          {
+            "name": "aws-bucket",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          },
+          {
+            "name": "known-private",
+            "publicly_accessible": false
+          },
+          {
+            "name": "unknown-exposure",
+            "publicly_accessible": "unknown"
+          },
+          {
+            "name": "known-public",
+            "publicly_accessible": true
+          }
+        ],
+        "instances": [
+          {
+            "instance_id": "i-1",
+            "name": "aws-vm",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "rds_instances": [
+          {
+            "name": "aws-db",
+            "engine": "postgres",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "eks_clusters": [
+          {
+            "name": "aws-eks",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "ecr_repositories": [
+          {
+            "name": "aws-ecr",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "azure": {
+    "cloud_inventory": [
+      {
+        "provider": "azure",
+        "status": "ok",
+        "account_id": "sub-1",
+        "subscription_id": "sub-1",
+        "region": "eastus",
+        "storage_accounts": [
+          {
+            "name": "azblob",
+            "id": "/subscriptions/sub-1/sa",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "instances": [
+          {
+            "instance_id": "vm-1",
+            "name": "az-vm",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "databases": [
+          {
+            "name": "az-db",
+            "id": "/subscriptions/sub-1/db",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "container_clusters": [
+          {
+            "name": "az-aks",
+            "id": "/subscriptions/sub-1/aks",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "container_registries": [
+          {
+            "name": "azacr",
+            "id": "/subscriptions/sub-1/acr",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "gcp": {
+    "cloud_inventory": [
+      {
+        "provider": "gcp",
+        "status": "ok",
+        "account_id": "proj-1",
+        "project_id": "proj-1",
+        "region": "us-central1",
+        "buckets": [
+          {
+            "name": "gcs-bucket",
+            "tags": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "instances": [
+          {
+            "instance_id": "gce-1",
+            "name": "gce-vm",
+            "labels": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "cloud_sql_instances": [
+          {
+            "name": "gcp-sql",
+            "labels": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "gke_clusters": [
+          {
+            "name": "gcp-gke",
+            "id": "gke-1",
+            "labels": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ],
+        "cloud_run_services": [
+          {
+            "name": "gcp-run",
+            "labels": {
+              "environment": "prod",
+              "owner": "team-a"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "snowflake": {
+    "snowflake_object_graph": {
+      "status": "ok",
+      "account": "ACME-PROD",
+      "objects": [
+        {
+          "fqn": "DB.PUBLIC.ORDERS",
+          "database": "DB",
+          "schema": "PUBLIC",
+          "name": "ORDERS",
+          "object_type": "table",
+          "row_count": 100
+        },
+        {
+          "fqn": "DB.PUBLIC.CUSTOMERS",
+          "database": "DB",
+          "schema": "PUBLIC",
+          "name": "CUSTOMERS",
+          "object_type": "table"
+        }
+      ],
+      "dependencies": []
+    },
+    "snowflake_services": {
+      "status": "ok",
+      "account": "ACME-PROD",
+      "warehouses": [
+        {
+          "name": "WH1",
+          "size": "X-SMALL"
+        }
+      ],
+      "databases": [
+        {
+          "name": "DB"
+        }
+      ]
+    }
+  },
+  "cloud_agent": {
+    "agents": [
+      {
+        "name": "cloud-assistant",
+        "type": "custom",
+        "source": "aws-bedrock",
+        "metadata": {
+          "cloud_origin": {
+            "provider": "aws",
+            "service": "bedrock",
+            "resource_type": "agent",
+            "resource_id": "agent-1",
+            "scope": {
+              "org_id": "org-1",
+              "account_id": "123456789012"
+            },
+            "location": "us-east-1"
+          },
+          "cloud_principal": {
+            "principal_id": "role-1",
+            "principal_type": "iam-role",
+            "policies": [
+              {
+                "policy_id": "policy-1",
+                "policy_document": {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Action": "s3:GetObject",
+                      "Resource": "arn:aws:s3:::example/*"
+                    }
+                  ]
+                }
+              }
+            ],
+            "trust_principals": [
+              {
+                "principal_id": "external-role",
+                "principal_type": "role",
+                "relationship": "cross_account_trust"
+              }
+            ]
+          }
+        },
+        "mcp_servers": []
+      }
+    ]
+  }
+}

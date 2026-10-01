@@ -79,3 +79,108 @@ def test_failed_qualification_keeps_a_private_failure_receipt(tmp_path):
     )
     assert repeated.returncode != 0
     assert report.read_bytes() == original
+
+
+def test_thread_worker_failure_preserves_safe_sqlite_diagnostics(monkeypatch, tmp_path):
+    import sqlite3
+
+    from scripts import qualify_graph_store as probe
+
+    original = probe.write
+
+    def fail_after_seed(store, tenant, size, sequence):
+        if sequence:
+            exc = sqlite3.OperationalError("secret=do-not-record /private/customer.db")
+            exc.sqlite_errorcode = sqlite3.SQLITE_BUSY
+            exc.sqlite_errorname = "SQLITE_BUSY"
+            raise exc
+        return original(store, tenant, size, sequence)
+
+    monkeypatch.setattr(probe, "write", fail_after_seed)
+    with pytest.raises(probe.QualificationError) as failed:
+        probe.qualify(SQLiteGraphStore(tmp_path / "graph.db"), 0.5, 50)
+    outcomes = failed.value.outcomes
+    errors = [item for item in outcomes if item.get("error_type") == "OperationalError"]
+    assert errors and all(item["stage"] == "write" for item in errors)
+    assert all(item["sqlite_errorcode"] == sqlite3.SQLITE_BUSY for item in errors)
+    assert all(item["sqlite_errorname"] == "SQLITE_BUSY" for item in errors)
+    assert all(item["operations"] == 0 for item in errors)
+    assert "do-not-record" not in json.dumps(outcomes)
+    assert len(outcomes) == 4
+
+
+def test_thread_reader_rejects_duplicate_relationship_pages(monkeypatch, tmp_path):
+    from scripts import qualify_graph_store as probe
+
+    store = SQLiteGraphStore(tmp_path / "graph.db")
+    original = store.incident_edges_page
+
+    def repeat_page(**kwargs):
+        kwargs.pop("cursor", None)
+        return original(**kwargs)
+
+    monkeypatch.setattr(store, "incident_edges_page", repeat_page)
+    from threading import Event
+
+    probe.write(store, "tenant", 50, 0)
+    result = probe.run_worker(store, "tenant", 50, "reader", Event())
+    assert result["error_type"] == "AssertionError"
+    assert result["stage"] == "validate_pages"
+    assert result["completed_read_pairs"] == 0
+
+
+def test_failure_receipt_has_sqlite_code_without_raw_error(tmp_path):
+    report = tmp_path / "failure.json"
+    result = subprocess.run(
+        [sys.executable, "scripts/qualify_graph_store.py", "--sqlite", str(tmp_path), "--output", str(report)],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    receipt = json.loads(report.read_text())
+    assert result.returncode == 1
+    assert receipt["sqlite_errorname"] == "SQLITE_CANTOPEN"
+    assert receipt["stage"] == "qualify"
+    assert str(tmp_path) not in result.stdout
+
+
+def test_real_sqlite_busy_code_is_preserved(tmp_path):
+    import sqlite3
+
+    from scripts.qualify_graph_store import error_details
+
+    with sqlite3.connect(tmp_path / "locked.db") as owner, sqlite3.connect(tmp_path / "locked.db", timeout=0) as contender:
+        owner.execute("CREATE TABLE evidence (id INTEGER)")
+        owner.execute("BEGIN IMMEDIATE")
+        with pytest.raises(sqlite3.OperationalError) as error:
+            contender.execute("INSERT INTO evidence VALUES (1)")
+        assert error_details(error.value) == {"error_type": "OperationalError", "sqlite_errorcode": 5, "sqlite_errorname": "SQLITE_BUSY"}
+
+
+def test_process_start_failure_is_ready_and_has_safe_diagnostics(monkeypatch):
+    import queue
+    import sqlite3
+    from contextlib import contextmanager
+    from threading import Event
+
+    from scripts import qualify_graph_store as probe
+
+    @contextmanager
+    def unavailable_store(sqlite):
+        exc = sqlite3.OperationalError("password=secret")
+        exc.sqlite_errorcode = sqlite3.SQLITE_CANTOPEN
+        exc.sqlite_errorname = "untrusted private contents"
+        raise exc
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(probe, "open_store", unavailable_store)
+    ready, outcomes = queue.Queue(), queue.Queue()
+    stop = Event()
+    probe.process_worker(None, "tenant", 50, "writer", ready, Event(), stop, outcomes)
+    assert ready.get_nowait()["status"] == "failed"
+    failure = outcomes.get_nowait()
+    assert failure["stage"] == "open_store"
+    assert failure["sqlite_errorcode"] == 14
+    assert "sqlite_errorname" not in failure
+    assert "secret" not in json.dumps(failure)
+    assert stop.is_set()

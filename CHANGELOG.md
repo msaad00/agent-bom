@@ -32,6 +32,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Preserve structured SQLite failure diagnostics and verify identical page-content contracts in thread and process graph qualification.
+
 - Keep blast-radius counts, bounded canvases and entity details on one committed snapshot revision. Preserve recorded context relationships and disclose traversal lower bounds separately from the visible map.
 
 - Pin graph, search, agent-selector, attack-path and rollup continuation to committed read revisions, separately from write ownership. Reject replaced snapshots and preserve evidence-first queue order in the investigation UI.

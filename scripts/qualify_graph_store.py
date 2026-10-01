@@ -14,6 +14,7 @@ import json
 import multiprocessing
 import os
 import queue
+import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -95,55 +96,16 @@ def qualify(store, seconds, size):
     stop = Event()
     started = time.monotonic()
 
-    def writer(tenant):
-        revisions = set()
-        count = 0
-        while not stop.is_set():
-            count += 1
-            write(store, tenant, size, count)
-            with tenant_scope(tenant):
-                revision = store.snapshot_identity(tenant_id=tenant, scan_id="qualification", for_paging=True)[1]
-            assert revision and revision not in revisions
-            revisions.add(revision)
-        return {"writes": count}
-
-    def reader(tenant):
-        reads, restarts = 0, 0
-        with tenant_scope(tenant):
-            while not stop.is_set():
-                first = store.incident_edges_page(tenant_id=tenant, scan_id="qualification", node_id="asset:0", limit=24)
-                assert first and all(n.label.startswith(tenant + ":") for n in first["nodes"])
-                try:
-                    second = store.incident_edges_page(
-                        tenant_id=tenant,
-                        scan_id="qualification",
-                        node_id="asset:0",
-                        limit=24,
-                        cursor=first["next_cursor"],
-                        snapshot_generation=first["snapshot_generation"],
-                    )
-                    assert second and second["snapshot_generation"] == first["snapshot_generation"]
-                    assert all(n.label.startswith(tenant + ":") for n in second["nodes"])
-                except ValueError as exc:
-                    # A changed snapshot must refuse continuation, never mix it.
-                    assert "snapshot" in str(exc).lower()
-                    restarts += 1
-                reads += 1
-        return {"read_pairs": reads, "generation_restarts": restarts}
-
     with ThreadPoolExecutor(max_workers=4) as workers:
-        futures = [workers.submit(fn, tenant) for tenant in tenants for fn in (writer, reader)]
-        try:
-            deadline = started + seconds
-            while time.monotonic() < deadline:
-                for future in futures:
-                    if future.done():
-                        future.result()
-                        raise AssertionError("qualification worker stopped early")
-                stop.wait(min(0.25, max(0, deadline - time.monotonic())))
-        finally:
-            stop.set()
+        futures = [workers.submit(run_worker, store, tenant, size, kind, stop) for tenant in tenants for kind in ("writer", "reader")]
+        deadline = started + seconds
+        while time.monotonic() < deadline and not any(future.done() for future in futures):
+            stop.wait(min(0.25, max(0, deadline - time.monotonic())))
+        early = any(future.done() for future in futures)
+        stop.set()
         outcomes = [future.result() for future in futures]
+    if early or any("error_type" in outcome for outcome in outcomes):
+        raise QualificationError(outcomes)
     checkpoint = checkpoint_for(store, tenants, size)
     verify_checkpoint(store, checkpoint)
     return {
@@ -168,28 +130,59 @@ def open_store(sqlite, pool_size=2):
             pool.close()
 
 
-def process_worker(sqlite, tenant, size, kind, ready, start, stop, outcomes):
-    """Spawn creates each connection pool in its owning process, never by fork."""
+def error_details(exc):
+    """Allowlisted driver metadata only; never persist exception messages."""
+    details = {"error_type": type(exc).__name__}
+    frames = []
+    trace = exc.__traceback__
+    while trace is not None:
+        module = trace.tb_frame.f_globals.get("__name__", "")
+        if isinstance(module, str) and module.startswith("agent_bom."):
+            frames.append({"module": module, "function": trace.tb_frame.f_code.co_name, "line": trace.tb_lineno})
+        trace = trace.tb_next
+    if frames:
+        details["frames"] = frames[-8:]
+    if isinstance(exc, sqlite3.Error):
+        code = getattr(exc, "sqlite_errorcode", None)
+        name = getattr(exc, "sqlite_errorname", None)
+        if type(code) is int:
+            details["sqlite_errorcode"] = code
+            if isinstance(name, str) and name.startswith("SQLITE_") and getattr(sqlite3, name, None) == code:
+                details["sqlite_errorname"] = name
+    return details
+
+
+def run_worker(store, tenant, size, kind, stop):
+    """Use the same content, revision and failure checks in both executors."""
+    began = time.monotonic()
+    result = {
+        "kind": kind,
+        "pid": os.getpid(),
+        "operations": 0,
+        "completed_read_pairs": 0,
+        "generation_restarts": 0,
+        "max_operation_ms": 0.0,
+    }
+    stage = "start"
+    revisions = set()
     try:
-        with open_store(sqlite) as store, tenant_scope(tenant):
-            ready.put(kind)
-            if not start.wait(30):
-                raise RuntimeError("Worker start deadline exceeded")
-            operations = restarts = completed_reads = 0
-            revisions = set()
-            max_latency_ms = 0.0
+        with tenant_scope(tenant):
             while not stop.is_set():
-                began = time.monotonic()
+                operation_started = time.monotonic()
                 if kind == "writer":
-                    write(store, tenant, size, operations + 1)
+                    stage = "write"
+                    write(store, tenant, size, result["operations"] + 1)
+                    stage = "read_revision"
                     revision = store.snapshot_identity(tenant_id=tenant, scan_id="qualification", for_paging=True)[1]
+                    stage = "validate_revision"
                     assert revision and revision not in revisions, "Repeated committed revision"
                     revisions.add(revision)
                 else:
                     try:
+                        stage = "read_first_page"
                         first = store.incident_edges_page(tenant_id=tenant, scan_id="qualification", node_id="asset:0", limit=24)
                         assert first and first["next_cursor"], "Expected non-empty paged evidence"
-                        assert all(n.label.startswith(tenant + ":") for n in first["nodes"]), "Tenant boundary failed"
+                        stage = "read_next_page"
                         second = store.incident_edges_page(
                             tenant_id=tenant,
                             scan_id="qualification",
@@ -198,31 +191,46 @@ def process_worker(sqlite, tenant, size, kind, ready, start, stop, outcomes):
                             cursor=first["next_cursor"],
                             snapshot_generation=first["snapshot_generation"],
                         )
+                        stage = "validate_pages"
                         assert second and second["snapshot_generation"] == first["snapshot_generation"], "Mixed revisions"
-                        assert all(n.label.startswith(tenant + ":") for n in second["nodes"]), "Tenant boundary failed"
-                        assert len({n.label.rsplit(":", 1)[0] for n in [*first["nodes"], *second["nodes"]]}) == 1, "Mixed evidence content"
+                        nodes = [*first["nodes"], *second["nodes"]]
+                        assert all(n.label.startswith(tenant + ":") for n in nodes), "Tenant boundary failed"
+                        assert len({n.label.rsplit(":", 1)[0] for n in nodes}) == 1, "Mixed evidence content"
                         assert not ({e.id for e in first["edges"]} & {e.id for e in second["edges"]}), "Repeated page edges"
-                        completed_reads += 1
+                        result["completed_read_pairs"] += 1
                     except ValueError as exc:
-                        # Includes replacement during first-page hydration.
                         if "snapshot" not in str(exc).lower():
                             raise
-                        restarts += 1
-                operations += 1
-                max_latency_ms = max(max_latency_ms, (time.monotonic() - began) * 1000)
-            assert operations > 0, "Worker performed no operations"
-            outcomes.put(
-                {
-                    "kind": kind,
-                    "pid": os.getpid(),
-                    "operations": operations,
-                    "completed_read_pairs": completed_reads,
-                    "generation_restarts": restarts,
-                    "max_operation_ms": round(max_latency_ms, 3),
-                }
-            )
-    except Exception as exc:  # Worker boundary: report only the error class, never credentials or raw provider text.
-        outcomes.put({"kind": kind, "pid": os.getpid(), "error_type": type(exc).__name__})
+                        result["generation_restarts"] += 1
+                result["operations"] += 1
+                result["max_operation_ms"] = max(result["max_operation_ms"], (time.monotonic() - operation_started) * 1000)
+            stage = "shutdown"
+            assert result["operations"] > 0, "Worker performed no operations"
+    except Exception as exc:  # Persist structured diagnostics, never raw provider text.
+        result.update(error_details(exc), stage=stage)
+        stop.set()
+    result["elapsed_s"] = round(time.monotonic() - began, 3)
+    result["max_operation_ms"] = round(result["max_operation_ms"], 3)
+    # Retain the original thread receipt counters for existing consumers.
+    result["writes" if kind == "writer" else "read_pairs"] = result["operations"] if kind == "writer" else result["completed_read_pairs"]
+    return result
+
+
+def process_worker(sqlite, tenant, size, kind, ready, start, stop, outcomes):
+    """Spawn creates each connection pool in its owning process, never by fork."""
+    stage = "open_store"
+    try:
+        with open_store(sqlite) as store:
+            ready.put({"kind": kind, "status": "ready"})
+            stage = "start"
+            if not start.wait(30):
+                raise RuntimeError("Worker start deadline exceeded")
+            outcomes.put(run_worker(store, tenant, size, kind, stop))
+    except Exception as exc:  # Worker boundary: persist only allowlisted diagnostics.
+        outcomes.put({"kind": kind, "pid": os.getpid(), "stage": stage, **error_details(exc)})
+        if stage == "open_store":
+            ready.put({"kind": kind, "status": "failed"})
+        stop.set()
 
 
 class QualificationError(RuntimeError):
@@ -248,19 +256,23 @@ def qualify_processes(store, sqlite, seconds, size):
         for worker in workers:
             worker.start()
         for _ in workers:
-            ready.get(timeout=30)
+            if ready.get(timeout=30)["status"] == "failed":
+                raise QualificationError([outcomes.get(timeout=5)])
         began = time.monotonic()
         start.set()
         # A worker returning before the deadline is a failure, even without an exception.
         try:
             results.append(outcomes.get(timeout=seconds))
-            raise QualificationError(results)
         except queue.Empty:
             pass
         stop.set()
-        for _ in workers:
-            results.append(outcomes.get(timeout=30))
-        if any("error_type" in result for result in results):
+        early = bool(results)
+        for _ in range(len(workers) - len(results)):
+            try:
+                results.append(outcomes.get(timeout=30))
+            except queue.Empty:
+                raise QualificationError(results + [{"error_type": "WorkerResultTimeout"}]) from None
+        if early or any("error_type" in result for result in results):
             raise QualificationError(results)
         assert len({result["pid"] for result in results}) == 4, "Workers were not independent"
         for worker in workers:
@@ -307,8 +319,10 @@ def main():
         parser.error("seconds must be positive and nodes must be at least 50")
     # Open exclusively before running: receipts must not silently replace previous evidence.
     with os.fdopen(os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as output:
+        stage = "open_store"
         try:
             with open_store(args.sqlite, pool_size=8) as store:
+                stage = "verify_checkpoint" if args.verify_checkpoint else "qualify"
                 if args.verify_checkpoint:
                     result = verify_checkpoint(store, json.loads(args.verify_checkpoint.read_text())["checkpoint"])
                 elif args.executor == "processes":
@@ -317,7 +331,7 @@ def main():
                     result = qualify(store, args.seconds, args.nodes)
             result["status"] = "passed"
         except Exception as exc:  # Qualification boundary: persist failure without connection strings or credentials.
-            result = {"status": "failed", "error_type": type(exc).__name__, "outcomes": getattr(exc, "outcomes", [])}
+            result = {"status": "failed", "stage": stage, **error_details(exc), "outcomes": getattr(exc, "outcomes", [])}
         json.dump(result, output, indent=2)
         output.write("\n")
     print(json.dumps({k: v for k, v in result.items() if k != "checkpoint"}))

@@ -312,6 +312,16 @@ export interface NodeDimensions {
 }
 
 export interface UnifiedNode {
+  evidence_provenance?: {
+    schema_version: string;
+    tier: string;
+    sources: string[];
+    source_snapshot_ids: string[];
+    first_seen: string | null;
+    last_seen: string | null;
+    time_basis: string;
+    execution: string;
+  };
   risk_assessment?: import("@/lib/node-risk-assessment").NodeRiskAssessment | undefined;
   id: string;
   entity_type: EntityType | string;
@@ -521,6 +531,7 @@ export interface GraphStats {
 }
 
 export interface UnifiedGraphData {
+  snapshot_generation?: string;
   scan_id: string;
   tenant_id: string;
   created_at: string;

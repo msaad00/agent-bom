@@ -294,7 +294,7 @@
     "api/graph_store.py": {
       "broad_except": 1,
       "deferred_imports": 7,
-      "file_lines": 2612
+      "file_lines": 2602
     },
     "api/graph_store.py::SQLiteGraphStore._frontier_edge_query": {
       "function_lines": 81
@@ -494,7 +494,7 @@
     "api/postgres_graph.py": {
       "broad_except": 2,
       "deferred_imports": 19,
-      "file_lines": 3751,
+      "file_lines": 3741,
       "raw_env_reads": 1
     },
     "api/postgres_graph.py::PostgresGraphStore._init_tables": {
@@ -786,7 +786,7 @@
       "raw_env_reads": 1
     },
     "api/routes/graph.py::get_graph": {
-      "function_lines": 183
+      "function_lines": 168
     },
     "api/routes/graph.py::get_graph_node_neighbors": {
       "function_lines": 134
@@ -2533,7 +2533,7 @@
       "raw_env_reads": 4
     },
     "db/graph_store.py::_init_db": {
-      "complexity": 21
+      "complexity": 20
     },
     "db/graph_store.py::_snapshot_digests": {
       "function_lines": 95
@@ -3157,7 +3157,7 @@
     },
     "graph/container.py": {
       "deferred_imports": 2,
-      "file_lines": 1396
+      "file_lines": 1354
     },
     "graph/container.py::UnifiedGraph.filtered_view": {
       "complexity": 16
@@ -3299,7 +3299,7 @@
       "function_lines": 211
     },
     "graph/rollup.py": {
-      "file_lines": 973
+      "file_lines": 971
     },
     "graph/rollup.py::attack_path_view": {
       "function_lines": 82
@@ -3670,8 +3670,8 @@
       "function_lines": 93
     },
     "mcp_tools/graph.py::exposure_paths_for_tenant": {
-      "complexity": 20,
-      "function_lines": 191
+      "complexity": 18,
+      "function_lines": 178
     },
     "mcp_tools/graph.py::graph_correlate_impl": {
       "function_lines": 83

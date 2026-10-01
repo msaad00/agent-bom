@@ -147,7 +147,7 @@ def test_missing_generation_and_endpoints_are_honest(boundary):
     assert not body["completeness"]["complete"]
     assert all(edge["target_id"] != "peer" for edge in body["edges"])
     with sqlite3.connect(db) as conn:
-        conn.execute("UPDATE graph_snapshots SET snapshot_generation='' WHERE tenant_id='tenant-a'")
+        conn.execute("UPDATE graph_snapshots SET read_revision='' WHERE tenant_id='tenant-a'")
     assert fetch(boundary).status_code == 400
     assert fetch(boundary, cursor=initial["next_cursor"]).status_code == 400
 

@@ -830,7 +830,7 @@ function GraphPageInner() {
   );
   const [loadingRollup, setLoadingRollup] = useState(false);
   // Keyed to the drill scope so a new node or filter always starts at page one.
-  const [rollupChildPage, setRollupChildPage] = useState<{ key: string; offset: number } | null>(null);
+  const [rollupChildPage, setRollupChildPage] = useState<{ key: string; offset: number; generation: string | undefined } | null>(null);
   const [rollupError, setRollupError] = useState<string | null>(null);
   const [rollupUnavailable, setRollupUnavailable] = useState(false);
   const [rollupMapExpanded, setRollupMapExpanded] = useState(false);
@@ -1410,7 +1410,7 @@ function GraphPageInner() {
       .getGraphRollup(selectedScanId, {
         ...(drillNode ? { node: drillNode } : {}),
         ...(filters.severity ? { minSeverity: filters.severity } : {}),
-        ...(childOffset ? { offset: childOffset } : {}),
+        ...(childOffset ? { offset: childOffset, snapshotGeneration: rollupChildPage?.generation } : {}),
       })
       .then((result) => {
         if (cancelled) return;
@@ -3850,7 +3850,7 @@ function GraphPageInner() {
           {rollupNavigationActive && !loadingRollup && rollupView?.mode === "drilldown" && (
             <GraphRollupChildPager
               pagination={rollupView.pagination}
-              onPage={(offset) => setRollupChildPage({ key: rollupChildPageKey, offset })}
+              onPage={(offset) => setRollupChildPage({ key: rollupChildPageKey, offset, generation: rollupView?.snapshot_generation })}
             />
           )}
           {!rollupDecisionActive && (selectedScenarioId || investigationMode || initialViewportOptions.nodes || displayNodes.length > 6) && graphRenderer.kind === "react-flow" && (

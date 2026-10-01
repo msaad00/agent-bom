@@ -16,11 +16,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Version the graph interchange and node-evidence provenance contracts. Preserve recorded source and observation metadata across graph JSON, REST, MCP and entity details without treating collector names as successful execution.
+
 - Export a selected graph entity's loaded recorded relationships as an investigation JSON bundle. Preserve the snapshot generation, canonical entity/finding identifiers, relationship evidence, page completeness and a return link; disclose unknown collection coverage and unsigned local-export provenance.
 
 - Saved graph views notify when a newer snapshot of the same kind is available. Open it explicitly or keep the current investigation; background metadata checks preserve the pinned snapshot, selection and viewport.
 
 ### Fixed
+
+- Pin graph, search, agent-selector, attack-path and rollup continuation to committed read revisions, separately from write ownership. Reject replaced snapshots and preserve evidence-first queue order in the investigation UI.
+- Serialize SQLite graph schema inspection and backfill with other writers to prevent startup lock-upgrade races during concurrent ingestion.
+- Avoid repeated normalization of absent exposure attributes during cold graph rollups while retaining aggregate counts and filter semantics.
+- Keep routine snapshot polling out of the graph layout; show update controls when a newer snapshot or a failed check needs attention.
 
 - Keep filtered attack-path investigations pageable when no loaded path matches. Retain loaded evidence after a failed page request and reject pages from a different tenant or snapshot.
 - Use finding severity for investigation filters independently of path priority, and preserve recorded bidirectional witnesses when an attack path traverses them in reverse.

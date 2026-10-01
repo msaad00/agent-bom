@@ -19,6 +19,10 @@ function baseNode(overrides: Partial<LineageNodeData> = {}): LineageNodeData {
 }
 
 describe("graph-entity-detail", () => {
+  it("shows recorded sources without treating collector names as execution proof", () => {
+    expect(evidenceTierLabel(baseNode({ dataSources: ["gateway_runtime", "mcp_config"] }))).toBe("recorded sources");
+    expect(evidenceTierLabel(baseNode({ attributes: { evidence_provenance: { tier: "modeled_infrastructure", sources: ["gateway_runtime"] } } }))).toBe("modeled infrastructure");
+  });
   it("maps node types to semantic layers", () => {
     expect(semanticLayerForNodeType("agent").key).toBe("orchestration");
     expect(semanticLayerForNodeType("server").key).toBe("mcp_server");

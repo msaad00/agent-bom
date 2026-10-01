@@ -424,10 +424,10 @@ describe('api.getGraphRollup', () => {
     })
     global.fetch = fetchMock
 
-    await api.getGraphRollup('scan-1', { node: 'account:prod', offset: 200, limit: 200 })
+    await api.getGraphRollup('scan-1', { node: 'account:prod', offset: 200, limit: 200, snapshotGeneration: 'revision-one' })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/graph/rollup?scan_id=scan-1&node=account%3Aprod&offset=200&limit=200',
+      '/v1/graph/rollup?scan_id=scan-1&node=account%3Aprod&offset=200&limit=200&snapshot_generation=revision-one',
       expect.objectContaining({ credentials: 'include' }),
     )
   })

@@ -304,7 +304,7 @@ class NeptuneGraphStore:
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         return digest_from_graph(graph)
 
-    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "", for_paging: bool = False) -> tuple[str, str]:
         raise NotImplementedError("Generation-pinned graph pages are not supported by this backend")
 
     def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str:

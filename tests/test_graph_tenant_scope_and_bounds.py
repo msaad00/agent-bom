@@ -152,7 +152,7 @@ def test_rollup_drilldown_is_bounded_and_pageable(api):
 
     rest = client.get(
         "/v1/graph/rollup",
-        params={"scan_id": "shared-scan", "node": "account:root", "offset": 200},
+        params={"scan_id": "shared-scan", "node": "account:root", "offset": 200, "snapshot_generation": page["snapshot_generation"]},
         headers=headers["tenant-a"],
     ).json()
     assert len(rest["children"]) == 50

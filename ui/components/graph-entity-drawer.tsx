@@ -154,6 +154,7 @@ export function GraphEntityDrawer({
           <div><dt className="inline font-semibold">Evidence sources: </dt><dd className="inline">{enriched.dataSources?.join(", ") || "Unknown"}</dd></div>
           <div><dt className="inline font-semibold">Last seen: </dt><dd className="inline">{enriched.lastSeen || "Unknown"}</dd></div>
         </dl>
+        <p className="mt-2">Sources describe recorded observations. They do not establish successful execution or current access; last seen is not a fresh permission check.</p>
         {missingLocationFields.length > 0 && <p className="mt-2">
           {missingLocationFields.length === locationFields.length
             ? "Location metadata is not recorded."

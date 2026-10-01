@@ -27644,6 +27644,25 @@
             }
           },
           {
+            "description": "Read revision from the first page",
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Read revision from the first page",
+              "title": "Snapshot Generation"
+            }
+          },
+          {
             "description": "Opaque cursor for keyset node pagination",
             "in": "query",
             "name": "cursor",
@@ -27755,6 +27774,25 @@
             }
           },
           {
+            "description": "Read revision from the first page",
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Read revision from the first page",
+              "title": "Snapshot Generation"
+            }
+          },
+          {
             "description": "Opaque cursor for keyset pagination",
             "in": "query",
             "name": "cursor",
@@ -27851,6 +27889,25 @@
               ],
               "description": "Scan ID",
               "title": "Scan Id"
+            }
+          },
+          {
+            "description": "Generation from the first page; required for continuation",
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Generation from the first page; required for continuation",
+              "title": "Snapshot Generation"
             }
           },
           {
@@ -30853,6 +30910,25 @@
             }
           },
           {
+            "description": "Read revision from the first drill-down page",
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Read revision from the first drill-down page",
+              "title": "Snapshot Generation"
+            }
+          },
+          {
             "description": "Drill down into a container node's direct children",
             "in": "query",
             "name": "node",
@@ -31493,6 +31569,25 @@
               ],
               "description": "Comma-separated data sources",
               "title": "Data Sources"
+            }
+          },
+          {
+            "description": "Read revision from the first page",
+            "in": "query",
+            "name": "snapshot_generation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Read revision from the first page",
+              "title": "Snapshot Generation"
             }
           },
           {

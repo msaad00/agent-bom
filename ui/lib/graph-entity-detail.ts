@@ -38,11 +38,13 @@ export function nodeIdFromLineageData(data: LineageNodeData): string | null {
 }
 
 export function evidenceTierLabel(data: LineageNodeData): string {
+  const provenance = data.attributes?.evidence_provenance as { tier?: string; sources?: string[] } | undefined;
+  if (provenance?.tier && provenance.tier !== "unspecified") return provenance.tier.replaceAll("_", " ");
   const attr = data.attributes?.evidence_tier;
   if (typeof attr === "string" && attr.length > 0) return attr.replaceAll("_", " ");
   if (data.runtimeEvidenceTier) return data.runtimeEvidenceTier.replaceAll("_", " ");
   if (data.evidenceTier) return data.evidenceTier.replaceAll("_", " ");
-  return "unspecified";
+  return (provenance?.sources?.length || data.dataSources?.length) ? "recorded sources" : "unspecified";
 }
 
 export function mergeGraphNodeDetail(
@@ -53,6 +55,7 @@ export function mergeGraphNodeDetail(
     ...(base.attributes ?? {}),
     ...(detail.node.attributes ?? {}),
     node_id: detail.node.id,
+    evidence_provenance: detail.node.evidence_provenance,
   };
   // Count canonical finding endpoints once, including reciprocal links.
   // Node-local risk is not a finding count or an aggregate exposure score.

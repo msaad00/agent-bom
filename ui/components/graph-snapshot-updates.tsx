@@ -21,6 +21,11 @@ function SnapshotUpdates({ scanId, owner }: { scanId: string; owner: string }) {
   const available = newer && newer.scan_id !== dismissed;
   const next = new URLSearchParams(params.toString());
   if (newer) next.set("scan", newer.scan_id);
+  // Routine polling must not move the investigation canvas. Announce the
+  // pinned state accessibly; expand the controls only when action is useful.
+  if (!available && !error && !dismissed) return <p role="status" className="sr-only">
+    {checked ? "Viewing a pinned snapshot. Updates never switch this investigation automatically." : "Checking saved snapshots…"}
+  </p>;
   return <aside aria-label="Saved snapshot updates" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-outline bg-surface px-3 py-2 text-xs text-ink-secondary">
     <p role="status" className="min-w-0 basis-full sm:basis-auto sm:flex-1">
       {available ? <>Newer saved snapshot available: <span className="break-all font-mono">{newer.scan_id}</span> · {new Date(newer.created_at).toLocaleString()}. Your current investigation stays pinned.</>

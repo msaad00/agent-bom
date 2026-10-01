@@ -353,7 +353,9 @@ class TestRollupEndpointScopesItsFetch:
         expected = drill_down(_full_materialisation(api_store, API_TENANT), "acct-0", limit=200)
         response = client.get("/v1/graph/rollup", params={"scan_id": SCAN, "node": "acct-0"})
         assert response.status_code == 200, response.text
-        assert response.json() == expected
+        assert response.json() == expected | {
+            "snapshot_generation": api_store.snapshot_identity(tenant_id=API_TENANT, scan_id=SCAN, for_paging=True)[1]
+        }
 
     def test_attack_path_mode_drill_down_is_scoped_too(self, api_store, client, monkeypatch):
         """``node`` wins over ``mode`` in the payload, so it must win in the fetch."""
@@ -362,7 +364,9 @@ class TestRollupEndpointScopesItsFetch:
         response = client.get("/v1/graph/rollup", params={"scan_id": SCAN, "node": "acct-0", "mode": "attack_path"})
         assert response.status_code == 200, response.text
         assert calls == ["traverse_subgraph"], calls
-        assert response.json() == expected
+        assert response.json() == expected | {
+            "snapshot_generation": api_store.snapshot_identity(tenant_id=API_TENANT, scan_id=SCAN, for_paging=True)[1]
+        }
 
     def test_the_top_level_rollup_still_loads_the_estate(self, api_store, client, monkeypatch):
         """No ``node``: the roll-up aggregates the whole estate and must fetch it."""
@@ -383,7 +387,9 @@ class TestRollupEndpointScopesItsFetch:
         expected = rollup_view(_full_materialisation(api_store, API_TENANT))
         response = client.get("/v1/graph/rollup", params={"scan_id": SCAN})
         assert response.status_code == 200, response.text
-        assert response.json() == expected
+        assert response.json() == expected | {
+            "snapshot_generation": api_store.snapshot_identity(tenant_id=API_TENANT, scan_id=SCAN, for_paging=True)[1]
+        }
 
     def test_backend_without_projection_keeps_full_load(self, api_store, client, monkeypatch):
         monkeypatch.setattr(type(api_store), "load_rollup_graph", None)
@@ -391,7 +397,9 @@ class TestRollupEndpointScopesItsFetch:
         assert response.status_code == 200, response.text
         from agent_bom.graph.rollup import rollup_view
 
-        assert response.json() == rollup_view(_full_materialisation(api_store, API_TENANT))
+        assert response.json() == rollup_view(_full_materialisation(api_store, API_TENANT)) | {
+            "snapshot_generation": api_store.snapshot_identity(tenant_id=API_TENANT, scan_id=SCAN, for_paging=True)[1]
+        }
 
 
 class TestPartialBackendsKeepTheirAnswer:

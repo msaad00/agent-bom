@@ -78,13 +78,13 @@ def incident_edge_page(
         raise ValueError("Unsupported SQL parameter marker")
     if scan_id:
         snapshot = conn.execute(
-            f"SELECT scan_id, created_at, evidence_manifest_sha256, snapshot_generation FROM graph_snapshots "
+            f"SELECT scan_id, created_at, evidence_manifest_sha256, read_revision FROM graph_snapshots "
             f"WHERE tenant_id = {marker} AND scan_id = {marker}",  # nosec B608
             (tenant_id, scan_id),
         ).fetchone()
     else:
         snapshot = conn.execute(
-            f"SELECT scan_id, created_at, evidence_manifest_sha256, snapshot_generation FROM graph_snapshots WHERE tenant_id "
+            f"SELECT scan_id, created_at, evidence_manifest_sha256, read_revision FROM graph_snapshots WHERE tenant_id "
             f"= {marker} AND snapshot_kind = 'scan' ORDER BY created_at DESC, scan_id DESC LIMIT 1",  # nosec B608
             (tenant_id,),
         ).fetchone()

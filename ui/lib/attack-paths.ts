@@ -807,7 +807,7 @@ export function mergeAttackPathGraphPages(
   current: UnifiedGraphResponse,
   next: UnifiedGraphResponse,
 ): UnifiedGraphResponse {
-  if (current.scan_id !== next.scan_id || current.tenant_id !== next.tenant_id || current.created_at !== next.created_at) {
+  if (current.scan_id !== next.scan_id || current.tenant_id !== next.tenant_id || current.created_at !== next.created_at || current.snapshot_generation !== next.snapshot_generation) {
     throw new Error("The path page belongs to a different snapshot. Reload the investigation before continuing.");
   }
   if (next.pagination.offset !== current.pagination.offset + current.pagination.limit) {

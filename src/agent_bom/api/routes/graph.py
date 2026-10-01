@@ -43,7 +43,9 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import JSONResponse, Response
 
-from agent_bom.api.graph_store import MAX_NODE_PAGE_OFFSET, containment_drilldown_graph
+from agent_bom.api.graph_generation import optional_generation, pin_generation, verify_generation
+from agent_bom.api.graph_paging import _coalesce_alias, _enforce_node_offset_cap, _page_meta, _paginate
+from agent_bom.api.graph_store import containment_drilldown_graph
 from agent_bom.api.neptune_graph import NeptuneGraphStore, NeptuneGraphStoreUnsupportedOperationError
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -79,7 +81,8 @@ from agent_bom.graph.path_derivation import _derived_toxic_combination_paths as 
 from agent_bom.graph.path_derivation import _fusion_signals_for_path as _fusion_signals_for_path
 from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS, ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
-from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS, build_semantic_clusters, semantic_cluster_stats
+from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS
+from agent_bom.graph.view_payloads import _graph_rollup_payload, _semantic_cluster_payload
 from agent_bom.mcp_errors import CODE_UNSUPPORTED_BACKEND
 from agent_bom.security import sanitize_error
 
@@ -444,46 +447,6 @@ def _tenant(request: Request) -> str:
     return require_request_tenant_id(request)
 
 
-def _paginate(items: list, offset: int, limit: int) -> tuple[list, dict]:
-    """Apply offset/limit pagination and return (page, pagination_meta)."""
-    total = len(items)
-    page = items[offset : offset + limit]
-    return page, {
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "has_more": offset + limit < total,
-    }
-
-
-def _page_meta(total: int, offset: int, limit: int, *, cursor: str | None = None, next_cursor: str | None = None) -> dict:
-    return {
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "cursor": cursor or "",
-        "next_cursor": next_cursor or "",
-        "has_more": bool(next_cursor) if cursor else offset + limit < total,
-    }
-
-
-def _enforce_node_offset_cap(offset: int, cursor: str | None) -> None:
-    """Reject deep OFFSET pagination that would force an O(offset) row scan.
-
-    Offset paging past the cap costs seconds because the store still walks and
-    discards every skipped row. Keyset ``cursor=`` pagination stays flat, so
-    point callers there instead of silently serving a multi-second response.
-    """
-    if not cursor and offset > MAX_NODE_PAGE_OFFSET:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"offset={offset} exceeds the maximum supported node offset ({MAX_NODE_PAGE_OFFSET}). "
-                "Use the cursor= keyset parameter (next_cursor from the previous page) for deep pagination."
-            ),
-        )
-
-
 def _parse_entity_type_filter(raw: str | None) -> set[str] | None:
     if not raw:
         return None
@@ -507,12 +470,6 @@ def _parse_relationship_filter(raw: str | None) -> set[RelationshipType]:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"Unsupported graph relationship type: {value}") from exc
     return parsed
-
-
-def _coalesce_alias(primary: str | None, alias: str | None, *, primary_name: str, alias_name: str) -> str:
-    if primary and alias and primary != alias:
-        raise HTTPException(status_code=422, detail=f"Conflicting query parameters: {primary_name} and {alias_name}")
-    return primary or alias or ""
 
 
 def _validate_relationship_list(values: list[str]) -> set[RelationshipType] | None:
@@ -1499,60 +1456,6 @@ def _governance_graph_payload(
     }
 
 
-def _semantic_cluster_payload(
-    graph: UnifiedGraph,
-    *,
-    selected_kinds: set[str],
-    min_members: int,
-    limit: int,
-) -> dict[str, Any]:
-    all_clusters = [
-        cluster
-        for cluster in build_semantic_clusters(graph.nodes.values(), graph.edges, min_members=min_members)
-        if cluster.kind in selected_kinds
-    ]
-    clusters = all_clusters[:limit]
-    return {
-        "scan_id": graph.scan_id,
-        "tenant_id": graph.tenant_id,
-        "created_at": graph.created_at,
-        "clusters": [cluster.to_dict() for cluster in clusters],
-        "stats": semantic_cluster_stats(clusters),
-        "available_kinds": list(SEMANTIC_CLUSTER_KINDS),
-        "completeness": graph_completeness(
-            returned=len(clusters),
-            total=len(all_clusters),
-            truncated=len(all_clusters) > len(clusters),
-            reason="cluster_limit" if len(all_clusters) > len(clusters) else "",
-        ),
-    }
-
-
-def _graph_rollup_payload(
-    graph: UnifiedGraph,
-    *,
-    node: str | None,
-    min_severity: str,
-    exposed: bool,
-    toxic: bool,
-    mode: Literal["rollup", "attack_path"],
-    offset: int = 0,
-    limit: int | None = None,
-) -> dict[str, Any]:
-    from agent_bom.graph.rollup import RollupFilters, attack_path_view, drill_down, rollup_view
-
-    filters = RollupFilters(
-        min_severity=min_severity,
-        exposed_only=exposed,
-        toxic_only=toxic,
-    )
-    if node:
-        return drill_down(graph, node, filters=filters, offset=offset, limit=limit)
-    if mode == "attack_path":
-        return attack_path_view(graph, _derived_attack_paths(graph), filters=filters)
-    return rollup_view(graph, filters=filters)
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Preset model
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1793,6 +1696,76 @@ async def get_scoped_graph(
     )
 
 
+def _encode_node_page(
+    *,
+    snapshot_stats: dict,
+    total: int,
+    paged_nodes: list[UnifiedNode],
+    ancestor_nodes: list[UnifiedNode],
+    paged_edges: list[UnifiedEdge],
+    ancestor_edges: list[UnifiedEdge],
+    next_cursor: str | None,
+    offset: int,
+    limit: int,
+    identity: tuple[str, str] | None,
+    effective_scan_id: str,
+    tenant: str,
+    created_at: str,
+    source_attack_paths: list[AttackPath],
+    nodes_by_id: dict[str, UnifiedNode],
+    cursor: str | None,
+) -> Response:
+    # This branch pages a fully-counted snapshot rather than loading it under a
+    # budget, so the estate total IS the stats total. Emitting the field anyway
+    # keeps one stats shape across both branches — clients never have to know
+    # which path answered them.
+    page_stats = {
+        **snapshot_stats,
+        "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
+    }
+    response_nodes = [*paged_nodes, *ancestor_nodes]
+    response_node_ids = {node.id for node in response_nodes}
+    response_edges = _joined_edges(paged_edges, ancestor_edges)
+    page_truncated = bool(next_cursor) or offset + len(paged_nodes) < total
+    payload = {
+        "snapshot_generation": identity[1] if identity else None,
+        "scan_id": effective_scan_id,
+        "tenant_id": tenant,
+        "created_at": created_at,
+        "nodes": [n.to_dict() for n in response_nodes],
+        "edges": [e.to_dict() for e in response_edges],
+        "attack_paths": _serialize_attack_path_batch(
+            source_attack_paths,
+            paged_edges,
+            nodes_by_id=nodes_by_id,
+            scan_id=effective_scan_id,
+        ),
+        "interaction_risks": [],
+        "stats": page_stats,
+        "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
+        "completeness": {
+            **graph_completeness(
+                returned=len(response_nodes),
+                total=total,
+                truncated=page_truncated,
+                reason="node_page_limit" if page_truncated else "",
+            ),
+            # ``returned`` counts every node in the payload; ``pagination`` counts
+            # only the ranked page. Containment ancestors are added on top of the
+            # page, so without naming them the two numbers cannot be reconciled
+            # and the extra nodes read as a paging bug.
+            "ranked": len(paged_nodes),
+            "context_nodes": len(ancestor_nodes),
+            # See ``_boundary_edge_count``: the edge list deliberately reaches
+            # one hop past the node list, so say by how much rather than letting
+            # a client read the payload as an induced subgraph.
+            "boundary_edges": _boundary_edge_count(response_edges, response_node_ids),
+        },
+    }
+
+    return _encoded_graph_response(payload)
+
+
 @router.get("/graph", tags=["graph"], response_model=dict)
 async def get_graph(
     request: Request,
@@ -1804,6 +1777,7 @@ async def get_graph(
     static_only: bool = Query(False, description="Exclude runtime edges"),
     dynamic_only: bool = Query(False, description="Only runtime edges"),
     max_depth: Optional[int] = Query(None, ge=1, le=20, description="Max traversal depth"),
+    snapshot_generation: Optional[str] = Query(None, max_length=128, description="Read revision from the first page"),
     cursor: Optional[str] = Query(None, description="Opaque cursor for keyset node pagination"),
     offset: int = Query(0, ge=0, description="Pagination offset for nodes"),
     limit: int = Query(500, ge=1, le=5000, description="Max nodes to return"),
@@ -1836,6 +1810,17 @@ async def get_graph(
         snapshot_kind="scan",
     ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
+
+    identity = await _graph_store_call(
+        optional_generation,
+        graph_store,
+        tenant=tenant,
+        scan_id=requested_scan_id,
+        generation=snapshot_generation,
+        offset=offset or int(bool(cursor)),
+    )
+    if identity is not None:
+        requested_scan_id = identity[0]
 
     et_set = _parse_entity_type_filter(entity_types)
 
@@ -1875,6 +1860,9 @@ async def get_graph(
             offset=offset,
             limit=limit,
         )
+        if identity is not None:
+            await _graph_store_call(verify_generation, graph_store, tenant=tenant, identity=identity, has_rows=bool(payload.get("nodes")))
+            payload["snapshot_generation"] = identity[1]
         return await _graph_compute_call(_encoded_graph_response, payload)
 
     try:
@@ -1926,57 +1914,27 @@ async def get_graph(
         min_severity_rank=min_rank,
     )
 
-    def encode_page() -> Response:
-        # This branch pages a fully-counted snapshot rather than loading it under a
-        # budget, so the estate total IS the stats total. Emitting the field anyway
-        # keeps one stats shape across both branches — clients never have to know
-        # which path answered them.
-        page_stats = {
-            **snapshot_stats,
-            "total_nodes_source": max(int(snapshot_stats.get("total_nodes", 0)), total),
-        }
-        response_nodes = [*paged_nodes, *ancestor_nodes]
-        response_node_ids = {node.id for node in response_nodes}
-        response_edges = _joined_edges(paged_edges, ancestor_edges)
-        page_truncated = bool(next_cursor) or offset + len(paged_nodes) < total
-        payload = {
-            "scan_id": effective_scan_id,
-            "tenant_id": tenant,
-            "created_at": created_at,
-            "nodes": [n.to_dict() for n in response_nodes],
-            "edges": [e.to_dict() for e in response_edges],
-            "attack_paths": _serialize_attack_path_batch(
-                source_attack_paths,
-                paged_edges,
-                nodes_by_id=nodes_by_id,
-                scan_id=effective_scan_id,
-            ),
-            "interaction_risks": [],
-            "stats": page_stats,
-            "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
-            "completeness": {
-                **graph_completeness(
-                    returned=len(response_nodes),
-                    total=total,
-                    truncated=page_truncated,
-                    reason="node_page_limit" if page_truncated else "",
-                ),
-                # ``returned`` counts every node in the payload; ``pagination`` counts
-                # only the ranked page. Containment ancestors are added on top of the
-                # page, so without naming them the two numbers cannot be reconciled
-                # and the extra nodes read as a paging bug.
-                "ranked": len(paged_nodes),
-                "context_nodes": len(ancestor_nodes),
-                # See ``_boundary_edge_count``: the edge list deliberately reaches
-                # one hop past the node list, so say by how much rather than letting
-                # a client read the payload as an induced subgraph.
-                "boundary_edges": _boundary_edge_count(response_edges, response_node_ids),
-            },
-        }
-
-        return _encoded_graph_response(payload)
-
-    return await _graph_compute_call(encode_page)
+    if identity is not None:
+        await _graph_store_call(verify_generation, graph_store, tenant=tenant, identity=identity, has_rows=bool(nodes_by_id))
+    return await _graph_compute_call(
+        _encode_node_page,
+        snapshot_stats=snapshot_stats,
+        total=total,
+        paged_nodes=paged_nodes,
+        ancestor_nodes=ancestor_nodes,
+        paged_edges=paged_edges,
+        ancestor_edges=ancestor_edges,
+        next_cursor=next_cursor,
+        offset=offset,
+        limit=limit,
+        identity=identity,
+        effective_scan_id=effective_scan_id,
+        tenant=tenant,
+        created_at=created_at,
+        source_attack_paths=source_attack_paths,
+        nodes_by_id=nodes_by_id,
+        cursor=cursor,
+    )
 
 
 @router.get("/graph/views/fix-first", tags=["graph"], responses={200: _FIX_FIRST_VIEW_OPENAPI_RESPONSE})
@@ -2119,6 +2077,9 @@ async def get_graph_edge_changes(
 async def get_graph_attack_paths(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan ID"),
+    snapshot_generation: Optional[str] = Query(
+        None, max_length=128, description="Generation from the first page; required for continuation"
+    ),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=1000, description="Max attack paths"),
     min_severity: Optional[Literal["critical", "high", "medium", "low"]] = Query(
@@ -2139,9 +2100,12 @@ async def get_graph_attack_paths(
 
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
+    identity = await _graph_store_call(
+        pin_generation, graph_store, tenant=tenant, scan_id=scan_id or "", generation=snapshot_generation, offset=offset
+    )
     filters = AttackPathFilters(min_severity=min_severity, has_credential=has_credential, source_type=source_type)
     page_args = {"offset": offset, "limit": limit, "filters": filters}
-    ranked = await _graph_store_call(ranked_persisted_path_page, graph_store, scan_id=scan_id or "", tenant_id=tenant, **page_args)
+    ranked = await _graph_store_call(ranked_persisted_path_page, graph_store, scan_id=identity[0], tenant_id=tenant, **page_args)
     materialized_paths, derived_paths, path_source = ranked.snapshot_total, 0, "persisted_graph_paths"
     if ranked.snapshot_total == 0:
         graph = await _load_graph_for_investigation(graph_store, scan_id=ranked.scan_id, tenant_id=tenant)
@@ -2166,7 +2130,7 @@ async def get_graph_attack_paths(
         scan_id=effective_scan_id,
         tenant_id=tenant,
     )
-    return await _graph_compute_call(
+    payload = await _graph_compute_call(
         _serialize_attack_path_queue,
         scan_id=effective_scan_id,
         tenant=tenant,
@@ -2184,6 +2148,10 @@ async def get_graph_attack_paths(
         ranked=ranked,
         filters=filters.active(),
     )
+
+    await _graph_store_call(verify_generation, graph_store, tenant=tenant, identity=identity, has_rows=bool(nodes or ranked.paths))
+    payload["snapshot_generation"] = identity[1]
+    return payload
 
 
 @router.get("/graph/governance", tags=["graph"])
@@ -2459,19 +2427,32 @@ async def search_graph(
     min_severity: Optional[str] = Query(None, description="Minimum severity (critical/high/medium/low)"),
     compliance_prefixes: Optional[str] = Query(None, description="Comma-separated compliance prefixes"),
     data_sources: Optional[str] = Query(None, description="Comma-separated data sources"),
+    snapshot_generation: Optional[str] = Query(None, max_length=128, description="Read revision from the first page"),
     cursor: Optional[str] = Query(None, description="Opaque cursor for keyset search pagination"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(50, ge=1, le=500, description="Max results"),
 ) -> dict:
     """Search graph nodes by label, type, tags, and attributes."""
     _enforce_node_offset_cap(offset, cursor)
+    graph_store = _get_graph_store_or_503()
+    tenant_id = _tenant(request)
+    identity = await _graph_store_call(
+        optional_generation,
+        graph_store,
+        tenant=tenant_id,
+        scan_id=scan_id or "",
+        generation=snapshot_generation,
+        offset=offset or int(bool(cursor)),
+    )
+    if identity is not None:
+        scan_id = identity[0]
     entity_type_filters = _parse_entity_type_filter(entity_types)
     min_rank = SEVERITY_RANK.get(min_severity.lower(), 0) if min_severity else 0
     prefix_filters = {value.strip().upper() for value in compliance_prefixes.split(",") if value.strip()} if compliance_prefixes else None
     data_source_filters = {value.strip() for value in data_sources.split(",") if value.strip()} if data_sources else None
     try:
         results, total, next_cursor = await _graph_store_call(
-            _get_graph_store_or_503().search_nodes,
+            graph_store.search_nodes,
             scan_id=scan_id or "",
             tenant_id=_tenant(request),
             query=q,
@@ -2485,7 +2466,10 @@ async def search_graph(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+    if identity is not None:
+        await _graph_store_call(verify_generation, graph_store, tenant=tenant_id, identity=identity, has_rows=bool(results))
     return {
+        "snapshot_generation": identity[1] if identity else None,
         "query": q,
         "filters": {
             "scan_id": scan_id or "",
@@ -2555,6 +2539,7 @@ async def list_graph_agents(
     request: Request,
     q: str = Query("", description="Optional agent label/id search"),
     scan_id: Optional[str] = Query(None, description="Scan ID"),
+    snapshot_generation: Optional[str] = Query(None, max_length=128, description="Read revision from the first page"),
     cursor: Optional[str] = Query(None, description="Opaque cursor for keyset pagination"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=500, description="Max agents"),
@@ -2563,6 +2548,16 @@ async def list_graph_agents(
     _enforce_node_offset_cap(offset, cursor)
     graph_store = _get_graph_store_or_503()
     tenant_id = _tenant(request)
+    identity = await _graph_store_call(
+        optional_generation,
+        graph_store,
+        tenant=tenant_id,
+        scan_id=scan_id or "",
+        generation=snapshot_generation,
+        offset=offset or int(bool(cursor)),
+    )
+    if identity is not None:
+        scan_id = identity[0]
     query = q.strip()
     if query:
         agents, total, next_cursor = await _graph_store_call(
@@ -2591,7 +2586,10 @@ async def list_graph_agents(
             offset=offset,
             limit=limit,
         )
+    if identity is not None:
+        await _graph_store_call(verify_generation, graph_store, tenant=tenant_id, identity=identity, has_rows=bool(agents))
     return {
+        "snapshot_generation": identity[1] if identity else None,
         "scan_id": effective_scan_id,
         "tenant_id": tenant_id,
         "created_at": created_at,
@@ -3665,6 +3663,7 @@ def get_graph_schema() -> dict:
     Python automatically forces a regen + commit on the UI side.
     """
     from agent_bom.graph import ENTITY_LEGEND, ENTITY_OCSF_MAP, RELATIONSHIP_LEGEND
+    from agent_bom.graph.integration_contract import GRAPH_COMPATIBILITY
     from agent_bom.graph.types import EntityType, RelationshipType
 
     legend_entities = {entry.key: entry for entry in ENTITY_LEGEND}
@@ -3727,6 +3726,7 @@ def get_graph_schema() -> dict:
 
     return {
         "version": 1,
+        "interchange": GRAPH_COMPATIBILITY,
         "semantic_layers": [{"key": layer.value, "label": _SEMANTIC_LAYER_LABELS[layer.value]} for layer in GraphSemanticLayer],
         "node_kinds": sorted(node_kinds, key=lambda d: d["key"]),
         "edge_kinds": sorted(edge_kinds, key=lambda d: d["key"]),
@@ -3789,6 +3789,7 @@ _ROLLUP_DRILLDOWN_MAX_LIMIT = 1000
 async def get_graph_rollup(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    snapshot_generation: Optional[str] = Query(None, max_length=128, description="Read revision from the first drill-down page"),
     node: Optional[str] = Query(None, description="Drill down into a container node's direct children"),
     min_severity: Optional[str] = Query(None, description="Only roll up descendants at/above this severity"),
     exposed: bool = Query(False, description="Only roll up internet-exposed descendants"),
@@ -3835,14 +3836,14 @@ async def get_graph_rollup(
     # prevents same-ID replacement from replaying counts from an older snapshot.
     from agent_bom.api import graph_rollup_cache
 
-    identity_reader = getattr(graph_store, "snapshot_identity", None)
-    identity = None
-    if callable(identity_reader):
-        try:
-            identity = await _graph_store_call(identity_reader, tenant_id=tenant, scan_id=requested_scan_id)
-        except NotImplementedError:
-            # Without a durable generation the summary cannot be safely reused.
-            identity_reader = None
+    identity = await _graph_store_call(
+        optional_generation,
+        graph_store,
+        tenant=tenant,
+        scan_id=requested_scan_id,
+        generation=snapshot_generation,
+        offset=offset if node else 0,
+    )
     cache_key = None
     if identity and identity[1]:
         cache_key = (
@@ -3910,11 +3911,10 @@ async def get_graph_rollup(
             offset=offset,
             limit=limit,
         )
-        if (
-            cache_key
-            and callable(identity_reader)
-            and identity == await _graph_store_call(identity_reader, tenant_id=tenant, scan_id=requested_scan_id)
-        ):
+        if identity is not None:
+            await _graph_store_call(verify_generation, graph_store, tenant=tenant, identity=identity, has_rows=bool(graph.nodes))
+            payload["snapshot_generation"] = identity[1]
+        if cache_key:
             graph_rollup_cache.put(cache_key, payload)
         return payload
     except HTTPException:

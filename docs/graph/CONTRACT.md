@@ -660,3 +660,69 @@ direction. A bidirectional edge remains available when a path traverses it in
 reverse; a reversed directed edge and unrelated chords are excluded. Retaining a
 relationship witness does not turn inventory into observed execution, effective
 permission or confirmed exploitation.
+
+### Graph interchange compatibility
+
+Authenticated clients can discover the graph taxonomy and compatibility policy
+with `GET /v1/graph/schema`. Serialized `UnifiedGraph` documents use
+`schema_version: agent-bom.graph/v1`. The Python reader accepts older unversioned
+documents and ignores unknown optional fields. An explicit unsupported version
+or unknown entity/relationship kind is rejected: consumers must not silently
+remove unknown topology and then report a complete analysis. A version identifies
+the interchange shape, not provider qualification or a standalone SDK release.
+
+Preserve `id`, `canonical_id`, tenant, snapshot, relationship direction and
+source timestamps when integrating. A canonical identifier is a join key within
+an authorized scope; it does not authorize a cross-tenant join. Node
+`evidence_provenance` and exposure-reference `evidenceProvenance` share
+`agent-bom.graph-evidence/v1`. Sources and source snapshots describe collection;
+a collector name never upgrades a node to successful execution. Timestamps are
+recorded observation times, not a fresh authorization check. Modeled, static and
+runtime evidence remain distinct, and a possible path is not proof of compromise.
+
+First retrieve the schema, then fetch a pinned graph or exposure path and save its
+scope and completeness alongside the evidence. Use snapshot diffs to investigate
+changes; confirm effective permission and successful access against their own
+receipts before taking an enforcement action.
+
+### Generation-pinned continuation
+
+`GET /v1/graph`, `/graph/search`, `/graph/agents`, `/graph/attack-paths` and
+`/graph/rollup` return `snapshot_generation` on revision-capable stores. Send
+that token and the resolved scan ID with every later `offset` or keyset `cursor`
+request. Rollup continuation applies to a container’s child pages. Missing tokens on a
+continuation return 422; a replaced snapshot returns 409 and requires restarting
+at the first page. A replacement during hydration discards the entire response.
+The UI retains already loaded evidence and exposes the failure without appending
+mixed rows. Unsupported backends reject pinned continuation with 501; legacy
+unpaged overview/search/rollup reads remain available without a revision.
+Attack-path pages require revision support even on their first request.
+
+A read revision changes on every committed snapshot write, even when a retry
+reuses its rollback ownership token. Ownership is retained separately. Incident
+edge cursors and API/MCP exposure continuations also bind to the read revision.
+PostgreSQL deployments must apply migration `20260930_01` before starting these
+readers. Drain older writers during rollout: they do not populate the new read
+revision. Keep the additive column when rolling back application code; restart
+investigations after any rollback rather than continuing old cursors.
+
+
+### Bounded storage qualification
+
+Use a separate, disposable database with migrated schema and a restricted app
+role. Configure the PostgreSQL URL and password file through the normal storage
+settings; the command does not need migration credentials. For SQLite, supply
+an explicit task-owned path. Qualification tenants are retained for inspection.
+
+```bash
+python scripts/qualify_graph_store.py --sqlite /tmp/graph-qualification.db --seconds 60 --nodes 1000 --output /tmp/graph-qualification.json
+# With AGENT_BOM_POSTGRES_URL and its password file configured:
+python scripts/qualify_graph_store.py --seconds 60 --nodes 1000 --output /tmp/postgres-graph-qualification.json
+```
+
+The artifact records concurrent writes, paired incident-edge reads, rejected
+stale continuations and the final committed revisions for two isolated tenants.
+After restarting the test database, run the same backend selection with
+`--verify-checkpoint /tmp/postgres-graph-qualification.json --output /tmp/graph-restart.json`
+to verify persisted counts and revisions. This bounded synthetic workload is
+an operator check, not a sustained production capacity or failover guarantee.

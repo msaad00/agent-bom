@@ -10,6 +10,7 @@ from typing import Any
 
 from agent_bom.graph import AttackPath, EntityType, UnifiedEdge, UnifiedNode
 from agent_bom.graph.edge_lookup import _build_edge_lookup, _EdgeLookup, _rel_value
+from agent_bom.graph.integration_contract import EVIDENCE_VERSION, node_evidence_provenance
 from agent_bom.graph.path_derivation import _node_type_value
 
 
@@ -78,6 +79,7 @@ def _exposure_ref_for_node(node_id: str, nodes_by_id: dict[str, Any]) -> dict[st
         "rawLabel": node.label,
         "entityType": _node_type_value(node),
         "role": _exposure_role_for_node(node),
+        "evidenceProvenance": node_evidence_provenance(node),
     }
     if getattr(node, "severity", ""):
         ref["severity"] = node.severity
@@ -150,6 +152,7 @@ def _exposure_path_for_attack_path(
 
     finding_node = nodes_by_id.get(path.target)
     exposure: dict[str, Any] = {
+        "schemaVersion": EVIDENCE_VERSION,
         "id": f"{path.source}::{path.target}::{'->'.join(path.hops)}",
         "label": " via ".join(part for part in label_parts if part) or path.summary or "Exposure path",
         "summary": path.summary,

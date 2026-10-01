@@ -14,6 +14,7 @@ from agent_bom.core.severity import (
     SEVERITY_TO_OCSF,
     OCSFSeverity,
 )
+from agent_bom.graph.integration_contract import node_evidence_provenance
 from agent_bom.graph.ocsf import ENTITY_OCSF_MAP
 from agent_bom.graph.types import EntityType, NodeStatus
 from agent_bom.graph.util import _now_iso
@@ -185,6 +186,7 @@ class UnifiedNode:
         return {
             "id": self.id,
             "canonical_id": self.canonical_id,
+            "evidence_provenance": node_evidence_provenance(self),
             "entity_type": self.entity_type.value if isinstance(self.entity_type, EntityType) else self.entity_type,
             "label": self.label,
             "category_uid": self.category_uid,

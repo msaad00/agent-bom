@@ -869,6 +869,7 @@ export interface GraphRollupOrphanSummary {
 }
 
 export interface GraphRollupResponse {
+  snapshot_generation?: string;
   scan_id: string;
   tenant_id: string;
   created_at: string;
@@ -930,6 +931,7 @@ export interface GraphRollupEdge {
 }
 
 export interface GraphSearchResponse {
+  snapshot_generation?: string;
   query: string;
   results: UnifiedNode[];
   pagination: GraphPagination;
@@ -988,6 +990,7 @@ export interface GraphAgentSelectorItem {
 }
 
 export interface GraphAgentsResponse {
+  snapshot_generation?: string;
   scan_id: string;
   tenant_id: string;
   created_at: string;

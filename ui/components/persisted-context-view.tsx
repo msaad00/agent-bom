@@ -134,7 +134,7 @@ function OwnedContextView({ owner }: { owner: string }) {
 
 export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { scanId: string; owner: string; initialRootId?: string }) {
   const [query, setQuery] = useState("");
-  const [cursor, setCursor] = useState<string | undefined>();
+  const [cursor, setCursor] = useState<{ value: string; generation: string | undefined } | undefined>();
   const [selector, setSelector] = useState<GraphAgentsResponse | null>(null);
   const [selectorBusy, setSelectorBusy] = useState(false);
   const [selectorError, setSelectorError] = useState<string | null>(null);
@@ -150,7 +150,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     const controller = new AbortController();
     setSelectorBusy(true);
     const timer = setTimeout(() => {
-      api.listGraphAgents({ scanId, query, limit: 24, ...(cursor ? { cursor } : {}) }, controller.signal).then(data => {
+      api.listGraphAgents({ scanId, query, limit: 24, ...(cursor ? { cursor: cursor.value, snapshotGeneration: cursor.generation } : {}) }, controller.signal).then(data => {
         if (controller.signal.aborted) return;
         if (data.scan_id !== scanId) { setSelectorError("Agent selector returned another snapshot. Retry this scan."); return; }
         setSelector(data); setSelectorError(null);
@@ -209,7 +209,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
         {selector?.agents.map(agent => <option key={agent.id} value={agent.id}>{agent.label}{selector.agents.some(other => other.id !== agent.id && other.label === agent.label) ? ` · ${agent.id}` : ""}</option>)}
       </select></label>
 
-      {selector?.pagination.next_cursor && <button className="context-action" disabled={selectorBusy} onClick={() => setCursor(selector.pagination.next_cursor || undefined)}>Next agents</button>}
+      {selector?.pagination.next_cursor && <button className="context-action" disabled={selectorBusy} onClick={() => setCursor(selector.pagination.next_cursor ? { value: selector.pagination.next_cursor, generation: selector.snapshot_generation } : undefined)}>Next agents</button>}
       {cursor && <button className="context-action" onClick={() => setCursor(undefined)}>First agents</button>}
       <details className="context-popover"><summary aria-label="Search & direction" className="context-action inline-flex cursor-pointer items-center gap-2"><SlidersHorizontal size={15} aria-hidden="true" /><span className="hidden sm:inline">Search &amp; direction</span><span className="sm:hidden">Filters</span></summary><div className="context-popover-panel space-y-3">
       {selector && <p className="text-xs text-ink-secondary">{selector.pagination.total.toLocaleString()} {query ? "matching" : "recorded"} agents in this snapshot</p>}

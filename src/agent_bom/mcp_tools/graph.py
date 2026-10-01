@@ -14,6 +14,7 @@ from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET, MCP_MAX_RESPONSE_C
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.edge_lookup import _build_edge_lookup, _EdgeLookup
 from agent_bom.graph.exposure import _exposure_path_for_attack_path, _exposure_ref_for_node, _exposure_relationships_for_path
+from agent_bom.graph.exposure_cursor import decode_exposure_cursor
 from agent_bom.graph.path_derivation import _derived_attack_paths, _enrich_loaded_graph_runtime_evidence
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
@@ -310,22 +311,7 @@ async def exposure_paths_for_tenant(
     offset = 0
     if cursor:
         try:
-            if len(cursor) > 4096:
-                raise ValueError
-            continuation = json.loads(base64.b64decode(cursor, altchars=b"-_", validate=True))
-            if (
-                not isinstance(continuation, dict)
-                or continuation.get("v") != 1
-                or continuation.get("scope") != scope
-                or not isinstance(continuation.get("scan"), str)
-                or not continuation["scan"]
-                or "\x00" in continuation["scan"]
-                or (scan_id and scan_id != continuation["scan"])
-                or type(continuation.get("offset")) is not int
-                or not 0 < continuation["offset"] <= 100_000_000
-                or not isinstance(continuation.get("revision"), str)
-            ):
-                raise ValueError
+            continuation = decode_exposure_cursor(cursor, scope=scope, scan_id=scan_id)
             scan_id, offset = continuation["scan"], continuation["offset"]
         except (ValueError, TypeError, KeyError):
             return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Invalid exposure cursor; restart the query.")
@@ -338,7 +324,9 @@ async def exposure_paths_for_tenant(
 
         store = _get_graph_store()
         try:
-            pinned_scan_id, generation = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=scan_id or "")
+            pinned_scan_id, generation = await asyncio.to_thread(
+                store.snapshot_identity, tenant_id=tenant_id, scan_id=scan_id or "", for_paging=True
+            )
         except NotImplementedError:
             return mcp_error_json(
                 CODE_UNSUPPORTED_BACKEND,
@@ -386,7 +374,7 @@ async def exposure_paths_for_tenant(
             store.edges_for_node_ids, tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=hop_ids, induced_only=True
         )
         stats = await asyncio.to_thread(store.snapshot_stats, tenant_id=tenant_id, scan_id=effective_scan_id)
-        final_identity = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=pinned_scan_id)
+        final_identity = await asyncio.to_thread(store.snapshot_identity, tenant_id=tenant_id, scan_id=pinned_scan_id, for_paging=True)
         if final_identity != (pinned_scan_id, generation) or (paths and not generation):
             return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Exposure snapshot changed; restart the query.")
         payload = {

@@ -1114,6 +1114,12 @@ describe("mergeAttackPathGraphPages", () => {
     expect(first.attack_paths).toEqual([]);
   });
 
+  it("rejects a replaced generation even when tenant, scan and timestamp match", () => {
+    const first = { ...page([], [], [], { total: 2, offset: 0, limit: 1, has_more: true }), snapshot_generation: "old" };
+    const second = { ...page([], [], [], { total: 2, offset: 1, limit: 1, has_more: false }), snapshot_generation: "new" };
+    expect(() => mergeAttackPathGraphPages(first, second)).toThrow(/different snapshot/);
+  });
+
   it("rejects a repeated or skipped page", () => {
     const first = page([], [], [], { total: 4, offset: 0, limit: 1, has_more: true });
     for (const offset of [0, 2]) {

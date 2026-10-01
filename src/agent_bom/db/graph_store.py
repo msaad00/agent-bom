@@ -13,13 +13,13 @@ import json
 import logging
 import os
 import sqlite3
-import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Iterator, Mapping, Sequence
 
+from agent_bom.db.graph_revision import ensure_sqlite_revisions, revision_tokens
 from agent_bom.storage import sqlite_wal, state_home
 
 if TYPE_CHECKING:
@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     correlation_id  TEXT DEFAULT NULL,
     evidence_manifest_sha256 TEXT NOT NULL DEFAULT '',
     snapshot_generation TEXT NOT NULL DEFAULT '',
+    read_revision TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (scan_id, tenant_id)
 );
 CREATE INDEX IF NOT EXISTS idx_gs_recent ON graph_snapshots(tenant_id, created_at DESC);
@@ -379,6 +380,7 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(_CREATE_TABLES)
+    conn.execute("BEGIN IMMEDIATE")  # Reserve the writer before schema inspection/backfill.
     row = conn.execute("SELECT version FROM graph_schema_version ORDER BY version DESC LIMIT 1").fetchone()
     if row is None:
         conn.execute(
@@ -436,9 +438,7 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN correlation_id TEXT DEFAULT NULL")
     if "evidence_manifest_sha256" not in snapshot_columns:
         conn.execute("ALTER TABLE graph_snapshots ADD COLUMN evidence_manifest_sha256 TEXT NOT NULL DEFAULT ''")
-    if "snapshot_generation" not in snapshot_columns:
-        conn.execute("ALTER TABLE graph_snapshots ADD COLUMN snapshot_generation TEXT NOT NULL DEFAULT ''")
-    conn.execute("UPDATE graph_snapshots SET snapshot_generation = lower(hex(randomblob(16))) WHERE snapshot_generation = ''")
+    ensure_sqlite_revisions(conn, snapshot_columns)
     correlation_columns = {row["name"] for row in conn.execute("PRAGMA table_info(graph_correlation_runs)").fetchall()}
     if "result_manifest" not in correlation_columns:
         conn.execute("ALTER TABLE graph_correlation_runs ADD COLUMN result_manifest TEXT NOT NULL DEFAULT '{}'")
@@ -1133,8 +1133,8 @@ def save_graph_streaming(
         INSERT OR REPLACE INTO graph_snapshots
             (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
              node_type_counts, analysis_status, snapshot_kind, correlation_id,
-             evidence_manifest_sha256, snapshot_generation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             evidence_manifest_sha256, snapshot_generation, read_revision)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             scan,
@@ -1148,7 +1148,7 @@ def save_graph_streaming(
             snapshot_kind,
             correlation_id or None,
             evidence_manifest_sha256,
-            write_generation or uuid.uuid4().hex,
+            *revision_tokens(write_generation),
         ),
     )
 

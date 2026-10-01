@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
-
 from agent_bom.db import graph_store as sqlite_graph_store
+from agent_bom.db.graph_revision import read_snapshot_identity
 from agent_bom.graph import (
     AttackPath,
     EntityType,
@@ -1385,24 +1385,14 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
-    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "", for_paging: bool = False) -> tuple[str, str]:
         """Resolve one durable snapshot generation, including latest, atomically."""
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return scan_id, ""
         try:
-            if scan_id:
-                row = conn.execute(
-                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?", (tenant_id, scan_id)
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = ? AND snapshot_kind = 'scan' "
-                    "ORDER BY created_at DESC, scan_id DESC LIMIT 1",
-                    (tenant_id,),
-                ).fetchone()
-            return (str(row[0]), str(row[1])) if row else (scan_id, "")
+            return read_snapshot_identity(conn, tenant_id, scan_id, for_paging, "?")
         finally:
             conn.close()
 

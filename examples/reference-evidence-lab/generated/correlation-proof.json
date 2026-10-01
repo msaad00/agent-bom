@@ -10,7 +10,7 @@
       ]
     }
   ],
-  "artifact_sha256": "sha256:6882cd2140a8eae673989e98bc8c6b46e372af93a5186b58487db11862159571",
+  "artifact_sha256": "sha256:39cf9133941dab59a69decbb22b94e814b0dce7caf981e1b1ef57fa376f66f74",
   "capture_fixture": {
     "graph": {
       "analysis_status": {
@@ -222,7 +222,7 @@
             "directed_provenance_backed_hops"
           ],
           "source": "service:reference-api",
-          "summary": "Internet-exposed Public reference-evidence-api service moves to reference-evidence-api workload; moves to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; moves to pillow@9.0.0; exploits vulnerability CVE-2023-4863; moves to render_untrusted_image; moves to reference-evidence-workload; uses effective permission to reach Modeled customer records — reaching sensitive data (7 hop chain).",
+          "summary": "Internet-exposed Public reference-evidence-api service is linked to reference-evidence-api workload; is linked to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; is linked to pillow@9.0.0; is linked to vulnerability CVE-2023-4863; is linked to render_untrusted_image; is linked to reference-evidence-workload; has recorded permission to Modeled customer records — potential route to sensitive data (7 hop chain).",
           "target": "data-store:reference-customer-records",
           "technique_mappings": [
             {
@@ -770,6 +770,20 @@
           ],
           "dimensions": {},
           "entity_type": "agent",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:02:00+00:00",
+            "last_seen": "2026-08-30T04:02:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-kubernetes-iac-scan"
+            ],
+            "sources": [
+              "kubernetes_iac"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:02:00+00:00",
           "id": "workload:reference-api",
           "label": "reference-evidence-api workload",
@@ -832,6 +846,20 @@
           ],
           "dimensions": {},
           "entity_type": "container",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:01:00+00:00",
+            "last_seen": "2026-08-30T04:01:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-image-sbom-scan"
+            ],
+            "sources": [
+              "cyclonedx_sbom"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:01:00+00:00",
           "id": "container:sbom:reference-api",
           "label": "reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a",
@@ -894,6 +922,20 @@
           ],
           "dimensions": {},
           "entity_type": "container",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:02:00+00:00",
+            "last_seen": "2026-08-30T04:02:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-kubernetes-iac-scan"
+            ],
+            "sources": [
+              "kubernetes_iac"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:02:00+00:00",
           "id": "container:iac:reference-api",
           "label": "reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a",
@@ -959,6 +1001,20 @@
           ],
           "dimensions": {},
           "entity_type": "data_store",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:05:00+00:00",
+            "last_seen": "2026-08-30T04:05:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-identity-permission-scan"
+            ],
+            "sources": [
+              "identity_model"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:05:00+00:00",
           "id": "data-store:reference-customer-records",
           "label": "Modeled customer records",
@@ -1058,6 +1114,24 @@
           ],
           "dimensions": {},
           "entity_type": "package",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:00:00+00:00",
+            "last_seen": "2026-08-30T04:02:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-image-sbom-scan",
+              "reference-kubernetes-iac-scan",
+              "reference-repository-scan"
+            ],
+            "sources": [
+              "cyclonedx_sbom",
+              "kubernetes_iac_sbom_projection",
+              "repository_parser"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:00:00+00:00",
           "id": "package:iac:pillow",
           "label": "pillow@9.0.0",
@@ -1121,6 +1195,20 @@
           ],
           "dimensions": {},
           "entity_type": "server",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:02:00+00:00",
+            "last_seen": "2026-08-30T04:02:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-kubernetes-iac-scan"
+            ],
+            "sources": [
+              "kubernetes_iac"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:02:00+00:00",
           "id": "service:reference-api",
           "label": "Public reference-evidence-api service",
@@ -1203,6 +1291,22 @@
           ],
           "dimensions": {},
           "entity_type": "service_account",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:04:00+00:00",
+            "last_seen": "2026-08-30T04:05:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-identity-permission-scan",
+              "reference-runtime-observation"
+            ],
+            "sources": [
+              "gateway_runtime",
+              "identity_model"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:04:00+00:00",
           "id": "identity:model:reference-workload",
           "label": "reference-evidence-workload",
@@ -1265,6 +1369,20 @@
           ],
           "dimensions": {},
           "entity_type": "source_file",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:00:00+00:00",
+            "last_seen": "2026-08-30T04:00:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-repository-scan"
+            ],
+            "sources": [
+              "repository_parser"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:00:00+00:00",
           "id": "source:pinned-package",
           "label": "pinned-package.txt",
@@ -1350,6 +1468,22 @@
           ],
           "dimensions": {},
           "entity_type": "tool",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:03:00+00:00",
+            "last_seen": "2026-08-30T04:04:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-mcp-config-scan",
+              "reference-runtime-observation"
+            ],
+            "sources": [
+              "gateway_runtime",
+              "mcp_config"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:03:00+00:00",
           "id": "tool:runtime:render-untrusted-image",
           "label": "render_untrusted_image",
@@ -1431,6 +1565,22 @@
           ],
           "dimensions": {},
           "entity_type": "vulnerability",
+          "evidence_provenance": {
+            "execution": "not_established",
+            "first_seen": "2026-08-30T04:01:00+00:00",
+            "last_seen": "2026-08-30T04:03:00+00:00",
+            "schema_version": "agent-bom.graph-evidence/v1",
+            "source_snapshot_ids": [
+              "reference-image-sbom-scan",
+              "reference-mcp-config-scan"
+            ],
+            "sources": [
+              "bundled_advisory_scanner",
+              "mcp_config"
+            ],
+            "tier": "unspecified",
+            "time_basis": "recorded_observation"
+          },
           "first_seen": "2026-08-30T04:01:00+00:00",
           "id": "vulnerability:mcp:cve-2023-4863",
           "label": "CVE-2023-4863",
@@ -1448,6 +1598,7 @@
         }
       ],
       "scan_id": "reference-evidence-correlation-v1",
+      "schema_version": "agent-bom.graph/v1",
       "stats": {
         "analysis_status": {
           "attack_path_fusion": {
@@ -1575,7 +1726,7 @@
       {
         "age_hours": 0.016667,
         "created_at": "2026-08-30T04:05:00+00:00",
-        "digest": "sha256:ba54819e001d95a69a78a54673bc6bb7c44b7a8d50418492e98036f814306610",
+        "digest": "sha256:9952f1a18a7befb65ec6aa8947b0b67b43537dbfd26702dd9f44a092e6f9f152",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1584,7 +1735,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:1c91ff121a2ae8b810bb60c251bbd2af90ee67fc48f2556c0f31202d4c97e470"
+          "value": "sha256:9c8e7b2d1fae852b1bf0b3586a29f6f63c5ba06aea1049d3b3c04e13b6a60512"
         },
         "source_kinds": [
           "identity_model"
@@ -1593,7 +1744,7 @@
       {
         "age_hours": 0.083333,
         "created_at": "2026-08-30T04:01:00+00:00",
-        "digest": "sha256:679ed3957a9742a1f9fb6bd29a86eab84fb1405881255e92749205efb0079cf7",
+        "digest": "sha256:91aaedb0af3d5daa88b7aa876c92f770b2ff0b9c428890d259e56e88e7a1b68d",
         "edge_count": 2,
         "freshness": "fresh",
         "node_count": 3,
@@ -1602,7 +1753,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:3cfb2bffe8b08a70e48b77afb68c5534c0e6c0667ecddc0ac81aadb9531c90d5"
+          "value": "sha256:0d743b34df3aca5185a3004a8ee8683fb17adb7107ba3f90e6fb5b1a9877e5ee"
         },
         "source_kinds": [
           "bundled_advisory_scanner",
@@ -1612,7 +1763,7 @@
       {
         "age_hours": 0.066667,
         "created_at": "2026-08-30T04:02:00+00:00",
-        "digest": "sha256:2bcbb786d560ebf70b4d9822d2215fbacf0cd41d32586358012e891b0f8738f7",
+        "digest": "sha256:1eeccf8fcb62f07ebc4bb700774acb629b1bb476af037a56799c052dc56e22ae",
         "edge_count": 3,
         "freshness": "fresh",
         "node_count": 4,
@@ -1621,7 +1772,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:1dd1d868cd1c88306790e11c703cb65869c739ac08621cd2034c47210ad06876"
+          "value": "sha256:1845822d85fe359ca7c41d7cff3d69735b450745afe414fceb030331ee90c8f1"
         },
         "source_kinds": [
           "kubernetes_iac",
@@ -1631,7 +1782,7 @@
       {
         "age_hours": 0.05,
         "created_at": "2026-08-30T04:03:00+00:00",
-        "digest": "sha256:3d6ac054106e533405ba0594e5aff52b1d93ba0a174e03b2aedb09d1c1faa87a",
+        "digest": "sha256:fcf7eb55d576be0f51d560d6bdb33318741614874ac284d59c8f31dc698c6715",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1640,7 +1791,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:c20d4b8069df0e356fcc179164854ac79ebb177f82d3b6c235c62731f8753e74"
+          "value": "sha256:619296ef0791b2c4a2b33a8969b48071596e2359f424c58b243727468dcd4c7a"
         },
         "source_kinds": [
           "mcp_config"
@@ -1649,7 +1800,7 @@
       {
         "age_hours": 0.1,
         "created_at": "2026-08-30T04:00:00+00:00",
-        "digest": "sha256:892423fadfab32fc6c09c6897335902c392a6c43ae9b2d2e1b380ceee78312cb",
+        "digest": "sha256:c72202021c78a63a2c2e86ad45e8f5be32f9257d7f74cdfb2aac16f2b273e111",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1658,7 +1809,7 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:665ec13b73361d73950cb4564e0824e604c505acf2c05edadd7701b2a38dd1f0"
+          "value": "sha256:e9d80ce72c348095ecdc2d0dd79d674ec1428ff7367f9346ebbf18d77067f008"
         },
         "source_kinds": [
           "repository_parser"
@@ -1667,7 +1818,7 @@
       {
         "age_hours": 0.033333,
         "created_at": "2026-08-30T04:04:00+00:00",
-        "digest": "sha256:988a43c1a6dac962cb10703e20a6bf3d540e0d70ee1972bcf0f4208daaecb1ae",
+        "digest": "sha256:436d789dd1555afde897d914a97ffe27cff098b1534628d5f090bc0fc3142119",
         "edge_count": 1,
         "freshness": "fresh",
         "node_count": 2,
@@ -1676,14 +1827,14 @@
           "algorithm": "hmac-sha256",
           "key_id": "reference-lab-v1",
           "schema_version": "agent-bom.correlation-receipt-signature/v1",
-          "value": "sha256:4ec2c01ec7873fc28b8c8ca3619013b6377055a1827cbb3e19069b8ac4187417"
+          "value": "sha256:dc9deec592a859c1f39928b5f5e4b5a85e3b3259fd7eff1535c5e698d6a3a58a"
         },
         "source_kinds": [
           "gateway_runtime"
         ]
       }
     ],
-    "manifest_sha256": "sha256:65e387a5ac8b06d95f1d0a11de9dce28ab5c9b83fbe4bf7ba66bf5ff01cb69fc",
+    "manifest_sha256": "sha256:f6346805c3d4c315b90835ae57288d563c5085814a276c6a823393ca04e7bd70",
     "max_age_hours": 168,
     "name": "Reference evidence lab",
     "output_scan_id": "reference-evidence-correlation-v1",
@@ -1735,7 +1886,7 @@
         {
           "age_hours": 0.016667,
           "created_at": "2026-08-30T04:05:00+00:00",
-          "digest": "sha256:ba54819e001d95a69a78a54673bc6bb7c44b7a8d50418492e98036f814306610",
+          "digest": "sha256:9952f1a18a7befb65ec6aa8947b0b67b43537dbfd26702dd9f44a092e6f9f152",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1744,7 +1895,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:1c91ff121a2ae8b810bb60c251bbd2af90ee67fc48f2556c0f31202d4c97e470"
+            "value": "sha256:9c8e7b2d1fae852b1bf0b3586a29f6f63c5ba06aea1049d3b3c04e13b6a60512"
           },
           "source_kinds": [
             "identity_model"
@@ -1753,7 +1904,7 @@
         {
           "age_hours": 0.083333,
           "created_at": "2026-08-30T04:01:00+00:00",
-          "digest": "sha256:679ed3957a9742a1f9fb6bd29a86eab84fb1405881255e92749205efb0079cf7",
+          "digest": "sha256:91aaedb0af3d5daa88b7aa876c92f770b2ff0b9c428890d259e56e88e7a1b68d",
           "edge_count": 2,
           "freshness": "fresh",
           "node_count": 3,
@@ -1762,7 +1913,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:3cfb2bffe8b08a70e48b77afb68c5534c0e6c0667ecddc0ac81aadb9531c90d5"
+            "value": "sha256:0d743b34df3aca5185a3004a8ee8683fb17adb7107ba3f90e6fb5b1a9877e5ee"
           },
           "source_kinds": [
             "bundled_advisory_scanner",
@@ -1772,7 +1923,7 @@
         {
           "age_hours": 0.066667,
           "created_at": "2026-08-30T04:02:00+00:00",
-          "digest": "sha256:2bcbb786d560ebf70b4d9822d2215fbacf0cd41d32586358012e891b0f8738f7",
+          "digest": "sha256:1eeccf8fcb62f07ebc4bb700774acb629b1bb476af037a56799c052dc56e22ae",
           "edge_count": 3,
           "freshness": "fresh",
           "node_count": 4,
@@ -1781,7 +1932,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:1dd1d868cd1c88306790e11c703cb65869c739ac08621cd2034c47210ad06876"
+            "value": "sha256:1845822d85fe359ca7c41d7cff3d69735b450745afe414fceb030331ee90c8f1"
           },
           "source_kinds": [
             "kubernetes_iac",
@@ -1791,7 +1942,7 @@
         {
           "age_hours": 0.05,
           "created_at": "2026-08-30T04:03:00+00:00",
-          "digest": "sha256:3d6ac054106e533405ba0594e5aff52b1d93ba0a174e03b2aedb09d1c1faa87a",
+          "digest": "sha256:fcf7eb55d576be0f51d560d6bdb33318741614874ac284d59c8f31dc698c6715",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1800,7 +1951,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:c20d4b8069df0e356fcc179164854ac79ebb177f82d3b6c235c62731f8753e74"
+            "value": "sha256:619296ef0791b2c4a2b33a8969b48071596e2359f424c58b243727468dcd4c7a"
           },
           "source_kinds": [
             "mcp_config"
@@ -1809,7 +1960,7 @@
         {
           "age_hours": 0.1,
           "created_at": "2026-08-30T04:00:00+00:00",
-          "digest": "sha256:892423fadfab32fc6c09c6897335902c392a6c43ae9b2d2e1b380ceee78312cb",
+          "digest": "sha256:c72202021c78a63a2c2e86ad45e8f5be32f9257d7f74cdfb2aac16f2b273e111",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1818,7 +1969,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:665ec13b73361d73950cb4564e0824e604c505acf2c05edadd7701b2a38dd1f0"
+            "value": "sha256:e9d80ce72c348095ecdc2d0dd79d674ec1428ff7367f9346ebbf18d77067f008"
           },
           "source_kinds": [
             "repository_parser"
@@ -1827,7 +1978,7 @@
         {
           "age_hours": 0.033333,
           "created_at": "2026-08-30T04:04:00+00:00",
-          "digest": "sha256:988a43c1a6dac962cb10703e20a6bf3d540e0d70ee1972bcf0f4208daaecb1ae",
+          "digest": "sha256:436d789dd1555afde897d914a97ffe27cff098b1534628d5f090bc0fc3142119",
           "edge_count": 1,
           "freshness": "fresh",
           "node_count": 2,
@@ -1836,7 +1987,7 @@
             "algorithm": "hmac-sha256",
             "key_id": "reference-lab-v1",
             "schema_version": "agent-bom.correlation-receipt-signature/v1",
-            "value": "sha256:4ec2c01ec7873fc28b8c8ca3619013b6377055a1827cbb3e19069b8ac4187417"
+            "value": "sha256:dc9deec592a859c1f39928b5f5e4b5a85e3b3259fd7eff1535c5e698d6a3a58a"
           },
           "source_kinds": [
             "gateway_runtime"
@@ -1846,7 +1997,7 @@
       "output": {
         "attack_path_count": 1,
         "edge_count": 9,
-        "graph_digest_sha256": "sha256:7ca222f9c3b3ec846e942790871a16eadd3cd05fadf2ecc512e87154493f7043",
+        "graph_digest_sha256": "sha256:8426926e41c0521932a26dab9118faa13ceb25368ed9941f7c1bd40ca2a6d72d",
         "node_count": 10,
         "scan_id": "reference-evidence-correlation-v1"
       },
@@ -2089,7 +2240,7 @@
       "directed_provenance_backed_hops"
     ],
     "source": "service:reference-api",
-    "summary": "Internet-exposed Public reference-evidence-api service moves to reference-evidence-api workload; moves to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; moves to pillow@9.0.0; exploits vulnerability CVE-2023-4863; moves to render_untrusted_image; moves to reference-evidence-workload; uses effective permission to reach Modeled customer records — reaching sensitive data (7 hop chain).",
+    "summary": "Internet-exposed Public reference-evidence-api service is linked to reference-evidence-api workload; is linked to reference-evidence-api@sha256:7d3e21c47d244111d7502503e9868ce01f2dfd77f0d71d876a3a8da1f477d58a; is linked to pillow@9.0.0; is linked to vulnerability CVE-2023-4863; is linked to render_untrusted_image; is linked to reference-evidence-workload; has recorded permission to Modeled customer records — potential route to sensitive data (7 hop chain).",
     "target": "data-store:reference-customer-records",
     "technique_mappings": [
       {
@@ -2141,7 +2292,7 @@
     "correlation_id": "reference-evidence-correlation-v1",
     "failure_mode": "deny",
     "global_default": "off",
-    "manifest_sha256": "sha256:65e387a5ac8b06d95f1d0a11de9dce28ab5c9b83fbe4bf7ba66bf5ff01cb69fc",
+    "manifest_sha256": "sha256:f6346805c3d4c315b90835ae57288d563c5085814a276c6a823393ca04e7bd70",
     "observed_event": "live-jsonrpc-allow",
     "policy_id": "strict-correlated-evidence",
     "policy_source": "graph_reachability",

@@ -28,6 +28,7 @@ from agent_bom.core.severity import OCSF_SEVERITY_NAMES, SEVERITY_BUCKETS_WORST_
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
+from agent_bom.graph.path_derivation import _node_type_value
 from agent_bom.graph.types import EntityType, RelationshipType
 
 # Severity buckets reported in every roll-up histogram, worst → least.
@@ -151,10 +152,6 @@ def _combine_reasons(*reasons: str) -> str:
     return ",".join(merged)
 
 
-def _node_type_value(node: UnifiedNode) -> str:
-    return node.entity_type.value if isinstance(node.entity_type, EntityType) else str(node.entity_type)
-
-
 def _severity_bucket(node: UnifiedNode) -> str:
     sev = (node.severity or "").lower()
     if sev in {"informational"}:
@@ -166,12 +163,12 @@ def _severity_bucket(node: UnifiedNode) -> str:
 
 def _is_exposed(node: UnifiedNode) -> bool:
     attrs = node.attributes or {}
-    return any(coerce_truthy(attrs.get(key)) for key in _EXPOSED_ATTRS)
+    return bool(attrs) and any(coerce_truthy(attrs[key]) for key in _EXPOSED_ATTRS if key in attrs)
 
 
 def _is_toxic(node: UnifiedNode) -> bool:
     attrs = node.attributes or {}
-    return any(coerce_truthy(attrs.get(key)) for key in _TOXIC_ATTRS)
+    return bool(attrs) and any(coerce_truthy(attrs[key]) for key in _TOXIC_ATTRS if key in attrs)
 
 
 @dataclass(slots=True)
@@ -376,11 +373,12 @@ def _aggregate(
     agg = RollupAggregate()
     severity_counts: dict[str, int] = defaultdict(int)
     by_type: dict[str, int] = defaultdict(int)
+    active_filters = filters if filters is not None and filters.active() else None
     for nid in descendant_ids:
         node = graph.nodes.get(nid)
         if node is None:
             continue
-        if filters is not None and filters.active() and not filters.matches(node):
+        if active_filters is not None and not active_filters.matches(node):
             continue
         agg.descendant_count += 1
         if memberships is not None:

@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence, cast
 
@@ -26,6 +25,7 @@ from agent_bom.api.graph_store import (
 )
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
+from agent_bom.db.graph_revision import ensure_postgres_read_revision, read_snapshot_identity, revision_tokens
 from agent_bom.db.graph_store import (
     DEFAULT_GRAPH_TENANT_ID,
     graph_retention_policy,
@@ -55,7 +55,7 @@ from .postgres_common import (
 )
 
 logger = logging.getLogger(__name__)
-_GRAPH_STORAGE_SCHEMA_VERSION = 5
+_GRAPH_STORAGE_SCHEMA_VERSION = 6
 _DB_NOW_ISO = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 _DB_LEASE_ISO = "to_char(now() AT TIME ZONE 'UTC' + (%s * INTERVAL '1 second'), 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 
@@ -412,7 +412,7 @@ class PostgresGraphStore:
             )
             # Additive and nullable, matching the SQLite column: snapshots written
             # before it existed read NULL and fall back to the live GROUP BY.
-            conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_generation TEXT NOT NULL DEFAULT ''")
+            ensure_postgres_read_revision(conn)
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS node_type_counts TEXT DEFAULT NULL")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS snapshot_kind TEXT NOT NULL DEFAULT 'scan'")
             conn.execute("ALTER TABLE graph_snapshots ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT NULL")
@@ -603,21 +603,11 @@ class PostgresGraphStore:
                 conn.rollback()
                 logger.warning("Skipping optional Postgres graph trigram indexes: %s", type(exc).__name__)
 
-    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "") -> tuple[str, str]:
+    def snapshot_identity(self, *, tenant_id: str = "", scan_id: str = "", for_paging: bool = False) -> tuple[str, str]:
         """Resolve a generation within the authenticated tenant's connection."""
         tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
-            if scan_id:
-                row = conn.execute(
-                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s", (tenant_id, scan_id)
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT scan_id, snapshot_generation FROM graph_snapshots WHERE tenant_id = %s AND snapshot_kind = 'scan' "
-                    "ORDER BY created_at DESC, scan_id DESC LIMIT 1",
-                    (tenant_id,),
-                ).fetchone()
-        return (str(row[0]), str(row[1])) if row else (scan_id, "")
+            return read_snapshot_identity(conn, tenant_id, scan_id, for_paging, "%s")
 
     def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str:
         tenant_id = normalize_graph_tenant_id(tenant_id)
@@ -1150,8 +1140,8 @@ class PostgresGraphStore:
                 INSERT INTO graph_snapshots
                     (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary,
                      node_type_counts, analysis_status, snapshot_kind, correlation_id,
-                     evidence_manifest_sha256, snapshot_generation)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     evidence_manifest_sha256, snapshot_generation, read_revision)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
                     created_at = EXCLUDED.created_at,
                     node_count = EXCLUDED.node_count,
@@ -1162,7 +1152,7 @@ class PostgresGraphStore:
                     snapshot_kind = EXCLUDED.snapshot_kind,
                     correlation_id = EXCLUDED.correlation_id,
                     evidence_manifest_sha256 = EXCLUDED.evidence_manifest_sha256,
-                    snapshot_generation = EXCLUDED.snapshot_generation
+                    (snapshot_generation, read_revision) = (EXCLUDED.snapshot_generation, EXCLUDED.read_revision)
                 """,
                 (
                     scan,
@@ -1176,7 +1166,7 @@ class PostgresGraphStore:
                     snapshot_kind,
                     correlation_id or None,
                     evidence_manifest_sha256,
-                    write_generation or uuid.uuid4().hex,
+                    *revision_tokens(write_generation),
                 ),
             )
             if correlation_result_manifest is not None:

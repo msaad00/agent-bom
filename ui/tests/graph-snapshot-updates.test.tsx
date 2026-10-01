@@ -37,6 +37,14 @@ it("does not mix correlation snapshots, equal timestamps, or missing historical 
   expect(newerGraphSnapshot([old, snapshot("invalid", "invalid")], "old")).toBeNull();
 });
 
+it("keeps routine polling out of the canvas layout while announcing the pinned state", async () => {
+  fetchSnapshots.mockResolvedValue([old]);
+  render(<GraphSnapshotUpdates />);
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Viewing a pinned snapshot"));
+  expect(screen.getByRole("status")).toHaveClass("sr-only");
+  expect(screen.queryByRole("complementary", { name: "Saved snapshot updates" })).toBeNull();
+});
+
 it("clears a previous tenant's offer and ignores its in-flight response", async () => {
   let resolve!: (items: GraphSnapshot[]) => void;
   fetchSnapshots.mockImplementationOnce(() => new Promise(done => { resolve = done; })).mockResolvedValue([old]);

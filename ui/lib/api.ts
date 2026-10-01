@@ -1084,6 +1084,7 @@ export const api = {
     maxDepth?: number | undefined;
     offset?: number | undefined;
     limit?: number | undefined;
+    snapshotGeneration?: string | undefined;
     cursor?: string | undefined;
   }) => {
     const params = new URLSearchParams();
@@ -1101,6 +1102,7 @@ export const api = {
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
+    if (filters?.snapshotGeneration) params.set("snapshot_generation", filters.snapshotGeneration);
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph${qs ? `?${qs}` : ""}`);
   },
@@ -1195,6 +1197,7 @@ export const api = {
   /** Load the global risk-sorted attack path queue without node-page coupling */
   getGraphAttackPaths: (filters?: {
     scanId?: string | undefined;
+    snapshotGeneration?: string | undefined;
     offset?: number | undefined;
     limit?: number | undefined;
   }, options?: { signal?: AbortSignal }) => {
@@ -1202,6 +1205,7 @@ export const api = {
     if (filters?.scanId) params.set("scan_id", filters.scanId);
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.snapshotGeneration) params.set("snapshot_generation", filters.snapshotGeneration);
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph/attack-paths${qs ? `?${qs}` : ""}`, options);
   },
@@ -1253,6 +1257,7 @@ export const api = {
       dataSources?: string[];
       offset?: number;
       limit?: number;
+      snapshotGeneration?: string | undefined;
       cursor?: string;
     },
   ) => {
@@ -1272,23 +1277,25 @@ export const api = {
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
+    if (filters?.snapshotGeneration) params.set("snapshot_generation", filters.snapshotGeneration);
     return get<GraphSearchResponse>(`/v1/graph/search?${params.toString()}`);
   },
 
 
   /** List agent nodes for large graph selectors without loading the full graph */
-  listGraphAgents: (filters?: { query?: string; scanId?: string; offset?: number; limit?: number; cursor?: string }, signal?: AbortSignal) => {
+  listGraphAgents: (filters?: { query?: string; scanId?: string; offset?: number; limit?: number; snapshotGeneration?: string | undefined; cursor?: string }, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (filters?.query) params.set("q", filters.query);
     if (filters?.scanId) params.set("scan_id", filters.scanId);
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     if (filters?.cursor) params.set("cursor", filters.cursor);
+    if (filters?.snapshotGeneration) params.set("snapshot_generation", filters.snapshotGeneration);
     const qs = params.toString();
     return get<GraphAgentsResponse>(`/v1/graph/agents${qs ? `?${qs}` : ""}`, signal ? { signal } : {});
   },
 
-  getGraphIncidentEdges: (nodeId: string, options: { scanId: string; direction: "in" | "out" | "both"; cursor?: string; snapshotGeneration?: string; signal: AbortSignal }) => {
+  getGraphIncidentEdges: (nodeId: string, options: { scanId: string; direction: "in" | "out" | "both"; cursor?: string; snapshotGeneration?: string | undefined; signal: AbortSignal }) => {
     const params = new URLSearchParams({ node_id: nodeId, scan_id: options.scanId, direction: options.direction, limit: "24" });
     if (options.cursor) params.set("cursor", options.cursor);
     if (options.snapshotGeneration) params.set("snapshot_generation", options.snapshotGeneration);
@@ -1362,6 +1369,7 @@ export const api = {
       /** Drill-down page; the server defaults to the first 200 children. */
       offset?: number;
       limit?: number;
+      snapshotGeneration?: string | undefined;
     },
   ) => {
     const params = new URLSearchParams();
@@ -1373,6 +1381,7 @@ export const api = {
     if (options?.mode) params.set("mode", options.mode);
     if (options?.offset) params.set("offset", String(options.offset));
     if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.snapshotGeneration) params.set("snapshot_generation", options.snapshotGeneration);
     const qs = params.toString();
     return get<GraphRollupResponse>(`/v1/graph/rollup${qs ? `?${qs}` : ""}`);
   },

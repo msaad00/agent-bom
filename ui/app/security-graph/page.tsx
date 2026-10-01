@@ -1,5 +1,6 @@
 "use client";
 
+import { selectAttackPathQueue } from "@/lib/attack-path-queue";
 import { GraphSnapshotReceipt } from "@/components/graph-snapshot-receipt";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -421,25 +422,13 @@ function AttackPathInvestigationContent() {
     [campaigns, selectedCampaignId],
   );
 
-  // The attack-paths API remains the authoritative paginated occurrence queue.
-  // Fix-first cards supply the evidence-calibrated presentation order for the
-  // initial shortlist; append every non-enriched occurrence so this never caps
-  // the global queue at FIX_FIRST_CARD_LIMIT.
-  const allAttackPaths = useMemo(() => {
-    const fromApi = [...(graphData?.attack_paths ?? [])].sort(
-      (left, right) => right.composite_risk - left.composite_risk,
-    );
-    const fromFixFirst = fixFirstCards.map((card) => card.attack_path);
-    const focusedApiPaths = fromApi.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus));
-    const focusedEnrichedPaths = fromFixFirst.filter((path) => matchesAttackPathFocus(path, graphNodeById, focus));
-    const enriched = hasFocusContext ? focusedEnrichedPaths : fromFixFirst;
-    const occurrences = hasFocusContext ? focusedApiPaths : fromApi;
-    const enrichedKeys = new Set(enriched.map(attackPathKey));
-    const base = [...enriched, ...occurrences.filter((path) => !enrichedKeys.has(attackPathKey(path)))];
-    if (!selectedCampaign?.member_paths?.length) return base;
-    const members = new Set(selectedCampaign.member_paths);
-    return base.filter((path) => members.has(`${path.source}->${path.target}`));
-  }, [fixFirstCards, focus, graphData?.attack_paths, graphNodeById, hasFocusContext, selectedCampaign]);
+  const allAttackPaths = useMemo(() => selectAttackPathQueue(
+    graphData?.attack_paths,
+    fixFirstCards.map((card) => card.attack_path),
+    graphNodeById,
+    hasFocusContext ? focus : {},
+    selectedCampaign?.member_paths,
+  ), [fixFirstCards, focus, graphData?.attack_paths, graphNodeById, hasFocusContext, selectedCampaign]);
   const relatedPackagePathsHref = useMemo(() => {
     if (!focus.findingId || !focus.nodeId || !focus.cve || allAttackPaths.length > 0) return null;
     const relatedFocus = { ...focus, findingId: "" };
@@ -494,6 +483,7 @@ function AttackPathInvestigationContent() {
       const nextPage = await api.getGraphAttackPaths({
         scanId: selectedScanId,
         offset: nextOffset,
+        snapshotGeneration: graphData.snapshot_generation,
         limit: ATTACK_PATH_FETCH_PAGE,
       }, { signal: controller.signal });
       if (controller.signal.aborted) return;

@@ -146,22 +146,22 @@ def _edge_boost(edge: UnifiedEdge, target: UnifiedNode) -> tuple[float, str]:
     """Risk contribution + human label for traversing ``edge`` into ``target``."""
     rel = _rel(edge)
     if rel == RelationshipType.VULNERABLE_TO:
-        return 18.0, f"exploits vulnerability {target.label}"
+        return 18.0, f"is linked to vulnerability {target.label}"
     if rel == RelationshipType.EXPOSES_CRED or rel == RelationshipType.REACHES_TOOL:
-        return 12.0, f"harvests credential/tool access via {target.label}"
+        return 12.0, f"has recorded credential/tool exposure via {target.label}"
     if rel == RelationshipType.HAS_PERMISSION:
         if (edge.evidence or {}).get("access") == "assume_chain":
-            return 20.0, f"escalates privilege (assume-chain) to reach {target.label}"
-        return 8.0, f"uses effective permission to reach {target.label}"
+            return 20.0, f"has a recorded assume-chain permission to {target.label}"
+        return 8.0, f"has recorded permission to {target.label}"
     if rel in (RelationshipType.ASSUMES, RelationshipType.INHERITS):
-        return 14.0, f"assumes role into {target.label}"
+        return 14.0, f"has a recorded role relationship to {target.label}"
     if rel == RelationshipType.EXPOSED_TO:
-        return 16.0, f"reaches internet-exposed {target.label}"
+        return 16.0, f"is linked to internet-exposed {target.label}"
     if rel == RelationshipType.STORES:
-        return 6.0, f"pivots to stored data {target.label}"
+        return 6.0, f"has a recorded storage relationship to {target.label}"
     if rel == RelationshipType.CAN_ACCESS:
-        return 6.0, f"accesses {target.label}"
-    return 2.0, f"moves to {target.label}"
+        return 6.0, f"has a recorded access relationship to {target.label}"
+    return 2.0, f"is linked to {target.label}"
 
 
 def _node_boost(node: UnifiedNode) -> float:
@@ -212,7 +212,7 @@ def _summary(hops: list[str], graph: UnifiedGraph, edge_labels: list[str], prize
     entry = graph.nodes.get(hops[0])
     entry_label = entry.label if entry is not None else hops[0]
     steps = "; ".join(edge_labels)
-    return f"Internet-exposed {entry_label} {steps} — reaching {prize} ({len(hops) - 1} hop chain)."
+    return f"Internet-exposed {entry_label} {steps} — potential route to {prize} ({len(hops) - 1} hop chain)."
 
 
 def compute_fused_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:

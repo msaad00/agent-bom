@@ -2623,7 +2623,7 @@ class TestGraphStoreBackendSelection:
         assert (
             "search_nodes",
             "default",
-            "",
+            "store-scan",
             "server",
             {"server"},
             4,
@@ -2648,7 +2648,15 @@ class TestGraphStoreBackendSelection:
         next_cursor = first.json()["pagination"]["next_cursor"]
         assert next_cursor
 
-        second = client.get("/v1/graph", params={"entity_types": "agent,server", "limit": 2, "cursor": next_cursor})
+        second = client.get(
+            "/v1/graph",
+            params={
+                "entity_types": "agent,server",
+                "limit": 2,
+                "cursor": next_cursor,
+                "snapshot_generation": first.json()["snapshot_generation"],
+            },
+        )
         assert second.status_code == 200
         assert second.json()["pagination"]["cursor"] == next_cursor
         assert second.json()["pagination"]["offset"] == 0
@@ -2664,14 +2672,17 @@ class TestGraphStoreBackendSelection:
         next_cursor = first.json()["pagination"]["next_cursor"]
         assert next_cursor
 
-        second = client.get("/v1/graph/search", params={"q": "server", "limit": 2, "cursor": next_cursor})
+        second = client.get(
+            "/v1/graph/search",
+            params={"q": "server", "limit": 2, "cursor": next_cursor, "snapshot_generation": first.json()["snapshot_generation"]},
+        )
         assert second.status_code == 200
         assert second.json()["pagination"]["cursor"] == next_cursor
         assert second.json()["completeness"]["status"] == "truncated"
 
     def test_graph_cursor_rejects_invalid_values(self, recording_graph_store):
         client = TestClient(app)
-        response = client.get("/v1/graph", params={"cursor": "not-a-real-cursor"})
+        response = client.get("/v1/graph", params={"cursor": "not-a-real-cursor", "snapshot_generation": "test-generation"})
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid graph cursor"
 

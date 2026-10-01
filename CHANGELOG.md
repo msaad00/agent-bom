@@ -9,6 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Require Tornado 6.5.10, including the 6.5.9 security fixes and follow-up static-file compatibility repair.
+- Preserve installed-package self-scan findings in GitHub uploads by anchoring them to retained generated evidence; keep the original SARIF and the severity gate unchanged.
+
 ### Added
 
 - Export a selected graph entity's loaded recorded relationships as an investigation JSON bundle. Preserve the snapshot generation, canonical entity/finding identifiers, relationship evidence, page completeness and a return link; disclose unknown collection coverage and unsigned local-export provenance.

@@ -712,6 +712,7 @@ export interface NhiGovernancePosture {
 }
 
 export interface GraphQueryRequest {
+  snapshot_generation?: string | undefined;
   roots: string[];
   scan_id?: string | undefined;
   direction?: "forward" | "reverse" | "both" | undefined;
@@ -731,7 +732,8 @@ export interface GraphQueryRequest {
   data_sources?: string[] | undefined;
 }
 
-export interface GraphQueryResponse extends UnifiedGraphData {
+export interface GraphQueryResponse extends Omit<UnifiedGraphData, "snapshot_generation"> {
+  snapshot_generation?: string | null | undefined;
   roots: string[];
   direction: "forward" | "reverse" | "both";
   max_depth: number;
@@ -747,6 +749,10 @@ export interface GraphQueryResponse extends UnifiedGraphData {
 }
 
 export interface GraphImpactResponse {
+  scan_id?: string | undefined;
+  tenant_id?: string | undefined;
+  snapshot_generation?: string | null | undefined;
+  interpretation?: { basis: "recorded_reverse_reachability"; execution: "not_established"; collection_coverage: "unknown"; traversable_only: false; max_depth: number } | undefined;
   completeness?: GraphCompleteness | undefined;
   node_id: string;
   affected_nodes: string[];
@@ -771,6 +777,9 @@ export interface GraphFilterPresetCreate {
 }
 
 export interface GraphNodeDetailResponse {
+  scan_id?: string | undefined;
+  tenant_id?: string | undefined;
+  snapshot_generation?: string | null | undefined;
   completeness?: GraphCompleteness | undefined;
   node: UnifiedNode;
   edges_out: UnifiedEdge[];

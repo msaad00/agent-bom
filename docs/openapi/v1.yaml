@@ -4801,6 +4801,13 @@ components:
           default: ''
           title: Scan Id
           type: string
+        snapshot_generation:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          description: Expected read revision; replacement returns 409
+          title: Snapshot Generation
         static_only:
           default: false
           title: Static Only
@@ -20140,6 +20147,15 @@ paths:
           - type: 'null'
           description: Scan ID
           title: Scan Id
+      - in: query
+        name: snapshot_generation
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Snapshot Generation
       - description: Maximum reverse BFS depth
         in: query
         name: max_depth
@@ -20359,6 +20375,15 @@ paths:
           - type: 'null'
           description: Scan ID
           title: Scan Id
+      - in: query
+        name: snapshot_generation
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Snapshot Generation
       responses:
         '200':
           content:
@@ -20472,6 +20497,15 @@ paths:
           - type: 'null'
           description: Scan ID
           title: Scan Id
+      - in: query
+        name: snapshot_generation
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 128
+            type: string
+          - type: 'null'
+          title: Snapshot Generation
       responses:
         '200':
           content:

@@ -269,6 +269,7 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
       contentType: "application/json",
       body: JSON.stringify({
         scan_id: scanId,
+        snapshot_generation: "a".repeat(32),
         tenant_id: "default",
         created_at: createdAt,
         nodes: focusedNodes,
@@ -641,6 +642,8 @@ test("blast radius distinguishes related nodes from assets and keeps the type br
     impact: { affected_count: 3, affected_by_type: { package: 1, agent: 1, vulnerability: 1 }, max_depth_reached: 2 },
   } }));
   await page.route("**/v1/graph/impact?**", (route) => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", snapshot_generation: "a".repeat(32),
+    completeness: { complete: true, truncated: false, returned: 3, total: 3 },
     node_id: root.id, affected_count: 3, affected_nodes: ["pkg:41", "agent:large", "cve:41"],
     affected_by_type: { package: 1, agent: 1, vulnerability: 1 }, max_depth_reached: 2,
   } }));
@@ -968,5 +971,35 @@ for (const storedAssets of [5_000, 25_000, 100_000]) {
     console.info(JSON.stringify(metrics));
     await page.screenshot({ path: testInfo.outputPath(`bounded-map-${storedAssets}.png`), fullPage: true });
     expect(Buffer.byteLength(body)).toBeLessThan(512 * 1024);
+  });
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`bounded blast-radius scope is readable in ${theme} theme`, async ({ page }, testInfo) => {
+    await routeLargeGraphPage(page);
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    const root = node("pkg:42", "package", "large-package-42", "high", 7.2);
+    await page.route("**/v1/graph/node/**", route => route.fulfill({ json: {
+      node: root, edges_in: [], edges_out: [], neighbors: [], sources: [],
+      impact: { affected_count: 50, affected_by_type: { package: 50 }, max_depth_reached: 4 },
+    } }));
+    await page.route("**/v1/graph/impact?**", route => route.fulfill({ json: {
+      scan_id: scanId, tenant_id: "default", snapshot_generation: "a".repeat(32),
+      node_id: root.id, affected_count: 50, affected_nodes: ["pkg:41"],
+      affected_by_type: { package: 50 }, max_depth_reached: 4,
+      completeness: { complete: false, truncated: true, returned: 50, reason: "depth_limit" },
+    } }));
+    await page.goto(`/graph?scan=${scanId}&root=pkg%3A42`);
+    const query = page.waitForRequest(request => request.url().endsWith("/v1/graph/query") && Boolean(request.postDataJSON().snapshot_generation));
+    await page.getByRole("button", { name: "Show blast radius", exact: true }).click();
+    const body = (await query).postDataJSON();
+    expect(body.traversable_only).toBe(false);
+    expect(body.scan_id).toBe(scanId);
+    await expect(page.getByText("At least 50 upstream related nodes connected to large-package-42")).toBeVisible();
+    await expect(page.getByText(/The related-node count is a lower bound/)).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.screenshot({ path: testInfo.outputPath(`blast-radius-${theme}.png`) });
   });
 }

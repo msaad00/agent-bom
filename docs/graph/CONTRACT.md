@@ -726,3 +726,24 @@ After restarting the test database, run the same backend selection with
 `--verify-checkpoint /tmp/postgres-graph-qualification.json --output /tmp/graph-restart.json`
 to verify persisted counts and revisions. This bounded synthetic workload is
 an operator check, not a sustained production capacity or failover guarantee.
+
+### Revision-consistent blast-radius investigations
+
+Start with `GET /v1/graph/impact?node=<canonical-id>&max_depth=4`. Save its
+resolved `scan_id`, `tenant_id`, `snapshot_generation`, `interpretation` and
+`completeness` with the result. Pass the resolved scan and revision to
+`POST /v1/graph/query` and `GET /v1/graph/node-context` (or `/graph/node/{id}`).
+The query accepts the token in its JSON body; detail and impact accept it as a
+query parameter. Replacement before or during a read returns 409; discard the
+attempt and restart. A backend without revision support returns no revision on
+an unpinned read and rejects a requested pin with 501. Do not join those unpinned
+results into one investigation.
+
+Impact follows recorded relationships in reverse, including context relationships
+that are not marked traversable. To inspect the same semantics, use
+`direction: "reverse"` and `traversable_only: false`. These are related nodes,
+not confirmed compromised assets or effective permissions. The interpretation
+reports execution as not established and collection coverage as unknown. A
+truncated or unknown completeness result is a lower bound. The dashboard starts
+with a four-node canvas and displays its visible count separately from the
+larger impact scope; a small map does not imply a small blast radius.

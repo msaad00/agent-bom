@@ -21,6 +21,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 
 import httpx
@@ -72,7 +73,10 @@ def seed(db: Path, *, tenants: int, findings: int, assets: int, agents: int, ser
 
         started = time.perf_counter()
         counts = store.save_graph_streaming(tenant_id=tenant, scan_id="scale", nodes=nodes(), edges=edges())
-        with sqlite3.connect(db) as conn:
+        # A Connection context commits/rolls back but does not close. Leaving
+        # host-owned WAL handles alive can make the container's different UID
+        # see a read-only database until nondeterministic garbage collection.
+        with closing(sqlite3.connect(db)) as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         receipts.append({"tenant": tenant, "counts": counts, "seconds": time.perf_counter() - started, "db_bytes": db.stat().st_size})
     return receipts
@@ -97,6 +101,20 @@ def summarize(rows: list[dict]) -> dict:
             "successful_ms": percentiles([row["ms"] for row in attempts if row["ok"]]),
             "max_bytes": max(row["bytes"] for row in attempts),
         }
+    return result
+
+
+def rejection_diagnostics(body: object) -> dict:
+    """Retain known admission outcomes without arbitrary response text."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, dict) or detail.get("path") != "graph":
+        return {}
+    if detail.get("reason") not in {"p99_latency_threshold", "concurrency_limit", "latency_degraded"}:
+        return {}
+    result = {"path": "graph", "reason": detail["reason"]}
+    retry = detail.get("retry_after_seconds")
+    if type(retry) is int and 0 < retry <= 86400:
+        result["retry_after_seconds"] = retry
     return result
 
 
@@ -394,6 +412,8 @@ def run(args: argparse.Namespace) -> int:
                         row.update(status=response.status_code, bytes=len(response.content))
                         if response.status_code in {200, 201}:
                             row["ok"] = valid_response(operation, response.json(), tenant, batch=args.batch_size)
+                        elif response.status_code == 429:
+                            row["rejection"] = rejection_diagnostics(response.json())
                     except Exception as exc:
                         # Preserve unexpected decoder/client faults as attempts,
                         # without copying exception messages or response secrets.

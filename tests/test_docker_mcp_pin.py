@@ -106,3 +106,23 @@ def test_the_release_run_owns_the_pin() -> None:
     update_section = submission.split("## Update process", 1)[1]
     first_step = update_section.split("2.", 1)[0]
     assert "updated for you" in first_step, "the update process reverted to asking a human to edit source.commit"
+
+
+def test_post_release_pins_refresh_product_proof_before_publication() -> None:
+    """Published pins change dashboard render inputs and invalidate old proof."""
+    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["docker-mcp-pin"]["steps"]
+    assert any(step.get("uses") == "./.github/actions/setup-ui" for step in steps)
+    publish = next(step["run"] for step in steps if "gh pr create" in step.get("run", ""))
+    # A real capture needs a built UI and clean committed inputs. Both source
+    # and generated proof must be committed and validated before the first push.
+    source_commit = publish.index("git commit -S")
+    build = publish.index("npm run build")
+    capture = publish.index("npm run capture:product-proof")
+    validate = publish.index("python scripts/check_release_consistency.py")
+    proof_commit = publish.index("git commit -S", source_commit + 1)
+    push = publish.index("git push")
+    assert source_commit < build < capture < validate < proof_commit < push
+    assert "npm ci" in publish
+    assert "playwright install --with-deps chromium" in publish
+    assert "git add docs/images" in publish

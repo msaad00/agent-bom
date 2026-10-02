@@ -203,7 +203,7 @@ acts on selected tool calls. Missing evidence stays unavailable or partial. Cont
 
 [Product boundaries](docs/PRODUCT_BOUNDARIES.md) · [Permissions](docs/PERMISSIONS.md) · [Threat model](docs/THREAT_MODEL.md) ·
 [Security policy](SECURITY.md) · [Release verification](docs/RELEASE_VERIFICATION.md) ·
-[Measured matcher proof](site-docs/features/scanning.md#reproducible-matching-evidence)
+[Measured matcher proof](site-docs/features/scanning.md#reproducible-matching-evidence) · [Graph workload: command, receipt and limits](docs/perf/graph-mixed-load.md)
 
 ## Contributing and support
 

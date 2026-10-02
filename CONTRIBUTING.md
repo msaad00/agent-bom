@@ -242,7 +242,10 @@ Validation: CI + targeted local tests
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system diagrams and the full module map.
 
-**5 products, 1 package:** `agent-bom` (BOM + scanning), `agent-shield` (runtime protection), `agent-cloud` (cloud posture), `agent-iac` (IaC security), `agent-claw` (fleet governance). All share the same core engine.
+**One product, shared evidence:** scanning, the self-hosted control plane, and
+runtime enforcement share inventory, findings, graph and audit contracts.
+The `agent-bom`, `agent-shield`, `agent-cloud`, `agent-iac` and `agent-claw`
+commands are focused entry points into the same package.
 
 Pipeline at a glance: **discover** MCP configs → **parse** packages → **scan** via OSV/NVD/GHSA → **enrich** (EPSS + KEV) → **blast radius** → **compliance tag** → **output**.
 

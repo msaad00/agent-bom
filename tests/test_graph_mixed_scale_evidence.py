@@ -343,3 +343,34 @@ def test_server_diagnostics_redact_generated_and_credential_shaped_secrets():
     assert "failure" in text
     assert "minted-fixture-secret" not in text
     assert "private-value" not in text
+
+
+def test_sustained_workload_keeps_all_operations_active_until_deadline(fake_run):
+    import json
+
+    args, flags, _ = fake_run
+    args.duration_seconds = 0.15
+    args.ingest_interval = 0.01
+    assert evidence.run(args) == 0
+    receipt = json.loads((args.output / "receipt.json").read_text())
+    assert receipt["expected_attempts"] is None
+    assert receipt["workload"]["mode"] == "duration"
+    assert len(receipt["workers"]) == 3
+    for worker in receipt["workers"]:
+        assert worker["attempts"] > 2
+        assert worker["finished_offset_ms"] >= 150
+    assert receipt["overlap"]["read_attempts_overlapping_successful_ingest"] > 3
+
+
+def test_sustained_workload_failures_cannot_pass(fake_run):
+    import json
+
+    args, flags, _ = fake_run
+    args.duration_seconds = 0.1
+    args.ingest_interval = 0.01
+    flags["request_error"] = True
+    assert evidence.run(args) == 1
+    receipt = json.loads((args.output / "receipt.json").read_text())
+    assert receipt["expected_attempts"] is None
+    assert sum(not row["ok"] for row in receipt["rows"]) == 1
+    assert len(receipt["workers"]) == 3

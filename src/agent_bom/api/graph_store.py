@@ -21,8 +21,10 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
+
 from agent_bom.api.graph_edge_query import _edge_from_row as sqlite_edge_from_row
 from agent_bom.api.graph_edge_query import edge_query
+from agent_bom.api.storage.sqlite_graph_search import ensure_search_index, scoped_search_expression
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.db.graph_bootstrap import ensure_read_schema, invalidate_read_schema
 from agent_bom.db.graph_revision import read_snapshot_identity
@@ -88,20 +90,6 @@ _API_GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "graph_filter_presets": ("name",),
     "graph_node_search": ("node_id", "scan_id"),
 }
-
-_CREATE_SEARCH_TABLE_SQLITE = """\
-CREATE VIRTUAL TABLE IF NOT EXISTS graph_node_search
-USING fts5(
-    tenant_id UNINDEXED,
-    scan_id UNINDEXED,
-    node_id UNINDEXED,
-    entity_type,
-    severity,
-    compliance_tags,
-    data_sources,
-    search_text
-)
-"""
 
 
 def _escape_like_query(query: str) -> str:
@@ -322,8 +310,9 @@ class SQLiteGraphStore:
             cleanup.callback(conn.close)
             conn.row_factory = sqlite3.Row
             sqlite_graph_store._init_db(conn)
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_PRESET_TABLE_SQLITE)
-            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+            ensure_search_index(conn)
             sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
             conn.commit()
             cleanup.pop_all()
@@ -1402,8 +1391,9 @@ class SQLiteGraphStore:
 
     def save_graph(self, graph: UnifiedGraph) -> None:
         with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_PRESET_TABLE_SQLITE)
-            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+            ensure_search_index(conn)
             sqlite_graph_store.save_graph(conn, graph)
             self._refresh_snapshot_search_index(conn, tenant_id=graph.tenant_id, scan_id=graph.scan_id)
             sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
@@ -1431,8 +1421,9 @@ class SQLiteGraphStore:
         decoupled from graph size for producers that yield nodes/edges lazily.
         """
         with sqlite_graph_store.open_graph_db(self._db_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(_CREATE_PRESET_TABLE_SQLITE)
-            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+            ensure_search_index(conn)
             counts = sqlite_graph_store.save_graph_streaming(
                 conn,
                 scan_id=scan_id,
@@ -2439,7 +2430,7 @@ class SQLiteGraphStore:
                 local_params = list(params)
                 if use_fts:
                     local_where.append("gns.graph_node_search MATCH ?")
-                    local_params.append(fts_query)
+                    local_params.append(scoped_search_expression(fts_query, tenant_id=tenant_id, scan_id=effective_scan_id))
                 else:
                     local_where.append("gns.search_text LIKE ? ESCAPE '\\'")
                     local_params.append(like_query)

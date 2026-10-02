@@ -38,6 +38,7 @@ import threading
 import time
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
+from functools import partial
 from typing import Any, Literal, cast
 
 import anyio.to_thread
@@ -56,6 +57,7 @@ from agent_bom.api.gateway_activity_store import (
     InMemoryGatewayActivityStore,
     get_gateway_activity_store,
 )
+from agent_bom.api.gateway_feed_health import _parse_iso_timestamp, build_gateway_feed_health
 from agent_bom.api.proxy_provenance import (
     ProducerAssurance,
     producer_assurance_counts,
@@ -78,7 +80,6 @@ from agent_bom.runtime.profile_resolution import classify_profile_shadow_reason
 router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
 
 _FEED_SCHEMA_VERSION = "gateway.feed.v1"
-_FEED_STALE_AFTER_SECONDS = 120
 _STREAM_MAX_SECONDS = 30.0
 _STREAM_POLL_SECONDS = 1.0
 _stream_slots = threading.BoundedSemaphore(64)
@@ -276,58 +277,6 @@ def _dep(permission: str) -> Any:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_iso_timestamp(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def build_gateway_feed_health(
-    *,
-    transport_enabled: bool,
-    heartbeat_at: str | None,
-    now: datetime | None = None,
-    sample: bool = False,
-    stale_after_seconds: int = _FEED_STALE_AFTER_SECONDS,
-) -> dict[str, Any]:
-    """Describe transport freshness independently from retained event presence."""
-    checked_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    base: dict[str, Any] = {
-        "assurance_basis": "transport_receipt",
-        "producer_assurance": "unknown",
-        "state": "sample" if sample else "unavailable",
-        "live": False,
-        "heartbeat_at": heartbeat_at,
-        "age_seconds": None,
-        "stale_after_seconds": stale_after_seconds,
-    }
-    if sample:
-        base["reason"] = "synthetic_sample"
-        return base
-    heartbeat = _parse_iso_timestamp(heartbeat_at)
-    if not transport_enabled or heartbeat is None:
-        base["reason"] = "transport_or_heartbeat_unavailable"
-        return base
-
-    age_delta = (checked_at - heartbeat).total_seconds()
-    if age_delta < 0:
-        base["reason"] = "transport_heartbeat_in_future"
-        return base
-    age_seconds = int(age_delta)
-    base["age_seconds"] = age_seconds
-    if age_seconds <= stale_after_seconds:
-        base.update({"state": "live", "live": True, "reason": "recent_transport_heartbeat"})
-    else:
-        base.update({"state": "stale", "reason": "transport_heartbeat_stale"})
-    return base
 
 
 def _alert_timestamp(alert: dict[str, Any]) -> str:
@@ -1178,11 +1127,14 @@ async def gateway_feed(
         raise HTTPException(status_code=400, detail="Invalid gateway activity cursor") from exc
     except GatewayFeedLedgerUnavailableError as exc:
         raise HTTPException(status_code=503, detail="Gateway activity storage unavailable") from exc
-    payload = build_gateway_feed(
-        tenant_id=tenant_id,
-        alerts=[*page.events, *compatibility_alerts],
-        llm_records=llm_records,
-        limit=limit,
+    payload = await anyio.to_thread.run_sync(
+        partial(
+            build_gateway_feed,
+            tenant_id=tenant_id,
+            alerts=[*page.events, *compatibility_alerts],
+            llm_records=llm_records,
+            limit=limit,
+        )
     )
     payload["next_cursor"] = page.next_cursor
     payload["has_more"] = page.has_more
@@ -1232,11 +1184,14 @@ async def gateway_feed_kpis(request: Request) -> dict[str, Any]:
         end=window_end,
     )
     uptime_seconds = await anyio.to_thread.run_sync(_load_tenant_uptime, tenant_id)
-    payload = build_gateway_feed_kpis(
-        tenant_id=tenant_id,
-        alerts=alerts,
-        llm_records=llm_records,
-        uptime_seconds=uptime_seconds,
+    payload = await anyio.to_thread.run_sync(
+        partial(
+            build_gateway_feed_kpis,
+            tenant_id=tenant_id,
+            alerts=alerts,
+            llm_records=llm_records,
+            uptime_seconds=uptime_seconds,
+        )
     )
     payload["tool_calls_authorized"] += summary.tool_calls_authorized
     payload["blocked_today"] += summary.blocked

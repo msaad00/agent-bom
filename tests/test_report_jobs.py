@@ -6,6 +6,7 @@ import gzip
 import json
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -45,7 +46,7 @@ def _client(tenant: str = "tenant-alpha") -> TestClient:
 def _seed_hub(tmp_path: Path, tenant_id: str, count: int = 3) -> None:
     store = SQLiteComplianceHubStore(str(tmp_path / "hub.db"))
     set_compliance_hub_store(store)
-    observed_at = "2026-07-04T00:00:00Z"
+    observed_at = datetime.now(timezone.utc).isoformat()
     for idx in range(count):
         store.upsert_current_batch(
             tenant_id,
@@ -172,3 +173,37 @@ def test_report_job_active_quota(monkeypatch, tmp_path: Path) -> None:
     second = client.post("/v1/reports", json={})
     assert second.status_code == 429
     assert "limit" in second.json()["detail"].lower()
+
+
+@pytest.mark.parametrize("window_days,expected_count", [(None, 1), (0, 2)])
+def test_report_job_preserves_the_default_recent_window(monkeypatch, tmp_path, window_days, expected_count):
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.api.time_window import default_window_days
+
+    tenant_id = f"report-window-{uuid4().hex}"
+    monkeypatch.setenv("AGENT_BOM_REPORT_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.setattr("agent_bom.api.routes.reports.submit_report_job", _run_report_job_sync)
+    _seed_hub(tmp_path, tenant_id, count=1)
+    # Keep one finding outside the real default window, regardless of the date
+    # on which the suite runs. An explicit all-time export must still include it.
+    get_compliance_hub_store().upsert_current_batch(
+        tenant_id,
+        [{"id": f"{tenant_id}:old", "canonical_id": f"{tenant_id}:old", "severity": "high"}],
+        observed_at=(datetime.now(timezone.utc) - timedelta(days=default_window_days() + 1)).isoformat(),
+        batch_id="old-batch",
+        source="test",
+    )
+    client = _client(tenant=tenant_id)
+    request = {} if window_days is None else {"window_days": window_days}
+    created = client.post("/v1/reports", json=request)
+    assert created.status_code == 202, created.text
+    polled = client.get(f"/v1/reports/{created.json()['job_id']}")
+    assert polled.status_code == 200
+    body = polled.json()
+    assert body["status"] == "done"
+    assert body["row_count"] == expected_count
+    downloaded = client.get(body["download_url"], headers={"X-Agent-Bom-Download-Token": body["download_token"]})
+    assert downloaded.status_code == 200
+    rows = [json.loads(line) for line in gzip.decompress(downloaded.content).decode().splitlines()]
+    assert len(rows) == expected_count
+    assert any(row["id"] == f"{tenant_id}:old" for row in rows) == (window_days == 0)

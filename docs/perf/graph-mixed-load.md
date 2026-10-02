@@ -45,8 +45,9 @@ uv run python scripts/run_graph_mixed_scale_evidence.py \
 ```
 
 The manual **Perf Scale Evidence** workflow's `mixed_graph` option runs the
-same fixture on an ephemeral Ubuntu runner and uploads only the receipt,
-including failed runs. It does not upload the database or container environment:
+same fixture on an ephemeral Ubuntu runner and uploads the receipt and bounded,
+sanitized server diagnostics, including failed runs. It does not upload the
+database or container environment:
 
 ```bash
 gh workflow run perf-scale-evidence.yml -f mixed_graph=true -f open_pr=false

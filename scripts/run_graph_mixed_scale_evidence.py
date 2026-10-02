@@ -27,6 +27,7 @@ import httpx
 
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedNode
+from agent_bom.security import sanitize_text
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "agentbom/agent-bom@sha256:803bb0e276935df05919520282650e63a2c80d9700066f5915f7fc14147d9c08"
@@ -189,6 +190,11 @@ def overlap_summary(rows: list[dict]) -> dict:
 
 def docker(*args: str, env: dict[str, str] | None = None) -> str:
     return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=180, env=env).stdout
+
+
+def sanitized_diagnostics(text: str, secret: str) -> str:
+    """Keep bounded diagnostic lines without minted or credential-shaped secrets."""
+    return "\n".join(sanitize_text(line, max_len=4096) for line in text.replace(secret, "<redacted>").splitlines()) + "\n"
 
 
 def resources(name: str) -> dict:
@@ -442,6 +448,12 @@ def run(args: argparse.Namespace) -> int:
         # must never skip removal of the container and its environment metadata.
         cleanup = {"container": {"attempted": container_attempted, "ok": True}}
         if container_attempted:
+            try:
+                result = subprocess.run(["docker", "logs", "--tail", "2000", name], capture_output=True, text=True, check=False, timeout=30)
+                (output / "server.log").write_text(sanitized_diagnostics(result.stdout + result.stderr, secret))
+                receipt["diagnostics"] = {"ok": result.returncode == 0, "returncode": result.returncode, "path": "server.log"}
+            except Exception as exc:
+                receipt["diagnostics"] = {"ok": False, "error_type": type(exc).__name__}
             try:
                 result = subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)
                 cleanup["container"].update(ok=result.returncode == 0, returncode=result.returncode)

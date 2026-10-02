@@ -133,7 +133,8 @@ def fake_run(tmp_path, monkeypatch):
 
     def remove(args, **kwargs):
         calls.append(tuple(args))
-        return subprocess.CompletedProcess(args, int(flags["cleanup_error"]), stdout=b"", stderr=b"")
+        content = "" if kwargs.get("text") else b""
+        return subprocess.CompletedProcess(args, int(flags["cleanup_error"] and args[1] == "rm"), stdout=content, stderr=content)
 
     class Response:
         def __init__(self, body, status=200):
@@ -305,3 +306,10 @@ def test_docker_passes_private_environment_without_changing_parent(monkeypatch):
     assert captured["env"] == private_env
     assert "ephemeral-test-marker" not in captured["command"]
     assert "AGENT_BOM_TRUST_PROXY_AUTH_SECRET" not in os.environ
+
+
+def test_server_diagnostics_redact_generated_and_credential_shaped_secrets():
+    text = evidence.sanitized_diagnostics("failure minted-fixture-secret\npassword=private-value", "minted-fixture-secret")
+    assert "failure" in text
+    assert "minted-fixture-secret" not in text
+    assert "private-value" not in text

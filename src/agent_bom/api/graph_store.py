@@ -2478,29 +2478,25 @@ class SQLiteGraphStore:
                     )
 
                 where_sql = " AND ".join(local_where)
-                total = int(
-                    conn_ro.execute(
-                        "SELECT COUNT(*) " + from_clause + " WHERE " + where_sql,
-                        local_params,
-                    ).fetchone()[0]
-                    or 0
-                )
-                if total == 0:
-                    return [], 0, None
+                # Materialize only ranking keys once. Counting and sorting the
+                # same FTS matches previously repeated every node join; hydrate
+                # full evidence only for the selected page. A LEFT JOIN retains
+                # the exact total even when an offset/cursor exhausts the page.
                 rows = conn_ro.execute(
-                    """
-                    SELECT
-                        gn.id, gn.entity_type, gn.label, gn.category_uid, gn.class_uid, gn.type_uid,
-                        gn.status, gn.risk_score, gn.severity, gn.severity_id, gn.first_seen, gn.last_seen,
-                        gn.attributes, gn.compliance_tags, gn.data_sources, gn.dimensions
-                    """
-                    + from_clause
-                    + " WHERE "
-                    + where_sql
-                    + cursor_clause
-                    + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT ? OFFSET ?",
+                    f"""WITH matches AS MATERIALIZED (
+                        SELECT gn.rowid AS node_rowid, gn.id, gn.severity_id, gn.risk_score, gn.label
+                        {from_clause} WHERE {where_sql}
+                    ), page AS (
+                        SELECT * FROM matches WHERE 1=1 {cursor_clause.replace("gn.", "")}
+                        ORDER BY severity_id DESC, risk_score DESC, label ASC, id ASC LIMIT ? OFFSET ?
+                    ) SELECT gn.*, totals.match_total FROM (SELECT COUNT(*) AS match_total FROM matches) totals
+                    LEFT JOIN page ON 1=1 LEFT JOIN graph_nodes gn ON gn.rowid = page.node_rowid
+                    ORDER BY page.severity_id DESC, page.risk_score DESC, page.label ASC, page.id ASC
+                    """,  # nosec B608 - fixed internal clauses; all search/filter/cursor values are bound
                     [*row_params, limit + 1 if cursor else limit, 0 if cursor else offset],
                 ).fetchall()
+                total = int(rows[0]["match_total"])
+                rows = [row for row in rows if row["id"] is not None]
                 has_more = len(rows) > limit if cursor else offset + limit < total
                 rows = rows[:limit]
                 nodes = [self._node_from_row(row) for row in rows]

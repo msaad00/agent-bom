@@ -187,7 +187,14 @@ Operational consequences:
 - The Python engine has one primary dependency/SBOM surface; the UI has its own
   pinned Node.js toolchain and lockfile.
 - Wheels build cleanly on `linux/amd64` and `linux/arm64` — no per-arch native toolchain.
-- Slower than Rust/Go scanners on huge fanouts; per-package memory is higher. For VM disk-image scanning at scale, install `syft` alongside agent-bom and let the fallback path take over.
+
+To measure graph reads during finding ingestion, follow the
+[Docker workload prerequisites](perf/graph-mixed-load.md), then run
+`uv run python scripts/run_graph_mixed_scale_evidence.py --output /tmp/graph-mixed-evidence`
+from the repository root. Inspect `receipt.json` for source identity, failed
+requests, latency, CPU/memory use and measured read/write overlap. The synthetic
+SQLite fixture does not establish production capacity. Repeat with representative
+data shape, sustained load and the intended database before setting an SLO.
 
 Forward-looking runtime note:
 

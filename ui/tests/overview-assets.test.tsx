@@ -6,6 +6,15 @@ import type { InventorySummaryResponse } from "@/lib/api";
 const summary: InventorySummaryResponse = { schema_version: "inventory.summary.v1", tenant_id: "tenant-a", by_group: {}, finding_count: 0, facets: { type: {buckets: []}, source: {buckets: []}, provider: {buckets: []}, environment: {buckets: []}, severity: {buckets: []} }, facet_metadata: {basis: "whole_query", mode: "self_excluding", exact: true, scan_id: "snapshot/a b"}, completeness: {status: "complete", complete: true, sampled: false, truncated: false, returned: 126, total: 126}, scan_id: "snapshot/a b", total_assets: 126, by_type: { agent: 2, model: 40, framework: 20, server: 3, tool: 10, tool_call: 50, user: 1 } };
 
 describe("recorded estate summary", () => {
+  it("guides a fresh installation with no snapshot to its first scan", () => {
+    const empty: InventorySummaryResponse = { ...summary, scan_id: "", total_assets: 0, by_type: {}, filters: {}, status: "no_snapshot" };
+    render(<OverviewAssets summary={empty} />);
+    expect(screen.getByRole("status")).toHaveTextContent("No inventory snapshot yet");
+    expect(screen.getByRole("link", { name: "Run your first scan" })).toHaveAttribute("href", "/scan");
+    expect(screen.getByRole("link", { name: "Connect a source" })).toHaveAttribute("href", "/connections");
+    expect(screen.queryByRole("link", { name: "0 Agents" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Exact within snapshot")).not.toBeInTheDocument();
+  });
   it("does not promote models to agents or tool calls to servers and locks drilldowns to its snapshot", () => {
     render(<OverviewAssets summary={summary} />);
     expect(screen.getByRole("link", { name: "2 Agents" })).toHaveAttribute("href", "/inventory?scan=snapshot%2Fa+b&type=agent");

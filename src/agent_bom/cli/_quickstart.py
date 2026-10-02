@@ -260,7 +260,10 @@ def _print_quickstart_handoff(
     else:
         click.echo("  Package-CVE lookup: requested; inspect scan_run and coverage_warnings in the JSON report.")
     click.echo("")
-    click.echo("Open the cockpit:")
+    click.echo("Install dashboard dependencies in the same Python environment (once):")
+    click.echo("  pip install 'agent-bom[ui]'")
+    click.echo("")
+    click.echo("Start the server before opening the graph URL:")
     click.echo(f"  {_control_plane_command(control_plane_db=control_plane_db, graph_db=graph_db, port=port)}")
     click.echo("  # the explicit local analyst role permits scans in this loopback-only workflow;")
     click.echo("  # on a shared host use --api-key <key> or configure OIDC authentication instead.")

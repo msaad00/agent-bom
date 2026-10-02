@@ -128,6 +128,21 @@ def test_quickstart_run_scans_with_context_graph_and_seeds_policy(tmp_path, _fak
 
 
 @pytest.mark.parametrize("offline", [True, False])
+def test_executed_quickstart_includes_dashboard_install_before_server(tmp_path, _fake_scan, offline):
+    """A base PyPI install must not hand off to serve without its required extra."""
+    args = ["quickstart", "--run", "--sample-dir", str(tmp_path / "sample")]
+    if offline:
+        args.append("--offline")
+    result = CliRunner().invoke(main, args)
+    assert result.exit_code == 0, result.output
+    setup = "pip install 'agent-bom[ui]'"
+    assert setup in result.output
+    assert result.output.index(setup) < result.output.index("agent-bom serve --persist")
+    assert "same Python environment" in result.output
+    assert "Start the server before opening" in result.output
+
+
+@pytest.mark.parametrize("offline", [True, False])
 def test_quickstart_handoff_identifies_artifact_scope_and_snapshot(tmp_path, _fake_scan, monkeypatch, offline):
     from urllib.parse import parse_qs, urlsplit
 

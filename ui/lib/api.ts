@@ -1127,7 +1127,7 @@ export const api = {
       const mismatch = (scanId && response.scan_id !== scanId) || [...params.entries()].some(([key, value]) => {
         if (key === "scan_id") return false;
         if (!echoed) return true;
-        if (key === "type") return value.split(",").map((type) => type.trim()).sort().join(",") !== [...echoed.type].sort().join(",");
+        if (key === "type") return value.split(",").map((type) => type.trim()).sort().join(",") !== [...(echoed.type ?? [])].sort().join(",");
         const expected = key === "severity" || key === "min_severity" ? value.trim().toLowerCase() : key === "search" ? value.trim() : value;
         return echoed[key as keyof typeof echoed] !== expected;
       });

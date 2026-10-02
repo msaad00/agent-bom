@@ -136,8 +136,16 @@ or attach deterministic output to an issue.
 For a single-command sample scan with a persisted graph:
 
 ```bash
+pip install 'agent-bom[ui]'
 agent-bom quickstart --run --offline
 ```
+
+Install the UI extra in the same Python environment as the CLI. The base
+`pip install agent-bom` supports scans but does not install the server dependencies.
+Published wheels include the dashboard assets; source checkouts also need
+`make build-ui`. The quickstart prints the server command: start it in another
+terminal, then open the printed graph URL. Keep that process running while
+using the dashboard.
 
 The final handoff prints the absolute JSON report path, the database-backed
 control-plane command, and a graph URL pinned to the snapshot just read back.

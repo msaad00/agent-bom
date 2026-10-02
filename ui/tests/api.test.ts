@@ -1326,6 +1326,11 @@ it('rejects an unqualified legacy aggregate for a filtered inventory query', asy
   await expect(api.getInventorySummary(undefined, { provider: 'aws' })).rejects.toThrow('Scoped counts are unavailable')
 })
 
+it('rejects an empty filter receipt without treating missing types as a scoped match', async () => {
+  global.fetch = mockFetch({ scan_id: '', total_assets: 0, filters: {}, status: 'no_snapshot' })
+  await expect(api.getInventorySummary(undefined, { type: ['agent'] })).rejects.toThrow('Scoped counts are unavailable')
+})
+
 it('rejects a summary that echoes a broader scope than requested', async () => {
   global.fetch = mockFetch({ scan_id: 'snapshot-b', total_assets: 3000, filters: { type: [], provider: '' } })
   await expect(api.getInventorySummary('snapshot-b', { provider: 'aws' })).rejects.toThrow('Scoped counts are unavailable')

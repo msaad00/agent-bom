@@ -23,11 +23,19 @@ export function OverviewAssets({ summary, loading, unavailable, unavailableHref 
 }) {
   if (loading) return <p role="status" className="py-4 text-sm text-ink-secondary">Loading recorded assets…</p>;
   if (unavailable || !summary) return <div className="py-4 text-sm text-ink-secondary"><p role="status">Recorded asset summary unavailable.</p><Link href={unavailableHref} className="mt-2 inline-block text-emerald-700 dark:text-emerald-300">Open asset inventory</Link></div>;
+  if (summary.status === "no_snapshot" || !summary.scan_id) return <section aria-label="Recorded assets" className="space-y-3 py-4 text-sm text-ink-secondary">
+    <p role="status" className="font-medium text-foreground">No inventory snapshot yet</p>
+    <p>Run a scan or connect a source to see assets and their relationships. An empty inventory is not a clean security assessment.</p>
+    <div className="flex flex-wrap gap-4">
+      <Link href="/scan" className="text-emerald-700 dark:text-emerald-300">Run your first scan</Link>
+      <Link href="/connections" className="text-emerald-700 dark:text-emerald-300">Connect a source</Link>
+    </div>
+  </section>;
   const scope = new URLSearchParams({ scan: summary.scan_id });
   for (const key of ["environment", "provider", "source", "search", "severity", "min_severity"] as const) {
     if (summary.filters?.[key]) scope.set(key, summary.filters[key]);
   }
-  if (summary.filters?.type.length) scope.set("type", summary.filters.type.join(","));
+  if (summary.filters?.type?.length) scope.set("type", summary.filters.type.join(","));
   const exact = summary.count_exact ?? summary.facet_metadata?.exact;
   const typeScope = summary.filters?.type ?? [];
 

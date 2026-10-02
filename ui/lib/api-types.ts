@@ -408,10 +408,11 @@ export interface InventorySummaryFilters {
 
 export interface InventorySummaryResponse {
   schema_version: string;
+  status?: "no_snapshot" | undefined;
   count_exact?: boolean | undefined;
   count_basis?: string | undefined;
   finding_count_scope?: "selected_snapshot" | undefined;
-  filters?: {
+  filters?: Partial<{
     type: string[];
     search: string;
     environment: string;
@@ -419,7 +420,7 @@ export interface InventorySummaryResponse {
     source: string;
     severity: string;
     min_severity: string;
-  } | undefined;
+  }> | undefined;
   collection_coverage?: { status: "unknown"; reason: string } | undefined;
   tenant_id: string;
   scan_id: string;

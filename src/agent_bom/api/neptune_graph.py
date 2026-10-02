@@ -14,6 +14,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, NoReturn, Protocol, cast
 
+from agent_bom.api.storage.neptune_results import normalize_neptune_result as _normalize_result
 from agent_bom.db.graph_store import normalize_snapshot_kind
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 from agent_bom.graph.analysis import GraphAnalysisStatus, analysis_status_map_from_dict, analysis_status_map_to_dict
@@ -108,20 +109,6 @@ def _relationship_value(value: RelationshipType | str) -> str:
     return value.value if isinstance(value, RelationshipType) else str(value)
 
 
-def _normalize_result(result: Any) -> list[Any]:
-    """Normalize gremlin-python futures and simple fake-client lists."""
-
-    if hasattr(result, "all"):
-        result = result.all()
-    if hasattr(result, "result"):
-        result = result.result()
-    if result is None:
-        return []
-    if isinstance(result, list):
-        return result
-    return [result]
-
-
 def _first(value: Any, default: Any = "") -> Any:
     if isinstance(value, list):
         return value[0] if value else default
@@ -162,6 +149,10 @@ class NeptuneGraphStore:
     def __init__(self, config: NeptuneGraphConfig | None = None, client: GremlinClientProtocol | None = None) -> None:
         self.config = config or NeptuneGraphConfig.from_env()
         self._client = client or _client_from_config(self.config)
+
+    def check_readiness(self) -> None:
+        """No bounded remote readiness contract is implemented for Neptune."""
+        self._unsupported("check_readiness")
 
     def _submit(self, query: str, bindings: dict[str, Any] | None = None) -> list[Any]:
         return _normalize_result(self._client.submit(query, bindings or {}))

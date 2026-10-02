@@ -175,6 +175,32 @@ The status response reports whether the demo graph is the synthetic `showcase`
 already holds non-demo graph data. A blocked demo seeds nothing and never
 names or links that data.
 
+### Confirm storage readiness
+
+```bash
+curl -fsS http://127.0.0.1:8422/readyz
+```
+
+A `{"status":"ready"}` response confirms the configured API/auth dependencies
+and supported graph storage can serve their readiness probes. `/health` remains
+a liveness check; it does not qualify storage. Route traffic only after
+`/readyz` returns 200. A 503 with `graph_storage_unavailable` requires checking
+graph database access, schema and deployment permissions before retrying.
+Readiness never returns database paths or raw exception details.
+
+SQLite initializes a fresh empty graph through the ordinary per-file bootstrap;
+no scan data is required. Initial schema repair/index work can add cold-start
+cost. Later probes check table access without loading graphs, counting nodes or
+repeating migrations. A failed SQLite storage probe retires its initialization
+cache so a later probe can initialize an operator-restored file, including a
+restore that preserves its inode. The failing probe still returns 503.
+PostgreSQL probes its initialized graph tables with a
+one-second statement timeout. Storage checks run off the API event loop.
+Readiness checks availability, not graph completeness, capacity or every page's
+integrity. The experimental Neptune adapter has no bounded readiness contract
+and returns `graph_readiness_unsupported` (503); SQLite/PostgreSQL are the
+supported backends for readiness-gated deployments.
+
 ### Docker on a VM (team pilot)
 
 ```bash

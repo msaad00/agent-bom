@@ -1693,14 +1693,9 @@ async def readiness() -> JSONResponse:
     so new requests stop arriving while in-flight work drains under the
     operator-configured drain budget (AGENT_BOM_SHUTDOWN_DRAIN_SECONDS).
     """
-    if _shutting_down:
-        return JSONResponse(status_code=503, content={"status": "draining"})
-    from agent_bom.api.readiness import evaluate_control_plane_readiness
+    from agent_bom.api.readiness import control_plane_readiness_response
 
-    status = evaluate_control_plane_readiness()
-    if not status.ready:
-        return JSONResponse(status_code=503, content=status.as_dict())
-    return JSONResponse(status_code=200, content=status.as_dict())
+    return await control_plane_readiness_response(lambda: _shutting_down)
 
 
 @app.get("/livez", response_model=PublicHealthResponse, tags=["meta"])

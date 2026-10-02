@@ -779,6 +779,16 @@ Protect this artifact as inventory evidence. It verifies supported contract
 versions, stable identities, provenance, relationship direction and one pinned
 tenant/snapshot revision. On 409, discard the attempted read and restart; the
 consumer never joins changed revisions. Unknown kinds or versions fail closed.
+
+For unfiltered `GET /v1/graph` node pages, `limit` bounds the ranked slice:
+the first `completeness.ranked` nodes. Additional containment ancestors follow
+that slice and are counted by `completeness.context_nodes`; their sum equals
+`completeness.returned` and the length of `nodes`. An ancestor can recur as
+context or appear on its own ranked page. The consumer counts identical copies
+once while retaining each original page in the receipt. Changed node evidence,
+duplicate nodes within a page, repeated ranked nodes, inconsistent counts and
+oversized ranked slices fail closed.
+
 Exhausting this bounded set of node pages does not establish source collection
 coverage, effective permission or successful execution. Use the retained scope
 and completeness when building an integration, then qualify its workload against

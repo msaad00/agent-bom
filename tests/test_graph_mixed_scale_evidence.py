@@ -37,6 +37,28 @@ def test_seed_preserves_tenant_counts_and_refuses_existing_state(tmp_path):
         evidence.seed(db, tenants=2, findings=12, assets=3, agents=2, servers=2)
 
 
+def test_seed_closes_all_sqlite_handles_before_container_handoff(tmp_path, monkeypatch):
+    # Keep strong references: garbage collection must not be the mechanism
+    # releasing host-owned WAL/SHM files to a different container UID.
+    connections = []
+    connect = sqlite3.connect
+
+    def tracked_connect(*args, **kwargs):
+        conn = connect(*args, **kwargs)
+        connections.append(conn)
+        return conn
+
+    monkeypatch.setattr(evidence.sqlite3, "connect", tracked_connect)
+    db = tmp_path / "graph.db"
+    evidence.seed(db, tenants=2, findings=12, assets=3, agents=2, servers=2)
+    assert connections
+    for conn in connections:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            conn.execute("SELECT 1")
+    assert not db.with_name("graph.db-wal").exists()
+    assert not db.with_name("graph.db-shm").exists()
+
+
 def test_summary_retains_rejected_and_timed_out_requests():
     result = evidence.summarize(
         [
@@ -49,6 +71,14 @@ def test_summary_retains_rejected_and_timed_out_requests():
     assert result["page"]["failures"] == 2
     assert result["page"]["all_attempts_ms"]["p99"] == 180000
     assert result["page"]["successful_ms"]["samples"] == 1
+
+
+def test_rejection_diagnostics_only_record_known_backpressure_fields():
+    body = {"detail": {"path": "graph", "reason": "p99_latency_threshold", "message": "private", "retry_after_seconds": 3}}
+    assert evidence.rejection_diagnostics(body) == {"path": "graph", "reason": "p99_latency_threshold", "retry_after_seconds": 3}
+    body["detail"]["reason"] = "secret-unexpected-value"
+    assert evidence.rejection_diagnostics(body) == {}
+    assert evidence.rejection_diagnostics("private") == {}
 
 
 def test_response_validation_rejects_cross_tenant_and_unbounded_evidence():
@@ -133,7 +163,8 @@ def fake_run(tmp_path, monkeypatch):
 
     def remove(args, **kwargs):
         calls.append(tuple(args))
-        return subprocess.CompletedProcess(args, int(flags["cleanup_error"]), stdout=b"", stderr=b"")
+        content = "" if kwargs.get("text") else b""
+        return subprocess.CompletedProcess(args, int(flags["cleanup_error"] and args[1] == "rm"), stdout=content, stderr=content)
 
     class Response:
         def __init__(self, body, status=200):
@@ -305,3 +336,10 @@ def test_docker_passes_private_environment_without_changing_parent(monkeypatch):
     assert captured["env"] == private_env
     assert "ephemeral-test-marker" not in captured["command"]
     assert "AGENT_BOM_TRUST_PROXY_AUTH_SECRET" not in os.environ
+
+
+def test_server_diagnostics_redact_generated_and_credential_shaped_secrets():
+    text = evidence.sanitized_diagnostics("failure minted-fixture-secret\npassword=private-value", "minted-fixture-secret")
+    assert "failure" in text
+    assert "minted-fixture-secret" not in text
+    assert "private-value" not in text

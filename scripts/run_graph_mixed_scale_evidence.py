@@ -21,12 +21,14 @@ import sqlite3
 import subprocess
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 
 import httpx
 
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedNode
+from agent_bom.security import sanitize_text
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "agentbom/agent-bom@sha256:803bb0e276935df05919520282650e63a2c80d9700066f5915f7fc14147d9c08"
@@ -71,7 +73,10 @@ def seed(db: Path, *, tenants: int, findings: int, assets: int, agents: int, ser
 
         started = time.perf_counter()
         counts = store.save_graph_streaming(tenant_id=tenant, scan_id="scale", nodes=nodes(), edges=edges())
-        with sqlite3.connect(db) as conn:
+        # A Connection context commits/rolls back but does not close. Leaving
+        # host-owned WAL handles alive can make the container's different UID
+        # see a read-only database until nondeterministic garbage collection.
+        with closing(sqlite3.connect(db)) as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         receipts.append({"tenant": tenant, "counts": counts, "seconds": time.perf_counter() - started, "db_bytes": db.stat().st_size})
     return receipts
@@ -96,6 +101,20 @@ def summarize(rows: list[dict]) -> dict:
             "successful_ms": percentiles([row["ms"] for row in attempts if row["ok"]]),
             "max_bytes": max(row["bytes"] for row in attempts),
         }
+    return result
+
+
+def rejection_diagnostics(body: object) -> dict:
+    """Retain known admission outcomes without arbitrary response text."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, dict) or detail.get("path") != "graph":
+        return {}
+    if detail.get("reason") not in {"p99_latency_threshold", "concurrency_limit", "latency_degraded"}:
+        return {}
+    result = {"path": "graph", "reason": detail["reason"]}
+    retry = detail.get("retry_after_seconds")
+    if type(retry) is int and 0 < retry <= 86400:
+        result["retry_after_seconds"] = retry
     return result
 
 
@@ -189,6 +208,11 @@ def overlap_summary(rows: list[dict]) -> dict:
 
 def docker(*args: str, env: dict[str, str] | None = None) -> str:
     return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=180, env=env).stdout
+
+
+def sanitized_diagnostics(text: str, secret: str) -> str:
+    """Keep bounded diagnostic lines without minted or credential-shaped secrets."""
+    return "\n".join(sanitize_text(line, max_len=4096) for line in text.replace(secret, "<redacted>").splitlines()) + "\n"
 
 
 def resources(name: str) -> dict:
@@ -388,6 +412,8 @@ def run(args: argparse.Namespace) -> int:
                         row.update(status=response.status_code, bytes=len(response.content))
                         if response.status_code in {200, 201}:
                             row["ok"] = valid_response(operation, response.json(), tenant, batch=args.batch_size)
+                        elif response.status_code == 429:
+                            row["rejection"] = rejection_diagnostics(response.json())
                     except Exception as exc:
                         # Preserve unexpected decoder/client faults as attempts,
                         # without copying exception messages or response secrets.
@@ -442,6 +468,12 @@ def run(args: argparse.Namespace) -> int:
         # must never skip removal of the container and its environment metadata.
         cleanup = {"container": {"attempted": container_attempted, "ok": True}}
         if container_attempted:
+            try:
+                result = subprocess.run(["docker", "logs", "--tail", "2000", name], capture_output=True, text=True, check=False, timeout=30)
+                (output / "server.log").write_text(sanitized_diagnostics(result.stdout + result.stderr, secret))
+                receipt["diagnostics"] = {"ok": result.returncode == 0, "returncode": result.returncode, "path": "server.log"}
+            except Exception as exc:
+                receipt["diagnostics"] = {"ok": False, "error_type": type(exc).__name__}
             try:
                 result = subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)
                 cleanup["container"].update(ok=result.returncode == 0, returncode=result.returncode)

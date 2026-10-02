@@ -776,9 +776,24 @@ jobs:
           npx playwright install chromium
 
       - name: UI E2E
+        env:
+          # Failure traces contain only the checked-in synthetic graph fixtures.
+          GRAPH_SCAN_ARTIFACT: ""
         run: |
           cd ui
           npm run test:e2e
+
+      - name: Retain UI failure diagnostics
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-failure-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ui/test-results/**/trace.zip
+            ui/test-results/**/test-failed-*.png
+            ui/test-results/**/error-context.md
+          retention-days: 3
+          if-no-files-found: warn
 
   compose-contract:
     name: Compose Contract Validate

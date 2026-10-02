@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from scripts.qualify_graph_consumer import ContractError, qualify, validate_base_url
-from tests.test_graph_tenant_scope_and_bounds import _path_graph, api  # noqa: F401
+from tests.test_graph_tenant_scope_and_bounds import _container_graph, _path_graph, api  # noqa: F401
 
 
 class Consumer:
@@ -39,6 +39,124 @@ def test_consumer_declares_its_own_page_bound(api):  # noqa: F811
     report = qualify(Consumer(api), page_size=1, max_pages=1)
     assert report["nodes"] == 1
     assert report["node_pages_exhausted"] is False
+
+
+@pytest.mark.parametrize("parent_first", [False, True])
+def test_consumer_reconciles_context_before_and_after_its_ranked_page(api, parent_first):  # noqa: F811
+    graph = _container_graph("tenant-a", 3)
+    for node in graph.nodes.values():
+        node.risk_score = 10.0 if (node.id == "account:root") == parent_first else 0.0
+    api[1].save_graph(graph)
+
+    report = qualify(Consumer(api), page_size=1, max_pages=4)
+    assert report["nodes"] == 4 and report["relationships"] == 3
+    assert report["node_pages_exhausted"] is True
+    assert len(report["pages"]) == 4
+    assert sum(page["response"]["completeness"]["context_nodes"] for page in report["pages"]) == 3
+    first = report["pages"][0]["response"]
+    assert (first["nodes"][0]["id"] == "account:root") == parent_first
+    assert all(page["response"]["completeness"]["ranked"] == 1 for page in report["pages"])
+
+
+def test_consumer_context_does_not_exhaust_a_bounded_ranked_page(api):  # noqa: F811
+    graph = _container_graph("tenant-a", 3)
+    graph.nodes["res:00000"].risk_score = 10.0
+    api[1].save_graph(graph)
+    report = qualify(Consumer(api), page_size=1, max_pages=1)
+    assert report["nodes"] == 2 and report["relationships"] == 1
+    assert report["node_pages_exhausted"] is False
+
+
+@pytest.mark.parametrize("field,value", [("label", "changed"), ("canonical_id", "changed"), ("future_field", {"changed": True})])
+def test_consumer_rejects_changed_repeated_context_evidence(api, field, value):  # noqa: F811
+    graph = _container_graph("tenant-a", 3)
+    graph.nodes["account:root"].risk_score = 10.0
+    api[1].save_graph(graph)
+
+    def change(path, response, pages):
+        body = response.json()
+        if path == "graph" and pages == 2:
+            next(node for node in body["nodes"] if node["id"] == "account:root")[field] = value
+        return httpx.Response(response.status_code, json=body)
+
+    with pytest.raises(ContractError, match="Node evidence changed"):
+        qualify(Consumer(api, change), page_size=1, max_pages=4)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("ranked", None),
+        ("ranked", True),
+        ("ranked", -1),
+        ("ranked", 1.0),
+        ("context_nodes", None),
+        ("context_nodes", True),
+        ("context_nodes", -1),
+        ("context_nodes", 1),
+        ("returned", 0),
+        ("returned", True),
+    ],
+)
+def test_consumer_rejects_invalid_page_accounting(api, field, value):  # noqa: F811
+    def change(path, response, pages):
+        body = response.json()
+        if path == "graph":
+            body["completeness"][field] = value
+        return httpx.Response(response.status_code, json=body)
+
+    with pytest.raises(ContractError, match="page accounting"):
+        qualify(Consumer(api, change), page_size=1)
+
+
+def test_consumer_still_rejects_oversized_ranked_pages(api):  # noqa: F811
+    class Oversized(Consumer):
+        def get(self, path, params=None):
+            return super().get(path, params | {"limit": 2} if path == "graph" else params)
+
+    with pytest.raises(ContractError, match="node-page bound"):
+        qualify(Oversized(api), page_size=1)
+
+
+def test_consumer_rejects_repeated_ranked_nodes_even_with_identical_evidence(api):  # noqa: F811
+    first = None
+
+    def repeat(path, response, pages):
+        nonlocal first
+        body = response.json()
+        if path == "graph":
+            if pages == 1:
+                first = body["nodes"][0]
+            else:
+                body["nodes"][0] = first
+        return httpx.Response(response.status_code, json=body)
+
+    with pytest.raises(ContractError, match="Ranked node repeated"):
+        qualify(Consumer(api, repeat), page_size=1)
+
+
+def test_consumer_rejects_duplicate_node_within_page(api):  # noqa: F811
+    def duplicate(path, response, pages):
+        body = response.json()
+        if path == "graph":
+            body["nodes"].append(body["nodes"][0].copy())
+            body["completeness"].update(context_nodes=1, returned=2)
+        return httpx.Response(response.status_code, json=body)
+
+    with pytest.raises(ContractError, match="Node repeated within"):
+        qualify(Consumer(api, duplicate), page_size=1)
+
+
+def test_consumer_rejects_empty_ranked_continuation(api):  # noqa: F811
+    def empty(path, response, pages):
+        body = response.json()
+        if path == "graph":
+            body["nodes"] = []
+            body["completeness"].update(ranked=0, context_nodes=0, returned=0)
+        return httpx.Response(response.status_code, json=body)
+
+    with pytest.raises(ContractError, match="Empty ranked page"):
+        qualify(Consumer(api, empty), page_size=1)
 
 
 def test_consumer_fails_closed_when_snapshot_is_replaced(api):  # noqa: F811

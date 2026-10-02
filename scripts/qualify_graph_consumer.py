@@ -38,6 +38,17 @@ def validate_base_url(value):
     return value.rstrip("/")
 
 
+def ranked_node_count(page, page_size):
+    """Node pages append declared containment context after the ranked slice."""
+    counts = [page["completeness"].get(key) for key in ("ranked", "context_nodes", "returned")]
+    require(all(type(value) is int and value >= 0 for value in counts), "Invalid node-page accounting")
+    ranked, context, returned = counts
+    require(ranked + context == returned == len(page["nodes"]), "Inconsistent node-page accounting")
+    require(ranked <= page_size, "Server exceeded the requested node-page bound")
+    require(ranked > 0 or context == 0, "Context without a ranked node violates node-page accounting")
+    return ranked
+
+
 def qualify(client, *, scan_id="", page_size=100, max_pages=2):
     """Use only public HTTP shapes; never import server graph models."""
     require(1 <= page_size <= 5000 and 1 <= max_pages <= 100, "Invalid consumer bounds")
@@ -53,6 +64,7 @@ def qualify(client, *, scan_id="", page_size=100, max_pages=2):
     node_kinds, edge_kinds = set(schema["node_types"]), set(schema["edge_types"])
     params = {"limit": page_size, "scan_id": scan_id}
     identity, pages, nodes, edges = None, [], {}, {}
+    ranked_ids = set()
     has_more = True
     for _ in range(max_pages):
         page = fetch("graph", params)
@@ -68,12 +80,18 @@ def qualify(client, *, scan_id="", page_size=100, max_pages=2):
             and isinstance(completeness.get("truncated"), bool),
             "Missing graph completeness",
         )
-        require(len(page["nodes"]) <= page_size, "Server exceeded the requested node-page bound")
-        for node in page["nodes"]:
+        ranked = ranked_node_count(page, page_size)
+        page_ids = set()
+        for index, node in enumerate(page["nodes"]):
             require(bool(node.get("id")) and bool(node.get("canonical_id")), "Missing stable node identity")
             require(node["entity_type"] in node_kinds, "Unknown entity kind")
             require(node.get("evidence_provenance", {}).get("schema_version") == EVIDENCE, "Missing versioned node provenance")
-            require(node["id"] not in nodes, "Node repeated across pages")
+            require(node["id"] not in page_ids, "Node repeated within a page")
+            page_ids.add(node["id"])
+            require(node["id"] not in nodes or nodes[node["id"]] == node, "Node evidence changed between pages")
+            if index < ranked:
+                require(node["id"] not in ranked_ids, "Ranked node repeated across pages")
+                ranked_ids.add(node["id"])
             nodes[node["id"]] = node
         for edge in page["edges"]:
             require(bool(edge.get("id")) and bool(edge.get("canonical_id")), "Missing stable relationship identity")
@@ -87,7 +105,7 @@ def qualify(client, *, scan_id="", page_size=100, max_pages=2):
         require(isinstance(has_more, bool), "Missing pagination completion state")
         if not has_more:
             break
-        require(bool(page["nodes"]), "Empty page cannot advance")
+        require(ranked > 0, "Empty ranked page cannot advance")
         params = {"scan_id": scope[1], "snapshot_generation": scope[2], "limit": page_size}
         if paging.get("next_cursor"):
             params["cursor"] = paging["next_cursor"]

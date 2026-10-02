@@ -1847,7 +1847,9 @@ jobs:
             .
 
       - name: Smoke test
-        run: docker run --rm agent-bom:test --version
+        run: |
+          docker run --rm agent-bom:test --version
+          docker run --rm --entrypoint git agent-bom:test --version
 
       - uses: ./.github/actions/setup-python
         with:

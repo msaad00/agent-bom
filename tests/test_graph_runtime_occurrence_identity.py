@@ -199,7 +199,7 @@ def test_runtime_occurrences_survive_live_postgres_roundtrip(kind, engine):
         pytest.skip("AGENT_BOM_POSTGRES_URL not set")
     from psycopg_pool import ConnectionPool
 
-    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
+    from agent_bom.api.postgres_common import reset_current_tenant, resolve_postgres_secret, resolve_postgres_url, set_current_tenant
     from agent_bom.api.postgres_graph import PostgresGraphStore
 
     correlation_id = f"runtime-identity-{uuid.uuid4().hex}"
@@ -213,7 +213,7 @@ def test_runtime_occurrences_survive_live_postgres_roundtrip(kind, engine):
             for snapshot in snapshots:
                 workspace.add_snapshot(snapshot)
             result = workspace.finish()
-    with ConnectionPool(dsn, min_size=1, max_size=2) as pool:
+    with ConnectionPool(resolve_postgres_url(), kwargs={"password": resolve_postgres_secret()}, min_size=1, max_size=2) as pool:
         store = PostgresGraphStore(pool=pool)
         token = set_current_tenant("tenant")
         try:

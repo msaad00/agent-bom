@@ -14,8 +14,7 @@ def edge_query(
     tenant_id: str,
     scan_id: str,
     node_ids: set[str],
-    columns: str = "*",
-    placeholder: str = "?",
+    dialect: str = "sqlite",
     induced_only: bool = False,
     direction: str = "both",
     relationships: set[str] | None = None,
@@ -23,10 +22,22 @@ def edge_query(
 ) -> tuple[str, list[Any]]:
     """Bound each indexed endpoint walk before joining the two directions.
 
-    Column lists and placeholder syntax are supplied only by the adapters.
+    Identifier lists and placeholders are fixed by the selected SQL dialect.
     A bounded result is a deterministic subset, not a severity-ranked edge
     projection. Callers must probe one extra row and disclose omitted evidence.
     """
+    if dialect not in {"sqlite", "postgres"}:
+        raise ValueError("Unsupported graph SQL dialect")
+    placeholder = "%s" if dialect == "postgres" else "?"
+    columns = (
+        (
+            "source_id, target_id, relationship, direction, weight, traversable, "
+            "first_seen, last_seen, valid_from, valid_to, confidence, provenance, "
+            "source_scan_id, source_run_id, evidence, activity_id, scan_id"
+        )
+        if dialect == "postgres"
+        else "*"
+    )
     if direction not in {"in", "out", "both"}:
         raise ValueError("Invalid edge direction")
     if limit is not None and (type(limit) is not int or limit < 1):
@@ -45,7 +56,7 @@ def edge_query(
         if direction != "both" and not induced_only:
             endpoints = f"{'target_id' if direction == 'in' else 'source_id'} IN ({marks})"
             params = [tenant_id, scan_id, *nodes, *relations]
-        sql = f"SELECT {columns} FROM graph_edges WHERE {scope} AND {endpoints}{relation_clause}"
+        sql = f"SELECT {columns} FROM graph_edges WHERE {scope} AND {endpoints}{relation_clause}"  # nosec B608 - fixed dialect identifiers; values are bound
         if limit is not None:
             sql += f" ORDER BY source_id, target_id, relationship LIMIT {placeholder}"
             params.append(limit)
@@ -56,7 +67,7 @@ def edge_query(
         if (direction == "in" and endpoint == "source_id") or (direction == "out" and endpoint == "target_id"):
             continue
         walks.append(
-            f"SELECT * FROM (SELECT {columns} FROM graph_edges WHERE {scope} "
+            f"SELECT * FROM (SELECT {columns} FROM graph_edges WHERE {scope} "  # nosec B608 - fixed dialect identifiers; values are bound
             f"AND {endpoint} IN ({marks}){relation_clause} "
             f"ORDER BY {endpoint}, {other}, relationship LIMIT {placeholder}) edge_walk_{endpoint}"
         )

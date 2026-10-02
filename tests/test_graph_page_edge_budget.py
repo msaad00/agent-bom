@@ -141,3 +141,19 @@ def test_snapshot_relationship_counts_do_not_probe_every_endpoint_pair(store, mo
     stats = store.snapshot_stats(tenant_id="tenant-a", scan_id="estate")
     assert stats["relationship_types"] == {"uses": 30000}
     assert stats["total_edges"] == 30000
+
+
+def test_edge_query_binds_untrusted_values_and_rejects_unknown_dialect(store):
+    from agent_bom.api.graph_edge_query import edge_query
+
+    payload = "x'); DROP TABLE graph_nodes; --"
+    for dialect in ("sqlite", "postgres"):
+        query, params = edge_query(
+            tenant_id=payload, scan_id=payload, node_ids={payload}, relationships={payload}, limit=3, dialect=dialect
+        )
+        assert payload not in query
+        assert params.count(payload) == 8
+    with pytest.raises(ValueError, match="dialect"):
+        edge_query(tenant_id="a", scan_id="estate", node_ids={"root"}, dialect=payload)
+    assert store.edges_for_node_ids(tenant_id="tenant-a", scan_id="estate", node_ids={payload}, limit=3) == []
+    assert store.snapshot_stats(tenant_id="tenant-a", scan_id="estate")["total_nodes"] == 1101

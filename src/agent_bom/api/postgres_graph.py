@@ -3492,12 +3492,7 @@ class PostgresGraphStore:
             tenant_id=tenant_id,
             scan_id=effective_scan_id,
             node_ids=node_ids,
-            columns=(
-                "source_id, target_id, relationship, direction, weight, traversable, "
-                "first_seen, last_seen, valid_from, valid_to, confidence, provenance, "
-                "source_scan_id, source_run_id, evidence, activity_id, scan_id"
-            ),
-            placeholder="%s",
+            dialect="postgres",
             induced_only=induced_only,
             direction=direction,
             relationships=relationships,

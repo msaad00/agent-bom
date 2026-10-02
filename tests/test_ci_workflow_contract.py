@@ -653,3 +653,26 @@ def test_postgres_contract_suites_are_arguments_to_one_pytest_invocation() -> No
     assert "tests/test_findings_current_sql_contract.py" in arguments
     assert "tests/test_jobs_tenant_key_contract.py" in arguments
     assert "tests/test_jobs_dispatch_postgres.py" in arguments
+
+
+def test_ui_first_failure_diagnostics_survive_without_retries() -> None:
+    job = _ci()["jobs"]["ui-e2e"]
+    steps = job["steps"]
+    uploads = [step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")]
+    assert len(uploads) == 1, "Retain first-attempt browser failures before the runner disappears"
+    upload = uploads[0]
+    assert "failure()" in upload["if"] and "cancelled()" in upload["if"]
+    assert steps.index(upload) > next(index for index, step in enumerate(steps) if step.get("name") == "UI E2E")
+    assert upload["with"]["retention-days"] <= 3
+    assert set(upload["with"]["path"].splitlines()) == {
+        "ui/test-results/**/trace.zip",
+        "ui/test-results/**/test-failed-*.png",
+        "ui/test-results/**/error-context.md",
+    }
+    # Uploaded traces must stay within the public synthetic-fixture CI lane.
+    e2e = next(step for step in steps if step.get("name") == "UI E2E")
+    assert e2e["env"]["GRAPH_SCAN_ARTIFACT"] == ""
+    assert "${{ secrets." not in yaml.safe_dump(job)
+    config = (ROOT / "ui" / "playwright.config.ts").read_text()
+    assert 'trace: "retain-on-failure"' in config
+    assert 'screenshot: "only-on-failure"' in config

@@ -224,3 +224,21 @@ def test_neptune_adapter_explicitly_rejects_readiness_without_network():
     store = NeptuneGraphStore.__new__(NeptuneGraphStore)
     with pytest.raises(NeptuneGraphStoreUnsupportedOperationError, match="check_readiness"):
         store.check_readiness()
+
+
+def test_same_inode_corruption_retires_cache_and_allows_empty_restore(tmp_path):
+    from agent_bom.db.graph_bootstrap import _INITIALIZED_FILES
+
+    assert evaluate_control_plane_readiness().ready
+    path = tmp_path / "graph.db"
+    inode = path.stat().st_ino
+    with path.open("r+b") as handle:
+        handle.write(b"not a SQLite database")
+    assert path.stat().st_ino == inode
+    assert evaluate_control_plane_readiness().reason == "graph_storage_unavailable"
+    assert str(path.resolve()) not in _INITIALIZED_FILES
+    # Simulate an operator's empty-file restore without changing the inode.
+    path.write_bytes(b"")
+    assert path.stat().st_ino == inode
+    assert evaluate_control_plane_readiness().ready
+    assert stores._get_graph_store().page_nodes(tenant_id="restored", limit=1)[2] == []

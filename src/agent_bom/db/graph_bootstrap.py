@@ -18,6 +18,13 @@ _SCHEMA_INIT_LOCK = threading.Lock()
 _INITIALIZED_FILES: dict[str, tuple[int, int]] = {}
 
 
+def invalidate_read_schema(path: Path) -> None:
+    """Retire failed storage qualification so a repaired file can initialize."""
+    key = str(path.resolve())
+    with _SCHEMA_INIT_LOCK:
+        _INITIALIZED_FILES.pop(key, None)
+
+
 def ensure_read_schema(path: Path, initialize: Callable[[], sqlite3.Connection], refresh: Callable[[sqlite3.Connection], None]) -> None:
     """Initialize once per physical file, retaining read concurrency in WAL mode."""
     key = str(path.resolve())

@@ -191,7 +191,10 @@ Readiness never returns database paths or raw exception details.
 SQLite initializes a fresh empty graph through the ordinary per-file bootstrap;
 no scan data is required. Initial schema repair/index work can add cold-start
 cost. Later probes check table access without loading graphs, counting nodes or
-repeating migrations. PostgreSQL probes its initialized graph tables with a
+repeating migrations. A failed SQLite storage probe retires its initialization
+cache so a later probe can initialize an operator-restored file, including a
+restore that preserves its inode. The failing probe still returns 503.
+PostgreSQL probes its initialized graph tables with a
 one-second statement timeout. Storage checks run off the API event loop.
 Readiness checks availability, not graph completeness, capacity or every page's
 integrity. The experimental Neptune adapter has no bounded readiness contract

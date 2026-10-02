@@ -131,6 +131,26 @@ export function cisSummaryFromResult(result: ScanResult | null | undefined): Cis
   return null;
 }
 
+/** Saved scanner coverage is authoritative even when there are no findings. */
+function secretLane(result: ScanResult | null | undefined): DomainLaneData | null {
+  const block = result?.ai_inventory?.secrets;
+  if (!isRecord(block)) return null;
+  const total = asNumber(block.total);
+  if (total == null || total < 0) return null;
+  const categories = isRecord(block.by_category) ? block.by_category : {};
+  const pii = asNumber(categories.pii) ?? 0;
+  const secrets = (asNumber(categories.credential) ?? 0) + (asNumber(categories.secret) ?? 0);
+  const parts: string[] = [];
+  if (secrets > 0) parts.push(`${secrets} ${secrets === 1 ? "secret" : "secrets"}`);
+  if (pii > 0) parts.push(`${pii} PII`);
+  const counts = parts.length && pii + secrets === total
+    ? parts.join(" · ")
+    : `${total} ${total === 1 ? "finding" : "findings"}`;
+  const incomplete = block.complete === false || (Array.isArray(block.warnings) && block.warnings.length > 0);
+  const prefix = incomplete ? "incomplete · " : block.complete === true ? "" : "coverage unknown · ";
+  return { ran: true, findings: total, detail: `${prefix}${counts}`, summarized: true };
+}
+
 export interface DomainFindingsView {
   lanes: Record<ScannerDomain, DomainLaneData>;
   reconciled: ReconciledFindings;
@@ -152,5 +172,7 @@ export function domainFindingsForScan(input: {
   const scannedPackages = (summary?.total_packages ?? 0) > 0;
   const vulnerabilities = scannedPackages ? summary?.total_vulnerabilities ?? 0 : null;
   const lanes = deriveDomainLanes({ vulnerabilities, cis, summarized: input.summarized ?? false });
+  const secrets = secretLane(input.result);
+  if (secrets) lanes.secrets = secrets;
   return { lanes, reconciled: reconcileFindings(lanes), cis };
 }

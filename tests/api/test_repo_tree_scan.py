@@ -173,3 +173,12 @@ def test_repo_tree_preserves_explicit_skip_classification(monkeypatch: pytest.Mo
     assert result.sast_data is not None
     assert result.sast_data["execution_status"] == "skipped"
     assert result.sast_data["status_reason"] == "semgrep_unavailable"
+
+
+def test_repo_pii_warning_does_not_claim_credentials(tmp_path):
+    (tmp_path / "config.yaml").write_text("customer_email: alice@example.com\n")
+    warnings = []
+    result = scan_cloned_repo_tree(str(tmp_path), agents=[], warnings=warnings, offline=True)
+    assert result.ai_inventory_data["secrets"]["by_category"] == {"pii": 1}
+    assert any("1 PII pattern(s)" in warning for warning in warnings)
+    assert not any("credential pattern(s)" in warning for warning in warnings)

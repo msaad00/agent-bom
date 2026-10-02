@@ -5,13 +5,18 @@ name: Perf Scale Evidence
 # 1k-estate run takes <1 minute on github-hosted runners and is the floor
 # evidence referenced from docs/perf/ingest-throughput.md and
 # docs/ENTERPRISE_DEPLOYMENT.md. Graph API/Postgres benchmark scaffolds are
-# dry-run validated here; measured deployment evidence is tracked in #2145.
+# dry-run validated here. The opt-in mixed_graph input also measures bounded
+# graph HTTP requests during ingestion; it is not a production capacity claim.
 
 on:
   schedule:
     - cron: "0 4 * * 1"  # Mondays 04:00 UTC
   workflow_dispatch:
     inputs:
+      mixed_graph:
+        description: "Also measure graph HTTP reads during ingestion on a million-node synthetic fixture"
+        type: boolean
+        default: false
       open_pr:
         description: "Open a PR if the regenerated JSON differs from the checked-in baseline"
         type: boolean
@@ -102,3 +107,32 @@ jobs:
             --head "$BRANCH" \
             --title "perf: refresh scheduled scale evidence" \
             --body "Automated refresh of \`docs/perf/results/\` from the weekly scale-evidence run. See #1806."
+
+  mixed-graph:
+    if: github.event_name == 'workflow_dispatch' && inputs.mixed_graph == true
+    permissions:
+      contents: read
+    name: Measure synthetic graph reads during ingestion
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.13"
+      - name: Install locked harness environment
+        run: uv sync --frozen --extra api --extra dev
+      - name: Verify evidence contracts
+        run: uv run pytest -q tests/test_graph_mixed_scale_evidence.py
+      - name: Run four-tenant million-node fixture
+        run: uv run python scripts/run_graph_mixed_scale_evidence.py --output "$RUNNER_TEMP/graph-mixed-evidence"
+      - name: Preserve successful and failed measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: graph-mixed-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/graph-mixed-evidence/receipt.json
+          if-no-files-found: warn
+          retention-days: 30

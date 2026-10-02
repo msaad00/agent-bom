@@ -187,8 +187,8 @@ def overlap_summary(rows: list[dict]) -> dict:
     }
 
 
-def docker(*args: str) -> str:
-    return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=180).stdout
+def docker(*args: str, env: dict[str, str] | None = None) -> str:
+    return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=180, env=env).stdout
 
 
 def resources(name: str) -> dict:
@@ -221,7 +221,6 @@ def run(args: argparse.Namespace) -> int:
     fixture.mkdir(mode=0o777)
     fixture.chmod(0o777)
     name = "agent-bom-scale-" + secrets.token_hex(6)
-    secret_file = output / ".container.env"
     secret = secrets.token_urlsafe(32)
     receipt = {
         "status": "running",
@@ -275,11 +274,9 @@ def run(args: argparse.Namespace) -> int:
         )
         (fixture / "graph.db").chmod(0o666)
         save()
-        with open(secret_file, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as file:
-            file.write(
-                f"AGENT_BOM_TRUST_PROXY_AUTH_SECRET={secret}\nAGENT_BOM_TRUST_PROXY_AUTH=1\n"
-                "AGENT_BOM_DB=/state/api.db\nAGENT_BOM_GRAPH_DB=/fixture/graph.db\nAGENT_BOM_STATE_DIR=/state\nPYTHONPATH=/candidate\n"
-            )
+        # Docker inherits only the named variable from this private child
+        # environment; never put the credential in argv or evidence files.
+        # Container metadata remains visible to Docker administrators.
         container_attempted = True
         docker(
             "run",
@@ -290,8 +287,18 @@ def run(args: argparse.Namespace) -> int:
             "2",
             "--memory",
             "2g",
-            "--env-file",
-            str(secret_file),
+            "--env",
+            "AGENT_BOM_TRUST_PROXY_AUTH_SECRET",
+            "--env",
+            "AGENT_BOM_TRUST_PROXY_AUTH=1",
+            "--env",
+            "AGENT_BOM_DB=/state/api.db",
+            "--env",
+            "AGENT_BOM_GRAPH_DB=/fixture/graph.db",
+            "--env",
+            "AGENT_BOM_STATE_DIR=/state",
+            "--env",
+            "PYTHONPATH=/candidate",
             "-p",
             "127.0.0.1::8422",
             "-v",
@@ -310,6 +317,7 @@ def run(args: argparse.Namespace) -> int:
             "0.0.0.0",
             "--port",
             "8422",
+            env={**os.environ, "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": secret},
         )
         base_url = "http://127.0.0.1:" + docker("port", name, "8422/tcp").strip().split(":")[-1]
         with httpx.Client(base_url=base_url, timeout=2) as client:
@@ -431,19 +439,14 @@ def run(args: argparse.Namespace) -> int:
         receipt.update(status="failed", error_type=type(exc).__name__)
     finally:
         # Cleanup is independent of persistence: disk-full/permission errors
-        # must never skip container removal or deletion of its generated secret.
-        cleanup = {"container": {"attempted": container_attempted, "ok": True}, "secret": {"ok": False}}
+        # must never skip removal of the container and its environment metadata.
+        cleanup = {"container": {"attempted": container_attempted, "ok": True}}
         if container_attempted:
             try:
                 result = subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)
                 cleanup["container"].update(ok=result.returncode == 0, returncode=result.returncode)
             except Exception as exc:
                 cleanup["container"].update(ok=False, error_type=type(exc).__name__)
-        try:
-            secret_file.unlink(missing_ok=True)
-            cleanup["secret"]["ok"] = True
-        except OSError as exc:
-            cleanup["secret"]["error_type"] = type(exc).__name__
         receipt["cleanup"] = cleanup
         if not all(item["ok"] for item in cleanup.values()):
             receipt["status"] = "failed"

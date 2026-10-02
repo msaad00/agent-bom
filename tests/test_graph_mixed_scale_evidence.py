@@ -124,8 +124,11 @@ def fake_run(tmp_path, monkeypatch):
         db.write_bytes(b"fixture")
         return [{"tenant": "scale-0", "counts": {"nodes": 5, "edges": 3}}]
 
-    def docker(*args):
+    def docker(*args, **kwargs):
         calls.append(args)
+        if args[0] == "run":
+            flags["secret_file_at_launch"] = (tmp_path / "result" / ".container.env").exists()
+            flags["launch_env"] = kwargs.get("env", {})
         return "127.0.0.1:54321\n" if args[0] == "port" else "container\n"
 
     def remove(args, **kwargs):
@@ -270,3 +273,35 @@ def test_container_must_import_the_frozen_candidate(fake_run, monkeypatch):
     assert receipt["error_type"] == "RuntimeError"
     assert receipt["rows"] == []
     assert receipt["cleanup"]["container"]["ok"]
+
+
+def test_proxy_secret_never_enters_files_or_command_arguments(fake_run, monkeypatch):
+    import os
+
+    args, flags, calls = fake_run
+    marker = "ephemeral-proxy-test-marker"
+    monkeypatch.setattr(evidence.secrets, "token_urlsafe", lambda size: marker)
+    assert evidence.run(args) == 0
+    assert not flags["secret_file_at_launch"]
+    assert flags["launch_env"]["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] == marker
+    assert "AGENT_BOM_TRUST_PROXY_AUTH_SECRET" not in os.environ
+    assert not any(marker in argument for call in calls for argument in call)
+    assert all(marker.encode() not in path.read_bytes() for path in args.output.rglob("*") if path.is_file())
+
+
+def test_docker_passes_private_environment_without_changing_parent(monkeypatch):
+    import os
+    from types import SimpleNamespace
+
+    captured = {}
+
+    def execute(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return SimpleNamespace(stdout="container")
+
+    monkeypatch.setattr(evidence.subprocess, "run", execute)
+    private_env = {**os.environ, "AGENT_BOM_TRUST_PROXY_AUTH_SECRET": "ephemeral-test-marker"}
+    assert evidence.docker("run", "--env", "AGENT_BOM_TRUST_PROXY_AUTH_SECRET", env=private_env) == "container"
+    assert captured["env"] == private_env
+    assert "ephemeral-test-marker" not in captured["command"]
+    assert "AGENT_BOM_TRUST_PROXY_AUTH_SECRET" not in os.environ

@@ -12,8 +12,10 @@ The output directory must not exist and must be outside the source checkout. The
 container limited to two CPUs and 2 GiB, using the digest pinned in the script
 with a hash-recorded private copy of the checkout's Python source mounted
 read-only. Its proxy secret
-is generated per run, written to a mode-0600 temporary file, and removed during
-cleanup. The API binds only to a dynamically assigned loopback port. Unsigned
+is generated per run and passed through a private subprocess environment, never
+written to evidence files or command arguments. Docker administrators can inspect
+the container environment; use a trusted disposable Docker host. Cleanup removes
+the container and its environment metadata. The API binds only to a dynamically assigned loopback port. Unsigned
 proxy identities must be rejected before the workload begins.
 
 The default fixture has four tenants, each with 250,000 vulnerability graph
@@ -44,7 +46,7 @@ uv run python scripts/run_graph_mixed_scale_evidence.py \
 
 The manual **Perf Scale Evidence** workflow's `mixed_graph` option runs the
 same fixture on an ephemeral Ubuntu runner and uploads only the receipt,
-including failed runs. It does not upload the database or secret file:
+including failed runs. It does not upload the database or container environment:
 
 ```bash
 gh workflow run perf-scale-evidence.yml -f mixed_graph=true -f open_pr=false

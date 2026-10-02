@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type ComponentProps } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import {
   FilterPanel,
   graphScopeLabelForFilters,
@@ -38,8 +38,8 @@ export function GraphViewControls({ filters, onChange, agentNames, validValues, 
   ];
 
   return (
-    <section aria-label="Graph view and layers" className="mt-2 rounded-xl border border-outline bg-surface" data-testid="graph-view-controls">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+    <section aria-label="Graph view and layers" className="rounded-xl border border-outline bg-surface" data-testid="graph-view-controls">
+      <div className="flex flex-wrap items-center gap-1 py-0.5 pl-1 pr-28">
         <button
           type="button"
           aria-expanded={open}
@@ -50,7 +50,7 @@ export function GraphViewControls({ filters, onChange, agentNames, validValues, 
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           View &amp; layers
         </button>
-        <div className="order-last flex w-full min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-secondary sm:order-none sm:w-auto sm:flex-1" aria-label="Active graph filters">
+        <div className={`${open ? "order-last flex w-full" : "sr-only"} min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-secondary sm:not-sr-only sm:order-none sm:flex sm:w-auto sm:flex-1`} aria-label="Active graph filters">
           {estateSummary ? (
             <span>Estate summary · {filters.severity ? `${filters.severity}+ severity` : "all severities"}. Choose a view or layer to open filtered topology.</span>
           ) : focusedPath ? (
@@ -66,7 +66,8 @@ export function GraphViewControls({ filters, onChange, agentNames, validValues, 
           </>}
         </div>
         <button type="button" onClick={onReset} className="graph-chip-neutral" aria-label="Reset graph view">
-          Reset view
+          <RotateCcw className="h-3.5 w-3.5 sm:hidden" aria-hidden="true" />
+          <span className="sr-only sm:not-sr-only">Reset view</span>
         </button>
       </div>
       {open && (

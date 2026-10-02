@@ -849,7 +849,7 @@ test(`a selected queue path missing from the canvas loads its exact graph in ${t
 
 async function openEvidenceControls(page: Page) {
   const controls = page.getByTestId("graph-evidence-controls");
-  await expect(controls).toBeVisible();
+  await expect(controls.locator(":scope > summary")).toBeVisible();
   if ((await controls.getAttribute("open")) === null) {
     await controls.locator(":scope > summary").click();
   }
@@ -1002,7 +1002,7 @@ for (const proof of [
 
     await expect(page.getByRole("heading", { name: "Investigation Canvas" })).toBeVisible();
     const evidenceControls = page.getByTestId("graph-evidence-controls");
-    await expect(evidenceControls).toBeVisible();
+    await expect(evidenceControls.locator(":scope > summary")).toBeVisible();
     await expect(evidenceControls).not.toHaveAttribute("open", "");
     await expect(evidenceControls.getByRole("button", { name: /Estate/ })).toBeHidden();
     await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();

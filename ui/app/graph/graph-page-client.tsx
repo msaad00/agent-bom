@@ -23,7 +23,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, Layers, Loader2, Route, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ChevronDown, Layers, Loader2, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { AttackPathTechniqueChain } from "@/components/attack-path-technique-chain";
@@ -3152,6 +3152,7 @@ function GraphPageInner() {
             />
           )}
 
+          <div className="relative mt-1">
           <GraphViewControls
             filters={filters}
             onChange={(next) => {
@@ -3177,14 +3178,19 @@ function GraphPageInner() {
 
           <details
             data-testid="graph-evidence-controls"
-            className="mt-2 border-t border-outline group"
+            className="group"
           >
-            <summary className="graph-drawer-summary !flex-nowrap !px-0 !py-1">
+            <summary className="graph-drawer-summary absolute right-2 top-1 !flex-nowrap !gap-1 !px-1 !py-1.5">
               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
+                <span className="text-xs font-medium text-foreground">
                   Graph settings
                 </span>
-                <p className={investigationMode ? "hidden" : "hidden text-xs text-ink-secondary group-open:block sm:block"}>
+
+              </div>
+              <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" aria-hidden="true" />
+            </summary>
+            <div className="space-y-3 border-t border-outline/80 p-3">
+                <p className="text-xs text-ink-secondary">
                   {rollupCanvasOwnsPresentation ? <>
                     {rollupItems.length.toLocaleString()} nodes and scopes · {estateNodeCount.toLocaleString()} nodes in snapshot
                     {rollupView?.completeness?.truncated ? " · incomplete scope" : ""}
@@ -3199,15 +3205,6 @@ function GraphPageInner() {
                     : ""}
                   </>}
                 </p>
-              </div>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:hidden">
-                show
-              </span>
-              <span className="hidden text-[10px] uppercase tracking-[0.18em] text-ink-tertiary group-open:inline">
-                hide
-              </span>
-            </summary>
-            <div className="space-y-3 border-t border-outline/80 p-3">
               <GraphLensSwitcher variant="compact" legendItems={legendItems} />
               <div className="flex flex-wrap items-center gap-2">
                 <GraphScenarioSelector
@@ -3664,6 +3661,7 @@ function GraphPageInner() {
           </div>
         </details>
           </details>
+          </div>
         </div>
       </div>
 

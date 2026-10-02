@@ -69,6 +69,31 @@ def candidate_cpe_products(name: str) -> list[str]:
     return out
 
 
+def cpe_vendor_hint(pkg: Any) -> str | None:
+    """Infer a conservative NVD vendor hint from a package's purl metadata."""
+    if pkg.purl:
+        try:
+            from packageurl import PackageURL
+
+            parsed = PackageURL.from_string(pkg.purl)
+        except Exception:
+            parsed = None
+        if parsed is not None and parsed.type == "maven" and parsed.namespace:
+            # Maven group IDs identify projects and often end in artifact
+            # names, while NVD uses the publisher as the CPE vendor.
+            group_id = parsed.namespace.strip().lower()
+            return "apache" if group_id == "log4j" or group_id.startswith("org.apache.") else None
+        if parsed is not None and parsed.namespace:
+            namespace = parsed.namespace.strip().strip("/")
+            if namespace:
+                return namespace.rsplit("/", 1)[-1]
+    if pkg.ecosystem.lower() == "maven" and ":" in pkg.name:
+        group_id = pkg.name.split(":", 1)[0].strip().lower()
+        if group_id == "log4j" or group_id.startswith("org.apache."):
+            return "apache"
+    return None
+
+
 def _cpe_range_applies(version: str, row: sqlite3.Row) -> bool:
     """Whether ``version`` falls inside one stored CPE applicability row.
 

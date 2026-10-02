@@ -43,9 +43,26 @@ back. Graph nodes, relationships and snapshot generations are not rewritten.
 2. Take a consistent backup of the stopped database and allow spare space for
    the old index, its replacement and SQLite's transaction journal/WAL. Rebuild
    duration and space grow with the stored search corpus; measure a copy first.
-3. Start one upgraded instance and allow initialization to finish before
-   starting other upgraded processes. A concurrent writer's lock timeout is
-   not a migration deadline. Observe readiness and run a scoped search.
+3. Run the offline upgrade below using the upgraded checkout/environment.
+   Do not put this corpus-sized rebuild behind a normal HTTP request timeout.
+4. Start the upgraded processes. Observe readiness and run a scoped search.
+   A concurrent writer's lock timeout is not a migration deadline.
+
+```bash
+uv run python - /absolute/path/to/graph.db <<'PY'
+import sqlite3
+import sys
+from contextlib import closing
+from pathlib import Path
+from agent_bom.api.storage.sqlite_graph_search import ensure_search_index
+
+uri = Path(sys.argv[1]).resolve().as_uri() + "?mode=rw"
+with closing(sqlite3.connect(uri, uri=True, timeout=60)) as connection:
+    connection.execute("BEGIN IMMEDIATE")
+    ensure_search_index(connection)
+    connection.commit()
+PY
+```
 
 Fresh stores create the scoped index directly. Subsequent initialization checks
 its definition without rebuilding it. Older writer column layouts are compatible,
@@ -61,9 +78,11 @@ uv run python - /absolute/path/to/graph.db <<'PY'
 import sqlite3
 import sys
 from contextlib import closing
+from pathlib import Path
 from agent_bom.api.storage.sqlite_graph_search import rebuild_search_index
 
-with closing(sqlite3.connect(sys.argv[1], timeout=60)) as connection:
+uri = Path(sys.argv[1]).resolve().as_uri() + "?mode=rw"
+with closing(sqlite3.connect(uri, uri=True, timeout=60)) as connection:
     connection.execute("BEGIN IMMEDIATE")
     rebuild_search_index(connection, scoped=False)
     connection.commit()

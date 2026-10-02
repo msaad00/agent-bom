@@ -302,3 +302,12 @@ it("drills into groups with keyboard buttons and restores the overview camera on
   expect(harness.instances.at(-1)).toBe(overview);
   expect(overview.killed).toBe(false);
 });
+
+it("keeps group badges out of the selected-node view and restores them on clear", async () => {
+  const view = render(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} selectedId="agent:a" />);
+  await waitFor(() => expect(harness.instances.length).toBeGreaterThan(0));
+  const labels = screen.getAllByText("1 displayed / 1 loaded")[0]!.parentElement!.parentElement!;
+  expect(labels).toHaveAttribute("hidden");
+  view.rerender(<SigmaGraphOverview nodes={nodes} edges={edges} legendItems={[]} selectedId={null} />);
+  expect(labels).not.toHaveAttribute("hidden");
+});

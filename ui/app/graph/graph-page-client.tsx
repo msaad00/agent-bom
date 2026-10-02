@@ -58,19 +58,15 @@ import {
   GraphPanelSkeleton,
   GraphRefreshOverlay,
 } from "@/components/graph-state-panels";
+import { GraphViewControls } from "@/components/graph-view-controls";
 import {
-  FilterPanel,
   ASSET_DRIFT_GRAPH_SCOPE_PARAM,
   DEFAULT_FILTERS,
   createAssetLifecycleDriftGraphFilters,
-  createCloudEstateGraphFilters,
   createCanvasLensGraphFilters,
-  createEnvironmentGraphFilters,
   createExpandedGraphFilters,
   createInvestigationGraphFilters,
   createFocusedGraphFilters,
-  createImmediateGraphFilters,
-  createRepositoryGraphFilters,
   graphScopeLabelForFilters,
   graphScopePresetForFilters,
   type FilterState,
@@ -822,6 +818,7 @@ function GraphPageInner() {
   const [rollupUnavailable, setRollupUnavailable] = useState(false);
   const [rollupMapExpanded, setRollupMapExpanded] = useState(false);
   const [rollupSummaryRequested, setRollupSummaryRequested] = useState(false);
+  const restoreSummaryOnFilterReset = useRef(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
@@ -1046,6 +1043,7 @@ function GraphPageInner() {
     setReachabilityError(null);
     setRollupView(null);
     setRollupStack([]);
+    restoreSummaryOnFilterReset.current = false;
     rollupAutoDescendRef.current = true;
     setRollupDismissed(
       rollupDismissedForPreference(rollupPreferenceRef.current),
@@ -3154,6 +3152,26 @@ function GraphPageInner() {
             />
           )}
 
+          <GraphViewControls
+            filters={filters}
+            onChange={(next) => {
+              if (rollupCanvasOwnsPresentation) restoreSummaryOnFilterReset.current = true;
+              dismissRollup();
+              setFilters(next);
+            }}
+            agentNames={flow.agentNames}
+            validValues={validValues}
+            estateSummary={rollupCanvasOwnsPresentation}
+            onReset={() => {
+              handleResetFilters();
+              if (restoreSummaryOnFilterReset.current) {
+                rollupPreferenceRef.current = "force";
+                setRollupDismissed(false);
+                restoreSummaryOnFilterReset.current = false;
+              }
+            }}
+          />
+
           <details
             data-testid="graph-evidence-controls"
             className="mt-2 border-t border-outline group"
@@ -3335,119 +3353,7 @@ function GraphPageInner() {
             </span>
           </summary>
           <div className="space-y-3 border-t border-outline/80 p-3">
-          <section aria-labelledby="graph-view-controls" className="rounded-xl border border-outline bg-background/70 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 id="graph-view-controls" className="text-[10px] uppercase tracking-[0.22em] text-ink-tertiary">
-                  View controls
-                </h3>
-                <p className="mt-1 text-xs text-ink-secondary">
-                  Change scope, layers, severity, traversal, and page size
-                  without changing the persisted graph.
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 space-y-3">
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters(
-                      createImmediateGraphFilters(
-                        filters.agentName ?? flow.agentNames[0] ?? null,
-                      ),
-                    )
-                  }
-                  className={scopeButtonClass(
-                    activeScopePreset === "immediate",
-                  )}
-                  title="One-hop triage around the selected agent"
-                >
-                  Immediate
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters(
-                      createFocusedGraphFilters(
-                        filters.agentName ?? flow.agentNames[0] ?? null,
-                      ),
-                    )
-                  }
-                  className={scopeButtonClass(activeScopePreset === "relevant")}
-                  title="Default fix-first graph with bounded path context"
-                >
-                  Relevant paths
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilters(createExpandedGraphFilters(null))}
-                  className={scopeButtonClass(activeScopePreset === "expanded")}
-                  title="Broader topology review with lower-priority context included"
-                >
-                  Expanded topology
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilters(createCloudEstateGraphFilters())}
-                  className={scopeButtonClass(activeScopePreset === "cloudEstate")}
-                  title="Type-based view of cloud accounts, identities, resources, and attached findings; does not assert collection provenance"
-                >
-                  Cloud estate
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilters(createRepositoryGraphFilters())}
-                  className={scopeButtonClass(activeScopePreset === "repository")}
-                  title="Type-based view of repository files, packages, and attached findings; does not assert collection provenance"
-                >
-                  Repository
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilters(createEnvironmentGraphFilters())}
-                  className={scopeButtonClass(activeScopePreset === "environment")}
-                  title="Type-based view of environment, agent, service, resource, and finding nodes; does not assert collection provenance"
-                >
-                  Environment
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters(
-                      createAssetLifecycleDriftGraphFilters(
-                        filters.agentName ?? flow.agentNames[0] ?? null,
-                      ),
-                    )
-                  }
-                  className={scopeButtonClass(
-                    activeScopePreset === "assetDrift",
-                  )}
-                  title="Governance paths and drift incidents across estate containers"
-                >
-                  Asset lifecycle drift
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFilters({ ...filters, vulnOnly: !filters.vulnOnly })
-                  }
-                  className={scopeButtonClass(filters.vulnOnly)}
-                  title="Limit the graph to vulnerability-bearing paths"
-                >
-                  Vulnerable only
-                </button>
-              </div>
-              <FilterPanel
-                filters={filters}
-                onChange={setFilters}
-                agentNames={flow.agentNames}
-                validValues={validValues}
-                onReset={handleResetFilters}
-                variant="panel"
-              />
-            </div>
-          </section>
+
 
         <section aria-labelledby="graph-operator-tools" className="rounded-xl border border-outline bg-background/70">
           <h3 id="graph-operator-tools" className="px-3 py-2 text-xs font-medium text-ink-secondary">
@@ -4334,12 +4240,6 @@ function RollupNavigationPanel({
       )}
     </div>
   );
-}
-
-function scopeButtonClass(active: boolean): string {
-  return active
-    ? "rounded-lg border border-sky-500/40 bg-sky-500/15 px-2.5 py-1 text-sky-100 transition hover:border-sky-400/70"
-    : "rounded-lg border border-outline bg-surface/80 px-2.5 py-1 text-ink-secondary transition hover:border-outline-strong hover:text-foreground";
 }
 
 function PathStat({

@@ -32,6 +32,13 @@ for (const theme of ["light", "dark"] as const) {
       expect(await notice.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       await notice.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`shared-scopes-${theme}-${width}.png`) });
+      const controls = page.getByTestId("graph-view-controls");
+      await controls.getByRole("button", { name: "View & layers" }).click();
+      await controls.getByRole("button", { name: "Hide all layers" }).click();
+      await expect(notice).not.toBeVisible();
+      await expect(controls.getByLabel("Active graph filters")).toContainText("0/");
+      await controls.getByRole("button", { name: "Reset graph view" }).click();
+      await expect(notice).toBeVisible();
     });
   }
 }
@@ -1027,4 +1034,32 @@ for (const theme of ["light", "dark"] as const) {
     await disclosure.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`incident-limit-${theme}.png`) });
   });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [1440, 390]) {
+    test(`view and layer controls are direct and readable in ${theme} at ${width}px`, async ({ page }, testInfo) => {
+      await routeLargeGraphPage(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+      await page.goto(`/graph?scan=${scanId}`);
+      const controls = page.getByTestId("graph-view-controls");
+      await expect(controls.getByRole("button", { name: "View & layers" })).toBeVisible();
+      await expect(page.getByTestId("graph-evidence-controls")).not.toHaveAttribute("open");
+      await controls.getByRole("button", { name: "View & layers" }).click();
+      const search = controls.getByRole("searchbox", { name: "Filter graph layers" });
+      await search.fill("Packages");
+      const packages = controls.getByRole("checkbox", { name: "Packages", exact: true });
+      await expect(packages).toBeVisible();
+      const previous = await packages.isChecked();
+      await packages.click();
+      await expect(packages).toBeChecked({ checked: !previous });
+      await controls.getByRole("button", { name: "Reset graph view" }).click();
+      await expect(page).toHaveURL(new RegExp(`scan=${scanId}`));
+      await search.fill("");
+      await controls.evaluate(element => window.scrollTo(0, element.getBoundingClientRect().top + window.scrollY - 80));
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`view-layers-${theme}-${width}.png`), fullPage: false });
+    });
+  }
 }

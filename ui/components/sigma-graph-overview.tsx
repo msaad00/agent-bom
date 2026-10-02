@@ -468,7 +468,7 @@ export function SigmaGraphOverview({
         {!focused && <svg ref={groupEdgesRef} className="pointer-events-none absolute inset-0 h-full w-full text-ink-tertiary" aria-hidden="true">
           {overviewConnections.map(edge => <line key={`${edge.source}:${edge.target}`} stroke="currentColor" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="3 5"><title>{edge.count} recorded relationships between groups</title></line>)}
         </svg>}
-        <div ref={groupLabelsRef} className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div ref={groupLabelsRef} hidden={Boolean(focused)} className="pointer-events-none absolute inset-0 overflow-hidden">
           {model.groups.map((group) => <button type="button" key={group.key} onClick={() => enterScope(group.key)} className="pointer-events-auto absolute left-0 top-0 hidden max-w-36 rounded border border-outline bg-surface/95 px-2 py-1 text-center text-xs text-foreground">{group.label}<span className="block text-ink-secondary">{group.count} displayed / {group.loadedCount} loaded</span></button>)}
         </div>
         {model.scopes.length > 0 && <details ref={scopeControlsRef} className="absolute left-3 top-3 max-w-64 rounded border border-outline bg-surface/95 p-2 text-xs">

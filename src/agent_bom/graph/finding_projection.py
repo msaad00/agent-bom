@@ -10,6 +10,47 @@ from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode, stable_node_id
 from agent_bom.graph.types import EntityType, RelationshipType
+from agent_bom.security import sanitize_text
+
+
+def project_secret_findings(graph: UnifiedGraph, findings: Any) -> None:
+    """Project canonical secret/PII findings without copying matched material.
+
+    Finding IDs identify report occurrences, not globally shared credentials.
+    No stable/canonical attribute is assigned: correlation must keep these
+    observations snapshot-scoped until exact cross-scan ownership is known.
+    The repository overlay supplies recorded finding-to-file relationships.
+    """
+    if not isinstance(findings, list):
+        return
+    for row in findings:
+        if not isinstance(row, dict) or row.get("source") != "SECRET_SCAN":
+            continue
+        finding_type = row.get("finding_type")
+        finding_id = row.get("id")
+        if finding_type not in {"PII_EXPOSURE", "CREDENTIAL_EXPOSURE"} or not isinstance(finding_id, str) or not finding_id:
+            continue
+        raw_evidence, raw_asset = row.get("evidence"), row.get("asset")
+        evidence = raw_evidence if isinstance(raw_evidence, dict) else {}
+        asset = raw_asset if isinstance(raw_asset, dict) else {}
+        path = evidence.get("file") or asset.get("location") or ""
+        attributes = {
+            "finding_id": finding_id,
+            "finding_type": finding_type,
+            "finding_source": "SECRET_SCAN",
+            "file_path": sanitize_text(path, max_len=500) if isinstance(path, str) else "",
+            "line": evidence.get("line") if isinstance(evidence.get("line"), int) else None,
+        }
+        graph.add_node(
+            UnifiedNode(
+                id=f"misconfig:secret_scan:{finding_id}",
+                entity_type=EntityType.MISCONFIGURATION,
+                label=sanitize_text(str(row.get("title") or finding_type), max_len=500),
+                severity=str(row.get("severity") or "medium").lower(),
+                attributes=attributes,
+                data_sources=["secret-scan"],
+            )
+        )
 
 
 def project_sast(graph: UnifiedGraph, sast_data: dict[str, Any] | None) -> None:

@@ -78,7 +78,13 @@ from agent_bom.graph.cloud_rbac import add_cloud_role_assignments as _add_cloud_
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.finding_projection import _resolve_skill_audit_target_ids as _resolve_skill_audit_target_ids
-from agent_bom.graph.finding_projection import project_iac, project_sast, project_skill_audit, project_toxic_combinations
+from agent_bom.graph.finding_projection import (
+    project_iac,
+    project_sast,
+    project_secret_findings,
+    project_skill_audit,
+    project_toxic_combinations,
+)
 from agent_bom.graph.identity_nodes import identity_node_id as _identity_node_id
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.package_projection import (
@@ -271,6 +277,7 @@ def _project_inventory_findings(
     project_sast(graph, report.get("sast") or report.get("sast_data"))
     project_iac(graph, report.get("iac_findings") or report.get("iac_findings_data"))
     project_skill_audit(graph, report.get("skill_audit"), indexes)
+    project_secret_findings(graph, report.get("findings"))
     return inventories
 
 
@@ -429,18 +436,10 @@ def _apply_runtime_evidence_overlay(graph: UnifiedGraph, report_json: Mapping[st
 
 
 def _apply_repo_structure_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Materialise the repository folder/file structure into the graph.
+    """Attach repository directories, manifests, packages and finding files.
 
-    Reads the optional ``project_inventory`` block (the directory tree + per-
-    directory manifest / lockfile / declaration files the project scanner already
-    emits) and hands it to
-    :func:`agent_bom.graph.repo_structure_overlay.apply_repo_structure_overlay`,
-    which builds ``DIRECTORY`` nodes with ``CONTAINS`` edges, attaches manifest
-    ``CONFIG_FILE`` nodes, links each manifest to the direct packages it declares
-    (file → package → vuln), and places file-scoped findings under their folder
-    (finding → file). Gated to a clean no-op when neither a project inventory nor
-    a file-scoped finding is present, so an unrelated scan leaves the graph
-    byte-identical. Mirrors how ``_apply_aspm_overlay`` is invoked above.
+    The owning overlay supplies file-to-package and finding-to-file edges.
+    Reports with neither project inventory nor file findings are a no-op.
     """
     has_inventory = isinstance(report_json.get("project_inventory"), Mapping)
     if not has_inventory and not any(node.entity_type == EntityType.MISCONFIGURATION for node in graph.nodes.values()):

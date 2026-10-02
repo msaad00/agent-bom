@@ -330,18 +330,11 @@ _CLOUD_ENTITY_TYPES = frozenset(
 
 
 def _merge_unified_graph_evidence(graph: DepGraph, data: dict[str, Any]) -> None:
-    """Merge unified-only cloud, identity, and source evidence into the DepGraph.
+    """Graft canonical cloud, identity, posture and source evidence into exports.
 
-    The CLI graph export historically walked only agents→servers→tools→creds→
-    packages→CVEs, so cloud-inventory, CIEM (HAS_PERMISSION), CIS misconfigs, and
-    the Snowflake object/exfil/identity graphs were invisible. This reuses
-    ``build_unified_graph_from_report`` (the single source of cloud graph truth)
-    and grafts its cloud/identity/posture nodes + edges onto the DepGraph so every
-    existing serializer (json/dot/mermaid/graphml/cypher) shows the full estate.
-    Source-discovered MCP and framework tools also originate only in the
-    unified graph; graft those tool/file nodes so graph export does not discard
-    their provenance.
-    Best-effort: never raises into the export path.
+    The base walk handles agents/servers/packages/CVEs; the unified builder
+    owns additional entities and their recorded relationships. Copy only edges
+    whose endpoints survive projection. Enrichment failure retains the base graph.
     """
     try:
         from agent_bom.graph.builder import build_unified_graph_from_report
@@ -350,6 +343,9 @@ def _merge_unified_graph_evidence(graph: DepGraph, data: dict[str, Any]) -> None
     except Exception:  # noqa: BLE001 — graph export must not fail on cloud enrichment
         return
 
+    # Retain secret/PII AFFECTS endpoints, including files without AST evidence.
+    secret_finding_ids = {node.id for node in unified.nodes.values() if node.attributes.get("finding_source") == "SECRET_SCAN"}
+    finding_files = {edge.target for edge in unified.edges if edge.source in secret_finding_ids and edge.relationship.value == "affects"}
     added: set[str] = set()
     for node in unified.nodes.values():
         etype = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
@@ -357,7 +353,11 @@ def _merge_unified_graph_evidence(graph: DepGraph, data: dict[str, Any]) -> None
         is_ast_source = etype == "source_file" and "ast_analysis" in node.data_sources
         is_ast_entrypoint = etype == "code_module" and node.attributes.get("node_kind") == "application_entrypoint"
         if (
-            etype not in _CLOUD_ENTITY_TYPES and not is_ast_tool and not is_ast_source and not is_ast_entrypoint
+            etype not in _CLOUD_ENTITY_TYPES
+            and not is_ast_tool
+            and not is_ast_source
+            and not is_ast_entrypoint
+            and node.id not in finding_files
         ) or node.id in graph._nodes:
             continue
         graph.add_node(

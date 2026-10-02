@@ -1,9 +1,9 @@
 {
   "release_version": "0.107.2",
-  "captured_at": "2026-10-02T19:36:53.341Z",
-  "source_commit": "3908661f55060b252bd7de5a4bd1be0763f35812",
+  "captured_at": "2026-10-02T20:20:34.890Z",
+  "source_commit": "a52e585943617f314ab9ef95884adc7584ad77ac",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:f55b8cdc84f537bac908b3bc85f26cd0983b2d1339beac4705d3419d4eef30bb",
+  "capture_inputs_sha256": "sha256:eafe2869bb74b2765b4a8d384135587371e273abfa4eb893ce925d548789d439",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -92,7 +92,7 @@
       "page": "/jobs?capture=1",
       "scope": "Completed job with six persisted stage events, measured wall clock, per-step durations, and activity",
       "visible_version": "0.107.2",
-      "sha256": "sha256:36759b199d4251e23e68cb8b4e6b035c5e3a5d8ab428ae04a5307e026974c862"
+      "sha256": "sha256:35001bc8b3b51a486f7090c3ea68e10b06e079b37850e7fd161d0a31f23bb605"
     },
     {
       "presentation": "dark desktop",
@@ -249,7 +249,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.107.2",
-      "sha256": "sha256:140a0fdb788a486c0b653d17f1ecb56e55fc1d2c0dedadc1daf5c0cb671434cf"
+      "sha256": "sha256:e945f3a42f239bd94f8414f0f624eefa66d74222515b6708c6ade19226c0d764"
     },
     {
       "presentation": "light desktop",

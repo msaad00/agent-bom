@@ -2,8 +2,8 @@
 
 Correlation is deliberately conservative: it merges observations only when
 their typed canonical identity is exact, and it never creates relationships
-that were absent from every input snapshot. Mutable container tags are scoped
-to their source snapshot unless an OCI digest is present.
+that were absent from every input snapshot. Runtime occurrences require recorded location and occurrence identity;
+reusable image artifacts never establish deployment identity.
 """
 
 from __future__ import annotations
@@ -21,6 +21,12 @@ from packageurl import PackageURL
 
 from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.correlation_scope import (
+    CORRELATION_IDENTITY_VERSION,
+    IDENTIFIER_NAMESPACES,
+    exact_identity_scope,
+    merged_identity_version,
+)
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -219,15 +225,13 @@ def _exact_attribute_identity(
     keys: Sequence[str],
     basis: str,
 ) -> tuple[str, str, str] | None:
-    value = next((str(node.attributes.get(key) or "").strip() for key in keys if str(node.attributes.get(key) or "").strip()), "")
+    key = next((key for key in keys if str(node.attributes.get(key) or "").strip()), "")
+    value = str(node.attributes.get(key) or "").strip()
     if not value:
         return None
-    scope = {
-        key: str(node.attributes.get(key) or "").strip()
-        for key in ("cloud_provider", "cloud_account_id", "account_id", "tenant_id", "subscription_id", "project_id")
-        if str(node.attributes.get(key) or "").strip()
-    }
-    return _entity_value(node), _digest({"scope": scope, "value": value}), basis
+    namespace = IDENTIFIER_NAMESPACES.get(key, key)
+    scope = exact_identity_scope(node, basis=basis, namespace=namespace, value=value)
+    return _entity_value(node), _digest({"scope": scope, "namespace": namespace, "value": value}), basis
 
 
 def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
@@ -624,7 +628,7 @@ def _merge_node(observations: Sequence[_NodeObservation]) -> UnifiedNode:
     source_scan_ids = sorted({item.snapshot.scan_id for item in ordered})
     identity_basis = sorted({item.identity_basis for item in ordered})
     attributes[_CORRELATION_ATTR] = {
-        "identity_version": "runtime-occurrence.v2",
+        "identity_version": merged_identity_version(item.node.attributes.get(_CORRELATION_ATTR) for item in ordered),
         "identity_basis": identity_basis[0] if len(identity_basis) == 1 else identity_basis,
         "observation_count": len(ordered),
         "source_scan_ids": source_scan_ids,
@@ -703,16 +707,7 @@ def _merge_edge(
     if len({bool(item.edge.traversable) for item in ordered}) > 1:
         conflict_fields.append("traversable")
     provenance[_CORRELATION_ATTR] = {
-        "identity_version": (
-            "runtime-occurrence.v2"
-            if all(
-                not item.edge.provenance.get(_CORRELATION_ATTR)
-                or isinstance(item.edge.provenance.get(_CORRELATION_ATTR), dict)
-                and item.edge.provenance[_CORRELATION_ATTR].get("identity_version") == "runtime-occurrence.v2"
-                for item in ordered
-            )
-            else "legacy"
-        ),
+        "identity_version": merged_identity_version(item.edge.provenance.get(_CORRELATION_ATTR) for item in ordered),
         "observation_count": len(ordered),
         "source_scan_ids": source_scan_ids,
         "conflict_fields": conflict_fields,
@@ -809,7 +804,7 @@ def merge_graph_snapshots(
 
     manifest = {
         "schema_version": "agent-bom.graph-correlation.v1",
-        "identity_version": "runtime-occurrence.v2",
+        "identity_version": CORRELATION_IDENTITY_VERSION,
         "correlation_id": correlation_id,
         "tenant_id": tenant_id,
         "created_at": output.created_at,

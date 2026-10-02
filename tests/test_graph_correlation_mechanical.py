@@ -259,7 +259,7 @@ def test_stale_allowed_hop_cannot_be_promoted_to_confirmed() -> None:
                 "correlation": {
                     "source_scan_ids": ["scan-a"],
                     "freshness": "stale_allowed",
-                    "identity_version": "runtime-occurrence.v2",
+                    "identity_version": "scoped-identity.v3",
                     "observations": [
                         {
                             "scan_id": "scan-a",

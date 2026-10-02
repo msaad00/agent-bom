@@ -18,10 +18,10 @@ import {
 type Props = Pick<
   ComponentProps<typeof FilterPanel>,
   "filters" | "onChange" | "agentNames" | "validValues" | "onReset"
-> & { estateSummary?: boolean };
+> & { estateSummary?: boolean; focusedPath?: boolean };
 
 /** One canonical filter model drives both this control and shareable graph URLs. */
-export function GraphViewControls({ filters, onChange, agentNames, validValues, onReset, estateSummary = false }: Props) {
+export function GraphViewControls({ filters, onChange, agentNames, validValues, onReset, estateSummary = false, focusedPath = false }: Props) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const selected = graphScopePresetForFilters(filters);
@@ -53,6 +53,8 @@ export function GraphViewControls({ filters, onChange, agentNames, validValues, 
         <div className="order-last flex w-full min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-secondary sm:order-none sm:w-auto sm:flex-1" aria-label="Active graph filters">
           {estateSummary ? (
             <span>Estate summary · {filters.severity ? `${filters.severity}+ severity` : "all severities"}. Choose a view or layer to open filtered topology.</span>
+          ) : focusedPath ? (
+            <span>Focused path · all hop layers shown. Choose a view or layer to return to filtered topology.</span>
           ) : <>
           <span>{graphScopeLabelForFilters(filters)}</span>
           <span>{layers.filter(Boolean).length}/{layers.length} layers</span>

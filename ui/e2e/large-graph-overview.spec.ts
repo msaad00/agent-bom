@@ -1063,3 +1063,22 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+test("changing layers leaves a focused path instead of overriding hidden layers", async ({ page }) => {
+  await routeLargeGraphPage(page);
+  const graph = buildLargeGraph();
+  const path = { source: "agent:large", target: "cve:0", hops: ["agent:large", "pkg:0", "cve:0"],
+    edges: ["agent:large->pkg:0:uses", "pkg:0->cve:0:vulnerable_to"], composite_risk: 8,
+    summary: "Recorded dependency path", credential_exposure: [], tool_exposure: [], vuln_ids: ["CVE-2026-0000"] };
+  await page.route("**/v1/graph/attack-paths?**", route => route.fulfill({ json: {
+    ...graph, attack_paths: [path], pagination: { total: 1, offset: 0, limit: 75, has_more: false },
+  } }));
+  await page.goto(`/graph?scan=${scanId}&path=top&rollup=0`);
+  await expect(page.getByRole("button", { name: "Return to topology" })).toBeVisible();
+  const controls = page.getByTestId("graph-view-controls");
+  await controls.getByRole("button", { name: "View & layers" }).click();
+  await controls.getByRole("button", { name: "Hide all layers" }).click();
+  await expect(page.getByRole("button", { name: "Return to topology" })).not.toBeVisible();
+  await expect(controls.getByLabel("Active graph filters")).toContainText("0/");
+  expect(new URL(page.url()).searchParams.has("path")).toBe(false);
+});

@@ -4,6 +4,10 @@ import { GraphViewControls } from "@/components/graph-view-controls";
 import { createExpandedGraphFilters } from "@/components/lineage-filter";
 
 describe("graph view controls", () => {
+  it("explains that a selected path retains every hop layer", () => {
+    render(<GraphViewControls filters={createExpandedGraphFilters()} onChange={vi.fn()} agentNames={[]} focusedPath />);
+    expect(screen.getByLabelText("Active graph filters").textContent).toContain("Focused path · all hop layers shown");
+  });
   it("labels estate summary without claiming inactive topology layers apply", () => {
     render(<GraphViewControls filters={createExpandedGraphFilters()} onChange={vi.fn()} agentNames={[]} estateSummary />);
     const summary = screen.getByLabelText("Active graph filters");

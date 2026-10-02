@@ -3156,12 +3156,15 @@ function GraphPageInner() {
             filters={filters}
             onChange={(next) => {
               if (rollupCanvasOwnsPresentation) restoreSummaryOnFilterReset.current = true;
+              requestedAttackPathKeyRef.current = null;
+              setSelectedAttackPathKey(null);
               dismissRollup();
               setFilters(next);
             }}
             agentNames={flow.agentNames}
             validValues={validValues}
             estateSummary={rollupCanvasOwnsPresentation}
+            focusedPath={Boolean(selectedAttackPath)}
             onReset={() => {
               handleResetFilters();
               if (restoreSummaryOnFilterReset.current) {

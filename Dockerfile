@@ -83,7 +83,8 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/LICENSE /app/LICENSE
 COPY --from=builder /app/deploy/supabase/postgres /opt/agent-bom/deploy/supabase/postgres
 
-RUN apk add --no-cache ca-certificates libffi libgcc libstdc++ \
+# Repository URL scans shallow-clone with git at runtime as the non-root user.
+RUN apk add --no-cache ca-certificates git libffi libgcc libstdc++ \
     && apk upgrade --no-cache --available \
     && update-ca-certificates
 # The runtime never installs packages. Remove packaging tools and pip's vendored

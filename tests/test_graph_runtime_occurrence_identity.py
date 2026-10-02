@@ -98,7 +98,7 @@ def test_runtime_occurrence_joins_never_follow_shared_image_digest(tmp_path, kin
             result = workspace.finish()
     expected = kind in {"same_occurrence", "same_kubernetes_container"}
     assert bool(compute_fused_attack_paths(result.graph)) is expected
-    assert result.manifest["identity_version"] == "runtime-occurrence.v2"
+    assert result.manifest["identity_version"] == "scoped-identity.v3"
     with open_graph_db(tmp_path / "graph.db") as connection:
         save_graph(connection, result.graph)
         restored = load_graph(connection, tenant_id="tenant", scan_id="correlated")
@@ -106,7 +106,8 @@ def test_runtime_occurrence_joins_never_follow_shared_image_digest(tmp_path, kin
         assert len(load_graph(connection, tenant_id="foreign", scan_id="correlated").nodes) == 0
 
 
-def test_legacy_correlated_receipts_require_recomputation():
+@pytest.mark.parametrize("identity_version", [None, "runtime-occurrence.v2"])
+def test_legacy_correlated_receipts_require_recomputation(identity_version):
     from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
     from agent_bom.graph.path_evidence import annotate_attack_path_evidence
 
@@ -116,6 +117,8 @@ def test_legacy_correlated_receipts_require_recomputation():
     for edge in graph.edges:
         edge.provenance["correlation"]["freshness"] = "fresh"
         edge.provenance["correlation"].pop("identity_version", None)
+        if identity_version is not None:
+            edge.provenance["correlation"]["identity_version"] = identity_version
     original_edges = deepcopy([edge.to_dict() for edge in graph.edges])
     path = compute_fused_attack_paths(graph)[0]
     annotate_attack_path_evidence(path, graph)
@@ -124,27 +127,48 @@ def test_legacy_correlated_receipts_require_recomputation():
     assert original_edges == [edge.to_dict() for edge in graph.edges]
 
 
-def test_recorrelating_legacy_output_does_not_upgrade_its_receipts():
+@pytest.mark.parametrize("identity_version", [None, "runtime-occurrence.v2"])
+@pytest.mark.parametrize("engine", ["memory", "disk"])
+def test_recorrelating_legacy_output_does_not_upgrade_its_receipts(identity_version, engine):
     from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
     from agent_bom.graph.path_evidence import annotate_attack_path_evidence
 
-    original = merge_graph_snapshots(correlation_id="legacy", tenant_id="tenant", snapshots=_snapshots("same_occurrence")).graph
-    for edge in original.edges:
-        edge.provenance["correlation"].pop("identity_version")
-    another = deepcopy(original)
-    another.scan_id = "copy"
-    graph = merge_graph_snapshots(
-        correlation_id="rerun",
-        tenant_id="tenant",
-        snapshots=[CorrelationSnapshot.from_graph(original), CorrelationSnapshot.from_graph(another)],
-    ).graph
-    graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
-    for edge in graph.edges:
-        edge.provenance["correlation"]["freshness"] = "fresh"
-    for path in compute_fused_attack_paths(graph):
-        annotate_attack_path_evidence(path, graph)
-        assert path.reachability != "confirmed"
-        assert "correlation_recomputation_required" in path.reachability_basis
+    graph = merge_graph_snapshots(correlation_id="legacy", tenant_id="tenant", snapshots=_snapshots("same_occurrence")).graph
+    for receipt in [
+        *(node.attributes["correlation"] for node in graph.nodes.values()),
+        *(edge.provenance["correlation"] for edge in graph.edges),
+    ]:
+        receipt.pop("identity_version")
+        if identity_version is not None:
+            receipt["identity_version"] = identity_version
+    for iteration in range(2):
+        another = deepcopy(graph)
+        another.scan_id = f"copy-{iteration}"
+        snapshots = [CorrelationSnapshot.from_graph(graph), CorrelationSnapshot.from_graph(another)]
+        if engine == "memory":
+            graph = merge_graph_snapshots(correlation_id=f"rerun-{iteration}", tenant_id="tenant", snapshots=snapshots).graph
+        else:
+            with CorrelationMergeWorkspace(
+                correlation_id=f"rerun-{iteration}",
+                tenant_id="tenant",
+                created_at="2026-10-01T00:00:00Z",
+                max_output_nodes=100,
+                max_output_edges=100,
+            ) as workspace:
+                for snapshot in snapshots:
+                    workspace.add_snapshot(snapshot)
+                graph = workspace.finish().graph
+        graph.analysis_status["attack_path_fusion"] = GraphAnalysisStatus(status=GraphAnalysisState.COMPLETE)
+        assert all(node.attributes["correlation"]["identity_version"] == "legacy" for node in graph.nodes.values())
+        for edge in graph.edges:
+            edge.provenance["correlation"]["freshness"] = "fresh"
+            assert edge.provenance["correlation"]["identity_version"] == "legacy"
+        paths = compute_fused_attack_paths(graph)
+        assert paths
+        for path in paths:
+            annotate_attack_path_evidence(path, graph)
+            assert path.reachability != "confirmed"
+            assert "correlation_recomputation_required" in path.reachability_basis
 
 
 @pytest.mark.parametrize("engine", ["memory", "disk"])
@@ -196,7 +220,7 @@ def test_runtime_occurrences_survive_live_postgres_roundtrip(kind, engine):
             store.save_graph(result.graph)
             restored = store.load_graph(tenant_id="tenant", scan_id=correlation_id)
             assert bool(compute_fused_attack_paths(restored)) is (kind == "same_occurrence")
-            assert all(edge.provenance["correlation"]["identity_version"] == "runtime-occurrence.v2" for edge in restored.edges)
+            assert all(edge.provenance["correlation"]["identity_version"] == "scoped-identity.v3" for edge in restored.edges)
             foreign = set_current_tenant("foreign")
             try:
                 assert not store.load_graph(tenant_id="tenant", scan_id=correlation_id).nodes

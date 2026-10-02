@@ -814,3 +814,23 @@ SQLite startup repairs for missing relationship time/source metadata use partial
 Storage qualification uses the same content, tenant, revision and non-overlapping-page checks in thread and process modes. Private failure receipts retain the worker stage, completed-operation counters, elapsed time and allowlisted SQLite error codes/names, without raw exception messages, SQL or connection strings. A failed worker stops the run; contention errors are failures, not successful reads or silently retried operations. Successful bounded runs do not explain a historical failure whose receipt lacks diagnostic detail.
 
 SQLite graph mutations use bounded FIFO admission per resolved database path within each process, including schema setup and search projection updates. Initialized WAL readers and unrelated database files do not enter this queue. Admission waits at most ten seconds; timeout raises `SQLITE_BUSY` before opening a connection or consuming a streaming producer. SQLite still coordinates separate processes with its existing ten-second lock timeout; local admission does not guarantee cross-process fairness or a total ten-second operation deadline. Failed producers roll back without replay. Removing admission on rollback restores SQLite-only scheduling; no schema change is required.
+
+### Correlation identity scope
+
+New correlations record `scoped-identity.v3`. Exact provider identities include
+recorded provider, account and location scope; runtime IDs also include the
+recorded host and environment. Provider/environment dimensions and attributes
+are equivalent when they agree. Conflicting values remain separate identities.
+Identifier namespaces remain distinct: equal text in a Kubernetes UID, provider
+resource ID or directory client ID is insufficient to join nodes. Explicit
+aliases such as `arn`/`resource_arn` and `canonical_id`/`stable_id` still join.
+No missing provider, location or identity is inferred from labels.
+
+Existing correlation receipts remain available without rewriting their source
+evidence. Earlier identity versions require recomputation from original source
+snapshots before path evidence can be considered current. Re-correlating an old
+correlated output preserves its legacy identity status on nodes and edges; it
+cannot recover scope lost by the original join. To qualify an investigation,
+submit the original snapshots to `/v1/graph/correlations`, wait for completion,
+and open the new output snapshot and its source receipts. Incompletely located
+observations may remain separate; this is preferable to fabricating connectivity.

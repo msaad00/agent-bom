@@ -29,6 +29,7 @@ from agent_bom.graph.correlation import (
     _timestamp_instant,
     correlation_identity,
 )
+from agent_bom.graph.correlation_scope import CORRELATION_IDENTITY_VERSION
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 
@@ -371,7 +372,7 @@ class CorrelationMergeWorkspace:
         )
         manifest = {
             "schema_version": "agent-bom.graph-correlation.v1",
-            "identity_version": "runtime-occurrence.v2",
+            "identity_version": CORRELATION_IDENTITY_VERSION,
             "correlation_id": self._correlation_id,
             "tenant_id": self._tenant_id,
             "created_at": output.created_at,

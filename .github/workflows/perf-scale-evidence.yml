@@ -17,6 +17,10 @@ on:
         description: "Also measure graph HTTP reads during ingestion on a million-node synthetic fixture"
         type: boolean
         default: false
+      mixed_graph_seconds:
+        description: "Mixed-load duration (0 uses fixed counts; maximum 600 seconds)"
+        type: string
+        default: "0"
       open_pr:
         description: "Open a PR if the regenerated JSON differs from the checked-in baseline"
         type: boolean
@@ -127,7 +131,12 @@ jobs:
       - name: Verify evidence contracts
         run: uv run pytest -q tests/test_graph_mixed_scale_evidence.py
       - name: Run four-tenant million-node fixture
-        run: uv run python scripts/run_graph_mixed_scale_evidence.py --output "$RUNNER_TEMP/graph-mixed-evidence"
+        env:
+          MIXED_GRAPH_SECONDS: ${{ inputs.mixed_graph_seconds }}
+        run: >-
+          uv run python scripts/run_graph_mixed_scale_evidence.py
+          --output "$RUNNER_TEMP/graph-mixed-evidence"
+          --duration-seconds "$MIXED_GRAPH_SECONDS"
       - name: Preserve successful and failed measurements
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

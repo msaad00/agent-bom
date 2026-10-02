@@ -237,6 +237,8 @@ def run(args: argparse.Namespace) -> int:
     output = args.output.resolve()
     if output.is_relative_to(ROOT.resolve()):
         raise ValueError("Evidence output must be outside the source checkout")
+    duration = getattr(args, "duration_seconds", 0)
+    ingest_interval = getattr(args, "ingest_interval", 1.0)
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     state = output / "state"
     state.mkdir(mode=0o777)
@@ -259,7 +261,13 @@ def run(args: argparse.Namespace) -> int:
         "quota": {"cpus": 2, "memory_bytes": 2 * 1024**3, "api_workers": 1},
         "configuration": {key: value for key, value in vars(args).items() if key != "output"},
         "rows": [],
-        "expected_attempts": args.tenants * (args.read_requests * 2 + args.ingest_batches),
+        "expected_attempts": None if duration else args.tenants * (args.read_requests * 2 + args.ingest_batches),
+        "workload": {
+            "mode": "duration" if duration else "count",
+            "duration_seconds": duration,
+            "ingest_interval_seconds": ingest_interval if duration else 0,
+        },
+        "workers": [],
         "worker_errors": [],
         "persistence_errors": [],
     }
@@ -372,7 +380,9 @@ def run(args: argparse.Namespace) -> int:
                 },
             ) as client:
                 barrier.wait()
-                for index in range(args.ingest_batches if operation == "ingest" else args.read_requests):
+                index = 0
+                count = args.ingest_batches if operation == "ingest" else args.read_requests
+                while time.perf_counter() < started + duration if duration else index < count:
                     start = time.perf_counter()
                     row = {
                         "tenant": tenant,
@@ -425,6 +435,21 @@ def run(args: argparse.Namespace) -> int:
                         with receipt_lock:
                             receipt["rows"].append(row)
                             save()
+                    index += 1
+                    if duration and operation == "ingest":
+                        delay = min(start + ingest_interval, started + duration) - time.perf_counter()
+                        if delay > 0:
+                            time.sleep(delay)
+                with receipt_lock:
+                    receipt["workers"].append(
+                        {
+                            "tenant": tenant,
+                            "operation": operation,
+                            "attempts": index,
+                            "finished_offset_ms": (time.perf_counter() - started) * 1000,
+                        }
+                    )
+                    save()
 
         receipt["before"] = resources(name)
         if receipt["before"].get("source_file") != "/candidate/agent_bom/__init__.py":
@@ -452,7 +477,14 @@ def run(args: argparse.Namespace) -> int:
         receipt["status"] = (
             "passed"
             if (
-                len(receipt["rows"]) == receipt["expected_attempts"]
+                (
+                    (len(receipt["rows"]) == receipt["expected_attempts"])
+                    if not duration
+                    else (
+                        len(receipt["workers"]) == args.tenants * 3
+                        and all(worker["attempts"] > 0 and worker["finished_offset_ms"] >= duration * 1000 for worker in receipt["workers"])
+                    )
+                )
                 and all(row["ok"] for row in receipt["rows"])
                 and not receipt["worker_errors"]
                 and not receipt["persistence_errors"]
@@ -505,9 +537,20 @@ def main() -> int:
         ("timeout", 30),
     ):
         parser.add_argument("--" + name, type=int, default=default)
+    parser.add_argument(
+        "--duration-seconds", type=int, default=0, help="Run every worker to one deadline instead of fixed counts (0 disables; max 600)"
+    )
+    parser.add_argument(
+        "--ingest-interval", type=float, default=1.0, help="Minimum seconds between per-tenant ingestion starts in duration mode"
+    )
     args = parser.parse_args()
-    if any(value < 1 for key, value in vars(args).items() if key != "output") or args.assets_per_tenant < 2:
+    if (
+        any(value < 1 for key, value in vars(args).items() if key not in {"output", "duration_seconds", "ingest_interval"})
+        or args.assets_per_tenant < 2
+    ):
         parser.error("Counts must be positive; assets-per-tenant must be at least two")
+    if not 0 <= args.duration_seconds <= 600 or not math.isfinite(args.ingest_interval) or args.ingest_interval <= 0:
+        parser.error("Duration must be 0–600 seconds and ingest-interval must be finite and positive")
     if args.tenants > 16:
         parser.error("At most sixteen tenants are supported by this bounded harness")
     return run(args)

@@ -35,6 +35,24 @@ throttling, tenant mismatches and timeouts remain in the result and cause a
 nonzero exit. Percentiles for all attempts and successful attempts are
 separate. There is no warm-up exclusion; initial reads include cold caches.
 
+For sustained overlap, keep each read and ingestion worker active to a common
+deadline instead of exhausting a short write batch:
+
+```bash
+uv run python scripts/run_graph_mixed_scale_evidence.py \
+  --output /tmp/graph-mixed-sustained --duration-seconds 120 --ingest-interval 1
+```
+
+Duration mode ignores the fixed read/batch counts. Each tenant has one page,
+one search and one ingestion worker. Reads run sequentially per worker;
+ingestion starts at most once per configured interval per tenant, without
+adding artificial delay to an already slower request. No new request starts
+after the deadline; in-flight requests finish under the request timeout.
+Worker completion records and all outcomes remain in the receipt. Default rate
+limits and backpressure remain enabled; any rejection fails the run. Actual
+successful overlap still needs inspection. This is a closed-loop workload,
+not proof of an independent offered request rate or saturation capacity.
+
 For a short smoke run:
 
 ```bash
@@ -53,7 +71,7 @@ database or container environment:
 gh workflow run perf-scale-evidence.yml -f mixed_graph=true -f open_pr=false
 ```
 
-Add `--ref <branch>` to qualify an unmerged candidate. The mixed workload is
+Add `--ref <branch>` to qualify an unmerged candidate and `-f mixed_graph_seconds=120` for duration mode (maximum 600 seconds). The mixed workload is
 opt-in; scheduled runs retain their existing lightweight scope.
 
 Next, repeat on the same dedicated host with representative customer data
@@ -62,3 +80,5 @@ GitHub-hosted hardware can vary between runs. This bounded fixture does not
 establish production capacity, tenant authorization coverage, customer
 deployment success or cloud cost. Resource consumption can inform a later
 cost model; it is not a cloud-price estimate.
+
+For SQLite search-index upgrade and rollback instructions, see [search scope](sqlite-graph-search.md).

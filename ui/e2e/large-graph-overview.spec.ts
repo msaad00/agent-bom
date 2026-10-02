@@ -27,8 +27,14 @@ for (const theme of ["light", "dark"] as const) {
       await page.goto(`/graph?scan=${scanId}&rollup=1`);
       const notice = page.getByText(/This level: 1 unique descendant · 2 scope memberships/);
       await expect(notice).toBeVisible();
-      await expect(page.getByTestId("graph-evidence-controls").locator("summary").first()).toContainText("2 nodes and scopes · 1,241 nodes in snapshot");
-      await expect(page.getByTestId("graph-evidence-controls").locator("summary").first()).not.toContainText("bounded canvas");
+      const settings = page.getByTestId("graph-evidence-controls");
+      const settingsToggle = settings.locator(":scope > summary");
+      await settingsToggle.click();
+      const scopeSummary = settings.locator(":scope > div > p").first();
+      await expect(scopeSummary).toBeVisible();
+      await expect(scopeSummary).toContainText("2 nodes and scopes · 1,241 nodes in snapshot");
+      await expect(scopeSummary).not.toContainText("bounded canvas");
+      await settingsToggle.click();
       expect(await notice.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       await notice.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`shared-scopes-${theme}-${width}.png`) });

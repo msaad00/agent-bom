@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { UnifiedGraphData } from "@/lib/graph-schema";
+import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 
 const mocks = vi.hoisted(() => ({
   neighbors: vi.fn(),
@@ -51,7 +51,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const neighbors = { node_id: "A", scan_id: "scan-1", neighbors: [], edges: [], total_neighbors: 99, truncated: false };
-const detail = { node: { id: "A", entity_type: "agent", attributes: { receipt: "A-only" } }, edges_in: [], edges_out: [], sources: [], neighbors: [] };
+const detail = { node: { id: "A", entity_type: "agent", attributes: { receipt: "A-only" } }, edges_in: [], edges_out: [], sources: [], neighbors: [], impact: { affected_count: 99, affected_by_type: { agent: 99 }, max_depth_reached: 4 } };
 
 describe("investigation response ownership", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -101,4 +101,34 @@ describe("investigation response ownership", () => {
     await act(async () => pending.resolve(neighbors));
     expect(JSON.parse(screen.getByTestId("drawer").textContent!).neighborCount).toBeUndefined();
   });
+  it.each([
+    ["focus", "Expand"], ["path", "Expand"],
+    ["focus", "Impact"], ["path", "Impact"],
+  ])("rejects a pending %s-scope %s response with the same selected node", async (change, action) => {
+    const pending = deferred<typeof neighbors>();
+    const pendingImpact = deferred<{ affected_count: number; affected_by_type: Record<string, number>; max_depth_reached: number }>();
+    mocks.neighbors.mockReturnValue(pending.promise);
+    mocks.detail.mockResolvedValue(detail);
+    mocks.impact.mockReturnValue(pendingImpact.promise);
+    const path: AttackPath = {
+      source: "A", target: "B", hops: ["A", "B"], edges: [], composite_risk: 1,
+      summary: "Recorded path", credential_exposure: [], tool_exposure: [], vuln_ids: [],
+    };
+    const view = render(<SecurityGraphInvestigation {...props} attackPath={path} />);
+    fireEvent.click(screen.getByText("Select A"));
+    fireEvent.click(screen.getByText(action));
+    view.rerender(<SecurityGraphInvestigation {...props}
+      focusMode={change === "focus"}
+      attackPath={change === "path" ? { ...path, target: "C", hops: ["A", "C"] } : path}
+    />);
+    await act(async () => {
+      pending.resolve(neighbors);
+      pendingImpact.resolve({ affected_count: 99, affected_by_type: { agent: 99 }, max_depth_reached: 4 });
+    });
+    const drawer = JSON.parse(screen.getByTestId("drawer").textContent!);
+    expect(drawer.attributes.node_id).toBe("A");
+    expect(drawer.neighborCount).toBeUndefined();
+    expect(drawer.impactCount).toBeUndefined();
+  });
+
 });

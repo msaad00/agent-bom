@@ -340,7 +340,7 @@ export function SecurityGraphInvestigation({
     return () => {
       investigationRequest.current += 1;
     };
-  }, [selectedNodeId, scanId, graph?.scan_id, graph?.snapshot_generation, session?.tenant_id]);
+  }, [selectedNodeId, scanId, graph?.scan_id, graph?.snapshot_generation, session?.tenant_id, focusMode, attackPath]);
 
   const activeGraph = useMemo(() => {
     if (!graph) return null;

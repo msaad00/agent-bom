@@ -286,7 +286,7 @@ def test_demo_estate_graph_is_a_rich_multi_agent_estate(demo_estate_client: Test
     # unrated inventory, so a default-page read would be testing the pager, not
     # the estate. ``test_demo_estate_default_graph_page_declares_its_truncation``
     # covers the bounded read.
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     nodes = payload.get("nodes") or []
     by_type = Counter(n.get("entity_type") for n in nodes)
 
@@ -322,9 +322,16 @@ def test_demo_estate_headline_blast_radius_chain(demo_estate_client: TestClient)
     the projected enterprise estate, never replaced, but its unrated inventory
     nodes no longer land in a 500-row severity-ranked page.
     """
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     node_ids = {n.get("id") for n in payload.get("nodes") or []}
-    edges = payload.get("edges") or []
+    # Node pages carry bounded incident evidence. Read the chain's source
+    # relationships explicitly; limit=2 also exercises cursor continuation.
+    edges = _outgoing_graph_edges(
+        demo_estate_client,
+        payload,
+        {"agent:cursor", "server:shell-runner-server", "pkg:pypi:pyyaml@5.3", "vuln:CVE-2020-14343"},
+        limit=2,
+    )
     edge_pairs = {(e.get("source"), e.get("target")) for e in edges}
 
     # Chain nodes exist.
@@ -675,12 +682,12 @@ def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: T
     rather than a heap of findings — is asserted separately in
     ``test_default_graph_page_carries_the_containment_spine``.
     """
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     node_ids = {node.get("id") for node in payload.get("nodes") or []}
     assert "org:corp" in node_ids
     assert "account:aws:123456789012" in node_ids
 
-    edges = payload.get("edges") or []
+    edges = _outgoing_graph_edges(demo_estate_client, payload, {"org:corp", "account:aws:123456789012", "cloud:bastion"})
     contains = {(row.get("source"), row.get("target")) for row in edges if row.get("relationship") == "contains"}
     assert ("org:corp", "account:aws:123456789012") in contains
     assert ("account:aws:123456789012", "cloud:pii-bucket") in contains
@@ -697,7 +704,7 @@ def test_demo_estate_showcase_cloud_hierarchy_and_exposure(demo_estate_client: T
 def test_demo_estate_graph_tags_runtime_evidence_tiers(demo_estate_client: TestClient) -> None:
     # Whole snapshot: runtime-evidence tiers sit on unrated tool/tool-call nodes,
     # which the estate's rated findings now outrank on the default page.
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     attrs_by_id = {node.get("id"): (node.get("attributes") or {}) for node in payload.get("nodes") or []}
     assert attrs_by_id.get("call:0", {}).get("evidence_tier") == "runtime_observed"
     assert attrs_by_id.get("tool:shell-runner-server:run_shell", {}).get("evidence_tier") == "runtime_blocked"
@@ -1008,15 +1015,11 @@ def test_demo_estate_scan_findings_restored_after_restart(
 # that the *default* page says so rather than reading as the estate.
 
 
-def _full_graph(client: TestClient) -> dict:
-    """Assemble the COMPLETE snapshot by walking the keyset cursor.
+def _graph_with_all_nodes(client: TestClient) -> dict:
+    """Read every node, retaining only the bounded edge context of each page.
 
-    A single ``limit=5000`` request used to cover it. It no longer can: the
-    estate projects more nodes than ``/v1/graph``'s own ``limit <= 5000``
-    ceiling, so one request is a truncated page by definition and asserting
-    ``complete is True`` on it could only ever be satisfied by shrinking the
-    estate. ``cursor=`` is the route's documented deep-paging path; walking it
-    is how a client reads everything, and it is what these tests need.
+    Node cursor exhaustion does not establish edge completeness. Consumers that
+    assert topology must read the relevant incident-edge cursors separately.
     """
     nodes: list[dict] = []
     edges: list[dict] = []
@@ -1049,15 +1052,50 @@ def _full_graph(client: TestClient) -> dict:
 
     total = (payload.get("completeness") or {}).get("total")
     assert total is None or len(nodes) >= int(total), (len(nodes), total)
-    merged = dict(payload)
-    merged["nodes"] = nodes
-    merged["edges"] = edges
-    return merged
+    # The last page's completeness/returned count describes that page, not
+    # this node union. Do not promote it to whole-graph completeness.
+    return {**identity, "nodes": nodes, "edges": edges}
+
+
+def _outgoing_graph_edges(client: TestClient, graph: dict, node_ids: set[str], *, limit: int = 100) -> list[dict]:
+    """Read recorded outgoing relationships for exact nodes in one revision."""
+    identity = {key: graph[key] for key in ("scan_id", "snapshot_generation")}
+    assert identity["scan_id"] and identity["snapshot_generation"]
+    edges: dict[str, dict] = {}
+    for node_id in sorted(node_ids):
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        for _page in range(100):
+            params = {**identity, "node_id": node_id, "direction": "out", "limit": limit}
+            if cursor:
+                params["cursor"] = cursor
+            response = client.get("/v1/graph/incident-edges", headers=VIEWER, params=params)
+            assert response.status_code == 200, response.text
+            page = response.json()
+            assert page["found"], node_id
+            assert {key: page[key] for key in identity} == identity
+            assert page["node_id"] == node_id and page["direction"] == "out"
+            completeness = page["completeness"]
+            assert completeness["scope"] == "incident_edge_page"
+            assert completeness["missing_endpoint_count"] == 0, page
+            for edge in page["edges"]:
+                assert edge["source"] == node_id, edge
+                edges[edge["canonical_id"]] = edge
+            cursor = page["next_cursor"]
+            if not cursor:
+                assert not completeness["truncated"], page
+                break
+            assert completeness["truncated"], page
+            assert cursor not in seen_cursors, "incident-edge cursor repeated"
+            seen_cursors.add(cursor)
+        else:  # pragma: no cover - fail instead of hanging on broken paging
+            raise AssertionError(f"incident-edge paging did not terminate for {node_id}")
+    return list(edges.values())
 
 
 def test_demo_estate_graph_carries_the_projected_estate(demo_estate_client: TestClient) -> None:
     """The graph a prospect clicks IS the estate, not a 112-node stand-in."""
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     nodes = payload.get("nodes") or []
     node_ids = {n.get("id") for n in nodes}
     by_type = Counter(n.get("entity_type") for n in nodes)
@@ -1095,10 +1133,8 @@ def test_demo_estate_graph_incident_chain_is_traversable(demo_estate_client: Tes
     server publishing the tool, the database holding the table), all of which
     make the traversal *more* faithful, not less.
     """
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     adjacency: dict[str, set[str]] = {}
-    for row in payload.get("edges") or []:
-        adjacency.setdefault(str(row.get("source")), set()).add(str(row.get("target")))
     chain = (
         "github:workflow:member-copilot/deploy-prod",
         "cloud_resource:aws:iam:role:member-copilot-prod",
@@ -1115,6 +1151,14 @@ def test_demo_estate_graph_incident_chain_is_traversable(demo_estate_client: Tes
         frontier = {source}
         seen = {source}
         for _ in range(max_hops):
+            # Expand only this investigation frontier, including intermediates,
+            # instead of treating bounded page context as complete adjacency.
+            unread = frontier - adjacency.keys()
+            rows = _outgoing_graph_edges(demo_estate_client, payload, unread)
+            for node in unread:
+                adjacency[node] = set()
+            for row in rows:
+                adjacency[row["source"]].add(row["target"])
             frontier = {nxt for node in frontier for nxt in adjacency.get(node, ())} - seen
             if target in frontier:
                 return True
@@ -1131,10 +1175,11 @@ def test_demo_estate_findings_land_on_inventoried_graph_nodes(
     demo_estate_client: TestClient,
 ) -> None:
     """No finding materialises its own stub target (the #4637 defect class)."""
-    payload = _full_graph(demo_estate_client)
+    payload = _graph_with_all_nodes(demo_estate_client)
     nodes_by_id = {n.get("id"): n for n in payload.get("nodes") or []}
+    finding_ids = {node["id"] for node in nodes_by_id.values() if node.get("entity_type") == "misconfiguration"}
     affected: set[str] = set()
-    for row in payload.get("edges") or []:
+    for row in _outgoing_graph_edges(demo_estate_client, payload, finding_ids):
         if row.get("relationship") != "affects":
             continue
         source = nodes_by_id.get(row.get("source")) or {}

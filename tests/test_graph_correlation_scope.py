@@ -95,3 +95,25 @@ def test_explicit_arn_aliases_preserve_exact_join():
     left = _node(EntityType.CLOUD_RESOURCE, {"arn": "arn:aws:s3:::same", "cloud_provider": "aws"})
     right = _node(EntityType.CLOUD_RESOURCE, {"resource_arn": "arn:aws:s3:::same"}, {"cloud_provider": "aws"})
     assert correlation_identity(left, scan_id="one") == correlation_identity(right, scan_id="two")
+
+
+@pytest.mark.parametrize("extra", [{"region": "us-east-1"}, {"cluster_id": "collector-cluster"}, {"namespace": "collector-namespace"}])
+def test_global_arn_does_not_split_on_redundant_collection_location(extra):
+    attrs = {"arn": "arn:aws:lambda:us-east-1:123456789012:function:handler", "cloud_provider": "aws"}
+    left = _node(EntityType.CLOUD_RESOURCE, attrs)
+    right = _node(EntityType.CLOUD_RESOURCE, {**attrs, **extra})
+    assert correlation_identity(left, scan_id="one") == correlation_identity(right, scan_id="two")
+
+
+def test_global_arn_conflicting_recorded_region_does_not_merge():
+    attrs = {"arn": "arn:aws:lambda:us-east-1:123456789012:function:handler", "cloud_provider": "aws"}
+    left = _node(EntityType.CLOUD_RESOURCE, attrs)
+    right = _node(EntityType.CLOUD_RESOURCE, {**attrs, "region": "eu-west-1"})
+    assert correlation_identity(left, scan_id="one") != correlation_identity(right, scan_id="two")
+
+
+@pytest.mark.parametrize("arn", ["arn:aws:lambda:::function:handler", "arn:aws:lambda:us-east-1:account:function:handler"])
+def test_incomplete_arn_keeps_recorded_local_scope(arn):
+    left = _node(EntityType.CLOUD_RESOURCE, {"arn": arn, "region": "us-east-1"})
+    right = _node(EntityType.CLOUD_RESOURCE, {"arn": arn, "region": "eu-west-1"})
+    assert correlation_identity(left, scan_id="one") != correlation_identity(right, scan_id="two")

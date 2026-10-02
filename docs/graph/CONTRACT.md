@@ -378,7 +378,7 @@ These gaps are tracked as roadmap work. None of them block the guarantees in §2
 ## Correlated runtime identity and path proof
 
 Correlation manifests and edge receipts identify the join contract as
-`runtime-occurrence.v2`. Container occurrences join only when an authoritative
+`scoped-identity.v3`. Container occurrences join only when an authoritative
 runtime identifier and its provider and account, cluster, or host scope match
 within the requesting tenant. Kubernetes pod identifiers additionally require
 container names. Missing identity stays specific to the source snapshot. Image
@@ -824,6 +824,9 @@ are equivalent when they agree. Conflicting values remain separate identities.
 Identifier namespaces remain distinct: equal text in a Kubernetes UID, provider
 resource ID or directory client ID is insufficient to join nodes. Explicit
 aliases such as `arn`/`resource_arn` and `canonical_id`/`stable_id` still join.
+Fully qualified regional ARNs and global S3 ARNs keep their identity when only
+redundant collection location metadata differs in presence. A recorded region
+that contradicts an ARN stays separate; incomplete ARN forms retain local scope.
 No missing provider, location or identity is inferred from labels.
 
 Existing correlation receipts remain available without rewriting their source

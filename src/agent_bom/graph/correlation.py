@@ -229,8 +229,9 @@ def _exact_attribute_identity(
     value = str(node.attributes.get(key) or "").strip()
     if not value:
         return None
-    scope = exact_identity_scope(node, basis=basis)
-    return _entity_value(node), _digest({"scope": scope, "namespace": IDENTIFIER_NAMESPACES.get(key, key), "value": value}), basis
+    namespace = IDENTIFIER_NAMESPACES.get(key, key)
+    scope = exact_identity_scope(node, basis=basis, namespace=namespace, value=value)
+    return _entity_value(node), _digest({"scope": scope, "namespace": namespace, "value": value}), basis
 
 
 def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:

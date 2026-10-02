@@ -22,6 +22,13 @@ function completeness(
 }
 
 describe("graphResponseIsTruncated", () => {
+  it("keeps a full node page partial when incident relationships were bounded", () => {
+    expect(graphResponseIsTruncated({
+      pagination: pagination(false),
+      completeness: completeness({ complete: false, truncated: true, status: "truncated", reason: "incident_edge_limit", edges_truncated: true, edge_limit: 1000 }),
+    })).toBe(true);
+  });
+
   it("is false when the whole snapshot came back", () => {
     expect(
       graphResponseIsTruncated({

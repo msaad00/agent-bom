@@ -3998,6 +3998,7 @@ function GraphPageInner() {
             <details className="mt-2 border-t border-outline pt-2 text-xs text-ink-secondary" data-testid="graph-partial-view">
               <summary className="cursor-pointer">
                 Partial view · {(graphData?.nodes.length ?? 0).toLocaleString()} nodes loaded
+                {graphData?.completeness?.edges_truncated && " · relationships limited"}
                 {activeSnapshot && activeSnapshot.node_count > (graphData?.nodes.length ?? 0)
                   ? ` · ${activeSnapshot.node_count.toLocaleString()} in snapshot`
                   : activeSnapshot ? null : " · snapshot total unavailable"}
@@ -4006,8 +4007,9 @@ function GraphPageInner() {
                 <p className="min-w-0 flex-1">
                   {investigationMode ? "This investigation reached a traversal limit." : `This selection requests up to ${graphFetchLimit.toLocaleString()} ranked assets plus supporting ancestors.`} Filters, traversal and rendering limits can exclude context. Search and scope summaries cover the snapshot independently.
                 </p>
+                {graphData?.completeness?.edges_truncated && <p>Some relationships are omitted from this overview. Select a node to investigate and page its recorded connections.</p>}
                 <button type="button" onClick={returnToSummary} className="graph-chip-neutral">Browse scopes</button>
-                {!investigationMode && graphFetchLimit < LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES && (
+                {!investigationMode && (!graphData?.completeness?.edges_truncated || graphData?.pagination?.has_more) && graphFetchLimit < LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES && (
                   <button type="button" disabled={loadingGraph} onClick={() => setExpandedGraphScanId(selectedScanId)} className="graph-chip-neutral">
                     Load broader map (up to {LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES.toLocaleString()} ranked assets)
                   </button>

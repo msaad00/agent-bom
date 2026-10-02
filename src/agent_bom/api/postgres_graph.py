@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, Sequence, cast
 
+from agent_bom.api.graph_edge_query import edge_query
+
 if TYPE_CHECKING:
     from agent_bom.graph import RelationshipType, UnifiedGraph, UnifiedNode
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
@@ -3476,6 +3478,9 @@ class PostgresGraphStore:
         scan_id: str = "",
         node_ids: set[str],
         induced_only: bool = False,
+        direction: str = "both",
+        relationships: set[str] | None = None,
+        limit: int | None = None,
     ) -> list[Any]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
         if not node_ids:
@@ -3483,44 +3488,24 @@ class PostgresGraphStore:
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return []
-        # Exposure pages need only edges whose two endpoints are on the page.
-        endpoint_join = "AND" if induced_only else "OR"
-        placeholders = ",".join(["%s"] * len(node_ids))
+        query, params = edge_query(
+            tenant_id=tenant_id,
+            scan_id=effective_scan_id,
+            node_ids=node_ids,
+            columns=(
+                "source_id, target_id, relationship, direction, weight, traversable, "
+                "first_seen, last_seen, valid_from, valid_to, confidence, provenance, "
+                "source_scan_id, source_run_id, evidence, activity_id, scan_id"
+            ),
+            placeholder="%s",
+            induced_only=induced_only,
+            direction=direction,
+            relationships=relationships,
+            limit=limit,
+        )
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                f"""
-                SELECT source_id, target_id, relationship, direction, weight, traversable,
-                       first_seen, last_seen, valid_from, valid_to, confidence, provenance,
-                       source_scan_id, source_run_id, evidence, activity_id, scan_id
-                FROM graph_edges
-                WHERE tenant_id = %s AND scan_id = %s
-                  AND (source_id IN ({placeholders}) {endpoint_join} target_id IN ({placeholders}))
-                """,  # nosec B608 - endpoint_join is a fixed SQL operator; placeholders are solely "%s" markers
-                [tenant_id, effective_scan_id, *node_ids, *node_ids],
-            ).fetchall()
-            from agent_bom.graph import RelationshipType, UnifiedEdge
-
-            return [
-                UnifiedEdge(
-                    source=row[0],
-                    target=row[1],
-                    relationship=RelationshipType(row[2]),
-                    direction=row[3],
-                    weight=row[4],
-                    traversable=bool(row[5]),
-                    first_seen=row[6],
-                    last_seen=row[7],
-                    valid_from=row[8] or row[6],
-                    valid_to=row[9],
-                    confidence=row[10],
-                    provenance=_decode_json_object(row[11], field="edge provenance"),
-                    source_scan_id=row[12] or row[16],
-                    source_run_id=row[13] or "",
-                    evidence=_decode_json_object(row[14], field="edge evidence"),
-                    activity_id=row[15],
-                )
-                for row in rows
-            ]
+            rows = conn.execute(query, params).fetchall()
+            return [self._edge_from_row(row) for row in rows]
 
     def search_nodes(
         self,

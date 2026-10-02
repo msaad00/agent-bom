@@ -789,6 +789,21 @@ once while retaining each original page in the receipt. Changed node evidence,
 duplicate nodes within a page, repeated ranked nodes, inconsistent counts and
 oversized ranked slices fail closed.
 
+A ranked node page includes at most 1,000 incident relationships, plus its
+containment context. `completeness.edge_returned` counts the incident slice;
+`edge_limit` states its bound and `edges_truncated` reports omitted relationships.
+The overall completeness remains truncated even when every node fits on one
+page. Snapshot totals still describe the stored estate, not the displayed slice.
+Containment parents are fetched independently through incoming containment
+relationships, so a high-degree parent does not require loading its siblings.
+
+For a complete recorded neighborhood, request `GET /v1/graph/incident-edges`
+with the selected `node_id`, returned `scan_id` and `snapshot_generation`, then
+follow `next_cursor` until it is empty. This endpoint is also returned in
+`completeness.edge_expansion_endpoint`. Preserve the revision across requests;
+on replacement, restart the investigation. Exhausted node pagination alone does
+not prove that every relationship was returned.
+
 Exhausting this bounded set of node pages does not establish source collection
 coverage, effective permission or successful execution. Use the retained scope
 and completeness when building an integration, then qualify its workload against

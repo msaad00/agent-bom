@@ -150,6 +150,10 @@ export interface GraphPagination {
  * exhaustive. `sampled` is reserved for deterministic representative views.
  */
 export interface GraphCompleteness {
+  edges_truncated?: boolean;
+  edge_limit?: number;
+  edge_returned?: number;
+  edge_expansion_endpoint?: string;
   status: "complete" | "truncated" | "sampled";
   complete: boolean;
   sampled: boolean;

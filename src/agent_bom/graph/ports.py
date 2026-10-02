@@ -175,6 +175,9 @@ class GraphStoreProtocol(Protocol):
         scan_id: str = "",
         node_ids: set[str],
         induced_only: bool = False,
+        direction: str = "both",
+        relationships: set[str] | None = None,
+        limit: int | None = None,
     ) -> list[Any]: ...
 
     def search_nodes(

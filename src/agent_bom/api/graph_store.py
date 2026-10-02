@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from agent_bom.graph.delta_digest import PriorSnapshotDigest
+from agent_bom.api.graph_edge_query import _edge_from_row as sqlite_edge_from_row
+from agent_bom.api.graph_edge_query import edge_query
 from agent_bom.db import graph_store as sqlite_graph_store
 from agent_bom.db.graph_bootstrap import ensure_read_schema
 from agent_bom.db.graph_revision import read_snapshot_identity
@@ -509,26 +511,7 @@ class SQLiteGraphStore:
             dimensions=NodeDimensions.from_dict(json.loads(row["dimensions"])),
         )
 
-    @staticmethod
-    def _edge_from_row(row: sqlite3.Row) -> UnifiedEdge:
-        return UnifiedEdge(
-            source=row["source_id"],
-            target=row["target_id"],
-            relationship=RelationshipType(row["relationship"]),
-            direction=row["direction"],
-            weight=row["weight"],
-            traversable=bool(row["traversable"]),
-            first_seen=row["first_seen"],
-            last_seen=row["last_seen"],
-            valid_from=row["valid_from"] or row["first_seen"],
-            valid_to=row["valid_to"],
-            confidence=row["confidence"],
-            provenance=json.loads(row["provenance"] or "{}"),
-            source_scan_id=row["source_scan_id"] or row["scan_id"],
-            source_run_id=row["source_run_id"] or "",
-            evidence=json.loads(row["evidence"]),
-            activity_id=row["activity_id"],
-        )
+    _edge_from_row = staticmethod(sqlite_edge_from_row)
 
     @staticmethod
     def _reverse_edge(edge: UnifiedEdge) -> UnifiedEdge:
@@ -2371,6 +2354,9 @@ class SQLiteGraphStore:
         scan_id: str = "",
         node_ids: set[str],
         induced_only: bool = False,
+        direction: str = "both",
+        relationships: set[str] | None = None,
+        limit: int | None = None,
     ) -> list[Any]:
         tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         if not node_ids:
@@ -2382,18 +2368,16 @@ class SQLiteGraphStore:
             effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
             if not effective_scan_id:
                 return []
-            # Exposure pages need only edges whose two endpoints are on the page.
-            endpoint_join = "AND" if induced_only else "OR"
-            placeholders = ",".join("?" for _ in node_ids)
-            rows = conn.execute(
-                f"""
-                SELECT *
-                FROM graph_edges
-                WHERE tenant_id = ? AND scan_id = ?
-                  AND (source_id IN ({placeholders}) {endpoint_join} target_id IN ({placeholders}))
-                """,  # nosec B608 - endpoint_join is a fixed SQL operator; placeholders are solely "?" markers
-                [tenant_id, effective_scan_id, *node_ids, *node_ids],
-            ).fetchall()
+            query, params = edge_query(
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                node_ids=node_ids,
+                induced_only=induced_only,
+                direction=direction,
+                relationships=relationships,
+                limit=limit,
+            )
+            rows = conn.execute(query, params).fetchall()
             return [self._edge_from_row(row) for row in rows]
         finally:
             conn.close()

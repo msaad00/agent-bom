@@ -44,6 +44,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import JSONResponse, Response
 
 from agent_bom.api.graph_generation import optional_generation, pin_generation, verify_generation
+from agent_bom.api.graph_page_context import containment_ancestors, page_attack_context
 from agent_bom.api.graph_paging import _coalesce_alias, _enforce_node_offset_cap, _page_meta, _paginate
 from agent_bom.api.graph_query import GraphQueryRequest, _filtered_query_graph, query_payload
 from agent_bom.api.graph_store import containment_drilldown_graph
@@ -80,7 +81,7 @@ from agent_bom.graph.path_derivation import _derived_attack_paths as _derived_at
 from agent_bom.graph.path_derivation import _derived_governance_attack_paths as _derived_governance_attack_paths
 from agent_bom.graph.path_derivation import _derived_toxic_combination_paths as _derived_toxic_combination_paths
 from agent_bom.graph.path_derivation import _fusion_signals_for_path as _fusion_signals_for_path
-from agent_bom.graph.rollup import ROLLUP_CONTAINMENT_RELATIONSHIPS, ROLLUP_RELATIONSHIPS
+from agent_bom.graph.rollup import ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS
 from agent_bom.graph.view_payloads import _graph_rollup_payload, _semantic_cluster_payload
@@ -820,78 +821,6 @@ def _path_matches_focus(graph: UnifiedGraph, path: AttackPath, *, cve: str, pack
     return True
 
 
-# org → account → environment → resource. Four is the estate's containment depth
-# plus a level of slack; the loop stops early when a level yields no new parent,
-# so this only bounds a cycle.
-_MAX_CONTAINMENT_LEVELS = 5
-
-
-async def _containment_ancestors(
-    graph_store: Any,
-    *,
-    scan_id: str,
-    tenant_id: str,
-    node_ids: set[str],
-    known_edges: list[UnifiedEdge],
-) -> tuple[list[UnifiedNode], list[UnifiedEdge]]:
-    """Return the containment parents of a node page, and the edges reaching them.
-
-    Node pages are ordered by severity. That is right for "show me the worst
-    first" and wrong for structure: once an estate carries more high-severity
-    findings than the page holds, every org, account and environment falls off
-    page one, and the default graph response describes an estate with no shape.
-    It read as correct only while the estate was small enough that the spine
-    happened to fit.
-
-    Containment ancestors are bounded by the page, not by the estate: each page
-    node contributes at most one parent per level, and levels collapse fast
-    because pages share parents (measured on the demo estate: a 500-node page
-    resolves 552 ancestors, of which 104 are env/account/org). Adding them grows
-    the payload by roughly the page size — it does not scale with the estate —
-    so the page stays bounded while gaining a shape. ``completeness.ranked`` and
-    ``completeness.context_nodes`` report the split.
-    """
-    if not node_ids:
-        return [], []
-
-    ancestor_ids: set[str] = set()
-    ancestor_edges: dict[tuple[str, str], UnifiedEdge] = {}
-    frontier = set(node_ids)
-    frontier_edges = known_edges
-
-    for _level in range(_MAX_CONTAINMENT_LEVELS):
-        parents: set[str] = set()
-        for edge in frontier_edges:
-            # The roll-up already defines what containment means (contains /
-            # hosts / owns). Answering it again here is how the two drift.
-            if _rel_value(edge) not in ROLLUP_CONTAINMENT_RELATIONSHIPS:
-                continue
-            if edge.target in frontier and edge.source not in node_ids:
-                parents.add(edge.source)
-                ancestor_edges[(edge.source, edge.target)] = edge
-        parents -= ancestor_ids
-        if not parents:
-            break
-        ancestor_ids |= parents
-        frontier = parents
-        frontier_edges = await _graph_store_call(
-            graph_store.edges_for_node_ids,
-            scan_id=scan_id,
-            tenant_id=tenant_id,
-            node_ids=parents,
-        )
-
-    if not ancestor_ids:
-        return [], []
-    nodes = await _graph_store_call(
-        graph_store.nodes_by_ids,
-        scan_id=scan_id,
-        tenant_id=tenant_id,
-        node_ids=ancestor_ids,
-    )
-    return list(nodes), list(ancestor_edges.values())
-
-
 def _joined_edges(*groups: list[UnifiedEdge]) -> list[UnifiedEdge]:
     """Concatenate edge lists without listing the same edge twice.
 
@@ -1163,6 +1092,7 @@ def _filtered_graph_response(graph: UnifiedGraph, *, offset: int, limit: int) ->
     stats = _sync_attack_path_stats(graph.stats(), total=len(derived_paths), paths=derived_paths)
     all_nodes = list(graph.nodes.values())
     paged_nodes, pagination = _paginate(all_nodes, offset, limit)
+
     paged_ids = {n.id for n in paged_nodes}
     paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
     matching_paths = [p for p in derived_paths if p.hops and p.hops[0] in paged_ids]
@@ -1615,6 +1545,9 @@ async def get_scoped_graph(
     )
 
 
+_NODE_PAGE_EDGE_LIMIT = 1000
+
+
 def _encode_node_page(
     *,
     snapshot_stats: dict,
@@ -1623,6 +1556,7 @@ def _encode_node_page(
     ancestor_nodes: list[UnifiedNode],
     paged_edges: list[UnifiedEdge],
     ancestor_edges: list[UnifiedEdge],
+    edges_truncated: bool,
     next_cursor: str | None,
     offset: int,
     limit: int,
@@ -1666,8 +1600,8 @@ def _encode_node_page(
             **graph_completeness(
                 returned=len(response_nodes),
                 total=total,
-                truncated=page_truncated,
-                reason="node_page_limit" if page_truncated else "",
+                truncated=page_truncated or edges_truncated,
+                reason="incident_edge_limit" if edges_truncated else "node_page_limit" if page_truncated else "",
             ),
             # ``returned`` counts every node in the payload; ``pagination`` counts
             # only the ranked page. Containment ancestors are added on top of the
@@ -1675,6 +1609,10 @@ def _encode_node_page(
             # and the extra nodes read as a paging bug.
             "ranked": len(paged_nodes),
             "context_nodes": len(ancestor_nodes),
+            "edges_truncated": edges_truncated,
+            "edge_limit": _NODE_PAGE_EDGE_LIMIT,
+            "edge_returned": len(paged_edges),
+            "edge_expansion_endpoint": "/v1/graph/incident-edges",
             # See ``_boundary_edge_count``: the edge list deliberately reaches
             # one hop past the node list, so say by how much rather than letting
             # a client read the payload as an induced subgraph.
@@ -1703,10 +1641,11 @@ async def get_graph(
 ) -> Response:
     """Load the unified graph with filters and pagination.
 
-    Nodes are paginated (offset/limit). ``edges`` carries every edge *incident*
-    to the page — including edges whose other endpoint is not on it, which is
-    what keeps a severity-ranked finding page attached to the assets it hangs
-    off. It is therefore not the subgraph induced by ``nodes``;
+    Nodes are paginated (offset/limit). ``edges`` carries up to 1,000 edges
+    incident to the ranked page, plus containment context. Omitted relationships
+    are declared by ``completeness.edges_truncated`` and remain pageable through
+    ``/v1/graph/incident-edges`` at the same revision. Edges may reach nodes
+    outside the page; this is not the subgraph induced by ``nodes``;
     ``completeness.boundary_edges`` counts the edges that cross the boundary.
 
     ``stats`` describe the graph this response was computed from, NOT the page:
@@ -1803,26 +1742,19 @@ async def get_graph(
         scan_id=effective_scan_id,
         tenant_id=tenant,
         node_ids=paged_ids,
+        limit=_NODE_PAGE_EDGE_LIMIT + 1,
     )
-    source_attack_paths = await _graph_store_call(
-        graph_store.attack_paths_for_sources,
-        scan_id=effective_scan_id,
-        tenant_id=tenant,
-        source_ids=paged_ids,
+    edges_truncated = len(paged_edges) > _NODE_PAGE_EDGE_LIMIT
+    paged_edges = paged_edges[:_NODE_PAGE_EDGE_LIMIT]
+    source_attack_paths, attack_path_nodes = await page_attack_context(
+        graph_store, scan_id=effective_scan_id, tenant_id=tenant, node_ids=paged_ids, call_store=_graph_store_call
     )
-    attack_path_hop_ids = {hop for path in source_attack_paths for hop in path.hops}
-    attack_path_nodes = await _graph_store_call(
-        graph_store.nodes_by_ids,
-        scan_id=effective_scan_id,
-        tenant_id=tenant,
-        node_ids=attack_path_hop_ids - paged_ids,
-    )
-    ancestor_nodes, ancestor_edges = await _containment_ancestors(
+    ancestor_nodes, ancestor_edges = await containment_ancestors(
         graph_store,
         scan_id=effective_scan_id,
         tenant_id=tenant,
         node_ids=paged_ids,
-        known_edges=paged_edges,
+        call_store=_graph_store_call,
     )
     nodes_by_id = {node.id: node for node in [*paged_nodes, *attack_path_nodes, *ancestor_nodes]}
     snapshot_stats = await _graph_store_call(
@@ -1843,6 +1775,7 @@ async def get_graph(
         ancestor_nodes=ancestor_nodes,
         paged_edges=paged_edges,
         ancestor_edges=ancestor_edges,
+        edges_truncated=edges_truncated,
         next_cursor=next_cursor,
         offset=offset,
         limit=limit,

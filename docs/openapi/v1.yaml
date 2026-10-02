@@ -18378,10 +18378,11 @@ paths:
   /v1/graph:
     get:
       description: "Load the unified graph with filters and pagination.\n\nNodes are\
-        \ paginated (offset/limit). ``edges`` carries every edge *incident*\nto the\
-        \ page \u2014 including edges whose other endpoint is not on it, which is\n\
-        what keeps a severity-ranked finding page attached to the assets it hangs\n\
-        off. It is therefore not the subgraph induced by ``nodes``;\n``completeness.boundary_edges``\
+        \ paginated (offset/limit). ``edges`` carries up to 1,000 edges\nincident\
+        \ to the ranked page, plus containment context. Omitted relationships\nare\
+        \ declared by ``completeness.edges_truncated`` and remain pageable through\n\
+        ``/v1/graph/incident-edges`` at the same revision. Edges may reach nodes\n\
+        outside the page; this is not the subgraph induced by ``nodes``;\n``completeness.boundary_edges``\
         \ counts the edges that cross the boundary.\n\n``stats`` describe the graph\
         \ this response was computed from, NOT the page:\n``stats.total_nodes`` is\
         \ every node that survived loading, and\n``stats.total_nodes_source`` is the\

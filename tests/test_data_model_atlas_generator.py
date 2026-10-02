@@ -19,3 +19,15 @@ def test_data_model_atlas_generator_check_passes() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_data_model_atlas_check_needs_no_installed_runtime_dependencies() -> None:
+    result = subprocess.run(
+        [sys.executable, "-S", "scripts/regenerate_data_model_atlas.py", "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

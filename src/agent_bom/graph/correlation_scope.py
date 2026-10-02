@@ -1,8 +1,12 @@
 """Location boundaries used by exact-identity correlation and evidence readers."""
 
-from collections.abc import Iterable
+import hashlib
+import json
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from agent_bom.graph.node import UnifiedNode
+from agent_bom.graph.types import EntityType
 
 CORRELATION_IDENTITY_VERSION = "scoped-identity.v4"
 IDENTIFIER_NAMESPACES = {"resource_arn": "arn", "provider_id": "resource_id", "stable_id": "canonical_id"}
@@ -90,3 +94,40 @@ def container_occurrence(node: UnifiedNode) -> dict[str, object] | None:
     if uid and located:
         return {"scope": scope, "uid_kind": uid_key, "runtime_uid": uid}
     return None
+
+
+def identity_digest(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def identity_entity_value(node: UnifiedNode) -> str:
+    return node.entity_type.value if isinstance(node.entity_type, EntityType) else str(node.entity_type)
+
+
+def snapshot_scoped_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
+    entity_type = identity_entity_value(node)
+    return entity_type, f"snapshot:{scan_id}:{node.canonical_id}", "snapshot_scoped_missing_exact_identity"
+
+
+def exact_attribute_identity(
+    node: UnifiedNode,
+    *,
+    keys: Sequence[str],
+    basis: str,
+) -> tuple[str, str, str] | None:
+    key = next((key for key in keys if str(node.attributes.get(key) or "").strip()), "")
+    value = str(node.attributes.get(key) or "").strip()
+    if not value:
+        return None
+    namespace = IDENTIFIER_NAMESPACES.get(key, key)
+    scope = exact_identity_scope(node, basis=basis, namespace=namespace, value=value)
+    return identity_entity_value(node), identity_digest({"scope": scope, "namespace": namespace, "value": value}), basis
+
+
+def runtime_stable_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
+    """Resolve runtime identity with the same scope rules used by correlation."""
+    if str(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).lower() == "snowflake":
+        return snapshot_scoped_identity(node, scan_id=scan_id)
+    exact = exact_attribute_identity(node, keys=("runtime_id", "stable_id", "canonical_id"), basis="runtime_stable_id")
+    return exact or snapshot_scoped_identity(node, scan_id=scan_id)

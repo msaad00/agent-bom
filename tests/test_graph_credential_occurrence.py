@@ -186,3 +186,24 @@ def test_persisted_slot_scope_keeps_the_same_investigation_result(merge, tmp_pat
     result = merge(graphs)
     assert len(nodes_of(result, EntityType.CREDENTIAL)) == 2
     assert all(node.attributes["credential_occurrence"]["name"] == "AWS_ACCESS_KEY_ID" for node in nodes_of(result, EntityType.CREDENTIAL))
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"runtime_id": "runtime", "stable_id": "stable", "canonical_id": "canonical"},
+        {"stable_id": "stable", "canonical_id": "canonical"},
+        {"canonical_id": "canonical", "cloud_provider": "aws", "environment": "prod"},
+        {"runtime_id": "runtime", "cloud_provider": "snowflake", "account_id": "account"},
+        {},
+    ],
+)
+def test_projected_slot_uses_the_canonical_runtime_identity(attributes):
+    from agent_bom.graph.correlation import correlation_identity
+
+    graph = UnifiedGraph(scan_id="source", tenant_id="tenant")
+    server = UnifiedNode(id="server", entity_type=EntityType.SERVER, label="tools", attributes=attributes)
+    graph.add_node(server)
+    project_credentials(graph, {"credential_env_vars": ["API_KEY"]}, server.id, [], "fixture")
+    slot = nodes_of(graph, EntityType.CREDENTIAL)[0]
+    assert slot.attributes["credential_occurrence"]["server_identity"] == list(correlation_identity(server, scan_id=graph.scan_id)[:2])

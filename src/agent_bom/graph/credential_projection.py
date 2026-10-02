@@ -6,6 +6,8 @@ from typing import Any
 from agent_bom.canonical_ids import canonical_graph_node_id, source_ids
 from agent_bom.constants import is_credential_key as _is_credential_key
 from agent_bom.graph.container import UnifiedGraph
+from agent_bom.graph.correlation_scope import runtime_stable_identity
+from agent_bom.graph.credential_identity import slot_receipt
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -25,6 +27,8 @@ def project_credentials(graph: UnifiedGraph, srv_dict: Mapping[str, Any], srv_id
 
 
 def _add_credential(graph: UnifiedGraph, cred_id: str, srv_id: str, env_key: str, tool_ids: list[str], data_source_tag: str) -> None:
+    server = graph.nodes.get(srv_id)
+    occurrence = slot_receipt(env_key, runtime_stable_identity(server, scan_id=graph.scan_id)) if server is not None else None
     graph.add_node(
         UnifiedNode(
             id=cred_id,
@@ -35,6 +39,7 @@ def _add_credential(graph: UnifiedGraph, cred_id: str, srv_id: str, env_key: str
                 "source_ids": source_ids(env_key=env_key, server_id=srv_id),
                 "server": srv_id,
                 "servers": [srv_id],
+                "credential_occurrence": occurrence,
             },
             data_sources=[data_source_tag],
         )

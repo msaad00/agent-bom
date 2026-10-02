@@ -1,10 +1,14 @@
 """Location boundaries used by exact-identity correlation and evidence readers."""
 
-from collections.abc import Iterable
+import hashlib
+import json
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from agent_bom.graph.node import UnifiedNode
+from agent_bom.graph.types import EntityType
 
-CORRELATION_IDENTITY_VERSION = "scoped-identity.v3"
+CORRELATION_IDENTITY_VERSION = "scoped-identity.v4"
 IDENTIFIER_NAMESPACES = {"resource_arn": "arn", "provider_id": "resource_id", "stable_id": "canonical_id"}
 
 
@@ -51,3 +55,79 @@ def exact_identity_scope(node: UnifiedNode, *, basis: str, namespace: str, value
     if qualified_arn and arn[3] and recorded_region and recorded_region != arn[3]:
         scope["conflicting_arn_region"] = recorded_region
     return scope
+
+
+def container_occurrence(node: UnifiedNode) -> dict[str, object] | None:
+    """Return recorded deployment identity; image digests never locate containers."""
+    attrs = node.attributes
+    scope = {
+        key: str(attrs.get(key) or "").strip()
+        for key in (
+            "cloud_provider",
+            "cloud_account_id",
+            "account_id",
+            "tenant_id",
+            "subscription_id",
+            "project_id",
+            "cluster_id",
+            "cluster_arn",
+            "runtime_host_id",
+            "environment",
+        )
+        if str(attrs.get(key) or "").strip()
+    }
+    for key in ("cloud_provider", "environment"):
+        dimension = str(getattr(node.dimensions, key, "") or "").strip()
+        if dimension:
+            if key in scope and scope[key] != dimension:
+                scope[f"conflicting_dimension_{key}"] = dimension
+            scope.setdefault(key, dimension)
+    located = bool(scope.get("cloud_provider")) and any(
+        scope.get(key)
+        for key in ("cluster_id", "cluster_arn", "runtime_host_id", "cloud_account_id", "account_id", "subscription_id", "project_id")
+    )
+    uid_key = "runtime_uid" if attrs.get("runtime_uid") else "container_id"
+    uid = str(attrs.get(uid_key) or "").strip()
+    if not uid and attrs.get("kubernetes_uid") and attrs.get("container_name") and (scope.get("cluster_id") or scope.get("cluster_arn")):
+        uid_key = "kubernetes_container"
+        uid = f"{attrs['kubernetes_uid']}:{attrs['container_name']}"
+    if uid and located:
+        return {"scope": scope, "uid_kind": uid_key, "runtime_uid": uid}
+    return None
+
+
+def identity_digest(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def identity_entity_value(node: UnifiedNode) -> str:
+    return node.entity_type.value if isinstance(node.entity_type, EntityType) else str(node.entity_type)
+
+
+def snapshot_scoped_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
+    entity_type = identity_entity_value(node)
+    return entity_type, f"snapshot:{scan_id}:{node.canonical_id}", "snapshot_scoped_missing_exact_identity"
+
+
+def exact_attribute_identity(
+    node: UnifiedNode,
+    *,
+    keys: Sequence[str],
+    basis: str,
+) -> tuple[str, str, str] | None:
+    key = next((key for key in keys if str(node.attributes.get(key) or "").strip()), "")
+    value = str(node.attributes.get(key) or "").strip()
+    if not value:
+        return None
+    namespace = IDENTIFIER_NAMESPACES.get(key, key)
+    scope = exact_identity_scope(node, basis=basis, namespace=namespace, value=value)
+    return identity_entity_value(node), identity_digest({"scope": scope, "namespace": namespace, "value": value}), basis
+
+
+def runtime_stable_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
+    """Resolve runtime identity with the same scope rules used by correlation."""
+    if str(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).lower() == "snowflake":
+        return snapshot_scoped_identity(node, scan_id=scan_id)
+    exact = exact_attribute_identity(node, keys=("runtime_id", "stable_id", "canonical_id"), basis="runtime_stable_id")
+    return exact or snapshot_scoped_identity(node, scan_id=scan_id)

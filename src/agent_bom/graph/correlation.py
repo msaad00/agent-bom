@@ -23,10 +23,23 @@ from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.correlation_scope import (
     CORRELATION_IDENTITY_VERSION,
-    IDENTIFIER_NAMESPACES,
-    exact_identity_scope,
+    container_occurrence,
     merged_identity_version,
+    runtime_stable_identity,
 )
+from agent_bom.graph.correlation_scope import (
+    exact_attribute_identity as _exact_attribute_identity,
+)
+from agent_bom.graph.correlation_scope import (
+    identity_digest as _digest,
+)
+from agent_bom.graph.correlation_scope import (
+    identity_entity_value as _entity_value,
+)
+from agent_bom.graph.correlation_scope import (
+    snapshot_scoped_identity as _snapshot_scoped_identity,
+)
+from agent_bom.graph.credential_identity import credential_occurrence, is_credential_slot
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType
@@ -79,11 +92,6 @@ _RUNTIME_ENTITY_TYPES = frozenset(
         EntityType.TOOL_CALL.value,
     }
 )
-
-
-def _digest(value: Any) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
 def _timestamp_instant(value: str) -> datetime:
@@ -195,10 +203,6 @@ def _non_empty(value: Any) -> bool:
     return value not in _EMPTY_VALUES
 
 
-def _entity_value(node: UnifiedNode) -> str:
-    return node.entity_type.value if isinstance(node.entity_type, EntityType) else str(node.entity_type)
-
-
 def _relationship_value(edge: UnifiedEdge) -> str:
     return edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
 
@@ -214,27 +218,7 @@ def _oci_digest(node: UnifiedNode) -> str:
     return ""
 
 
-def _snapshot_scoped_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
-    entity_type = _entity_value(node)
-    return entity_type, f"snapshot:{scan_id}:{node.canonical_id}", "snapshot_scoped_missing_exact_identity"
-
-
-def _exact_attribute_identity(
-    node: UnifiedNode,
-    *,
-    keys: Sequence[str],
-    basis: str,
-) -> tuple[str, str, str] | None:
-    key = next((key for key in keys if str(node.attributes.get(key) or "").strip()), "")
-    value = str(node.attributes.get(key) or "").strip()
-    if not value:
-        return None
-    namespace = IDENTIFIER_NAMESPACES.get(key, key)
-    scope = exact_identity_scope(node, basis=basis, namespace=namespace, value=value)
-    return _entity_value(node), _digest({"scope": scope, "namespace": namespace, "value": value}), basis
-
-
-def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, str]:
+def correlation_identity(node: UnifiedNode, *, scan_id: str, nodes: Mapping[str, UnifiedNode] | None = None) -> tuple[str, str, str]:
     """Return ``(entity_type, identity, basis)`` for a source observation.
 
     A container is a runtime occurrence. Image digests identify reusable artifacts
@@ -243,6 +227,15 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
     """
 
     entity_type = _entity_value(node)
+    if entity_type == EntityType.CREDENTIAL.value and is_credential_slot(node):
+        occurrence = credential_occurrence(
+            node, nodes=nodes or {}, resolve_server=lambda server: correlation_identity(server, scan_id=scan_id)
+        )
+        return (
+            (entity_type, _digest(occurrence), "credential_server_slot") if occurrence else _snapshot_scoped_identity(node, scan_id=scan_id)
+        )
+    if entity_type in _RUNTIME_ENTITY_TYPES:
+        return runtime_stable_identity(node, scan_id=scan_id)
     if str(node.attributes.get("cloud_provider") or node.dimensions.cloud_provider).lower() == "snowflake":
         account = str(node.attributes.get("account_id") or "").strip()
         if account and entity_type == EntityType.ACCOUNT.value:
@@ -257,45 +250,9 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
             return entity_type, _digest({"provider": "snowflake", "account": account, "local_id": local_id}), "snowflake_account_local_id"
         return _snapshot_scoped_identity(node, scan_id=scan_id)
     if entity_type == EntityType.CONTAINER.value:
-        attrs = node.attributes
-        scope = {
-            key: str(attrs.get(key) or "").strip()
-            for key in (
-                "cloud_provider",
-                "cloud_account_id",
-                "account_id",
-                "tenant_id",
-                "subscription_id",
-                "project_id",
-                "cluster_id",
-                "cluster_arn",
-                "runtime_host_id",
-                "environment",
-            )
-            if str(attrs.get(key) or "").strip()
-        }
-        for key in ("cloud_provider", "environment"):
-            dimension = str(getattr(node.dimensions, key, "") or "").strip()
-            if dimension:
-                if key in scope and scope[key] != dimension:
-                    scope[f"conflicting_dimension_{key}"] = dimension
-                scope.setdefault(key, dimension)
-        located = bool(scope.get("cloud_provider")) and any(
-            scope.get(key)
-            for key in ("cluster_id", "cluster_arn", "runtime_host_id", "cloud_account_id", "account_id", "subscription_id", "project_id")
-        )
-        uid_key = "runtime_uid" if attrs.get("runtime_uid") else "container_id"
-        uid = str(attrs.get(uid_key) or "").strip()
-        if (
-            not uid
-            and attrs.get("kubernetes_uid")
-            and attrs.get("container_name")
-            and (scope.get("cluster_id") or scope.get("cluster_arn"))
-        ):
-            uid_key = "kubernetes_container"
-            uid = f"{attrs['kubernetes_uid']}:{attrs['container_name']}"
-        if uid and located:
-            return entity_type, _digest({"scope": scope, "uid_kind": uid_key, "runtime_uid": uid}), "runtime_occurrence"
+        occurrence = container_occurrence(node)
+        if occurrence:
+            return entity_type, _digest(occurrence), "runtime_occurrence"
         scoped_type, scoped_id, _basis = _snapshot_scoped_identity(node, scan_id=scan_id)
         return scoped_type, scoped_id, "snapshot_scoped_runtime_occurrence"
 
@@ -364,14 +321,6 @@ def correlation_identity(node: UnifiedNode, *, scan_id: str) -> tuple[str, str, 
                 "stable_id",
             ),
             basis="provider_identity_id",
-        )
-        return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
-
-    if entity_type in _RUNTIME_ENTITY_TYPES:
-        exact = _exact_attribute_identity(
-            node,
-            keys=("runtime_id", "stable_id", "canonical_id"),
-            basis="runtime_stable_id",
         )
         return exact or _snapshot_scoped_identity(node, scan_id=scan_id)
 
@@ -762,7 +711,7 @@ def merge_graph_snapshots(
     source_to_key: dict[tuple[str, str], tuple[str, str]] = {}
     for snapshot in ordered_snapshots:
         for node in sorted(snapshot.graph.nodes.values(), key=lambda item: item.id):
-            entity_type, identity, basis = correlation_identity(node, scan_id=snapshot.scan_id)
+            entity_type, identity, basis = correlation_identity(node, scan_id=snapshot.scan_id, nodes=snapshot.graph.nodes)
             key = (entity_type, identity)
             source_to_key[(snapshot.scan_id, node.id)] = key
             node_groups.setdefault(key, []).append(_NodeObservation(snapshot=snapshot, node=node, identity_basis=basis))

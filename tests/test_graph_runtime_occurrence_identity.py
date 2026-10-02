@@ -8,6 +8,7 @@ from agent_bom.db.graph_store import load_graph, open_graph_db, save_graph
 from agent_bom.graph.attack_path_fusion import compute_fused_attack_paths
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.correlation import CorrelationSnapshot, merge_graph_snapshots
+from agent_bom.graph.correlation_scope import CORRELATION_IDENTITY_VERSION
 from agent_bom.graph.correlation_workspace import CorrelationMergeWorkspace
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
@@ -98,7 +99,7 @@ def test_runtime_occurrence_joins_never_follow_shared_image_digest(tmp_path, kin
             result = workspace.finish()
     expected = kind in {"same_occurrence", "same_kubernetes_container"}
     assert bool(compute_fused_attack_paths(result.graph)) is expected
-    assert result.manifest["identity_version"] == "scoped-identity.v3"
+    assert result.manifest["identity_version"] == CORRELATION_IDENTITY_VERSION
     with open_graph_db(tmp_path / "graph.db") as connection:
         save_graph(connection, result.graph)
         restored = load_graph(connection, tenant_id="tenant", scan_id="correlated")
@@ -106,7 +107,7 @@ def test_runtime_occurrence_joins_never_follow_shared_image_digest(tmp_path, kin
         assert len(load_graph(connection, tenant_id="foreign", scan_id="correlated").nodes) == 0
 
 
-@pytest.mark.parametrize("identity_version", [None, "runtime-occurrence.v2"])
+@pytest.mark.parametrize("identity_version", [None, "runtime-occurrence.v2", "scoped-identity.v3"])
 def test_legacy_correlated_receipts_require_recomputation(identity_version):
     from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
     from agent_bom.graph.path_evidence import annotate_attack_path_evidence
@@ -127,7 +128,7 @@ def test_legacy_correlated_receipts_require_recomputation(identity_version):
     assert original_edges == [edge.to_dict() for edge in graph.edges]
 
 
-@pytest.mark.parametrize("identity_version", [None, "runtime-occurrence.v2"])
+@pytest.mark.parametrize("identity_version", [None, "runtime-occurrence.v2", "scoped-identity.v3"])
 @pytest.mark.parametrize("engine", ["memory", "disk"])
 def test_recorrelating_legacy_output_does_not_upgrade_its_receipts(identity_version, engine):
     from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
@@ -220,7 +221,7 @@ def test_runtime_occurrences_survive_live_postgres_roundtrip(kind, engine):
             store.save_graph(result.graph)
             restored = store.load_graph(tenant_id="tenant", scan_id=correlation_id)
             assert bool(compute_fused_attack_paths(restored)) is (kind == "same_occurrence")
-            assert all(edge.provenance["correlation"]["identity_version"] == "scoped-identity.v3" for edge in restored.edges)
+            assert all(edge.provenance["correlation"]["identity_version"] == CORRELATION_IDENTITY_VERSION for edge in restored.edges)
             foreign = set_current_tenant("foreign")
             try:
                 assert not store.load_graph(tenant_id="tenant", scan_id=correlation_id).nodes

@@ -111,3 +111,26 @@ describe("FilterPanel", () => {
     });
   });
 });
+
+it("gives each graph selector an accessible name and exposes expansion state", () => {
+  renderFilterPanel([]);
+  expect(screen.getByRole("combobox", {name:"Minimum severity"})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name:/Edges/}));
+  fireEvent.click(screen.getByRole("button", {name:/Traversal/}));
+  expect(screen.getByRole("combobox", {name:"Relationship scope"})).toBeInTheDocument();
+  expect(screen.getByRole("combobox", {name:"Evidence timing"})).toBeInTheDocument();
+  expect(screen.getByRole("combobox", {name:"Graph traversal depth"})).toBeInTheDocument();
+  expect(screen.getByRole("button", {name:/Layers/})).toHaveAttribute("aria-expanded","false");
+});
+
+it("searches layer names and can restore all layers without altering other filters", () => {
+  const onChange=renderFilterPanel([]);
+  fireEvent.click(screen.getByRole("button", {name:/Layers/}));
+  fireEvent.change(screen.getByRole("searchbox", {name:"Filter graph layers"}), {target:{value:"roles"}});
+  expect(screen.getByRole("checkbox", {name:"Roles"})).toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", {name:"Agents"})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name:"Show all layers"}));
+  const updated=onChange.mock.calls[0]![0];
+  expect(Object.values(updated.layers).every(Boolean)).toBe(true);
+  expect({...updated,layers:DEFAULT_FILTERS.layers}).toEqual(DEFAULT_FILTERS);
+});

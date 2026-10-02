@@ -390,6 +390,7 @@ interface FilterPanelProps {
   /** Click handler for the reset button at the panel header. */
   onReset?: () => void;
   variant?: "rail" | "panel";
+  initialLayersOpen?: boolean;
 }
 
 const DIMMED_TOOLTIP = "no nodes currently match — select to widen the graph";
@@ -532,15 +533,17 @@ export function FilterPanel({
   validValues,
   onReset,
   variant = "rail",
+  initialLayersOpen = false,
 }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState({
-    layers: false,
+    layers: initialLayersOpen,
     severity: true,
     edges: false,
     traversal: false,
     agent: true,
     pageSize: false,
   });
+  const [layerQuery, setLayerQuery] = useState("");
   const toggle = (key: LineageNodeType) =>
     onChange({
       ...filters,
@@ -578,7 +581,7 @@ export function FilterPanel({
     <div
       className={
         variant === "panel"
-          ? "grid gap-3 text-xs text-ink-secondary md:grid-cols-2 xl:grid-cols-4"
+          ? "grid items-start gap-3 text-xs text-ink-secondary md:grid-cols-2 xl:grid-cols-4"
           : "w-48 bg-surface backdrop-blur-sm border-r border-outline p-3 space-y-4 overflow-y-auto text-xs text-ink-secondary"
       }
     >
@@ -611,31 +614,57 @@ export function FilterPanel({
         onToggle={() => toggleSection("layers")}
         summary={`${Object.values(filters.layers).filter(Boolean).length} visible`}
       >
-        <div className="space-y-1.5">
-          {LAYER_LABELS?.map(({ key, label, color }) => {
-            const enabled = isLayerEnabled(key);
-            const checked = filters.layers[key];
-            return (
-              <label
-                key={key}
-                title={enabled || checked ? undefined : DIMMED_TOOLTIP}
-                className={`flex items-center gap-2 cursor-pointer ${
-                  enabled || checked
-                    ? "text-ink-secondary hover:text-foreground"
-                    : "text-ink-tertiary opacity-60 hover:opacity-100 hover:text-ink-secondary"
-                }`}
+        <div className="space-y-2">
+          <input
+            type="search"
+            aria-label="Filter graph layers"
+            placeholder="Find a layer…"
+            value={layerQuery}
+            onChange={event => setLayerQuery(event.target.value)}
+            className="w-full rounded border border-outline bg-surface px-2 py-1.5 text-foreground"
+          />
+          <div className="flex flex-wrap gap-2">
+            {[true, false].map(visible => (
+              <button
+                key={String(visible)}
+                type="button"
+                className="graph-chip-neutral"
+                aria-label={visible ? "Show all layers" : "Hide all layers"}
+                onClick={() => onChange({
+                  ...filters,
+                  layers: Object.fromEntries(Object.keys(filters.layers).map(key => [key, visible])) as FilterState["layers"],
+                })}
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggle(key)}
-                  className="accent-emerald-500 w-3 h-3"
-                />
-                <span className={`w-2 h-2 rounded-full ${color}`} />
-                {label}
-              </label>
-            );
-          })}
+                {visible ? "Show all" : "Hide all"}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-52 space-y-1.5 overflow-y-auto overscroll-contain pr-1">
+            {LAYER_LABELS.filter(item => item.label.toLowerCase().includes(layerQuery.trim().toLowerCase())).map(({ key, label, color }) => {
+              const enabled = isLayerEnabled(key);
+              const checked = filters.layers[key];
+              return (
+                <label
+                  key={key}
+                  title={enabled || checked ? undefined : DIMMED_TOOLTIP}
+                  className={`flex items-center gap-2 cursor-pointer ${
+                    enabled || checked
+                      ? "text-ink-secondary hover:text-foreground"
+                      : "text-ink-tertiary opacity-60 hover:opacity-100 hover:text-ink-secondary"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(key)}
+                    className="accent-emerald-500 w-3 h-3"
+                  />
+                  <span className={`w-2 h-2 rounded-full ${color}`} />
+                  {label}
+                </label>
+              );
+            })}
+          </div>
         </div>
       </FilterSection>
 
@@ -646,6 +675,7 @@ export function FilterPanel({
         summary={filters.severity ? `${filters.severity}+` : "all"}
       >
         <select
+          aria-label="Minimum severity"
           value={filters.severity ?? ""}
           onChange={(e) =>
             onChange({ ...filters, severity: e.target.value || null })
@@ -679,6 +709,7 @@ export function FilterPanel({
         }
       >
         <select
+          aria-label="Relationship scope"
           value={filters.relationshipScope}
           onChange={(e) =>
             onChange({
@@ -713,6 +744,7 @@ export function FilterPanel({
       >
         <div className="space-y-2">
           <select
+            aria-label="Evidence timing"
             value={filters.runtimeMode}
             onChange={(e) =>
               onChange({
@@ -728,6 +760,7 @@ export function FilterPanel({
           </select>
 
           <select
+            aria-label="Graph traversal depth"
             value={String(filters.maxDepth)}
             onChange={(e) =>
               onChange({
@@ -907,6 +940,7 @@ function FilterSection({
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={open}
         className="flex w-full items-center justify-between px-3 py-2 text-left"
       >
         <div>

@@ -301,7 +301,7 @@ async function routeGraphPage(page: Page, graph = buildDenseGraph()) {
 
 async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "dark" | "light") {
   await expect(page.getByRole("heading", { name: "Lineage Graph" })).toBeVisible();
-  await expect(page.getByText("Relevant paths", { exact: true }).first()).toBeHidden();
+  await expect(page.getByRole("button", { name: "Relevant paths", exact: true })).toBeHidden();
   // Evidence, lens selection, and advanced controls now share one
   // collapsed-by-default shelf so the canvas owns the fold. Nested controls
   // remain available on demand without becoming first-view chrome.

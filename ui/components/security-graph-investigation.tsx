@@ -332,6 +332,15 @@ export function SecurityGraphInvestigation({
     Record<string, GraphNodeNeighborsResponse>
   >({});
   const lastPinnedRef = useRef<string | null>(null);
+  const investigationRequest = useRef(0);
+  useEffect(() => {
+    investigationRequest.current += 1;
+    setBlastLoading(false);
+    setBlastActive(false);
+    return () => {
+      investigationRequest.current += 1;
+    };
+  }, [selectedNodeId, scanId, graph?.scan_id, graph?.snapshot_generation, session?.tenant_id, focusMode, attackPath]);
 
   const activeGraph = useMemo(() => {
     if (!graph) return null;
@@ -344,7 +353,7 @@ export function SecurityGraphInvestigation({
 
   useEffect(() => {
     setNeighborExpansions({});
-  }, [attackPath, focusMode, graph?.scan_id]);
+  }, [attackPath, focusMode, graph?.scan_id, graph?.snapshot_generation, scanId, session?.tenant_id]);
 
   const flow = useMemo(() => {
     if (!activeGraph) {
@@ -467,6 +476,9 @@ export function SecurityGraphInvestigation({
 
   async function handleExpandNeighbors() {
     if (!selectedNodeId || !scanId) return;
+    const request = ++investigationRequest.current;
+    setBlastLoading(false);
+    setBlastActive(false);
     onStepHint?.("expand");
     try {
       const neighbors = await api.getGraphNodeNeighbors(selectedNodeId, {
@@ -474,9 +486,10 @@ export function SecurityGraphInvestigation({
         limit: 24,
         direction: "both",
       });
+      if (request !== investigationRequest.current) return;
       setNeighborExpansions((current) => ({ ...current, [selectedNodeId]: neighbors }));
       setDrawerData((current) =>
-        current
+        current?.attributes?.node_id === selectedNodeId
           ? {
               ...current,
               neighborCount: neighbors.total_neighbors ?? undefined,
@@ -502,6 +515,7 @@ export function SecurityGraphInvestigation({
 
   async function handleShowImpact() {
     if (!selectedNodeId || !scanId) return;
+    const request = ++investigationRequest.current;
     onStepHint?.("impact");
     setBlastLoading(true);
     try {
@@ -509,8 +523,9 @@ export function SecurityGraphInvestigation({
         api.getGraphNode(selectedNodeId, scanId),
         api.getGraphImpact(selectedNodeId, scanId),
       ]);
+      if (request !== investigationRequest.current) return;
       setDrawerData((current) => {
-        if (!current) return current;
+        if (!current || current.attributes?.node_id !== selectedNodeId) return current;
         const merged = mergeGraphNodeDetail(current, detail);
         return {
           ...merged,
@@ -522,9 +537,9 @@ export function SecurityGraphInvestigation({
       });
       setBlastActive(true);
     } catch {
-      setBlastActive(false);
+      if (request === investigationRequest.current) setBlastActive(false);
     } finally {
-      setBlastLoading(false);
+      if (request === investigationRequest.current) setBlastLoading(false);
     }
   }
 

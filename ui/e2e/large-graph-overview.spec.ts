@@ -1003,3 +1003,28 @@ for (const theme of ["light", "dark"]) {
     await page.screenshot({ path: testInfo.outputPath(`blast-radius-${theme}.png`) });
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`bounded incident relationships stay visible in ${theme}`, async ({ page }, testInfo) => {
+    await routeLargeGraphPage(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    const graph = buildLargeGraph();
+    graph.pagination.has_more = false;
+    await page.route("**/v1/graph?**", route => route.fulfill({ json: {
+      ...graph,
+      completeness: { status: "truncated", complete: false, truncated: true, sampled: false,
+        returned: graph.nodes.length, total: graph.nodes.length, reason: "incident_edge_limit",
+        edges_truncated: true, edge_limit: 1000, edge_returned: 1000,
+        edge_expansion_endpoint: "/v1/graph/incident-edges" },
+    } }));
+    await page.goto(`/graph?scan=${scanId}&rollup=0&vulnOnly=0&severity=&layers=agent,package,vulnerability`);
+    const disclosure = page.getByTestId("graph-partial-view");
+    await expect(disclosure.locator("summary")).toContainText("relationships limited");
+    await disclosure.locator("summary").click();
+    await expect(disclosure.getByText(/Select a node to investigate and page its recorded connections/)).toBeVisible();
+    await expect(disclosure.getByRole("button", { name: /Load broader map/ })).toHaveCount(0);
+    await disclosure.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`incident-limit-${theme}.png`) });
+  });
+}

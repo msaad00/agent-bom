@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from agent_bom.evidence.semantics import ExploitabilityDimension
 from agent_bom.graph.container import AttackPath, UnifiedGraph
+from agent_bom.graph.correlation_scope import CORRELATION_IDENTITY_VERSION
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.hop_evidence import authority_evidence, runtime_evidence_references
 from agent_bom.graph.types import RelationshipType
@@ -61,7 +62,7 @@ def _source_snapshot_ids(edge: UnifiedEdge, graph: UnifiedGraph) -> list[str]:
 
 def _correlation_identity_current(edge: UnifiedEdge) -> bool:
     correlation = _correlation_provenance(edge)
-    return not correlation or correlation.get("identity_version") == "runtime-occurrence.v2"
+    return not correlation or correlation.get("identity_version") == CORRELATION_IDENTITY_VERSION
 
 
 def _has_relationship_provenance(edge: UnifiedEdge) -> bool:

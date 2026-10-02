@@ -45,7 +45,7 @@ def _sqlalchemy_url(url: str) -> str:
 
 
 @pytest.fixture()
-def migrated_fresh_database(monkeypatch):
+def migrated_fresh_database(monkeypatch, request):
     """Create a throwaway database, migrate it to Alembic head, point the app at it."""
     import psycopg
 
@@ -62,7 +62,7 @@ def migrated_fresh_database(monkeypatch):
         cfg = Config(str(ALEMBIC_DIR / "alembic.ini"))
         cfg.set_main_option("script_location", str(ALEMBIC_DIR / "alembic"))
         monkeypatch.setenv("ALEMBIC_DATABASE_URL", _sqlalchemy_url(_with_database(admin_url, database)))
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, getattr(request, "param", "head"))
 
         from agent_bom.api import postgres_common
 
@@ -203,7 +203,9 @@ def test_audit_fork_guard_unique_index_present_after_migrate_to_head(migrated_fr
     """
     import psycopg
 
-    with psycopg.connect(os.environ["AGENT_BOM_POSTGRES_URL"]) as conn:
+    from agent_bom.api.postgres_common import resolve_postgres_secret, resolve_postgres_url
+
+    with psycopg.connect(resolve_postgres_url(), password=resolve_postgres_secret()) as conn:
         row = conn.execute(
             "SELECT indexdef FROM pg_indexes WHERE tablename = 'audit_log' AND indexname = 'audit_log_team_prevsig_uniq'"
         ).fetchone()
@@ -214,6 +216,7 @@ def test_audit_fork_guard_unique_index_present_after_migrate_to_head(migrated_fr
     assert "team_id" in indexdef and "prev_signature" in indexdef
 
 
+@pytest.mark.parametrize("migrated_fresh_database", ["20260923_02"], indirect=True)
 def test_comparable_trends_round_trip_and_tenant_isolation(migrated_fresh_database, tmp_path):
     """Migration-created metadata survives retries with the same SQLite result."""
     import psycopg
@@ -226,7 +229,8 @@ def test_comparable_trends_round_trip_and_tenant_isolation(migrated_fresh_databa
 
     cfg = Config(str(ALEMBIC_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(ALEMBIC_DIR / "alembic"))
-    command.downgrade(cfg, "20260923_02")
+    # Seed the legacy schema directly: newer ledger migrations deliberately
+    # reject downgrade because rollback requires restoring a compatible backup.
     admin_url = _with_database(os.environ["AGENT_BOM_POSTGRES_ADMIN_URL"], migrated_fresh_database)
     with psycopg.connect(admin_url) as conn:
         conn.execute(

@@ -1467,11 +1467,35 @@ class _RecordingGraphStore:
             next_cursor = encode_graph_cursor(page[-1])
         return self.graph.scan_id, self.graph.created_at, page, full_total, next_cursor
 
-    def edges_for_node_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str], induced_only: bool = False):
+    def edges_for_node_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+        induced_only: bool = False,
+        direction: str = "both",
+        relationships: set[str] | None = None,
+        limit: int | None = None,
+    ):
         self.calls.append(("edges_for_node_ids", tenant_id, scan_id, tuple(sorted(node_ids))))
-        if induced_only:
-            return [edge for edge in self.graph.edges if edge.source in node_ids and edge.target in node_ids]
-        return [edge for edge in self.graph.edges if edge.source in node_ids or edge.target in node_ids]
+        edges = [
+            edge
+            for edge in self.graph.edges
+            if (
+                (edge.source in node_ids and edge.target in node_ids)
+                if induced_only
+                else (
+                    edge.target in node_ids
+                    if direction == "in"
+                    else edge.source in node_ids
+                    if direction == "out"
+                    else edge.source in node_ids or edge.target in node_ids
+                )
+            )
+            and (not relationships or edge.relationship.value in relationships)
+        ]
+        return edges[:limit] if limit is not None else edges
 
     def search_nodes(
         self,
@@ -2155,7 +2179,7 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 200
         helper_calls = [call[0] for call in recording_graph_store.calls]
         assert helper_calls.count("page_nodes") == 1
-        assert helper_calls.count("edges_for_node_ids") == 1
+        assert helper_calls.count("edges_for_node_ids") == 2  # incident page plus incoming containment
         assert helper_calls.count("snapshot_stats") == 1
         assert "load_graph" not in helper_calls
 

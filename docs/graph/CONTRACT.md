@@ -378,7 +378,7 @@ These gaps are tracked as roadmap work. None of them block the guarantees in §2
 ## Correlated runtime identity and path proof
 
 Correlation manifests and edge receipts identify the join contract as
-`runtime-occurrence.v2`. Container occurrences join only when an authoritative
+`scoped-identity.v3`. Container occurrences join only when an authoritative
 runtime identifier and its provider and account, cluster, or host scope match
 within the requesting tenant. Kubernetes pod identifiers additionally require
 container names. Missing identity stays specific to the source snapshot. Image
@@ -789,6 +789,21 @@ once while retaining each original page in the receipt. Changed node evidence,
 duplicate nodes within a page, repeated ranked nodes, inconsistent counts and
 oversized ranked slices fail closed.
 
+A ranked node page includes at most 1,000 incident relationships, plus its
+containment context. `completeness.edge_returned` counts the incident slice;
+`edge_limit` states its bound and `edges_truncated` reports omitted relationships.
+The overall completeness remains truncated even when every node fits on one
+page. Snapshot totals still describe the stored estate, not the displayed slice.
+Containment parents are fetched independently through incoming containment
+relationships, so a high-degree parent does not require loading its siblings.
+
+For a complete recorded neighborhood, request `GET /v1/graph/incident-edges`
+with the selected `node_id`, returned `scan_id` and `snapshot_generation`, then
+follow `next_cursor` until it is empty. This endpoint is also returned in
+`completeness.edge_expansion_endpoint`. Preserve the revision across requests;
+on replacement, restart the investigation. Exhausted node pagination alone does
+not prove that every relationship was returned.
+
 Exhausting this bounded set of node pages does not establish source collection
 coverage, effective permission or successful execution. Use the retained scope
 and completeness when building an integration, then qualify its workload against
@@ -799,3 +814,26 @@ SQLite startup repairs for missing relationship time/source metadata use partial
 Storage qualification uses the same content, tenant, revision and non-overlapping-page checks in thread and process modes. Private failure receipts retain the worker stage, completed-operation counters, elapsed time and allowlisted SQLite error codes/names, without raw exception messages, SQL or connection strings. A failed worker stops the run; contention errors are failures, not successful reads or silently retried operations. Successful bounded runs do not explain a historical failure whose receipt lacks diagnostic detail.
 
 SQLite graph mutations use bounded FIFO admission per resolved database path within each process, including schema setup and search projection updates. Initialized WAL readers and unrelated database files do not enter this queue. Admission waits at most ten seconds; timeout raises `SQLITE_BUSY` before opening a connection or consuming a streaming producer. SQLite still coordinates separate processes with its existing ten-second lock timeout; local admission does not guarantee cross-process fairness or a total ten-second operation deadline. Failed producers roll back without replay. Removing admission on rollback restores SQLite-only scheduling; no schema change is required.
+
+### Correlation identity scope
+
+New correlations record `scoped-identity.v3`. Exact provider identities include
+recorded provider, account and location scope; runtime IDs also include the
+recorded host and environment. Provider/environment dimensions and attributes
+are equivalent when they agree. Conflicting values remain separate identities.
+Identifier namespaces remain distinct: equal text in a Kubernetes UID, provider
+resource ID or directory client ID is insufficient to join nodes. Explicit
+aliases such as `arn`/`resource_arn` and `canonical_id`/`stable_id` still join.
+Fully qualified regional ARNs and global S3 ARNs keep their identity when only
+redundant collection location metadata differs in presence. A recorded region
+that contradicts an ARN stays separate; incomplete ARN forms retain local scope.
+No missing provider, location or identity is inferred from labels.
+
+Existing correlation receipts remain available without rewriting their source
+evidence. Earlier identity versions require recomputation from original source
+snapshots before path evidence can be considered current. Re-correlating an old
+correlated output preserves its legacy identity status on nodes and edges; it
+cannot recover scope lost by the original join. To qualify an investigation,
+submit the original snapshots to `/v1/graph/correlations`, wait for completion,
+and open the new output snapshot and its source receipts. Incompletely located
+observations may remain separate; this is preferable to fabricating connectivity.

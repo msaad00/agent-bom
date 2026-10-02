@@ -1933,8 +1933,8 @@ class SQLiteGraphStore:
                     SELECT COUNT(*)
                     FROM graph_edges
                     WHERE tenant_id = ? AND scan_id = ?
-                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                      AND EXISTS (SELECT 1 FROM graph_nodes WHERE id = graph_edges.source_id AND {where_sql})
+                      AND EXISTS (SELECT 1 FROM graph_nodes WHERE id = graph_edges.target_id AND {where_sql})
                     """,  # nosec B608 - where_sql is built from static clause fragments
                     [tenant_id, effective_scan_id, *params, *params],
                 ).fetchone()[0]
@@ -1943,8 +1943,8 @@ class SQLiteGraphStore:
                 SELECT relationship, COUNT(*)
                 FROM graph_edges
                 WHERE tenant_id = ? AND scan_id = ?
-                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
-                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                  AND EXISTS (SELECT 1 FROM graph_nodes WHERE id = graph_edges.source_id AND {where_sql})
+                  AND EXISTS (SELECT 1 FROM graph_nodes WHERE id = graph_edges.target_id AND {where_sql})
                 GROUP BY relationship
                 """,  # nosec B608 - where_sql is built from static clause fragments
                 [tenant_id, effective_scan_id, *params, *params],

@@ -115,3 +115,29 @@ def test_omitted_incident_edge_does_not_erase_containment_parent(store):
     finally:
         set_graph_store(None)
         disable_trusted_proxy_env()
+
+
+def test_snapshot_relationship_counts_do_not_probe_every_endpoint_pair(store, monkeypatch):
+    # Count SQLite VM work instead of elapsed time: high-degree estates must
+    # inspect stored edges, not all combinations of source and target nodes.
+    graph = _graph("tenant-a", 30000)
+    graph.edges.clear()
+    for i in range(3000):
+        graph.add_node(UnifiedNode(id=f"asset:{i}", entity_type=EntityType.CLOUD_RESOURCE, label=f"asset {i}"))
+    for i in range(30000):
+        graph.add_edge(UnifiedEdge(source=f"asset:{i % 3000}", target=f"finding:{i:05}", relationship=RelationshipType.USES))
+    store.save_graph(graph)
+    conn = store._open_rw_conn()
+    conn.execute("ANALYZE")
+    steps = 0
+
+    def budget():
+        nonlocal steps
+        steps += 1000
+        return int(steps > 3_000_000)
+
+    conn.set_progress_handler(budget, 1000)
+    monkeypatch.setattr(store, "_open_ro_conn", lambda: conn)
+    stats = store.snapshot_stats(tenant_id="tenant-a", scan_id="estate")
+    assert stats["relationship_types"] == {"uses": 30000}
+    assert stats["total_edges"] == 30000

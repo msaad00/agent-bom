@@ -67,12 +67,12 @@ export const PIPELINE_GRAPH: readonly PipelineGraphNodeSpec[] = [
   },
   {
     id: "secrets",
-    label: "Secrets",
+    label: "Secrets / PII",
     kind: "scanner",
     domain: "secrets",
     stepId: "scanning",
     dependsOn: ["extraction"],
-    description: "Scan for exposed credentials",
+    description: "Scan for exposed credentials and personal data",
   },
   {
     id: "iac",
@@ -288,7 +288,10 @@ function statusOf(
 ): StepStatus {
   const raw = (steps.get(spec.stepId)?.status ?? "pending") as StepStatus;
   if (spec.kind === "scanner" && spec.domain) {
-    return laneStatus(raw, lanes?.[spec.domain]?.ran ?? false);
+    const lane = lanes?.[spec.domain];
+    // Discovery-time scanners can finish even when CVE scanning is skipped.
+    if (TERMINAL.has(raw) && lane?.ran && lane.summarized) return "done";
+    return laneStatus(raw, lane?.ran ?? false);
   }
   return raw;
 }

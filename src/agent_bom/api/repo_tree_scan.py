@@ -90,6 +90,19 @@ def scan_path_secrets(roots: list[Path] | list[str], *, offline: bool) -> tuple[
     return merged.to_dict(), issues
 
 
+def secret_scan_warning(block: dict[str, Any], *, location: str) -> str:
+    """Describe scanner categories without classifying PII as credentials."""
+    categories = block.get("by_category", {})
+    pii = categories.get("pii", 0)
+    secrets = categories.get("credential", 0) + categories.get("secret", 0)
+    parts = []
+    if secrets:
+        parts.append(f"{secrets} secret or credential pattern(s)")
+    if pii:
+        parts.append(f"{pii} PII pattern(s)")
+    return f"{' and '.join(parts) or str(block['total']) + ' finding(s)'} found in {location} files"
+
+
 @dataclass
 class WeakCryptoFinding:
     file_path: str
@@ -336,14 +349,14 @@ def scan_cloned_repo_tree(
             )
 
     if update_progress is not None:
-        update_progress("Scanning for hardcoded secrets and credentials")
+        update_progress("Scanning for secrets, credentials, and PII")
     secrets_block, secret_issues = scan_path_secrets([root], offline=offline)
     # A zero-finding result still records whether discovery actually covered
     # the requested tree. Preserve it through both API report assembly paths.
     ai_inventory["secrets"] = secrets_block
     result.scan_issues.extend(secret_issues)
     if secrets_block["total"] > 0:
-        warnings.append(f"{secrets_block['total']} hardcoded secret(s) or credential pattern(s) found in repository files")
+        warnings.append(secret_scan_warning(secrets_block, location="repository"))
 
     if update_progress is not None:
         update_progress("Scanning for weak or deprecated cryptography")

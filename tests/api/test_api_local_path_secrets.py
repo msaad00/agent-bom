@@ -86,3 +86,59 @@ def test_multiple_roots_keep_findings_distinguishable(monkeypatch, tmp_path):
 
     files = sorted(f["file"] for f in job.result["ai_inventory"]["secrets"]["findings"])
     assert files == ["alpha/main.py", "beta/main.py"]
+
+
+@pytest.mark.parametrize("field", ["agent_projects", "filesystem_paths"])
+def test_pii_only_warning_does_not_claim_credentials(monkeypatch, tmp_path, field):
+    store = InMemoryJobStore()
+    _patch(monkeypatch, store)
+    (tmp_path / "config.yaml").write_text("customer_email: alice@example.com\n")
+    job = _run(store, ScanRequest(**{field: [str(tmp_path)]}, offline=True, enrich=False))
+    assert job.status == JobStatus.DONE
+    assert job.result["ai_inventory"]["secrets"]["by_category"] == {"pii": 1}
+    warnings = "\n".join(job.result["warnings"])
+    assert "1 PII pattern(s)" in warnings
+    assert "hardcoded secret(s)" not in warnings
+    assert "credential pattern(s)" not in warnings
+
+
+def test_successful_zero_cve_scan_does_not_invent_network_failure(monkeypatch, tmp_path):
+    store = InMemoryJobStore()
+    _patch(monkeypatch, store)
+    from agent_bom.models import Agent, AgentType, MCPServer, Package
+
+    agent = Agent(
+        name="fixture",
+        agent_type=AgentType.CUSTOM,
+        config_path="fixture",
+        mcp_servers=[MCPServer(name="fixture", packages=[Package(name="requests", version="2.31.0", ecosystem="pypi")])],
+    )
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *a, **k: [agent])
+    job = _run(store, ScanRequest(agent_projects=[str(tmp_path)], enrich=False))
+    assert job.status == JobStatus.DONE
+    assert job.result["summary"]["total_packages"] > 0
+    assert not any("network issue" in warning for warning in job.result["warnings"])
+
+
+def test_actual_lookup_failure_keeps_structured_coverage_warning(monkeypatch, tmp_path):
+    from agent_bom.models import Agent, AgentType, MCPServer, Package
+    from agent_bom.scanners.state import record_coverage_warning
+
+    store = InMemoryJobStore()
+    _patch(monkeypatch, store)
+    agent = Agent(
+        name="fixture",
+        agent_type=AgentType.CUSTOM,
+        config_path="fixture",
+        mcp_servers=[MCPServer(name="fixture", packages=[Package(name="requests", version="2.31.0", ecosystem="pypi")])],
+    )
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *a, **k: [agent])
+
+    def failed_lookup(*args, **kwargs):
+        record_coverage_warning({"kind": "remote_lookup_error", "release": "pkg:pypi/requests@2.31.0", "message": "OSV lookup unavailable"})
+        return []
+
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", failed_lookup)
+    job = _run(store, ScanRequest(agent_projects=[str(tmp_path)], enrich=False))
+    assert job.status == JobStatus.DONE
+    assert job.result["coverage_warnings"][0]["kind"] == "remote_lookup_error"

@@ -1122,15 +1122,15 @@ def _run_scan_sync(job: ScanJob) -> None:
 
             secret_roots = [path for path in (*effective_agent_projects, *req.filesystem_paths) if path and _SecretRootPath(path).is_dir()]
             if secret_roots:
-                pipeline.update_step("discovery", "Scanning for hardcoded secrets and credentials")
-                from agent_bom.api.repo_tree_scan import scan_path_secrets
+                pipeline.update_step("discovery", "Scanning for secrets, credentials, and PII")
+                from agent_bom.api.repo_tree_scan import scan_path_secrets, secret_scan_warning
 
                 secrets_block, secret_issues = scan_path_secrets(secret_roots, offline=req.offline)
                 repo_ai_inventory_data = repo_ai_inventory_data or {}
                 repo_ai_inventory_data["secrets"] = secrets_block
                 repo_scan_issues = [*repo_scan_issues, *secret_issues]
                 if secrets_block["total"] > 0:
-                    warnings_all.append(f"{secrets_block['total']} hardcoded secret(s) or credential pattern(s) found in project files")
+                    warnings_all.append(secret_scan_warning(secrets_block, location="project"))
 
         from agent_bom.discovery.identity import consolidate_project_agents
 
@@ -1368,10 +1368,6 @@ def _run_scan_sync(job: ScanJob) -> None:
                         if soft is not None and soft.telemetry.warnings:
                             warnings_all.extend(soft.telemetry.warnings)
             total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
-            if total_pkgs > 0 and total_vulns == 0 and not blast_radii and not req.offline:
-                warnings_all.append(
-                    f"Scanned {total_pkgs} packages but found 0 vulnerabilities. This may indicate a network issue reaching OSV.dev."
-                )
             pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
 
         if req.no_scan:

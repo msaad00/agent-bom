@@ -6,6 +6,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 
+from agent_bom import config
 from agent_bom.api.durable_store import default_state_db_path, postgres_configured
 from agent_bom.api.middleware import clustered_control_plane_required
 
@@ -19,6 +20,20 @@ class ReadinessStatus:
         if self.ready:
             return {"status": "ready"}
         return {"status": "not_ready", "reason": self.reason}
+
+
+def _graph_readiness() -> ReadinessStatus:
+    # Neptune has no bounded readiness contract yet. Do not initialize a
+    # Gremlin client or report readiness based only on another database.
+    if config.GRAPH_BACKEND.strip().lower() == "neptune":
+        return ReadinessStatus(ready=False, reason="graph_readiness_unsupported")
+    try:
+        from agent_bom.api.stores import _get_graph_store
+
+        _get_graph_store().check_readiness()
+    except Exception:  # noqa: BLE001 — readiness must not leak storage details
+        return ReadinessStatus(ready=False, reason="graph_storage_unavailable")
+    return ReadinessStatus(ready=True)
 
 
 def evaluate_control_plane_readiness() -> ReadinessStatus:
@@ -46,7 +61,7 @@ def evaluate_control_plane_readiness() -> ReadinessStatus:
         auth_state = get_auth_state()
         if not isinstance(auth_state, PostgresAuthState) or not auth_state.is_available():
             return ReadinessStatus(ready=False, reason="shared_auth_state_unavailable")
-        return ReadinessStatus(ready=True)
+        return _graph_readiness()
 
     db_path = os.environ.get("AGENT_BOM_DB", "").strip() or default_state_db_path()
     if db_path and db_path != ":memory:":
@@ -56,7 +71,7 @@ def evaluate_control_plane_readiness() -> ReadinessStatus:
                 sqlite_conn.execute("SELECT 1")
             finally:
                 sqlite_conn.close()
-        except Exception:  # noqa: BLE001
+        except (sqlite3.Error, OSError, ValueError):
             return ReadinessStatus(ready=False, reason="database_unavailable")
 
-    return ReadinessStatus(ready=True)
+    return _graph_readiness()

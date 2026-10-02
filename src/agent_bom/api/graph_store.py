@@ -338,9 +338,27 @@ class SQLiteGraphStore:
             finally:
                 conn.close()
 
-    def _open_ro_conn(self) -> sqlite3.Connection | None:
+    def check_readiness(self) -> None:
+        """Initialize empty storage once, then validate schema without graph scans."""
+        conn = self._open_ro_conn(initialize_missing=True)
+        assert conn is not None
+        try:
+            conn.execute("PRAGMA busy_timeout=1000")
+            conn.execute("SELECT scan_id, tenant_id FROM graph_snapshots LIMIT 0")
+            conn.execute("SELECT id, tenant_id FROM graph_nodes LIMIT 0")
+            conn.execute("SELECT source_id, target_id, tenant_id FROM graph_edges LIMIT 0")
+            conn.execute("SELECT node_id, tenant_id FROM graph_node_search LIMIT 0")
+        finally:
+            conn.close()
+
+    def _open_ro_conn(self, *, initialize_missing: bool = False) -> sqlite3.Connection | None:
         if not self._db_path.exists():
-            return None
+            if not initialize_missing:
+                return None
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            # Create the empty file, then use the same per-file initialization
+            # lock/cache as ordinary reads. A connection context does not close.
+            sqlite3.connect(str(self._db_path), timeout=1).close()
         ensure_read_schema(self._db_path, self._open_rw_conn, sqlite_graph_store.refresh_query_planner_stats)
         try:
             conn = sqlite3.connect(f"{self._db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=10)

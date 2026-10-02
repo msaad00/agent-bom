@@ -19,6 +19,14 @@ if TYPE_CHECKING:
 class GraphStoreProtocol(Protocol):
     """Backend-neutral graph store port owned by graph application services."""
 
+    def check_readiness(self) -> None:
+        """Validate bounded storage access; raise if unavailable or unsupported.
+
+        Initialization may run once. Warm checks must not load tenant graphs;
+        success does not certify graph completeness, capacity or authorization.
+        """
+        ...
+
     def latest_snapshot_id(self, *, tenant_id: str = "", snapshot_kind: str = "scan") -> str: ...
 
     def previous_snapshot_id(

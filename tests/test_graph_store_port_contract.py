@@ -30,6 +30,7 @@ def store_factory(request, tmp_path):
 
 def test_streaming_snapshot_port_preserves_paging_scope_and_generation(store_factory):
     store: GraphStoreProtocol = store_factory()
+    store.check_readiness()
     tenant, other, scan = uuid4().hex, uuid4().hex, uuid4().hex
     context = set_current_tenant(tenant)
     try:

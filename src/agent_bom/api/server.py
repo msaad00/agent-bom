@@ -1697,7 +1697,7 @@ async def readiness() -> JSONResponse:
         return JSONResponse(status_code=503, content={"status": "draining"})
     from agent_bom.api.readiness import evaluate_control_plane_readiness
 
-    status = evaluate_control_plane_readiness()
+    status = await asyncio.to_thread(evaluate_control_plane_readiness)
     if not status.ready:
         return JSONResponse(status_code=503, content=status.as_dict())
     return JSONResponse(status_code=200, content=status.as_dict())

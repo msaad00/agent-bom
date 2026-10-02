@@ -302,6 +302,14 @@ class PostgresGraphStore:
         self._maintenance_pool = maintenance_pool
         self._init_tables()
 
+    def check_readiness(self) -> None:
+        """Probe graph tables without loading rows or migrating on every check."""
+        with self._pool.connection() as conn:
+            conn.execute("SET LOCAL statement_timeout = '1000ms'")
+            conn.execute("SELECT scan_id, tenant_id FROM graph_snapshots LIMIT 0")
+            conn.execute("SELECT id, tenant_id FROM graph_nodes LIMIT 0")
+            conn.execute("SELECT source_id, target_id, tenant_id FROM graph_edges LIMIT 0")
+
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
             if not ensure_postgres_schema_version(conn, "graph", _GRAPH_STORAGE_SCHEMA_VERSION):

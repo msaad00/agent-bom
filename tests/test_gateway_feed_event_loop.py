@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 
 import pytest
@@ -140,3 +141,30 @@ def test_feed_routes_do_not_block_the_event_loop(tmp_path, monkeypatch, route):
         f"one stall of {worst_stall * 1000:.0f} ms covered most of the {elapsed * 1000:.0f} ms call -- "
         "the read is running on the event loop, not a worker thread"
     )
+
+
+@pytest.mark.parametrize("route", ["feed", "kpis"])
+def test_feed_projection_runs_off_the_event_loop(monkeypatch, route):
+    from agent_bom.api.routes import gateway_feed as feed_mod
+
+    class _Req:
+        state = type("S", (), {"tenant_id": "default"})()
+        headers: dict[str, str] = {}
+
+    builder_name = "build_gateway_feed" if route == "feed" else "build_gateway_feed_kpis"
+    builder = getattr(feed_mod, builder_name)
+    loop_thread = threading.get_ident()
+    projected = []
+
+    def checked_projection(**kwargs):
+        # Normalization, redaction and sorting must not monopolize the loop
+        # after the storage read has yielded back from its worker.
+        assert threading.get_ident() != loop_thread, "feed projection ran on the event loop"
+        projected.append(True)
+        return builder(**kwargs)
+
+    monkeypatch.setattr(feed_mod, builder_name, checked_projection)
+    handler = feed_mod.gateway_feed if route == "feed" else feed_mod.gateway_feed_kpis
+    result = asyncio.run(handler(_Req(), limit=100) if route == "feed" else handler(_Req()))
+    assert projected == [True]
+    assert isinstance(result, dict)

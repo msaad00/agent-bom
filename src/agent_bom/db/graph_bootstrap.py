@@ -28,6 +28,9 @@ def ensure_read_schema(path: Path, initialize: Callable[[], sqlite3.Connection],
     with _SCHEMA_INIT_LOCK:
         if _INITIALIZED_FILES.get(key) == identity:
             return
+        # Retire the old identity before attempting replacement initialization:
+        # a failed replacement may otherwise leave a reusable inode cached.
+        _INITIALIZED_FILES.pop(key, None)
         conn = initialize()
         try:
             refresh(conn)

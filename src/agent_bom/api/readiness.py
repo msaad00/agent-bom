@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
+
+from fastapi.responses import JSONResponse
 
 from agent_bom import config
 from agent_bom.api.durable_store import default_state_db_path, postgres_configured
@@ -20,6 +24,16 @@ class ReadinessStatus:
         if self.ready:
             return {"status": "ready"}
         return {"status": "not_ready", "reason": self.reason}
+
+
+async def control_plane_readiness_response(is_draining: Callable[[], bool]) -> JSONResponse:
+    """Probe storage off-loop while respecting drain transitions during the wait."""
+    if is_draining():
+        return JSONResponse(status_code=503, content={"status": "draining"})
+    status = await asyncio.to_thread(evaluate_control_plane_readiness)
+    if is_draining():
+        return JSONResponse(status_code=503, content={"status": "draining"})
+    return JSONResponse(status_code=200 if status.ready else 503, content=status.as_dict())
 
 
 def _graph_readiness() -> ReadinessStatus:

@@ -85,6 +85,18 @@ def test_replaced_graph_is_revalidated_and_recovers(tmp_path):
     assert evaluate_control_plane_readiness().ready
 
 
+def test_failed_replacement_retires_the_prior_initialization_identity(tmp_path):
+    from agent_bom.db.graph_bootstrap import _INITIALIZED_FILES
+
+    assert evaluate_control_plane_readiness().ready
+    path = tmp_path / "graph.db"
+    replacement = tmp_path / "invalid.db"
+    replacement.write_bytes(b"invalid replacement")
+    replacement.replace(path)
+    assert evaluate_control_plane_readiness().reason == "graph_storage_unavailable"
+    assert str(path.resolve()) not in _INITIALIZED_FILES
+
+
 @pytest.mark.parametrize("opt_in", ["0", "1"])
 def test_neptune_readiness_is_explicitly_unsupported(monkeypatch, opt_in):
     monkeypatch.setenv("AGENT_BOM_GRAPH_BACKEND", "neptune")
@@ -155,6 +167,31 @@ async def test_storage_probe_does_not_block_event_loop(monkeypatch):
         release.set()
         response = await task
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_drain_started_during_storage_probe_cannot_report_ready(monkeypatch):
+    from agent_bom.api import server
+    from agent_bom.api.readiness import ReadinessStatus
+
+    started, release = threading.Event(), threading.Event()
+
+    def probe():
+        started.set()
+        release.wait(2)
+        return ReadinessStatus(ready=True)
+
+    monkeypatch.setattr(server, "_shutting_down", False)
+    monkeypatch.setattr("agent_bom.api.readiness.evaluate_control_plane_readiness", probe)
+    task = asyncio.create_task(server.readiness())
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        monkeypatch.setattr(server, "_shutting_down", True)
+    finally:
+        release.set()
+        response = await task
+    assert response.status_code == 503
+    assert response.body == b'{"status":"draining"}'
 
 
 def test_health_remains_live_when_graph_not_ready(tmp_path, monkeypatch):

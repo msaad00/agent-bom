@@ -1197,14 +1197,25 @@ def _cpe_vendor_hint(pkg: Package) -> str | None:
             parsed = PackageURL.from_string(pkg.purl)
         except Exception:
             parsed = None
+        if parsed is not None and parsed.type == "maven" and parsed.namespace:
+            # Maven group IDs identify projects and often end in the artifact
+            # name (for example ``org.apache.logging.log4j``), while NVD uses
+            # the publisher as its CPE vendor (``apache``). Only use a mapping
+            # we know; treating an arbitrary group suffix as a vendor can hide
+            # valid candidates or suppress the wrong vendor.
+            group_id = parsed.namespace.strip().lower()
+            if group_id == "log4j" or group_id.startswith("org.apache."):
+                return "apache"
+            return None
         if parsed is not None and parsed.namespace:
             namespace = parsed.namespace.strip().strip("/")
             if namespace:
                 return namespace.rsplit("/", 1)[-1]
     if pkg.ecosystem.lower() == "maven" and ":" in pkg.name:
         group_id = pkg.name.split(":", 1)[0].strip()
-        if group_id:
-            return group_id.rsplit(".", 1)[-1]
+        normalized_group = group_id.lower()
+        if normalized_group == "log4j" or normalized_group.startswith("org.apache."):
+            return "apache"
     return None
 
 

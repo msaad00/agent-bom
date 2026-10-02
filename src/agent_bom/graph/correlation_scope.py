@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from agent_bom.graph.node import UnifiedNode
 
-CORRELATION_IDENTITY_VERSION = "scoped-identity.v3"
+CORRELATION_IDENTITY_VERSION = "scoped-identity.v4"
 IDENTIFIER_NAMESPACES = {"resource_arn": "arn", "provider_id": "resource_id", "stable_id": "canonical_id"}
 
 
@@ -51,3 +51,42 @@ def exact_identity_scope(node: UnifiedNode, *, basis: str, namespace: str, value
     if qualified_arn and arn[3] and recorded_region and recorded_region != arn[3]:
         scope["conflicting_arn_region"] = recorded_region
     return scope
+
+
+def container_occurrence(node: UnifiedNode) -> dict[str, object] | None:
+    """Return recorded deployment identity; image digests never locate containers."""
+    attrs = node.attributes
+    scope = {
+        key: str(attrs.get(key) or "").strip()
+        for key in (
+            "cloud_provider",
+            "cloud_account_id",
+            "account_id",
+            "tenant_id",
+            "subscription_id",
+            "project_id",
+            "cluster_id",
+            "cluster_arn",
+            "runtime_host_id",
+            "environment",
+        )
+        if str(attrs.get(key) or "").strip()
+    }
+    for key in ("cloud_provider", "environment"):
+        dimension = str(getattr(node.dimensions, key, "") or "").strip()
+        if dimension:
+            if key in scope and scope[key] != dimension:
+                scope[f"conflicting_dimension_{key}"] = dimension
+            scope.setdefault(key, dimension)
+    located = bool(scope.get("cloud_provider")) and any(
+        scope.get(key)
+        for key in ("cluster_id", "cluster_arn", "runtime_host_id", "cloud_account_id", "account_id", "subscription_id", "project_id")
+    )
+    uid_key = "runtime_uid" if attrs.get("runtime_uid") else "container_id"
+    uid = str(attrs.get(uid_key) or "").strip()
+    if not uid and attrs.get("kubernetes_uid") and attrs.get("container_name") and (scope.get("cluster_id") or scope.get("cluster_arn")):
+        uid_key = "kubernetes_container"
+        uid = f"{attrs['kubernetes_uid']}:{attrs['container_name']}"
+    if uid and located:
+        return {"scope": scope, "uid_kind": uid_key, "runtime_uid": uid}
+    return None

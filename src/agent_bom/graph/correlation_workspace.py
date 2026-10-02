@@ -174,7 +174,7 @@ class CorrelationMergeWorkspace:
                 node_observation_rows.clear()
 
             for node in sorted(snapshot.graph.nodes.values(), key=lambda item: item.id):
-                entity_type, identity, basis = correlation_identity(node, scan_id=snapshot.scan_id)
+                entity_type, identity, basis = correlation_identity(node, scan_id=snapshot.scan_id, nodes=snapshot.graph.nodes)
                 source_to_key[node.id] = (entity_type, identity)
                 node_group_rows.append((entity_type, identity))
                 node_observation_rows.append(

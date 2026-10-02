@@ -147,6 +147,16 @@ Time fields have specific meaning:
 Those are different concepts. A snapshot is a saved graph view; `first_seen` and
 `last_seen` are entity lifecycle signals inside that view.
 
+Credential environment-variable slots belong to the recorded MCP server
+occurrence. Repeated observations of that server and slot can join; the same
+variable name on differently scoped servers cannot establish shared credentials
+or identity bindings. Older raw snapshots can recover this boundary from their
+recorded parent server. Missing or conflicting slot ownership stays
+snapshot-scoped. Previously correlated snapshots using identity versions before
+`scoped-identity.v4` require recomputation from source snapshots; correlating the
+old output again does not repair its joins. Slot references do not expose secret
+values or prove that a credential was successfully used.
+
 ## What the graph is for
 
 The graph is not meant to be a generic everything-map. It exists for three

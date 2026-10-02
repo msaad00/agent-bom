@@ -10,6 +10,7 @@ from agent_bom.api.routes.graph import _derived_attack_paths
 from agent_bom.graph.analysis import GraphAnalysisState, GraphAnalysisStatus
 from agent_bom.graph.attack_path_fusion import apply_attack_path_fusion, compute_fused_attack_paths
 from agent_bom.graph.container import AttackPath, UnifiedGraph
+from agent_bom.graph.correlation_scope import CORRELATION_IDENTITY_VERSION
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.path_evidence import annotate_attack_path_evidence, exposure_evidence_dimensions
@@ -259,7 +260,7 @@ def test_stale_allowed_hop_cannot_be_promoted_to_confirmed() -> None:
                 "correlation": {
                     "source_scan_ids": ["scan-a"],
                     "freshness": "stale_allowed",
-                    "identity_version": "scoped-identity.v3",
+                    "identity_version": CORRELATION_IDENTITY_VERSION,
                     "observations": [
                         {
                             "scan_id": "scan-a",

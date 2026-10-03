@@ -187,7 +187,7 @@ function buildGraph() {
     node("pkg:urllib3", "package", "urllib3@2.2.1", "high", 8.5, { ecosystem: "pypi", version: "2.2.1" }),
     node("pkg:protobuf", "package", "protobuf@6.31.0", "high", 8.0, { ecosystem: "pypi", version: "6.31.0" }),
     node("pkg:langchain", "package", "langchain@0.3.21", "medium", 5.8, { ecosystem: "pypi", version: "0.3.21" }),
-    node("cve:next", "vulnerability", "CVE-2025-29927", advisory("CVE-2025-29927").severity, advisory("CVE-2025-29927").cvss_score, { ...advisory("CVE-2025-29927"), simulated: true }),
+    node("cve:next", "vulnerability", "CVE-2025-29927", advisory("CVE-2025-29927").severity, advisory("CVE-2025-29927").cvss_score, { ...advisory("CVE-2025-29927"), simulated: true, compliance_tags: ["NIST-RA-5"] }),
     node("cve:urllib3", "vulnerability", "CVE-2024-37891", advisory("CVE-2024-37891").severity, advisory("CVE-2024-37891").cvss_score, { ...advisory("CVE-2024-37891"), simulated: true }),
     node("cve:protobuf", "vulnerability", "CVE-2025-4565", advisory("CVE-2025-4565").severity, advisory("CVE-2025-4565").cvss_score, { ...advisory("CVE-2025-4565"), simulated: true }),
     node("dataset:finance-docs", "dataset", "finance-board-rag-index", "high", 8.0, { data_classification: "confidential" }),
@@ -2766,6 +2766,14 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
 
 async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
   const screenshotEntries = [
+    ...["dark", "light"].flatMap((theme) => [
+      { path: `component-detail-${theme}-live.png`, page: `/inventory/packages?scan=${SCAN_ID}&capture=1`,
+        scope: "Synthetic component detail with recorded relationships and explicit collection-coverage limits", presentation: `${theme} desktop` },
+      { path: `component-findings-${theme}-live.png`, page: `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`,
+        scope: "Exact component finding evidence in the same synthetic retained snapshot", presentation: `${theme} desktop` },
+      { path: `component-controls-${theme}-live.png`, page: `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`,
+        scope: "Synthetic control applicability mapping explicitly marked not evaluated", presentation: `${theme} desktop` },
+    ]),
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
@@ -3770,6 +3778,29 @@ async function main() {
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
     });
+
+    // Capture the shipped component workflow; fixture mappings are not assessments.
+    for (const theme of ["dark", "light"]) {
+      const componentPage = await newCapturePage(theme, { width: 1440, height: 1100 });
+      await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-${theme}-live.png`, async (p) => {
+        await p.getByText("next@15.2.2", { exact: true }).first().click();
+        const relationships = p.getByRole("list", { name: "Recorded component relationships" });
+        await expect(relationships).toBeVisible();
+        await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toHaveAttribute("href", `/findings?asset=pkg%3Anext&scan=${SCAN_ID}`);
+        await relationships.scrollIntoViewIfNeeded();
+      }, { expectedText: ["next@15.2.2", "CVE-2025-29927", "Collection coverage and blast radius are not assessed"],
+        expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
+      await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
+        await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
+        await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);
+      }, { expectedText: ["Component finding evidence", "CVE-2025-29927", "Source collection coverage remains unknown"],
+        expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
+      await capture(componentPage, `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-controls-${theme}-live.png`, async (p) => {
+        await expect(p.getByRole("list", { name: "Component control records" })).toContainText("NIST-RA-5");
+      }, { expectedText: ["Mapped · Not evaluated", "Scope: mapping only", "Export control evidence"],
+        rejectedText: ["Recorded failed check"], expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
+      await componentPage.close();
+    }
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
     await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", preparePosture, postureAssertions);

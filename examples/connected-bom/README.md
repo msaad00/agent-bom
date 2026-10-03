@@ -59,3 +59,20 @@ This small local workflow does not qualify enterprise scale, production
 deployment, or independent attestation. Live-provider and performance evidence
 must be collected separately. For modeled cross-source correlation and a live
 local gateway allow/block proof, run the [reference evidence lab](../reference-evidence-lab/README.md).
+
+## Walk through the saved evidence
+
+1. Open `proof.json`: the before/after inputs have different hashes and versions.
+2. Open `before-component.json`: inspect the exact package identity, source
+   records, relationship pages and the pinned CVE-2023-4863 finding.
+3. Compare `after-component.json` and `rescan-diff.json`: the new package
+   component no longer links that advisory. This tests the changed input, not
+   an installed dependency or a running deployment.
+4. Compare `before-controls.json` with `after-controls.json`: the independent
+   modeled failed cloud check remains. A package change does not fix that check.
+5. Inspect the same saved package through the MCP command above; use a fresh
+   output directory to repeat the workflow without replacing prior evidence.
+
+The [dashboard walkthrough](../../docs/GALLERY.md#follow-one-component) shows
+where operators inspect component relationships, finding records and scoped
+control evidence. Its screenshots use a separately labeled synthetic UI fixture.

@@ -83,3 +83,20 @@ separate audited workflow. Ages use recorded timestamps; evidence age is measure
 at scan completion, and missing timestamps remain unavailable. Imported standalone
 reports do not establish historical trends. Scan history has a separate scope from
 the aggregate posture summary.
+
+## Follow one component
+
+Open **Inventory → Packages**, select a component, then follow **Findings →
+Compliance**. The component identifier and retained snapshot stay in scope.
+The captures below are synthetic UI states from the packaged product routes.
+
+| Step | Inspect | Captures |
+|---|---|---|
+| Component | Recorded relationships, sources, timestamps and unknown collection coverage | [Light](images/component-detail-light-live.png) · [Dark](images/component-detail-dark-live.png) |
+| Findings | Directly linked finding records in this component snapshot | [Light](images/component-findings-light-live.png) · [Dark](images/component-findings-dark-live.png) |
+| Controls | Applicability mapping marked **Mapped · Not evaluated**, with exportable evidence | [Light](images/component-controls-light-live.png) · [Dark](images/component-controls-dark-live.png) |
+
+For a parser-backed scan and changed-input rescan, run the
+[connected-BOM example](../examples/connected-bom/README.md). It uses a different
+bounded advisory fixture and explicitly synthetic cloud topology. A finding no
+longer present after the input change is not proof that a deployment was repaired.

@@ -34,6 +34,7 @@ function ComponentFindingEvidence({ assetId, scanId, owner }: { assetId: string;
       <p className="break-all text-sm text-ink-secondary">{assetId} · Snapshot {scanId}</p>
       <p className="max-w-3xl text-sm text-ink-secondary">Findings connected by recorded relationships to this exact component. These records do not establish exploitation or include findings elsewhere in the component chain.</p>
       <Link className="inline-block text-sm underline underline-offset-2" href={`/security-graph?${graphParams}`}>Investigate the component chain</Link>
+      <Link className="ml-4 inline-block text-sm underline underline-offset-2" href={`/compliance?${new URLSearchParams({ asset: assetId, scan: scanId })}`}>Inspect control evidence</Link>
     </header>
     <p role="status" className="text-sm text-ink-secondary">{graph.busy && !last ? "Loading component evidence…" : `${findings.length} linked finding records in ${graph.edges.length} loaded relationships`}</p>
     {graph.error && <div role="alert" className="space-y-2 rounded-lg border border-outline p-4">

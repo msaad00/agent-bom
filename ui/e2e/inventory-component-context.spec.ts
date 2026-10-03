@@ -18,13 +18,13 @@ for (const theme of ["light", "dark"] as const) {
     await page.route("**/version", route => route.fulfill({ json: { version: "0.107.2" } }));
     await page.route("**/v1/**", route => {
       const url = new URL(route.request().url());
-      if (url.pathname === "/v1/findings") broadFindingRequests.push(url.href);
+      if (url.pathname === "/v1/findings" || url.pathname.startsWith("/v1/compliance")) broadFindingRequests.push(url.href);
       if (url.pathname === "/v1/graph/incident-edges") {
         expect(url.searchParams.get("scan_id")).toBe(scan);
         expect(url.searchParams.get("node_id")).toBe(asset.id);
         return route.fulfill({ json: { scan_id: scan, snapshot_generation: "a".repeat(32), node_id: asset.id, found: true,
           direction: "both", limit: 24, node: { id: asset.id, label: asset.name, entity_type: "package", attributes: {} },
-          nodes: [{ id: "finding:one", label: "Dependency vulnerability", entity_type: "vulnerability", severity: "high", attributes: {} }],
+          nodes: [{ id: "finding:one", label: "Dependency vulnerability", entity_type: "vulnerability", severity: "high", attributes: {}, compliance_tags: ["NIST-RA-5"] }],
           edges: [{ source: asset.id, target: "finding:one", relationship: "vulnerable_to", direction: "directed" }], next_cursor: null, completeness,
         } });
       }
@@ -62,7 +62,13 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("link", { name: "Findings Recorded component evidence" }).click();
     await expect(page).toHaveURL(url => url.searchParams.get("asset") === asset.id && url.searchParams.get("scan") === scan);
     await expect(page.getByRole("list", { name: "Component finding records" }).getByText("Dependency vulnerability")).toBeVisible();
-    expect(broadFindingRequests).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath(`component-findings-${theme}.png`), animations: "disabled" });
+    await page.getByRole("link", { name: "Inspect control evidence" }).click();
+    await expect(page).toHaveURL(url => url.pathname === "/compliance" && url.searchParams.get("asset") === asset.id && url.searchParams.get("scan") === scan);
+    await expect(page.getByRole("list", { name: "Component control records" }).getByText("NIST-RA-5")).toBeVisible();
+    await expect(page.getByText("Mapped · Not evaluated", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`component-compliance-${theme}.png`), animations: "disabled" });
+    expect(broadFindingRequests).toEqual([]);
   });
 }

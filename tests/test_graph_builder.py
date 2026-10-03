@@ -834,6 +834,8 @@ class TestCISMisconfigNodes:
         misconfigs = g.nodes_by_type(EntityType.MISCONFIGURATION)
         assert len(misconfigs) == 1
         assert "MFA" in misconfigs[0].label
+        assert misconfigs[0].attributes["evaluation_status"] == "fail"
+        assert misconfigs[0].attributes["evaluation_scope"] == "resource"
         assert misconfigs[0].severity == "high"
         assert misconfigs[0].category_uid == 2
         assert misconfigs[0].class_uid == 2003
@@ -860,6 +862,7 @@ class TestCISMisconfigNodes:
         g = build_unified_graph_from_report(report)
 
         assert g.has_edge("misconfig:cis_benchmark:1.3", "account:aws:123456789012")
+        assert g.get_node("misconfig:cis_benchmark:1.3").attributes["evaluation_scope"] == "account"
         account = g.get_node("account:aws:123456789012")
         assert account is not None
         assert account.attributes["cloud_provider"] == "aws"

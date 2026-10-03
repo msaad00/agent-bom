@@ -32,6 +32,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { findingsHref } from "@/lib/page-links";
+import { ComponentCompliance } from "@/components/inventory/component-compliance";
 import { ComplianceControlDrawer } from "@/components/compliance-control-drawer";
 import {
   controlStatusLabel,
@@ -858,7 +859,13 @@ export default function CompliancePage() {
         />
       }
     >
-      <CompliancePageContent />
+      <ComplianceScope />
     </Suspense>
   );
+}
+
+function ComplianceScope() {
+  const params = useSearchParams();
+  if (params.has("asset")) return <ComponentCompliance assetId={params.get("asset") || ""} scanId={params.get("scan") || params.get("scan_id") || ""} />;
+  return <CompliancePageContent />;
 }

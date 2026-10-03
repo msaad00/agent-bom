@@ -65,7 +65,6 @@ export function AssetDetail({
   const Icon = config.icon;
   const attributes = detail?.asset.attributes ?? row.attributes;
   const attrRows = readableAttributes(attributes);
-  const compliance = complianceHref(row);
   const relationships = detail
     ? [...new Map([...detail.edges_in, ...detail.edges_out].map((edge) => [
       JSON.stringify([edge.source, edge.target, edge.relationship]), edge,
@@ -73,6 +72,7 @@ export function AssetDetail({
     : [];
   const endpoints = new Map((detail?.nodes ?? []).map((node) => [String(node.id), node]));
   const effectiveScanId = detail?.scan_id || scanId;
+  const compliance = complianceHref(row, effectiveScanId);
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
@@ -217,7 +217,7 @@ export function AssetDetail({
           <CorrelationLink href={securityGraphHref(row, effectiveScanId)} icon={Network} label="Security graph" hint="Blast radius" />
           <CorrelationLink href={lineageHref(row, effectiveScanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
           {compliance ? (
-            <CorrelationLink href={compliance} icon={FileCheck} label="Compliance" hint={row.complianceTags[0]} />
+            <CorrelationLink href={compliance} icon={FileCheck} label="Compliance" hint="Recorded control evidence" />
           ) : null}
         </div>
       </div>

@@ -15,6 +15,9 @@ expose different profiles; connect only the entries needed for the task.
 |---|---:|---|---|
 | `scan` (default) | 8 | Package/project scan, exposure and fix planning | quick-audit, pre-install-check, remediation-plan |
 | `graph` | 8 | Inventory rollup, asset drill-down and scoped correlation | Use inventory_summary → inventory_list → inventory_asset, then inspect paths |
+| `cloud` | 6 | Inventory, connection scope and CIS posture | cloud-connection-review |
+| `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
+| `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |
 
 For component inspection, call `inventory_asset` with the asset's exact graph
 ID and the `scan_id` returned by inventory. The artifact contains attributes,
@@ -30,9 +33,13 @@ names. `impact_status` is `not_evaluated` and the compatibility `impact` object
 is empty; use graph investigation for impact analysis. The inventory drawer
 shows recorded parent/child and other relationships with links to their exact
 endpoints in the selected snapshot.
-| `cloud` | 6 | Inventory, connection scope and CIS posture | cloud-connection-review |
-| `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
-| `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |
+
+In the dashboard, select an inventory component and open **Findings**. The
+component view reads its exact recorded relationships in the retained snapshot,
+instead of searching other assets by name. Load additional relationship pages
+to inspect more linked finding records, then export the loaded evidence and
+snapshot receipts as JSON. Direct associations are separate from findings
+elsewhere in the component chain, exploitability, and collection coverage.
 
 Read the `profiles://catalog` resource to discover profile names, tool names and
 startup commands without loading every input schema. Selection is fixed for the

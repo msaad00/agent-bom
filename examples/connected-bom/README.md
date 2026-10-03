@@ -45,7 +45,7 @@ the shared REST inventory service by the script. The regression suite also
 exercises authenticated HTTP and actual MCP stdio calls:
 
 ```bash
-uv run --extra dev --extra api --extra mcp-server pytest -q tests/test_connected_bom_journey.py
+uv run --extra dev --extra api --extra mcp-server pytest -q tests/test_prove_connected_bom.py
 ```
 
 For a deployed dashboard, use an authenticated reader bound to the

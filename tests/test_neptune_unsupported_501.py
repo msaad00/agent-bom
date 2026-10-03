@@ -64,7 +64,7 @@ def sqlite_client():
 _UNSUPPORTED_ENDPOINTS = [
     ("GET", "/v1/inventory/assets", "query_inventory"),
     ("GET", "/v1/inventory/summary", "query_inventory"),
-    ("GET", "/v1/inventory/assets/agent:a", "node_context"),
+    ("GET", "/v1/inventory/assets/agent:a", "incident_edges_page"),
     ("GET", "/v1/graph/attack-paths?limit=5", "Generation-pinned"),
     ("GET", "/v1/graph/impact?node=agent:a", "impact_of"),
     ("GET", "/v1/graph/search?q=agent", "search_nodes"),

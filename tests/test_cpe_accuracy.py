@@ -1,11 +1,9 @@
-"""CPE matcher accuracy / parity harness.
+"""Bounded CPE matcher regression harness.
 
-Validates the ``nvd_cpe_candidate`` matcher against a curated ground-truth set of
-NVD-shaped CPE applicability statements + components with known expected results.
-Asserts **precision** (no false positives across vendors/products/versions) and
-**recall** (every truly-affected component is caught) — the same idea as the
-frozen Trivy/Grype image-parity baseline, applied to CPE matching. It also pins
-the value of vendor disambiguation (the main false-positive control).
+Validates the ``nvd_cpe_candidate`` matcher against selected NVD applicability
+statements and synthetic vendor/product/version cases. These examples check
+expected matches and exclusions, including vendor disambiguation; they do not
+estimate precision or recall across real-world packages or the full NVD corpus.
 """
 
 from __future__ import annotations
@@ -29,9 +27,10 @@ _GROUND_TRUTH = [
     ("CVE-2022-0778", "openssl", "openssl", None, "1.0.2", "including", "1.0.2zd", "excluding"),
     ("CVE-2022-0778", "openssl", "openssl", None, "1.1.0", "including", "1.1.1n", "excluding"),
     ("CVE-2022-0778", "openssl", "openssl", None, "3.0.0", "including", "3.0.2", "excluding"),
-    # NVD CVE-2021-42013 lists Apache HTTP Server 2.4.49:
+    # NVD CVE-2021-42013 lists both Apache HTTP Server 2.4.49 and 2.4.50:
     # https://nvd.nist.gov/vuln/detail/CVE-2021-42013
     ("CVE-2021-42013", "apache", "http_server", "2.4.49", None, None, None, None),
+    ("CVE-2021-42013", "apache", "http_server", "2.4.50", None, None, None, None),
     # NVD CVE-2017-9791 lists individual affected Apache Struts releases:
     # https://nvd.nist.gov/vuln/detail/CVE-2017-9791
     ("CVE-2017-9791", "apache", "struts", "2.3.31", None, None, None, None),
@@ -58,7 +57,9 @@ _CASES = [
     ("openssl", "3.0.1", "openssl", {"CVE-2022-0778", "CVE-T-OPENSSL"}),
     ("openssl", "3.0.2", "openssl", {"CVE-T-OPENSSL"}),
     ("http_server", "2.4.49", "apache", {"CVE-2021-42013"}),
-    ("http_server", "2.4.50", "apache", set()),
+    ("http_server", "2.4.50", "apache", {"CVE-2021-42013"}),
+    ("http_server", "2.4.48", "apache", set()),  # before the affected releases
+    ("http_server", "2.4.51", "apache", set()),  # fixed release
     ("struts", "2.3.31", "apache", {"CVE-2017-9791", "CVE-T-STRUTS"}),
     ("struts", "2.5.0", "apache", {"CVE-T-STRUTS"}),  # in range
     ("struts", "2.5.30", "apache", set()),  # exclusive end -> excluded

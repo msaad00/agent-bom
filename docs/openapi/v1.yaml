@@ -24286,13 +24286,12 @@ paths:
       - inventory
   /v1/inventory/assets/{asset_id}:
     get:
-      description: 'One asset''s full attributes plus its relationships (neighbors
-        / edges).
+      description: 'Asset attributes and one bounded page of recorded relationships.
 
 
-        Reuses the graph store''s ``node_context`` so the UI drawer can render config,
+        Reuse the returned scan ID and generation for subsequent pages. Impact is
 
-        relationships, and blast-radius impact, and link out to findings.'
+        not evaluated by this endpoint; completeness applies only to this page.'
       operationId: get_inventory_asset_v1_inventory_assets__asset_id__get
       parameters:
       - in: path
@@ -24311,6 +24310,35 @@ paths:
           - type: 'null'
           description: Scan snapshot ID; latest if omitted
           title: Scan Id
+      - description: Maximum recorded relationships per page
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 24
+          description: Maximum recorded relationships per page
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 8192
+            type: string
+          - type: 'null'
+          title: Cursor
+      - in: query
+        name: snapshot_generation
+        required: false
+        schema:
+          anyOf:
+          - pattern: ^[0-9a-f]{32}$
+            type: string
+          - type: 'null'
+          title: Snapshot Generation
       responses:
         '200':
           content:

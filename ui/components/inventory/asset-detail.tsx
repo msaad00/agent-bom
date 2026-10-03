@@ -66,9 +66,13 @@ export function AssetDetail({
   const attributes = detail?.asset.attributes ?? row.attributes;
   const attrRows = readableAttributes(attributes);
   const compliance = complianceHref(row);
-  const relationshipCount = detail
-    ? detail.edges_in.length + detail.edges_out.length
-    : null;
+  const relationships = detail
+    ? [...new Map([...detail.edges_in, ...detail.edges_out].map((edge) => [
+      JSON.stringify([edge.source, edge.target, edge.relationship]), edge,
+    ])).values()]
+    : [];
+  const endpoints = new Map((detail?.nodes ?? []).map((node) => [String(node.id), node]));
+  const effectiveScanId = detail?.scan_id || scanId;
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
@@ -122,6 +126,8 @@ export function AssetDetail({
         {row.ecosystem ? <MetaRow label="Ecosystem" value={row.ecosystem} /> : null}
         {row.provider ? <MetaRow label="Provider" value={row.provider} /> : null}
         {row.environment ? <MetaRow label="Environment" value={row.environment} /> : null}
+        <MetaRow label="First seen" value={row.firstSeen || "Not recorded"} />
+        <MetaRow label="Last seen" value={row.lastSeen || "Not recorded"} />
         <MetaRow
           label="Sources"
           value={row.dataSources.length > 0 ? row.dataSources.join(", ") : "—"}
@@ -136,22 +142,55 @@ export function AssetDetail({
           Snapshot context
         </p>
         {loading ? (
-          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Loading relationships and impact…</p>
+          <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Loading recorded relationships…</p>
         ) : error ? (
           <p className="mt-1 text-xs text-[color:var(--status-danger)]">{error}</p>
         ) : detail ? (
-          <dl className="mt-1 divide-y divide-[color:var(--border-subtle)]">
-            <MetaRow label="Relationships" value={relationshipCount?.toLocaleString() ?? "0"} />
-            <MetaRow label="Neighbors" value={detail.neighbors.length.toLocaleString()} />
-            <MetaRow label="Evidence sources" value={detail.sources.length.toLocaleString()} />
-            <MetaRow
-              label="Impact fields"
-              value={Object.keys(detail.impact ?? {}).length.toLocaleString()}
-            />
-          </dl>
+          <>
+            <dl className="mt-1 divide-y divide-[color:var(--border-subtle)]">
+              <MetaRow label="Snapshot" value={detail.scan_id} />
+              <MetaRow label="Evidence sources" value={(detail.evidence_sources ?? row.dataSources).join(", ") || "Not recorded"} />
+              <MetaRow label="Relationships shown" value={relationships.length.toLocaleString()} />
+            </dl>
+            <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
+              {detail.completeness.complete
+                ? "Recorded relationship page complete. Collection coverage and blast radius are not assessed here."
+                : "Partial relationship page. More records or missing endpoints may remain; this is not the full component chain."}
+            </p>
+            <ul aria-label="Recorded component relationships" className="mt-2 max-h-72 space-y-2 overflow-y-auto">
+              {relationships.map((edge) => {
+                const incoming = edge.target === row.id;
+                const endpointId = String(incoming ? edge.source : edge.target);
+                const endpoint = endpoints.get(endpointId);
+                const relationship = String(edge.relationship).replace(/_/g, " ");
+                const hierarchy = edge.relationship === "contains" ? (incoming ? "Parent" : "Child") : (incoming ? "Incoming" : "Outgoing");
+                const params = new URLSearchParams({ lens: "estate", node: endpointId });
+                if (effectiveScanId) params.set("scan", effectiveScanId);
+                return (
+                  <li key={JSON.stringify([edge.source, edge.target, edge.relationship])} className="rounded border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-2 text-xs">
+                    <p className="text-[color:var(--text-secondary)]">{hierarchy} · {relationship}</p>
+                    <Link href={`/security-graph?${params.toString()}`} className="mt-1 block break-words font-medium underline underline-offset-2">
+                      {String(endpoint?.label || endpointId)}
+                    </Link>
+                    <details className="mt-1 text-[color:var(--text-secondary)]">
+                      <summary className="cursor-pointer">Recorded evidence</summary>
+                      <p className="mt-1 break-all">{String(edge.source)} → {String(edge.target)}</p>
+                      <p>Last seen: {String(edge.last_seen || "Not recorded")}</p>
+                      <p>Source scan: {String(edge.source_scan_id || "Not recorded")}</p>
+                      <p>Direction: {String(edge.direction || "Not recorded")}</p>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+            {relationships.length === 0 ? <p className="mt-2 text-xs">No relationships recorded on this page.</p> : null}
+            <Link href={securityGraphHref(row, effectiveScanId)} className="mt-3 block text-xs underline underline-offset-2">
+              Inspect relationships in the security graph
+            </Link>
+          </>
         ) : (
           <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-            Select this row to resolve its tenant-scoped relationships and impact.
+            Select this row to resolve its tenant-scoped recorded relationships.
           </p>
         )}
       </section>
@@ -175,8 +214,8 @@ export function AssetDetail({
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <CorrelationLink href={findingsHref(row, scanId)} icon={Bug} label="Findings" hint={`${row.findingCount} correlated`} />
-          <CorrelationLink href={securityGraphHref(row, scanId)} icon={Network} label="Security graph" hint="Blast radius" />
-          <CorrelationLink href={lineageHref(row, scanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
+          <CorrelationLink href={securityGraphHref(row, effectiveScanId)} icon={Network} label="Security graph" hint="Blast radius" />
+          <CorrelationLink href={lineageHref(row, effectiveScanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
           {compliance ? (
             <CorrelationLink href={compliance} icon={FileCheck} label="Compliance" hint={row.complianceTags[0]} />
           ) : null}

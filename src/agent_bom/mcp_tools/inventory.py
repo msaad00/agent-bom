@@ -137,10 +137,13 @@ async def inventory_asset_impl(
     asset_id: str,
     tenant_id: str = "default",
     scan_id: str | None = None,
+    limit: int = 24,
+    cursor: str | None = None,
+    snapshot_generation: str | None = None,
     _get_graph_store: Optional[Callable[[], Any]] = None,
     _truncate_response: Optional[Callable[[str], str]] = None,
 ) -> str:
-    """Return one asset's attributes, relationships, and blast-radius impact."""
+    """Return asset attributes and one bounded page of recorded relationships."""
     from agent_bom.api import inventory_service
 
     asset_id = (asset_id or "").strip()
@@ -158,6 +161,9 @@ async def inventory_asset_impl(
             tenant_id=tenant_id,
             asset_id=asset_id,
             scan_id=scan_id,
+            limit=limit,
+            cursor=cursor,
+            snapshot_generation=snapshot_generation,
         )
         if payload is None:
             return mcp_error_json(

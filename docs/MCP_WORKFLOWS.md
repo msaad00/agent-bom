@@ -15,6 +15,21 @@ expose different profiles; connect only the entries needed for the task.
 |---|---:|---|---|
 | `scan` (default) | 8 | Package/project scan, exposure and fix planning | quick-audit, pre-install-check, remediation-plan |
 | `graph` | 8 | Inventory rollup, asset drill-down and scoped correlation | Use inventory_summary → inventory_list → inventory_asset, then inspect paths |
+
+For component inspection, call `inventory_asset` with the asset's exact graph
+ID and the `scan_id` returned by inventory. The artifact contains attributes,
+evidence source names, endpoint nodes, and at most 24 recorded relationships by
+default (maximum 100). Continue with the returned `next_cursor`, `scan_id`, and
+`snapshot_generation`; restart inspection if that snapshot has been replaced.
+The REST equivalent is `GET /v1/inventory/assets/{asset_id}` with the same query
+parameters. Both surfaces enforce tenant scope.
+
+Completeness describes the relationship page, not source collection coverage.
+`sources` contains incoming node IDs; `evidence_sources` contains collector
+names. `impact_status` is `not_evaluated` and the compatibility `impact` object
+is empty; use graph investigation for impact analysis. The inventory drawer
+shows recorded parent/child and other relationships with links to their exact
+endpoints in the selected snapshot.
 | `cloud` | 6 | Inventory, connection scope and CIS posture | cloud-connection-review |
 | `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
 | `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |

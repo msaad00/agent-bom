@@ -31,7 +31,7 @@ Full profile Tools (88):
     verify              — Package integrity + SLSA provenance verification
     inventory_summary   — Unified asset-inventory counts by type and source group
     inventory_list      — Faceted, paginated asset rows across the unified graph
-    inventory_asset     — One asset's attributes, relationships, and impact
+    inventory_asset     — Asset attributes and bounded recorded relationships
     where               — Show all MCP discovery paths + existence status
     inventory           — List agents/servers without CVE scanning
     tool_risk_assessment — Score live MCP tool capabilities and server risk
@@ -157,6 +157,7 @@ from agent_bom.mcp_server_metadata import (
 from agent_bom.mcp_server_runtime_catalog import (
     register_runtime_catalog_tools as _register_runtime_catalog_tools,
 )
+from agent_bom.mcp_tools.inventory_registration import register_inventory_asset_tool
 from agent_bom.mcp_tools.profiles import _GUIDED_TOOL_NAMES as _GUIDED_TOOL_NAMES
 from agent_bom.mcp_tools.result_store import scan_result_owner as _scan_result_owner
 from agent_bom.security import sanitize_error
@@ -591,7 +592,7 @@ def create_mcp_server(
         intel_sources_impl,
         youcom_search_impl,
     )
-    from agent_bom.mcp_tools.inventory import inventory_asset_impl, inventory_list_impl, inventory_summary_impl
+    from agent_bom.mcp_tools.inventory import inventory_list_impl, inventory_summary_impl
     from agent_bom.mcp_tools.registry import registry_lookup_impl
     from agent_bom.mcp_tools.runtime import verify_impl
     from agent_bom.mcp_tools.sbom import generate_sbom_impl, remediate_impl
@@ -1393,27 +1394,7 @@ def create_mcp_server(
             _truncate_response=_truncate_response,
         )
 
-    @mcp.tool(annotations=_READ_ONLY, title="Asset Inventory Detail")
-    async def inventory_asset(
-        asset_id: Annotated[str, Field(description="Graph node ID of the asset to inspect, e.g. 'cloud_resource:ec2' or 'agent:a'.")],
-        tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
-        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
-    ) -> str:
-        """Return one asset's attributes, relationships, and blast-radius impact.
-
-        Reuses the graph store's node context so an agent gets the same config,
-        inbound/outbound edges, neighbors, sources, and impact the dashboard
-        drawer renders. Returns a clean not-found error when the asset id is not
-        present in the tenant's snapshot.
-        """
-        return await _execute_tool_async(
-            "inventory_asset",
-            inventory_asset_impl,
-            asset_id=asset_id,
-            tenant_id=tenant_id,
-            scan_id=scan_id,
-            _truncate_response=_truncate_response,
-        )
+    register_inventory_asset_tool(mcp, read_only=_READ_ONLY, execute_tool_async=_execute_tool_async, truncate_response=_truncate_response)
 
     _register_runtime_catalog_tools(
         mcp,

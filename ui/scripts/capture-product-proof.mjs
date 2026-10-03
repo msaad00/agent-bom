@@ -1998,17 +1998,26 @@ async function installRoutes(page) {
     const asset = inventoryAssetRows().find((item) => item.id === assetId);
     const selected = graph.nodes.find((item) => item.id === assetId);
     if (!asset || !selected) return fulfill(route, { detail: "Asset not found" }, 404);
+    const incident = graph.edges.filter((item) => item.source === assetId || item.target === assetId);
+    if (incident.length > 24) throw new Error("Inventory capture fixture exceeds its relationship page limit");
+    const endpointIds = new Set([assetId, ...incident.flatMap((item) => [item.source, item.target])]);
     return fulfill(route, {
       schema_version: "inventory.asset.v1",
       tenant_id: "default",
+      scan_id: url.searchParams.get("scan_id") || graph.scan_id,
+      snapshot_generation: "a".repeat(32),
+      next_cursor: null,
+      nodes: graph.nodes.filter((item) => endpointIds.has(item.id)),
+      evidence_sources: asset.sources,
+      impact_status: "not_evaluated",
       asset,
       node: selected,
       edges_out: graph.edges.filter((item) => item.source === assetId),
       edges_in: graph.edges.filter((item) => item.target === assetId),
       neighbors: graph.edges.filter((item) => item.source === assetId || item.target === assetId).flatMap((item) => [item.source, item.target]).filter((id) => id !== assetId),
-      sources: asset.sources,
-      impact: { node_id: assetId, affected_nodes: [], affected_by_type: {}, affected_count: 0, max_depth_reached: 0 },
-      completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1, total: 1 },
+      sources: incident.filter((item) => item.target === assetId).map((item) => item.source),
+      impact: {},
+      completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: incident.length, scope: "incident_edge_page" },
     });
   });
   await page.route("**/v1/graph/views/fix-first?**", (route) => {

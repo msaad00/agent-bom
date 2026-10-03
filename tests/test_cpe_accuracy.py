@@ -21,6 +21,20 @@ from agent_bom.scanners import _scan_packages_db_conn
 
 # Ground truth: (cve, vendor, product, exact_version, vstart, vstart_op, vend, vend_op)
 _GROUND_TRUTH = [
+    # NVD CVE-2021-4104 lists Apache Log4j 1.2 as an affected CPE product:
+    # https://nvd.nist.gov/vuln/detail/CVE-2021-4104
+    ("CVE-2021-4104", "apache", "log4j", "1.2", None, None, None, None),
+    # NVD CVE-2022-0778 publishes three independent OpenSSL release branches:
+    # https://nvd.nist.gov/vuln/detail/CVE-2022-0778
+    ("CVE-2022-0778", "openssl", "openssl", None, "1.0.2", "including", "1.0.2zd", "excluding"),
+    ("CVE-2022-0778", "openssl", "openssl", None, "1.1.0", "including", "1.1.1n", "excluding"),
+    ("CVE-2022-0778", "openssl", "openssl", None, "3.0.0", "including", "3.0.2", "excluding"),
+    # NVD CVE-2021-42013 lists Apache HTTP Server 2.4.49:
+    # https://nvd.nist.gov/vuln/detail/CVE-2021-42013
+    ("CVE-2021-42013", "apache", "http_server", "2.4.49", None, None, None, None),
+    # NVD CVE-2017-9791 lists individual affected Apache Struts releases:
+    # https://nvd.nist.gov/vuln/detail/CVE-2017-9791
+    ("CVE-2017-9791", "apache", "struts", "2.3.31", None, None, None, None),
     # apache struts RCE affecting [2.0.0, 2.5.30)
     ("CVE-T-STRUTS", "apache", "struts", None, "2.0.0", "including", "2.5.30", "excluding"),
     # log4j exact 2.14.1
@@ -36,6 +50,16 @@ _GROUND_TRUTH = [
 
 # (component_name, version, vendor_hint, expected_cves)
 _CASES = [
+    ("log4j", "1.2", "apache", {"CVE-2021-4104"}),  # NVD-listed exact release
+    ("openssl", "1.0.2zc", "openssl", {"CVE-2022-0778", "CVE-T-OPENSSL"}),
+    ("openssl", "1.0.2zd", "openssl", {"CVE-T-OPENSSL"}),  # fixed for CVE-2022-0778
+    ("openssl", "1.1.1m", "openssl", {"CVE-2022-0778", "CVE-T-OPENSSL"}),
+    ("openssl", "1.1.1n", "openssl", {"CVE-T-OPENSSL"}),
+    ("openssl", "3.0.1", "openssl", {"CVE-2022-0778", "CVE-T-OPENSSL"}),
+    ("openssl", "3.0.2", "openssl", {"CVE-T-OPENSSL"}),
+    ("http_server", "2.4.49", "apache", {"CVE-2021-42013"}),
+    ("http_server", "2.4.50", "apache", set()),
+    ("struts", "2.3.31", "apache", {"CVE-2017-9791", "CVE-T-STRUTS"}),
     ("struts", "2.5.0", "apache", {"CVE-T-STRUTS"}),  # in range
     ("struts", "2.5.30", "apache", set()),  # exclusive end -> excluded
     ("struts", "1.9.0", "apache", set()),  # below start
@@ -82,6 +106,30 @@ def test_vendor_filter_eliminates_cross_vendor_false_positive() -> None:
     with_hint = {m["cve_id"] for m in match_component_cpe(conn, "log4j", "9.9.9", vendor="apache")}
     assert "CVE-T-FAKELOG" in no_hint  # the collision is reachable without a vendor
     assert "CVE-T-FAKELOG" not in with_hint  # ...and suppressed with one
+
+
+@pytest.mark.parametrize(
+    ("group_id", "expected_vendor"),
+    [("log4j", "apache"), ("org.apache.logging.log4j", "apache"), ("com.acme.log4j", None)],
+)
+def test_maven_namespace_maps_only_known_nvd_cpe_vendors(group_id: str, expected_vendor: str | None) -> None:
+    """Maven group IDs are mapped conservatively to NVD CPE vendors."""
+    from agent_bom.scanners.package_scan import _cpe_vendor_hint
+
+    package = Package(
+        name=f"{group_id}:log4j-core",
+        version="1.2",
+        ecosystem="maven",
+        purl=f"pkg:maven/{group_id}/log4j-core@1.2",
+    )
+
+    assert _cpe_vendor_hint(package) == expected_vendor
+
+    if expected_vendor == "apache":
+        conn = init_db(Path(":memory:"))
+        _seed(conn)
+        matches = match_component_cpe(conn, "log4j", "1.2", vendor=expected_vendor)
+        assert "CVE-2021-4104" in {match["cve_id"] for match in matches}
 
 
 def test_batch_scanner_uses_cpe_candidates_with_vendor_hint(monkeypatch: pytest.MonkeyPatch) -> None:

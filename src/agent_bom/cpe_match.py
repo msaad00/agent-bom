@@ -24,6 +24,30 @@ from agent_bom.version_utils import compare_version_order
 # CPE versions are bare dotted strings with no ecosystem; use the generic
 # comparator path.
 _CPE_ECOSYSTEM = "generic"
+_OPENSSL_RELEASE_RE = re.compile(r"^(?P<release>\d+(?:\.\d+){2})(?P<letter_suffix>[a-z]*)$", re.IGNORECASE)
+
+
+def _compare_cpe_versions(left: str, right: str, vendor: str, product: str) -> int | None:
+    """Compare CPE versions where the product has known non-PEP 440 releases.
+
+    OpenSSL releases such as ``1.0.2zc`` use an alphabetic suffix after the
+    three-part release. PEP 440 cannot order that sequence, so generic CPE
+    matching previously failed closed for versions inside NVD's published
+    ranges. Keep the special case narrow and leave unknown product version
+    schemes to the normal conservative comparator.
+    """
+    if vendor == "openssl" and product == "openssl":
+        left_match = _OPENSSL_RELEASE_RE.fullmatch(left.strip())
+        right_match = _OPENSSL_RELEASE_RE.fullmatch(right.strip())
+        if left_match and right_match:
+            left_release = tuple(int(part) for part in left_match["release"].split("."))
+            right_release = tuple(int(part) for part in right_match["release"].split("."))
+            left_suffix = left_match["letter_suffix"].lower()
+            right_suffix = right_match["letter_suffix"].lower()
+            left_key = (*left_release, left_suffix)
+            right_key = (*right_release, right_suffix)
+            return (left_key > right_key) - (left_key < right_key)
+    return compare_version_order(left, right, _CPE_ECOSYSTEM)
 
 
 def normalize_cpe_product(name: str) -> str:
@@ -43,6 +67,31 @@ def candidate_cpe_products(name: str) -> list[str]:
         if candidate and candidate not in out:
             out.append(candidate)
     return out
+
+
+def cpe_vendor_hint(pkg: Any) -> str | None:
+    """Infer a conservative NVD vendor hint from a package's purl metadata."""
+    if pkg.purl:
+        try:
+            from packageurl import PackageURL
+
+            parsed = PackageURL.from_string(pkg.purl)
+        except Exception:
+            parsed = None
+        if parsed is not None and parsed.type == "maven" and parsed.namespace:
+            # Maven group IDs identify projects and often end in artifact
+            # names, while NVD uses the publisher as the CPE vendor.
+            group_id = parsed.namespace.strip().lower()
+            return "apache" if group_id == "log4j" or group_id.startswith("org.apache.") else None
+        if parsed is not None and parsed.namespace:
+            namespace = parsed.namespace.strip().strip("/")
+            if namespace:
+                return namespace.rsplit("/", 1)[-1]
+    if pkg.ecosystem.lower() == "maven" and ":" in pkg.name:
+        group_id = pkg.name.split(":", 1)[0].strip().lower()
+        if group_id == "log4j" or group_id.startswith("org.apache."):
+            return "apache"
+    return None
 
 
 def _cpe_range_applies(version: str, row: sqlite3.Row) -> bool:
@@ -66,7 +115,7 @@ def _cpe_range_applies(version: str, row: sqlite3.Row) -> bool:
         return True
 
     if start:
-        order = compare_version_order(version, start, _CPE_ECOSYSTEM)
+        order = _compare_cpe_versions(version, start, row["vendor"], row["product"])
         if order is None:
             return False  # incomparable -> fail safe
         if row["version_start_op"] == "excluding":
@@ -75,7 +124,7 @@ def _cpe_range_applies(version: str, row: sqlite3.Row) -> bool:
         elif order < 0:  # including: need version >= start
             return False
     if end:
-        order = compare_version_order(version, end, _CPE_ECOSYSTEM)
+        order = _compare_cpe_versions(version, end, row["vendor"], row["product"])
         if order is None:
             return False  # incomparable -> fail safe
         if row["version_end_op"] == "including":
@@ -110,7 +159,7 @@ def match_component_cpe(
 
     placeholders = ",".join("?" * len(products))
     query = (
-        "SELECT cve_id, criteria, version, version_start, version_start_op, "
+        "SELECT cve_id, criteria, vendor, product, version, version_start, version_start_op, "
         "version_end, version_end_op "
         f"FROM cpe_matches WHERE product IN ({placeholders})"  # nosec B608 - placeholders are generated solely from "?" markers
     )

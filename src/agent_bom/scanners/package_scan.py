@@ -40,6 +40,7 @@ from agent_bom.config import (
 # Vulnerabilities in these carry elevated risk because they run inside AI
 # agents that have credentials and tool access.
 from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES
+from agent_bom.cpe_match import cpe_vendor_hint as _cpe_vendor_hint
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.fedramp import tag_blast_radius as tag_fedramp
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
@@ -1181,31 +1182,6 @@ def _scan_packages_db_conn(conn: Any, packages: list[Package], covered: set[str]
             flag_malicious_from_vulns(pkg)
 
     return total
-
-
-def _cpe_vendor_hint(pkg: Package) -> str | None:
-    """Best-effort vendor hint for opt-in CPE matching.
-
-    CPE is review-grade because product names collide across vendors. A namespace
-    from PURL/Maven gives the matcher a real disambiguator without inventing
-    package-specific aliases.
-    """
-    if pkg.purl:
-        try:
-            from packageurl import PackageURL
-
-            parsed = PackageURL.from_string(pkg.purl)
-        except Exception:
-            parsed = None
-        if parsed is not None and parsed.namespace:
-            namespace = parsed.namespace.strip().strip("/")
-            if namespace:
-                return namespace.rsplit("/", 1)[-1]
-    if pkg.ecosystem.lower() == "maven" and ":" in pkg.name:
-        group_id = pkg.name.split(":", 1)[0].strip()
-        if group_id:
-            return group_id.rsplit(".", 1)[-1]
-    return None
 
 
 def _attach_cpe_candidates(

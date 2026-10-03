@@ -7,6 +7,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.108.0] - 2026-10-03
+
+### Added
+
+- Inspect component hierarchy, recorded relationships, collector names and timestamps through bounded REST/MCP inventory pages and the dashboard. Snapshot-generation checks reject stale continuations; page completeness remains distinct from source collection coverage.
+- Navigate from inventory to exact component findings and control evidence without losing the retained snapshot. Export loaded evidence with source records and completeness receipts.
+- Distinguish control mappings from explicit failed benchmark checks, including resource versus account scope. Missing results and supporting detail remain visible; account results are not inherited by child resources.
+- Reproduce dependency parsing, component investigation and a changed-input rescan with `scripts/prove_connected_bom.py`. The credential-free example retains SQLite snapshots and compares authenticated REST and MCP evidence in tests; modeled cloud topology is explicitly synthetic.
+
+### Fixed
+
+- Accept slash-containing native cloud identifiers and scoped package identifiers in inventory detail URLs.
+- Map known Apache Maven namespaces to the NVD Apache vendor and compare OpenSSL alphabetic release suffixes in affected-version ranges. Correct the bounded Apache HTTP Server regression fixture.
+- Keep the experimental Neptune unsupported-operation test aligned with the bounded inventory reader and run it in targeted graph/inventory checks.
+
+### Security
+
+- Remove the vulnerable braces/micromatch dependency chain from Next ESLint root discovery using a scoped maintained glob replacement. Preserve advisory enforcement and test directory discovery and the actual lint rule.
+
 ## [0.107.2] - 2026-10-01
 
 Version 0.107.1 was tagged but not published; its prepared changes are included here.

@@ -115,6 +115,12 @@ function detail(row: InventoryAsset = asset("pkg:requests")): InventoryAssetDeta
   return {
     schema_version: "inventory.asset.v1",
     tenant_id: "tenant-a",
+    scan_id: SNAPSHOT,
+    snapshot_generation: "a".repeat(32),
+    next_cursor: null,
+    nodes: [{ id: "finding:CVE-1", label: "Recorded vulnerability" }],
+    evidence_sources: ["sbom"],
+    impact_status: "not_evaluated",
     asset: row,
     node: {
       id: row.id,
@@ -204,7 +210,7 @@ describe("AssetInventoryView inventory projection", () => {
     expect(api.getGraph).not.toHaveBeenCalled();
   });
 
-  it("loads full graph context lazily only after a row is selected", async () => {
+  it("loads recorded relationships lazily and links exact endpoints in the snapshot", async () => {
     renderPackages(<AssetInventoryView kind="packages" />);
     const table = await screen.findByTestId("inventory-table-packages");
     await waitFor(() => expect(within(table).getByText("requests")).toBeInTheDocument());
@@ -217,6 +223,21 @@ describe("AssetInventoryView inventory projection", () => {
     );
     expect(api.getInventoryAsset).toHaveBeenCalledTimes(1);
     expect(api.getGraph).not.toHaveBeenCalled();
+    const relationships = await screen.findByRole("list", { name: "Recorded component relationships" });
+    expect(within(relationships).getByRole("link", { name: "Recorded vulnerability" })).toHaveAttribute(
+      "href", `/security-graph?lens=estate&node=finding%3ACVE-1&scan=${SNAPSHOT}`,
+    );
+    expect(screen.getByText(/Collection coverage and blast radius are not assessed/)).toBeVisible();
+    expect(screen.queryByText("Impact fields")).not.toBeInTheDocument();
+  });
+
+  it("labels partial relationship pages without claiming a complete component chain", async () => {
+    vi.mocked(api.getInventoryAsset).mockResolvedValue({ ...detail(), next_cursor: "next",
+      completeness: { status: "truncated", complete: false, sampled: false, truncated: true, returned: 1 } });
+    renderPackages(<AssetInventoryView kind="packages" />);
+    const table = await screen.findByTestId("inventory-table-packages");
+    fireEvent.click(within(table).getByText("requests"));
+    expect(await screen.findByText(/Partial relationship page/)).toBeVisible();
   });
 
   it("does not present a filtered empty page as an empty estate", async () => {

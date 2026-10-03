@@ -174,11 +174,14 @@ async def get_inventory_asset(
     request: Request,
     asset_id: str,
     scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    limit: int = Query(24, ge=1, le=100, description="Maximum recorded relationships per page"),
+    cursor: str | None = Query(None, max_length=8192),
+    snapshot_generation: str | None = Query(None, pattern=r"^[0-9a-f]{32}$"),
 ) -> dict[str, Any]:
-    """One asset's full attributes plus its relationships (neighbors / edges).
+    """Asset attributes and one bounded page of recorded relationships.
 
-    Reuses the graph store's ``node_context`` so the UI drawer can render config,
-    relationships, and blast-radius impact, and link out to findings.
+    Reuse the returned scan ID and generation for subsequent pages. Impact is
+    not evaluated by this endpoint; completeness applies only to this page.
     """
     tenant = _tenant(request)
     try:
@@ -187,6 +190,9 @@ async def get_inventory_asset(
             tenant_id=tenant,
             asset_id=asset_id,
             scan_id=scan_id,
+            limit=limit,
+            cursor=cursor,
+            snapshot_generation=snapshot_generation,
             store_call=_store_call,
         )
     except InventoryError as exc:

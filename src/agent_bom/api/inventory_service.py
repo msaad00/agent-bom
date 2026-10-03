@@ -2,7 +2,7 @@
 
 Both the HTTP route (``api/routes/inventory_assets.py``) and the agent-native MCP
 tools (``mcp_tools/inventory.py``) project the ONE tenant-scoped unified graph
-snapshot (``query_inventory`` / ``node_context``)
+snapshot (``query_inventory`` / ``incident_edges_page``)
 into the same asset-inventory shape. That projection lives here so the human
 cockpit and the headless agent surface share one implementation and one evidence
 model — no duplicated logic, no second store.
@@ -491,34 +491,51 @@ async def build_asset_detail(
     tenant_id: str,
     asset_id: str,
     scan_id: Optional[str] = None,
+    limit: int = 24,
+    cursor: str | None = None,
+    snapshot_generation: str | None = None,
     store_call: StoreCall = default_store_call,
 ) -> dict[str, Any] | None:
-    """One asset's full attributes plus its relationships (neighbors / edges).
+    """Return one transaction-consistent page of recorded asset relationships.
 
-    Reuses the graph store's ``node_context`` so the UI drawer and headless
-    agents both render config, relationships, and blast-radius impact. Returns
-    ``None`` when the asset is not in the tenant's snapshot.
+    Completeness describes this page, not collection coverage or blast radius.
+    Continuations must reuse the returned scan ID and snapshot generation.
     """
     check_filter_lengths(scan_id=scan_id)
-    context = await store_call(
-        store.node_context,
-        scan_id=scan_id or "",
-        tenant_id=tenant_id,
-        node_id=asset_id,
-    )
+    try:
+        context = await store_call(
+            store.incident_edges_page,
+            scan_id=scan_id or "",
+            tenant_id=tenant_id,
+            node_id=asset_id,
+            direction="both",
+            limit=limit,
+            cursor=cursor,
+            snapshot_generation=snapshot_generation,
+        )
+    except ValueError as exc:
+        raise InventoryError("Invalid relationship page or changed snapshot; restart asset inspection.", status_code=400) from exc
     if context is None:
         return None
 
     node = context["node"]
+    edges_out = [edge for edge in context["edges"] if edge.source == asset_id]
+    edges_in = [edge for edge in context["edges"] if edge.target == asset_id]
     return {
         "schema_version": "inventory.asset.v1",
         "tenant_id": tenant_id,
+        "scan_id": context["scan_id"],
+        "snapshot_generation": context["snapshot_generation"],
         "asset": asset_row(node),
         "node": node.to_dict(),
-        "edges_out": [edge.to_dict() for edge in context["edges_out"]],
-        "edges_in": [edge.to_dict() for edge in context["edges_in"]],
-        "neighbors": context["neighbors"],
-        "sources": context["sources"],
-        "impact": context["impact"],
-        "completeness": graph_completeness(returned=1, total=1),
+        "nodes": [endpoint.to_dict() for endpoint in context["nodes"]],
+        "edges_out": [edge.to_dict() for edge in edges_out],
+        "edges_in": [edge.to_dict() for edge in edges_in],
+        "neighbors": sorted({edge.target for edge in edges_out}),
+        "sources": sorted({edge.source for edge in edges_in}),
+        "evidence_sources": node.data_sources,
+        "impact": {},
+        "impact_status": "not_evaluated",
+        "next_cursor": context["next_cursor"],
+        "completeness": context["completeness"],
     }

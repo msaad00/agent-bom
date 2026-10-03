@@ -438,6 +438,41 @@ def test_detail_unknown_id_404(inventory_store):
     assert resp.status_code == 404
 
 
+def test_detail_pages_recorded_relationships_without_loading_full_context(inventory_store, monkeypatch):
+    def forbidden(**kwargs):
+        raise AssertionError("Inventory detail must not load the unbounded node context")
+
+    monkeypatch.setattr(inventory_store, "node_context", forbidden)
+    client = TestClient(app)
+    first = client.get("/v1/inventory/assets/server:mcp", params={"limit": 1}).json()
+    assert first["scan_id"] == "inv-scan-1"
+    assert first["completeness"]["complete"] is False
+    assert len(first["edges_in"]) + len(first["edges_out"]) == 1
+    assert first["next_cursor"]
+    second = client.get(
+        "/v1/inventory/assets/server:mcp",
+        params={
+            "scan_id": first["scan_id"],
+            "cursor": first["next_cursor"],
+            "limit": 1,
+            "snapshot_generation": first["snapshot_generation"],
+        },
+    ).json()
+    assert second["next_cursor"] is None
+    assert second["completeness"]["complete"] is True
+    assert second["impact_status"] == "not_evaluated"
+    assert first["evidence_sources"] == ["mcp-scan"]
+    assert second["nodes"]
+
+
+def test_detail_cursor_rejects_replaced_snapshot(inventory_store):
+    client = TestClient(app)
+    first = client.get("/v1/inventory/assets/server:mcp", params={"limit": 1}).json()
+    _seed_graph(inventory_store)
+    response = client.get("/v1/inventory/assets/server:mcp", params={"cursor": first["next_cursor"], "limit": 1})
+    assert response.status_code == 400
+
+
 # ── Tenant isolation ──
 
 

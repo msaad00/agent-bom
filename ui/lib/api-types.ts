@@ -517,6 +517,12 @@ export interface InventoryAssetsResponse {
 export interface InventoryAssetDetailResponse {
   schema_version: string;
   tenant_id: string;
+  scan_id: string;
+  snapshot_generation: string;
+  next_cursor: string | null;
+  nodes: Record<string, unknown>[];
+  evidence_sources: string[];
+  impact_status: "not_evaluated";
   asset: InventoryAssetBase;
   node: Record<string, unknown>;
   edges_out: Record<string, unknown>[];

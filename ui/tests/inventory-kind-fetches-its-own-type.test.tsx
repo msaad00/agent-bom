@@ -286,6 +286,7 @@ function deferred<T>() {
 
 function detail(name: string): InventoryAssetDetailResponse {
   return { schema_version: "inventory.asset.v1", tenant_id: "default", asset: { ...asset("agent:one"), name },
+    scan_id: "snapshot", snapshot_generation: "a".repeat(32), next_cursor: null, nodes: [], evidence_sources: [], impact_status: "not_evaluated",
     node: {}, edges_out: [], edges_in: [], neighbors: [], sources: [], impact: {},
     completeness: { status: "complete", complete: true, sampled: false, truncated: false, returned: 1, total: 1 } };
 }

@@ -1168,9 +1168,14 @@ export const api = {
     return get<InventoryAssetsResponse>(`/v1/inventory/assets${qs ? `?${qs}` : ""}`);
   },
 
-  /** Lazily load one asset's relationships and blast-radius context. */
-  getInventoryAsset: (assetId: string, scanId?: string) => {
-    const qs = scanId ? `?scan_id=${encodeURIComponent(scanId)}` : "";
+  /** Load one bounded, snapshot-pinned page of recorded relationships. */
+  getInventoryAsset: (assetId: string, scanId?: string, page?: { cursor?: string; snapshotGeneration?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (scanId) params.set("scan_id", scanId);
+    if (page?.cursor) params.set("cursor", page.cursor);
+    if (page?.snapshotGeneration) params.set("snapshot_generation", page.snapshotGeneration);
+    if (page?.limit != null) params.set("limit", String(page.limit));
+    const qs = params.size ? `?${params.toString()}` : "";
     return get<InventoryAssetDetailResponse>(
       `/v1/inventory/assets/${encodeURIComponent(assetId)}${qs}`,
     );

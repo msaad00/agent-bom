@@ -243,6 +243,33 @@ async def test_inventory_asset_detail_returns_edges(seeded_store) -> None:
 
 
 @pytest.mark.asyncio
+async def test_inventory_asset_page_matches_shared_service_and_rejects_wrong_scope(seeded_store) -> None:
+    from agent_bom.api.inventory_service import build_asset_detail
+
+    kwargs = {"asset_id": "server:mcp", "scan_id": "inv-scan-1", "limit": 1}
+    first = json.loads(await inventory_asset_impl(**kwargs, _get_graph_store=_store_factory(seeded_store)))
+    assert first == await build_asset_detail(store=seeded_store, tenant_id="default", **kwargs)
+    assert first["next_cursor"]
+    assert first["impact_status"] == "not_evaluated"
+    wrong = json.loads(
+        await inventory_asset_impl(
+            asset_id="agent:a",
+            scan_id=first["scan_id"],
+            cursor=first["next_cursor"],
+            _get_graph_store=_store_factory(seeded_store),
+        )
+    )
+    assert wrong["error"]["category"] == "validation"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, 101, True])
+async def test_inventory_asset_rejects_invalid_page_limits(seeded_store, limit) -> None:
+    result = json.loads(await inventory_asset_impl(asset_id="server:mcp", limit=limit, _get_graph_store=_store_factory(seeded_store)))
+    assert result["error"]["category"] == "validation"
+
+
+@pytest.mark.asyncio
 async def test_inventory_asset_unknown_id_clean_not_found(seeded_store) -> None:
     response = await inventory_asset_impl(
         asset_id="does-not-exist", _get_graph_store=_store_factory(seeded_store), _truncate_response=lambda v: v

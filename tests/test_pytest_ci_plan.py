@@ -293,3 +293,18 @@ def test_graph_storage_edits_include_startup_and_writer_contracts(tmp_path: Path
         "src/agent_bom/storage/sqlite_wal.py",
     ):
         assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "src/agent_bom/api/inventory_service.py",
+        "src/agent_bom/api/routes/inventory_assets.py",
+        "src/agent_bom/api/routes/graph.py",
+        "src/agent_bom/api/neptune_graph.py",
+    ],
+)
+def test_inventory_graph_edits_select_backend_support_contract(tmp_path, source):
+    expected = tmp_path / "tests/test_neptune_unsupported_501.py"
+    _write(expected, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == [expected]

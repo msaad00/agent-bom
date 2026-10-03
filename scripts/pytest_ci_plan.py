@@ -273,6 +273,13 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(candidate for candidate in available if candidate.stem.startswith("test_proxy"))
         if normalized.as_posix() in SHARED_JUDGMENT_SOURCES:
             selected.update(candidate for candidate in available if candidate.stem.startswith(SHARED_JUDGMENT_PREFIXES))
+        if normalized.as_posix() in {
+            "src/agent_bom/api/inventory_service.py",
+            "src/agent_bom/api/routes/inventory_assets.py",
+            "src/agent_bom/api/routes/graph.py",
+            "src/agent_bom/api/neptune_graph.py",
+        }:
+            selected.update(candidate for candidate in available if candidate.name == "test_neptune_unsupported_501.py")
         direct = root / normalized
         if normalized.parts and normalized.parts[0] == "tests" and direct in available:
             selected.add(direct)

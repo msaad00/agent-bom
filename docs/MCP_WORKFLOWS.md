@@ -51,6 +51,10 @@ results are not inherited by child resources. Download the loaded control
 records and snapshot receipts as JSON; collection coverage and freshness remain
 unassessed. Missing scope never opens tenant-wide compliance implicitly.
 
+Run the [connected component example](../examples/connected-bom/README.md)
+to reproduce parsing, changed-input rescanning, retained snapshots, scoped
+findings/control evidence, and REST/MCP parity without cloud credentials.
+
 Read the `profiles://catalog` resource to discover profile names, tool names and
 startup commands without loading every input schema. Selection is fixed for the
 server instance; it does not silently expand during a session. Excluded tools

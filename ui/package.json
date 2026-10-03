@@ -16,7 +16,7 @@
     "lock:normalize": "npm install --package-lock-only --ignore-scripts",
     "test:runtime-proxy": "node scripts/smoke-runtime-api-proxy.mjs",
     "test:e2e": "node scripts/assert-install-matches-lockfile.mjs && node scripts/assert-build-is-current.mjs && playwright test",
-    "verify:toolchain": "node scripts/verify-toolchain.mjs",
+    "verify:toolchain": "node scripts/verify-toolchain.mjs && node --test scripts/next-root-dirs.test.mjs",
     "headers:sync": "node scripts/sync-vercel-headers.mjs",
     "headers:check": "node scripts/sync-vercel-headers.mjs --check",
     "capture:product-proof": "node scripts/capture-product-proof.mjs",
@@ -50,7 +50,10 @@
     "minimatch@3.1.5": "10.2.5",
     "sharp": "^0.35.4",
     "js-yaml": "^4.3.2",
-    "nanoid": "^3.3.17"
+    "nanoid": "^3.3.17",
+    "@next/eslint-plugin-next": {
+      "fast-glob": "npm:tinyglobby@0.2.17"
+    }
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.3.6",

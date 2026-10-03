@@ -15,6 +15,17 @@ That starts the API on `http://localhost:8422` and serves the bundled dashboard.
 
 ## UI development
 
+The Next.js ESLint plugin's `fast-glob` dependency is replaced with the published
+`tinyglobby` 0.2.17 package through a consumer-scoped npm override. This removes
+the `micromatch` → `braces` dependency chain affected by
+[CVE-2026-93687](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+The plugin uses `globSync` with `onlyDirectories`; this override does not claim
+compatibility with every `fast-glob` API. `npm run verify:toolchain` checks the
+installed replacement, absence of `braces`, and Next root-directory discovery
+for strings, arrays, brace patterns, separators, missing paths, and files.
+Review this contract when upgrading the plugin. The advisory gate remains
+unchanged and scans the replacement under its actual package name.
+
 Run the dashboard and API separately when working on frontend changes:
 
 ```bash

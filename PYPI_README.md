@@ -60,6 +60,18 @@ prompt file. See `docs/FIRST_RUN.md` in the repository for the guided flow.
 
 </details>
 
+## Follow one component
+
+In the self-hosted dashboard, open **Inventory → component → Findings → Compliance**.
+The views retain the exact component and scan snapshot, expose recorded relationships
+and source evidence, and export loaded evidence with completeness receipts. Control
+mappings do not establish evaluated passes or certification.
+
+From a source checkout, [run the connected-BOM example](https://github.com/msaad00/agent-bom/tree/main/examples/connected-bom).
+It retains before/after SQLite snapshots: a changed dependency input removes one
+pinned advisory finding while an unrelated synthetic cloud check remains failed.
+This bounded example does not change a deployment or qualify a cloud account.
+
 ## Recommended starting points
 
 ```bash

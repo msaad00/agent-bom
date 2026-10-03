@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, ArrowUpRight, FileSearch, ShieldCheck } from "lucide-react";
+import { ArrowRight, ArrowUpRight, FileSearch, Shield } from "lucide-react";
 import { useAuthState } from "@/components/auth-provider";
 import { useIncidentNeighborhood } from "@/hooks/use-incident-neighborhood";
 import { componentControlEvidence } from "@/lib/component-compliance-evidence";
@@ -35,7 +35,7 @@ function ControlEvidence({ assetId, scanId, owner }: { assetId: string; scanId: 
     <header className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="rounded-lg border border-outline bg-surface p-2 text-accent"><ShieldCheck size={20} aria-hidden="true" /></span>
+          <span className="rounded-lg border border-outline bg-surface p-2 text-accent"><Shield size={20} aria-hidden="true" /></span>
           <div className="min-w-0"><p className="text-xs font-medium text-ink-secondary">Component investigation</p>
             <h1 className="break-words text-xl font-semibold">{label}</h1></div>
         </div>
@@ -67,9 +67,9 @@ function ControlEvidence({ assetId, scanId, owner }: { assetId: string; scanId: 
           </button></li>)}
         </ul>
       </section>
-      <section aria-label="Selected control evidence" className="min-w-0 space-y-4 p-4 md:p-5">
+      <section aria-label="Selected control evidence" className="min-w-0 space-y-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div><p className="text-xs text-ink-secondary">Control reference</p><h3 className="break-all text-lg font-semibold">{selected.tag}</h3></div>
+          <div><h3 className="break-all text-lg font-semibold">{selected.tag}</h3></div>
           <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${failed ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300" : "border-outline bg-surface-muted text-ink-secondary"}`}>{failed ? "Recorded failed check" : "Mapped · Not evaluated"}</span>
         </div>
         <div className="space-y-2">
@@ -86,13 +86,13 @@ function ControlEvidence({ assetId, scanId, owner }: { assetId: string; scanId: 
         </div>
         <div className="rounded-lg border border-outline bg-surface-muted p-3">
           <h4 className="flex items-center gap-2 text-sm font-semibold"><FileSearch size={15} aria-hidden="true" />{failed ? "Review the failed check" : "Assessment still needed"}</h4>
-          <p className="mt-1 text-sm leading-relaxed text-ink-secondary">{failed ? "Inspect the supporting check detail, correct the affected configuration, then collect a new check for the same scope." : "Review the linked evidence and collect a scoped control check before making a compliance decision."}</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink-secondary">{failed ? "Inspect the supporting check detail, correct the affected configuration, then collect a new check for the same scope." : "Collect a scoped control check before making a compliance decision."}</p>
           <Link href={onComponent ? graphHref(assetId) : graphHref(selected.node.id)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-accent">Inspect source evidence <ArrowUpRight size={13} aria-hidden="true" /></Link>
         </div>
-        <dl className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
+        <dl className="grid gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
           <div><dt className="text-ink-secondary">Scope</dt><dd className="mt-1">{selected.scope.replaceAll("_", " ")}</dd></div>
           <div><dt className="text-ink-secondary">Last seen</dt><dd className="mt-1 break-all">{selected.node.last_seen || "Not recorded"}</dd></div>
-          <div className="sm:col-span-2"><dt className="text-ink-secondary">Sources</dt><dd className="mt-1 break-words">{selected.node.data_sources?.join(", ") || "Not recorded"}</dd></div>
+          <div><dt className="text-ink-secondary">Sources</dt><dd className="mt-1 break-words">{selected.node.data_sources?.join(", ") || "Not recorded"}</dd></div>
         </dl>
         <details className="border-t border-outline pt-3 text-xs"><summary className="cursor-pointer font-medium">Supporting evidence</summary>
           <p className="mt-2 break-all text-ink-secondary">Node: {selected.node.id}</p>

@@ -3102,6 +3102,7 @@ async function main() {
         await expect(p.getByRole("list", { name: "Component control records" })).toContainText("NIST-RA-5");
         await expect(p.getByRole("link", { name: "View component chain" })).toHaveAttribute("href", `/security-graph?lens=estate&node=pkg%3Anext&scan=${SCAN_ID}`);
         await expect(p.getByRole("region", { name: "Selected control evidence" })).toContainText("CVE-2025-29927");
+        await expect(p.getByText("Export control evidence", { exact: true })).toBeInViewport();
         await expect(p.getByRole("link", { name: "Inspect source evidence" })).toHaveAttribute("href", `/security-graph?lens=estate&node=cve%3Anext&scan=${SCAN_ID}`);
       }, { expectedText: ["Mapped · Not evaluated", "Why this is linked", "Assessment still needed", "mapping only", "Export control evidence"],
         rejectedText: ["Recorded failed check"], expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });

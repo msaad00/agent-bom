@@ -2756,6 +2756,12 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
     }
     await page.screenshot({ path: path.join(captureOutputDir, filename), fullPage: false, animations: "disabled" });
     console.log(`captured ${filename}`);
+  } catch (error) {
+    const failureDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-bom-capture-failure-"));
+    await page.screenshot({ path: path.join(failureDir, filename), fullPage: false });
+    await fs.writeFile(path.join(failureDir, "visible-text.txt"), await page.locator("body").innerText());
+    console.error(`Capture failure evidence: ${failureDir}`);
+    throw error;
   } finally {
     page.off("console", onConsole);
     page.off("pageerror", onPageError);
@@ -3063,6 +3069,29 @@ async function main() {
       }, theme);
       return capturePage;
     };
+    // Capture the shipped component workflow; fixture mappings are not assessments.
+    for (const theme of ["dark", "light"]) {
+      const componentPage = await newCapturePage(theme, { width: 1440, height: 1100 });
+      await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-${theme}-live.png`, async (p) => {
+        await p.getByText("next@15.2.2", { exact: true }).first().click();
+        const relationships = p.getByRole("list", { name: "Recorded component relationships" });
+        await expect(relationships).toBeVisible();
+        await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toHaveAttribute("href", `/findings?asset=pkg%3Anext&scan=${SCAN_ID}`);
+        await relationships.scrollIntoViewIfNeeded();
+      }, { expectedText: ["next@15.2.2", "CVE-2025-29927", "Collection coverage and blast radius are not assessed"],
+        expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
+      await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
+        await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
+        await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);
+      }, { expectedText: ["Component finding evidence", "CVE-2025-29927", "Source collection coverage remains unknown"],
+        expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
+      await capture(componentPage, `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-controls-${theme}-live.png`, async (p) => {
+        await expect(p.getByRole("list", { name: "Component control records" })).toContainText("NIST-RA-5");
+      }, { expectedText: ["Mapped · Not evaluated", "Scope: mapping only", "Export control evidence"],
+        rejectedText: ["Recorded failed check"], expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
+      await componentPage.close();
+    }
+
     const prepareCorrelationReceipts = async (proofPage) => {
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
@@ -3778,29 +3807,6 @@ async function main() {
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
       expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
     });
-
-    // Capture the shipped component workflow; fixture mappings are not assessments.
-    for (const theme of ["dark", "light"]) {
-      const componentPage = await newCapturePage(theme, { width: 1440, height: 1100 });
-      await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-${theme}-live.png`, async (p) => {
-        await p.getByText("next@15.2.2", { exact: true }).first().click();
-        const relationships = p.getByRole("list", { name: "Recorded component relationships" });
-        await expect(relationships).toBeVisible();
-        await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toHaveAttribute("href", `/findings?asset=pkg%3Anext&scan=${SCAN_ID}`);
-        await relationships.scrollIntoViewIfNeeded();
-      }, { expectedText: ["next@15.2.2", "CVE-2025-29927", "Collection coverage and blast radius are not assessed"],
-        expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
-      await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
-        await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
-        await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);
-      }, { expectedText: ["Component finding evidence", "CVE-2025-29927", "Source collection coverage remains unknown"],
-        expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
-      await capture(componentPage, `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-controls-${theme}-live.png`, async (p) => {
-        await expect(p.getByRole("list", { name: "Component control records" })).toContainText("NIST-RA-5");
-      }, { expectedText: ["Mapped · Not evaluated", "Scope: mapping only", "Export control evidence"],
-        rejectedText: ["Recorded failed check"], expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
-      await componentPage.close();
-    }
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
     await capture(mobilePage, "/?capture=1", "dashboard-mobile-live.png", preparePosture, postureAssertions);

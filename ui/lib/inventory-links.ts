@@ -1,6 +1,6 @@
 import type { AssetRow } from "@/lib/inventory";
 
-/** Deep link into the Findings queue filtered to this asset. */
+/** Inspect recorded findings for an exact component and retained snapshot. */
 export function findingsHref(row: AssetRow, scanId?: string): string {
   const params = new URLSearchParams();
   params.set("asset", row.id);

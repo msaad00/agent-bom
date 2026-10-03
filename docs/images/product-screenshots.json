@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.0",
-  "captured_at": "2026-10-03T17:39:49.591Z",
-  "source_commit": "0af6042b55c654f3ffa32a406cc74250b115b4da",
+  "captured_at": "2026-10-03T19:31:40.890Z",
+  "source_commit": "43e896cf8d3e6c9c2f773ca8b328212ee81f1095",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:5b6b66dec74d53d0c7b6c7e2fb523d4485a9a2a64975bd62c9871f73f73d3eb8",
+  "capture_inputs_sha256": "sha256:9b38ffbee57bb255bb82b64f356190881926583a8ada166edc081413286cc998",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -28,7 +28,7 @@
       "page": "/compliance?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic control applicability mapping explicitly marked not evaluated",
       "visible_version": "0.108.0",
-      "sha256": "sha256:2c6190721f6621af523ca871cc86f23d9dcf31df7504b2e9604d7d1b5402a217"
+      "sha256": "sha256:502b91bc9c58bdb78ff5f0f99d9b650b672187624d3e952af0fb3ca2ceaf04b4"
     },
     {
       "presentation": "light desktop",
@@ -52,7 +52,7 @@
       "page": "/compliance?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic control applicability mapping explicitly marked not evaluated",
       "visible_version": "0.108.0",
-      "sha256": "sha256:20956039d229e369ac957514a02003362089119fabe701699bd8a7520e1bdb7a"
+      "sha256": "sha256:43298586522d3e68a86637051fe6959ad69e0b7e56ca88f3b82622c8b830030d"
     },
     {
       "presentation": "dark desktop",
@@ -172,7 +172,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.0",
-      "sha256": "sha256:d22c4cceb09d373d312218cad10a7789565880c45741415eec5017d5705000f2"
+      "sha256": "sha256:9e47feb6361290a90fd45b7c54aec596122e6b97643c5ad427cd46f26f5d6d70"
     },
     {
       "presentation": "dark desktop",
@@ -183,7 +183,7 @@
       "evidence_sha256": "sha256:ea4a9c60303fdd8d2009681417e4d1022a20cc9f05bb96a58914f0b8c0d038be",
       "correlation_manifest_sha256": "sha256:667ffdc5f8d259a1ed9e6257b05a592685ce8547e9738c745d7a9fe27d8d1381",
       "visible_version": "0.108.0",
-      "sha256": "sha256:0db2471998c4a9f8782cd0cf063df1cb555ac1cc7ac0ab1d49c8ab25b0b3d9e8"
+      "sha256": "sha256:49204f13f5a0de0b73ce01cbe31a3a3ec2b26c82a7e7987ecf566dcfccc8b9cf"
     },
     {
       "presentation": "dark desktop",
@@ -257,7 +257,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.0",
-      "sha256": "sha256:5a6289bd56ad7b5cd4b75650cec4e255dbc8dcd8ff266ab865a2ed246d016dcc"
+      "sha256": "sha256:a799a0e5004089d81c4b39e97cc5d05710d555caf7d097c382f90f1d3f4302e3"
     },
     {
       "presentation": "dark mobile",
@@ -297,7 +297,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.108.0",
-      "sha256": "sha256:6ae3ede59f0d1a5780c1f821c20197dfc39ac104f9a486eb990b6cbc25e58255"
+      "sha256": "sha256:0d6b4ec3a39c3335e9bfd548b28f4bfebc28ec46fc630b8ea628c3469102d0b7"
     },
     {
       "presentation": "light desktop",
@@ -305,7 +305,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.0",
-      "sha256": "sha256:0f6f0628e25491581e27b9acac0111da67873798ff085712242208e56b46b442"
+      "sha256": "sha256:c4fd2562f75fc24a791155636b16d552294ccb50a84f35ae616b77516915b3bf"
     },
     {
       "presentation": "dark desktop 1760x860",

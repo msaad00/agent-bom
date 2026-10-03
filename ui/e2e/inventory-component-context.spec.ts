@@ -46,6 +46,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByText(/Collection coverage and blast radius are not assessed/)).toBeVisible();
     await expect(page.getByText("Impact fields")).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`component-context-${theme}.png`), fullPage: true });
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    await page.screenshot({ path: testInfo.outputPath(`component-context-${theme}.png`), fullPage: true, animations: "disabled" });
   });
 }

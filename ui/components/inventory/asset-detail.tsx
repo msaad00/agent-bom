@@ -213,7 +213,7 @@ export function AssetDetail({
           Correlate
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <CorrelationLink href={findingsHref(row, scanId)} icon={Bug} label="Findings" hint={`${row.findingCount} correlated`} />
+          <CorrelationLink href={findingsHref(row, effectiveScanId)} icon={Bug} label="Findings" hint="Recorded component evidence" />
           <CorrelationLink href={securityGraphHref(row, effectiveScanId)} icon={Network} label="Security graph" hint="Blast radius" />
           <CorrelationLink href={lineageHref(row, effectiveScanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
           {compliance ? (

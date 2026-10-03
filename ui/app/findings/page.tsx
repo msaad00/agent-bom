@@ -14,6 +14,7 @@ import {
 import type { FindingFacets, ScopeCompleteness } from "@/lib/api-types";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { FindingDrawer } from "@/components/finding-drawer";
+import { ComponentFindings } from "@/components/inventory/component-findings";
 import { FindingsQueueTable } from "@/components/findings-queue";
 import { PaginationBar } from "@/components/pagination-bar";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
@@ -249,9 +250,15 @@ export default function FindingsPageWrapper() {
         detail="Preparing scan summaries and vulnerability evidence for the findings view."
       />
     }>
-      <FindingsPage />
+      <FindingsScope />
     </Suspense>
   );
+}
+
+function FindingsScope() {
+  const params = useSearchParams();
+  if (params.has("asset")) return <ComponentFindings assetId={params.get("asset") || ""} scanId={params.get("scan") || params.get("scan_id") || ""} />;
+  return <FindingsPage />;
 }
 
 function FindingsPage() {

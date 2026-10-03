@@ -30,6 +30,13 @@ names. `impact_status` is `not_evaluated` and the compatibility `impact` object
 is empty; use graph investigation for impact analysis. The inventory drawer
 shows recorded parent/child and other relationships with links to their exact
 endpoints in the selected snapshot.
+
+In the dashboard, select an inventory component and open **Findings**. The
+component view reads its exact recorded relationships in the retained snapshot,
+instead of searching other assets by name. Load additional relationship pages
+to inspect more linked finding records, then export the loaded evidence and
+snapshot receipts as JSON. Direct associations are separate from findings
+elsewhere in the component chain, exploitability, and collection coverage.
 | `cloud` | 6 | Inventory, connection scope and CIS posture | cloud-connection-review |
 | `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
 | `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |

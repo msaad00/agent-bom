@@ -3,7 +3,7 @@ import type { AssetRow } from "@/lib/inventory";
 /** Deep link into the Findings queue filtered to this asset. */
 export function findingsHref(row: AssetRow, scanId?: string): string {
   const params = new URLSearchParams();
-  params.set("q", row.label);
+  params.set("asset", row.id);
   if (scanId) params.set("scan", scanId);
   return `/findings?${params.toString()}`;
 }

@@ -41,6 +41,16 @@ to inspect more linked finding records, then export the loaded evidence and
 snapshot receipts as JSON. Direct associations are separate from findings
 elsewhere in the component chain, exploitability, and collection coverage.
 
+Open **Compliance** from the component or its findings to inspect control tags
+and directly linked benchmark evidence in the same snapshot. Tags are mappings,
+not evaluated controls. Newly projected failed benchmark checks retain explicit
+`evaluation_status=fail` and `evaluation_scope` (`resource` or `account`) in
+node attributes, available through REST, MCP inventory detail and graph exports.
+Older records without those fields remain not evaluated in this view. Account
+results are not inherited by child resources. Download the loaded control
+records and snapshot receipts as JSON; collection coverage and freshness remain
+unassessed. Missing scope never opens tenant-wide compliance implicitly.
+
 Read the `profiles://catalog` resource to discover profile names, tool names and
 startup commands without loading every input schema. Selection is fixed for the
 server instance; it does not silently expand during a session. Excluded tools

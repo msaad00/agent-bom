@@ -26,8 +26,9 @@ export function lineageHref(row: AssetRow, scanId?: string): string {
   return `/graph?${params.toString()}`;
 }
 
-/** Compliance link when the asset carries framework/control tags. */
-export function complianceHref(row: AssetRow): string | null {
-  if (row.complianceTags.length === 0) return null;
-  return `/compliance?q=${encodeURIComponent(row.complianceTags[0]!)}`;
+/** Preserve exact scope even when a component has no control tags. */
+export function complianceHref(row: AssetRow, scanId?: string): string {
+  const params = new URLSearchParams({ asset: row.id });
+  if (scanId) params.set("scan", scanId);
+  return `/compliance?${params.toString()}`;
 }

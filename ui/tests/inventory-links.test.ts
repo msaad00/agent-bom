@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AssetRow } from "@/lib/inventory";
-import { findingsHref, securityGraphHref } from "@/lib/inventory-links";
+import { complianceHref, findingsHref, securityGraphHref } from "@/lib/inventory-links";
 
 describe("inventory security graph links", () => {
   it("distinguishes equal component labels by canonical ID and pins the snapshot", () => {
@@ -9,6 +9,10 @@ describe("inventory security graph links", () => {
     const second = { id: "gcp:package:one", label: "shared-library" } as AssetRow;
     expect(findingsHref(first, "scan/one")).toBe("/findings?asset=aws%3Apackage%3Aone&scan=scan%2Fone");
     expect(findingsHref(first, "scan/one")).not.toBe(findingsHref(second, "scan/one"));
+  });
+  it("keeps exact compliance scope even without tags", () => {
+    const row = { id: "cloud:one", complianceTags: [] } as unknown as AssetRow;
+    expect(complianceHref(row, "old-scan")).toBe("/compliance?asset=cloud%3Aone&scan=old-scan");
   });
   it("keeps an inventory asset on the current-state estate lens", () => {
     const row = {

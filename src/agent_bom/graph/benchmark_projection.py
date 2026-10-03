@@ -80,6 +80,8 @@ def _project_check(
             severity=check.get("severity", "medium").lower(),
             attributes={
                 "check_id": check_id,
+                "evaluation_status": "fail",
+                "evaluation_scope": "resource" if resource_ids else "account",
                 "cis_section": check.get("cis_section", ""),
                 "evidence": check.get("evidence", ""),
                 "recommendation": check.get("recommendation", ""),

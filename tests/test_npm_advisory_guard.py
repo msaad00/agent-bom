@@ -84,6 +84,25 @@ def test_decode_report_accepts_unlabelled_gzip_and_blocks_high_severity() -> Non
     ]
 
 
+def test_aliased_dependencies_are_audited_under_their_real_package_name(tmp_path: Path, monkeypatch) -> None:
+    lockfile = tmp_path / "package-lock.json"
+    lockfile.write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {"node_modules/parent/node_modules/fast-glob": {"name": "tinyglobby", "version": "0.2.17"}},
+            }
+        )
+    )
+
+    def report(payload):
+        assert payload == {"tinyglobby": ["0.2.17"]}
+        return {"tinyglobby": [{"id": 1, "severity": "high", "title": "replacement advisory"}]}
+
+    monkeypatch.setattr(check_npm_advisories, "fetch_report", report)
+    assert check_npm_advisories.run(lockfile) == 1
+
+
 def test_gate_blocks_high_advisories(tmp_path: Path, monkeypatch) -> None:
     lockfile = tmp_path / "package-lock.json"
     _write_lockfile(lockfile)

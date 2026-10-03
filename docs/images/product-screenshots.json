@@ -1,11 +1,59 @@
 {
   "release_version": "0.108.0",
-  "captured_at": "2026-10-03T04:25:25.443Z",
-  "source_commit": "1cf140d38e852493fc81947e24bbf3da710f2484",
+  "captured_at": "2026-10-03T17:13:46.061Z",
+  "source_commit": "f47c7895eb312f021034fbb9fcd610383a2f22b2",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:4fd3176120a10c07613b8ed608e28a5e7fba2df76545f62fb767c7e1ea97de22",
+  "capture_inputs_sha256": "sha256:99b43e8d5f1fdc9005a5921e12b121599cca4b386976696f14a3eef66d2ba251",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
+    {
+      "presentation": "dark desktop",
+      "path": "component-detail-dark-live.png",
+      "page": "/inventory/packages?scan=scan-proof-ai-platform&capture=1",
+      "scope": "Synthetic component detail with recorded relationships and explicit collection-coverage limits",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:0323e0e647e28032904ac742cc0f9e06b1dc42edba79ebcffe6c9818f0302b57"
+    },
+    {
+      "presentation": "dark desktop",
+      "path": "component-findings-dark-live.png",
+      "page": "/findings?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
+      "scope": "Exact component finding evidence in the same synthetic retained snapshot",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:ac141398c56cd607dc035dd9fe5d63ee06aecabe05e99c8d38b7c7a0f55ac91c"
+    },
+    {
+      "presentation": "dark desktop",
+      "path": "component-controls-dark-live.png",
+      "page": "/compliance?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
+      "scope": "Synthetic control applicability mapping explicitly marked not evaluated",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:e51b4065a0a9de4c837ea3bdf1e27a08ddf953c2d347a2517596ab09baec72e7"
+    },
+    {
+      "presentation": "light desktop",
+      "path": "component-detail-light-live.png",
+      "page": "/inventory/packages?scan=scan-proof-ai-platform&capture=1",
+      "scope": "Synthetic component detail with recorded relationships and explicit collection-coverage limits",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:2531013eb21aad4212583a3707a1e8cb6c00455f5676b91d0ab41f308bf62100"
+    },
+    {
+      "presentation": "light desktop",
+      "path": "component-findings-light-live.png",
+      "page": "/findings?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
+      "scope": "Exact component finding evidence in the same synthetic retained snapshot",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:c89786a704b6da622e6149aec77b85a48f99fdf08b61649b0a0505d48cb2512a"
+    },
+    {
+      "presentation": "light desktop",
+      "path": "component-controls-light-live.png",
+      "page": "/compliance?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
+      "scope": "Synthetic control applicability mapping explicitly marked not evaluated",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:0a46f24a334e89e365cc97473f51b507a94db956ce8e9a80e823ac55773e2853"
+    },
     {
       "presentation": "dark desktop",
       "path": "dashboard-live.png",
@@ -124,7 +172,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.0",
-      "sha256": "sha256:d22c4cceb09d373d312218cad10a7789565880c45741415eec5017d5705000f2"
+      "sha256": "sha256:9e47feb6361290a90fd45b7c54aec596122e6b97643c5ad427cd46f26f5d6d70"
     },
     {
       "presentation": "dark desktop",
@@ -249,7 +297,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.108.0",
-      "sha256": "sha256:cb973895f4be4588c9c2653c664820f366c7d3e22255bf155cbbdbd9ac7f0f69"
+      "sha256": "sha256:6d055e2e24603d5dda816995087dd6c99895dabbd8ce4c8ef8c93facbfb1f2c9"
     },
     {
       "presentation": "light desktop",
@@ -257,7 +305,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.0",
-      "sha256": "sha256:6cac3685c98d5a21e6595ee68d98ef84c55e40f3c561d01ebdb643c79b9fa2da"
+      "sha256": "sha256:51012c70c5e8a4cec919ebf82bc7ddc86918f6715604123556b0e5689e749ca7"
     },
     {
       "presentation": "dark desktop",

@@ -102,7 +102,7 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert images == [
         "dashboard-live.png",
         "correlation-graph-live.png",
-        "dependency-map-live.png",
+        "component-detail-dark-live.png",
         "remediation-live.png",
     ]
     assert journey.count('width="920"') == 2

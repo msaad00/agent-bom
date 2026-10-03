@@ -53,6 +53,18 @@ References:
 - Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
 - Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
 
+## Follow one component
+
+In the self-hosted dashboard, open **Inventory → component → Findings → Compliance**.
+The views retain the exact component and scan snapshot, expose recorded relationships
+and source evidence, and export loaded evidence with completeness receipts. Control
+mappings do not establish evaluated passes or certification.
+
+From a source checkout, [run the connected-BOM example](https://github.com/msaad00/agent-bom/tree/main/examples/connected-bom).
+It retains before/after SQLite snapshots: a changed dependency input removes one
+pinned advisory finding while an unrelated synthetic cloud check remains failed.
+This bounded example does not change a deployment or qualify a cloud account.
+
 ## Choose Your Path
 
 Start with one lane. The scanner, API, UI, gateway, proxy, and MCP tools all

@@ -24,14 +24,14 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-<p align="center">
-  <a href="docs/images/context-map-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-light-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a>
-</p>
+<p align="center"><a href="docs/images/context-map-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-light-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a></p>
 
 agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account, matches packages against vulnerability advisories, and connects findings to recorded agent, tool and credential relationships.
 Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data. [Light view](docs/images/context-map-light-live.png) · [Dark view](docs/images/context-map-live.png).
 
 **Start where you work:** [scan a repository](#quick-start), [run the shared dashboard](#self-host-in-your-environment), or [connect your assistant](docs/MCP_WORKFLOWS.md). Apache-2.0; the control plane runs in your own environment.
+
+**Follow one component:** Inventory → component → Findings → Compliance. Keep the exact component and retained snapshot in scope, inspect recorded relationships, and export the loaded evidence. [Try the connected-BOM walkthrough](examples/connected-bom/README.md).
 
 ## Self-host in your environment
 
@@ -145,9 +145,7 @@ Start with **Posture**, inspect evidence in **Top risks**, and scope inventory i
 OWASP and MITRE ATLAS risk mappings describe applicability, not control pass/fail.
 The offline synthetic enterprise estate includes evaluated checks; results do not establish certification or an audit opinion.
 
-<p align="center">
-  <a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="1440"></a>
-</p>
+<p align="center"><a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="1440"></a></p>
 
 Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), [framework controls and evidence](site-docs/features/compliance.md), and the [per-agent BOM preview](docs/SCAN_EVIDENCE_JOURNEY.md).
 
@@ -171,19 +169,18 @@ Distinguish storage, access evidence and collection sources; derived classificat
 
 ### Engineers and GRC: prioritize findings and verify fixes
 
-Review findings by priority, affected asset and evidence. Open remediation for package
-upgrades and mapped controls, assign owners, set SLAs and re-scan to verify fixes.
+Open **Inventory → component → Findings → Compliance**. Both views retain the exact identifier and scan snapshot; inspect recorded relationships, sources and timestamps, then export the loaded evidence.
+Open remediation for package upgrades, assign owners and re-scan to verify fixes. Control mappings are **not evaluated passes**.
 
-<p align="center">
-  <a href="docs/images/dependency-map-live.png"><img src="docs/images/dependency-map-live.png" alt="Actual Findings screen with labeled sample findings, priority, affected assets, detection evidence and remediation actions" width="920"></a>
-</p>
+[Component findings](docs/images/component-findings-dark-live.png) · [Scoped controls](docs/images/component-controls-dark-live.png) · [Light-theme walkthrough](docs/GALLERY.md#follow-one-component).
+The [reproducible rescan example](examples/connected-bom/README.md) changes a dependency input and retains both snapshots. One pinned advisory disappears; an unrelated modeled cloud check remains failed. No package is installed and no deployment is changed.
+
+<p align="center"><a href="docs/images/component-detail-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/component-detail-light-live.png"><img src="docs/images/component-detail-dark-live.png" alt="Selected sample component with recorded relationships and explicit collection-coverage limits" width="920"></picture></a></p>
 
 <details>
 <summary>See package remediation and verification</summary>
 
-<p align="center">
-  <a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Actual remediation screen with sample package upgrades, affected controls and campaign verification workflow" width="920"></a>
-</p>
+<p align="center"><a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Actual remediation screen with sample package upgrades, affected controls and campaign verification workflow" width="920"></a></p>
 
 </details>
 

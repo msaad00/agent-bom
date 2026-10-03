@@ -1,9 +1,9 @@
 {
   "release_version": "0.107.2",
-  "captured_at": "2026-10-02T20:20:34.890Z",
-  "source_commit": "a52e585943617f314ab9ef95884adc7584ad77ac",
+  "captured_at": "2026-10-03T03:03:16.645Z",
+  "source_commit": "771b291d3059ebc3ab8bef9921ab1097c060761a",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:eafe2869bb74b2765b4a8d384135587371e273abfa4eb893ce925d548789d439",
+  "capture_inputs_sha256": "sha256:edfc506e2811fd6475d355d4f2af5f558c837a775b1ba3f224f3c9b5029e2bc8",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -108,7 +108,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.107.2",
-      "sha256": "sha256:4f133488b1aad3e6ab28241378db0bfd88a52025d377fbdfe98a4d0e40d34cf6"
+      "sha256": "sha256:efc5fe3ffaf3e62b87ae51fabb77f68d3302ce0440282cfe15161c052008eafd"
     },
     {
       "presentation": "dark desktop",
@@ -257,7 +257,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.107.2",
-      "sha256": "sha256:98d36d0bb342bf999dbe5ed2bd51230a9e2d13976eec390b458b576e04f230c1"
+      "sha256": "sha256:a2754a361a414c26dee81dd47663af1ec9e2ffc3647bb50b0091cf4a9a039b5c"
     },
     {
       "presentation": "dark desktop",

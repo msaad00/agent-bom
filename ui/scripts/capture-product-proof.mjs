@@ -1555,8 +1555,10 @@ function inventoryFacets(rows) {
   );
 }
 
-function inventorySummaryFixture() {
-  const rows = inventoryAssetRows();
+function inventorySummaryFixture(requestUrl) {
+  const page = inventoryAssetsFixture(requestUrl);
+  if (page.pagination.has_more) throw new Error("Capture summary requires the complete bounded fixture");
+  const rows = page.assets;
   const byType = Object.fromEntries(
     inventoryBuckets(rows, "type")
       .filter((item) => item.value)
@@ -1568,6 +1570,7 @@ function inventorySummaryFixture() {
     scan_id: SCAN_ID,
     created_at: CREATED_AT,
     total_assets: rows.length,
+    filters: page.filters,
     by_type: byType,
     by_group: {},
     finding_count: graph.nodes.filter((item) => INVENTORY_FINDING_TYPES.has(item.entity_type)).length,
@@ -1989,7 +1992,7 @@ async function installRoutes(page) {
         return false;
       }
     },
-    (route) => fulfill(route, inventorySummaryFixture()),
+    (route) => fulfill(route, inventorySummaryFixture(route.request().url())),
   );
   await page.route("**/v1/inventory/assets?**", (route) => fulfill(route, inventoryAssetsFixture(route.request().url())));
   await page.route("**/v1/inventory/assets/**", (route) => {

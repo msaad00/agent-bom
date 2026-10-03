@@ -90,3 +90,5 @@ The PR body should include:
 
 Do not claim a screenshot refresh is release-ready if the manifest, visible
 version, and reviewed images are not aligned.
+
+- Context layouts: capture the same nine entities and eight relationships in Vertical and Horizontal layouts, in light and dark themes. Verify direction and readable node labels.

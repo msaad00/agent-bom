@@ -100,3 +100,22 @@ For a parser-backed scan and changed-input rescan, run the
 [connected-BOM example](../examples/connected-bom/README.md). It uses a different
 bounded advisory fixture and explicitly synthetic cloud topology. A finding no
 longer present after the input change is not proof that a deployment was repaired.
+
+## Explore the same graph in both directions
+
+Open **Context**, choose an agent, expand its recorded connections, then switch
+**Vertical / Horizontal**. Both layouts retain the same selected entities and
+relationships; changing direction does not add evidence or change risk.
+
+**Vertical — follow dependencies from identity to finding.** The role sits above
+the agent; MCP servers branch into tools, credentials and packages below it.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/context-map-light-live.png"><img src="images/context-map-live.png" alt="Vertical recorded neighborhood, from role and agent down to MCP servers, packages and finding" width="960"></picture>
+
+**Horizontal — trace the same chain from left to right.** Select a node or
+connection to inspect its source in the adjacent evidence panel.
+
+<picture><source media="(prefers-color-scheme: light)" srcset="images/context-map-horizontal-light-live.png"><img src="images/context-map-horizontal-dark-live.png" alt="Horizontal recorded neighborhood showing the same nine entities and eight relationships" width="960"></picture>
+
+These are labeled synthetic UI fixtures. Recorded connections do not establish
+execution, successful access or complete collection coverage.

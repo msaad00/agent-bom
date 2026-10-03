@@ -3074,15 +3074,19 @@ async function main() {
     };
     // Capture the shipped component workflow; fixture mappings are not assessments.
     for (const theme of ["dark", "light"]) {
-      const componentPage = await newCapturePage(theme, { width: 1440, height: 1100 });
+      const componentPage = await newCapturePage(theme, { width: 1440, height: 1340 });
       await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-${theme}-live.png`, async (p) => {
         await p.getByText("next@15.2.2", { exact: true }).first().click();
         const relationships = p.getByRole("list", { name: "Recorded component relationships" });
         await expect(relationships).toBeVisible();
         await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toHaveAttribute("href", `/findings?asset=pkg%3Anext&scan=${SCAN_ID}`);
-        await relationships.scrollIntoViewIfNeeded();
+        const controls = p.getByRole("link", { name: "Compliance Recorded control evidence" });
+        await controls.scrollIntoViewIfNeeded();
+        await expect(controls).toBeInViewport();
+        await expect(relationships).toBeInViewport();
       }, { expectedText: ["next@15.2.2", "CVE-2025-29927", "Collection coverage and blast radius are not assessed"],
         expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
+      await componentPage.setViewportSize({ width: 1440, height: 780 });
       await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
         await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
         await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);

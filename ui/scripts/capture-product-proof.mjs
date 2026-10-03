@@ -2963,6 +2963,12 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       scope: "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       presentation: "light desktop",
     },
+    ...["dark", "light"].map(theme => ({
+      path: `context-map-horizontal-${theme}-live.png`,
+      page: "/graph?lens=context&capture=1",
+      scope: "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
+      presentation: `${theme} desktop 1760x860`,
+    })),
     {
       path: "inventory-live.png",
       page: "/inventory?capture=1",
@@ -3094,8 +3100,19 @@ async function main() {
         expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
       await capture(componentPage, `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-controls-${theme}-live.png`, async (p) => {
         await expect(p.getByRole("list", { name: "Component control records" })).toContainText("NIST-RA-5");
-      }, { expectedText: ["Mapped · Not evaluated", "Scope: mapping only", "Export control evidence"],
+        await expect(p.getByRole("link", { name: "View component chain" })).toHaveAttribute("href", `/security-graph?lens=estate&node=pkg%3Anext&scan=${SCAN_ID}`);
+        await expect(p.getByRole("region", { name: "Selected control evidence" })).toContainText("CVE-2025-29927");
+        await expect(p.getByText("Export control evidence", { exact: true })).toBeInViewport();
+        await expect(p.getByRole("link", { name: "Inspect source evidence" })).toHaveAttribute("href", `/security-graph?lens=estate&node=cve%3Anext&scan=${SCAN_ID}`);
+      }, { expectedText: ["Mapped · Not evaluated", "Why this is linked", "Assessment still needed", "mapping only", "Export control evidence"],
         rejectedText: ["Recorded failed check"], expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
+      await componentPage.setViewportSize({ width: 390, height: 844 });
+      await expect(componentPage.getByRole("region", { name: "Selected control evidence" })).toBeVisible();
+      await componentPage.getByRole("link", { name: "Inspect source evidence" }).scrollIntoViewIfNeeded();
+      await expect(componentPage.getByRole("link", { name: "Inspect source evidence" })).toBeInViewport();
+      if (await componentPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) throw new Error("Component controls overflow on mobile");
+      await componentPage.getByText("Supporting evidence", { exact: true }).click();
+      await expect(componentPage.getByText("Supporting check detail was not recorded.", { exact: true })).toBeVisible();
       await componentPage.close();
     }
 
@@ -3683,9 +3700,20 @@ async function main() {
       await contextPage.getByRole("button", { name: "Back to neighborhood", exact: true }).click();
       await expect(contextPage.locator(".react-flow__node")).toHaveCount(9);
       await contextPage.locator('[data-id="agent:developer-copilot"]').click();
+      await contextPage.getByRole("button", { name: "Vertical", exact: true }).click();
       await contextPage.waitForTimeout(500);
       for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
       await scrollTo(contextPage, 0);
+    };
+    const prepareHorizontalNeighborhood = async (contextPage) => {
+      await prepareContextNeighborhood(contextPage);
+      await contextPage.getByRole("button", { name: "Horizontal", exact: true }).click();
+      await contextPage.waitForTimeout(500);
+      await expect(contextPage.locator(".react-flow__node")).toHaveCount(9);
+      const role = await contextPage.locator('[data-id="role:prod-admin"]').boundingBox();
+      const agent = await contextPage.locator('[data-id="agent:developer-copilot"]').boundingBox();
+      if (!role || !agent || agent.x <= role.x) throw new Error("Horizontal layout must place the connected agent after its role");
+      for (const node of await contextPage.locator(".react-flow__node").all()) await expect(node).toBeInViewport({ ratio: 0.999 });
     };
     const contextNeighborhoodAssertions = {
       awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
@@ -3809,6 +3837,11 @@ async function main() {
       readySelector: '[data-testid="selected-exposure-path"]',
     });
     await capture(lightPage, "/graph?lens=context&capture=1", "context-map-light-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
+    for (const theme of ["dark", "light"]) {
+      const horizontalPage = await newCapturePage(theme, { width: 1760, height: 860 });
+      await capture(horizontalPage, "/graph?lens=context&capture=1", `context-map-horizontal-${theme}-live.png`, prepareHorizontalNeighborhood, contextNeighborhoodAssertions);
+      await horizontalPage.close();
+    }
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],

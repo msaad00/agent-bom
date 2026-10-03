@@ -109,7 +109,7 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert journey.count('width="1440"') == 2
     assert 'width="450"' not in journey
     front = readme.split("## Self-host", 1)[0]
-    assert re.findall(r'<img src="docs/images/([^"]+)"', front) == ["context-map-live.png"]
+    assert re.findall(r'<img src="docs/images/([^"]+)"', front) == ["context-map-live.png", "context-map-horizontal-dark-live.png"]
     assert front.index("img.shields.io") < front.index("context-map-live.png")
     assert "labeled sample data" in front
     assert "<summary>Explore graph navigation, permissions and evidence</summary>" in journey
@@ -159,7 +159,13 @@ def test_scenarios_separate_reproducible_proof_from_synthetic_layout_fixtures() 
     gallery = (ROOT / "docs" / "GALLERY.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert gallery.count("<img ") == 1
+    scenario, layouts = gallery.split("## Explore the same graph in both directions", 1)
+    assert scenario.count("<img ") == 1
+    assert layouts.count("<img ") == 2
+    assert "labeled synthetic UI fixtures" in layouts
+    assert "context-map-horizontal-dark-live.png" in layouts
+    assert "context-map-live.png" in layouts
+    assert "Both layouts retain the same selected entities" in layouts
     assert "correlation-path-live.png" in gallery
     assert "correlation-path-live.png" not in readme
     assert "correlation-receipts-live.png" not in gallery

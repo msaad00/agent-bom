@@ -27,14 +27,17 @@
 <p align="center"><a href="docs/images/context-map-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-light-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a></p>
 
 agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account, matches packages against vulnerability advisories, and connects findings to recorded agent, tool and credential relationships.
-Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data. [Light view](docs/images/context-map-light-live.png) · [Dark view](docs/images/context-map-live.png).
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data. **Vertical** follows dependencies top to bottom; **Horizontal** traces the same connections left to right. [Compare layouts](docs/GALLERY.md#explore-the-same-graph-in-both-directions).
+
+<details><summary>See the same graph horizontally</summary>
+<p align="center"><a href="docs/images/context-map-horizontal-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-horizontal-light-live.png"><img src="docs/images/context-map-horizontal-dark-live.png" alt="Horizontal layout of the same nine entities: role to agent to MCP server to package to finding, with tool and credential branches" width="960"></picture></a></p>
+</details>
 
 **Start where you work:** [scan a repository](#quick-start), [run the shared dashboard](#self-host-in-your-environment), or [connect your assistant](docs/MCP_WORKFLOWS.md). Apache-2.0; the control plane runs in your own environment.
 
 **Follow one component:** Inventory → component → Findings → Compliance. Keep the exact component and retained snapshot in scope, inspect recorded relationships, and export the loaded evidence. [Try the connected-BOM walkthrough](examples/connected-bom/README.md).
 
 ## Self-host in your environment
-
 **Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
 
 ```bash

@@ -50,3 +50,28 @@ it("clears the prior tenant's evidence immediately on scope change", async () =>
   expect(screen.queryByText("Recorded failed check")).not.toBeInTheDocument();
   await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
 });
+
+it("explains a finding mapping without presenting it as an evaluated check", async () => {
+  const fixture = page();
+  fixture.nodes[0] = { ...fixture.nodes[0]!, entity_type: "vulnerability", label: "CVE-example", attributes: {}, compliance_tags: ["NIST-RA-5"] };
+  fetchPage.mockResolvedValue(fixture);
+  render(<ComponentCompliance assetId="asset" scanId="retained" />);
+  expect(await screen.findByText("Mapped · Not evaluated")).toBeVisible();
+  expect(screen.getByText("Assessment still needed")).toBeVisible();
+  expect(screen.getByText(/A finding linked to this component carries this control tag/)).toBeVisible();
+  expect(screen.queryByText("Recorded failed check")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Inspect source evidence" })).toHaveAttribute("href", "/security-graph?lens=estate&node=check&scan=retained");
+  expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute("href", "/findings?asset=asset&scan=retained");
+});
+it("switches the selected control and keeps its source evidence together", async () => {
+  const fixture = page();
+  fixture.nodes.push({ ...fixture.nodes[0]!, id: "other", label: "Other finding", entity_type: "vulnerability", attributes: {}, compliance_tags: ["NIST-RA-5"] });
+  fixture.edges.push({ source: "asset", target: "other", relationship: "vulnerable_to" } as GraphIncidentPage["edges"][number]);
+  fetchPage.mockResolvedValue(fixture);
+  render(<ComponentCompliance assetId="asset" scanId="retained" />);
+  await screen.findByText("Recorded failed check");
+  fireEvent.click(screen.getByRole("button", { name: /NIST-RA-5 Other finding/ }));
+  expect(screen.getByText("Mapped · Not evaluated")).toBeVisible();
+  expect(screen.queryByText("Recorded failed check")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Inspect source evidence" })).toHaveAttribute("href", "/security-graph?lens=estate&node=other&scan=retained");
+});

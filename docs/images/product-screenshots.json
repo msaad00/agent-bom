@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.0",
-  "captured_at": "2026-10-03T17:18:51.499Z",
-  "source_commit": "e6a8142fa84da1395f21f0272709403d00254df7",
+  "captured_at": "2026-10-03T19:31:40.890Z",
+  "source_commit": "43e896cf8d3e6c9c2f773ca8b328212ee81f1095",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:de09f060f76ff625d3062ec1ada077680fac1a465d9293af7cdc8b04c608df78",
+  "capture_inputs_sha256": "sha256:9b38ffbee57bb255bb82b64f356190881926583a8ada166edc081413286cc998",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -28,7 +28,7 @@
       "page": "/compliance?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic control applicability mapping explicitly marked not evaluated",
       "visible_version": "0.108.0",
-      "sha256": "sha256:704acee1157efc5e78e30e84c8b33e526551116b88e054de2325e0d5bf83c6b6"
+      "sha256": "sha256:502b91bc9c58bdb78ff5f0f99d9b650b672187624d3e952af0fb3ca2ceaf04b4"
     },
     {
       "presentation": "light desktop",
@@ -52,7 +52,7 @@
       "page": "/compliance?asset=pkg%3Anext&scan=scan-proof-ai-platform&capture=1",
       "scope": "Synthetic control applicability mapping explicitly marked not evaluated",
       "visible_version": "0.108.0",
-      "sha256": "sha256:6807d000f4bb9e136f5ee16a5343e4a01c5f72b68a36bd2a9ec39e2ea75e090b"
+      "sha256": "sha256:43298586522d3e68a86637051fe6959ad69e0b7e56ca88f3b82622c8b830030d"
     },
     {
       "presentation": "dark desktop",
@@ -156,7 +156,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.108.0",
-      "sha256": "sha256:53495fcaf2a30526d79a90c29f4f72aa8fed7329a9af945fb9cfec9be42f6a5e"
+      "sha256": "sha256:28a384d49fb0e851a62a38adb305d403ed8d6d9f968fd3e0e92c8e55421a2e8b"
     },
     {
       "presentation": "dark desktop",
@@ -172,7 +172,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.0",
-      "sha256": "sha256:9fa96ea238615f44548f793bdbdccdb339a9453bf542aa66d7bb4b5139a125e1"
+      "sha256": "sha256:9e47feb6361290a90fd45b7c54aec596122e6b97643c5ad427cd46f26f5d6d70"
     },
     {
       "presentation": "dark desktop",
@@ -183,7 +183,7 @@
       "evidence_sha256": "sha256:ea4a9c60303fdd8d2009681417e4d1022a20cc9f05bb96a58914f0b8c0d038be",
       "correlation_manifest_sha256": "sha256:667ffdc5f8d259a1ed9e6257b05a592685ce8547e9738c745d7a9fe27d8d1381",
       "visible_version": "0.108.0",
-      "sha256": "sha256:0db2471998c4a9f8782cd0cf063df1cb555ac1cc7ac0ab1d49c8ab25b0b3d9e8"
+      "sha256": "sha256:49204f13f5a0de0b73ce01cbe31a3a3ec2b26c82a7e7987ecf566dcfccc8b9cf"
     },
     {
       "presentation": "dark desktop",
@@ -257,7 +257,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.0",
-      "sha256": "sha256:5a6289bd56ad7b5cd4b75650cec4e255dbc8dcd8ff266ab865a2ed246d016dcc"
+      "sha256": "sha256:a799a0e5004089d81c4b39e97cc5d05710d555caf7d097c382f90f1d3f4302e3"
     },
     {
       "presentation": "dark mobile",
@@ -297,7 +297,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.108.0",
-      "sha256": "sha256:6d055e2e24603d5dda816995087dd6c99895dabbd8ce4c8ef8c93facbfb1f2c9"
+      "sha256": "sha256:0d6b4ec3a39c3335e9bfd548b28f4bfebc28ec46fc630b8ea628c3469102d0b7"
     },
     {
       "presentation": "light desktop",
@@ -305,7 +305,23 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.0",
-      "sha256": "sha256:6cac3685c98d5a21e6595ee68d98ef84c55e40f3c561d01ebdb643c79b9fa2da"
+      "sha256": "sha256:c4fd2562f75fc24a791155636b16d552294ccb50a84f35ae616b77516915b3bf"
+    },
+    {
+      "presentation": "dark desktop 1760x860",
+      "path": "context-map-horizontal-dark-live.png",
+      "page": "/graph?lens=context&capture=1",
+      "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:4c72a9d4d4f18391f91ad3b38b49ab3b5490d226b0b722c657b69c4a717af891"
+    },
+    {
+      "presentation": "light desktop 1760x860",
+      "path": "context-map-horizontal-light-live.png",
+      "page": "/graph?lens=context&capture=1",
+      "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
+      "visible_version": "0.108.0",
+      "sha256": "sha256:996246f5b54cad657c5a4322769b8ef9e125447396cd5acd3a024ab69f8afc5c"
     },
     {
       "presentation": "dark desktop",

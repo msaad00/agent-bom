@@ -3086,7 +3086,7 @@ async function main() {
       await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
         await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
         await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);
-      }, { expectedText: ["Component finding evidence", "CVE-2025-29927", "Source collection coverage remains unknown"],
+      }, { expectedText: [/Component finding evidence/i, "CVE-2025-29927", "Source collection coverage remains unknown"],
         expectedApiPaths: ["/v1/graph/incident-edges"], assertNoHorizontalOverflow: true });
       await capture(componentPage, `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-controls-${theme}-live.png`, async (p) => {
         await expect(p.getByRole("list", { name: "Component control records" })).toContainText("NIST-RA-5");

@@ -573,3 +573,23 @@ def test_no_snapshot_yet_returns_an_empty_summary_not_a_404(tmp_path):
         assert client.get("/v1/inventory/summary?scan_id=nope").status_code == 404
     finally:
         set_graph_store(original)
+
+
+@pytest.mark.parametrize(
+    "asset_id",
+    [
+        "cloud_resource:gcp:projects/example/instances/db",
+        "cloud_resource:azure:/subscriptions/example/vaults/key",
+        "pkg:npm/@scope/library@1.0.0",
+    ],
+)
+def test_detail_accepts_encoded_provider_and_scoped_package_ids(inventory_store, asset_id):
+    from urllib.parse import quote
+
+    graph = UnifiedGraph(scan_id="slash-ids", tenant_id="default")
+    graph.add_node(_node(asset_id, EntityType.CLOUD_RESOURCE, "scoped resource"))
+    inventory_store.save_graph(graph)
+    client = TestClient(app)
+    response = client.get(f"/v1/inventory/assets/{quote(asset_id, safe='')}", params={"scan_id": "slash-ids"})
+    assert response.status_code == 200
+    assert response.json()["asset"]["id"] == asset_id

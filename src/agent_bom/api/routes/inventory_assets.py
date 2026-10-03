@@ -169,7 +169,7 @@ async def list_inventory_assets(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/inventory/assets/{asset_id}", tags=["inventory"])
+@router.get("/inventory/assets/{asset_id:path}", tags=["inventory"])
 async def get_inventory_asset(
     request: Request,
     asset_id: str,

@@ -23,15 +23,21 @@ StringCache = dict[tuple[str | None, str, int], object]
 KeyCache = dict[str, str]
 
 
+def sanitize_string(value: str, key: object | None, max_str_len: int) -> object:
+    """Apply the complete field policy without traversal or cache state."""
+    key_text = str(key) if key is not None else None
+    marker = sanitize_provenance_marker(value) if key_text in PROVENANCE_KEYS else None
+    if marker is None:
+        marker = sanitize_cloud_coordinate(value, str(key or "").strip().lower().replace("-", "_"), max_str_len)
+    return marker if marker is not None else security._sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
+
+
 def _redact_string(value: str, key: object | None, key_text: str | None, max_str_len: int, string_cache: StringCache) -> object:
     cache_key = (key_text, value, max_str_len)
     cached = string_cache.get(cache_key, _CACHE_MISS)
     if cached is not _CACHE_MISS:
         return cached
-    marker = sanitize_provenance_marker(value) if key_text in PROVENANCE_KEYS else None
-    if marker is None:
-        marker = sanitize_cloud_coordinate(value, str(key or "").strip().lower().replace("-", "_"), max_str_len)
-    sanitized_value = marker if marker is not None else security._sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
+    sanitized_value = sanitize_string(value, key, max_str_len)
     if len(string_cache) < _CACHE_LIMIT:
         string_cache[cache_key] = sanitized_value
     return sanitized_value

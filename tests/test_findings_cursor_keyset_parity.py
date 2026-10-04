@@ -254,6 +254,27 @@ def test_postgres_collated_order_is_served_by_a_collated_index(sort: str, status
     pool = _new_application_pool(min_size=1, max_size=1)
     try:
         with PostgresBackend(pool).transaction(read_only=True) as tx:
+            # Schema capability and planner choice are separate contracts. On a
+            # small relation the general index may cost less than the partial one.
+            definition = tx.execute(
+                "SELECT indisvalid, indisready, pg_get_indexdef(indexrelid), pg_get_expr(indpred, indrelid) "
+                "FROM pg_index WHERE indexrelid = to_regclass(?)",
+                (index,),
+            ).fetchone()
+            assert definition is not None, f"Missing required index: {index}"
+            valid, ready, ddl, index_predicate = definition
+            assert valid and ready, f"Index is not usable: {index}"
+            primary_order = {
+                "effective_reach": "effective_reach_score DESC",
+                "cvss": "cvss_score DESC",
+                "severity": "severity_rank DESC",
+                "ordinal": "ledger_ordinal",
+            }[sort]
+            timestamp_order = 'first_seen COLLATE "C"' if sort == "ordinal" else 'last_seen COLLATE "C" DESC'
+            expected_columns = f'(tenant_id, {primary_order}, {timestamp_order}, canonical_id COLLATE "C")'
+            assert f"USING btree {expected_columns}" in ddl, ddl
+            expected_predicate = "(status = ANY (ARRAY['open'::text, 'reopened'::text]))" if status else None
+            assert index_predicate == expected_predicate, index_predicate
             # Sorting is priced out, so any Sort node means no index can serve the order.
             tx.execute("SET LOCAL enable_sort = off")
             plans = [
@@ -270,8 +291,11 @@ def test_postgres_collated_order_is_served_by_a_collated_index(sort: str, status
     finally:
         reset_current_tenant(token)
         pool.close()
+    eligible_indexes = {index}
+    if status == "open":
+        eligible_indexes.add("idx_hub_findings_current_tenant_reach_c")
     for plan in plans:
-        assert index in plan, plan
+        assert any(f"using {candidate} " in plan for candidate in eligible_indexes), plan
         assert "Sort" not in plan, plan
 
 

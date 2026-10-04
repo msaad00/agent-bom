@@ -1,9 +1,10 @@
 """Scan-export hot paths: equivalence with the prior implementations, redaction
 coverage, and a cold-start import surface that does not pull in the SDK.
 
-The optimized sanitizers must be drop-in replacements. Each equivalence test
-compares the live function against a verbatim copy of the previous
-implementation over a seeded corpus that mixes ANSI escapes, C0/C1 controls,
+The optimized traversal must preserve the uncached walk with today's complete
+leaf policy, including cloud coordinates and discovery provenance. The other
+equivalence tests retain the previous implementation over a seeded corpus of
+ANSI escapes, C0/C1 controls,
 DEL, unicode separators, credential shapes, URLs, emails and key=value text.
 """
 
@@ -22,6 +23,7 @@ import pytest
 
 import agent_bom.security as security
 from agent_bom.constants import is_credential_key
+from agent_bom.redaction.payload import sanitize_string
 
 _SRC_ROOT = str(Path(__file__).resolve().parents[1] / "src")
 
@@ -82,7 +84,7 @@ def _ref_sanitize_sensitive_payload(value: object, *, key: object | None = None,
     if value is None or isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
-        return security._sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
+        return sanitize_string(value, key, max_str_len)
     if isinstance(value, dict):
         sanitized: dict[str, object] = {}
         for raw_key, raw_value in value.items():
@@ -297,6 +299,34 @@ def test_sanitize_sensitive_payload_matches_previous_walk() -> None:
     for index in range(40):
         deep = {"token" if index % 3 == 0 else "child": [deep, index]}
     assert security.sanitize_sensitive_payload(deep) == _ref_sanitize_sensitive_payload(deep)
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected"),
+    [
+        (
+            "resource_id",
+            "/subscriptions/example/providers/Microsoft.KeyVault/vaults/shared",
+            "/subscriptions/example/providers/Microsoft.KeyVault/vaults/shared",
+        ),
+        ("node_id", "arn:aws:iam::123456789012:role/Admin", "arn:aws:iam::123456789012:role/Admin"),
+        (
+            "resource_ids",
+            "projects/example/locations/us-central1/services/shared",
+            "projects/example/locations/us-central1/services/shared",
+        ),
+        ("discovery_sources", "project-config:/home/example/.mcp.json", "project-config:<path:.mcp.json>"),
+        ("id", "C:\\Users\\example\\file.txt", "<path:file.txt>"),
+        ("password", "arn:aws:iam::123456789012:role/Admin", "***REDACTED***"),
+        ("id", "arn:aws:lambda:us-east-1:123456789012:function:ghp_" + "aB3dE5fG7hI9jK1mN3pQ5rS7tU9vW1xY3zA5", "***REDACTED***"),
+    ],
+)
+def test_cached_and_uncached_walks_apply_current_identity_policy(key, value, expected):
+    payload = {key: [value, value, {key: (value,)}]}
+    result = {key: [expected, expected, {key: [expected]}]}
+    assert sanitize_string(value, key, 1000) == expected
+    assert _ref_sanitize_sensitive_payload(payload) == result
+    assert security.sanitize_sensitive_payload(payload) == result
 
 
 # ── Redaction coverage on report-shaped payloads ─────────────────────────────

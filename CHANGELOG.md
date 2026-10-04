@@ -7,6 +7,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Preserve recorded package-to-package dependency relationships in CycloneDX and SPDX exports. Resolve parents within the same server and ecosystem, keep ambiguous or missing lineage explicit, and retain distinct package URL identities.
+
 ## [0.108.0] - 2026-10-03
 
 ### Added

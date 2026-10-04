@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx2_checksums
 from agent_bom.models import AIBOMReport
+from agent_bom.output.dependency_hierarchy import add_spdx2_package_relationships
 
 _SUPPORTED_VERSIONS = {"2.2", "2.3"}
 _NOASSERTION = "NOASSERTION"
@@ -136,7 +137,7 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
             _add_relationship(agent_id, "CONTAINS", server_id)
 
             for pkg in server.packages:
-                pkg_key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                pkg_key = pkg.stable_id
                 if pkg_key not in pkg_ref_map:
                     pkg_id = _next_id("Package")
                     pkg_ref_map[pkg_key] = pkg_id
@@ -199,7 +200,7 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
                         pkg_entry["annotations"] = annotations
                     spdx_packages.append(pkg_entry)
 
-                _add_relationship(server_id, "DEPENDS_ON", pkg_ref_map[pkg_key])
+            add_spdx2_package_relationships(server.packages, pkg_ref_map, server_pkg, created, _add_relationship)
 
     for described_id in described_ids:
         _add_relationship(document_id, "DESCRIBES", described_id)

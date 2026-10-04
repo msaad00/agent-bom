@@ -25,6 +25,7 @@ from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.checksums import cyclonedx_hashes, integrity_verdict, strongest_checksum
 from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, Vulnerability
+from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies
 from agent_bom.package_utils import synthesize_purl
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 from agent_bom.vex import vex_justification_to_cdx
@@ -653,6 +654,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 (package_ecosystem(finding), package_name(finding), package_version(finding), finding.cve_id or finding.id)
             ] = workflow
     dependencies = []
+    unresolved_parents: set[str] = set()
 
     comp_id = 0
     bom_ref_map = {}
@@ -691,7 +693,11 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
         for server in agent.mcp_servers:
             server_ref = _sanitize_bom_ref(f"mcp-server-{server.stable_id}")
-            server_deps = []
+            package_dependencies, server_deps, unresolved = cyclonedx_package_dependencies(
+                server.packages, lambda package_id: _sanitize_bom_ref(f"pkg-{package_id}")
+            )
+            unresolved_parents.update(unresolved)
+            dependencies.extend(package_dependencies)
             server_provenance = sanitize_discovery_provenance(getattr(server, "discovery_provenance", None), defaults=agent_provenance)
 
             server_props = [
@@ -742,9 +748,6 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
             for pkg in server.packages:
                 pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.stable_id}")
-                # Always record the edge from this server, even if the component
-                # (and its vulnerabilities) were already emitted via another server.
-                server_deps.append(pkg_ref)
                 bom_ref_map[f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"] = pkg_ref
                 for vuln in pkg.vulnerabilities:
                     _merge_vulnerability_observation(
@@ -942,23 +945,9 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     if vulnerabilities_cdx:
         cdx["vulnerabilities"] = vulnerabilities_cdx
 
-    # Compositions — declare assembly completeness for SBOM consumers
-    if components:
-        has_registry_resolved = any(
-            isinstance(c, dict)
-            and c.get("type") == "library"
-            and any(
-                isinstance(p, dict) and p.get("name") == "agent-bom:resolved-from-registry" and p.get("value") == "true"
-                for p in c.get("properties", [])
-            )
-            for c in components
-        )
-        cdx["compositions"] = [
-            {
-                "aggregate": "incomplete" if has_registry_resolved or scan_run.outcome is not ScanOutcome.COMPLETE else "complete",
-                "assemblies": [c["bom-ref"] for c in components if isinstance(c, dict) and "bom-ref" in c],
-            }
-        ]
+    compositions = cyclonedx_compositions(components, incomplete=bool(unresolved_parents) or scan_run.outcome is not ScanOutcome.COMPLETE)
+    if compositions:
+        cdx["compositions"] = compositions
 
     from agent_bom.output.interop_security import sanitize_linked_document
 

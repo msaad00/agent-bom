@@ -13,6 +13,7 @@ from agent_bom.asset_provenance import package_discovery_provenance, package_ver
 from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx3_verified_using
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
+from agent_bom.output.dependency_hierarchy import spdx3_package_relationships
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
 from agent_bom.package_utils import synthesize_purl
 
@@ -187,7 +188,7 @@ def to_spdx(report: AIBOMReport) -> dict:
             )
 
             for pkg in server.packages:
-                pkg_key = f"{pkg.ecosystem}:{pkg.name}@{pkg.version}"
+                pkg_key = pkg.stable_id
                 if pkg_key not in pkg_ref_map:
                     pkg_id = _next_id("SPDXRef-Pkg")
                     pkg_ref_map[pkg_key] = pkg_id
@@ -218,16 +219,6 @@ def to_spdx(report: AIBOMReport) -> dict:
                         )
 
                 pkg_id = pkg_ref_map[pkg_key]
-                relationships.append(
-                    {
-                        "type": "Relationship",
-                        "spdxId": _next_id("SPDXRef-Rel"),
-                        "relationshipType": "dependsOn",
-                        "from": server_id,
-                        "to": [pkg_id],
-                    }
-                )
-
                 for vuln in pkg.vulnerabilities:
                     vuln_element_id = _next_id("SPDXRef-Vuln")
                     vuln_element: dict[str, object] = {
@@ -282,6 +273,8 @@ def to_spdx(report: AIBOMReport) -> dict:
                     if vuln.is_kev:
                         assessment["comment"] = "CISA KEV: actively exploited in the wild"
                     relationships.append(assessment)
+
+            relationships.extend(spdx3_package_relationships(server.packages, pkg_ref_map, server_id, _next_id, _annotate))
 
     # Stamp the shared CreationInfo back-reference on every element / relationship
     # node (Relationships are Elements in SPDX 3.0 and require creationInfo too).

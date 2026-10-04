@@ -42,6 +42,12 @@ def test_changed_input_rescan_preserves_scope_and_prior_evidence(journey):
     for receipt in (before, after):
         assert receipt["same_name_cloud_resources"] == 3
         assert receipt["tenant_isolation"] and receipt["mcp_service_parity"]
+        assert len(receipt["bom_artifacts"]) == 3
+        for filename in receipt["bom_artifacts"]:
+            document = json.loads((output / filename).read_text())
+            assert "agent-bom:cloud-inventory:v1" in json.dumps(document)
+            assert "synthetic-example" in json.dumps(document)
+            assert "example-project" in json.dumps(document)
     old = (output / "proof.json").read_bytes()
     repeated = subprocess.run(
         [sys.executable, str(ROOT / "scripts/prove_connected_bom.py"), "--output-dir", str(output)],

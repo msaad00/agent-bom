@@ -25,6 +25,7 @@ from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.checksums import cyclonedx_hashes, integrity_verdict, strongest_checksum
 from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, Vulnerability
+from agent_bom.output.cloud_context import attach_cloud_context
 from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies
 from agent_bom.package_utils import synthesize_purl
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -951,7 +952,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
     from agent_bom.output.interop_security import sanitize_linked_document
 
-    return sanitize_linked_document(cdx)
+    return attach_cloud_context(sanitize_linked_document(cdx), report, "cyclonedx")
 
 
 def export_cyclonedx(report: AIBOMReport, output_path: str) -> None:

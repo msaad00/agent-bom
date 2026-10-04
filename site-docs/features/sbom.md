@@ -38,10 +38,56 @@ The current package model retains one introducing parent, so this is not a
 claim that every dependency path was collected.
 
 These standard exports include agents, MCP servers and software packages.
-CycloneDX also supports model and dataset components. Collected cloud inventory
-is retained in the scan JSON and connected graph; this does not yet mean that
-all cloud assets appear in the standard SBOM exports. Keep the JSON report when
-investigating across those sources.
+CycloneDX also supports model and dataset components.
+
+## Keep cloud context with the BOM
+
+When a scan collects `cloud_inventory`, standard exports retain that snapshot
+in the versioned `agent-bom:cloud-inventory:v1` extension:
+
+| Format | Extension location |
+|--------|--------------------|
+| CycloneDX | `metadata.properties` entry; parse its `value` as JSON |
+| SPDX 3 | Document `Annotation` with `contentType: application/json`; parse `statement` |
+| SPDX 2 JSON | Document `annotations`; parse `comment` |
+| SPDX 2 tag-value | JSON in `DocumentComment` |
+
+The extension retains provider-native resource IDs, account/subscription/project
+scope, resource tags and labels, discovery metadata, and collection status or
+warnings present in the input. Equal display names stay in their original
+provider/account records. No software dependency or cross-source relationship is
+inferred from a matching name. Cloud records remain evidence in the extension;
+they are not relabeled as software packages.
+
+The envelope has `schema_version: 1`, `source: cloud_inventory`,
+`coverage: not_assessed`, a `redaction` policy description, and the `inventory`
+payload. A collector's `status: ok` does not establish complete account coverage.
+Denied, partial and explicitly empty payloads are retained; absent inventory
+omits the extension. Structured secret/path redaction applies before encoding,
+with 1,000-character string and 24-level nesting limits. Valid Azure ARM IDs
+receive cloud-identifier redaction rather than local-path masking.
+
+Generic SBOM readers may ignore this namespaced extension. The SBOM import path
+extracts software packages; it does not restore cloud inventory from the
+extension. Keep the original export and scan JSON for cloud investigation and
+graph correlation. Separate benchmark results and runtime evidence are not
+included in this cloud-inventory snapshot.
+
+From a source checkout, run the credential-free example:
+
+```bash
+uv run python scripts/prove_connected_bom.py --output-dir /tmp/connected-bom-example
+jq '.metadata.properties[] | select(.name == "agent-bom:cloud-inventory:v1") | .value | fromjson' \
+  /tmp/connected-bom-example/before.cyclonedx.json
+```
+
+Choose a new output directory. The example parses and scans a real dependency
+manifest against a pinned offline advisory, changes the declared version, and
+writes before/after BOMs in all three JSON formats alongside graph evidence and
+a rescan diff. Its AWS, Azure and GCP records are labeled synthetic examples;
+this command does not authenticate to a cloud provider. Inspect `inventory` for
+the three same-name resources and their distinct native scopes, then compare
+the before/after software findings.
 
 ## SBOM ingestion
 

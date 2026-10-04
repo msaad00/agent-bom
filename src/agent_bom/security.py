@@ -888,7 +888,7 @@ def _safe_report_coordinate(value: str) -> bool:
     Retain credential-pattern, encoded-secret and per-component entropy checks;
     a field named node_id is not permission to export an embedded token.
     """
-    if ":" not in value or "://" in value or _WHITESPACE_OR_C0_RE.search(value):
+    if ":" not in value or "://" in value or _looks_like_path_value(value) or _WHITESPACE_OR_C0_RE.search(value):
         return False
     if text_requires_redaction(value):
         return False
@@ -925,7 +925,6 @@ def _sanitize_sensitive_string(value: str, *, key: object | None, max_str_len: i
     # trip the entropy detector.  Keep the exception deliberately narrow:
     # only ID fields with the canonical ``source->relation->target`` shape,
     # and never values matching a known credential pattern.
-    key_text = str(key or "").strip().lower().replace("-", "_")
     edge_parts = value.split("->")
     if (
         key_text in {"id", "canonical_id"}

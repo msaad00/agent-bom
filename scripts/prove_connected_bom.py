@@ -27,6 +27,8 @@ from agent_bom.api.inventory_service import build_asset_detail  # noqa: E402
 from agent_bom.graph import EntityType, UnifiedNode  # noqa: E402
 from agent_bom.graph.builder import build_unified_graph_from_report  # noqa: E402
 from agent_bom.mcp_tools.inventory import inventory_asset_impl  # noqa: E402
+from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package  # noqa: E402
+from agent_bom.output import to_cyclonedx, to_spdx, to_spdx2  # noqa: E402
 from agent_bom.parsers import scan_project_directory  # noqa: E402
 from agent_bom.scanners.package_scan import default_scan_options, scan_packages  # noqa: E402
 
@@ -42,17 +44,26 @@ def cloud_inputs() -> list[dict[str, Any]]:
             "status": "ok",
             "account_id": "example-account",
             "region": "us-east-1",
-            "lambda_functions": [{"name": "shared-service", "arn": "arn:aws:lambda:us-east-1:example-account:function:shared-service"}],
+            "evidence_origin": "synthetic-example",
+            "lambda_functions": [
+                {
+                    "name": "shared-service",
+                    "arn": "arn:aws:lambda:us-east-1:example-account:function:shared-service",
+                    "tags": {"environment": "example"},
+                }
+            ],
         },
         {
             "provider": "azure",
             "status": "ok",
             "subscription_id": "example-subscription",
             "account_id": "example-subscription",
+            "evidence_origin": "synthetic-example",
             "key_vaults": [
                 {
                     "name": "shared-service",
                     "id": "/subscriptions/example-subscription/resourceGroups/example/providers/Microsoft.KeyVault/vaults/shared-service",
+                    "tags": {"environment": "example"},
                 }
             ],
         },
@@ -61,12 +72,15 @@ def cloud_inputs() -> list[dict[str, Any]]:
             "status": "ok",
             "project_id": "example-project",
             "account_id": "example-project",
-            "cloud_sql_instances": [{"name": "shared-service", "id": "projects/example-project/instances/shared-service"}],
+            "evidence_origin": "synthetic-example",
+            "cloud_sql_instances": [
+                {"name": "shared-service", "id": "projects/example-project/instances/shared-service", "labels": {"environment": "example"}}
+            ],
         },
     ]
 
 
-async def scan_version(version: str) -> tuple[list[dict[str, Any]], str]:
+async def scan_version(version: str) -> tuple[list[Package], str]:
     manifest = f"Pillow=={version}\n"
     with tempfile.TemporaryDirectory(prefix="agent-bom-connected-input-") as directory:
         root = Path(directory)
@@ -76,7 +90,29 @@ async def scan_version(version: str) -> tuple[list[dict[str, Any]], str]:
         if len(packages) != 1 or packages[0].version != version:
             raise RuntimeError("Dependency parser did not retain the selected version")
         await scan_packages(packages, options=default_scan_options(offline=True, demo_advisories=True, project_dir=str(root)))
-    return [json.loads(json.dumps(asdict(package), default=str)) for package in packages], hashlib.sha256(manifest.encode()).hexdigest()
+    return packages, hashlib.sha256(manifest.encode()).hexdigest()
+
+
+def export_boms(output: Path, label: str, packages: list[Package]) -> list[str]:
+    """Export the actual parsed/scanned packages alongside labeled cloud inputs."""
+    report = AIBOMReport(
+        agents=[
+            Agent(
+                name="example-repository",
+                agent_type=AgentType.CUSTOM,
+                config_path="example-repository",
+                mcp_servers=[MCPServer(name="repo-deps:root", command="", packages=packages)],
+            )
+        ],
+        cloud_inventory_data=cloud_inputs(),
+        scan_sources=["repo-lockfiles", "synthetic-cloud-model"],
+    )
+    artifacts = []
+    for name, exporter in (("cyclonedx", to_cyclonedx), ("spdx", to_spdx), ("spdx2", to_spdx2)):
+        filename = f"{label}.{name}.json"
+        (output / filename).write_text(json.dumps(exporter(report), indent=2) + "\n")
+        artifacts.append(filename)
+    return artifacts
 
 
 async def prove(output: Path) -> dict[str, Any]:
@@ -90,6 +126,7 @@ async def prove(output: Path) -> dict[str, Any]:
     selected: dict[str, str] = {}
     for label, version in (("before", "9.0.0"), ("after", "10.0.1")):
         packages, digest = await scan_version(version)
+        bom_artifacts = export_boms(output, label, packages)
         report = {
             "scan_sources": ["repo-lockfiles", "synthetic-cloud-model"],
             "agents": [
@@ -97,7 +134,13 @@ async def prove(output: Path) -> dict[str, Any]:
                     "name": "example-repository",
                     "source": "repo-lockfiles",
                     "config_path": "example-repository",
-                    "mcp_servers": [{"name": "repo-deps:root", "surface": "filesystem", "packages": packages}],
+                    "mcp_servers": [
+                        {
+                            "name": "repo-deps:root",
+                            "surface": "filesystem",
+                            "packages": [json.loads(json.dumps(asdict(package), default=str)) for package in packages],
+                        }
+                    ],
                 }
             ],
             "cloud_inventory": cloud_inputs(),
@@ -180,6 +223,7 @@ async def prove(output: Path) -> dict[str, Any]:
                 "mcp_service_parity": True,
                 "same_name_cloud_resources": len(equal_names),
                 "tenant_isolation": True,
+                "bom_artifacts": bom_artifacts,
             }
         )
     delta = store.diff_snapshots("connected-before", "connected-after", tenant_id=TENANT)

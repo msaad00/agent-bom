@@ -9,6 +9,7 @@ same field-sensitive rules in ``security`` and the same per-traversal cache.
 from __future__ import annotations
 
 from agent_bom import security
+from agent_bom.redaction.cloud_coordinates import sanitize_cloud_coordinate
 from agent_bom.redaction.provenance import PROVENANCE_KEYS, sanitize_provenance_marker
 
 _CACHE_LIMIT = 262_144
@@ -28,6 +29,8 @@ def _redact_string(value: str, key: object | None, key_text: str | None, max_str
     if cached is not _CACHE_MISS:
         return cached
     marker = sanitize_provenance_marker(value) if key_text in PROVENANCE_KEYS else None
+    if marker is None:
+        marker = sanitize_cloud_coordinate(value, str(key or "").strip().lower().replace("-", "_"), max_str_len)
     sanitized_value = marker if marker is not None else security._sanitize_sensitive_string(value, key=key, max_str_len=max_str_len)
     if len(string_cache) < _CACHE_LIMIT:
         string_cache[cache_key] = sanitized_value

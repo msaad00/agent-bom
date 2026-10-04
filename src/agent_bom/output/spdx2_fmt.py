@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx2_checksums
 from agent_bom.models import AIBOMReport
+from agent_bom.output.cloud_context import attach_cloud_context
 from agent_bom.output.dependency_hierarchy import add_spdx2_package_relationships
 
 _SUPPORTED_VERSIONS = {"2.2", "2.3"}
@@ -227,7 +228,7 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
     }
     from agent_bom.output.interop_security import sanitize_linked_document
 
-    return sanitize_linked_document(document)
+    return attach_cloud_context(sanitize_linked_document(document), report, "spdx2")
 
 
 def export_spdx2(report: AIBOMReport, output_path: str, version: str = "2.3") -> None:
@@ -249,6 +250,8 @@ def to_spdx2_tagvalue(report: AIBOMReport, version: str = "2.3") -> str:
     ]
     for creator in doc["creationInfo"]["creators"]:
         lines.append(f"Creator: {creator}")
+    for annotation in doc.get("annotations", []):
+        lines.append(f"DocumentComment: <text>{annotation['comment']}</text>")
     lines.append("")
 
     for pkg in doc["packages"]:

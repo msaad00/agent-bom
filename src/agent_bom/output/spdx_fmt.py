@@ -13,6 +13,7 @@ from agent_bom.asset_provenance import package_discovery_provenance, package_ver
 from agent_bom.checksums import integrity_verdict, integrity_verdict_statements, spdx3_verified_using
 from agent_bom.compliance_utils import framework_qualified_finding_tags
 from agent_bom.models import AIBOMReport
+from agent_bom.output.cloud_context import attach_cloud_context
 from agent_bom.output.dependency_hierarchy import spdx3_package_relationships
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
 from agent_bom.package_utils import synthesize_purl
@@ -308,7 +309,7 @@ def to_spdx(report: AIBOMReport) -> dict:
     # Element IDs are minted here from the uuid5 namespace plus a fixed prefix
     # and counter, so they carry no input text; skip re-redacting each one.
     minted_ids = re.compile(re.escape(document_namespace) + r"/SPDXRef-[A-Za-z]+(?:-[A-Za-z]+)*(?:-\d+)?")
-    return sanitize_linked_document(document, trusted_ids=minted_ids)
+    return attach_cloud_context(sanitize_linked_document(document, trusted_ids=minted_ids), report, "spdx")
 
 
 def _package_statements(pkg: Any) -> list[str]:

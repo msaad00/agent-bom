@@ -90,6 +90,11 @@ def plan_cleanup(
     )
 
 
+class _RejectRegistryRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req: urllib.request.Request, fp: object, code: int, msg: str, headers: object, newurl: str) -> None:
+        raise RuntimeError("Docker registry verification refused a redirect")
+
+
 class DockerHubClient:
     def __init__(self, username: str, password: str) -> None:
         payload = json.dumps({"username": username, "password": password}).encode()
@@ -108,6 +113,7 @@ class DockerHubClient:
         if not isinstance(token, str) or not token:
             raise RuntimeError("Docker Hub authentication returned no token")
         self._token = token
+        self._pull_tokens: dict[str, str] = {}
 
     @staticmethod
     def _check_origin(url: str) -> None:
@@ -152,6 +158,52 @@ class DockerHubClient:
             raise RuntimeError(f"{repository}: tag listing exceeded {_MAX_TAG_PAGES} pages")
         return tags
 
+    def tag_exists_in_registry(self, repository: str, tag: str) -> bool:
+        """Read a public manifest without sending Hub credentials to the registry.
+
+        Hub's tag metadata can outlive the pullable manifest. Only an explicit
+        MANIFEST_UNKNOWN response is absence; auth, transport and malformed
+        responses fail closed. Private repositories cannot use this fallback.
+        """
+        opener = urllib.request.build_opener(_RejectRegistryRedirects())
+        try:
+            if repository not in self._pull_tokens:
+                query = urllib.parse.urlencode({"service": "registry.docker.io", "scope": f"repository:{repository}:pull"})
+                with opener.open(f"https://auth.docker.io/token?{query}", timeout=30) as response:
+                    body = json.load(response)
+                token = body.get("token") if isinstance(body, dict) else None
+                if not isinstance(token, str) or not token:
+                    raise RuntimeError("Docker registry returned no public pull token")
+                self._pull_tokens[repository] = token
+            encoded_repository = urllib.parse.quote(repository, safe="/")
+            encoded_tag = urllib.parse.quote(tag, safe="")
+            request = urllib.request.Request(
+                f"https://registry-1.docker.io/v2/{encoded_repository}/manifests/{encoded_tag}",
+                headers={
+                    "Authorization": f"Bearer {self._pull_tokens[repository]}",
+                    "Accept": "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, "
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json",
+                },
+            )
+            try:
+                with opener.open(request, timeout=30) as response:
+                    if response.status != 200:
+                        raise RuntimeError(f"{repository}:{tag}: unexpected registry verification status")
+                    return True
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    body = json.load(exc)
+                    errors = body.get("errors") if isinstance(body, dict) else None
+                    if (
+                        isinstance(errors, list)
+                        and errors
+                        and all(isinstance(error, dict) and error.get("code") == "MANIFEST_UNKNOWN" for error in errors)
+                    ):
+                        return False
+                raise RuntimeError(f"{repository}:{tag}: registry verification failed (HTTP {exc.code})") from exc
+        except (OSError, urllib.error.URLError, ValueError) as exc:
+            raise RuntimeError(f"{repository}:{tag}: could not verify registry manifest") from exc
+
     def delete_tag(self, repository: str, tag: str) -> None:
         encoded_repository = urllib.parse.quote(repository, safe="/")
         encoded_tag = urllib.parse.quote(tag, safe="")
@@ -178,15 +230,24 @@ def settle_deletions(
 ) -> None:
     """Confirm *plan*'s deletions actually took, retrying the ones that did not.
 
-    Docker Hub removes tags asynchronously, so an immediate read-back still
-    lists tags whose deletion succeeded — verifying once turns a good run red.
-    It also accepts a delete that never happens, so a tag that outlives several
-    settle rounds is re-issued rather than assumed gone. Only tags that survive
-    every attempt are reported as failures.
+    Hub metadata can still list tags whose manifests are gone. Corroborate
+    lingering records against the registry, with a readable retained tag as a
+    positive control. Retry only tags that remain pullable. This verifies tag
+    removal, not deletion of shared image layers or reclaimed storage.
     """
     outstanding = set(plan.delete)
     for attempt in range(1, attempts + 1):
         outstanding &= set(client.list_tags(plan.repository))
+        if not outstanding:
+            return
+        # A positive control prevents repository/access failures from looking
+        # like successful deletion. Never re-delete a metadata-only tag.
+        if not plan.keep or not client.tag_exists_in_registry(plan.repository, plan.keep[0]):
+            raise RuntimeError(f"{plan.repository}: retained tag is not readable in the registry")
+        metadata_only = {tag for tag in outstanding if not client.tag_exists_in_registry(plan.repository, tag)}
+        if metadata_only:
+            print(f"{plan.repository}: registry confirms absent tags still listed by Hub: {sorted(metadata_only)}")
+            outstanding -= metadata_only
         if not outstanding:
             return
         if attempt == attempts:

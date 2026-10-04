@@ -356,9 +356,18 @@ def test_sbom_missing_file_is_usage_error():
     assert "does not exist" in result.output
 
 
-def test_sbom_invalid_json_reports_stable_input_error(tmp_path):
+@pytest.mark.parametrize(
+    "document",
+    [
+        "not-json",
+        '{"bomFormat":"CycloneDX","api_key":"synthetic-sample-secret",',
+        '{"bomFormat":"CycloneDX","bomFormat":"CycloneDX"}',
+        '{"bomFormat":"CycloneDX","components":[],"ignored":NaN}',
+    ],
+)
+def test_sbom_invalid_json_reports_stable_input_error(tmp_path, document):
     bad_sbom = tmp_path / "bad.sbom.json"
-    bad_sbom.write_text("not-json")
+    bad_sbom.write_text(document)
 
     result = CliRunner().invoke(main, ["sbom", str(bad_sbom), "--offline"])
 
@@ -366,6 +375,7 @@ def test_sbom_invalid_json_reports_stable_input_error(tmp_path):
     assert "SBOM error: input is not valid JSON" in result.output
     assert "Expecting value" not in result.output
     assert "line 1 column 1" not in result.output
+    assert "synthetic-sample-secret" not in result.output
 
 
 def test_check_quiet_suppresses_scan_chatter(monkeypatch):

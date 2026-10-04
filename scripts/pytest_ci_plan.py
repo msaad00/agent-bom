@@ -132,6 +132,16 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(
                 candidate for candidate in available if candidate.name in {"test_scan_export_perf.py", "test_cloud_coordinate_redaction.py"}
             )
+        if normalized.as_posix() in {
+            "src/agent_bom/sbom.py",
+            "src/agent_bom/parsers/sbom_context.py",
+            "src/agent_bom/cli/agents/_discovery.py",
+        }:
+            selected.update(
+                candidate
+                for candidate in available
+                if candidate.name in {"test_cli_check.py", "test_sbom_scan_scope.py", "test_sbom_cloud_roundtrip.py"}
+            )
         if normalized.as_posix() in {"pyproject.toml", "uv.lock", ".pre-commit-config.yaml", "Makefile", ".github/workflows/ci.yml"}:
             selected.update(candidate for candidate in available if candidate.name == "test_toolchain_pin_agreement.py")
         if normalized.as_posix().startswith(("src/agent_bom/ast/", "src/agent_bom/ast_", "tests/fixtures/analysis_characterization")):

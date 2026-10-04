@@ -266,6 +266,13 @@ def _iter_cloud_inventories(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def cloud_inventory_sources(inventory: dict[str, Any], data_source: str, provider: str) -> list[str]:
+    """Keep imported evidence distinguishable from a live provider collection."""
+    provenance = inventory.get("import_provenance")
+    imported = "sbom-import" if isinstance(provenance, dict) and provenance.get("source") == "sbom" else ""
+    return sorted({data_source, f"cloud-inventory:{provider}", imported} - {""})
+
+
 def _recorded_exposure_attributes(record: Mapping[str, Any], *fields: str) -> dict[str, Any]:
     """Preserve provider flag inputs and keep absent/unknown observations nullable."""
     inputs = {name: record[name] for name in fields if name in record}

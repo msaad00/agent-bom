@@ -67,11 +67,22 @@ omits the extension. Structured secret/path redaction applies before encoding,
 with 1,000-character string and 24-level nesting limits. Valid Azure ARM IDs
 receive cloud-identifier redaction rather than local-path masking.
 
-Generic SBOM readers may ignore this namespaced extension. The SBOM import path
-extracts software packages; it does not restore cloud inventory from the
-extension. Keep the original export and scan JSON for cloud investigation and
-graph correlation. Separate benchmark results and runtime evidence are not
-included in this cloud-inventory snapshot.
+Generic SBOM readers may ignore this namespaced extension. Agent-Bom's CLI,
+API and MCP scan paths restore its cloud inventory from CycloneDX and SPDX JSON.
+Each imported record receives `import_provenance` containing the source
+document's SHA-256, format, and `coverage: not_assessed`; graph resources retain
+the `sbom-import` source tag. This records the supplied evidence's origin, not
+authentication to the provider or verification of the document's claims.
+Fresh, explicitly enabled cloud collections are appended rather than replacing
+the imported observations. Separate benchmark results and runtime evidence are
+not included in this cloud-inventory snapshot.
+
+Imports read a single file snapshot capped at 10 MiB and apply redaction again.
+Unsupported extension versions, conflicting or duplicate extensions, duplicate
+JSON keys, malformed envelopes and SPDX annotations aimed at other elements
+are rejected. Explicitly empty and denied inventory remains distinguishable
+from a missing extension. Tag-value import is not supported; use a JSON export
+for this round-trip. Keep the original export and scan JSON for investigation.
 
 From a source checkout, run the credential-free example:
 
@@ -88,6 +99,17 @@ a rescan diff. Its AWS, Azure and GCP records are labeled synthetic examples;
 this command does not authenticate to a cloud provider. Inspect `inventory` for
 the three same-name resources and their distinct native scopes, then compare
 the before/after software findings.
+
+Re-import the example and export its cloud context in another format:
+
+```bash
+agent-bom scan --sbom /tmp/connected-bom-example/before.cyclonedx.json \
+  --offline --no-scan --no-auto-update-db -f spdx2 -o /tmp/connected-bom-import.spdx2.json
+```
+
+Inspect the document annotation's `inventory` and `import_provenance`. This
+command restores supplied evidence without refreshing package vulnerability
+observations; it does not establish current provider coverage.
 
 ## SBOM ingestion
 

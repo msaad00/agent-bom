@@ -257,28 +257,13 @@ def run_local_discovery(
 
     # Step 1b: Load SBOM packages if provided
     if not skill_only and sbom_file:
-        from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
-        from agent_bom.sbom import load_sbom
+        from agent_bom.parsers.sbom_context import load_sbom_agent
 
         try:
-            sbom_packages, sbom_fmt, sbom_detected_name = load_sbom(sbom_file)
-            _resource_name = sbom_name or sbom_detected_name or Path(sbom_file).stem
-            con.print(f"\n[bold blue]Loaded SBOM ({sbom_fmt}): {len(sbom_packages)} package(s) from '{_resource_name}'[/bold blue]\n")
-            sbom_server = MCPServer(
-                name=_resource_name,
-                command="sbom",
-                args=[sbom_file],
-                transport=TransportType.STDIO,
-                packages=sbom_packages,
-                surface=ServerSurface.SBOM,
-            )
-            sbom_agent = Agent(
-                name=f"sbom:{_resource_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=sbom_file,
-                source="sbom",
-                mcp_servers=[sbom_server],
-            )
+            sbom_agent, sbom_fmt = load_sbom_agent(sbom_file, sbom_name)
+            count = sum(len(server.packages) for server in sbom_agent.mcp_servers)
+            target = sbom_agent.mcp_servers[0].name
+            con.print(f"\n[bold blue]Loaded SBOM ({sbom_fmt}): {count} package(s) from '{target}'[/bold blue]\n")
             ctx.agents.append(sbom_agent)
         except json.JSONDecodeError:
             con.print("\n  [red]SBOM error: input is not valid JSON.[/red]")

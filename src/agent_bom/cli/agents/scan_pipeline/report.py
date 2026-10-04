@@ -14,6 +14,7 @@ from agent_bom.cli.agents.scan_pipeline.helpers import (
 from agent_bom.cli.agents.scan_pipeline.options import ScanOptions
 from agent_bom.cli.agents.scan_pipeline.state import ScanState
 from agent_bom.models import AIBOMReport
+from agent_bom.parsers.sbom_context import imported_cloud_inventory
 from agent_bom.resolver import consume_performance_stats as consume_resolution_performance
 from agent_bom.scanners import consume_coverage_warnings, consume_scan_performance
 
@@ -237,6 +238,7 @@ def _build_report(opts: ScanOptions, st: ScanState) -> None:
         _codeowners = []
     st.report = AIBOMReport(
         agents=st.agents,
+        cloud_inventory_data=imported_cloud_inventory(st.agents),
         blast_radii=st.blast_radii,
         findings=st.findings,
         scan_sources=st.scan_sources,

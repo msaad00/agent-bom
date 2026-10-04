@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Restore the cloud-inventory extension when importing CycloneDX or SPDX JSON through CLI, API and MCP scans, including cloud-only documents. Retain imported provenance and collection gaps, reject malformed or ambiguous extensions, and preserve imports alongside fresh cloud observations.
 - Retain collected cloud inventory, native scope, environment tags and collection warnings alongside CycloneDX and SPDX software BOMs in a redacted, versioned evidence extension. Include these artifacts in the offline connected-BOM example.
 - Preserve recognized Azure ARM IDs, AWS ARNs and GCP resource coordinates across structured report and graph redaction, including resource-reference lists. Continue redacting embedded or encoded credentials and mask local Windows paths in identifier fields.
 - Preserve recorded package-to-package dependency relationships in CycloneDX and SPDX exports. Resolve parents within the same server and ecosystem, keep ambiguous or missing lineage explicit, and retain distinct package URL identities.

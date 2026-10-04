@@ -19,6 +19,7 @@ from agent_bom.mcp_tools.scan_response import (
     resolve_offline,
     section_page,
 )
+from agent_bom.parsers.sbom_context import imported_cloud_inventory
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -381,12 +382,10 @@ async def _scan_impl_inner(
             except Exception as exc:
                 logger.debug("Scorecard enrichment failed: %s", exc)
 
-        report = AIBOMReport(agents=agents, blast_radii=blast_radii, scan_sources=scan_sources)
+        report = AIBOMReport(agents, blast_radii, cloud_inventory_data=imported_cloud_inventory(agents), scan_sources=scan_sources)
 
-        # Surface graph-derived finding categories (COMBINATION / CIEM_OVER_PRIVILEGE
-        # / NHI) so the MCP scan reaches CLI/API parity — the same shared build+attach
-        # helper both other surfaces use. Offloaded to a worker thread so the unified
-        # graph build never blocks the event loop; best-effort (never fails the scan).
+        # Share CLI/API graph-derived findings; offload the best-effort build
+        # so graph analysis does not block the event loop.
         if agents:
             import asyncio
 

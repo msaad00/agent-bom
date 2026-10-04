@@ -6,19 +6,42 @@ Generate Software Bills of Materials in industry-standard formats.
 
 | Format | Standard | Output |
 |--------|----------|--------|
-| CycloneDX | v1.6 | JSON |
-| SPDX | v3.0 | JSON |
+| `cyclonedx` | CycloneDX 1.7 | JSON |
+| `spdx` | SPDX 3.0.1 | JSON-LD |
+| `spdx2` | SPDX 2.3 | JSON |
 
 ## Usage
 
 ```bash
-# CLI
-agent-bom agents -f cyclonedx -o sbom.json
-agent-bom agents -f spdx -o sbom.spdx.json
+# Scan a repository and save a standard BOM
+agent-bom scan . -f cyclonedx -o sbom.json
+agent-bom scan . -f spdx -o sbom.spdx.json
+agent-bom scan . -f spdx2 -o sbom.spdx2.json
 
 # MCP tool
 generate_sbom(format="cyclonedx")
 ```
+
+## Inspect component hierarchy
+
+Open `sbom.json` and follow its `dependencies` references from an agent or
+server to a direct package, then to its recorded transitive dependencies.
+SPDX uses native dependency relationships and retains server membership for
+transitive packages. A package shared by several servers retains each observed
+relationship.
+
+A parent is resolved only within the same server inventory and ecosystem. A
+missing parent, multiple matching versions, or a self-reference stays unresolved;
+no dependency is borrowed from another server or environment. CycloneDX marks
+such a composition incomplete; SPDX includes an unresolved-parent annotation.
+The current package model retains one introducing parent, so this is not a
+claim that every dependency path was collected.
+
+These standard exports include agents, MCP servers and software packages.
+CycloneDX also supports model and dataset components. Collected cloud inventory
+is retained in the scan JSON and connected graph; this does not yet mean that
+all cloud assets appear in the standard SBOM exports. Keep the JSON report when
+investigating across those sources.
 
 ## SBOM ingestion
 

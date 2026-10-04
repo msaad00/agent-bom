@@ -163,6 +163,9 @@ class _FakeHub:
                     self.tags.remove(tag)
         return list(self.tags)
 
+    def tag_exists_in_registry(self, repository: str, tag: str) -> bool:
+        return tag in self.tags
+
     def delete_tag(self, repository: str, tag: str) -> None:
         self.delete_calls.append(tag)
         # Re-issuing a delete does not restart the removal already in flight.
@@ -189,3 +192,123 @@ def test_settle_reissues_and_then_fails_on_a_delete_that_never_lands() -> None:
         mod.settle_deletions(hub, plan, sleep=lambda _: None)  # type: ignore[arg-type]
 
     assert len(hub.delete_calls) > 1, "a surviving tag must be retried, not assumed gone"
+
+
+def test_settle_accepts_stale_hub_metadata_only_with_registry_absence() -> None:
+    class StaleHub(_FakeHub):
+        def tag_exists_in_registry(self, repository: str, tag: str) -> bool:
+            return tag == "latest"
+
+    hub = StaleHub(["latest", "0.1.0"], never_delete={"0.1.0"})
+    plan = mod.CleanupPlan(repository="ns/repo", keep=("latest",), delete=("0.1.0",))
+    mod.settle_deletions(hub, plan, sleep=lambda _: None)  # type: ignore[arg-type]
+    assert hub.delete_calls == []
+
+
+def test_settle_rejects_missing_kept_registry_tag() -> None:
+    class MissingRepository(_FakeHub):
+        def tag_exists_in_registry(self, repository: str, tag: str) -> bool:
+            return False
+
+    hub = MissingRepository(["latest", "0.1.0"])
+    plan = mod.CleanupPlan(repository="ns/repo", keep=("latest",), delete=("0.1.0",))
+    with pytest.raises(RuntimeError, match="retained tag.*not readable"):
+        mod.settle_deletions(hub, plan, sleep=lambda _: None)  # type: ignore[arg-type]
+    assert hub.delete_calls == []
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "expected"),
+    [
+        (200, {}, True),
+        (404, {"errors": [{"code": "MANIFEST_UNKNOWN"}]}, False),
+        (404, {"errors": [{"code": "NAME_UNKNOWN"}]}, None),
+        (404, {"errors": []}, None),
+        (404, {"errors": [{"code": "MANIFEST_UNKNOWN"}, {"code": "UNAUTHORIZED"}]}, None),
+        (401, {}, None),
+        (403, {}, None),
+        (429, {}, None),
+        (500, {}, None),
+    ],
+)
+def test_registry_absence_requires_explicit_manifest_unknown(
+    client: mod.DockerHubClient, monkeypatch: pytest.MonkeyPatch, status: int, body: dict[str, Any], expected: bool | None
+) -> None:
+    reached: list[str] = []
+
+    class Opener:
+        def open(self, request: Any, **_: object) -> _Response:
+            if isinstance(request, str):
+                reached.append(request)
+                assert request.startswith("https://auth.docker.io/token?")
+                assert "scope=repository%3Ans%2Frepo%3Apull" in request
+                return _json_response({"token": "public-read-token"})
+            reached.append(request.full_url)
+            assert request.full_url == "https://registry-1.docker.io/v2/ns/repo/manifests/0.1.0"
+            assert request.get_header("Authorization") == "Bearer public-read-token"
+            if status != 200:
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    status,
+                    "failure",
+                    {},
+                    io.BytesIO(json.dumps(body).encode()),  # type: ignore[arg-type]
+                )
+            return _json_response(body)
+
+    monkeypatch.setattr(mod.urllib.request, "build_opener", lambda *args: Opener())
+    if expected is None:
+        with pytest.raises(RuntimeError, match="registry verification failed"):
+            client.tag_exists_in_registry("ns/repo", "0.1.0")
+    else:
+        assert client.tag_exists_in_registry("ns/repo", "0.1.0") is expected
+        assert client.tag_exists_in_registry("ns/repo", "0.1.0") is expected
+        assert len([url for url in reached if url.startswith("https://auth.docker.io")]) == 1
+
+
+@pytest.mark.parametrize("payload", [{}, [], {"token": ""}])
+def test_registry_requires_valid_pull_token(client: mod.DockerHubClient, monkeypatch: pytest.MonkeyPatch, payload: Any) -> None:
+    class Opener:
+        def open(self, request: Any, **_: object) -> _Response:
+            assert isinstance(request, str), "must not query manifests without a pull token"
+            return _json_response(payload)
+
+    monkeypatch.setattr(mod.urllib.request, "build_opener", lambda *args: Opener())
+    with pytest.raises(RuntimeError, match="no public pull token"):
+        client.tag_exists_in_registry("ns/repo", "0.1.0")
+
+
+def test_registry_refuses_redirects() -> None:
+    handler = mod._RejectRegistryRedirects()
+    with pytest.raises(RuntimeError, match="refused a redirect"):
+        handler.redirect_request(None, None, 302, "Found", {}, "https://attacker.example")
+
+
+def test_registry_verification_failure_stops_deletion_retries() -> None:
+    class Unavailable(_FakeHub):
+        def tag_exists_in_registry(self, repository: str, tag: str) -> bool:
+            raise RuntimeError("registry unavailable")
+
+    hub = Unavailable(["latest", "0.1.0"])
+    plan = mod.CleanupPlan(repository="ns/repo", keep=("latest",), delete=("0.1.0",))
+    with pytest.raises(RuntimeError, match="registry unavailable"):
+        mod.settle_deletions(hub, plan, sleep=lambda _: None)  # type: ignore[arg-type]
+    assert hub.delete_calls == []
+
+
+@pytest.mark.parametrize("malformed_404", [True, False])
+def test_registry_unreadable_response_fails_closed_without_raw_error(
+    client: mod.DockerHubClient, monkeypatch: pytest.MonkeyPatch, malformed_404: bool
+) -> None:
+    class Opener:
+        def open(self, request: Any, **_: object) -> _Response:
+            if isinstance(request, str):
+                return _json_response({"token": "public-read-token"})
+            if malformed_404:
+                raise urllib.error.HTTPError(request.full_url, 404, "failure", {}, io.BytesIO(b"secret raw body"))  # type: ignore[arg-type]
+            raise urllib.error.URLError("secret transport diagnostic")
+
+    monkeypatch.setattr(mod.urllib.request, "build_opener", lambda *args: Opener())
+    with pytest.raises(RuntimeError, match="could not verify registry manifest") as error:
+        client.tag_exists_in_registry("ns/repo", "0.1.0")
+    assert "secret" not in str(error.value)

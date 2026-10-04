@@ -301,35 +301,15 @@ async def run_scan_pipeline(
             sbom_file = Path(sbom_path)
             if sbom_file.exists() and sbom_file.stat().st_size > _MAX_FILE_SIZE:
                 msg = f"SBOM file too large ({sbom_file.stat().st_size} bytes, max {_MAX_FILE_SIZE})"
-                warnings.append(msg)
+                raise ValueError(msg)
             else:
-                from agent_bom.models import ServerSurface
-                from agent_bom.sbom import load_sbom
+                from agent_bom.parsers.sbom_context import load_sbom_agent
 
-                sbom_packages, _warnings, _sbom_name = load_sbom(sbom_path)
-                if sbom_packages:
-                    sbom_server = MCPServer(
-                        name=f"sbom:{Path(sbom_path).name}",
-                        command="",
-                        args=[],
-                        env={},
-                        transport=TransportType.UNKNOWN,
-                        packages=sbom_packages,
-                        surface=ServerSurface.SBOM,
-                    )
-                    agents.append(
-                        Agent(
-                            name=f"sbom:{Path(sbom_path).name}",
-                            agent_type=AgentType.CUSTOM,
-                            config_path=sbom_path,
-                            mcp_servers=[sbom_server],
-                        )
-                    )
-                    scan_sources.append("sbom")
+                sbom_agent, _fmt = load_sbom_agent(sbom_path)
+                agents.append(sbom_agent)
+                scan_sources.append("sbom")
         except Exception as exc:
-            msg = f"SBOM load failed for {sbom_path}: {exc}"
-            logger.warning(msg)
-            warnings.append(msg)
+            raise McpScanValidationError(CODE_VALIDATION_INVALID_PATH, exc, argument="sbom_path") from exc
 
     if not agents:
         return [], [], warnings, scan_sources

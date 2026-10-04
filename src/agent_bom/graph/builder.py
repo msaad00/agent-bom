@@ -74,6 +74,7 @@ from agent_bom.graph.cloud_context import (
 from agent_bom.graph.cloud_context import (
     _trust_entries as _trust_entries,
 )
+from agent_bom.graph.cloud_context import cloud_inventory_sources
 from agent_bom.graph.cloud_rbac import add_cloud_role_assignments as _add_cloud_role_assignments
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
@@ -2913,8 +2914,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
       plus ``CAN_ACCESS`` edges to the account's resources, so the
       effective-permissions overlay resolves ``HAS_PERMISSION``.
 
-    Inventory is opt-in upstream; a missing / empty / non-ok payload is a no-op.
-    Never raises into the builder.
+    Missing / empty / non-ok inventory is a no-op; imported data retains its source tag.
     """
     if not isinstance(inventory, dict) or inventory.get("status") != "ok":
         return
@@ -2927,7 +2927,7 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
     provider = _clean_graph_part(inventory.get("provider")) or "aws"
     account_id = _clean_graph_part(inventory.get("account_id"))
     region = _clean_graph_part(inventory.get("region"))
-    data_sources = sorted({data_source, f"cloud-inventory:{provider}"} - {""})
+    data_sources = cloud_inventory_sources(original_inventory, data_source, provider)
 
     provider_node_id = f"provider:{provider}"
     graph.add_node(

@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.models import AIBOMReport
+from agent_bom.parsers.sbom_context import combine_cloud_inventories
 
 _logger = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ def enrich_report_with_estate_discovery(
             gcp_project=gcp_project,
         )
         if inventories:
-            report.cloud_inventory_data = inventories
+            report.cloud_inventory_data = combine_cloud_inventories(report.cloud_inventory_data, inventories)
     except Exception:  # noqa: BLE001
         _logger.warning("Cloud inventory enrichment skipped", exc_info=True)
 

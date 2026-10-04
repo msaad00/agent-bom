@@ -1160,7 +1160,7 @@ def to_json(report: AIBOMReport) -> dict:
     if report.iac_findings_data:
         result["iac_findings"] = report.iac_findings_data
 
-    if report.cloud_inventory_data:
+    if report.cloud_inventory_data is not None:
         result["cloud_inventory"] = report.cloud_inventory_data
 
     if report.aws_organization_data:

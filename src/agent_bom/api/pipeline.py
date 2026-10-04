@@ -52,6 +52,7 @@ from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
+from agent_bom.parsers.sbom_context import imported_cloud_inventory
 from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
@@ -1042,21 +1043,10 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         if req.sbom:
             pipeline.update_step("discovery", f"Ingesting SBOM: {req.sbom}")
-            from agent_bom.sbom import load_sbom
+            from agent_bom.parsers.sbom_context import load_sbom_agent
 
-            sbom_packages, _fmt, _sbom_name = load_sbom(req.sbom)
-            if sbom_packages:
-                from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
-
-                sbom_server = MCPServer(name=f"sbom:{req.sbom}", surface=ServerSurface.SBOM)
-                sbom_server.packages = sbom_packages
-                sbom_agent = Agent(
-                    name=f"sbom:{req.sbom}",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=req.sbom,
-                    mcp_servers=[sbom_server],
-                )
-                agents.append(sbom_agent)
+            sbom_agent, _fmt = load_sbom_agent(req.sbom)
+            agents.append(sbom_agent)
 
         if req.external_scan:
             pipeline.update_step("discovery", f"Ingesting external scan: {req.external_scan}")
@@ -1466,6 +1456,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             agents=agents,
             blast_radii=blast_radii,
             findings=report_findings,
+            cloud_inventory_data=imported_cloud_inventory(agents),
             scan_id=job.job_id,
             scan_run=_build_scan_run(has_usable_evidence=True),
         )

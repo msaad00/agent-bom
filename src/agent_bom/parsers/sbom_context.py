@@ -29,7 +29,7 @@ def _json(text: str | bytes) -> Any:
     try:
         return json.loads(text, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
     except (ValueError, RecursionError) as exc:
-        raise ValueError("SBOM evidence must contain valid JSON with unique keys") from exc
+        raise ValueError("input is not valid JSON.") from exc
 
 
 def _invalid_constant(value: str) -> None:

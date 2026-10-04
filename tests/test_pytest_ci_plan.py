@@ -12,6 +12,35 @@ def _write(path: Path, lines: int) -> None:
     path.write_text("x\n" * lines, encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    "source", ["src/agent_bom/security.py", "src/agent_bom/redaction/payload.py", "src/agent_bom/redaction/cloud_coordinates.py"]
+)
+def test_redaction_edits_select_identity_and_traversal_contracts(tmp_path, source):
+    expected = sorted(tmp_path / "tests" / name for name in ("test_scan_export_perf.py", "test_cloud_coordinate_redaction.py"))
+    for path in expected:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+@pytest.mark.parametrize("source", ["src/agent_bom/parsers/new_module.py", "src/agent_bom/removed_module.py", "docs/PRODUCT_METRICS.json"])
+def test_module_and_metric_edits_select_snapshot_contract(tmp_path, source):
+    expected = tmp_path / "tests/test_product_metrics_snapshot.py"
+    _write(expected, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == [expected]
+
+
+@pytest.mark.parametrize(
+    "source", ["src/agent_bom/sbom.py", "src/agent_bom/parsers/sbom_context.py", "src/agent_bom/cli/agents/_discovery.py"]
+)
+def test_sbom_import_edits_select_cli_and_scope_contracts(tmp_path, source):
+    expected = sorted(
+        tmp_path / "tests" / name for name in ("test_cli_check.py", "test_sbom_scan_scope.py", "test_sbom_cloud_roundtrip.py")
+    )
+    for path in expected:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
 @pytest.mark.parametrize("source", ["pyproject.toml", "uv.lock", ".pre-commit-config.yaml", "Makefile", ".github/workflows/ci.yml"])
 def test_dependency_and_checker_changes_select_pin_agreement(tmp_path: Path, source: str) -> None:
     contract = tmp_path / "tests/test_toolchain_pin_agreement.py"

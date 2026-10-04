@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Run redaction traversal and generated-metrics contracts on relevant pull requests. Verify Postgres collated-index readiness separately from the planner's choice between eligible indexes.
+- Preserve the stable, redacted CLI input-error message for malformed SBOM JSON, duplicate keys and non-finite values.
 - Restore the cloud-inventory extension when importing CycloneDX or SPDX JSON through CLI, API and MCP scans, including cloud-only documents. Retain imported provenance and collection gaps, reject malformed or ambiguous extensions, and preserve imports alongside fresh cloud observations.
 - Retain collected cloud inventory, native scope, environment tags and collection warnings alongside CycloneDX and SPDX software BOMs in a redacted, versioned evidence extension. Include these artifacts in the offline connected-BOM example.
 - Preserve recognized Azure ARM IDs, AWS ARNs and GCP resource coordinates across structured report and graph redaction, including resource-reference lists. Continue redacting embedded or encoded credentials and mask local Windows paths in identifier fields.

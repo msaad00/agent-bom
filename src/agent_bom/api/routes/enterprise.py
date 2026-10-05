@@ -1183,7 +1183,7 @@ def _hosted_invite_url(tenant_id: str) -> str | None:
 
 @router.post("/auth/invitations", tags=["enterprise"], status_code=201)
 def create_invitation(request: Request, req: InvitationRequest) -> dict:
-    """Provision a NEW tenant and mint its first scoped API key (admin-only).
+    """Provision a NEW tenant and mint its first scoped API key (platform operator only).
 
     The hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:
     it creates a brand-new tenant (server-generated id — an invite can never
@@ -1193,16 +1193,17 @@ def create_invitation(request: Request, req: InvitationRequest) -> dict:
     default tenant quotas automatically (they apply to any tenant with no
     overrides); the effective bounds are echoed back for operator visibility.
 
-    Admin-only + ``auth.keys:write`` scope (enforced by the API middleware, the
-    same gate as ``POST /v1/auth/keys``). Never accepts a provider secret — it
-    mints a credential, it does not take one (§11 connect-once model). The raw
-    key is returned exactly once in this response body and is never logged.
+    Requires the platform-operator tenant, authenticated admin role and a
+    delegation scope ceiling that permits a wildcard key. Authorization is
+    audited in both tenants before provisioning; failed audit writes fail closed.
+    The raw key is returned once and is never included in audit evidence.
     """
-    from agent_bom.api.audit_log import log_action
-    from agent_bom.api.auth import Role, create_api_key, get_key_store
+    from agent_bom.api.auth import Role, create_api_key
+    from agent_bom.api.invitation_provisioning import provision_invited_key, require_invitation_delegation
     from agent_bom.api.tenant_quota import default_tenant_quotas
 
-    actor = getattr(request.state, "api_key_name", "") or "operator"
+    _require_managed_trial_operator(request)
+    require_invitation_delegation(request)
     try:
         role = Role(req.role)
     except ValueError:
@@ -1220,25 +1221,8 @@ def create_invitation(request: Request, req: InvitationRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
-    get_key_store().provision_tenant_key(
-        api_key,
-        team_name=(req.organization or "").strip() or tenant_id,
-    )
-
-    # The new tenant carries no quota overrides, so the process-level defaults
-    # bound it immediately — surface them so the operator sees the applied cap.
+    provision_invited_key(request, api_key, team_name=(req.organization or "").strip() or tenant_id)
     quota = default_tenant_quotas()
-
-    log_action(
-        "auth.invitation_created",
-        actor=actor,
-        resource=f"tenant/{tenant_id}",
-        tenant_id=tenant_id,
-        role=api_key.role.value,
-        key_id=api_key.key_id,
-        invited_email=req.email or None,
-        expires_at=api_key.expires_at,
-    )
 
     return {
         "raw_key": raw_key,

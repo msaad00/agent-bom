@@ -302,7 +302,7 @@ AGENT_BOM_SMOKE_CONNECTION_ID="<connection id>" \
 scripts/deploy/hosted_poc_smoke.sh
 ```
 
-### Self-serve invite endpoint
+### Operator-managed invite endpoint
 
 `scripts/deploy/mint_hosted_admin_key.py` is the bootstrap path for the very
 first admin key. Once an operator holds an admin key, the same tenant-and-key
@@ -315,8 +315,7 @@ curl -sS -X POST https://agent-bom.example.com/v1/auth/invitations \
   -d '{"organization": "Acme Corp", "email": "owner@acme.example"}'
 ```
 
-The endpoint is admin-only (same RBAC + `auth.keys:write` scope as
-`POST /v1/auth/keys`) and reuses the shared key-minting crypto — it does **not**
+The endpoint requires an authenticated admin in `AGENT_BOM_PLATFORM_OPERATOR_TENANT_ID` (default `default`), the `auth.keys:write` route scope, and a delegation ceiling permitting `*`. A customer tenant admin or a narrowly scoped operator cannot provision new tenants. It reuses the shared key-minting crypto — it does **not**
 introduce a new key format. It:
 
 - creates a **brand-new tenant** with a server-generated id (an invite can never
@@ -326,6 +325,8 @@ introduce a new key format. It:
   `tenant_id`, `key_id`, `expires_at`, the applied default `quota`, and — only
   when `AGENT_BOM_HOSTED_INVITE_BASE_URL` is set — an `invite_url` sign-in link
   that never carries the key.
+
+Authorization receipts are required in both the operator and destination audit histories before any tenant or key is provisioned. They include the actor tenant and key ID, destination and requested role, never the raw key. Receipt writes fail closed with HTTP 503; denied authorization creates neither a tenant nor a key. Audit and key stores are separate: an authorization receipt records an attempt, and key-store state establishes whether provisioning completed. Failed attempts remain in audit history.
 
 Deliver the `raw_key` to the invited admin over a trusted channel; the operator
 still owns who is invited and holds the manual revoke path (`DELETE

@@ -72,7 +72,6 @@ from agent_bom.api.gateway_policy import _DriftLookup as _DriftLookup
 from agent_bom.api.gateway_policy import _evaluate_control_plane_bundle as _evaluate_control_plane_bundle
 from agent_bom.api.gateway_policy import _fleet_containment_reason as _fleet_containment_reason
 from agent_bom.api.gateway_policy import _open_drift_violates_tool as _open_drift_violates_tool
-from agent_bom.api.gateway_policy import _validate_gateway_rule_patterns as _validate_gateway_rule_patterns
 from agent_bom.api.gateway_policy import _warn_on_quarantined_agents as _warn_on_quarantined_agents
 from agent_bom.api.gateway_rate_limit import _build_gateway_rate_limit_store as _build_gateway_rate_limit_store
 from agent_bom.api.gateway_rate_limit import _gateway_configured_replicas as _gateway_configured_replicas

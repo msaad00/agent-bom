@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, computed_field, 
 
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
+from agent_bom.api.policy_inputs import PolicyRuleValidation as _PolicyRuleValidation
 from agent_bom.api.push_models import PushIdentityPayload as _PushIdentityPayload
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 from agent_bom.evidence.semantics import EvidenceCompletenessLedger as _CoreEvidenceCompletenessLedger
@@ -644,7 +645,7 @@ class FleetAgentUpdate(BaseModel):
 # ─── Gateway Models ───────────────────────────────────────────────────────
 
 
-class PolicyCreate(BaseModel):
+class PolicyCreate(_PolicyRuleValidation):
     model_config = ConfigDict(extra="forbid")
     name: str
     description: str = ""
@@ -656,7 +657,7 @@ class PolicyCreate(BaseModel):
     enabled: bool = True
 
 
-class PolicyUpdate(BaseModel):
+class PolicyUpdate(_PolicyRuleValidation):
     model_config = ConfigDict(extra="forbid")
     name: str | None = None
     description: str | None = None

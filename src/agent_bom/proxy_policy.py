@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from agent_bom.core.settings import env_str
 from agent_bom.permissions import classify_tool
+from agent_bom.runtime.policy_validation import runtime_policy_error
 from agent_bom.runtime.risk_conditions import evaluate_risk_conditions
 from agent_bom.runtime.text_normalize import normalize_identifier
 
@@ -261,6 +262,9 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
     allowlist deliberately stays an exact match: normalizing there would turn a
     look-alike into a key for the tool the operator allowed.
     """
+    invalid = runtime_policy_error(policy)
+    if invalid:
+        return False, invalid[0], invalid[1]
     rules = policy.get("rules", [])
     normalized_tool = normalize_identifier(tool_name)
     tool_classes = _classify_tool_classes(tool_name, arguments)
@@ -331,30 +335,12 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
             return False, f"Tool '{tool_name}' blocked by rule '{rule_id}'", rule_id
 
         pattern = rule.get("tool_name_pattern")
-        if pattern:
-            try:
-                if len(pattern) > 500:
-                    logger.warning("Skipping oversized tool_name_pattern (%d chars)", len(pattern))
-                elif _safe_regex_match(pattern, tool_name) or _safe_regex_match(pattern, normalized_tool):
-                    return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'", rule_id
-            except re.error:
-                pass
+        if pattern and (_safe_regex_match(pattern, tool_name) or _safe_regex_match(pattern, normalized_tool)):
+            return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'", rule_id
 
-        arg_patterns = rule.get("arg_pattern", {})
-        for arg_name, arg_regex in arg_patterns.items():
-            arg_value = str(arguments.get(arg_name, ""))
-            try:
-                if len(arg_regex) > 500:
-                    logger.warning("Skipping oversized arg_pattern for '%s' (%d chars)", arg_name, len(arg_regex))
-                    continue
-                if _safe_regex_search(arg_regex, arg_value):
-                    return (
-                        False,
-                        f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'",
-                        rule_id,
-                    )
-            except re.error:
-                pass
+        for arg_name, arg_regex in rule.get("arg_pattern", {}).items():
+            if _safe_regex_search(arg_regex, str(arguments.get(arg_name, ""))):
+                return False, f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'", rule_id
 
     return True, "", None
 

@@ -16,7 +16,8 @@ evaluator that raises. The canonical inventory is code, not prose:
 | Policy engine (unloadable policy file) | fail-closed | yes |
 | Firewall policy (unloadable policy file) | fail-closed | yes |
 | Policy plugins (evaluation error) | fail-closed | yes |
-| Control-plane policy bundle (parse/regex/eval error) | fail-closed | no |
+| Control-plane policy bundle (parse/eval error) | fail-closed | no |
+| Invalid or oversized regex in an applicable policy | enforce: deny; audit: explicit invalid-policy receipt | no |
 | Conditional access (evaluation error) | fail-closed | no |
 | Caller identity (invalid/revoked or missing token) | fail-closed | no |
 | Runtime rate limit (store unavailable) | fail-closed (refuses startup) | no |
@@ -94,3 +95,7 @@ whitespace; unknown modes, non-finite timeouts, invalid pool sizes, and negative
 rate limits reject startup instead of silently disabling protection. Settings
 representations omit credentials, policy contents, and credential-bearing URLs.
 Correct the named setting and restart; mode errors never echo its supplied value.
+
+### Invalid policy expressions
+
+Policy creation and updates reject malformed regular expressions and patterns longer than 500 characters before changing stored state. Correct the indicated rule and retry the write. Existing stored policies and local JSON policy files receive the same validation at evaluation time: blocking rules fail closed; advisory rules produce an explicit invalid-policy warning. Disabled policies and policies bound to a different agent do not apply. Invalid-policy diagnostics omit patterns, argument names and argument values.

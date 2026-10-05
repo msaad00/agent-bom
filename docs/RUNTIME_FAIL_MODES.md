@@ -118,3 +118,20 @@ These limits are operational safeguards, not a gateway throughput guarantee.
 The bounded 512-entry compiled-pattern cache is process-local. Diagnostics omit
 regex text, argument names, and argument values; policy and rule IDs identify
 the affected configuration. Existing policy records are preserved for correction.
+
+VERSION0 does not give identical Unicode character classes to Python `re`.
+For Unicode-mode expressions, inputs whose word/digit/space classification
+differs between the engines (for example, certain combining marks and joiners)
+produce an explicit incomplete-evaluation decision: deny in enforce mode,
+receipt in audit mode. This guard is conservative, including for literal
+expressions on such inputs. Ordinary Unicode text with matching classifications
+remains supported. Use an explicit ASCII expression such as `(?a)\W` only when
+ASCII character-class semantics are intended; scoped Unicode overrides still
+receive the guard.
+
+Unicode case-insensitive evaluation is also conservative: when case-insensitive
+matching encounters non-ASCII input or non-ASCII/escaped literals, it returns the
+same incomplete-evaluation decision unless ASCII semantics are explicit.
+This avoids differing dotted/dotless-I case folds weakening an existing block.
+Escaped literals may trigger this guard even when they encode ASCII; write the
+literal directly or use explicit ASCII semantics when that is the intended rule.

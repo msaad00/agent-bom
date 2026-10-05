@@ -18,7 +18,9 @@ from agent_bom.permissions import classify_tool
 from agent_bom.runtime.policy_validation import (
     POLICY_LIMIT_REASON,
     POLICY_REGEX_BUDGET,
+    UNICODE_POLICY_REASON,
     PolicyEvaluationLimitError,
+    PolicyInputSemanticsError,
     bounded_pattern_match,
     compile_policy_pattern,
     runtime_policy_error,
@@ -345,6 +347,8 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
                     return False, "Runtime policy argument pattern matched", rule_id
         except PolicyEvaluationLimitError:
             return False, POLICY_LIMIT_REASON, rule_id
+        except PolicyInputSemanticsError:
+            return False, UNICODE_POLICY_REASON, rule_id
 
     return True, "", None
 

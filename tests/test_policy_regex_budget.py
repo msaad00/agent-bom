@@ -93,3 +93,41 @@ def test_standalone_bundle_preserves_timeout_posture(mode):
     row = GatewayPolicy(policy_id="p", name="guard", mode=mode, rules=[GatewayRule(id="r", arg_pattern={"value": "a+a+$"})])
     allowed, reason = _evaluate_control_plane_bundle([row.model_dump()], "agent", "read", {"value": "a" * 9999 + "!"})
     assert allowed is (mode == "audit") and "limit" in reason
+
+
+@pytest.mark.parametrize(
+    "pattern,value",
+    [
+        (r"\W", "\u200c"),
+        (r"\bsecret\b", "secret\u0301"),
+        (r"(?i)i", "\u0131"),
+        (r"(?i)I", "\u0130"),
+        (r"(?i)\u0130", "I"),
+        (r"(?i:i)", "\u0131"),
+        (r"(?a)(?u:\W)", "\u200c"),
+    ],
+)
+def test_unicode_engine_differences_never_weaken_block_rules(pattern, value):
+    import re
+
+    assert re.search(pattern, value)
+    policy = {"rules": [{"id": "r", "action": "block", "arg_pattern": {"value": pattern}}]}
+    allowed, reason, rule = check_policy_detail(policy, "read", {"value": value})
+    assert not allowed and rule == "r"
+    assert "incomplete" in reason and value not in reason
+
+
+def test_common_unicode_text_and_ascii_regex_remain_usable():
+    from agent_bom.runtime.policy_validation import bounded_pattern_match
+
+    assert bounded_pattern_match(r"^\w+$", "café")
+    assert bounded_pattern_match(r"(?a)\W", "\u200c")
+    assert not bounded_pattern_match(r"(?a)\w", "\u200c")
+
+
+@pytest.mark.parametrize("mode", ["audit", "enforce"])
+def test_unicode_incomplete_evaluation_keeps_gateway_receipt(mode):
+    row = GatewayPolicy(policy_id="p", name="guard", mode=mode, rules=[GatewayRule(id="r", arg_pattern={"value": r"\W"})])
+    allowed, reason, policy_id, rule_id, _, _ = evaluate_gateway_policies_detail([row], "read", {"value": "\u200c"})
+    assert allowed is (mode == "audit") and "incomplete" in reason
+    assert (policy_id, rule_id) == ("p", "r")

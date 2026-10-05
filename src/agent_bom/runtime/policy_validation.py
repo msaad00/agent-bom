@@ -14,6 +14,36 @@ POLICY_LIMIT_REASON = "Runtime policy evaluation limit exceeded"
 MAX_POLICY_INPUT_LENGTH = 10_000
 POLICY_MATCH_TIMEOUT = 0.025
 POLICY_REGEX_BUDGET = 0.1
+UNICODE_POLICY_REASON = "Runtime policy evaluation incomplete: incompatible Unicode character semantics"
+
+
+class PolicyInputSemanticsError(ValueError):
+    """A character-class difference must not silently weaken an existing rule."""
+
+
+@lru_cache(maxsize=4096)
+def _unicode_character_compatible(char: str) -> bool:
+    # VERSION0 is not identical to re: regex includes combining marks and
+    # joiners in its Unicode word class and may use a newer Unicode database.
+    return all(
+        bool(re.fullmatch(category, char)) == bool(regex.fullmatch(category, char, regex.VERSION0)) for category in (r"\w", r"\d", r"\s")
+    )
+
+
+def _check_unicode_input(pattern: str, text: str, compiled: regex.Pattern[str]) -> None:
+    # A global ASCII rule avoids Unicode classes unless a group overrides it.
+    # Conservative detection can reject a literal (?u...) in an ASCII rule,
+    # but never lets a scoped Unicode override bypass the compatibility guard.
+    ascii_only = bool(compiled.flags & regex.ASCII) and not re.search(r"\(\?[aiLmsux-]*u", pattern)
+    ignore_case = bool(compiled.flags & regex.IGNORECASE) or bool(re.search(r"\(\?[aLmsux-]*i", pattern))
+    unicode_literal = not pattern.isascii() or bool(re.search(r"\\[uUxN0-7]", pattern))
+    # Unicode simple case folding also differs (notably dotted/dotless I).
+    # Escaped literals are conservatively treated as potentially non-ASCII.
+    if not ascii_only and ignore_case and (not text.isascii() or unicode_literal):
+        raise PolicyInputSemanticsError(UNICODE_POLICY_REASON)
+    if not ascii_only and not text.isascii():
+        if any(not _unicode_character_compatible(char) for char in set(text) if not char.isascii()):
+            raise PolicyInputSemanticsError(UNICODE_POLICY_REASON)
 
 
 class PolicyEvaluationLimitError(ValueError):
@@ -68,6 +98,7 @@ def bounded_pattern_match(pattern: str, text: str, *, search: bool = False, dead
     if len(text) > MAX_POLICY_INPUT_LENGTH:
         raise PolicyEvaluationLimitError(POLICY_LIMIT_REASON)
     compiled = compile_policy_pattern(pattern)
+    _check_unicode_input(pattern, text, compiled)
     timeout = POLICY_MATCH_TIMEOUT if deadline is None else min(POLICY_MATCH_TIMEOUT, deadline - time.monotonic())
     if timeout <= 0:
         raise PolicyEvaluationLimitError(POLICY_LIMIT_REASON)

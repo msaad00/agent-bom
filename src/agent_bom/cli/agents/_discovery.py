@@ -257,14 +257,14 @@ def run_local_discovery(
 
     # Step 1b: Load SBOM packages if provided
     if not skill_only and sbom_file:
-        from agent_bom.parsers.sbom_context import load_sbom_agent
+        from agent_bom.parsers.sbom_context import load_sbom_agents
 
         try:
-            sbom_agent, sbom_fmt = load_sbom_agent(sbom_file, sbom_name)
-            count = sum(len(server.packages) for server in sbom_agent.mcp_servers)
-            target = sbom_agent.mcp_servers[0].name
+            sbom_agents, sbom_fmt = load_sbom_agents(sbom_file, sbom_name)
+            count = sum(len(server.packages) for agent in sbom_agents for server in agent.mcp_servers)
+            target = sbom_name or Path(sbom_file).name
             con.print(f"\n[bold blue]Loaded SBOM ({sbom_fmt}): {count} package(s) from '{target}'[/bold blue]\n")
-            ctx.agents.append(sbom_agent)
+            ctx.agents.extend(sbom_agents)
         except json.JSONDecodeError:
             con.print("\n  [red]SBOM error: input is not valid JSON.[/red]")
             sys.exit(1)

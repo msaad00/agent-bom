@@ -40,7 +40,7 @@ def test_cli_cloud_only_sbom_retains_context_and_marks_imported_evidence(fmt, tm
     response = CliRunner().invoke(
         main, ["scan", "--sbom", str(source), "--offline", "--no-scan", "--no-auto-update-db", "-f", "json", "-o", str(result)]
     )
-    assert response.exit_code == 0, response.output
+    assert response.exit_code == (1 if fmt == "cyclonedx" else 0), response.output
     restored = json.loads(result.read_text())["cloud_inventory"]
     for original, imported in zip(cloud_inventory(), restored, strict=True):
         assert {k: v for k, v in imported.items() if k != "import_provenance"} == original

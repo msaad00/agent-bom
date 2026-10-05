@@ -9,6 +9,7 @@ from typing import Any
 
 from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
 from agent_bom.sbom import parse_sbom_document
+from agent_bom.sbom_formats.cyclonedx import imported_composition_complete
 from agent_bom.security import sanitize_sensitive_payload
 
 _PREFIX = "agent-bom:cloud-inventory:"
@@ -107,7 +108,7 @@ def _validate_cloud_evidence(evidence: Any) -> dict[str, Any] | list[dict[str, A
     return sanitized if isinstance(sanitized, dict | list) else None
 
 
-def load_sbom_agent(path: str, name: str | None = None) -> tuple[Agent, str]:
+def _load_sbom_context(path: str, name: str | None = None) -> tuple[Agent, str, dict[str, Any]]:
     """Read packages and cloud evidence from the same bounded file snapshot."""
     with Path(path).open("rb") as stream:
         raw = stream.read(_MAX_BYTES + 1)
@@ -118,10 +119,17 @@ def load_sbom_agent(path: str, name: str | None = None) -> tuple[Agent, str]:
         raise ValueError("SBOM must be a JSON object")
     packages, fmt, detected = parse_sbom_document(document, source_name="uploaded SBOM")
     inventory = read_cloud_context(document)
-    provenance = {"source": "sbom", "document_sha256": hashlib.sha256(raw).hexdigest(), "format": fmt, "coverage": "not_assessed"}
+    provenance: dict[str, Any] = {
+        "source": "sbom",
+        "document_sha256": hashlib.sha256(raw).hexdigest(),
+        "format": fmt,
+        "coverage": "not_assessed",
+    }
     if inventory is not None:
         for row in inventory if isinstance(inventory, list) else [inventory]:
             row["import_provenance"] = dict(provenance)
+    if document.get("bomFormat") == "CycloneDX":
+        provenance["composition_complete"] = imported_composition_complete(document)
     resource_name = name or detected or Path(path).stem
     agent = Agent(
         name=f"sbom:{resource_name}",
@@ -131,7 +139,21 @@ def load_sbom_agent(path: str, name: str | None = None) -> tuple[Agent, str]:
         mcp_servers=[MCPServer(name=resource_name, command="sbom", args=[path], packages=packages, surface=ServerSurface.SBOM)],
         metadata={"sbom_import": {**provenance, "cloud_inventory": inventory}},
     )
-    return agent, fmt
+    return agent, fmt, document
+
+
+def load_sbom_agents(path: str, name: str | None = None) -> tuple[list[Agent], str]:
+    from agent_bom.parsers.sbom_topology import restore_context_agents
+
+    agent, fmt, document = _load_sbom_context(path, name)
+    return restore_context_agents(document, agent, name), fmt
+
+
+def load_sbom_agent(path: str, name: str | None = None) -> tuple[Agent, str]:
+    agents, fmt = load_sbom_agents(path, name)
+    if len(agents) != 1:
+        raise ValueError("SBOM contains multiple agent contexts; use load_sbom_agents")
+    return agents[0], fmt
 
 
 def combine_cloud_inventories(existing: Any, incoming: Any) -> Any:

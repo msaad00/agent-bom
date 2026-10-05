@@ -419,7 +419,8 @@ class TestToSarif:
         assert props["package_version_provenance"]["confidence"] == "exact"
         assert props["agent_discovery_provenance"][0]["collector"] == "cmdb-export"
 
-    def test_cve_result_uses_package_manifest_location(self, tmp_path):
+    def test_cve_result_uses_package_manifest_location(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
         requirements = tmp_path / "requirements.txt"
         requirements.write_text("flask==0.12.2\njinja2==2.10\npyyaml==5.3\n")
         pkg = _make_pkg(name="pyyaml", version="5.3", ecosystem="pypi")

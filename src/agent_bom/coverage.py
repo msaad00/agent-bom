@@ -34,6 +34,18 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+SCOPE_EXCLUSION_REASONS = frozenset({"directory_policy", "nested_worktree", "repository_ignore"})
+
+
+def is_scope_exclusion(warning: dict) -> bool:
+    """Only known filesystem scope receipts are informational exclusions."""
+    return (
+        warning.get("kind") == "scope_exclusion"
+        and warning.get("ecosystem") == "filesystem-discovery"
+        and warning.get("reason") in SCOPE_EXCLUSION_REASONS
+    )
+
+
 # An image must carry at least this many packages of a release before a missing
 # advisory set is treated as a coverage gap (vs. a single stray package).
 _MIN_PACKAGES_FOR_RELEASE = 5

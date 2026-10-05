@@ -324,3 +324,9 @@ newest PyPI release).
 The full exit-code and HTTP-status contract — including which codes are stable,
 which are reserved, and how the action's outputs map to them — lives in
 [`site-docs/reference/exit-codes.md`](../site-docs/reference/exit-codes.md).
+
+### Filesystem scope and completion
+
+Run `agent-bom secrets . --offline --format json` to inspect supported source and configuration files. The report separates `exclusions` (Git metadata, scanner-policy directories, repository ignores and duplicate worktrees) from incomplete-coverage `warnings`. A complete result describes the configured scope; it does not claim excluded contents were inspected. An explicitly requested excluded directory can be scanned as the root.
+
+Repository scan reports retain the same scope receipts as non-failing scan issues. Read failures, directory symlinks and exhausted file budgets still produce incomplete coverage. Review those receipts before treating a scan as evidence, then narrow or correct the target and rescan.

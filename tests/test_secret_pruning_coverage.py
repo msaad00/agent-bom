@@ -9,15 +9,16 @@ from agent_bom.traversal import iter_discovery_files
 @pytest.mark.parametrize(
     "name", ["env", "test", "testing", "build", "dist", "fixtures", "fuzz", "site-packages", ".tox", ".eggs", ".mypy_cache"]
 )
-def test_directory_policy_exclusion_cannot_report_complete(tmp_path, name):
+def test_directory_policy_exclusion_reports_complete_within_scope(tmp_path, name):
     skipped = tmp_path / "app" / name
     skipped.mkdir(parents=True)
     (skipped / "credentials.env").write_text("AWS_ACCESS_KEY_ID=" + "AKIA" + "IOSFODNN7EXAMPLE\n")
     result = scan_secrets(tmp_path)
     assert result.files_scanned == 0
-    assert result.to_dict()["complete"] is False
+    assert result.to_dict()["complete"] is True
+    assert not result.warnings
     assert result.to_dict()["pruned_directories"] == 1
-    assert any("directory" in warning.lower() for warning in result.warnings)
+    assert any("directory" in exclusion and "outside the configured scope" in exclusion for exclusion in result.exclusions)
 
 
 def test_explicit_skipped_directory_root_can_be_scanned(tmp_path):
@@ -76,7 +77,7 @@ def test_secret_file_budget_does_not_materialize_the_whole_walk(monkeypatch, tmp
 
 
 @pytest.mark.parametrize("format", ["console", "json"])
-def test_focused_cli_cannot_exit_clean_for_uninspected_subtrees(tmp_path, format):
+def test_focused_cli_discloses_uninspected_scope_without_error(tmp_path, format):
     from click.testing import CliRunner
 
     from agent_bom.cli import main
@@ -85,6 +86,6 @@ def test_focused_cli_cannot_exit_clean_for_uninspected_subtrees(tmp_path, format
     root.mkdir()
     (root / "prod.env").write_text("placeholder")
     result = CliRunner().invoke(main, ["secrets", str(tmp_path), "--format", format])
-    assert result.exit_code == 2
+    assert result.exit_code == 0
     assert "No secrets or PII found." not in result.output
     assert "directory" in result.output

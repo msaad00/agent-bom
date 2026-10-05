@@ -337,6 +337,19 @@ def sbom_cmd(
 # ── Secret scanning ─────────────────────────────────────────────────────────
 
 
+def _print_secret_coverage(result, console) -> None:
+    for exclusion in result.exclusions:
+        console.print(f"[dim]Scope exclusion: {exclusion}[/dim]")
+    for warning in result.warnings:
+        console.print(f"[yellow]Coverage incomplete:[/yellow] {warning}")
+
+
+def _secret_negative_message(result) -> str:
+    if result.files_scanned:
+        return "No secrets or PII detected in inspected files within the configured scope."
+    return "No eligible files inspected within the configured scope."
+
+
 @click.command("secrets")
 @click.argument("path", type=click.Path(exists=True))
 @click.option("-f", "--format", "output_format", default="console", help="Output format (console or json)")
@@ -429,13 +442,12 @@ def secrets_cmd(
 
     # Console output
     report_con.print(f"\n[bold]Secret scan:[/bold] {result.files_scanned} files scanned\n")
-    for warning in result.warnings:
-        diagnostic_con.print(f"[yellow]Coverage incomplete:[/yellow] {warning}")
+    _print_secret_coverage(result, diagnostic_con)
     if not result.findings:
         if result.warnings:
             report_con.print("No secrets or PII detected in inspected files; coverage is incomplete.")
             raise click.exceptions.Exit(2)
-        report_con.print("[green]No secrets or PII found.[/green]")
+        report_con.print(_secret_negative_message(result))
         return
 
     for f in result.findings:

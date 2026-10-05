@@ -40,6 +40,7 @@ from agent_bom.config import (
 # Vulnerabilities in these carry elevated risk because they run inside AI
 # agents that have credentials and tool access.
 from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES
+from agent_bom.coverage import is_scope_exclusion
 from agent_bom.cpe_match import cpe_vendor_hint as _cpe_vendor_hint
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
 from agent_bom.fedramp import tag_blast_radius as tag_fedramp
@@ -1788,7 +1789,7 @@ def _print_vulnerability_summary(total_vulns: int, findings_count: int) -> None:
     else:
         from agent_bom.scanners.state import peek_coverage_warnings
 
-        if peek_coverage_warnings():
+        if any(not is_scope_exclusion(warning) for warning in peek_coverage_warnings()):
             console.print("  [yellow]No vulnerabilities confirmed; coverage gaps limit this assessment[/yellow]")
         else:
             console.print("  [green]✓ No known vulnerabilities found[/green]")

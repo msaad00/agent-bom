@@ -118,7 +118,7 @@ jobs:
 def test_repo_secret_coverage_survives_report_assembly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, with_packages: bool, pruned: bool, visible_secret: bool
 ) -> None:
-    """Finding-only and dependency reports must retain secret discovery gaps."""
+    """Intentional build exclusions remain disclosed without a collection gap."""
     from agent_bom.sast import SASTExecutionStatus, SASTResult
 
     root = tmp_path / "repo"
@@ -153,14 +153,10 @@ def test_repo_secret_coverage_survives_report_assembly(
     assert job.status == JobStatus.DONE
     assert job.result is not None
     secret_scan = job.result["ai_inventory"]["secrets"]
-    assert secret_scan["complete"] is (not pruned)
+    assert secret_scan["complete"] is True
     assert secret_scan["pruned_directories"] == int(pruned)
     assert (secret_scan["total"] > 0) is visible_secret
-    assert job.result["scan_run"]["outcome"] == ("partial" if pruned else "complete")
+    assert job.result["scan_run"]["outcome"] == "complete"
     issues = [issue for issue in job.result["scan_run"]["issues"] if issue["source"] == "secret-scan"]
-    assert len(issues) == int(pruned)
-    if pruned:
-        assert issues[0]["code"] == "scanner_coverage_gap"
-        assert issues[0]["affects_coverage"] is True
-        assert issues[0]["message"] in job.result["warnings"]
+    assert issues == []
     assert "regression-fixture-password" not in str(job.result)

@@ -429,7 +429,7 @@ def test_skills_scan_discovers_wide_instruction_surfaces(tmp_path):
 
     # Click combines stderr diagnostics into output; the JSON contract is stdout.
     data = json.loads(result.stdout)
-    assert "Directory traversal incomplete" in result.stderr
+    assert "Directory traversal receipt" in result.stderr
     discovered = {Path(f["path"]).name for f in data["files"]}
 
     assert {"GEMINI.md", "review.md", "triage.md", "secure.mdc", "python.md"} <= discovered

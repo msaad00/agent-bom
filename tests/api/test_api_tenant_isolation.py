@@ -407,7 +407,8 @@ async def test_scan_routes_are_tenant_scoped():
 
 
 @pytest.mark.asyncio
-async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
+@pytest.mark.parametrize("package_count", [0, 2])
+async def test_create_scan_and_push_stamp_request_tenant(monkeypatch, package_count, isolated_audit_log):
     store = InMemoryJobStore()
     set_job_store(store)
     _jobs.clear()
@@ -430,7 +431,24 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
         req,
         PushPayload(
             source_id="source-a",
-            agents=[],
+            agents=[
+                {
+                    "name": "scanned-project",
+                    "agent_type": "claude-desktop",
+                    "mcp_servers": [
+                        {
+                            "name": "dependency-server",
+                            "command": "node",
+                            "args": ["server.js"],
+                            "packages": [
+                                {"name": f"package-{index}", "version": "1.0.0", "ecosystem": "npm"} for index in range(package_count)
+                            ],
+                        }
+                    ],
+                }
+            ]
+            if package_count
+            else [],
             blast_radii=[],
             warnings=[],
             summary={"total_packages": 12, "total_vulnerabilities": 55},
@@ -442,8 +460,9 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
     assert pushed_job.tenant_id == "tenant-alpha"
     assert pushed_job.triggered_by == "analyst@example.com:source-a"
     assert pushed_job.completed_at is not None
-    assert pushed_job.result["summary"]["total_packages"] == 12
-    assert pushed_job.result["posture_scorecard"]["overall_score"] == 82
+    assert pushed_job.result["summary"]["total_packages"] == package_count
+    assert pushed_job.result["summary"]["total_vulnerabilities"] == 0
+    assert "posture_scorecard" not in pushed_job.result
 
     listed = await scan_routes.list_jobs(req)
     pushed_summary = next(job for job in listed["jobs"] if job["job_id"] == pushed["job_id"])
@@ -452,7 +471,10 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
 
     hydrated = await scan_routes.list_jobs(req, include_details=True)
     pushed_hydrated = next(job for job in hydrated["jobs"] if job["job_id"] == pushed["job_id"])
-    assert pushed_hydrated["summary"]["total_packages"] == 12
+    assert pushed_hydrated["summary"]["total_packages"] == package_count
+    with pytest.raises(HTTPException) as exc:
+        await scan_routes.get_scan(_request("tenant-beta"), pushed["job_id"])
+    assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio

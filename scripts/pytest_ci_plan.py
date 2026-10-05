@@ -126,6 +126,26 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
 
     for changed in changed_files:
         normalized = Path(changed.as_posix().removeprefix("./"))
+        if normalized.as_posix() in {
+            "src/agent_bom/api/push_evidence.py",
+            "src/agent_bom/api/push_models.py",
+            "src/agent_bom/api/correlation_cohort_ingest.py",
+            "src/agent_bom/api/finding_collection.py",
+            "src/agent_bom/api/routes/observability.py",
+        }:
+            selected.update(
+                candidate
+                for candidate in available
+                if candidate.name
+                in {
+                    "test_api_tenant_isolation.py",
+                    "test_push_evidence_hardening.py",
+                    "test_push_replacement_scope.py",
+                    "test_correlation_cohort_push_ingest.py",
+                    "test_ingest_idempotency.py",
+                    "test_findings_push.py",
+                }
+            )
         if normalized.as_posix().startswith("src/agent_bom/") or normalized.as_posix().startswith("docs/PRODUCT_METRICS."):
             selected.update(candidate for candidate in available if candidate.name == "test_product_metrics_snapshot.py")
         if normalized.as_posix() == "src/agent_bom/security.py" or normalized.as_posix().startswith("src/agent_bom/redaction/"):

@@ -10,6 +10,7 @@ from agent_bom.cli.agents.scan_pipeline.helpers import _agents_patchable, _exit_
 from agent_bom.cli.agents.scan_pipeline.options import ScanOptions
 from agent_bom.cli.agents.scan_pipeline.state import ScanState
 from agent_bom.scanners import IncompleteScanError, consume_scan_warnings
+from agent_bom.scanners.supplied_findings import build_supplied_findings
 
 
 def _scan_agents(opts: ScanOptions, st: ScanState, **scan_kwargs: Any) -> None:
@@ -178,7 +179,7 @@ def _run_vulnerability_scan(opts: ScanOptions, st: ScanState) -> None:
         st.con.print(Rule("Vulnerability Scan", style="red"))
         st.con.print()
     st.step_t0 = _time.monotonic()
-    st.blast_radii = []
+    st.blast_radii = build_supplied_findings(st.agents) if opts.no_scan else []
     if opts.no_scan:
         if not opts.quiet:
             st.con.print("  [dim]Vulnerability scanning skipped (--no-scan)[/dim]")

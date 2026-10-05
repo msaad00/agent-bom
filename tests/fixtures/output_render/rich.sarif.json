@@ -425,23 +425,15 @@
             "text": "CVE-2026-1001 (critical) in express@4.17.1. Affects agents: claude-desktop. Fix: upgrade to 4.18.0. Exposure path: claude-desktop \u2192 filesystem \u2192 express@4.17.1 \u2192 CVE-2026-1001 \u2192 read_file. Blast radius: 1 cred(s), 1 tool(s) reachable."
           },
           "fingerprints": {
-            "agent-bom/v1": "f4287b06918c3a3624046de6cd647692b0574048cfc38adcfad252e9d00f4248"
-          },
-          "partialFingerprints": {
-            "primaryLocationLineHash": "e44001a4fd6fa931b668931b7857a8ca803b7061a499f613cbb6198b10257c54"
+            "agent-bom/v1": "a9959aa939f66faf8fa51280081fa281330124c9a08063319d7fa4aeeb4638e1"
           },
           "locations": [
             {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "claude.json",
-                  "uriBaseId": "%SRCROOT%"
-                },
-                "region": {
-                  "startLine": 1,
-                  "startColumn": 1
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "package:npm/express@4.17.1"
                 }
-              }
+              ]
             }
           ],
           "relatedLocations": [
@@ -731,23 +723,15 @@
             "text": "CVE-2026-1002 (high) in express@4.17.1. Affects agents: claude-desktop. Exposure path: claude-desktop \u2192 filesystem \u2192 express@4.17.1 \u2192 CVE-2026-1002. Blast radius: 0 cred(s), 0 tool(s) reachable."
           },
           "fingerprints": {
-            "agent-bom/v1": "00a39ddc89c8c7af2b50cd5856f50e0508262ff7b1fcaa1c9f9bdcbfefc46243"
-          },
-          "partialFingerprints": {
-            "primaryLocationLineHash": "e44001a4fd6fa931b668931b7857a8ca803b7061a499f613cbb6198b10257c54"
+            "agent-bom/v1": "4454a46f161e1d99d88baba797d8e0c99bc814e9209c36f65f374c788ff1b749"
           },
           "locations": [
             {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "claude.json",
-                  "uriBaseId": "%SRCROOT%"
-                },
-                "region": {
-                  "startLine": 1,
-                  "startColumn": 1
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "package:npm/express@4.17.1"
                 }
-              }
+              ]
             }
           ],
           "relatedLocations": [
@@ -962,23 +946,15 @@
             "text": "GHSA-aaaa-bbbb-cccc (medium) in requests@2.19.0. Affects agents: cursor. Exposure path: cursor \u2192 fetcher \u2192 requests@2.19.0 \u2192 GHSA-aaaa-bbbb-cccc. Blast radius: 0 cred(s), 0 tool(s) reachable."
           },
           "fingerprints": {
-            "agent-bom/v1": "cccbe7e608f3ebcc0c61e14ed8da8468c9b7d16981c0a1733ad3bd170bdf799e"
-          },
-          "partialFingerprints": {
-            "primaryLocationLineHash": "a1c46626f21e5fc552f95349e1919d7dcb6b271ddb1cdd080031e42273f58a0d"
+            "agent-bom/v1": "f68be5c25504c0bd90cd3268c8f0ad0d1ba4ce81667cbbeff31e3e1120a8abc8"
           },
           "locations": [
             {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "cursor.json",
-                  "uriBaseId": "%SRCROOT%"
-                },
-                "region": {
-                  "startLine": 1,
-                  "startColumn": 1
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "package:pypi/requests@2.19.0"
                 }
-              }
+              ]
             }
           ],
           "relatedLocations": [

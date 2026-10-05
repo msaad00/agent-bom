@@ -920,3 +920,38 @@ def test_findings_collated_sort_indexes_skip_a_schema_without_the_current_table(
     migration.op = SimpleNamespace(get_bind=lambda: _Bind(), get_context=_unexpected, execute=_unexpected)
     migration.upgrade()
     assert statements == ["SELECT to_regclass('public.hub_findings_current')"]
+
+
+def test_live_suppression_upgrade_preserves_optional_store_and_unapproved_history(monkeypatch):
+    """The migration may encounter a partial legacy schema with no exceptions."""
+    import os
+    from uuid import uuid4
+
+    import pytest
+
+    admin_url = os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL")
+    if not admin_url:
+        pytest.skip("AGENT_BOM_POSTGRES_ADMIN_URL required for real migration execution")
+    import psycopg
+    from psycopg import sql
+
+    migration = _load_module(VERSIONS_DIR / "20261005_01_suppression_approval.py", "suppression_upgrade_live")
+    with psycopg.connect(admin_url) as conn:
+        for has_exceptions in (False, True):
+            schema = "approval_migration_" + uuid4().hex
+            conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+            conn.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(schema)))
+            conn.execute("CREATE TABLE control_plane_schema_versions (component TEXT PRIMARY KEY,version INTEGER,updated_at TIMESTAMPTZ)")
+            conn.execute("INSERT INTO control_plane_schema_versions VALUES ('exceptions',1,now())")
+            if has_exceptions:
+                conn.execute("CREATE TABLE exceptions (id TEXT PRIMARY KEY,status TEXT)")
+                conn.execute("INSERT INTO exceptions VALUES ('legacy','active')")
+            monkeypatch.setattr(migration, "op", SimpleNamespace(execute=conn.execute))
+            migration.upgrade()
+            migration.upgrade()
+            assert conn.execute("SELECT version FROM control_plane_schema_versions").fetchone()[0] == (2 if has_exceptions else 1)
+            if has_exceptions:
+                assert conn.execute("SELECT id,status,approval_version FROM exceptions").fetchall() == [("legacy", "active", 0)]
+            else:
+                assert conn.execute("SELECT to_regclass('exceptions')").fetchone()[0] is None
+        conn.rollback()  # fixture-only schemas and rows never persist

@@ -63,20 +63,23 @@ def test_inline_scanner_pii_redact_does_not_block_by_default() -> None:
     assert all(not f.blocked for f in findings)
 
 
-def test_gateway_invalid_rule_pattern_fails_closed() -> None:
+@pytest.mark.parametrize("action", ["deny", "fail", "block", "warn"])
+@pytest.mark.parametrize("mode", ["enforce", "audit"])
+def test_gateway_invalid_rule_pattern_fails_closed(action, mode) -> None:
     allowed, reason = _evaluate_control_plane_bundle(
         [
             {
                 "policy_id": "p1",
                 "name": "bad-regex",
-                "rules": [{"id": "r1", "tool_name_pattern": "[invalid", "action": "deny"}],
+                "mode": mode,
+                "rules": [{"id": "r1", "tool_name_pattern": "[invalid", "action": action}],
             }
         ],
         "agent-a",
         "tool",
         {},
     )
-    assert allowed is False
+    assert allowed is (mode == "audit")
     assert "malformed" in reason
 
 

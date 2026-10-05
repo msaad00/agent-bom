@@ -45,7 +45,7 @@ def test_finding_from_blast_radius_projects_reachability_and_vex_fields():
     assert row["reachable_affected_symbols"] == ["main.handler"]
     assert row["match_confidence_tier"] == "high"
     assert row["vex_status"] == "fixed"
-    assert row["vex_suppressed"] is True
+    assert row["vex_suppressed"] is False
 
 
 def test_iter_scan_findings_prefers_unified_stream_over_blast_radius():
@@ -363,12 +363,12 @@ def test_api_pipeline_applies_vex_and_rebuilds_findings(monkeypatch, tmp_path):
     assert job.result is not None
     assert job.result.get("vex") is not None
     finding = job.result["findings"][0]
-    assert finding["suppressed"] is True
+    assert finding["suppressed"] is False
     assert finding["evidence"]["vex_status"] == "not_affected"
     assert finding["evidence"]["vex_justification"] == "component_not_present"
     br_item = job.result["blast_radius"][0]
     assert br_item["vex_status"] == "not_affected"
-    assert br_item["vex_suppressed"] is True
+    assert br_item["vex_suppressed"] is False
     # The legacy blast-radius projection is the same canonical finding, not a
     # second anonymous row.  Carrying the unified identity lets REST collapse
     # both representations and keeps owner/SLA/triage joins stable.
@@ -450,4 +450,4 @@ def test_list_findings_api_surfaces_blast_radius_vex_and_reachability(findings_c
     assert row["match_confidence_tier"] == "low"
     assert row["vex_status"] == "not_affected"
     assert row["vex_justification"] == "component_not_present"
-    assert row["vex_suppressed"] is True
+    assert row["vex_suppressed"] is False

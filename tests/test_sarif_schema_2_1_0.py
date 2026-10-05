@@ -204,8 +204,11 @@ def test_sarif_results_carry_required_fields(sarif_doc: dict) -> None:
         assert result.get("ruleId"), f"result missing ruleId: {result}"
         assert result.get("level") in {"none", "note", "warning", "error"}, result
         assert result["message"].get("text"), f"result missing message.text: {result}"
-        loc = result["locations"][0]["physicalLocation"]
-        assert loc["artifactLocation"].get("uri"), result
+        loc = result["locations"][0]
+        if "physicalLocation" in loc:
+            assert loc["physicalLocation"]["artifactLocation"].get("uri"), result
+        else:
+            assert loc["logicalLocations"][0].get("fullyQualifiedName"), result
     # Every advertised result.ruleId must resolve to a rule in the driver catalog.
     catalog = {rule["id"] for rule in sarif_doc["runs"][0]["tool"]["driver"]["rules"]}
     dangling = rule_ids - catalog

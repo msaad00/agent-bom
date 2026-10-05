@@ -65,14 +65,14 @@ def assess_reachability(
     likely: list[str] = []
     if symbol == "package_reachable":
         likely.append("package_reachable")
-    if dependency_reachable is True:
+    if dependency_reachable is True and not declaration_only:
         likely.append("dependency_path")
     if direct_dependency and affected_agents and not declaration_only:
         likely.append("direct_agent_dependency")
     if likely:
         return ReachabilityAssessment(ReachabilityVerdict.LIKELY, tuple(likely))
 
-    if dependency_reachable is False:
+    if dependency_reachable is False and not declaration_only:
         return ReachabilityAssessment(ReachabilityVerdict.UNLIKELY, ("dependency_unreachable",))
 
     context: list[str] = []

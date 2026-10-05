@@ -31,7 +31,6 @@ from agent_bom.output.finding_views import (
     evidence,
     exploit_likelihood_value,
     finding_severity,
-    package_ecosystem,
     package_name,
     package_version,
 )
@@ -43,6 +42,7 @@ from agent_bom.output.sarif_taxonomy import (
     _framework_taxa_references,
     _taxonomies_as_tool_extensions,
 )
+from agent_bom.output.source_locations import SourceIndex, finding_package_location, package_source_index
 from agent_bom.security import sanitize_sensitive_payload, sanitize_text, sanitize_url
 
 _SARIF_SEVERITY_MAP = {
@@ -59,7 +59,7 @@ def _sarif_fingerprint_fields(
     *,
     stable_input: str,
     artifact_uri: str,
-    start_line: int = 1,
+    start_line: int | None = 1,
 ) -> dict[str, dict[str, str]]:
     """Return SARIF fingerprints and GitHub partialFingerprints for dedup."""
     fields = {
@@ -70,7 +70,7 @@ def _sarif_fingerprint_fields(
             "primaryLocationLineHash": hashlib.sha256(f"{artifact_uri}:{start_line}".encode()).hexdigest(),
         },
     }
-    if artifact_uri.startswith("self-scan://"):
+    if start_line is None or artifact_uri.startswith(("self-scan://", "pkg:", "package:")):
         fields.pop("partialFingerprints")
     return fields
 
@@ -363,45 +363,6 @@ _DEDICATED_CIS_BENCHMARKS: tuple[tuple[str, str], ...] = (
 _DEDICATED_CIS_PROVIDERS = frozenset(provider for provider, _ in _DEDICATED_CIS_BENCHMARKS)
 
 
-def _finding_artifact_uri(report: AIBOMReport, finding: Finding) -> str:
-    """Resolve a SARIF artifact URI from unified finding + report agent inventory."""
-    ecosystem = package_ecosystem(finding) or None
-    if finding.affected_agents:
-        agents_by_name = {agent.name: agent for agent in report.agents}
-        first_agent = finding.affected_agents[0]
-        agent = agents_by_name.get(str(first_agent))
-        config_path = getattr(agent, "config_path", None) if agent else None
-        if config_path:
-            return _to_relative_path(str(config_path), ecosystem=ecosystem)
-    if finding.asset.location:
-        return _to_relative_path(str(finding.asset.location), ecosystem=ecosystem)
-    return _to_relative_path("unknown", ecosystem=ecosystem)
-
-
-def _package_manifest_location(finding: Finding) -> tuple[str, int] | None:
-    """Return the canonical package declaration location carried by a finding."""
-    provenance = evidence(finding, "package_version_provenance", {})
-    if not isinstance(provenance, dict):
-        return None
-    entries = provenance.get("evidence")
-    if not isinstance(entries, list):
-        return None
-    ecosystem = package_ecosystem(finding) or None
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        path = entry.get("source_file") or entry.get("path")
-        line = entry.get("line")
-        if isinstance(path, str) and path and isinstance(line, int) and line > 0:
-            # Persisted version evidence intentionally reduces absolute paths to
-            # ``<path:basename>``. SARIF needs the safe basename as its artifact
-            # URI, never the original host path.
-            if path.startswith("<path:") and path.endswith(">"):
-                path = path[6:-1]
-            return _to_relative_path(path, ecosystem=ecosystem), line
-    return None
-
-
 def _agent_discovery_provenance_from_report(report: AIBOMReport, agent_names: list[str]) -> list[Any]:
     agents_by_name = {agent.name: agent for agent in report.agents}
     out: list[Any] = []
@@ -559,6 +520,7 @@ def _cve_sarif_result(
     pkg_name: str,
     pkg_version: str,
     ai_assessment: Any = None,
+    source_index: SourceIndex | None = None,
 ) -> dict:
     exposure_path = exposure_path_for_report_finding(finding, rank=rank)
     affected = ", ".join(str(name) for name in finding.affected_agents)
@@ -570,8 +532,7 @@ def _cve_sarif_result(
     if exposure_chain:
         message_text += f" Exposure path: {exposure_chain}. Blast radius: {exposure_path_blast_summary(exposure_path)}."
 
-    manifest_location = _package_manifest_location(finding)
-    config_path, start_line = manifest_location or (_finding_artifact_uri(report, finding), 1)
+    config_path, start_line = finding_package_location(finding, source_index or {})
     fp_input = f"{rule_id}:{pkg_name}:{pkg_version}:{config_path}"
     kind = "informational" if sev == Severity.NONE else "fail"
     result: dict = {
@@ -704,14 +665,12 @@ class _SarifCatalog:
 
 def _sarif_location(uri: str, start_line: Any) -> dict[str, Any]:
     # Installed distributions have an inventory identity, not a checkout file.
-    if uri.startswith("self-scan://"):
+    if uri.startswith(("self-scan://", "pkg:", "package:")):
         return {"logicalLocations": [{"fullyQualifiedName": uri}]}
-    return {
-        "physicalLocation": {
-            "artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"},
-            "region": {"startLine": start_line, "startColumn": 1},
-        },
-    }
+    location: dict[str, Any] = {"artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"}}
+    if type(start_line) is int and start_line > 0:
+        location["region"] = {"startLine": start_line, "startColumn": 1}
+    return {"physicalLocation": location}
 
 
 def _add_cve_results(
@@ -733,6 +692,7 @@ def _add_cve_results(
         apply_workload_runtime_evidence_for_export(cve_findings(report, blast_radii)),
         key=lambda finding: (-float(finding.risk_score or 0.0), finding.cve_id or finding.id or ""),
     )
+    source_index = package_source_index(report)
     for rank, finding in enumerate(ordered_cve_findings, 1):
         rule_id = finding.cve_id or finding.id
         if not rule_id:
@@ -760,6 +720,7 @@ def _add_cve_results(
                 report,
                 finding,
                 rank=rank,
+                source_index=source_index,
                 rule_id=rule_id,
                 level=level,
                 pkg_name=pkg_name,

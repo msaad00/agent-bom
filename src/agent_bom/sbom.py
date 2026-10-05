@@ -17,6 +17,12 @@ import json
 from pathlib import Path
 
 from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.sbom_formats.cyclonedx import (
+    is_context_component,
+    restore_dependency_hierarchy,
+    restore_package_metadata,
+    software_components,
+)
 from agent_bom.sbom_formats.spdx3 import (
     _spdx3_annotation_kv,
     _spdx3_cvss,
@@ -79,26 +85,15 @@ def parse_cyclonedx(data: dict) -> list[Package]:
     """Parse a CycloneDX 1.x JSON document into Package objects.
 
     Works with output from Syft, Grype, Trivy, cdxgen, and agent-bom itself.
-    Respects component ``scope`` and ``dependencies`` array to distinguish
-    direct vs transitive dependencies.
+    Dependency edges establish directness; scope describes inclusion, not depth.
+    Imported assertions do not establish runtime reachability.
     """
     packages: list[Package] = []
     bom_ref_to_pkg: dict[str, Package] = {}
-    components = data.get("components", [])
-
-    # Build adjacency map and direct refs from dependencies array
-    dep_map: dict[str, list[str]] = {}
-    _direct_refs: set[str] = set()
-    root_ref = (data.get("metadata", {}).get("component", {}) or {}).get("bom-ref", "")
-    for dep_entry in data.get("dependencies", []):
-        ref = dep_entry.get("ref", "")
-        depends_on = dep_entry.get("dependsOn", [])
-        dep_map[ref] = depends_on
-        if ref == root_ref:
-            _direct_refs.update(depends_on)
+    components = software_components(data)
 
     for comp in components:
-        if not isinstance(comp, dict):
+        if not isinstance(comp, dict) or is_context_component(comp):
             continue
 
         name = comp.get("name", "")
@@ -166,25 +161,13 @@ def parse_cyclonedx(data: dict) -> list[Package]:
 
         copyright_val = comp.get("copyright") or None
 
-        # Determine direct vs transitive: scope field takes priority,
-        # then check if component is in root's dependsOn list.
         bom_ref = comp.get("bom-ref", "")
-        scope = comp.get("scope", "")
-        if scope == "required":
-            _is_direct = True
-        elif scope == "optional":
-            _is_direct = False
-        elif _direct_refs and bom_ref:
-            _is_direct = bom_ref in _direct_refs
-        else:
-            _is_direct = True  # fallback when no dependency info
-
         package = Package(
             name=name,
             version=version,
             ecosystem=ecosystem,
             purl=purl or None,
-            is_direct=_is_direct,
+            is_direct=False,
             resolved_from_registry=False,
             license=lic_id,
             license_expression=lic_expr,
@@ -196,32 +179,12 @@ def parse_cyclonedx(data: dict) -> list[Package]:
             download_url=download_val,
             copyright_text=copyright_val,
         )
+        restore_package_metadata(package, comp)
         packages.append(package)
         if bom_ref:
             bom_ref_to_pkg[bom_ref] = package
 
-    # Multi-hop dependency graph walking: set dependency_depth for each package
-    if dep_map and root_ref:
-
-        def _walk_deps(ref: str, depth: int, visited: set) -> None:
-            """Visit *ref* at the given depth, then recurse into its children at depth+1."""
-            if ref in visited:
-                return
-            visited.add(ref)
-            # Set depth on the current node
-            pkg = bom_ref_to_pkg.get(ref)
-            if pkg is not None:
-                if depth > pkg.dependency_depth:
-                    pkg.dependency_depth = depth
-                pkg.is_direct = pkg.dependency_depth == 0
-            # Recurse into children at the next depth level
-            for child_ref in dep_map.get(ref, []):
-                _walk_deps(child_ref, depth + 1, visited)
-
-        # Walk from root's direct children at depth=0 (direct deps)
-        _visited: set[str] = {root_ref}
-        for direct_ref in dep_map.get(root_ref, []):
-            _walk_deps(direct_ref, 0, _visited)
+    restore_dependency_hierarchy(data, bom_ref_to_pkg)
 
     # Ingest CycloneDX vulnerabilities[] array if present
     for vuln_data in data.get("vulnerabilities", []):
@@ -249,7 +212,23 @@ def parse_cyclonedx(data: dict) -> list[Package]:
                     pass
             break  # use first rating
 
-        vuln = Vulnerability(id=vuln_id, summary=summary, severity=severity, cvss_score=cvss_score)
+        recommendation = vuln_data.get("recommendation", "")
+        fixed = (
+            recommendation.removeprefix("Upgrade to ")
+            if isinstance(recommendation, str) and recommendation.startswith("Upgrade to ")
+            else None
+        )
+        source = vuln_data.get("source", {})
+        references = [source["url"]] if isinstance(source, dict) and isinstance(source.get("url"), str) else []
+        vuln = Vulnerability(
+            id=vuln_id,
+            summary=summary,
+            severity=severity,
+            cvss_score=cvss_score,
+            fixed_version=fixed,
+            severity_source="sbom",
+            references=references,
+        )
 
         # Map vulnerability to affected packages via affects[] array
         for affect in vuln_data.get("affects", []):

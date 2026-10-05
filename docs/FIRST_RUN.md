@@ -345,3 +345,24 @@ which are reserved, and how the action's outputs map to them — lives in
 Run `agent-bom secrets . --offline --format json` to inspect supported source and configuration files. The report separates `exclusions` (Git metadata, scanner-policy directories, repository ignores and duplicate worktrees) from incomplete-coverage `warnings`. A complete result describes the configured scope; it does not claim excluded contents were inspected. An explicitly requested excluded directory can be scanned as the root.
 
 Repository scan reports retain the same scope receipts as non-failing scan issues. Read failures, directory symlinks and exhausted file budgets still produce incomplete coverage. Review those receipts before treating a scan as evidence, then narrow or correct the target and rescan.
+
+### Follow a finding through exported evidence
+
+```bash
+agent-bom scan . -f sarif -o findings.sarif
+agent-bom scan . -f cyclonedx -o inventory.cdx.json
+agent-bom scan --sbom inventory.cdx.json --no-scan -f json -o imported.json
+```
+
+SARIF uses the recorded dependency file, including its repository-relative
+subdirectory. A package without source-file evidence has a logical package
+location; it does not point to a guessed manifest or line.
+
+CycloneDX imports retain declared dependency edges, component hashes, and
+agent/server inventory membership from agent-bom exports. Imported edges are
+declarations, not proof of runtime reachability. Imported findings remain
+visible with `--no-scan`; this does not refresh their advisory assessment.
+Inspect `scan_run` before using the result as a gate: missing or incomplete
+composition evidence stays partial. With `--no-scan`, completion describes
+the requested import, not a fresh vulnerability assessment. Run again without `--no-scan` to refresh
+advisory matches, or rescan the original target to refresh inventory coverage.

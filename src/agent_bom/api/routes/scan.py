@@ -50,6 +50,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
 from agent_bom.api import job_status_count_cache
+from agent_bom.api.finding_collection import collect_scan_findings
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.finding_reachability import project_persisted_graph_reachability
@@ -95,6 +96,11 @@ from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpress
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id
 from agent_bom.evidence.agent_bom import AgentBomDocument
 from agent_bom.evidence.scan_agent_bom import AgentSelectionError, build_scan_agent_bom
+from agent_bom.finding_runtime_evidence import (
+    attach_runtime_evidence_to_finding,
+    build_tenant_runtime_evidence_index,
+    compliance_tags_from_finding_row,
+)
 from agent_bom.finding_scope import (
     FINDING_SEVERITY_FILTERS,
     FindingClass,
@@ -1062,11 +1068,6 @@ def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     result = job.result or {}
     reach = _effective_reach_lookup(job)
-    from agent_bom.finding_runtime_evidence import (
-        attach_runtime_evidence_to_finding,
-        build_tenant_runtime_evidence_index,
-        compliance_tags_from_finding_row,
-    )
 
     tenant_id = str(getattr(job, "tenant_id", None) or "default")
     runtime_index = build_tenant_runtime_evidence_index(tenant_id)
@@ -1124,66 +1125,7 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)
         return row
 
-    # Collapse the three per-vulnerability representations (unified ``findings``
-    # stream, ``blast_radius`` projection, nested ``package_vulnerability``) onto
-    # one row per canonical id. The unified stream is processed first and stays
-    # authoritative; later representations only backfill descriptive fields the
-    # unified row is missing (package/CVE metadata) — never reachability or VEX,
-    # so the unified-stream-wins contract holds. This keeps ``/v1/findings`` in
-    # step with the overview count instead of emitting one row per representation.
-    grouped: dict[str, dict[str, Any]] = {}
-    order: list[str] = []
-    package_groups: dict[tuple[str, str], list[str]] = {}
-
-    def _absorb(row: dict[str, Any]) -> None:
-        key = _canonical_group_key(row)
-        # Older persisted blast/package projections did not carry ``asset``.
-        # Match known version/ecosystem fields before backfilling. A missing
-        # field can match one unambiguous representation; conflicting known
-        # versions cannot. Never guess when multiple assets match. Index by
-        # vulnerability/package rather than rescanning every estate finding.
-        if _row_vuln_id(row) and key not in grouped:
-            name, version, ecosystem = _package_identity(row)
-            candidates = []
-            for candidate in package_groups.get((_row_vuln_id(row).lower(), name), []):
-                if _row_asset_key(row) and _row_asset_key(row) != _row_asset_key(grouped[candidate]):
-                    continue
-                _, candidate_version, candidate_ecosystem = _package_identity(grouped[candidate])
-                if version and candidate_version and version != candidate_version:
-                    continue
-                if ecosystem and candidate_ecosystem and ecosystem != candidate_ecosystem:
-                    continue
-                candidates.append(candidate)
-                if len(candidates) > 1:
-                    break  # Ambiguous asset identity; never merge distinct assets.
-            if len(candidates) == 1:
-                key = candidates[0]
-        existing = grouped.get(key)
-        if existing is None:
-            grouped[key] = row
-            order.append(key)
-            if _row_vuln_id(row):
-                package_groups.setdefault((_row_vuln_id(row).lower(), _package_base_name(row)), []).append(key)
-            return
-        _backfill_supplementary_fields(existing, row)
-
-    for item in result.get("findings", []) or []:
-        if not isinstance(item, dict):
-            continue
-        row = dict(item)
-        row.setdefault("scan_id", str(result.get("scan_id") or job.job_id))
-        row.setdefault("scan_sources", _scan_source_labels(job))
-        _absorb(_attach_reach(row))
-
-    for item in result.get("blast_radius", []) or result.get("blast_radii", []) or []:
-        if not isinstance(item, dict):
-            continue
-        _absorb(_attach_reach(_finding_from_blast_radius(item, job)))
-
-    for row in _iter_package_findings(job):
-        _absorb(_attach_reach(row))
-
-    findings = [grouped[key] for key in order]
+    findings = collect_scan_findings(job, _attach_reach)
     # Surface the triage assignee as the finding owner (the simple ownership cut).
     # Built once per tenant and matched per row; rows with no triage assignee keep
     # whatever owner the scan spine already set (an explicit None when unassigned,

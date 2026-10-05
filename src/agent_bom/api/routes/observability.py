@@ -15,7 +15,6 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Annotated, Any, cast
 
@@ -41,7 +40,8 @@ from agent_bom.api.idempotency_store import (
 )
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
-from agent_bom.api.push_models import normalize_push_coverage
+from agent_bom.api.push_evidence import audit_push_admission
+from agent_bom.api.push_evidence import normalize_pushed_report as _normalize_pushed_report
 from agent_bom.api.runtime_event_store import (
     RuntimeObservationRecord,
     get_runtime_event_store,
@@ -59,16 +59,11 @@ from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota
 from agent_bom.canonical_ids import canonical_id
 from agent_bom.config import API_MAX_OCSF_INGEST_EVENTS
 from agent_bom.core.severity import ocsf_to_severity
-from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import (
-    sanitize_command_args,
-    sanitize_env_vars,
     sanitize_error,
-    sanitize_security_warnings,
     sanitize_sensitive_payload,
     sanitize_text,
-    sanitize_url,
 )
 
 router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
@@ -90,52 +85,6 @@ def _tenant_id(request: Request) -> str:
 
 def _triggered_by(request: Request) -> str:
     return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "push"
-
-
-def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dict:
-    """Coerce pushed payloads onto the canonical scan report contract.
-
-    The main scan pipeline emits `blast_radius` and agent `type`, while some
-    push clients still send `blast_radii` and `agent_type`. Normalizing here
-    keeps graph persistence, UI pages, and downstream exporters aligned.
-    """
-    report = body.model_dump()
-    blast_radius = deepcopy(report.get("blast_radius") or report.get("blast_radii") or [])
-    report["blast_radius"] = blast_radius
-    if "blast_radii" not in report:
-        report["blast_radii"] = deepcopy(blast_radius)
-    report["scan_id"] = str(report.get("scan_id") or fallback_scan_id)
-
-    normalized_agents: list[dict] = []
-    for raw_agent in report.get("agents", []):
-        agent = dict(raw_agent)
-        agent_type = str(agent.get("type") or agent.get("agent_type") or "").strip()
-        if agent_type:
-            agent["type"] = agent_type
-            agent["agent_type"] = agent_type
-        sanitized_servers: list[dict] = []
-        for raw_server in agent.get("mcp_servers", []) or agent.get("servers", []) or []:
-            if not isinstance(raw_server, dict):
-                continue
-            server = dict(raw_server)
-            server["command"] = sanitize_text(server.get("command", ""), max_len=200)
-            server["args"] = sanitize_command_args(list(server.get("args", []) or []))
-            server["url"] = sanitize_url(str(server.get("url") or "")) if server.get("url") else None
-            server["env"] = sanitize_env_vars(dict(server.get("env", {}) or {}))
-            server["security_warnings"] = sanitize_security_warnings(list(server.get("security_warnings", []) or []))
-            server["security_intelligence"] = [
-                sanitize_security_intelligence_entry(item)
-                for item in (server.get("security_intelligence", []) or [])
-                if isinstance(item, dict)
-            ]
-            sanitized_servers.append(server)
-        if "mcp_servers" in agent:
-            agent["mcp_servers"] = sanitized_servers
-        elif sanitized_servers:
-            agent["servers"] = sanitized_servers
-        normalized_agents.append(agent)
-    report["agents"] = normalized_agents
-    return normalize_push_coverage(report, source_id=body.source_id, target_scope=body.target_scope)
 
 
 def _extract_ocsf_events(body: dict | list[dict]) -> list[dict]:
@@ -870,6 +819,28 @@ _RECOGNIZED_PUSH_EXTRA_KEYS = frozenset(
 )
 
 
+def _prepare_push_endpoint(body: PushPayload, job: ScanJob, job_result: dict, tenant_id: str) -> tuple:
+    fleet_store = _get_fleet_store()
+    previous_endpoint = None
+    endpoint = None
+    if body.source_id and body.endpoint_inventory:
+        from agent_bom.api.fleet_store import endpoint_inventory_evidence, endpoint_summary_from_inventory
+
+        previous_endpoint = fleet_store.get_endpoint(body.source_id, tenant_id=tenant_id)
+        endpoint = endpoint_summary_from_inventory(
+            endpoint_id=body.source_id,
+            tenant_id=tenant_id,
+            inventory=body.endpoint_inventory,
+            scan_id=str(job_result.get("scan_id") or job.job_id),
+            observed_at=str(job_result.get("observed_at") or job_result.get("scan_timestamp") or job.created_at),
+        )
+        # Store and graph only the bounded evidence summary. Raw process,
+        # application, service, listener, container, and image rows remain
+        # on the source endpoint and never enter the control-plane job.
+        job_result["endpoint_inventory"] = endpoint_inventory_evidence(endpoint)
+    return fleet_store, previous_endpoint, endpoint
+
+
 @router.post("/results/push", tags=["push"], status_code=201)
 async def receive_push(request: Request, body: PushPayload) -> dict:
     """Receive pushed scan results from a CLI instance.
@@ -990,6 +961,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
             )
             report["scan_id"] = context.child.job_id
             report["pushed"] = True
+            audit_push_admission(context.child, report, actor=_triggered_by(request), request_hash=request_hash)
             cohort_heartbeat.ensure_owned()
             cohort_heartbeat.__exit__()
             cohort_heartbeat = None
@@ -1139,25 +1111,8 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         job_result = _normalize_pushed_report(body, fallback_scan_id=job.job_id)
         job_result["pushed"] = True
         job.result = job_result
-        job.progress.append(f"Received via push from source={body.source_id}")
-        fleet_store = _get_fleet_store()
-        previous_endpoint = None
-        endpoint = None
-        if body.source_id and body.endpoint_inventory:
-            from agent_bom.api.fleet_store import endpoint_inventory_evidence, endpoint_summary_from_inventory
-
-            previous_endpoint = fleet_store.get_endpoint(body.source_id, tenant_id=tenant_id)
-            endpoint = endpoint_summary_from_inventory(
-                endpoint_id=body.source_id,
-                tenant_id=tenant_id,
-                inventory=body.endpoint_inventory,
-                scan_id=str(job_result.get("scan_id") or job.job_id),
-                observed_at=str(job_result.get("observed_at") or job_result.get("scan_timestamp") or job.created_at),
-            )
-            # Store and graph only the bounded evidence summary. Raw process,
-            # application, service, listener, container, and image rows remain
-            # on the source endpoint and never enter the control-plane job.
-            job_result["endpoint_inventory"] = endpoint_inventory_evidence(endpoint)
+        job.progress.append(f"Received via push from source={sanitize_text(body.source_id)}")
+        fleet_store, previous_endpoint, endpoint = _prepare_push_endpoint(body, job, job_result, tenant_id)
         job_store = _get_store()
         job_persisted = False
         endpoint_persisted = False
@@ -1176,6 +1131,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         # its backend; a failure restores the prior endpoint and removes the job,
         # so retained-job quota cannot diverge from visible evidence.
         with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
+            audit_push_admission(job, job_result, actor=_triggered_by(request), request_hash=request_hash)
             try:
                 job_store.put(job)
                 job_persisted = True

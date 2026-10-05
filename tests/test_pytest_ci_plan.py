@@ -228,6 +228,15 @@ def test_shared_judgments_select_caller_parity(tmp_path: Path) -> None:
         assert select_targeted_tests(changed_files=[Path(f"src/agent_bom/core/{name}.py")], root=tmp_path) == expected
 
 
+@pytest.mark.parametrize("source", ["core/package_artifacts.py", "core/versions/ruby.py", "parsers/uv_lock.py", "parsers/uv_workspace.py"])
+def test_artifact_version_helpers_select_parser_and_check_consumers(tmp_path: Path, source: str) -> None:
+    names = ["test_scanner_artifact_versions.py", "test_cli_check.py", "test_mcp_package_scan_ecosystem.py", "test_parser_interop.py"]
+    expected = sorted(tmp_path / "tests" / name for name in names)
+    for path in [*expected, tmp_path / "tests/test_unrelated.py"]:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path("src/agent_bom") / source], root=tmp_path) == expected
+
+
 def test_delegation_sources_select_lifecycle_and_authority_contracts(tmp_path):
     expected = sorted(
         tmp_path / "tests" / name

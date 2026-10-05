@@ -83,6 +83,36 @@ SHARED_JUDGMENT_SOURCES = frozenset(
         "src/agent_bom/core/timestamps.py",
     }
 )
+ARTIFACT_VERSION_SOURCES = frozenset(
+    {
+        "src/agent_bom/core/package_artifacts.py",
+        "src/agent_bom/core/versions/ruby.py",
+        "src/agent_bom/models.py",
+        "src/agent_bom/parsers/python_parsers.py",
+        "src/agent_bom/parsers/ruby_parsers.py",
+        "src/agent_bom/parsers/uv_lock.py",
+        "src/agent_bom/parsers/uv_workspace.py",
+        "src/agent_bom/cli/_check_command.py",
+        "src/agent_bom/mcp_tools/scanning.py",
+    }
+)
+ARTIFACT_VERSION_CONTRACTS = frozenset(
+    {
+        "test_accuracy_baseline.py",
+        "test_normalization_gaps.py",
+        "test_scanner_robustness.py",
+        "test_online_scan_validation.py",
+        "test_scanner_artifact_versions.py",
+        "test_cli_check.py",
+        "test_mcp_package_scan_ecosystem.py",
+        "test_parser_interop.py",
+        "test_ruby_parsers.py",
+        "test_manifest_parser_coverage.py",
+        "test_version_comparator_ecosystems.py",
+        "test_parser_file_limits.py",
+        "test_maven_go_parsers.py",
+    }
+)
 SHARED_JUDGMENT_PREFIXES = (
     "test_shared_semantic_hygiene",
     "test_version_utils",
@@ -150,6 +180,8 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                 for candidate in available
                 if candidate.name in {"test_ast_analysis_characterization.py", "test_console_reconciliation.py"}
             )
+        if normalized.as_posix() in ARTIFACT_VERSION_SOURCES:
+            selected.update(candidate for candidate in available if candidate.name in ARTIFACT_VERSION_CONTRACTS)
         if normalized.as_posix().startswith("src/agent_bom/api/storage/") or normalized.as_posix() in {
             "src/agent_bom/api/compliance_hub_store.py",
             "src/agent_bom/api/postgres_compliance_hub.py",

@@ -11,6 +11,7 @@ import logging
 import re
 from pathlib import Path
 
+from agent_bom.core.versions.ruby import split_gem_artifact_version
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
 
@@ -152,9 +153,7 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
 
         name = gm.group(1)
         version = gm.group(2)
-        platform = next((value for value in platforms if value != "ruby" and version.endswith("-" + value)), None)
-        if platform:
-            version = version[: -len(platform) - 1]
+        version, platform = split_gem_artifact_version(version, platforms)
         if not _LOCKED_GEM_NAME.fullmatch(name) or not _LOCKED_GEM_VERSION.fullmatch(version):
             malformed_specs = True
             continue

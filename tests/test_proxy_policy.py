@@ -193,16 +193,16 @@ def test_check_policy_allowlist_mode_allowed():
 
 
 def test_check_policy_oversized_pattern():
-    """Oversized patterns should be skipped."""
+    """Oversized blocking patterns fail closed."""
     policy = {"rules": [{"id": "r1", "action": "block", "tool_name_pattern": "x" * 600}]}
     allowed, reason = check_policy(policy, "test", {})
-    assert allowed is True
+    assert allowed is False
 
 
 def test_check_policy_oversized_arg_pattern():
     policy = {"rules": [{"id": "r1", "action": "block", "arg_pattern": {"cmd": "x" * 600}}]}
     allowed, reason = check_policy(policy, "exec", {"cmd": "ls"})
-    assert allowed is True
+    assert allowed is False
 
 
 def test_check_policy_read_only_allows_read_tool():

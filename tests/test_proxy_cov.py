@@ -260,15 +260,15 @@ class TestCheckPolicy:
         allowed, reason = check_policy(policy, "test", {})
         assert allowed
 
-    def test_oversized_pattern_skipped(self):
+    def test_oversized_pattern_blocks(self):
         policy = {"rules": [{"action": "fail", "tool_name_pattern": "a" * 600}]}
         allowed, _ = check_policy(policy, "test", {})
-        assert allowed
+        assert allowed is False
 
-    def test_oversized_arg_pattern_skipped(self):
+    def test_oversized_arg_pattern_blocks(self):
         policy = {"rules": [{"action": "fail", "arg_pattern": {"x": "a" * 600}}]}
         allowed, _ = check_policy(policy, "test", {"x": "hello"})
-        assert allowed
+        assert allowed is False
 
     def test_deny_tool_classes_blocks_network_tool(self):
         policy = {"rules": [{"id": "net", "action": "block", "deny_tool_classes": ["network"]}]}

@@ -1902,3 +1902,26 @@ def test_relay_require_agent_identity_still_blocks_missing_on_loopback() -> None
     client = TestClient(create_gateway_app(settings))
     resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={}))
     _assert_identity_blocked(resp)
+
+
+def test_relay_invalid_file_policy_blocks_jsonrpc_without_forwarding(tmp_path):
+    calls = []
+    events = []
+
+    async def caller(upstream, message, headers):
+        calls.append(message)
+        return {"jsonrpc": "2.0", "id": 1, "result": {}}
+
+    async def audit(event):
+        events.append(event)
+
+    policy = {"rules": [{"id": "invalid", "action": "block", "arg_pattern": {"private-field": "private-pattern["}}]}
+    path = tmp_path / "policy.json"
+    path.write_text(json.dumps(policy))
+    settings = GatewaySettings(registry=_simple_registry(), policy=policy, policy_path=path, upstream_caller=caller, audit_sink=audit)
+    with TestClient(create_gateway_app(settings)) as client:
+        response = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read", arguments={"private-field": "sensitive-value"}))
+    assert response.status_code == 200 and response.json()["error"]["code"] == -32001
+    assert calls == []
+    assert events and events[0]["action"] == "gateway.policy_blocked"
+    assert "private-pattern" not in response.text and "sensitive-value" not in response.text

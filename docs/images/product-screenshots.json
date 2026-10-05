@@ -1,7 +1,7 @@
 {
   "release_version": "0.108.0",
-  "captured_at": "2026-10-05T15:43:39.594Z",
-  "source_commit": "b4d234177c7278b44cee621b319180172cb935e9",
+  "captured_at": "2026-10-05T15:45:58.161Z",
+  "source_commit": "d6301eba5f0afcb302fcf8410a7194dea751fbc9",
   "source_tree": "clean",
   "capture_inputs_sha256": "sha256:15c48cf95dc80bcabc97197855120baaefc482f434d72c6990cf90cd9e814baf",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
@@ -156,7 +156,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.108.0",
-      "sha256": "sha256:9c6ee99abb71fa789dcfcb4da99ecf0ca53add487e5d28a1a45ca6163a92be41"
+      "sha256": "sha256:53495fcaf2a30526d79a90c29f4f72aa8fed7329a9af945fb9cfec9be42f6a5e"
     },
     {
       "presentation": "dark desktop",
@@ -172,7 +172,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.0",
-      "sha256": "sha256:9e47feb6361290a90fd45b7c54aec596122e6b97643c5ad427cd46f26f5d6d70"
+      "sha256": "sha256:d22c4cceb09d373d312218cad10a7789565880c45741415eec5017d5705000f2"
     },
     {
       "presentation": "dark desktop",
@@ -257,7 +257,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.0",
-      "sha256": "sha256:5a6289bd56ad7b5cd4b75650cec4e255dbc8dcd8ff266ab865a2ed246d016dcc"
+      "sha256": "sha256:a799a0e5004089d81c4b39e97cc5d05710d555caf7d097c382f90f1d3f4302e3"
     },
     {
       "presentation": "dark mobile",
@@ -265,7 +265,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.108.0",
-      "sha256": "sha256:a33676cbdcb1480be43fe6097b510dc1ea3500bed12826766833973a4f46bfb0"
+      "sha256": "sha256:ee23248dd63fdc9da89e92e476d7bbe29fa02faa38d718f181e6770177f2193f"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -313,7 +313,7 @@
       "page": "/graph?lens=context&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.0",
-      "sha256": "sha256:242bf1e05210a0381f42bd1eb850ebcd69cbb36797b57a1d57a4d68d25dd25bd"
+      "sha256": "sha256:2d7ab9b61423a4214711a957b12bc5feb7ce525cfda6aa26b6111dac26ba5d44"
     },
     {
       "presentation": "light desktop 1760x860",

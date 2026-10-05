@@ -1,6 +1,9 @@
 """Artifact platforms and workspace declarations must not invent package versions."""
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -155,3 +158,9 @@ async def test_mcp_check_uses_canonical_gem_version_in_verdict(ruby_advisory):
     payload = json.loads(result)
     assert payload["version"] == "1.19.0"
     assert payload["package_canonical_id"] == Package("nokogiri", "1.19.0", "rubygems").canonical_id
+
+
+def test_data_model_atlas_runs_without_installed_runtime_dependencies():
+    script = Path(__file__).resolve().parents[1] / "scripts" / "regenerate_data_model_atlas.py"
+    result = subprocess.run([sys.executable, "-I", "-S", str(script), "--check"], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from packageurl import PackageURL
-
 from agent_bom.core.packages import normalize_package_name
 from agent_bom.core.versions.ruby import split_gem_artifact_version
 
@@ -31,6 +29,8 @@ def normalize_artifact_version(package: PackageArtifact) -> None:
     package.version_evidence.append({"type": "artifact_platform", "raw_version": raw_version, "platform": platform})
     if package.purl:
         try:
+            from packageurl import PackageURL
+
             parsed = PackageURL.from_string(package.purl)
             if parsed.type == "gem" and parsed.version == raw_version:
                 package.purl = parsed._replace(version=version).to_string()
@@ -53,6 +53,8 @@ def package_lookup_names(package: PackageArtifact) -> list[str]:
     add_name(package.name)
     if package.ecosystem.lower() == "maven" and package.purl:
         try:
+            from packageurl import PackageURL
+
             parsed = PackageURL.from_string(package.purl)
         except Exception:
             parsed = None

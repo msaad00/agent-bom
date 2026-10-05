@@ -21,11 +21,14 @@ def project_current_suppressions(rows: list[dict[str, Any]], tenant_id: str) -> 
         package = str(row.get("package_name") or row.get("package") or evidence.get("package_name") or "")
         name, separator, _version = package.rpartition("@")
         package_name = name if separator and name else package
+        raw_asset = row.get("asset")
+        asset = raw_asset if isinstance(raw_asset, dict) else {}
+        purl = str(row.get("package_purl") or asset.get("identifier") or "")
         servers = [str(row.get("server_name") or ""), *(row.get("affected_servers") or [])]
         match = next(
             (
                 exc
-                for key in dict.fromkeys([(vuln, package), (vuln, package_name)])
+                for key in dict.fromkeys([(vuln, package), (vuln, package_name), (vuln, purl)])
                 for exc in by_scope.get(key, [])
                 if exc.server_name in {"", "*"} or exc.server_name in servers
             ),

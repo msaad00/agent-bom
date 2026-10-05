@@ -97,7 +97,7 @@ def test_push_normalization_sanitizes_warning_and_infers_partial() -> None:
     )
 
     assert result["scan_run"]["outcome"] == "partial"
-    assert result["scan_run"]["warning_count"] == 1
+    assert result["scan_run"]["warning_count"] == 2  # collection failure and retained unscoped-push receipt
     assert secret not in result["warnings"][0]
 
 

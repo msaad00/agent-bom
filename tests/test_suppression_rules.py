@@ -213,3 +213,19 @@ def test_expired_overlay_is_removed_when_reapplying_current_approvals():
     assert br.suppression_id is None
     assert br.risk_score == 8.4
     assert br.is_actionable
+
+
+def test_approved_vex_product_is_version_specific():
+    from agent_bom.api.suppression_approval import activate_suppression
+
+    br = _blast_radius()
+    br.package.purl = "pkg:pypi/requests@2.31.0"
+    store = InMemoryExceptionStore()
+    exc = VulnException(vuln_id=br.vulnerability.id, package_name=br.package.purl, expires_at="2099-01-01T00:00:00Z")
+    activate_suppression(exc, actor="admin")
+    store.put(exc, tenant_id="default")
+    assert apply_tenant_suppression_rules([br], store)["suppressed"] == 1
+    br.package.version = "2.32.0"
+    br.package.purl = "pkg:pypi/requests@2.32.0"
+    assert apply_tenant_suppression_rules([br], store)["suppressed"] == 0
+    assert br.is_actionable

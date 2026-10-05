@@ -6152,6 +6152,13 @@ components:
           maxLength: 200
           title: Source Id
           type: string
+        target_scope:
+          anyOf:
+          - pattern: ^v1:[a-f0-9]{64}$
+            type: string
+          - type: 'null'
+          description: Opaque versioned target identity for scoped replacement
+          title: Target Scope
         warnings:
           items:
             anyOf:

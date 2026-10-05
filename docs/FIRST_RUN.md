@@ -250,6 +250,26 @@ agent-bom scan \
   -o /tmp/agent-bom-first-run.json
 ```
 
+To retain separate projects in a shared control plane, set
+`AGENT_BOM_PUSH_API_KEY` through your secret manager and run:
+
+```bash
+agent-bom scan ./my-project --push-url https://control-plane.example/v1/results/push
+```
+
+The pushed report includes an opaque, versioned `target_scope` derived from
+explicit scan targets before redaction. A complete rescan replaces findings
+only for that tenant, source and target; a partial scan retains earlier evidence.
+`source_id` identifies the producer, not the entire replacement scope.
+
+Older clients, manually imported reports without a target scope, and collectors
+whose account or cluster cannot be identified from explicit targets remain
+accepted as independent evidence. Their ingestion receipt reports an unscoped
+replacement status and the stored report includes a warning; they cannot clear
+earlier scans. These observations can therefore
+retain findings that a later scan no longer observes. Use a scoped producer to
+establish replacement evidence; do not infer remediation from an unscoped push.
+
 ## 4. Move To Your Own Repo
 
 After the sample makes sense, scan your own project:

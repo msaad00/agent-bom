@@ -16,6 +16,7 @@ class ScanContext:
     agents: list = field(default_factory=list)
     blast_radii: list = field(default_factory=list)
     report: Any = None
+    target_scope: str | None = None
     # Canonical JSON projection built once after the report is finalized. JSON
     # and agent-mode renderers consume this instead of rebuilding the complete
     # finding/inventory graph for the same scan.

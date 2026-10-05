@@ -517,7 +517,7 @@ def compute_exit_code(
             from agent_bom.security import sanitize_url
 
             resolved_push_url = normalize_scan_push_url(push_url)
-            report_data = to_json(report)
+            report_data = {**to_json(report), **({"target_scope": ctx.target_scope} if ctx.target_scope else {})}
             ok = _push(resolved_push_url, report_data, api_key=push_api_key)
             endpoint = sanitize_url(resolved_push_url)
             if ok and not quiet:

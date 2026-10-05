@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, computed_field, 
 
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
+from agent_bom.api.push_models import PushIdentityPayload as _PushIdentityPayload
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 from agent_bom.evidence.semantics import EvidenceCompletenessLedger as _CoreEvidenceCompletenessLedger
 from agent_bom.evidence.semantics import SecurityDimensions as _CoreSecurityDimensions
@@ -813,11 +814,9 @@ class CorrelationCohortChildReceipt(BaseModel):
     signature: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 
-class PushPayload(BaseModel):
+class PushPayload(_PushIdentityPayload):
     model_config = ConfigDict(extra="allow")
 
-    source_id: str = Field(default="", max_length=200)
-    idempotency_key: str = ""
     agents: list[dict[str, Any]] = Field(default_factory=list)
     blast_radii: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)

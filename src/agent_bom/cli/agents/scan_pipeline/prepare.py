@@ -314,3 +314,6 @@ def run_prepare(opts: ScanOptions, st: ScanState) -> None:
     _clone_repo(opts, st)
     _open_consoles(opts, st)
     _validate_input_files(opts, st)
+    from agent_bom.evidence.push_scope import cli_target_scope
+
+    st.target_scope = cli_target_scope(opts)

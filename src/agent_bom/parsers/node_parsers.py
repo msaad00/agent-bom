@@ -20,6 +20,8 @@ from agent_bom.checksums import parse_sri
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.parsers.node_lockfiles import has_node_lock, npm_alias, yarn_descriptor_name
+from agent_bom.parsers.node_lockfiles import parse_bun_packages as parse_bun_packages
 from agent_bom.parsers.npm_semver import npm_exact_version
 from agent_bom.traversal import iter_discovery_files
 
@@ -298,7 +300,7 @@ def _npm_introducing_paths(entries: dict, root_edges: list[tuple[str, str]]) -> 
         if info.get("link") and isinstance(info.get("resolved"), str):
             # Workspace symlink: the real dependency edges live at the target.
             info = entries.get(info["resolved"]) or info
-        parent_name = _npm_lock_entry_name(path)
+        parent_name = str(info.get("name") or _npm_lock_entry_name(path))
         for dep_name, edge_scope in _npm_entry_edges(info):
             target = _npm_resolve_install_path(entries, path, dep_name)
             if target is None or target in resolved:
@@ -331,6 +333,16 @@ def _npm_v1_introducing_paths(entries: dict, root_names: list[tuple[str, str]]) 
             resolved[dep_name] = (depth + 1, name, scope)
             queue.append((dep_name, depth + 1, name, scope))
     return resolved
+
+
+def _manifest_identity_evidence(path: Path, text: str, section: str, installed: str, canonical: str, spec: str) -> list[dict]:
+    evidence: list[dict] = []
+    if installed != canonical:
+        evidence.append({"type": "npm_alias", "installed_name": installed, "declared_version": spec})
+    line = _json_object_property_line(text, section, installed)
+    if line is not None:
+        evidence.append({"type": "manifest", "source_file": str(path), "line": line})
+    return evidence
 
 
 def parse_npm_packages(directory: Path) -> list[Package]:
@@ -371,7 +383,7 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                 if not clean_name:
                     continue
 
-                version = info.get("version", "unknown")
+                clean_name, version = npm_alias(str(info.get("name") or clean_name), str(info.get("version", "unknown")))
                 checksums = parse_sri(str(info.get("integrity") or ""))
                 depth, parent_package, scope = introduced_by.get(name, (0, None, "runtime"))
                 packages.append(
@@ -385,6 +397,9 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                         dependency_depth=depth,
                         dependency_scope=scope,
                         checksums=checksums,
+                        version_evidence=[
+                            {"type": "lockfile", "source_file": str(lock_file), "installed_name": _npm_lock_entry_name(name)}
+                        ],
                     )
                 )
         # OSError covers unreadable/oversize manifests (PermissionError and
@@ -401,28 +416,23 @@ def parse_npm_packages(directory: Path) -> list[Package]:
             )
 
     # Fallback to package.json only
-    elif (directory / "package.json").exists():
+    elif (directory / "package.json").exists() and not has_node_lock(directory):
         try:
             package_json = directory / "package.json"
             package_json_text = read_text_limited(package_json)
             pkg_data = json.loads(package_json_text)
             for dep_type in ("dependencies", "devDependencies"):
                 for name, version_spec in pkg_data.get(dep_type, {}).items():
-                    declared_version = str(version_spec)
+                    installed_name = name
+                    name, declared_version = npm_alias(name, str(version_spec))
                     workspace_resolution = _resolve_workspace_dependency(directory, name, declared_version)
                     version_source = "manifest"
                     resolved_version = None
                     version_confidence = None
                     version_evidence: list[dict] = []
-                    line_number = _json_object_property_line(package_json_text, dep_type, name)
-                    if line_number is not None:
-                        version_evidence.append(
-                            {
-                                "type": "manifest",
-                                "source_file": str(package_json),
-                                "line": line_number,
-                            }
-                        )
+                    version_evidence = _manifest_identity_evidence(
+                        package_json, package_json_text, dep_type, installed_name, name, str(version_spec)
+                    )
                     if workspace_resolution:
                         version, declared_version = workspace_resolution
                         version_source = "workspace"
@@ -526,7 +536,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                     for part in header.strip('"').split(", "):
                         m = re.match(r'^"?(@?[^@]+)@', part)
                         if m:
-                            current_names.append(m.group(1))
+                            current_names.append(yarn_descriptor_name(part.strip('"')))
                 elif stripped.startswith("version:") and current_names:
                     version = stripped.split(":", 1)[1].strip().strip('"')
                     for name in current_names:
@@ -538,7 +548,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                                     name=name,
                                     version=version,
                                     ecosystem="npm",
-                                    purl=f"pkg:npm/{name}@{version}",
+                                    purl=_npm_purl(name, version),
                                     is_direct=False,
                                 )
                             )
@@ -556,7 +566,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                     for part in header.strip('"').split(", "):
                         m = re.match(r'^"?(@?[^@"]+)@', part.strip('"'))
                         if m:
-                            current_names.append(m.group(1))
+                            current_names.append(yarn_descriptor_name(part.strip('"')))
                 elif stripped.startswith("version ") and current_names:
                     version = stripped.split(" ", 1)[1].strip().strip('"')
                     for name in current_names:
@@ -568,7 +578,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                                     name=name,
                                     version=version,
                                     ecosystem="npm",
-                                    purl=f"pkg:npm/{name}@{version}",
+                                    purl=_npm_purl(name, version),
                                     is_direct=False,
                                 )
                             )
@@ -631,7 +641,7 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
                         name=name,
                         version=version,
                         ecosystem="npm",
-                        purl=f"pkg:npm/{name}@{version}",
+                        purl=_npm_purl(name, version),
                         is_direct=False,  # pnpm lock is flat; all entries are resolved
                     )
                 )
@@ -641,87 +651,6 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
             ecosystem="npm",
             path=str(lock_file),
             detail="pnpm-lock.yaml could not be read or parsed; pnpm dependencies were not scanned",
-        )
-
-    return packages
-
-
-def parse_bun_packages(directory: Path) -> list[Package]:
-    """Parse packages from bun.lock (text format, Bun 1.2+) or fall back gracefully.
-
-    Bun uses a binary ``bun.lockb`` that cannot be read without the Bun
-    runtime.  Bun 1.2+ also writes a text ``bun.lock`` (YAML-like format)
-    which we prefer.  If only the binary lock exists we log a debug message
-    and return an empty list rather than crashing.
-
-    ``bun.lock`` format::
-
-        lockfileVersion: 0
-        packages:
-          "react@19.0.0":
-            resolution: {integrity: sha512-...}
-        dependencies:
-          "react": "19.0.0"
-        devDependencies:
-          "@types/node": "22.0.0"
-
-    We parse the ``dependencies`` and ``devDependencies`` sections by looking
-    for quoted ``"name": "version"`` pairs.  The ``packages:`` metadata block
-    is skipped.
-    """
-    bun_lock = directory / "bun.lock"
-    bun_lockb = directory / "bun.lockb"
-
-    if not bun_lock.exists():
-        if bun_lockb.exists():
-            logger.debug(
-                "bun.lockb found at %s but binary format is unreadable; run 'bun install' with Bun 1.2+ to generate bun.lock",
-                bun_lockb,
-            )
-        return []
-
-    packages: list[Package] = []
-    try:
-        content = read_text_limited(bun_lock, encoding="utf-8")
-        # State machine: track which top-level section we are in.
-        # We only care about "dependencies" and "devDependencies".
-        deps_sections = {"dependencies:", "devDependencies:"}
-        skip_sections = {"packages:", "patchedDependencies:", "workspaces:"}
-        in_deps = False
-
-        for raw_line in content.splitlines():
-            stripped = raw_line.strip()
-
-            # Detect section headers (no leading whitespace on section keys)
-            if not raw_line.startswith(" ") and not raw_line.startswith("\t"):
-                in_deps = stripped in deps_sections
-                if stripped in skip_sections:
-                    in_deps = False
-                continue
-
-            if not in_deps:
-                continue
-
-            # Match: "name": "version" — both quoted
-            bun_entry = re.match(r'^\s*"([^"]+)":\s*"([^"]+)"\s*$', raw_line)
-            if bun_entry:
-                pkg_name = bun_entry.group(1)
-                pkg_version = bun_entry.group(2)
-                packages.append(
-                    Package(
-                        name=pkg_name,
-                        version=pkg_version,
-                        ecosystem="npm",
-                        purl=_npm_purl(pkg_name, pkg_version),
-                        is_direct=True,
-                    )
-                )
-    except Exception as exc:
-        logger.debug("Failed to parse bun.lock at %s: %s", bun_lock, exc)
-        record_manifest_parse_warning(
-            ecosystem="npm",
-            path=str(bun_lock),
-            detail="bun.lock could not be read or parsed; Bun dependencies were not scanned",
         )
 
     return packages

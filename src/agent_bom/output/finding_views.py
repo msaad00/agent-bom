@@ -7,6 +7,7 @@ from functools import wraps
 from typing import Any, Callable, ParamSpec, TypeVar
 
 from agent_bom.compliance_coverage import COMPLIANCE_TAG_FIELDS
+from agent_bom.core.packages import canonical_package_key
 from agent_bom.core.severity import normalize_severity
 from agent_bom.finding import Finding, FindingType, blast_radius_to_finding
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
@@ -348,9 +349,9 @@ def ranked_cve_findings(
     return sorted(findings, key=lambda finding: float(finding.risk_score or 0.0), reverse=True)[:limit]
 
 
-def topology_package_key(finding: Finding) -> tuple[str, str]:
-    """Return ``(name, ecosystem)`` for graph/mermaid package nodes."""
-    return package_name(finding), package_ecosystem(finding)
+def topology_package_key(finding: Finding) -> tuple[str, str, str]:
+    """Return ``(name, ecosystem, version)`` for graph/mermaid package nodes."""
+    return package_name(finding), package_ecosystem(finding), package_version(finding)
 
 
 def compliance_row_dict(finding: Finding) -> dict[str, Any]:
@@ -373,3 +374,23 @@ def topology_vuln_dict(finding: Finding) -> dict[str, Any]:
         "fix_version": finding.fixed_version or "",
         **{field: list(getattr(finding, field, []) or []) for field in COMPLIANCE_TAG_FIELDS},
     }
+
+
+def package_graph_node_id(
+    package_name: str,
+    ecosystem: str,
+    version: str = "",
+    *,
+    agent_name: str | None = None,
+    server_name: str | None = None,
+    scoped: bool = False,
+) -> str:
+    """Return a graph node id for a package.
+
+    The collapsed HTML graph uses server-scoped package nodes to avoid the
+    shared-package edge spaghetti that makes larger blast-radius graphs unreadable.
+    """
+    identity = canonical_package_key(package_name, version, ecosystem)
+    if scoped and agent_name and server_name:
+        return f"pkg:{agent_name}:{server_name}:{identity}"
+    return f"pkg:{identity}"

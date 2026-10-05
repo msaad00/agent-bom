@@ -20,6 +20,38 @@ _LOCKED_GEM_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _LOCKED_GEM_VERSION = re.compile(r"^\d(?:[0-9A-Za-z._-]*[0-9A-Za-z])?$")
 
 
+def _append_locked_gem(
+    packages: list[Package],
+    seen: dict[tuple[str, str], Package],
+    *,
+    name: str,
+    version: str,
+    raw_version: str,
+    platform: str | None,
+    lockfile: Path,
+    direct_names: set[str],
+) -> None:
+    key = (name.lower(), version)
+    evidence = {"type": "lockfile", "source_file": str(lockfile), "raw_version": raw_version, "platform": platform or "ruby"}
+    if key in seen:
+        seen[key].version_evidence.append(evidence)
+        return
+
+    is_direct = name in direct_names or not direct_names
+    packages.append(
+        Package(
+            name=name,
+            version=version,
+            ecosystem="rubygems",
+            version_source="detected",
+            version_evidence=[evidence],
+            purl=f"pkg:gem/{name}@{version}",
+            is_direct=is_direct,
+        ),
+    )
+    seen[key] = packages[-1]
+
+
 def parse_gemfile_lock(directory: str | Path) -> list[Package]:
     """Parse gems from Gemfile.lock in *directory*.
 
@@ -59,7 +91,9 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
         return []
 
     packages: list[Package] = []
-    seen: set[tuple[str, str]] = set()
+    seen: dict[tuple[str, str], Package] = {}
+    platform_section = re.search(r"(?m)^PLATFORMS\n((?:[ \t]+[^\n]+\n?)*)", content)
+    platforms = sorted((line.strip() for line in platform_section[1].splitlines()), key=len, reverse=True) if platform_section else []
 
     # Read direct dependency names from Gemfile for is_direct marking
     direct_names: set[str] = set()
@@ -118,24 +152,21 @@ def parse_gemfile_lock(directory: str | Path) -> list[Package]:
 
         name = gm.group(1)
         version = gm.group(2)
+        platform = next((value for value in platforms if value != "ruby" and version.endswith("-" + value)), None)
+        if platform:
+            version = version[: -len(platform) - 1]
         if not _LOCKED_GEM_NAME.fullmatch(name) or not _LOCKED_GEM_VERSION.fullmatch(version):
             malformed_specs = True
             continue
-        key = (name.lower(), version)
-        if key in seen:
-            continue
-        seen.add(key)
-
-        is_direct = name in direct_names or not direct_names
-        packages.append(
-            Package(
-                name=name,
-                version=version,
-                ecosystem="rubygems",
-                version_source="detected",
-                purl=f"pkg:gem/{name}@{version}",
-                is_direct=is_direct,
-            ),
+        _append_locked_gem(
+            packages,
+            seen,
+            name=name,
+            version=version,
+            raw_version=gm.group(2),
+            platform=platform,
+            lockfile=lockfile,
+            direct_names=direct_names,
         )
 
     if packages:

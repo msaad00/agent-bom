@@ -16,6 +16,7 @@ import html
 from typing import TYPE_CHECKING
 
 from agent_bom.asset_provenance import package_version_provenance
+from agent_bom.core.packages import canonical_package_key
 from agent_bom.output.finding_views import cve_findings, sanitize_output_text, severity_value, topology_package_key
 
 if TYPE_CHECKING:
@@ -85,8 +86,8 @@ def to_svg(
         raise ValueError("max_rows_per_column must be at least 2 or None")
 
     findings = cve_findings(report, blast_radii)
-    vuln_pkg_keys: set[tuple[str, str]] = {topology_package_key(finding) for finding in findings}
-    pkg_cve_map: dict[tuple[str, str], list[dict]] = {}
+    vuln_pkg_keys: set[tuple[str, str, str]] = {topology_package_key(finding) for finding in findings}
+    pkg_cve_map: dict[tuple[str, str, str], list[dict]] = {}
     for finding in findings:
         key = topology_package_key(finding)
         if key not in pkg_cve_map:
@@ -133,7 +134,7 @@ def to_svg(
 
         for srv in agent.mcp_servers:
             sid = f"s:{agent.name}:{srv.name}"
-            has_vuln = any((p.name, p.ecosystem) in vuln_pkg_keys for p in srv.packages)
+            has_vuln = any((p.name, p.ecosystem, p.version) in vuln_pkg_keys for p in srv.packages)
             has_cred = srv.has_credentials
             stype = "server_vuln" if has_vuln else ("server_cred" if has_cred else "server_clean")
 
@@ -153,8 +154,8 @@ def to_svg(
             agent_to_servers.append((aid, sid))
 
             for pkg in srv.packages:
-                pkg_key = (pkg.name, pkg.ecosystem)
-                pid = f"pkg:{pkg.name}:{pkg.ecosystem}"
+                pkg_key = (pkg.name, pkg.ecosystem, pkg.version)
+                pid = f"pkg:{canonical_package_key(pkg.name, pkg.version, pkg.ecosystem)}"
                 is_vuln = pkg_key in vuln_pkg_keys
 
                 packages.append(

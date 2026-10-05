@@ -74,6 +74,8 @@ from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_i
 from agent_bom.scanners.osv import is_valid_fix_version as _is_valid_fix_version
 from agent_bom.scanners.osv import package_lookup_names as _package_lookup_names
 from agent_bom.scanners.osv import parse_fixed_version, query_osv_batch_impl
+from agent_bom.scanners.package_versions import is_unresolved_package as _is_unresolved_package
+from agent_bom.scanners.package_versions import is_unresolved_version as _is_unresolved_version
 from agent_bom.scanners.risk import (
     _parse_cvss4_vector,
     advisory_id_severity_fallback,
@@ -318,16 +320,27 @@ _DEBIAN_OSV_FALLBACKS = ("Debian:11", "Debian:12", "Debian:13", "Debian:14")
 _ALPINE_OSV_FALLBACKS = alpine_osv_fallback_ecosystems()
 
 
-def _is_unresolved_version(version: object) -> bool:
-    """Return whether *version* is a floating or missing package coordinate.
-
-    SBOM producers do not agree on sentinel casing (Syft commonly emits
-    ``UNKNOWN``). Advisory matching must never treat those sentinels as real
-    versions: range parsers can otherwise fail open and attach every advisory
-    for the package name.
-    """
-
-    return str(version or "").strip().lower() in {"", "*", "latest", "unknown"}
+def _warn_unresolved_packages(packages: list[Package]) -> None:
+    if not packages:
+        return
+    names = ", ".join(f"{p.name}@{p.version}" for p in packages[:10])
+    suffix = f" (+{len(packages) - 10} more)" if len(packages) > 10 else ""
+    console.print(f"  [yellow]⚠[/yellow] {len(packages)} package(s) skipped (unresolved version): {names}{suffix}")
+    _logger.warning(
+        "Skipped %d package(s) with unresolved versions: %s",
+        len(packages),
+        names + suffix,
+    )
+    _emit_scan_warning(f"{len(packages)} package(s) skipped due to unresolved versions")
+    record_coverage_warning(
+        {
+            "kind": "package_version_gap",
+            "release": "unresolved-package-versions",
+            "reason": "unresolved_version",
+            "package_count": len(packages),
+            "detail": "Package versions are unresolved or invalid; supply resolved lockfiles or valid release versions.",
+        }
+    )
 
 
 def _resolve_osv_ecosystems(pkg: Package, *, for_local_db: bool) -> list[str]:
@@ -1358,7 +1371,7 @@ async def scan_packages(
     # Try resolving versions from locally installed packages FIRST.
     # This is more accurate than registry fallback because it reflects
     # what's actually on disk (e.g. npm list, pip list).
-    unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() in ("npm", "pypi", "go")]
+    unresolved = [p for p in packages if _is_unresolved_package(p) and p.ecosystem.lower() in ("npm", "pypi", "go")]
     if unresolved:
         try:
             from agent_bom.resolvers.runtime_resolver import (
@@ -1413,7 +1426,7 @@ async def scan_packages(
     # ── Registry fallback for still-unresolved versions ──────────────────
     # Only hit npm/PyPI registries for packages we couldn't resolve locally.
     # In offline mode, skip all registry calls entirely.
-    still_unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() in ("npm", "pypi", "conda")]
+    still_unresolved = [p for p in packages if _is_unresolved_package(p) and p.ecosystem.lower() in ("npm", "pypi", "conda")]
     if still_unresolved and not scan_offline:
         try:
             from agent_bom.resolver import resolve_all_versions
@@ -1475,20 +1488,11 @@ async def scan_packages(
         )
     if non_osv_packages:
         _bump_scan_perf("skipped_non_osv_ecosystems", len(non_osv_packages))
-    scannable = [p for p in packages if not _is_unresolved_version(p.version) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
+    scannable = [p for p in packages if not _is_unresolved_package(p) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
 
     # Warn about packages that could not be resolved — no silent failures
-    still_unresolved = [p for p in packages if _is_unresolved_version(p.version) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
-    if still_unresolved:
-        names = ", ".join(f"{p.name}@{p.version}" for p in still_unresolved[:10])
-        suffix = f" (+{len(still_unresolved) - 10} more)" if len(still_unresolved) > 10 else ""
-        console.print(f"  [yellow]⚠[/yellow] {len(still_unresolved)} package(s) skipped (unresolved version): {names}{suffix}")
-        _logger.warning(
-            "Skipped %d package(s) with unresolved versions: %s",
-            len(still_unresolved),
-            names + suffix,
-        )
-        _emit_scan_warning(f"{len(still_unresolved)} package(s) skipped due to unresolved versions")
+    still_unresolved = [p for p in packages if _is_unresolved_package(p) and p.ecosystem.lower() not in _NON_OSV_ECOSYSTEMS]
+    _warn_unresolved_packages(still_unresolved)
 
     if not scannable:
         return 0

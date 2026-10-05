@@ -164,6 +164,21 @@ agent-bom scan . -f json -o agent-bom-report.json
 ```
 
 
+Keep the resolved lockfile with the repository. npm/Yarn aliases use the registry
+package name for advisory lookup; Bun text `bun.lock` files supply exact versions
+and dependency paths. Binary `bun.lockb` files and unreadable lockfiles leave
+coverage incomplete; convert binary locks with `bun install --save-text-lockfile
+--frozen-lockfile --lockfile-only` and rescan. Review `coverage_warnings` before
+interpreting a low finding count.
+
+Ruby `Gemfile.lock` platform variants retain their platform provenance while
+sharing the gem release version for advisory lookup. For a direct check, use
+`agent-bom check nokogiri@1.19.0 -e rubygems`, with the gem version rather than a
+platform-specific artifact filename. Invalid gem versions report incomplete
+lookup coverage. Graph exports distinguish package versions so each advisory
+remains attached to the version that produced it.
+
+
 From any directory after installing `agent-bom`:
 
 ```bash

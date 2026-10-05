@@ -14,49 +14,39 @@ from agent_bom.parsers.python_parsers import parse_pip_compile_inputs
 # ---------------------------------------------------------------------------
 
 
-def test_parse_bun_lock_basic(tmp_path: Path) -> None:
-    """bun.lock with a dependencies section is parsed correctly."""
-    (tmp_path / "bun.lock").write_text(
-        "lockfileVersion: 0\n"
-        "packages:\n"
-        '  "react@19.0.0":\n'
-        "    resolution: {integrity: sha512-abc}\n"
-        "dependencies:\n"
-        '  "react": "19.0.0"\n'
-        '  "typescript": "5.7.0"\n",\n'
+def _write_bun(directory: Path, runtime: dict, development: dict) -> None:
+    import json
+
+    resolved = {**runtime, **development}
+    (directory / "bun.lock").write_text(
+        json.dumps(
+            {
+                "lockfileVersion": 1,
+                "workspaces": {"": {"dependencies": runtime, "devDependencies": development}},
+                "packages": {name: [f"{name}@{version}", "", {}, ""] for name, version in resolved.items()},
+            }
+        )
     )
 
+
+def test_parse_bun_lock_basic(tmp_path: Path) -> None:
+    _write_bun(tmp_path, {"react": "19.0.0", "typescript": "5.7.0"}, {})
     pkgs = parse_bun_packages(tmp_path)
-    names = {p.name for p in pkgs}
-    assert "react" in names
-    assert "typescript" in names
+    assert {p.name for p in pkgs} == {"react", "typescript"}
     assert all(p.ecosystem == "npm" for p in pkgs)
 
 
 def test_parse_bun_lock_dev_deps(tmp_path: Path) -> None:
-    """devDependencies section is parsed and included."""
-    (tmp_path / "bun.lock").write_text(
-        'lockfileVersion: 0\ndependencies:\n  "react": "19.0.0"\ndevDependencies:\n  "@types/node": "22.0.0"\n'
-    )
-
+    _write_bun(tmp_path, {"react": "19.0.0"}, {"@types/node": "22.0.0"})
     pkgs = parse_bun_packages(tmp_path)
-    names = {p.name for p in pkgs}
-    assert "react" in names
-    assert "@types/node" in names
-    assert len(pkgs) == 2
+    assert {p.name for p in pkgs} == {"react", "@types/node"}
+    assert next(p for p in pkgs if p.name == "@types/node").dependency_scope == "dev"
 
 
 def test_parse_bun_lock_purl_format(tmp_path: Path) -> None:
-    """purl uses pkg:npm/name@version (scoped packages encoded correctly)."""
-    (tmp_path / "bun.lock").write_text(
-        'lockfileVersion: 0\ndependencies:\n  "react": "18.3.1"\ndevDependencies:\n  "@types/node": "22.0.0"\n'
-    )
-
-    pkgs = parse_bun_packages(tmp_path)
-    by_name = {p.name: p for p in pkgs}
-
+    _write_bun(tmp_path, {"react": "18.3.1"}, {"@types/node": "22.0.0"})
+    by_name = {p.name: p for p in parse_bun_packages(tmp_path)}
     assert by_name["react"].purl == "pkg:npm/react@18.3.1"
-    # scoped package: @ must be percent-encoded per PURL spec
     assert by_name["@types/node"].purl == "pkg:npm/%40types/node@22.0.0"
 
 

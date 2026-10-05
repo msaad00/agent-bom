@@ -15,6 +15,7 @@ from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.graph import SEVERITY_BADGE as _SEVERITY_BADGE
 from agent_bom.graph import SEVERITY_RANK as _SEVERITY_RANK
 from agent_bom.graph.node import stable_node_id
+from agent_bom.output.finding_views import package_graph_node_id as _package_node_id
 from agent_bom.security import sanitize_launch_command, sanitize_path_label, sanitize_text
 
 if TYPE_CHECKING:
@@ -28,24 +29,6 @@ class _PackageVulnSummary(TypedDict):
     vulnCount: int
     summaryText: str
     vulnIds: list[str]
-
-
-def _package_node_id(
-    package_name: str,
-    ecosystem: str,
-    *,
-    agent_name: str | None = None,
-    server_name: str | None = None,
-    scoped: bool = False,
-) -> str:
-    """Return a graph node id for a package.
-
-    The collapsed HTML graph uses server-scoped package nodes to avoid the
-    shared-package edge spaghetti that makes larger blast-radius graphs unreadable.
-    """
-    if scoped and agent_name and server_name:
-        return f"pkg:{agent_name}:{server_name}:{package_name}:{ecosystem}"
-    return f"pkg:{package_name}:{ecosystem}"
 
 
 def _summarize_package_vulns(vulns: list[dict]) -> _PackageVulnSummary:
@@ -123,7 +106,7 @@ def build_graph_elements(
 
     findings = cve_findings(report, blast_radii)
     elements: list[dict] = []
-    vuln_pkg_keys: set[tuple[str, str]] = {topology_package_key(finding) for finding in findings}
+    vuln_pkg_keys: set[tuple[str, str, str]] = {topology_package_key(finding) for finding in findings}
 
     # Track which provider nodes we've already created
     providers_seen: set[str] = set()
@@ -131,7 +114,7 @@ def build_graph_elements(
     cve_nodes_seen: set[str] = set()
 
     # Build a lookup: (pkg_name, ecosystem) → list of vulnerability IDs
-    pkg_to_vulns: dict[tuple[str, str], list[dict]] = {}
+    pkg_to_vulns: dict[tuple[str, str, str], list[dict]] = {}
     for finding in findings:
         key = topology_package_key(finding)
         if key not in pkg_to_vulns:
@@ -209,7 +192,7 @@ def build_graph_elements(
             total_pkg_vulns = 0
             critical_pkg_vulns = 0
             for pkg in srv.packages:
-                summary = _summarize_package_vulns(pkg_to_vulns.get((pkg.name, pkg.ecosystem), []))
+                summary = _summarize_package_vulns(pkg_to_vulns.get((pkg.name, pkg.ecosystem, pkg.version), []))
                 total_pkg_vulns += int(summary["vulnCount"])
                 critical_pkg_vulns += int(summary["counts"]["critical"])  # type: ignore[index]
 
@@ -346,13 +329,12 @@ def build_graph_elements(
             # ── Package nodes (vulnerable only) ───────────────────────
             seen_pkg_ids: set[str] = set()
             for pkg in srv.packages:
-                pkg_key = (pkg.name, pkg.ecosystem)
+                pkg_key = (pkg.name, pkg.ecosystem, pkg.version)
                 if pkg_key not in vuln_pkg_keys:
                     continue
 
                 pid = _package_node_id(
-                    pkg.name,
-                    pkg.ecosystem,
+                    *pkg_key,
                     agent_name=agent.name,
                     server_name=srv.name,
                     scoped=collapse_cves,
@@ -704,7 +686,7 @@ def _append_repo_structure_elements(
     report: "AIBOMReport",
     *,
     collapse_cves: bool,
-    vuln_pkg_keys: set[tuple[str, str]],
+    vuln_pkg_keys: set[tuple[str, str, str]],
 ) -> None:
     """Append the repository folder/file structure to a Cytoscape element list.
 
@@ -762,16 +744,16 @@ def _append_repo_structure_elements(
     def dir_label(path: str) -> str:
         return "." if path == "" else path.rsplit("/", 1)[-1]
 
-    # Vulnerable package node ids discovered per directory (the legacy graph only
-    # emits vulnerable packages), keyed by normalised directory path.
+    # Vulnerable package nodes keyed by normalised directory path.
     pkgs_by_dir: dict[str, list[str]] = {}
     for agent in report.agents:
         for srv in agent.mcp_servers:
             dir_path = _norm_repo_dir(srv.name)
             for pkg in srv.packages:
-                if (pkg.name, pkg.ecosystem) not in vuln_pkg_keys:
+                pkg_key = (pkg.name, pkg.ecosystem, pkg.version)
+                if pkg_key not in vuln_pkg_keys:
                     continue
-                pid = _package_node_id(pkg.name, pkg.ecosystem, agent_name=agent.name, server_name=srv.name, scoped=collapse_cves)
+                pid = _package_node_id(*pkg_key, agent_name=agent.name, server_name=srv.name, scoped=collapse_cves)
                 pkgs_by_dir.setdefault(dir_path, []).append(pid)
 
     records: dict[str, dict] = {}
@@ -951,17 +933,17 @@ def build_attack_flow_elements(
         )
 
         # Package node
-        pkg_id = f"pkg:{package_name(finding)}"
+        pkg_id = _package_node_id(package_name(finding), package_ecosystem(finding), package_version(finding))
         _add_node(
             pkg_id,
             label=f"{package_name(finding)}\n@{package_version(finding)}",
+            version=package_version(finding),
             type="pkg_vuln",
             tip=(f"Package: {package_name(finding)}\nVersion: {package_version(finding)}\nEcosystem: {package_ecosystem(finding)}"),
         )
         _add_edge(cve_id, pkg_id, "exploits")
 
-        target_eco = package_ecosystem(finding)
-        target_name = package_name(finding)
+        target_key = (package_name(finding), package_ecosystem(finding), package_version(finding))
 
         # Servers that use this package
         for agent_name in finding.affected_agents:
@@ -971,7 +953,7 @@ def build_attack_flow_elements(
             for srv in agent.mcp_servers:
                 if finding.affected_servers and srv.name not in finding.affected_servers:
                     continue
-                pkg_match = any(p.name == target_name and p.ecosystem == target_eco for p in srv.packages)
+                pkg_match = any((p.name, p.ecosystem, p.version) == target_key for p in srv.packages)
                 if not pkg_match:
                     continue
 
@@ -1022,6 +1004,7 @@ def _graph_priority_summary(findings: list["Finding"], *, collapse_cves: bool = 
             node_id = _package_node_id(
                 package_name(finding),
                 package_ecosystem(finding),
+                package_version(finding),
                 agent_name=finding.affected_agents[0],
                 server_name=finding.affected_servers[0],
                 scoped=True,

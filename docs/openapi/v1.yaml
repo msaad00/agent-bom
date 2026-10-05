@@ -9893,18 +9893,18 @@ paths:
       - enterprise
   /v1/auth/invitations:
     post:
-      description: "Provision a NEW tenant and mint its first scoped API key (admin-only).\n\
-        \nThe hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:\n\
+      description: "Provision a NEW tenant and mint its first scoped API key (platform\
+        \ operator only).\n\nThe hosted self-serve replacement for ``scripts/deploy/mint_hosted_admin_key.py``:\n\
         it creates a brand-new tenant (server-generated id \u2014 an invite can never\n\
         target an existing tenant), mints one scoped API key for it through the\n\
         same key-minting path every other route uses (no new crypto), and returns\n\
         a one-time invite payload. The new tenant is bounded by the conservative\n\
         default tenant quotas automatically (they apply to any tenant with no\noverrides);\
-        \ the effective bounds are echoed back for operator visibility.\n\nAdmin-only\
-        \ + ``auth.keys:write`` scope (enforced by the API middleware, the\nsame gate\
-        \ as ``POST /v1/auth/keys``). Never accepts a provider secret \u2014 it\n\
-        mints a credential, it does not take one (\xA711 connect-once model). The\
-        \ raw\nkey is returned exactly once in this response body and is never logged."
+        \ the effective bounds are echoed back for operator visibility.\n\nRequires\
+        \ the platform-operator tenant, authenticated admin role and a\ndelegation\
+        \ scope ceiling that permits a wildcard key. Authorization is\naudited in\
+        \ both tenants before provisioning; failed audit writes fail closed.\nThe\
+        \ raw key is returned once and is never included in audit evidence."
       operationId: create_invitation_v1_auth_invitations_post
       requestBody:
         content:

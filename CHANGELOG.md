@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Report configured filesystem exclusions separately from collection failures. Git metadata, ignored paths and duplicate worktrees remain visible scope receipts without forcing partial scans or secret-scan error exits; unreadable paths, symlinks and exhausted budgets remain incomplete.
+- Restrict new-tenant invitations to platform-operator admins whose scope ceiling permits the delegated key. Require attributable authorization receipts in both tenants before provisioning; reject customer-admin recursion and scoped-key escalation without creating tenants or keys.
 
 - Cache OSV results only after every package query succeeds. Failed, malformed, truncated, and incomplete alias/ecosystem lookups remain retryable; a new cache-key generation excludes older potentially incomplete results. Incomplete scans no longer print a clean or complete-report claim.
 - Keep pushed findings scoped to the producer and explicit scan target. Complete rescans replace only their own target, partial scans preserve prior evidence, and older unscoped pushes remain independent observations with a coverage-neutral warning.

@@ -28,6 +28,7 @@ from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.output.cloud_context import attach_cloud_context
 from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies, imported_bom_incomplete
 from agent_bom.package_utils import synthesize_purl
+from agent_bom.sbom_formats.cyclonedx import vulnerability_source
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 from agent_bom.vex import vex_justification_to_cdx
 
@@ -196,9 +197,7 @@ def _cyclonedx_vulnerability(
     entry: dict = {
         "id": vuln.id,
         "description": vuln.summary or f"See {vuln.id} for details",
-        "source": {"name": "SBOM"}
-        if vuln.severity_source == "sbom"
-        else {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
+        "source": vulnerability_source(vuln),
         "ratings": ratings,
         "affects": [{"ref": pkg_ref}],
     }

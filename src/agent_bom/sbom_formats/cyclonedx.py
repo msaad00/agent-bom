@@ -1,11 +1,11 @@
-"""Dependency and provenance semantics for CycloneDX software imports."""
+"""Dependency and provenance semantics for CycloneDX software documents."""
 
 from __future__ import annotations
 
 from collections import defaultdict, deque
 
 from agent_bom.checksums import add_checksum
-from agent_bom.models import Package
+from agent_bom.models import Package, Vulnerability
 
 _CONTEXT_ROLES = {"ai-agent", "mcp-server"}
 
@@ -128,3 +128,10 @@ def imported_composition_complete(document: dict) -> bool:
         and bool(compositions)
         and all(isinstance(c, dict) and c.get("aggregate") == "complete" for c in compositions)
     )
+
+
+def vulnerability_source(vuln: Vulnerability) -> dict[str, str]:
+    """Preserve the distinction between imported assertions and feed lookups."""
+    if vuln.severity_source == "sbom":
+        return {"name": "SBOM"}
+    return {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"}

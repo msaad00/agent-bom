@@ -182,7 +182,6 @@ def test_postgres_push_redaction_audit_and_failed_write(monkeypatch):
         first = client.post("/v1/results/push", headers=headers, json=payload())
         assert first.status_code == 201, first.text
         assert client.post("/v1/results/push", headers=headers, json=payload()).json()["job_id"] == first.json()["job_id"]
-        postgres_common.reset_pool()
         restored = PostgresJobStore().get(first.json()["job_id"], tenant_id=tenant)
         assert restored.result["summary"]["total_vulnerabilities"] == 1
         assert "private-value" not in json.dumps(restored.result)
@@ -191,11 +190,6 @@ def test_postgres_push_redaction_audit_and_failed_write(monkeypatch):
         with PostgresJobStore()._pool.connection() as conn:
             conn.execute("SELECT set_config('app.tenant_id', 'other', true)")
             assert conn.execute("SELECT count(*) FROM scan_jobs WHERE team_id = %s", (tenant,)).fetchone()[0] == 0
-        # Reconnect every participant after resetting the shared pool.
-        monkeypatch.setattr(stores, "_store", PostgresJobStore())
-        monkeypatch.setattr(stores, "_graph_store", PostgresGraphStore())
-        monkeypatch.setattr(stores, "_idempotency_store", PostgresIdempotencyStore())
-        audit = PostgresAuditLog()
 
         def fail(_entry):
             raise OSError("audit unavailable")
@@ -204,6 +198,8 @@ def test_postgres_push_redaction_audit_and_failed_write(monkeypatch):
         retry = {**payload(), "idempotency_key": "audit-down"}
         assert client.post("/v1/results/push", headers=headers, json=retry).status_code == 503
         assert len(PostgresJobStore().list_all(tenant_id=tenant)) == 1
+        postgres_common.reset_pool()
+        assert PostgresJobStore().get(first.json()["job_id"], tenant_id=tenant).result == restored.result
     finally:
         postgres_common.reset_pool()
         postgres_common.reset_current_tenant(token)

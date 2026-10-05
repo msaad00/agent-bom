@@ -72,11 +72,13 @@ def _expand_docker_mcp_packages(
 def _incomplete_scan_report(agents: list[Any], exc: IncompleteScanError) -> AIBOMReport:
     from agent_bom.evidence.scan_run import ScanIssue, ScanRun
     from agent_bom.mcp_blocklist import blocklist_findings_for_agents
+    from agent_bom.scanners.state import consume_coverage_warnings
 
     return AIBOMReport(
         agents=agents,
         blast_radii=[],
         findings=blocklist_findings_for_agents(agents),
+        coverage_warnings=consume_coverage_warnings(),
         scan_sources=["agent_discovery"],
         scan_run=ScanRun(
             issues=[

@@ -67,7 +67,7 @@ from agent_bom.parsers.python_parsers import (  # noqa: F401
 # Re-export Ruby, PHP, and Swift parsers
 from agent_bom.parsers.ruby_parsers import parse_ruby_packages  # noqa: F401
 from agent_bom.parsers.swift_parsers import parse_swift_packages  # noqa: F401
-from agent_bom.traversal import is_nested_worktree_root
+from agent_bom.traversal import _coverage_recorder, is_nested_worktree_root
 
 _ENTRY_POINT_GROUP = "agent_bom.inventory_parsers"
 
@@ -878,6 +878,7 @@ def scan_project_directory(
     results: dict[Path, list[Package]] = {}
 
     visited_real: set[str] = set()
+    report_gap = _coverage_recorder(root)
 
     def _warn(message: str) -> None:
         if warnings is not None:
@@ -891,8 +892,18 @@ def scan_project_directory(
             return False
 
     def _walk(directory: Path, depth: int) -> None:
+        try:
+            _walk_directory(directory, depth)
+        except OSError:
+            message = "Project package discovery incomplete: a directory or manifest could not be read."
+            report_gap("read_error", message)
+            _warn(message)
+
+    def _walk_directory(directory: Path, depth: int) -> None:
         if depth > max_depth:
             return
+        if not os.access(directory, os.R_OK | os.X_OK):
+            raise PermissionError
         resolved_dir = directory.resolve()
         if not _is_within_root(resolved_dir):
             _warn(f"skipping path outside project root: {directory} -> {resolved_dir}")
@@ -903,60 +914,30 @@ def scan_project_directory(
         visited_real.add(real)
 
         if _has_manifest(directory):
-            pkgs: list[Package] = []
-            pkgs.extend(parse_npm_packages(directory))
-            pkgs.extend(parse_yarn_lock(directory))
-            pkgs.extend(parse_pnpm_lock(directory))
-            pkgs.extend(parse_bun_packages(directory))
-            pkgs.extend(parse_pip_packages(directory))
-            pkgs.extend(parse_pip_compile_inputs(directory))
-            pkgs.extend(parse_conda_environment(directory))
-            pkgs.extend(parse_conda_packages(directory))
-            pkgs.extend(parse_go_packages(directory))
-            pkgs.extend(parse_cargo_packages(directory))
-            pkgs.extend(parse_maven_packages(directory))
-            pkgs.extend(parse_gradle_packages(directory))
-            pkgs.extend(parse_nuget_packages(directory))
-            pkgs.extend(parse_ruby_packages(directory))
-            pkgs.extend(parse_php_packages(directory))
-            pkgs.extend(parse_swift_packages(directory))
-            pkgs.extend(parse_hex_packages(directory))
-            pkgs.extend(parse_pub_packages(directory))
+            from agent_bom.parsers.project_packages import parse_project_packages
 
-            # Deduplicate within this directory
-            seen: set[tuple] = set()
-            unique: list[Package] = []
-            for pkg in pkgs:
-                key = (pkg.name, pkg.version, pkg.ecosystem)
-                if key not in seen:
-                    seen.add(key)
-                    unique.append(pkg)
-
-            if unique:
+            if unique := parse_project_packages(directory):
                 results[directory] = unique
 
         # Recurse into subdirectories
-        try:
-            subdirs = []
-            for candidate in directory.iterdir():
-                if candidate.name in _SKIP_DIRS or (candidate.name.startswith(".") and depth > 0):
+        subdirs = []
+        for candidate in directory.iterdir():
+            if candidate.name in _SKIP_DIRS or (candidate.name.startswith(".") and depth > 0):
+                continue
+            # A linked worktree/submodule is a second copy of the project;
+            # descending into it counts every manifest twice.
+            if is_nested_worktree_root(candidate):
+                _warn(f"skipping nested checkout: {candidate}")
+                continue
+            if candidate.is_symlink():
+                if not follow_symlinks:
+                    _warn(f"skipping symlinked directory: {candidate}")
                     continue
-                # A linked worktree/submodule is a second copy of the project;
-                # descending into it counts every manifest twice.
-                if is_nested_worktree_root(candidate):
-                    _warn(f"skipping nested checkout: {candidate}")
-                    continue
-                if candidate.is_symlink():
-                    if not follow_symlinks:
-                        _warn(f"skipping symlinked directory: {candidate}")
-                        continue
-                    resolved_candidate = candidate.resolve()
-                    if not _is_within_root(resolved_candidate):
-                        _warn(f"following symlink outside project root: {candidate} -> {resolved_candidate}")
-                if candidate.is_dir():
-                    subdirs.append(candidate)
-        except PermissionError:
-            return
+                resolved_candidate = candidate.resolve()
+                if not _is_within_root(resolved_candidate):
+                    _warn(f"following symlink outside project root: {candidate} -> {resolved_candidate}")
+            if candidate.is_dir():
+                subdirs.append(candidate)
 
         for subdir in sorted(subdirs):
             _walk(subdir, depth + 1)

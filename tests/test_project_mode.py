@@ -234,6 +234,8 @@ class TestScanProjectDirectory:
 
 
 CYCLONEDX_WITH_NAME = {
+    # Naming tests use an explicitly complete (empty) inventory.
+    "compositions": [{"aggregate": "complete"}],
     "bomFormat": "CycloneDX",
     "specVersion": "1.5",
     "metadata": {

@@ -981,7 +981,9 @@ def test_scan_sbom_does_not_merge_ambient_skill_packages(tmp_path, monkeypatch):
         ]
     )
 
-    assert result.exit_code == 0, result.output
+    # No composition completeness was declared by this imported inventory.
+    assert result.exit_code == 1, result.output
+    assert "scan execution was partial" in result.output
     report = json.loads(out.read_text(encoding="utf-8"))
     packages = {(pkg["name"], pkg.get("version"), pkg.get("ecosystem")) for pkg in report["packages"]}
     assert packages == {("axios", "1.6.0", "npm")}
@@ -1032,7 +1034,9 @@ def test_scan_sbom_with_embedded_vulnerability_never_prints_clean_stage_message(
         ]
     )
 
-    assert result.exit_code == 0, result.output
+    # No composition completeness was declared by this imported inventory.
+    assert result.exit_code == 1, result.output
+    assert "scan execution was partial" in result.output
     assert "Offline scan complete: no known vulnerabilities found in local data" not in result.output
     assert "retained 1 vulnerability" in result.output.lower()
     assert "no vulnerabilities found" not in result.output.lower()
@@ -1073,7 +1077,9 @@ def test_scan_console_report_stdout_keeps_phase_diagnostics_on_stderr(tmp_path, 
         ]
     )
 
-    assert result.exit_code == 0, result.output
+    # No composition completeness was declared by this imported inventory.
+    assert result.exit_code == 1, result.output
+    assert "scan execution was partial" in result.output
     assert "Summary" in result.stdout
     assert "Discovery" not in result.stdout
     assert "Vulnerability Scan" not in result.stdout

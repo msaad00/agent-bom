@@ -77,6 +77,10 @@
       "value": "true"
      },
      {
+      "name": "agent-bom:inventory-members",
+      "value": "[\"pkg-<UUID>\"]"
+     },
+     {
       "name": "agent-bom:transport",
       "value": "stdio"
      },
@@ -111,6 +115,10 @@
      {
       "name": "agent-bom:discovery-provenance:source-type",
       "value": "local_discovery"
+     },
+     {
+      "name": "agent-bom:inventory-members",
+      "value": "[\"pkg-<UUID>\", \"pkg-<UUID>\", \"pkg-<UUID>\", \"pkg-<UUID>\"]"
      },
      {
       "name": "agent-bom:transport",

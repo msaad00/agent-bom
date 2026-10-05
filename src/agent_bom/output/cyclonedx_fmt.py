@@ -26,7 +26,7 @@ from agent_bom.checksums import cyclonedx_hashes, integrity_verdict, strongest_c
 from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.output.cloud_context import attach_cloud_context
-from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies
+from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies, imported_bom_incomplete
 from agent_bom.package_utils import synthesize_purl
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 from agent_bom.vex import vex_justification_to_cdx
@@ -196,7 +196,9 @@ def _cyclonedx_vulnerability(
     entry: dict = {
         "id": vuln.id,
         "description": vuln.summary or f"See {vuln.id} for details",
-        "source": {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
+        "source": {"name": "SBOM"}
+        if vuln.severity_source == "sbom"
+        else {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"},
         "ratings": ratings,
         "affects": [{"ref": pkg_ref}],
     }
@@ -702,6 +704,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             server_provenance = sanitize_discovery_provenance(getattr(server, "discovery_provenance", None), defaults=agent_provenance)
 
             server_props = [
+                {
+                    "name": "agent-bom:inventory-members",
+                    "value": json.dumps(sorted(_sanitize_bom_ref(f"pkg-{p.stable_id}") for p in server.packages)),
+                },
                 {"name": "agent-bom:type", "value": "mcp-server"},
                 {"name": "agent-bom:command", "value": sanitize_launch_command(server.command, server.args)},
                 {"name": "agent-bom:transport", "value": server.transport.value},
@@ -946,7 +952,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     if vulnerabilities_cdx:
         cdx["vulnerabilities"] = vulnerabilities_cdx
 
-    compositions = cyclonedx_compositions(components, incomplete=bool(unresolved_parents) or scan_run.outcome is not ScanOutcome.COMPLETE)
+    compositions = cyclonedx_compositions(
+        components,
+        incomplete=bool(unresolved_parents) or scan_run.outcome is not ScanOutcome.COMPLETE or imported_bom_incomplete(report.agents),
+    )
     if compositions:
         cdx["compositions"] = compositions
 

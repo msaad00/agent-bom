@@ -41,7 +41,8 @@ def test_self_scan_advisory_has_logical_identity_and_stable_fingerprint(tmp_path
 
 
 @pytest.mark.parametrize("config_path", ["self-scan://agent-bom", "agent-config.json"])
-def test_real_package_manifest_retains_physical_location(config_path, tmp_path):
+def test_real_package_manifest_retains_physical_location(config_path, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     manifest = tmp_path / "requirements.txt"
     manifest.write_text("# dependencies\n# vulnerable package\nurllib3==2.7.0\n")
     result = to_sarif(_report(config_path, str(manifest)))["runs"][0]["results"][0]

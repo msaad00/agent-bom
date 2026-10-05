@@ -19,10 +19,10 @@ def _malicious_report() -> AIBOMReport:
     return AIBOMReport(agents=[agent], blast_radii=[])
 
 
-def test_sarif_results_emit_partial_fingerprints() -> None:
+def test_locationless_sarif_has_stable_identity_without_a_source_line_hash() -> None:
     sarif = to_sarif(_malicious_report())
     results = sarif["runs"][0]["results"]
     assert results
-    partial = results[0].get("partialFingerprints") or {}
-    assert partial.get("primaryLocationLineHash")
+    assert "partialFingerprints" not in results[0]
+    assert results[0]["locations"][0]["logicalLocations"]
     assert results[0]["fingerprints"]["agent-bom/v1"]

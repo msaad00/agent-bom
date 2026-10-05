@@ -303,10 +303,10 @@ async def run_scan_pipeline(
                 msg = f"SBOM file too large ({sbom_file.stat().st_size} bytes, max {_MAX_FILE_SIZE})"
                 raise ValueError(msg)
             else:
-                from agent_bom.parsers.sbom_context import load_sbom_agent
+                from agent_bom.parsers.sbom_context import load_sbom_agents
 
-                sbom_agent, _fmt = load_sbom_agent(sbom_path)
-                agents.append(sbom_agent)
+                sbom_agents, _fmt = load_sbom_agents(sbom_path)
+                agents.extend(sbom_agents)
                 scan_sources.append("sbom")
         except Exception as exc:
             raise McpScanValidationError(CODE_VALIDATION_INVALID_PATH, exc, argument="sbom_path") from exc

@@ -28549,16 +28549,11 @@ paths:
       - scan
   /v1/scan/{job_id}/remediation:
     get:
-      description: "Get the remediation plan for a completed scan, and nothing else.\n\
-        \n``GET /v1/scan/{job_id}`` returns the canonical AI-BOM document \u2014 every\n\
-        finding, blast radius, asset and exposure path. The remediation surface read\n\
-        one field off it, so the transfer tracked the size of the estate rather than\n\
-        the size of the plan. Measured on the demo estate (2,068 assets / 2,716\n\
-        findings): an 8.7 MB job payload for a 41 KB plan, 99.5% of it discarded by\n\
-        the caller and all of it parsed by the browser first.\n\nThe plan is inherently\
-        \ bounded \u2014 one entry per upgradable package, not per\nasset \u2014 so\
-        \ it is returned whole, with ``total`` stated rather than left for\nthe client\
-        \ to infer."
+      description: 'Return package upgrade actions without transferring the full scan
+        report.
+
+
+        One entry per package, with an explicit total for the client.'
       operationId: get_remediation_plan_v1_scan__job_id__remediation_get
       parameters:
       - in: path

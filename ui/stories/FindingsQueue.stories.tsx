@@ -20,7 +20,7 @@ function QueueHarness({
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [suppressed, setSuppressed] = useState<Set<string>>(new Set(pending ? [`${vulns[0].id}:${vulns[0].packages[0]}`] : []));
+  const [suppressed, setSuppressed] = useState<Set<string>>(new Set(pending && vulns[0] ? [`${vulns[0].id}:${vulns[0].packages[0]}`] : []));
 
   return (
     <FindingsQueueTable

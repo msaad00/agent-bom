@@ -24,7 +24,15 @@ def package_dependency_edges(packages: list[Package]) -> tuple[list[tuple[str, s
         candidates[ecosystem, normalize_package_name(package.name, ecosystem)].add(package.stable_id)
     edges: set[tuple[str, str]] = set()
     unresolved: set[str] = set()
+    inventory_ids = {package.stable_id for package in packages}
     for package in packages:
+        declared = [e.get("parent_stable_ids") for e in package.version_evidence if e.get("type") == "sbom" and "parent_stable_ids" in e]
+        if declared:
+            parents = {ref for refs in declared if isinstance(refs, list) for ref in refs if isinstance(ref, str)}
+            edges.update((ref, package.stable_id) for ref in parents & inventory_ids if ref != package.stable_id)
+            if parents - inventory_ids or (not parents and not package.is_direct):
+                unresolved.add(package.stable_id)
+            continue
         if package.is_direct:
             continue
         ecosystem = normalize_package_ecosystem(package.ecosystem)
@@ -120,3 +128,10 @@ def cyclonedx_package_dependencies(packages: list[Package], ref_for_id: Callable
     dependencies = [{"ref": ref_for_id(parent), "dependsOn": [ref_for_id(child)]} for parent, child in edges]
     roots = [ref_for_id(package.stable_id) for package in packages if package.is_direct]
     return dependencies, roots, unresolved
+
+
+def imported_bom_incomplete(agents: list) -> bool:
+    return any(
+        isinstance(agent.metadata.get("sbom_import"), dict) and agent.metadata["sbom_import"].get("composition_complete") is False
+        for agent in agents
+    )

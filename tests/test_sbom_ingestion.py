@@ -85,7 +85,7 @@ def test_parse_cyclonedx_with_purl():
     assert packages[0].version == "4.18.2"
     assert packages[0].ecosystem == "npm"
     assert packages[0].purl == "pkg:npm/express@4.18.2"
-    assert packages[0].is_direct is True
+    assert packages[0].is_direct is False  # no dependency edges establish a direct relationship
     assert packages[0].resolved_from_registry is False
     assert packages[1].name == "requests"
     assert packages[1].ecosystem == "pypi"

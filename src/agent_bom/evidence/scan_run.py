@@ -248,6 +248,18 @@ def effective_scan_run(report: Any) -> ScanRun:
                 affects_coverage=not excluded,
             )
         )
+    for agent in getattr(report, "agents", []) or []:
+        imported = (getattr(agent, "metadata", {}) or {}).get("sbom_import", {})
+        if isinstance(imported, dict) and imported.get("composition_complete") is False:
+            run.add_issue(
+                ScanIssue(
+                    code="sbom_inventory_incomplete",
+                    stage="discovery",
+                    source="sbom",
+                    message="Imported SBOM does not establish complete inventory coverage",
+                    affects_coverage=True,
+                )
+            )
     return run
 
 

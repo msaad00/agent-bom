@@ -497,6 +497,17 @@ def parse_npm_packages(directory: Path) -> list[Package]:
     return packages
 
 
+def _node_lock_package(name: str, version: str, lock_file: Path) -> Package:
+    return Package(
+        name=name,
+        version=version,
+        ecosystem="npm",
+        purl=_npm_purl(name, version),
+        is_direct=False,
+        version_evidence=[{"type": "lockfile", "source_file": str(lock_file)}],
+    )
+
+
 def parse_yarn_lock(directory: Path) -> list[Package]:
     """Parse packages from yarn.lock (Classic v1 and Berry v2/v3 formats).
 
@@ -543,15 +554,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                         key = (name, version)
                         if key not in seen:
                             seen.add(key)
-                            packages.append(
-                                Package(
-                                    name=name,
-                                    version=version,
-                                    ecosystem="npm",
-                                    purl=_npm_purl(name, version),
-                                    is_direct=False,
-                                )
-                            )
+                            packages.append(_node_lock_package(name, version, lock_file))
                     current_names = []
         else:
             # Classic v1: '"name@range, name@range":\n  version "x.y.z"'
@@ -573,15 +576,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                         key = (name, version)
                         if key not in seen:
                             seen.add(key)
-                            packages.append(
-                                Package(
-                                    name=name,
-                                    version=version,
-                                    ecosystem="npm",
-                                    purl=_npm_purl(name, version),
-                                    is_direct=False,
-                                )
-                            )
+                            packages.append(_node_lock_package(name, version, lock_file))
                     current_names = []
     except Exception as exc:
         logger.debug("Failed to parse yarn.lock at %s: %s", lock_file, exc)
@@ -642,6 +637,7 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
                         version=version,
                         ecosystem="npm",
                         purl=_npm_purl(name, version),
+                        version_evidence=[{"type": "lockfile", "source_file": str(lock_file)}],
                         is_direct=False,  # pnpm lock is flat; all entries are resolved
                     )
                 )

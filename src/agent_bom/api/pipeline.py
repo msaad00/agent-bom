@@ -53,6 +53,7 @@ from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
 from agent_bom.parsers.sbom_context import imported_cloud_inventory
+from agent_bom.scanners.supplied_findings import build_supplied_findings
 from agent_bom.security import sanitize_error, sanitize_text
 
 _logger = logging.getLogger(__name__)
@@ -1043,10 +1044,10 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         if req.sbom:
             pipeline.update_step("discovery", f"Ingesting SBOM: {req.sbom}")
-            from agent_bom.parsers.sbom_context import load_sbom_agent
+            from agent_bom.parsers.sbom_context import load_sbom_agents
 
-            sbom_agent, _fmt = load_sbom_agent(req.sbom)
-            agents.append(sbom_agent)
+            sbom_agents, _fmt = load_sbom_agents(req.sbom)
+            agents.extend(sbom_agents)
 
         if req.external_scan:
             pipeline.update_step("discovery", f"Ingesting external scan: {req.external_scan}")
@@ -1310,7 +1311,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # ── Scanning phase ──
         _raise_if_cancelled(job, lock)
-        blast_radii = []
+        blast_radii = build_supplied_findings(agents) if req.no_scan else []
         effective_enrich = bool(req.enrich and not req.offline)
         if req.no_scan:
             pipeline.skip_step("scanning", "Vulnerability scanning skipped by request")
@@ -1361,7 +1362,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
 
         if req.no_scan:
-            total_vulns = 0
+            total_vulns = len(blast_radii)
         elif req.offline and req.enrich:
             warnings_all.append("Enrichment skipped because offline mode was requested")
 

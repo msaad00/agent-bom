@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tomllib
 from fnmatch import fnmatchcase
-from functools import lru_cache
 from pathlib import Path
 
 from agent_bom.coverage import record_manifest_parse_warning
@@ -15,15 +14,17 @@ def _matches(parts: tuple[str, ...], pattern: str) -> bool:
     """Match workspace globs by path segment (a single star cannot cross '/')."""
     patterns = tuple(pattern.removeprefix("./").rstrip("/").split("/"))
 
-    @lru_cache(maxsize=None)
-    def match(path: tuple[str, ...], glob: tuple[str, ...]) -> bool:
-        if not glob:
-            return not path
-        if glob[0] == "**":
-            return any(match(path[index:], glob[1:]) for index in range(len(path) + 1))
-        return bool(path) and fnmatchcase(path[0], glob[0]) and match(path[1:], glob[1:])
-
-    return match(parts, patterns)
+    # Maintain reachable path offsets instead of recursing on untrusted globs.
+    # Memory is bounded by path depth, including consecutive recursive stars.
+    positions = {0}
+    for segment in patterns:
+        if segment == "**":
+            positions = set(range(min(positions), len(parts) + 1))
+        else:
+            positions = {index + 1 for index in positions if index < len(parts) and fnmatchcase(parts[index], segment)}
+        if not positions:
+            return False
+    return len(parts) in positions
 
 
 def uv_lock_owner(directory: Path) -> Path | None:

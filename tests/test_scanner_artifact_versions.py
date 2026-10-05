@@ -95,6 +95,14 @@ def test_nested_lock_takes_precedence_over_parent_workspace(tmp_path):
     assert uv_lock_owner(member) == member.resolve()
 
 
+def test_uv_workspace_repeated_recursive_globs_remain_bounded(tmp_path):
+    pattern = "**/" * 600 + "app"
+    (tmp_path / "pyproject.toml").write_text(f'[tool.uv.workspace]\nmembers = ["{pattern}"]\n')
+    member = tmp_path / "packages" / "app"
+    member.mkdir(parents=True)
+    assert uv_lock_owner(member) == tmp_path.resolve()
+
+
 def test_missing_workspace_lock_is_incomplete_without_floating_fallback(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "app"\ndependencies = ["httpx>=0.20"]\n[tool.uv.workspace]\nmembers = []\n')
     assert parse_pip_packages(tmp_path) == []

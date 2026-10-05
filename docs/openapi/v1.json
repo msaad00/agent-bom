@@ -3599,6 +3599,48 @@
         "title": "CredentialRefUpdate",
         "type": "object"
       },
+      "CurrentRemediationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "remediation_plan": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Remediation Plan",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "remediation.current.v1",
+            "default": "remediation.current.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_findings": {
+            "title": "Source Findings",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "remediation_plan",
+          "source_findings",
+          "truncated",
+          "warnings"
+        ],
+        "title": "CurrentRemediationResponse",
+        "type": "object"
+      },
       "DatasetCardsRequest": {
         "additionalProperties": false,
         "description": "Request body for POST /v1/scan/dataset-cards.",
@@ -23622,6 +23664,28 @@
         "summary": "Remove Finding Feedback",
         "tags": [
           "enterprise"
+        ]
+      }
+    },
+    "/v1/findings/remediation": {
+      "get": {
+        "description": "Package upgrade actions from the tenant's current findings across targets.",
+        "operationId": "get_current_remediation_v1_findings_remediation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentRemediationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Current Remediation",
+        "tags": [
+          "scan"
         ]
       }
     },

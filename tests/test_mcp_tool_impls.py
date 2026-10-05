@@ -1240,6 +1240,7 @@ async def test_exception_tools_share_tenant_bound_lifecycle(monkeypatch):
             exception_id=requested["exception_id"],
             tenant_id="other-tenant",
             _authenticated_actor="security-admin",
+            expires_at="2099-01-01T00:00:00Z",
             _truncate_response=_trunc,
         )
     )

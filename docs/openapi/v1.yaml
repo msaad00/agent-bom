@@ -7800,6 +7800,17 @@ components:
           type: string
       title: StorageHealth
       type: object
+    SuppressionApprovalRequest:
+      additionalProperties: false
+      properties:
+        expires_at:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Expires At
+      title: SuppressionApprovalRequest
+      type: object
     SyncRequest:
       additionalProperties: false
       properties:
@@ -14975,6 +14986,14 @@ paths:
         schema:
           title: Exception Id
           type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/SuppressionApprovalRequest'
+              - type: 'null'
+              title: Req
       responses:
         '200':
           content:

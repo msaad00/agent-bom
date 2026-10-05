@@ -421,7 +421,7 @@ class TestVexLoad:
         count = apply_vex(report, doc)
         assert count == 1
         assert vuln.vex_status == "not_affected"
-        assert is_vex_suppressed(vuln)
+        assert not is_vex_suppressed(vuln)
 
 
 class TestVexGenerate:
@@ -701,15 +701,15 @@ class TestSerialization:
 
 
 class TestIsVexSuppressed:
-    def test_not_affected_is_suppressed(self):
+    def test_not_affected_assertion_is_not_approved(self):
         v = _vuln("CVE-2024-0001")
         v.vex_status = "not_affected"
-        assert is_vex_suppressed(v) is True
+        assert is_vex_suppressed(v) is False
 
-    def test_fixed_is_suppressed(self):
+    def test_fixed_assertion_is_not_approved(self):
         v = _vuln("CVE-2024-0002", severity=Severity.CRITICAL)
         v.vex_status = "fixed"
-        assert is_vex_suppressed(v) is True
+        assert is_vex_suppressed(v) is False
 
     def test_affected_is_not_suppressed(self):
         v = _vuln("CVE-2024-0003")
@@ -730,7 +730,7 @@ class TestIsVexSuppressed:
         v.vex_status = None
         assert is_vex_suppressed(v) is False
 
-    def test_apply_then_suppress(self):
+    def test_apply_annotations_without_approval(self):
         """Full flow: apply VEX, then check suppression."""
         vuln = _vuln("CVE-2024-1000", severity=Severity.CRITICAL)
         pkg = _pkg(vulns=[vuln])
@@ -749,10 +749,10 @@ class TestIsVexSuppressed:
         )
         count = apply_vex(report, doc)
         assert count == 1
-        assert is_vex_suppressed(vuln) is True
+        assert is_vex_suppressed(vuln) is False
 
-    def test_suppressed_vulns_excluded_from_active_count(self):
-        """Active blast radii exclude VEX-suppressed vulnerabilities."""
+    def test_unapproved_vex_retains_active_count(self):
+        """VEX assertions do not exclude vulnerabilities from active counts."""
         v1 = _vuln("CVE-2024-A", severity=Severity.CRITICAL)
         v1.vex_status = "not_affected"
         v2 = _vuln("CVE-2024-B")
@@ -761,11 +761,10 @@ class TestIsVexSuppressed:
 
         all_vulns = [v1, v2, v3]
         active = [v for v in all_vulns if not is_vex_suppressed(v)]
-        assert len(active) == 1
-        assert active[0].id == "CVE-2024-B"
+        assert [v.id for v in active] == ["CVE-2024-A", "CVE-2024-B", "CVE-2024-C"]
 
-    def test_apply_vex_zeros_suppressed_blast_radius_risk(self):
-        """VEX not_affected is enforced in blast-radius scoring, not just labels."""
+    def test_apply_vex_preserves_risk_until_approval(self):
+        """Unapproved VEX annotates evidence without changing blast-radius scoring."""
         vuln = _vuln("CVE-2024-2000", severity=Severity.CRITICAL)
         report = _report([(vuln, _pkg(vulns=[vuln]))])
         br = report.blast_radii[0]
@@ -783,12 +782,12 @@ class TestIsVexSuppressed:
         )
 
         assert apply_vex(report, doc) == 1
-        assert br.risk_score == 0.0
-        assert br.transitive_risk_score == 0.0
-        assert br.is_actionable is False
-        assert active_blast_radii(report.blast_radii) == []
+        assert br.risk_score == 9.8
+        assert br.transitive_risk_score == 8.0
+        assert br.is_actionable is True
+        assert active_blast_radii(report.blast_radii) == [br]
 
-    def test_suppressed_vex_does_not_trigger_policy_or_posture_penalty(self):
+    def test_unapproved_vex_retains_policy_and_posture_risk(self):
         from agent_bom.policy import evaluate_policy
         from agent_bom.posture import compute_posture_scorecard
 
@@ -803,13 +802,13 @@ class TestIsVexSuppressed:
             {"rules": [{"id": "no-critical", "severity_gte": "critical", "action": "fail"}]},
             report.blast_radii,
         )
-        assert policy_result["passed"] is True
-        assert policy_result["violations"] == []
+        assert policy_result["passed"] is False
+        assert len(policy_result["violations"]) == 1
 
         scorecard = compute_posture_scorecard(report)
-        assert scorecard.dimensions["vulnerability_posture"].details == "1 vulns (1 low), 0 fixable"
+        assert scorecard.dimensions["vulnerability_posture"].details == "2 vulns (1 critical, 1 low), 0 fixable"
 
-    def test_json_marks_vex_suppressed_blast_radius(self):
+    def test_json_preserves_vex_without_suppressing_risk(self):
         from agent_bom.output import to_json
 
         vuln = _vuln("CVE-2024-4000", severity=Severity.HIGH)
@@ -819,13 +818,13 @@ class TestIsVexSuppressed:
         report.blast_radii[0].calculate_risk_score()
 
         item = to_json(report)["blast_radius"][0]
-        assert item["risk_score"] == 0.0
+        assert item["risk_score"] > 0.0
         assert item["vex_status"] == "fixed"
-        assert item["vex_suppressed"] is True
+        assert item["vex_suppressed"] is False
 
 
 class TestBlastRadiusToFindingVex:
-    def test_blast_radius_to_finding_carries_vex_evidence_and_suppressed(self):
+    def test_blast_radius_to_finding_carries_unapproved_vex_evidence(self):
         from agent_bom.finding import blast_radius_to_finding
 
         vuln = _vuln("CVE-2024-8888", severity=Severity.HIGH)
@@ -843,7 +842,7 @@ class TestBlastRadiusToFindingVex:
         finding = blast_radius_to_finding(br)
         assert finding.evidence["vex_status"] == "not_affected"
         assert finding.evidence["vex_justification"] == "component_not_present"
-        assert finding.suppressed is True
+        assert finding.suppressed is False
 
     def test_blast_radius_to_finding_preserves_existing_suppression(self):
         from agent_bom.finding import blast_radius_to_finding
@@ -893,3 +892,22 @@ def test_untrusted_log_values_stay_on_one_line():
     rendered = sanitize_log_value("bogus\r\nFORGED log line")
     assert "\n" not in rendered and "\r" not in rendered
     assert "FORGED log line" in rendered
+
+
+@pytest.mark.parametrize("status", [VexStatus.NOT_AFFECTED, VexStatus.FIXED])
+def test_imported_vex_cannot_bypass_admin_approval(status):
+    from agent_bom.output import to_json
+    from agent_bom.policy import evaluate_policy
+
+    vuln = _vuln("CVE-2024-7777", severity=Severity.CRITICAL)
+    report = _report([(vuln, _pkg(vulns=[vuln]))])
+    br = report.blast_radii[0]
+    br.risk_score = 9.8
+    report.agents[0].agent_type = AgentType.CLAUDE_DESKTOP
+    doc = VexDocument(statements=[VexStatement(vulnerability_id=vuln.id, status=status)])
+    assert apply_vex(report, doc) == 1
+    assert br.risk_score == 9.8
+    assert br.is_actionable
+    assert active_blast_radii(report.blast_radii) == [br]
+    assert not evaluate_policy({"rules": [{"id": "critical", "severity_gte": "critical", "action": "fail"}]}, [br])["passed"]
+    assert to_json(report)["blast_radius"][0]["vex_suppressed"] is False

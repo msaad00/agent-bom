@@ -231,6 +231,7 @@ def register_approve_exception(bindings: OperatorToolBindings) -> None:
     @mcp.tool(annotations=bindings.write_action, title="Approve Vulnerability Exception")
     async def approve_exception(
         exception_id: Annotated[str, Field(description="Pending exception id to activate.")] = "",
+        expires_at: Annotated[str, Field(description="Future timezone-aware expiry; omit to keep the request expiry.")] = "",
         operator_role: Annotated[str, Field(description="Operator role for this audited write.")] = "viewer",
         operator_scopes: Annotated[str, Field(description="Comma-separated operator scopes for this audited write.")] = "",
         reason: Annotated[str, Field(description="Human audit reason for approving the exception.")] = "",
@@ -246,6 +247,7 @@ def register_approve_exception(bindings: OperatorToolBindings) -> None:
             destructive=True,
             required_scope="findings:write",
             exception_id=exception_id,
+            expires_at=expires_at,
             operator_role=operator_role,
             operator_scopes=operator_scopes,
             reason=reason,

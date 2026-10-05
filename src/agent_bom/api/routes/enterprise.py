@@ -66,6 +66,15 @@ from agent_bom.api.models import (
     TenantQuotaUpdateRequest,
 )
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
+from agent_bom.api.suppression_approval import (
+    ApprovalPersistenceError,
+    SuppressionApprovalRequest,
+    exception_response,
+    persist_approval,
+    reset_suppression_request,
+    suppression_active,
+    suppression_requested,
+)
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -320,7 +329,7 @@ def _feedback_response(exc: Any) -> dict[str, Any]:
         "state": state,
         "reason": reason,
         "marked_by": exc.requested_by,
-        "status": "suppressed" if state in {"false_positive", "accepted_risk", "not_affected", "fixed_verified"} else state,
+        "status": "suppressed" if suppression_active(exc) else ("pending" if suppression_requested(exc) else state),
         "created_at": exc.created_at,
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,
@@ -347,7 +356,9 @@ def _triage_response(exc: Any) -> dict[str, Any]:
         "reviewed_at": reviewed_at,
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,
-        "vex_eligible": decision == "not_affected" and bool(data.get("justification")),
+        "vex_eligible": suppression_active(exc) and decision == "not_affected" and bool(data.get("justification")),
+        "approval_status": exc.status.value,
+        "approval_required": suppression_requested(exc) and not suppression_active(exc),
     }
 
 
@@ -362,7 +373,7 @@ def build_tenant_triage_state_index(tenant_id: str) -> TriageStateIndex:
     for sequence, exc in enumerate(_get_exception_store().list_all(tenant_id=tenant_id)):
         if _parse_triage_reason(str(exc.reason)) is None:
             continue
-        if exc.status.value not in {"approved", "active"} or exc.is_expired():
+        if exc.status.value in {"revoked", "rejected"} or (exc.expires_at and exc.is_expired()):
             continue
         key = (str(exc.vuln_id), str(exc.package_name), str(exc.server_name))
         index.setdefault(key, (sequence, _triage_response(exc)))
@@ -404,7 +415,7 @@ def build_tenant_triage_owner_index(tenant_id: str) -> TriageOwnerIndex:
         data = _parse_triage_reason(str(exc.reason))
         if data is None:
             continue
-        if exc.status.value not in {"approved", "active"} or exc.is_expired():
+        if exc.status.value in {"revoked", "rejected"} or (exc.expires_at and exc.is_expired()):
             continue
         assignee = str(data.get("assignee") or getattr(exc, "approved_by", "") or "").strip()
         if assignee:
@@ -2364,7 +2375,7 @@ def create_exception(request: Request, req: ExceptionRequest) -> dict:
         vuln_id=req.vuln_id,
         package=req.package_name,
     )
-    return exc.to_dict()
+    return exception_response(exc)
 
 
 @router.get("/exceptions", tags=["enterprise"])
@@ -2383,7 +2394,7 @@ def list_exceptions(
     return {
         # schema_version on terminal list response.
         "schema_version": "v1",
-        "exceptions": [e.to_dict() for e in page],
+        "exceptions": [exception_response(e) for e in page],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -2397,29 +2408,29 @@ def get_exception(request: Request, exception_id: str) -> dict:
     exc = _get_exception_store().get(exception_id, tenant_id=tenant_id)
     if exc is None:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
-    return cast("dict[str, Any]", exc.to_dict())
+    return cast("dict[str, Any]", exception_response(exc))
 
 
 @router.put("/exceptions/{exception_id}/approve", tags=["enterprise"])
-def approve_exception(request: Request, exception_id: str) -> dict:
+def approve_exception(request: Request, exception_id: str, req: SuppressionApprovalRequest | None = None) -> dict:
     """Approve a pending exception (admin only)."""
-    from agent_bom.api.audit_log import log_action
-    from agent_bom.api.exception_store import ExceptionStatus
-
     tenant_id = require_request_tenant_id(request)
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id, tenant_id=tenant_id)
     if exc is None:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
-    if exc.status != ExceptionStatus.PENDING:
-        raise HTTPException(status_code=409, detail=f"Cannot approve exception in {exc.status.value} state")
-    exc.status = ExceptionStatus.ACTIVE
-    exc.approved_by = actor
-    exc.approved_at = datetime.now(timezone.utc).isoformat()
-    store.put(exc, tenant_id=tenant_id)
-    log_action("exception_approve", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
-    return cast("dict[str, Any]", exc.to_dict())
+    if getattr(request.state, "api_key_role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Suppression approval requires an authenticated admin")
+    if req is not None and req.expires_at is not None:
+        exc.expires_at = req.expires_at
+    try:
+        persist_approval(exc, store, actor=actor, tenant_id=tenant_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=sanitize_error(error)) from None
+    except ApprovalPersistenceError:
+        raise HTTPException(status_code=503, detail="Suppression approval persistence unavailable") from None
+    return cast("dict[str, Any]", exception_response(exc))
 
 
 @router.put("/exceptions/{exception_id}/revoke", tags=["enterprise"])
@@ -2438,7 +2449,7 @@ def revoke_exception(request: Request, exception_id: str) -> dict:
     exc.revoked_at = datetime.now(timezone.utc).isoformat()
     store.put(exc, tenant_id=tenant_id)
     log_action("exception_revoke", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
-    return cast("dict[str, Any]", exc.to_dict())
+    return cast("dict[str, Any]", exception_response(exc))
 
 
 @router.delete("/exceptions/{exception_id}", tags=["enterprise"], status_code=204)
@@ -2668,7 +2679,7 @@ def mark_false_positive(request: Request, req: FalsePositiveRequest) -> dict:
         "package": feedback["package"],
         "reason": feedback["reason"],
         "marked_by": feedback["marked_by"],
-        "status": "false_positive",
+        "status": feedback["status"],
         "created_at": feedback["created_at"],
     }
 
@@ -2687,7 +2698,7 @@ def create_finding_feedback(request: Request, req: FindingFeedbackRequest) -> di
         server_name=req.server_name,
         reason=_feedback_reason(req.state, req.reason),
         requested_by=actor,
-        status=ExceptionStatus.ACTIVE,
+        status=ExceptionStatus.PENDING,
         expires_at=req.expires_at,
         tenant_id=tenant_id,
     )
@@ -2751,10 +2762,10 @@ def record_finding_triage(*, tenant_id: str, actor: str, req: FindingTriageReque
             }
         ),
         requested_by=actor,
-        approved_by=req.assignee,
-        status=ExceptionStatus.ACTIVE,
+        approved_by="",
+        status=ExceptionStatus.PENDING,
         expires_at=req.expires_at,
-        approved_at=reviewed_at,
+        approved_at="",
         tenant_id=tenant_id,
     )
     _get_exception_store().put(exc, tenant_id=tenant_id)
@@ -2835,8 +2846,7 @@ def update_finding_triage_decision(request: Request, triage_id: str, req: Findin
             "reviewed_at": reviewed_at,
         }
     )
-    exc.approved_by = assignee
-    exc.approved_at = reviewed_at
+    reset_suppression_request(exc)
     if req.expires_at is not None:
         exc.expires_at = req.expires_at
     store.put(exc, tenant_id=tenant_id)
@@ -2991,7 +3001,7 @@ def export_finding_triage_vex(
         data = _parse_triage_reason(exc.reason)
         if data is None:
             continue
-        if data.get("decision") != "not_affected" or not data.get("justification"):
+        if not suppression_active(exc) or data.get("decision") != "not_affected" or not data.get("justification"):
             continue
         if (
             "assignee" in triage_filters
@@ -3074,7 +3084,8 @@ def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestReque
     # in place rather than accumulating duplicates.
     existing: dict[tuple[str, str], Any] = {}
     for exc in store.list_all(tenant_id=tenant_id):
-        existing[(exc.vuln_id, exc.package_name)] = exc
+        if exc.status == ExceptionStatus.PENDING and not exc.approved_by:
+            existing[(exc.vuln_id, exc.package_name)] = exc
 
     now = datetime.now(timezone.utc).isoformat()
     applied = 0
@@ -3114,15 +3125,13 @@ def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestReque
                     package_name=package,
                     reason=reason,
                     requested_by=actor,
-                    status=ExceptionStatus.ACTIVE,
+                    status=ExceptionStatus.PENDING,
                     tenant_id=tenant_id,
                 )
                 existing[(stmt.vulnerability_id, package)] = exc
             else:
                 exc.reason = reason
-            if stmt.status == VexStatus.NOT_AFFECTED:
-                exc.approved_by = stmt.author or actor
-                exc.approved_at = now
+            reset_suppression_request(exc)
             store.put(exc, tenant_id=tenant_id)
             applied += 1
 
@@ -3157,7 +3166,7 @@ def list_false_positives(request: Request) -> dict:
                 "package": e.package_name,
                 "reason": (_parse_feedback_reason(e.reason) or ("false_positive", e.reason))[1],
                 "marked_by": e.requested_by,
-                "status": "false_positive",
+                "status": "suppressed" if suppression_active(e) else "pending",
                 "created_at": e.created_at,
             }
             for e in fps

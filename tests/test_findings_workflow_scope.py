@@ -136,6 +136,10 @@ def test_openvex_export_filters_by_assignee_and_product() -> None:
             headers=_headers(),
         )
         assert created.status_code == 201, created.text
+        approved = client.put(
+            f"/v1/exceptions/{created.json()['id']}/approve", json={"expires_at": "2099-01-01T00:00:00Z"}, headers=_headers()
+        )
+        assert approved.status_code == 200, approved.text
 
     exported = client.get(
         "/v1/findings/triage/vex?assignee=payments-security&package=payments-lib",

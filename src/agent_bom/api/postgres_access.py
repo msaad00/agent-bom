@@ -365,7 +365,7 @@ class PostgresExceptionStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
-            if not ensure_postgres_schema_version(conn, "exceptions"):
+            if not ensure_postgres_schema_version(conn, "exceptions", version=2):
                 return
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS exceptions (
@@ -381,7 +381,8 @@ class PostgresExceptionStore:
                     expires_at TEXT NOT NULL DEFAULT '',
                     approved_at TEXT NOT NULL DEFAULT '',
                     revoked_at TEXT NOT NULL DEFAULT '',
-                    team_id TEXT NOT NULL DEFAULT 'default'
+                    team_id TEXT NOT NULL DEFAULT 'default',
+                    approval_version INTEGER NOT NULL DEFAULT 0
                 )
             """)
             conn.execute("""
@@ -396,6 +397,7 @@ class PostgresExceptionStore:
                 END
                 $$;
             """)
+            conn.execute("ALTER TABLE exceptions ADD COLUMN IF NOT EXISTS approval_version INTEGER NOT NULL DEFAULT 0")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_status ON exceptions(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_team ON exceptions(team_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_vuln ON exceptions(vuln_id)")
@@ -421,6 +423,7 @@ class PostgresExceptionStore:
             approved_at=row[10],
             revoked_at=row[11],
             tenant_id=row[12],
+            approval_version=row[13],
         )
 
     def put(self, exc: VulnException, *, tenant_id: str) -> None:
@@ -429,8 +432,8 @@ class PostgresExceptionStore:
             cursor = conn.execute(
                 """INSERT INTO exceptions
                    (exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by, status,
-                    created_at, expires_at, approved_at, revoked_at, team_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    created_at, expires_at, approved_at, revoked_at, team_id, approval_version)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (exception_id) DO UPDATE SET
                      vuln_id = EXCLUDED.vuln_id,
                      package_name = EXCLUDED.package_name,
@@ -442,7 +445,8 @@ class PostgresExceptionStore:
                      created_at = EXCLUDED.created_at,
                      expires_at = EXCLUDED.expires_at,
                      approved_at = EXCLUDED.approved_at,
-                     revoked_at = EXCLUDED.revoked_at
+                     revoked_at = EXCLUDED.revoked_at,
+                     approval_version = EXCLUDED.approval_version
                    WHERE exceptions.team_id = EXCLUDED.team_id""",
                 (
                     exc.exception_id,
@@ -458,6 +462,7 @@ class PostgresExceptionStore:
                     exc.approved_at,
                     exc.revoked_at,
                     tenant,
+                    exc.approval_version,
                 ),
             )
             conn.commit()
@@ -469,7 +474,7 @@ class PostgresExceptionStore:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
-                          status, created_at, expires_at, approved_at, revoked_at, team_id
+                          status, created_at, expires_at, approved_at, revoked_at, team_id, approval_version
                    FROM exceptions
                    WHERE exception_id = %s AND team_id = %s""",
                 (exception_id, tenant),
@@ -490,7 +495,7 @@ class PostgresExceptionStore:
         tenant = require_explicit_tenant_id(tenant_id)
         query = """
             SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
-                   status, created_at, expires_at, approved_at, revoked_at, team_id
+                   status, created_at, expires_at, approved_at, revoked_at, team_id, approval_version
             FROM exceptions
             WHERE team_id = %s
         """

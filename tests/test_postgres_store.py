@@ -212,7 +212,7 @@ class MockConnection:
                         rows = [r for r in rows if r[12] == params[0]]
                         if len(params) > 1:
                             rows = [r for r in rows if r[7] == params[1]]
-                cursor.rows = [tuple(r[:13]) for r in rows]
+                cursor.rows = [tuple(r[:14]) for r in rows]
             elif "from gateway_policies" in sql_lower:
                 rows = list(self._store.get("gateway_policies", {}).values())
                 if "where policy_id" in sql_lower and params:
@@ -994,6 +994,10 @@ def test_exception_store_put_get_list_delete(mock_pool):
         vuln_id="CVE-1",
         package_name="requests",
         status=ExceptionStatus.ACTIVE,
+        approval_version=1,
+        approved_by="admin",
+        approved_at="2026-01-01T00:00:00Z",
+        expires_at="2099-01-01T00:00:00Z",
         tenant_id="tenant-alpha",
     )
     store.put(exc, tenant_id=exc.tenant_id)
@@ -1012,6 +1016,7 @@ def test_exception_store_put_get_list_delete(mock_pool):
         exc.approved_at,
         exc.revoked_at,
         exc.tenant_id,
+        exc.approval_version,
     )
 
     loaded = store.get(exc.exception_id, tenant_id=exc.tenant_id)

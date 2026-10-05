@@ -58,8 +58,26 @@ def apply_tenant_suppression_rules(
     """
     summary = {"evaluated": len(blast_radii), "suppressed": 0}
     for br in blast_radii:
+        # Re-evaluate persisted overlays against current approval and expiry.
+        if br.suppressed:
+            br.suppressed = False
+            br.suppression_id = None
+            br.suppression_state = None
+            br.suppression_reason = None
+            if br.unsuppressed_risk_score is not None:
+                br.risk_score = br.unsuppressed_risk_score
+            else:
+                br.calculate_risk_score()
+            br.unsuppressed_risk_score = None
         server_names = [server.name for server in br.affected_servers] or [""]
-        match = _find_matching_exception(store, br.vulnerability.id, br.package.name, server_names, tenant_id)
+        match = next(
+            (
+                entry
+                for identity in (br.package.purl, f"{br.package.name}@{br.package.version}", br.package.name)
+                if identity and (entry := _find_matching_exception(store, br.vulnerability.id, identity, server_names, tenant_id))
+            ),
+            None,
+        )
         if match is None or not is_suppressing_exception(match):
             continue
         state, reason = feedback_state_from_reason(match.reason)

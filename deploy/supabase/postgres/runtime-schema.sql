@@ -547,3 +547,6 @@ INSERT INTO control_plane_schema_versions(component,version,updated_at)
 VALUES ('side_scan_lifecycle',1,now())
 ON CONFLICT(component) DO UPDATE SET
     version=GREATEST(control_plane_schema_versions.version,excluded.version), updated_at=excluded.updated_at;
+
+ALTER TABLE exceptions ADD COLUMN IF NOT EXISTS approval_version INTEGER NOT NULL DEFAULT 0;
+UPDATE control_plane_schema_versions SET version=2,updated_at=now() WHERE component='exceptions' AND version < 2;

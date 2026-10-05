@@ -11,14 +11,16 @@ import { denseVulns } from "./_mocks";
 function QueueHarness({
   vulns,
   showLifecycle = false,
+  pending = false,
 }: {
   vulns: EnrichedVuln[];
   showLifecycle?: boolean;
+  pending?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const [suppressed, setSuppressed] = useState<Set<string>>(new Set(pending && vulns[0] ? [`${vulns[0].id}:${vulns[0].packages[0]}`] : []));
 
   return (
     <FindingsQueueTable
@@ -33,11 +35,11 @@ function QueueHarness({
           setSortDir("desc");
         }
       }}
-      suppressed={suppressed}
-      onMarkFP={(vulnId) =>
+      pendingExceptions={suppressed}
+      onMarkFP={(vulnId, packageName) =>
         setSuppressed((prev) => {
           const next = new Set(prev);
-          next.add(vulnId);
+          next.add(`${vulnId}:${packageName}`);
           return next;
         })
       }
@@ -59,7 +61,7 @@ const meta = {
     sortKey: "severity",
     sortDir: "desc",
     handleSort: () => {},
-    suppressed: new Set<string>(),
+    pendingExceptions: new Set<string>(),
     onMarkFP: () => {},
     selectedId: null,
     onSelect: () => {},
@@ -80,4 +82,8 @@ export const WithLifecycle: Story = {
 
 export const Empty: Story = {
   render: () => <QueueHarness vulns={[]} />,
+};
+
+export const PendingApproval: Story = {
+  render: () => <QueueHarness vulns={denseVulns} pending />,
 };

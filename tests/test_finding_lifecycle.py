@@ -279,18 +279,20 @@ def test_bulk_reconcile_absent_api() -> None:
     # view. It surfaces under ``?status=all`` / ``?status=resolved`` with its
     # resolved_at stamp. (Updated for the P1 fix — the prior assertion encoded
     # the buggy behavior where resolved rows ranked as live.)
-    listed = client.get("/v1/findings", params={"limit": 50}).json()
+    # These fixed historical observations test lifecycle filtering, not the
+    # rolling lookback window. Include retained history regardless of test date.
+    listed = client.get("/v1/findings", params={"limit": 50, "window_days": 0}).json()
     by_id = {item["id"]: item for item in listed["findings"]}
     assert by_id["finding-kept-api"]["status"] == "open"
     assert "finding-dropped-api" not in by_id, "resolved findings must be excluded from the default (open) view"
 
-    all_listed = client.get("/v1/findings", params={"limit": 50, "status": "all"}).json()
+    all_listed = client.get("/v1/findings", params={"limit": 50, "status": "all", "window_days": 0}).json()
     all_by_id = {item["id"]: item for item in all_listed["findings"]}
     assert all_by_id["finding-kept-api"]["status"] == "open"
     assert all_by_id["finding-dropped-api"]["status"] == "resolved"
     assert all_by_id["finding-dropped-api"]["resolved_at"] == TUE
 
-    resolved_listed = client.get("/v1/findings", params={"limit": 50, "status": "resolved"}).json()
+    resolved_listed = client.get("/v1/findings", params={"limit": 50, "status": "resolved", "window_days": 0}).json()
     resolved_ids = {item["id"] for item in resolved_listed["findings"]}
     assert resolved_ids == {"finding-dropped-api"}
 

@@ -425,7 +425,8 @@ def test_check_policy_blocks_arg_pattern():
     }
     allowed, reason = check_policy(policy, "read_file", {"path": "/etc/passwd"})
     assert allowed is False
-    assert "/etc/.*" in reason
+    assert reason == "Runtime policy argument pattern matched"
+    assert "/etc/.*" not in reason
 
 
 def test_check_policy_read_only_blocks_write_tool():
@@ -1037,7 +1038,8 @@ def test_check_policy_allowlist_with_arg_pattern_defense_in_depth():
     # Tool is in allowlist BUT arg matches blocklist pattern
     allowed, reason = check_policy(policy, "read_file", {"path": "/etc/passwd"})
     assert allowed is False
-    assert "/etc/.*" in reason
+    assert reason == "Runtime policy argument pattern matched"
+    assert "/etc/.*" not in reason
 
 
 def test_check_policy_allowlist_warn_does_not_enforce():

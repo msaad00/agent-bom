@@ -100,7 +100,7 @@ def test_evaluate_block_writes_audit_entry() -> None:
     assert entry["agent_name"] == "agent-a"
     assert entry["tool_name"] == "shell.exec"
     assert entry["action_taken"] == "blocked"
-    assert "shell.exec" in entry["reason"]
+    assert entry["reason"] == "Runtime policy tool pattern matched"
     assert entry["arguments_preview"] == {"cmd": "[replay-only]"}
     assert entry["timestamp"]
     assert entry["tenant_id"] == "default"

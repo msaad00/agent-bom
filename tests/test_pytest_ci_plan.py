@@ -367,3 +367,16 @@ def test_inventory_graph_edits_select_backend_support_contract(tmp_path, source)
     expected = tmp_path / "tests/test_neptune_unsupported_501.py"
     _write(expected, 1)
     assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == [expected]
+
+
+@pytest.mark.parametrize(
+    "source", ["src/agent_bom/runtime/policy_validation.py", "src/agent_bom/proxy_policy.py", "src/agent_bom/api/policy_inputs.py"]
+)
+def test_shared_regex_edits_select_policy_enforcement_callers(tmp_path, source):
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in ("test_gateway_invalid_policy.py", "test_api_gateway.py", "test_proxy_policy.py", "test_policy_regex_budget.py")
+    )
+    for path in expected:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

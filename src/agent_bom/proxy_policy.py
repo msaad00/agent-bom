@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import random
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,13 +15,19 @@ from urllib.parse import urlparse
 
 from agent_bom.core.settings import env_str
 from agent_bom.permissions import classify_tool
-from agent_bom.runtime.policy_validation import runtime_policy_error
+from agent_bom.runtime.policy_validation import (
+    POLICY_LIMIT_REASON,
+    POLICY_REGEX_BUDGET,
+    PolicyEvaluationLimitError,
+    bounded_pattern_match,
+    compile_policy_pattern,
+    runtime_policy_error,
+)
 from agent_bom.runtime.risk_conditions import evaluate_risk_conditions
 from agent_bom.runtime.text_normalize import normalize_identifier
 
 logger = logging.getLogger(__name__)
 
-_compiled_patterns: dict[str, re.Pattern] = {}
 _PATH_ARG_KEYS = {
     "path",
     "file",
@@ -65,24 +70,16 @@ _SECRET_PATH_PATTERNS = (
 _NETWORK_KEYWORDS = ("http", "fetch", "web", "request", "url", "curl", "download", "upload", "post")
 
 
-def _safe_compile(pattern: str) -> re.Pattern:
-    if pattern not in _compiled_patterns:
-        _compiled_patterns[pattern] = re.compile(pattern)
-    return _compiled_patterns[pattern]
+# Retained as compatibility exports for proxy integrations.
+_safe_compile = compile_policy_pattern
 
 
-def _safe_regex_match(pattern: str, text: str) -> bool:
-    if len(text) > 10_000:
-        logger.warning("Skipping regex match on oversized input (%d chars)", len(text))
-        return False
-    return _safe_compile(pattern).match(text) is not None
+def _safe_regex_match(pattern: str, text: str, *, deadline: float | None = None) -> bool:
+    return bounded_pattern_match(pattern, text, deadline=deadline)
 
 
-def _safe_regex_search(pattern: str, text: str) -> bool:
-    if len(text) > 10_000:
-        logger.warning("Skipping regex search on oversized input (%d chars)", len(text))
-        return False
-    return _safe_compile(pattern).search(text) is not None
+def _safe_regex_search(pattern: str, text: str, *, deadline: float | None = None) -> bool:
+    return bounded_pattern_match(pattern, text, search=True, deadline=deadline)
 
 
 def _iter_argument_strings(value: object, key_hint: str = "") -> list[tuple[str, str]]:
@@ -262,6 +259,7 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
     allowlist deliberately stays an exact match: normalizing there would turn a
     look-alike into a key for the tool the operator allowed.
     """
+    regex_deadline = time.monotonic() + POLICY_REGEX_BUDGET
     invalid = runtime_policy_error(policy)
     if invalid:
         return False, invalid[0], invalid[1]
@@ -334,13 +332,19 @@ def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[
         if rule_tool and (rule_tool == tool_name or normalize_identifier(str(rule_tool)) == normalized_tool):
             return False, f"Tool '{tool_name}' blocked by rule '{rule_id}'", rule_id
 
-        pattern = rule.get("tool_name_pattern")
-        if pattern and (_safe_regex_match(pattern, tool_name) or _safe_regex_match(pattern, normalized_tool)):
-            return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'", rule_id
+        try:
+            pattern = rule.get("tool_name_pattern")
+            if pattern and (
+                _safe_regex_match(pattern, tool_name, deadline=regex_deadline)
+                or _safe_regex_match(pattern, normalized_tool, deadline=regex_deadline)
+            ):
+                return False, "Runtime policy tool pattern matched", rule_id
 
-        for arg_name, arg_regex in rule.get("arg_pattern", {}).items():
-            if _safe_regex_search(arg_regex, str(arguments.get(arg_name, ""))):
-                return False, f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'", rule_id
+            for arg_name, arg_regex in rule.get("arg_pattern", {}).items():
+                if _safe_regex_search(arg_regex, str(arguments.get(arg_name, "")), deadline=regex_deadline):
+                    return False, "Runtime policy argument pattern matched", rule_id
+        except PolicyEvaluationLimitError:
+            return False, POLICY_LIMIT_REASON, rule_id
 
     return True, "", None
 

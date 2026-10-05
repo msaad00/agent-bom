@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from agent_bom.models import Package, normalize_package_name
+from agent_bom.scan_cache import CACHE_KEY_PREFIX
 
 # ── CLI check key normalization ──────────────────────────────────────────────
 
@@ -108,21 +109,21 @@ class TestPostgresStoreKeyNormalization:
         from agent_bom.api.postgres_store import PostgresScanCache
 
         key = PostgresScanCache._key("pypi", "Django", "3.2.0")
-        assert key == "pypi:django@3.2.0"
+        assert key == CACHE_KEY_PREFIX + "pypi:django@3.2.0"
 
     def test_postgres_key_normalizes_underscore(self):
         """Underscores should become hyphens for PyPI."""
         from agent_bom.api.postgres_store import PostgresScanCache
 
         key = PostgresScanCache._key("pypi", "python_dateutil", "2.8.0")
-        assert key == "pypi:python-dateutil@2.8.0"
+        assert key == CACHE_KEY_PREFIX + "pypi:python-dateutil@2.8.0"
 
     def test_postgres_key_npm_lowercase(self):
         """npm names should be lowercased."""
         from agent_bom.api.postgres_store import PostgresScanCache
 
         key = PostgresScanCache._key("npm", "Express", "4.18.0")
-        assert key == "npm:express@4.18.0"
+        assert key == CACHE_KEY_PREFIX + "npm:express@4.18.0"
 
 
 # ── Cross-boundary consistency ───────────────────────────────────────────────
@@ -155,4 +156,5 @@ class TestCrossBoundaryConsistency:
         key2 = ScanCache._key(ecosystem, name, version)
 
         assert key1 == expected_key
-        assert key2 == expected_key
+        assert key2 == CACHE_KEY_PREFIX + expected_key
+        assert key2 != expected_key  # Legacy entries cannot establish completeness.

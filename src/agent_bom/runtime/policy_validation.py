@@ -41,6 +41,6 @@ def runtime_policy_error(policy: dict) -> tuple[str, str | None] | None:
     for rule in rules:
         if not isinstance(rule, dict):
             return "Runtime policy invalid: rule must be an object", None
-        if rule.get("action", "warn") in ("fail", "block") and not rule_patterns_valid(rule):
+        if not rule_patterns_valid(rule):
             return INVALID_POLICY_REASON, str(rule.get("id", "?"))
     return None

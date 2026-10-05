@@ -94,7 +94,7 @@ def test_secrets_command_exits_zero_when_clean(tmp_path: Path):
     result = CliRunner().invoke(main, ["secrets", str(tmp_path)])
 
     assert result.exit_code == 0
-    assert "No secrets or PII found" in result.output
+    assert "No secrets or PII detected in inspected files" in result.output
 
 
 def test_secrets_command_accepts_offline_flag_as_noop(tmp_path: Path):
@@ -105,7 +105,7 @@ def test_secrets_command_accepts_offline_flag_as_noop(tmp_path: Path):
     result = CliRunner().invoke(main, ["secrets", str(tmp_path), "--offline"])
 
     assert result.exit_code == 0
-    assert "No secrets or PII found" in result.output
+    assert "No secrets or PII detected in inspected files" in result.output
 
 
 def test_secrets_offline_flag_listed_in_help():

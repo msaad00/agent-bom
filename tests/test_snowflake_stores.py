@@ -963,6 +963,8 @@ class TestSnowflakeExceptionStore:
             reason="accepted temporary risk",
             requested_by="alice@example.com",
             approved_by="bob@example.com" if status != "pending" else "",
+            approved_at="2026-01-02T00:00:00Z" if status != "pending" else "",
+            approval_version=1 if status != "pending" else 0,
             status=ExceptionStatus(status),
             created_at="2026-01-01T00:00:00Z",
             expires_at="2099-06-01T00:00:00Z",
@@ -1028,6 +1030,16 @@ class TestSnowflakeExceptionStore:
         result = store.find_matching("CVE-2026-0001", "express", "filesystem", tenant_id="tenant-a")
         assert result is not None
         assert result.exception_id in {"exc-approved", "exc-active"}
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_legacy_approval_history_does_not_suppress(self, mock_connect):
+        legacy = self._make_exception("legacy", tenant_id="tenant-a", status="active")
+        legacy.approval_version = 0
+        cur = _mock_cursor(fetchall_val=[(legacy.tenant_id, json.dumps(legacy.to_dict()))])
+        mock_connect.return_value = _mock_connection(cursor=cur)
+        store = self._make_store()
+        assert store.find_matching("CVE-2026-0001", "express", "filesystem", tenant_id="tenant-a") is None
+        assert store.list_all(tenant_id="tenant-a")[0].approved_by == "bob@example.com"
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_delete_found(self, mock_connect):

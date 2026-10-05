@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from copy import deepcopy
 from typing import Any, cast
@@ -62,7 +63,9 @@ def restore_context_agents(document: dict, fallback: Agent, name: str | None) ->
         servers[ref] = MCPServer(
             name=str(component.get("name") or ref),
             command="sbom",
-            args=[fallback.config_path],
+            # Imported commands are never trusted or executed. Hash the exact,
+            # case-sensitive component reference before command normalization.
+            args=[fallback.config_path, "component:" + hashlib.sha256(ref.encode()).hexdigest()],
             surface=ServerSurface.SBOM,
             packages=[packages[p] for p in sorted(members)],
             tools=tools,

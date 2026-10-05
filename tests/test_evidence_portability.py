@@ -108,6 +108,20 @@ def test_cyclonedx_import_retains_multiple_server_memberships(tmp_path):
     source.write_text(json.dumps(to_cyclonedx(report)))
     agent, _ = load_sbom_agent(str(source))
     assert {s.name: {p.name for p in s.packages} for s in agent.mcp_servers} == {"tools": {"a"}, "other-tools": {"b"}}
+    assert len({server.stable_id for server in agent.mcp_servers}) == 2
+    exported = to_cyclonedx(AIBOMReport(agents=[agent]))
+    servers = {
+        c["name"]: c
+        for c in exported["components"]
+        if any(p.get("name") == "agent-bom:type" and p.get("value") == "mcp-server" for p in c.get("properties", []))
+    }
+    assert set(servers) == {"tools", "other-tools"}
+    memberships = {
+        name: json.loads(next(p["value"] for p in component["properties"] if p["name"] == "agent-bom:inventory-members"))
+        for name, component in servers.items()
+    }
+    assert memberships["tools"] == ["pkg-" + first.stable_id]
+    assert memberships["other-tools"] == ["pkg-" + second.stable_id]
 
 
 def test_cli_no_scan_preserves_imported_findings_and_unknown_reachability(tmp_path):

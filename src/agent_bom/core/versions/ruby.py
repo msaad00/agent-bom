@@ -9,6 +9,24 @@ _GEM_VERSION_RE = re.compile(r"^\s*(?:[0-9]+(?:\.[0-9a-zA-Z]+)*(?:-[0-9A-Za-z-]+
 
 _GEM_SEGMENT_RE = re.compile(r"[0-9]+|[a-z]+", re.IGNORECASE)
 
+# Artifact architecture/OS is not part of Gem::Version. Only recognize known
+# native platform shapes here; arbitrary suffixes remain prerelease versions.
+_NATIVE_GEM_PLATFORM = re.compile(
+    r"^(?P<version>.+)-(?P<platform>(?:x86_64|x64|x86|i[3-6]86|arm64|aarch64|arm|armv[5-8]l|powerpc|ppc64le|s390x)"
+    r"-(?:linux(?:-(?:gnu|musl)(?:eabihf)?)?|darwin(?:-\d+)?|mingw(?:32|-ucrt)|mswin(?:32|64)(?:_\d+)?))$"
+)
+
+
+def split_gem_artifact_version(version: str, platforms: list[str] | None = None) -> tuple[str, str | None]:
+    """Separate a recognized native artifact platform, preserving prereleases."""
+    for platform in platforms or []:
+        if platform != "ruby" and version.endswith("-" + platform):
+            return version[: -len(platform) - 1], platform
+    match = _NATIVE_GEM_PLATFORM.fullmatch(version)
+    if match and _gem_canonical_segments(match["version"]) is not None:
+        return match["version"], match["platform"]
+    return version, None
+
 
 def _gem_canonical_segments(version: str) -> list[int | str] | None:
     """Return ``Gem::Version#canonical_segments``, or ``None`` if Gem rejects it."""

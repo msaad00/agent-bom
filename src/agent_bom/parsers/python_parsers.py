@@ -10,13 +10,13 @@ import json
 import logging
 import re
 import subprocess
-from collections import Counter, defaultdict, deque
 from pathlib import Path
 
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import Package
-from agent_bom.package_utils import normalize_package_name
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.parsers.uv_lock import parse_uv_lock as parse_uv_lock
+from agent_bom.parsers.uv_workspace import uv_lock_owner
 from agent_bom.version_utils import strip_pip_extras
 
 logger = logging.getLogger(__name__)
@@ -172,109 +172,6 @@ def parse_poetry_lock(directory: Path) -> list[Package]:
     return packages
 
 
-def parse_uv_lock(directory: Path) -> list[Package]:
-    """Parse packages from uv.lock (TOML format, uv package manager).
-
-    uv.lock uses a ``[[package]]`` array similar to poetry.lock. Direct
-    dependencies come from ``pyproject.toml``; resolved ``dependencies``
-    entries preserve the runtime parent graph so downstream reachability can
-    follow a proven lockfile edge without treating every declaration as live.
-    """
-    lock_file = directory / "uv.lock"
-    if not lock_file.exists():
-        return []
-
-    packages: list[Package] = []
-    try:
-        try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib  # type: ignore[no-redef,no-reattr,import-not-found]
-            except ImportError:
-                import toml as tomllib  # type: ignore[no-redef,no-reattr,import-not-found,import-untyped]
-
-        data = tomllib.loads(read_text_limited(lock_file))
-        # Collect direct dep names from pyproject.toml if available
-        direct_names: set[str] = set()
-        pyproject = directory / "pyproject.toml"
-        if pyproject.exists():
-            try:
-                proj = tomllib.loads(read_text_limited(pyproject))
-                for dep_str in proj.get("project", {}).get("dependencies", []):
-                    m = re.match(r"^([a-zA-Z0-9_.-]+)", dep_str)
-                    if m:
-                        direct_names.add(normalize_package_name(m.group(1), "pypi"))
-            except (OSError, tomllib.TOMLDecodeError, KeyError) as exc:
-                logger.debug("Could not parse pyproject.toml for direct deps: %s", exc)
-
-        package_rows = [pkg for pkg in data.get("package", []) if isinstance(pkg, dict)]
-        names = [normalize_package_name(str(pkg.get("name", "")), "pypi") for pkg in package_rows]
-        name_counts = Counter(names)
-        unique_names = {name for name, count in name_counts.items() if name and count == 1}
-        children: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        for pkg in package_rows:
-            parent = normalize_package_name(str(pkg.get("name", "")), "pypi")
-            if parent not in unique_names:
-                continue
-            for dependency in pkg.get("dependencies", []):
-                if isinstance(dependency, str):
-                    child = normalize_package_name(dependency, "pypi")
-                    scope = "runtime"
-                elif isinstance(dependency, dict):
-                    child = normalize_package_name(str(dependency.get("name", "")), "pypi")
-                    scope = "conditional" if dependency.get("marker") else "runtime"
-                else:
-                    continue
-                if child in unique_names:
-                    children[parent].append((child, scope))
-
-        # Select one deterministic shortest runtime introducing path for the
-        # Package model's single parent field. Ambiguous versions are omitted
-        # above rather than guessed.
-        parent_by_name: dict[str, str] = {}
-        depth_by_name: dict[str, int] = {name: 0 for name in direct_names if name in unique_names}
-        queue = deque(sorted(depth_by_name))
-        while queue:
-            parent = queue.popleft()
-            for child, scope in sorted(children.get(parent, [])):
-                if scope != "runtime" or child in depth_by_name:
-                    continue
-                parent_by_name[child] = parent
-                depth_by_name[child] = depth_by_name[parent] + 1
-                queue.append(child)
-
-        for pkg in package_rows:
-            name = pkg.get("name", "")
-            version = pkg.get("version", "unknown")
-            if not name:
-                continue
-            normalized_name = normalize_package_name(str(name), "pypi")
-            is_direct = normalized_name in direct_names if direct_names else False
-            packages.append(
-                Package(
-                    name=name,
-                    version=version,
-                    ecosystem="pypi",
-                    purl=f"pkg:pypi/{name}@{version}",
-                    is_direct=is_direct,
-                    parent_package=parent_by_name.get(normalized_name),
-                    dependency_depth=depth_by_name.get(normalized_name, 0 if is_direct else 0),
-                    dependency_scope="runtime" if is_direct or normalized_name in parent_by_name else "unknown",
-                    reachability_evidence="lockfile",
-                )
-            )
-    except Exception as exc:
-        logger.debug("Failed to parse uv.lock at %s: %s", lock_file, exc)
-        record_manifest_parse_warning(
-            ecosystem="pypi",
-            path=str(lock_file),
-            detail=f"uv.lock failed to parse ({exc}); Python dependencies were not scanned",
-        )
-
-    return packages
-
-
 def parse_conda_environment(directory: Path) -> list[Package]:
     """Parse packages from conda environment.yml or environment.yaml.
 
@@ -356,10 +253,10 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     if poetry_pkgs:
         return poetry_pkgs
 
-    # uv lock
-    uv_pkgs = parse_uv_lock(directory)
-    if uv_pkgs:
-        return uv_pkgs
+    if uv_lock_owner(directory) is not None:
+        # An existing or required lock is authoritative even when empty or
+        # damaged. Declaration fallback would invent versions from the registry.
+        return parse_uv_lock(directory)
 
     packages = []
 

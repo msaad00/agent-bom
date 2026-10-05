@@ -164,6 +164,7 @@ def _build_packages(run: CheckRun) -> None:
 
     run.ecosystems = _resolve_check_ecosystems(run.name, run.version, run.ecosystem, run.detected_eco)
     run.pkgs = [Package(name=run.name, version=run.version, ecosystem=eco) for eco in run.ecosystems]
+    run.version = run.pkgs[0].version
     run.os_context_complete = True
     for pkg in run.pkgs:
         if pkg.ecosystem in {"deb", "apk", "rpm"}:

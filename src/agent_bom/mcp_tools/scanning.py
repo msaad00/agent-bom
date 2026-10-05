@@ -563,13 +563,12 @@ async def check_impl(
             name, parsed_version = normalize_check_package_spec(package, version)
         except ToolError as exc:
             raise exc
-        version = parsed_version
-
         try:
             eco = _validate_ecosystem(ecosystem)
         except ValueError as exc:
             raise ToolError(sanitize_error(exc)) from exc
-        pkg = Pkg(name=name, version=version, ecosystem=eco)
+        pkg = Pkg(name=name, version=parsed_version, ecosystem=eco)
+        version = pkg.version
         result_warnings: list[str] = []
 
         def service_result(

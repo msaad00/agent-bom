@@ -22,13 +22,12 @@ from agent_bom.canonical_ids import (
     canonical_package_id,
     legacy_agent_id_v1,
 )
+from agent_bom.core.package_artifacts import normalize_artifact_version, package_lookup_names
+from agent_bom.core.packages import normalize_package_name as normalize_package_name
 from agent_bom.core.severity import Severity as Severity
 from agent_bom.evidence.scan_run import ScanRun
 from agent_bom.package_utils import (
     host_matches_domain as _host_matches_domain,
-)
-from agent_bom.package_utils import (
-    normalize_package_name,
 )
 from agent_bom.package_utils import parse_debian_source_name as parse_debian_source_name  # noqa: F401
 from agent_bom.package_utils import (
@@ -413,6 +412,9 @@ class Package:
     occurrences: list[PackageOccurrence] = field(default_factory=list)  # Layer/file provenance for concrete package observations
     discovery_provenance: Optional[dict[str, Any]] = None  # Sanitized discovery provenance contract for this package asset
 
+    def __post_init__(self) -> None:
+        normalize_artifact_version(self)
+
     @property
     def stable_id(self) -> str:
         """Deterministic ID for this package instance.
@@ -430,31 +432,7 @@ class Package:
     @property
     def lookup_names(self) -> list[str]:
         """Candidate package names for vulnerability matching."""
-        names: list[str] = []
-
-        def add_name(candidate: str | None) -> None:
-            candidate = (candidate or "").strip()
-            if not candidate:
-                return
-            norm_candidate = normalize_package_name(candidate, self.ecosystem)
-            if all(normalize_package_name(existing, self.ecosystem) != norm_candidate for existing in names):
-                names.append(candidate)
-
-        add_name(self.name)
-        if self.ecosystem.lower() == "maven" and self.purl:
-            try:
-                from packageurl import PackageURL
-
-                parsed = PackageURL.from_string(self.purl)
-            except Exception:
-                parsed = None
-            if parsed is not None and (parsed.type or "").lower() == "maven" and parsed.namespace and parsed.name:
-                add_name(f"{parsed.namespace}:{parsed.name}")
-        if self.source_package:
-            source_name = self.source_package.strip()
-            if source_name and normalize_package_name(source_name, self.ecosystem) != normalize_package_name(self.name, self.ecosystem):
-                add_name(source_name)
-        return names
+        return package_lookup_names(self)
 
     @property
     def has_vulnerabilities(self) -> bool:

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-def parse_identity_timestamp(raw: Any) -> datetime | None:
+def parse_identity_timestamp(raw: Any, *, require_timezone: bool = False) -> datetime | None:
     if not isinstance(raw, str):
         return None
     text = raw.strip()
@@ -20,5 +20,7 @@ def parse_identity_timestamp(raw: Any) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
+        if require_timezone:
+            return None
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed

@@ -1724,9 +1724,9 @@ export const api = {
   },
 
 
-  // ── Exceptions (FP suppression) ──
-  createException: (body: { vulnerability_id: string; package_name: string; reason: string }) =>
-    post<{ id: string; status: string }>("/v1/exceptions", body),
+  // ── Exception requests (separate admin approval required) ──
+  createException: (body: { vuln_id: string; package_name: string; reason: string }) =>
+    post<{ exception_id: string; status: string }>("/v1/exceptions", body),
 
   // ── ITSM ticketing (connect-once) ──
   // A connection is created once in the Connections hub; every action below runs

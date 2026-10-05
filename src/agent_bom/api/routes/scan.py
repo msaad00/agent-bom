@@ -53,6 +53,7 @@ from agent_bom.api import job_status_count_cache
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.finding_reachability import project_persisted_graph_reachability
+from agent_bom.api.finding_suppression import project_current_suppressions
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
@@ -830,10 +831,7 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
     package = item.get("package") or item.get("package_name") or ""
     vex_status = item.get("vex_status")
     risk_score = item.get("risk_score", item.get("blast_score", 0))
-    if "vex_suppressed" in item:
-        vex_suppressed = bool(item.get("vex_suppressed"))
-    else:
-        vex_suppressed = risk_score == 0.0 and vex_status in {"not_affected", "fixed"}
+    vex_suppressed = False  # Historical or uploaded VEX assertions cannot authorize suppression.
     canonical_id = item.get("canonical_id") or item.get("finding_id")
     row = {
         "id": canonical_id or f"{vulnerability_id}:{package}",
@@ -1208,7 +1206,7 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             )
             if assignee:
                 row["owner"] = assignee
-    return findings
+    return project_current_suppressions(findings, tenant_id)
 
 
 def _inventory_packages_from_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3830,9 +3828,9 @@ def _list_findings_impl(
             )
 
     # Internal aggregate callers may defer the expensive default-deny
-    # projection until after they reduce thousands of rows to one response
-    # page. Public callers always retain the safe default.
-    page = _redact_finding_page(page_rows) if redact_page else page_rows
+    # projection until after reducing to one page; public callers keep the safe default.
+    page = project_current_suppressions(page_rows, tenant_id)
+    page = _redact_finding_page(page) if redact_page else page
     envelope = finding_list_envelope(
         findings=page,
         total=total,

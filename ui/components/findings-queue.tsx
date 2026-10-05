@@ -121,7 +121,7 @@ export function FindingsQueueTable({
   sortKey,
   sortDir,
   handleSort,
-  suppressed,
+  pendingExceptions,
   onMarkFP,
   selectedId,
   onSelect,
@@ -132,7 +132,7 @@ export function FindingsQueueTable({
   sortKey: SortKey;
   sortDir: "asc" | "desc";
   handleSort: (f: SortKey) => void;
-  suppressed: Set<string>;
+  pendingExceptions: Set<string>;
   onMarkFP: (vulnId: string, packageName: string) => void;
   selectedId: string | null;
   onSelect: (vulnId: string | null) => void;
@@ -177,7 +177,7 @@ export function FindingsQueueTable({
               columns={columns}
               triage={triageForFinding(vuln, triageByKey)}
               selected={selectedId === rowKey || selectedId === vuln.id}
-              suppressed={suppressed.has(vuln.id)}
+              pendingExceptions={pendingExceptions.has(`${vuln.id}:${vuln.packages[0] ?? ""}`)}
               onSelect={() => onSelect(rowKey)}
               onMarkFP={() => onMarkFP(vuln.id, vuln.packages[0] ?? "")}
               canMarkFalsePositive={canManageExceptions}
@@ -228,7 +228,7 @@ export function FindingsQueueTable({
                   />
                   <EngineeringCells
                     vuln={v} triage={triage} columns={columns}
-                    suppressed={suppressed.has(v.id)} onSelect={() => onSelect(rowKey)}
+                    pendingExceptions={pendingExceptions.has(`${v.id}:${v.packages[0] ?? ""}`)} onSelect={() => onSelect(rowKey)}
                     onMarkFP={() => onMarkFP(v.id, v.packages[0] ?? "")}
                     canMarkFalsePositive={canManageExceptions}
                   />
@@ -282,7 +282,7 @@ function MobileFindingCard({
   columns,
   triage,
   selected,
-  suppressed,
+  pendingExceptions,
   onSelect,
   onMarkFP,
   canMarkFalsePositive,
@@ -293,7 +293,7 @@ function MobileFindingCard({
   columns: FindingColumnKey[];
   triage: FindingTriageItem | undefined;
   selected: boolean;
-  suppressed: boolean;
+  pendingExceptions: boolean;
   onSelect: () => void;
   onMarkFP: () => void;
   canMarkFalsePositive: boolean;
@@ -367,9 +367,9 @@ function MobileFindingCard({
           Investigate
         </button>
         {
-          suppressed ? (
+          pendingExceptions ? (
             <span className="rounded border border-outline bg-surface-elevated px-2 py-1 text-xs text-ink-secondary">
-              Suppressed
+              Approval pending
             </span>
           ) : (
             <button
@@ -379,7 +379,7 @@ function MobileFindingCard({
               title={!canMarkFalsePositive ? "Contributor role required to mark false positives" : undefined}
               className="rounded-md border border-outline px-2.5 py-1.5 text-xs text-ink-secondary"
             >
-              Mark false positive
+              Request false-positive review
             </button>
           )
         }
@@ -552,7 +552,7 @@ function EngineeringCells({
   vuln,
   columns,
   triage,
-  suppressed,
+  pendingExceptions,
   onSelect,
   onMarkFP,
   canMarkFalsePositive,
@@ -560,7 +560,7 @@ function EngineeringCells({
   vuln: EnrichedVuln;
   columns: FindingColumnKey[];
   triage: FindingTriageItem | undefined;
-  suppressed: boolean;
+  pendingExceptions: boolean;
   onSelect: () => void;
   onMarkFP: () => void;
   canMarkFalsePositive: boolean;
@@ -654,11 +654,6 @@ function EngineeringCells({
       </td>),
     observed: (<td className="px-3 py-3 text-xs text-ink-secondary"><ObservedEvidence vuln={vuln} /></td>),
     action: (<td className="px-3 py-3">
-        {suppressed ? (
-          <span className="text-xs font-medium px-2 py-0.5 rounded border bg-surface-elevated border-outline text-ink-secondary">
-            Suppressed
-          </span>
-        ) : (
           <div className="flex flex-col items-start gap-1">
             <button
               type="button"
@@ -670,20 +665,25 @@ function EngineeringCells({
             >
               Investigate
             </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onMarkFP();
-              }}
-              disabled={!canMarkFalsePositive}
-              title={!canMarkFalsePositive ? "Contributor role required to mark false positives" : undefined}
-              className="px-1 text-[11px] text-ink-tertiary hover:text-ink-secondary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Mark false positive
-            </button>
+            {pendingExceptions ? (
+              <span className="inline-block rounded border border-outline bg-surface-elevated px-2 py-1 text-xs text-ink-secondary">
+                Approval pending
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onMarkFP();
+                }}
+                disabled={!canMarkFalsePositive}
+                title={!canMarkFalsePositive ? "Contributor role required to request exceptions" : undefined}
+                className="px-1 text-[11px] text-ink-tertiary hover:text-ink-secondary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Request false-positive review
+              </button>
+            )}
           </div>
-        )}
       </td>),
     detection: (<td className="px-3 py-3 text-xs text-ink-secondary"><DetectionEvidence vuln={vuln} /></td>),
     priority: (<td className="px-3 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(vuln.severity)}`}>{vuln.severity}</span></td>),

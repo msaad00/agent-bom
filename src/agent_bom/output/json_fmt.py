@@ -920,7 +920,7 @@ def _blast_radius_json_entry(
         "nvd_status": br.vulnerability.nvd_status,
         "vex_status": br.vulnerability.vex_status,
         "vex_justification": br.vulnerability.vex_justification,
-        "vex_suppressed": br.risk_score == 0.0 and br.vulnerability.vex_status in {"not_affected", "fixed"},
+        "vex_suppressed": False,  # VEX assertions are not authenticated suppression approvals.
         "suppressed": getattr(br, "suppressed", False),
         "suppression_id": getattr(br, "suppression_id", None),
         "suppression_state": getattr(br, "suppression_state", None),

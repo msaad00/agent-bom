@@ -55,7 +55,7 @@ def test_findings_triage_not_affected_requires_justification(isolated_store, mon
     assert isolated_store.list_all(tenant_id="tenant-a") == []
 
 
-def test_findings_triage_not_affected_with_justification_is_vex_eligible(isolated_store, monkeypatch) -> None:
+def test_findings_triage_not_affected_with_justification_requires_approval(isolated_store, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-a")
     result = _run(
         vulnerability_id="CVE-2024-9",
@@ -63,7 +63,8 @@ def test_findings_triage_not_affected_with_justification_is_vex_eligible(isolate
         justification="vulnerable_code_not_present",
     )
     assert result["decision"] == "not_affected"
-    assert result["vex_eligible"] is True
+    assert result["vex_eligible"] is False
+    assert result["approval_required"] is True
     assert result["queue_state"] == "decided"
 
 

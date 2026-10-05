@@ -341,7 +341,7 @@ function FindingsPage() {
   });
   const [appliedWindow, setAppliedWindow] = useState<ReadWindow | null>(null);
   const [search, setSearch] = useState(paramQuery ?? paramCve ?? paramAgent ?? "");
-  const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const [pendingExceptions, setPendingExceptions] = useState<Set<string>>(new Set());
   const [triageRows, setTriageRows] = useState<FindingTriageItem[]>([]);
   const [triageError, setTriageError] = useState("");
   const [triageBusyKey, setTriageBusyKey] = useState<string | null>(null);
@@ -512,16 +512,19 @@ function FindingsPage() {
     router,
   ]);
 
+  const [exceptionError, setExceptionError] = useState("");
+
   const handleMarkFP = useCallback(async (vulnId: string, packageName: string) => {
+    setExceptionError("");
     try {
       await api.createException({
-        vulnerability_id: vulnId,
+        vuln_id: vulnId,
         package_name: packageName,
         reason: "false_positive",
       });
-      setSuppressed((prev) => new Set(prev).add(vulnId));
+      setPendingExceptions((prev) => new Set(prev).add(`${vulnId}:${packageName}`));
     } catch {
-      // silently fail — button stays visible for retry
+      setExceptionError("Could not submit the exception request. The finding remains active; retry when the service is available.");
     }
   }, []);
 
@@ -848,6 +851,7 @@ function FindingsPage() {
 
   return (
     <div className="space-y-6">
+      {exceptionError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{exceptionError}</p>}
       <PageLaneHeader
         lane="command"
         title="Findings"
@@ -1195,7 +1199,7 @@ function FindingsPage() {
             sortKey={sortKey}
             sortDir={sortDir}
             handleSort={handleSort}
-            suppressed={suppressed}
+            pendingExceptions={pendingExceptions}
             onMarkFP={handleMarkFP}
             selectedId={selectedId}
             onSelect={setSelectedId}

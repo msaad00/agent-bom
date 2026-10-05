@@ -278,12 +278,23 @@ describe("FindingsPage", () => {
     );
   });
 
+  it("keeps findings visible while a false-positive request awaits approval", async () => {
+    apiMock.createException.mockResolvedValue({ exception_id: "exc-pending", status: "pending" });
+    render(<FindingsPage />);
+    await screen.findByText("CVE-2026-1234");
+    fireEvent.click(screen.getByRole("button", { name: "Request false-positive review" }));
+    expect(await screen.findByText("Approval pending")).toBeInTheDocument();
+    expect(screen.getByText("CVE-2026-1234")).toBeInTheDocument();
+    expect(apiMock.createException).toHaveBeenCalledWith(expect.objectContaining({ vuln_id: "CVE-2026-1234" }));
+    expect(screen.queryByText("Suppressed")).not.toBeInTheDocument();
+  });
+
   it("renders exception and triage writes disabled for a viewer", async () => {
     authState.canManageExceptions = false;
     render(<FindingsPage />);
 
     expect(await screen.findByText("CVE-2026-1234")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mark false positive" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Request false-positive review" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Open details for CVE-2026-1234" }));
     const drawer = await screen.findByRole("dialog", { name: "Finding details for CVE-2026-1234" });
     fireEvent.click(within(drawer).getByRole("tab", { name: "Triage" }));

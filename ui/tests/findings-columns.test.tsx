@@ -9,7 +9,7 @@ const row: EnrichedVuln = {
   affected_servers: [], exposed_credentials: [], reachable_tools: [], references: [], remediation_items: [],
   fixed_version: "2.0", lifecycle_status: "resolved", last_observed: "2026-09-01T00:00:00Z",
 };
-function mount() { return render(<FindingsQueueTable vulns={[row]} sortKey="severity" sortDir="desc" handleSort={vi.fn()} suppressed={new Set()} onMarkFP={vi.fn()} selectedId={null} onSelect={vi.fn()} />); }
+function mount() { return render(<FindingsQueueTable vulns={[row]} sortKey="severity" sortDir="desc" handleSort={vi.fn()} pendingExceptions={new Set()} onMarkFP={vi.fn()} selectedId={null} onSelect={vi.fn()} />); }
 beforeEach(() => { localStorage.clear(); });
 it("groups factual detection, optional dates, and unverified remediation without a pretend Finding sort", () => {
   mount();

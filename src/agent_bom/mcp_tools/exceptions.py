@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 
+from agent_bom.api.suppression_approval import ApprovalPersistenceError, exception_response, persist_approval
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
 
@@ -26,7 +27,7 @@ async def list_exceptions_impl(
             {
                 "schema_version": "v1",
                 "tenant_id": resolved_tenant,
-                "exceptions": [row.to_dict() for row in bounded],
+                "exceptions": [exception_response(row) for row in bounded],
                 "total": len(rows),
                 "limit": max(1, min(limit, 500)),
                 "truncated": len(rows) > len(bounded),
@@ -87,20 +88,19 @@ async def request_exception_impl(
         vuln_id=vuln_id,
         package=exception.package_name,
     )
-    return _truncate_response(json.dumps(exception.to_dict(), indent=2))
+    return _truncate_response(json.dumps(exception_response(exception), indent=2))
 
 
 async def approve_exception_impl(
     *,
     exception_id: str = "",
     tenant_id: str = "default",
+    expires_at: str = "",
     _truncate_response,
     _authenticated_actor: str = "",
     **_audit: str,
 ) -> str:
     """Activate one pending exception through the canonical lifecycle store."""
-    from agent_bom.api.audit_log import log_action
-    from agent_bom.api.exception_store import ExceptionStatus
     from agent_bom.api.stores import _get_exception_store
 
     clean_id = exception_id.strip()
@@ -111,24 +111,12 @@ async def approve_exception_impl(
     exception = store.get(clean_id, tenant_id=resolved_tenant)
     if exception is None:
         return json.dumps({"status": "not_found", "error": "exception not found"})
-    if exception.status != ExceptionStatus.PENDING:
-        return json.dumps(
-            {
-                "status": "conflict",
-                "error": f"cannot approve exception in {exception.status.value} state",
-                "exception": exception.to_dict(),
-            }
-        )
-
-    actor = (_authenticated_actor or "mcp-operator").strip()
-    exception.status = ExceptionStatus.ACTIVE
-    exception.approved_by = actor
-    exception.approved_at = datetime.now(timezone.utc).isoformat()
-    store.put(exception, tenant_id=resolved_tenant)
-    log_action(
-        "exception_approve",
-        actor=actor,
-        resource=f"exception/{clean_id}",
-        tenant_id=resolved_tenant,
-    )
-    return _truncate_response(json.dumps(exception.to_dict(), indent=2))
+    if expires_at:
+        exception.expires_at = expires_at
+    try:
+        persist_approval(exception, store, actor=_authenticated_actor, tenant_id=resolved_tenant)
+    except ValueError as error:
+        return json.dumps({"status": "rejected", "error": str(error)})
+    except ApprovalPersistenceError:
+        return json.dumps({"status": "unavailable", "error": "Suppression approval persistence unavailable"})
+    return _truncate_response(json.dumps(exception_response(exception), indent=2))

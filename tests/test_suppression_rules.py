@@ -33,6 +33,10 @@ def test_tenant_suppression_marks_finding_without_deleting_evidence():
             reason="[finding_feedback:false_positive] scanner mismatch",
             requested_by="analyst",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -60,6 +64,10 @@ def test_tenant_suppression_does_not_cross_tenants():
             server_name="*",
             reason="[finding_feedback:accepted_risk] beta only",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             tenant_id="tenant-b",
         ),
         tenant_id="tenant-b",
@@ -84,6 +92,10 @@ def test_suppression_metadata_is_exported_in_json_report():
             server_name="github",
             reason="[finding_feedback:not_affected] not deployed",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -109,6 +121,10 @@ def test_needs_review_feedback_does_not_suppress_actionability():
             server_name="github",
             reason="[finding_feedback:needs_review] low confidence runtime-only match",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -138,6 +154,10 @@ def test_approved_exception_has_one_suppression_contract_across_six_surfaces():
             server_name="github",
             reason="[finding_feedback:accepted_risk] approved until upgrade window",
             status=ExceptionStatus.APPROVED,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
+            expires_at="2099-01-01T00:00:00Z",
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -179,3 +199,17 @@ def test_approved_exception_has_one_suppression_contract_across_six_surfaces():
         )
         == 0
     )
+
+
+def test_expired_overlay_is_removed_when_reapplying_current_approvals():
+    br = _blast_radius()
+    br.suppressed = True
+    br.suppression_id = "historical"
+    br.suppression_reason = "old approval"
+    br.unsuppressed_risk_score = br.risk_score
+    br.risk_score = 0.0
+    apply_tenant_suppression_rules([br], InMemoryExceptionStore(), tenant_id="tenant-a")
+    assert not br.suppressed
+    assert br.suppression_id is None
+    assert br.risk_score == 8.4
+    assert br.is_actionable

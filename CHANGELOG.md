@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Require separate authenticated admin approval, exact finding/package scope and a future timezone-aware expiry for suppression. Feedback, triage, MCP and imported VEX requests remain pending; legacy automatic approvals require reapproval. Retain VEX assertions as evidence without silently changing risk or exit gates.
+
 - Report configured filesystem exclusions separately from collection failures. Git metadata, ignored paths and duplicate worktrees remain visible scope receipts without forcing partial scans or secret-scan error exits; unreadable paths, symlinks and exhausted budgets remain incomplete.
 - Restrict new-tenant invitations to platform-operator admins whose scope ceiling permits the delegated key. Require attributable authorization receipts in both tenants before provisioning; reject customer-admin recursion and scoped-key escalation without creating tenants or keys.
 

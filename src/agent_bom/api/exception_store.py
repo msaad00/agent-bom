@@ -21,7 +21,9 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.api.suppression_approval import suppression_active
 from agent_bom.core.tenancy import require_explicit_tenant_id
+from agent_bom.core.timestamps import parse_identity_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ class VulnException:
     approved_at: str = ""
     revoked_at: str = ""
     tenant_id: str = "default"
+    approval_version: int = 0
 
     def __post_init__(self) -> None:
         if not self.exception_id:
@@ -60,21 +63,17 @@ class VulnException:
             self.created_at = datetime.now(timezone.utc).isoformat()
 
     def is_expired(self) -> bool:
-        if not self.expires_at:
-            return False
-        now = datetime.now(timezone.utc).isoformat()
-        return now > self.expires_at
+        expiry = parse_identity_timestamp(self.expires_at, require_timezone=True)
+        return expiry is None or expiry <= datetime.now(timezone.utc)
 
     def matches(self, vuln_id: str, package_name: str, server_name: str = "") -> bool:
-        """Check if this exception covers a specific finding."""
-        if self.status not in (ExceptionStatus.APPROVED, ExceptionStatus.ACTIVE):
-            return False
-        if self.is_expired():
-            return False
-        vuln_match = self.vuln_id == "*" or self.vuln_id == vuln_id
-        pkg_match = self.package_name == "*" or self.package_name == package_name
-        srv_match = self.server_name == "*" or self.server_name == server_name or not self.server_name
-        return vuln_match and pkg_match and srv_match
+        """Only explicitly approved, bounded exceptions affect a finding."""
+        return (
+            suppression_active(self)
+            and self.vuln_id == vuln_id
+            and self.package_name == package_name
+            and (self.server_name in {"", "*", server_name})
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,6 +90,7 @@ class VulnException:
             "approved_at": self.approved_at,
             "revoked_at": self.revoked_at,
             "tenant_id": self.tenant_id,
+            "approval_version": self.approval_version,
         }
 
 
@@ -181,7 +181,7 @@ class SQLiteExceptionStore:
         return conn
 
     def _init_db(self) -> None:
-        ensure_sqlite_schema_version(self._conn, "exceptions")
+        ensure_sqlite_schema_version(self._conn, "exceptions", version=2)
         self._conn.execute("""CREATE TABLE IF NOT EXISTS exceptions (
             exception_id TEXT PRIMARY KEY,
             vuln_id TEXT NOT NULL,
@@ -197,6 +197,8 @@ class SQLiteExceptionStore:
             revoked_at TEXT NOT NULL DEFAULT '',
             tenant_id TEXT NOT NULL DEFAULT 'default'
         )""")
+        if "approval_version" not in {row[1] for row in self._conn.execute("PRAGMA table_info(exceptions)")}:
+            self._conn.execute("ALTER TABLE exceptions ADD COLUMN approval_version INTEGER NOT NULL DEFAULT 0")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_status ON exceptions(status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_tenant ON exceptions(tenant_id)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_vuln ON exceptions(vuln_id)")
@@ -209,12 +211,13 @@ class SQLiteExceptionStore:
         tenant = exception_write_tenant(exc, tenant_id)
         cursor = self._conn.execute(
             "INSERT INTO exceptions (exception_id, vuln_id, package_name, server_name, reason, "
-            "requested_by, approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "requested_by, approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (exception_id) DO UPDATE SET vuln_id=excluded.vuln_id, package_name=excluded.package_name, "
             "server_name=excluded.server_name, reason=excluded.reason, requested_by=excluded.requested_by, "
             "approved_by=excluded.approved_by, status=excluded.status, created_at=excluded.created_at, "
-            "expires_at=excluded.expires_at, approved_at=excluded.approved_at, revoked_at=excluded.revoked_at "
+            "expires_at=excluded.expires_at, approved_at=excluded.approved_at, revoked_at=excluded.revoked_at, "
+            "approval_version=excluded.approval_version "
             "WHERE exceptions.tenant_id=excluded.tenant_id",
             (
                 exc.exception_id,
@@ -230,6 +233,7 @@ class SQLiteExceptionStore:
                 exc.approved_at,
                 exc.revoked_at,
                 tenant,
+                exc.approval_version,
             ),
         )
         self._conn.commit()
@@ -240,7 +244,7 @@ class SQLiteExceptionStore:
         tenant = require_explicit_tenant_id(tenant_id)
         row = self._conn.execute(
             "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
-            "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
+            "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version "
             "FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
             (exception_id, tenant),
         ).fetchone()
@@ -261,6 +265,7 @@ class SQLiteExceptionStore:
                 approved_at=row[10],
                 revoked_at=row[11],
                 tenant_id=row[12],
+                approval_version=row[13],
             ),
             tenant,
         )
@@ -284,7 +289,7 @@ class SQLiteExceptionStore:
         where = " AND ".join(clauses)
         rows = self._conn.execute(
             f"SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "  # nosec B608 — clauses are static strings, values are parameterized
-            f"approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
+            f"approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version "
             f"FROM exceptions WHERE {where} ORDER BY created_at DESC",
             params,
         ).fetchall()
@@ -304,6 +309,7 @@ class SQLiteExceptionStore:
                     approved_at=r[10],
                     revoked_at=r[11],
                     tenant_id=r[12],
+                    approval_version=r[13],
                 ),
                 tenant,
             )

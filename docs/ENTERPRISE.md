@@ -188,3 +188,40 @@ deep where you need to.
 - `docs/SECURITY_ARCHITECTURE.md`
 - `docs/THREAT_MODEL.md`
 - `docs/adr/005-no-rbac-custom-auth.md`
+
+
+### Suppression approval and upgrade behavior
+
+Create an exception with `POST /v1/exceptions` (fields `vuln_id`,
+`package_name`, `reason`, and optionally `expires_at`). The returned
+`exception_id` identifies a pending request: findings remain actionable.
+False-positive feedback, accepted-risk feedback, triage and VEX imports follow
+this same approval boundary. Investigation notes need no approval.
+
+An authenticated admin must separately call
+`PUT /v1/exceptions/{exception_id}/approve`, optionally supplying
+`{"expires_at":"2099-01-01T00:00:00Z"}` as an example (choose the shortest
+appropriate real expiry). Approval requires an exact non-wildcard vulnerability
+and package plus a future ISO-8601 timestamp with a timezone. The equivalent MCP
+`approve_exception` tool uses the same validation and authenticated admin boundary.
+Review `suppression_active` and `approval_required` on exception responses;
+historical `status` alone does not establish current suppression authority.
+
+Approval fails closed if its required authorization audit receipt cannot be
+written. The receipt records an authorized attempt; a separate backend write
+can still fail, so it is not proof of an atomic cross-store commit. The stored
+exception is the activation record. Expired or malformed approvals never hide
+findings. Original scan receipts remain historical evidence; current finding
+reads re-evaluate stored suppression flags against current tenant approvals.
+
+On upgrade, SQLite adds an approval-generation column automatically. Postgres
+operators must run the documented Alembic migration to head before starting the
+new server. Existing rows remain in history but require explicit reapproval;
+there is no automatic conversion of old active entries. Preserve a database
+backup for rollback; downgrading this security boundary would restore older,
+less restrictive suppression behavior.
+
+Local `--vex` imports annotate vulnerability assertions but do not authorize
+suppression or reduce CI severity gates. Import into the control plane, review
+an exact request, and approve it with an expiry before excluding that finding
+from actionable posture. VEX exports contain only currently approved decisions.

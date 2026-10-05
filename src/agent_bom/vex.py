@@ -564,27 +564,28 @@ def generate_vex(report: "AIBOMReport", auto_triage: bool = False) -> VexDocumen
 # ---------------------------------------------------------------------------
 
 
-_VEX_SUPPRESSED_STATUSES = frozenset({VexStatus.NOT_AFFECTED.value, VexStatus.FIXED.value})
-
-
 def is_vex_suppressed(vuln) -> bool:
-    """Return True if a vulnerability is suppressed by VEX (not_affected or fixed)."""
-    return str(getattr(vuln, "vex_status", "") or "").lower() in _VEX_SUPPRESSED_STATUSES
+    """VEX assertions alone carry no tenant approval authority.
+
+    Kept for callers of the historical helper; only the separately approved
+    exception overlay on a finding can suppress actionability.
+    """
+    return False
 
 
 def active_blast_radii(blast_radii):
-    """Return findings active after VEX and approved-exception overlays."""
+    """Return findings active after approved-exception overlays."""
 
-    return [br for br in blast_radii if not br.suppressed and not is_vex_suppressed(br.vulnerability)]
+    return [br for br in blast_radii if not br.suppressed]
 
 
 def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:
     """Apply VEX statements to a report's vulnerabilities.
 
     Sets vex_status and vex_justification on matching Vulnerability objects.
-    Vulnerabilities with status ``not_affected`` or ``fixed`` are considered
-    suppressed — they remain in the data model for audit but are excluded
-    from counts, exit codes, and severity-gate logic via :func:`is_vex_suppressed`.
+    Imported assertions are evidence annotations, not suppression approval.
+    Counts, exit codes and severity gates retain these findings until an
+    authenticated admin approves an exact, expiring tenant exception.
     Returns count of vulnerabilities updated.
     """
     # Build lookup: vuln_id → statement
@@ -620,9 +621,6 @@ def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:
         matched_stmt = _match_statement(br.vulnerability)
         if matched_stmt:
             _apply_statement(br.vulnerability, matched_stmt)
-        if is_vex_suppressed(br.vulnerability):
-            br.risk_score = 0.0
-            br.transitive_risk_score = 0.0
 
     return count
 

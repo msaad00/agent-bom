@@ -251,23 +251,29 @@ class TestExceptionStore:
             vuln_id="CVE-2025-0001",
             package_name="requests",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
             expires_at=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
         )
         assert exc.matches("CVE-2025-0001", "requests") is True
         assert exc.matches("CVE-2025-0002", "requests") is False
         assert exc.matches("CVE-2025-0001", "flask") is False
 
-    def test_exception_wildcard_vuln(self):
+    def test_exception_wildcard_vuln_never_activates(self):
         from agent_bom.api.exception_store import ExceptionStatus, VulnException
 
         exc = VulnException(
             vuln_id="*",
             package_name="requests",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
             expires_at=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
         )
-        assert exc.matches("CVE-2025-0001", "requests") is True
-        assert exc.matches("CVE-9999-9999", "requests") is True
+        assert exc.matches("CVE-2025-0001", "requests") is False
+        assert exc.matches("CVE-9999-9999", "requests") is False
         assert exc.matches("CVE-2025-0001", "flask") is False
 
     def test_exception_expired(self):
@@ -277,6 +283,9 @@ class TestExceptionStore:
             vuln_id="CVE-2025-0001",
             package_name="requests",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
             expires_at=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
         )
         assert exc.is_expired() is True
@@ -340,6 +349,9 @@ class TestExceptionStore:
             vuln_id="CVE-1",
             package_name="pkg",
             status=ExceptionStatus.ACTIVE,
+            approval_version=1,
+            approved_by="admin",
+            approved_at="2026-01-01T00:00:00Z",
             expires_at=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
         )
         store.put(exc, tenant_id=exc.tenant_id)

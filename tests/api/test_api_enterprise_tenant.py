@@ -33,7 +33,7 @@ from agent_bom.baseline import InMemoryTrendStore, TrendPoint
 
 
 def _request(tenant_id: str, api_key_name: str = "tenant-admin") -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id, api_key_name=api_key_name))
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id, api_key_name=api_key_name, api_key_role="admin"))
 
 
 @pytest.fixture
@@ -222,7 +222,7 @@ async def test_create_exception_uses_authenticated_actor_not_body(isolated_excep
 
 @pytest.mark.asyncio
 async def test_approve_exception_uses_request_actor_and_tenant(isolated_exception_store):
-    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
     isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     approved = enterprise.approve_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
@@ -233,7 +233,7 @@ async def test_approve_exception_uses_request_actor_and_tenant(isolated_exceptio
 
 @pytest.mark.asyncio
 async def test_revoke_exception_uses_authenticated_actor(isolated_exception_store):
-    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
     exc.status = ExceptionStatus.ACTIVE
     isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
@@ -267,7 +267,7 @@ async def test_delete_exception_returns_404_for_cross_tenant(isolated_exception_
 
 @pytest.mark.asyncio
 async def test_delete_exception_audit_logs_actor_and_tenant(isolated_exception_store, isolated_audit_log):
-    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
     isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
@@ -284,7 +284,7 @@ async def test_delete_exception_passes_tenant_to_store(monkeypatch):
         def __init__(self) -> None:
             self.get_calls: list[tuple[str, str | None]] = []
             self.delete_calls: list[tuple[str, str | None]] = []
-            self.exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+            self.exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
 
         def put(self, exc: VulnException) -> None:
             self.exc = exc
@@ -437,7 +437,7 @@ async def test_finding_feedback_accepts_not_affected_and_needs_review(isolated_e
     )
 
     assert not_affected["state"] == "not_affected"
-    assert not_affected["status"] == "suppressed"
+    assert not_affected["status"] == "pending"
     assert needs_review["state"] == "needs_review"
     assert needs_review["status"] == "needs_review"
     stored = isolated_exception_store.get(not_affected["id"], tenant_id="tenant-alpha")
@@ -510,7 +510,8 @@ async def test_finding_triage_queue_is_tenant_scoped_and_records_decisions(isola
     )
     assert decided["queue_state"] == "decided"
     assert decided["decision"] == "not_affected"
-    assert decided["vex_eligible"] is True
+    assert decided["vex_eligible"] is False
+    assert decided["approval_required"] is True
     assert decided["reviewed_at"]
 
     alpha = enterprise.list_finding_triage(_request("tenant-alpha"), decision="not_affected")
@@ -574,6 +575,16 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
         ),
     )
 
+    from agent_bom.api.suppression_approval import SuppressionApprovalRequest
+
+    for pending in isolated_exception_store.list_all(tenant_id="tenant-alpha"):
+        if "not_affected" in pending.reason:
+            enterprise.approve_exception(
+                _request("tenant-alpha"),
+                pending.exception_id,
+                SuppressionApprovalRequest(expires_at="2099-01-01T00:00:00Z"),
+            )
+
     exported = enterprise.export_finding_triage_vex(_request("tenant-alpha"))
 
     assert exported["schema_version"] == "findings.triage.vex.v1"
@@ -628,6 +639,16 @@ async def test_finding_triage_openvex_current_scope_matches_canonical_finding_fi
         }
 
     monkeypatch.setattr(scan_routes, "current_findings_snapshot", _current_snapshot)
+
+    from agent_bom.api.suppression_approval import SuppressionApprovalRequest
+
+    for pending in isolated_exception_store.list_all(tenant_id="tenant-alpha"):
+        if "not_affected" in pending.reason:
+            enterprise.approve_exception(
+                _request("tenant-alpha"),
+                pending.exception_id,
+                SuppressionApprovalRequest(expires_at="2099-01-01T00:00:00Z"),
+            )
 
     exported = enterprise.export_finding_triage_vex(
         _request("tenant-alpha"),
@@ -749,6 +770,16 @@ async def test_ingest_finding_triage_vex_applies_and_roundtrips(isolated_excepti
     assert any(s["reason"] == "status_affected" for s in result["skipped"])
 
     # not_affected round-trips back through the VEX export
+    from agent_bom.api.suppression_approval import SuppressionApprovalRequest
+
+    for pending in isolated_exception_store.list_all(tenant_id="tenant-alpha"):
+        if "not_affected" in pending.reason:
+            enterprise.approve_exception(
+                _request("tenant-alpha"),
+                pending.exception_id,
+                SuppressionApprovalRequest(expires_at="2099-01-01T00:00:00Z"),
+            )
+
     exported = enterprise.export_finding_triage_vex(_request("tenant-alpha"))
     assert exported["count"] == 1
     assert exported["vex"]["statements"][0]["vulnerability"]["name"] == "CVE-2026-7001"

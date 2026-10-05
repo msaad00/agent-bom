@@ -42,6 +42,7 @@ class ScanState:
     report_kwargs: dict[str, Any] = field(default_factory=dict)
     scan_graph_surface: Any = None
     scan_id: Any = None
+    target_scope: str | None = None
     scan_issues: list[Any] = field(default_factory=list)
     scan_outcome: Any = None
     scan_sources: list[str] = field(default_factory=list)

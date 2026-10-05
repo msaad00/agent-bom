@@ -165,6 +165,13 @@ def scan_scope_key(job: _ScanJobLike) -> str:
     are intentionally excluded because they do not identify a different asset
     estate.  Legacy/default jobs fall back to their reported scan-source set.
     """
+    from agent_bom.evidence.push_scope import pushed_scope_key
+
+    raw_result = getattr(job, "result", None)
+    result = raw_result if isinstance(raw_result, dict) else {}
+    push_scope = pushed_scope_key(job, result)
+    if push_scope is not None:
+        return push_scope
     request = getattr(job, "request", None)
     if request is not None and hasattr(request, "model_dump"):
         raw_request = request.model_dump(mode="json")
@@ -193,7 +200,7 @@ def scan_scope_key(job: _ScanJobLike) -> str:
         return "request:" + json.dumps(target, sort_keys=True, separators=(",", ":"), default=str)
 
     raw_result = getattr(job, "result", None)
-    result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
+    result = raw_result if isinstance(raw_result, dict) else {}
     explicit = str(result.get("scan_scope") or result.get("source_scope") or "").strip()
     if explicit:
         return f"explicit:{explicit}"

@@ -697,6 +697,17 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         payload["status"] = lifecycle_status
         payload["lifecycle_status"] = lifecycle_status
 
+    # Approval is recomputed by the current-finding producer before projection.
+    # Retain its structural receipt without exposing free-form exception reasons.
+    suppressed = row.get("suppressed")
+    if isinstance(suppressed, bool):
+        payload["suppressed"] = suppressed
+        payload["suppression_id"] = _safe_optional_text(row.get("suppression_id"), max_len=128) if suppressed else None
+        if suppressed and lifecycle_status in {"", "open", "reopened", "suppressed"}:
+            payload["status"] = "suppressed"
+    if isinstance(row.get("actionable"), bool):
+        payload["actionable"] = row["actionable"]
+
     for key, max_len in (
         ("source", 64),
         ("scan_id", 128),

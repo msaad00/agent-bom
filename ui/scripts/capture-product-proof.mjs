@@ -1952,6 +1952,13 @@ async function installRoutes(page) {
       return false;
     }
   }, (route) => fulfill(route, contextGraph()));
+  await page.route("**/v1/findings/remediation", (route) => fulfill(route, {
+    schema_version: "remediation.current.v1",
+    remediation_plan: scanJob().result.remediation_plan,
+    source_findings: scanJob().result.findings.length,
+    truncated: false,
+    warnings: [],
+  }));
   // `/remediation` reads the dedicated plan endpoint rather than pulling the
   // whole scan job for one field. Without this the page falls through to the
   // live API, which has no such job, and the capture fails on missing content.

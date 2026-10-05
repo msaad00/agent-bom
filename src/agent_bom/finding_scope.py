@@ -543,7 +543,6 @@ _FINDING_SEARCH_FIELDS = (
 )
 _CVSS_VECTOR_RE = re.compile(r"^[A-Za-z0-9.:/_-]{1,256}$")
 _STRUCTURAL_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/@+ -]{0,511}$")
-_LIFECYCLE_STATUSES = frozenset({"open", "reopened", "resolved", "suppressed", "accepted", "not_affected", "fixed"})
 
 
 def _safe_timestamp(value: Any) -> str | None:
@@ -692,21 +691,9 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(ordinal, int) and not isinstance(ordinal, bool) and 0 <= ordinal <= 2**63 - 1:
         payload["bulk_ordinal"] = ordinal
 
-    lifecycle_status = str(row.get("lifecycle_status") or row.get("status") or "").strip().lower()
-    if lifecycle_status in _LIFECYCLE_STATUSES:
-        payload["status"] = lifecycle_status
-        payload["lifecycle_status"] = lifecycle_status
+    from agent_bom.evidence.finding_status import public_finding_status
 
-    # Approval is recomputed by the current-finding producer before projection.
-    # Retain its structural receipt without exposing free-form exception reasons.
-    suppressed = row.get("suppressed")
-    if isinstance(suppressed, bool):
-        payload["suppressed"] = suppressed
-        payload["suppression_id"] = _safe_optional_text(row.get("suppression_id"), max_len=128) if suppressed else None
-        if suppressed and lifecycle_status in {"", "open", "reopened", "suppressed"}:
-            payload["status"] = "suppressed"
-    if isinstance(row.get("actionable"), bool):
-        payload["actionable"] = row["actionable"]
+    payload.update(public_finding_status(row))
 
     for key, max_len in (
         ("source", 64),

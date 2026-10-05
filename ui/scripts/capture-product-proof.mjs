@@ -1955,7 +1955,7 @@ async function installRoutes(page) {
   await page.route("**/v1/findings/remediation", (route) => fulfill(route, {
     schema_version: "remediation.current.v1",
     remediation_plan: scanJob().result.remediation_plan,
-    source_findings: scanJob().result.findings.length,
+    source_findings: scanJob().result.blast_radius.length,
     truncated: false,
     warnings: [],
   }));

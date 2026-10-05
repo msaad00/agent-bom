@@ -1051,18 +1051,8 @@ async def run_resolver_chain(resolvers: Iterable[Callable[[], Awaitable[Resoluti
     return None
 
 
-# Public SPA routes, derived at startup from the dashboard files the server
-# actually ships. A hand-maintained list drifted from ``ui/app/`` and left real
-# pages (``/overview``, ``/inventory``, ``/reports``, …) 401-ing on a cold
-# deep-link while non-existent routes stayed allowlisted. Empty means no
-# dashboard is mounted, so there is no SPA route to make public.
-#
-# BEHAVIOUR CHANGE: on a REST-only deployment (``serve --no-ui`` /
-# ``AGENT_BOM_NO_UI``, or a wheel built without ``ui_dist``) SPA paths now
-# answer 401 rather than 404. Nothing is being withheld — there is no SPA to
-# serve in that mode — and the previous 404 came from the router only after
-# auth had already waved the path through. Deliberate: it keeps the allowlist
-# honest instead of re-introducing a hardcoded fallback that would drift again.
+# Only mounted dashboard files establish public SPA routes. Without a mounted
+# export (including REST-only mode), these paths remain behind authentication.
 _DASHBOARD_SPA_ROUTES: frozenset[str] = frozenset()
 _DASHBOARD_PUBLIC_FILES: frozenset[str] = frozenset()
 

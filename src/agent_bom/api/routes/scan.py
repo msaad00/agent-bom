@@ -2299,18 +2299,9 @@ async def get_current_remediation(request: Request) -> CurrentRemediationRespons
 
 @router.get("/scan/{job_id}/remediation", tags=["scan"])
 async def get_remediation_plan(request: Request, job_id: str) -> dict:
-    """Get the remediation plan for a completed scan, and nothing else.
+    """Return package upgrade actions without transferring the full scan report.
 
-    ``GET /v1/scan/{job_id}`` returns the canonical AI-BOM document — every
-    finding, blast radius, asset and exposure path. The remediation surface read
-    one field off it, so the transfer tracked the size of the estate rather than
-    the size of the plan. Measured on the demo estate (2,068 assets / 2,716
-    findings): an 8.7 MB job payload for a 41 KB plan, 99.5% of it discarded by
-    the caller and all of it parsed by the browser first.
-
-    The plan is inherently bounded — one entry per upgradable package, not per
-    asset — so it is returned whole, with ``total`` stated rather than left for
-    the client to infer.
+    One entry per package, with an explicit total for the client.
     """
     job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:

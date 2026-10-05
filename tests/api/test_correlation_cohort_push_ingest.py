@@ -587,3 +587,21 @@ def test_runtime_stale_or_wrong_child_receipt_never_completes_child(cohort_clien
     child_id = cohort["receipts"][runtime_source]["child_job_id"]
     assert jobs.get(child_id, tenant_id=TENANT).status.value == "pending"
     assert graph_store.load_graph(tenant_id=TENANT, scan_id=child_id).nodes == {}
+
+
+def test_cohort_push_requires_audit_before_any_evidence_write(cohort_client, monkeypatch):
+    from agent_bom.api.audit_log import get_audit_log
+
+    client, jobs, graph = cohort_client
+    cohort = _create_external_cohort(client)
+    body = _result_payload(cohort)
+    child_id = body["correlation_child_receipt"]["child_job_id"]
+
+    def fail(_entry):
+        raise OSError("audit unavailable")
+
+    monkeypatch.setattr(get_audit_log(), "append", fail)
+    response = client.post("/v1/results/push", headers=HEADERS, json=body)
+    assert response.status_code == 503
+    assert jobs.get(child_id, tenant_id=TENANT).status.value == "pending"
+    assert graph.snapshots_by_ids(tenant_id=TENANT, scan_ids={child_id}) == []

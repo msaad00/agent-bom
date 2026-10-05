@@ -285,6 +285,22 @@ earlier scans. These observations can therefore
 retain findings that a later scan no longer observes. Use a scoped producer to
 establish replacement evidence; do not infer remediation from an unscoped push.
 
+The control plane redacts report metadata before persistence and rebuilds
+finding and package totals from the supplied evidence rows. Producer-provided
+posture grades are discarded; `/v1/posture` reports that a scorecard is unavailable
+when none was computed on the server. A summary-only scoped report is partial,
+so it cannot clear earlier findings. These counts describe submitted evidence,
+not independent verification of a collector's claims.
+
+Every new push must append a tenant-scoped `results.push.accepted` audit event
+before writing evidence; an unavailable audit sink rejects the push with 503.
+The event records the authenticated actor, job, source, target-scope identifier
+and request fingerprint. It records admission, not commit: follow its job ID to
+verify persistence. Failed writes retain the attempt, and successful idempotent
+replays do not append another event. Audit and evidence stores are separate
+transactions; the audit chain does not protect against an operator who controls
+both the records and their signing/checkpoint material.
+
 ## 4. Move To Your Own Repo
 
 After the sample makes sense, scan your own project:

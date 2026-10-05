@@ -143,6 +143,8 @@ def _print_scan_verdict(opts: ScanOptions, st: ScanState, input_vulnerability_co
             "  [yellow]⚠[/yellow] Scan complete — retained "
             f"{input_vulnerability_count} vulnerability record(s) supplied by the input inventory"
         )
+    elif st.scan_warnings:
+        st.con.print("  [yellow]⚠[/yellow] No vulnerabilities confirmed; lookup warnings limit this assessment")
     elif opts.offline:
         if st.unresolved:
             st.con.print(

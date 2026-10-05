@@ -58,7 +58,8 @@ def test_nonzero_exit_states_it_is_a_verdict_not_a_crash():
 
     output = buffer.getvalue()
     assert "not a scanner error" in output
-    assert "report above is complete" in output
+    assert "report records findings and coverage limits" in output
+    assert "report above is complete" not in output
     assert EXIT_CODE_CONTRACT_URL in output
 
 

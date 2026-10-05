@@ -163,8 +163,6 @@ def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, obje
 
 def _build_remediation_json(report: AIBOMReport) -> list[dict]:
     """Build JSON-serializable remediation plan with named assets and percentages."""
-    from agent_bom.output.finding_views import cve_findings
-
     # Reuse canonical findings; rebuilding BlastRadius projections is expensive.
     cve_rows = cve_findings(report)
     return remediation_json(cve_rows, total_agents=report.total_agents)

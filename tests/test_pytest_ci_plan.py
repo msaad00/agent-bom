@@ -299,6 +299,27 @@ def test_job_storage_changes_select_tenant_lifecycle_and_correlation_callers(tmp
         assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == sorted(expected)
 
 
+@pytest.mark.parametrize(
+    "source",
+    ["push_evidence.py", "push_models.py", "correlation_cohort_ingest.py", "finding_collection.py", "routes/observability.py"],
+)
+def test_push_edits_select_tenant_summary_and_ingest_contracts(tmp_path: Path, source: str) -> None:
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "api/test_api_tenant_isolation.py",
+            "api/test_push_evidence_hardening.py",
+            "api/test_push_replacement_scope.py",
+            "api/test_correlation_cohort_push_ingest.py",
+            "test_ingest_idempotency.py",
+            "test_findings_push.py",
+        )
+    )
+    for path in [*expected, tmp_path / "tests/test_unrelated.py"]:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path("src/agent_bom/api") / source], root=tmp_path) == expected
+
+
 def test_graph_storage_edits_include_startup_and_writer_contracts(tmp_path: Path) -> None:
     expected = sorted(
         tmp_path / "tests" / name

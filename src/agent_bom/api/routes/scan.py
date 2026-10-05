@@ -76,6 +76,7 @@ from agent_bom.api.models import (
     TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_job
+from agent_bom.api.remediation_view import CurrentRemediationResponse
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
@@ -2285,6 +2286,15 @@ async def get_scan_agent_bom(
         raise HTTPException(status_code=409, detail="Agent identity is unavailable or ambiguous in this scan") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Scan composition is invalid, unsupported, or exceeds export limits") from exc
+
+
+@router.get("/findings/remediation", tags=["scan"], response_model=CurrentRemediationResponse)
+async def get_current_remediation(request: Request) -> CurrentRemediationResponse:
+    """Package upgrade actions from the tenant's current findings across targets."""
+    from agent_bom.api.remediation_view import current_remediation_response
+
+    snapshot = await asyncio.to_thread(current_findings_snapshot, request, max_findings=10_000, window_days=0)
+    return current_remediation_response(snapshot)
 
 
 @router.get("/scan/{job_id}/remediation", tags=["scan"])

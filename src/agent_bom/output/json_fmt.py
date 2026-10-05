@@ -163,7 +163,6 @@ def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, obje
 
 def _build_remediation_json(report: AIBOMReport) -> list[dict]:
     """Build JSON-serializable remediation plan with named assets and percentages."""
-    from agent_bom.output import build_remediation_plan
     from agent_bom.output.finding_views import cve_findings
 
     # The CLI/API dual-write path already materializes CVE ``Finding`` objects
@@ -172,8 +171,15 @@ def _build_remediation_json(report: AIBOMReport) -> list[dict]:
     # redundant sanitization, the legacy conversion walks nested dataclasses and
     # can trigger an expensive repr of transitive server/package data at scale.
     cve_rows = cve_findings(report)
+    return remediation_json(cve_rows, total_agents=report.total_agents)
+
+
+def remediation_json(cve_rows: list[Finding], *, total_agents: int = 0) -> list[dict]:
+    """Serialize upgrade actions consistently for reports and current findings."""
+    from agent_bom.output import build_remediation_plan
+
     plan = build_remediation_plan(cve_rows)
-    total_agents = report.total_agents or 1
+    total_agents = total_agents or len({agent for row in cve_rows for agent in row.affected_agents}) or 1
 
     all_creds: set[str] = set()
     all_tools: set[str] = set()

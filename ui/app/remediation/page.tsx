@@ -362,6 +362,7 @@ function RemediationPage() {
   const [items, setItems] = useState<RemediationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [frameworkFilter, setFrameworkFilter] =
     useState<FrameworkFilter>("all");
@@ -378,25 +379,17 @@ function RemediationPage() {
     setLoading(true);
     setError("");
     try {
-      let targetJobId = scanParam;
-      if (!targetJobId) {
-        const jobsResp = await api.listJobs();
-        const doneJob = jobsResp.jobs
-          .filter((j) => j.status === "done")
-          .sort(
-            (a, b) =>
-              new Date(b.created_at).getTime() -
-              new Date(a.created_at).getTime()
-          )[0];
-        targetJobId = doneJob?.job_id ?? "";
+      setWarnings([]);
+      if (scanParam) {
+        setItems(await api.getRemediation(scanParam));
+      } else {
+        const current = await api.getCurrentRemediation();
+        setItems(current.remediation_plan);
+        setWarnings([
+          ...(current.truncated ? ["This plan covers a limited set of current findings. Review Findings for the remaining evidence."] : []),
+          ...current.warnings,
+        ]);
       }
-      if (!targetJobId) {
-        setItems([]);
-        return;
-      }
-
-      const remediation = await api.getRemediation(targetJobId);
-      setItems(remediation);
 
       // Non-fatal: surface any tickets already filed for these findings so the
       // rows show their key + status. A ticketing failure must not block the plan.
@@ -601,16 +594,22 @@ function RemediationPage() {
         </div>
       )}
 
+      {!loading && !error && warnings.length > 0 && (
+        <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-ink-secondary">
+          {warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+        </div>
+      )}
+
       {/* Empty */}
       {!loading && !error && items.length === 0 && (
         <div className="text-center py-16 border border-dashed border-outline rounded-xl">
           <Wrench className="w-8 h-8 text-ink-tertiary mx-auto mb-3" />
           <p className="text-ink-tertiary text-sm">
-            Run a scan to see remediation recommendations
+            No package remediation actions in this view
           </p>
           <p className="text-ink-tertiary text-xs mt-1">
-            Remediation plans are generated automatically after each completed
-            scan.
+            Other findings may still need investigation. Review current findings
+            and rescan after applying a fix.
           </p>
         </div>
       )}

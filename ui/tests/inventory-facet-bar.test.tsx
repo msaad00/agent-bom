@@ -62,3 +62,9 @@ describe("active inventory facet values", () => {
     expect(onSeverityFilterChange).toHaveBeenCalledWith("all");
   });
 });
+
+it("renders the fresh-install empty facet response without crashing", () => {
+  inventory.facets = {} as InventoryFacets;
+  render(<InventoryFacetBar />);
+  expect(screen.getByLabelText("Filter by type")).toBeInTheDocument();
+});

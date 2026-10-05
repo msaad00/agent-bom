@@ -30,7 +30,7 @@ export function InventoryFacetBar({
   }, [search, filters.search, setFilter]);
 
   const typeBuckets = useMemo(() => {
-    const buckets = facets?.type.buckets ?? [];
+    const buckets = facets?.type?.buckets ?? [];
     if (fixedEntityTypes.length === 0) return buckets;
     return buckets.filter((bucket) => bucket.value && fixedEntityTypes.includes(bucket.value));
   }, [facets, fixedEntityTypes]);
@@ -89,8 +89,8 @@ export function InventoryFacetBar({
           </span>
         </label>
         {select("type", "Type", typeBuckets)}
-        {select("environment", "Environment", facets?.environment.buckets ?? [])}
-        {select("source", "Source", facets?.source.buckets ?? [])}
+        {select("environment", "Environment", facets?.environment?.buckets ?? [])}
+        {select("source", "Source", facets?.source?.buckets ?? [])}
         {hasActive ? <button type="button" onClick={() => { clearFilters(); onSeverityFilterChange?.("all"); }}
           className="h-9 px-2 text-xs text-ink-secondary underline">Clear</button> : null}
       </div>
@@ -100,8 +100,8 @@ export function InventoryFacetBar({
             ? ` · ${[filters.provider, filters.severity].filter(Boolean).length} active` : ""}
         </summary>
         <div className="mt-2 flex flex-wrap gap-2">
-          {select("severity", "Finding severity", facets?.severity.buckets ?? [])}
-          {select("provider", "Provider", facets?.provider.buckets ?? [])}
+          {select("severity", "Finding severity", facets?.severity?.buckets ?? [])}
+          {select("provider", "Provider", facets?.provider?.buckets ?? [])}
         </div>
       </details>
     </section>

@@ -76,6 +76,7 @@ from agent_bom.api.models import (
     TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_job
+from agent_bom.api.remediation_view import CurrentRemediationResponse
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
@@ -2287,20 +2288,20 @@ async def get_scan_agent_bom(
         raise HTTPException(status_code=422, detail="Scan composition is invalid, unsupported, or exceeds export limits") from exc
 
 
+@router.get("/findings/remediation", tags=["scan"], response_model=CurrentRemediationResponse)
+async def get_current_remediation(request: Request) -> CurrentRemediationResponse:
+    """Package upgrade actions from the tenant's current findings across targets."""
+    from agent_bom.api.remediation_view import current_remediation_response
+
+    snapshot = await asyncio.to_thread(current_findings_snapshot, request, max_findings=10_000, window_days=0)
+    return current_remediation_response(snapshot)
+
+
 @router.get("/scan/{job_id}/remediation", tags=["scan"])
 async def get_remediation_plan(request: Request, job_id: str) -> dict:
-    """Get the remediation plan for a completed scan, and nothing else.
+    """Return package upgrade actions without transferring the full scan report.
 
-    ``GET /v1/scan/{job_id}`` returns the canonical AI-BOM document — every
-    finding, blast radius, asset and exposure path. The remediation surface read
-    one field off it, so the transfer tracked the size of the estate rather than
-    the size of the plan. Measured on the demo estate (2,068 assets / 2,716
-    findings): an 8.7 MB job payload for a 41 KB plan, 99.5% of it discarded by
-    the caller and all of it parsed by the browser first.
-
-    The plan is inherently bounded — one entry per upgradable package, not per
-    asset — so it is returned whole, with ``total`` stated rather than left for
-    the client to infer.
+    One entry per package, with an explicit total for the client.
     """
     job = await _load_job_for_request(request, job_id)
     if job.status != JobStatus.DONE or not job.result:

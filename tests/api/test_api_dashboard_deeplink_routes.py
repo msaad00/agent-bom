@@ -133,3 +133,16 @@ def test_no_spa_mounted_means_no_public_spa_routes(monkeypatch) -> None:
     # Static asset routes that do not depend on the SPA stay public.
     assert APIKeyMiddleware._is_dashboard_public_request("/favicon.ico", "GET") is True
     assert APIKeyMiddleware._is_dashboard_public_request("/_next/static/x.js", "GET") is True
+
+
+def test_root_bootstrap_assets_are_public_only_when_actually_mounted(monkeypatch):
+    monkeypatch.setattr(middleware_module, "_DASHBOARD_SPA_ROUTES", frozenset())
+    monkeypatch.setattr(middleware_module, "_DASHBOARD_PUBLIC_FILES", frozenset(), raising=False)
+    assert not APIKeyMiddleware._is_dashboard_public_request("/runtime-config.js", "GET")
+    middleware_module.register_dashboard_spa_routes(["index.html", "runtime-config.js", "__next._tree.txt"])
+    for path in ("/runtime-config.js", "/__next._tree.txt"):
+        assert APIKeyMiddleware._is_dashboard_public_request(path, "GET")
+        assert APIKeyMiddleware._is_dashboard_public_request(path, "HEAD")
+        assert not APIKeyMiddleware._is_dashboard_public_request(path, "POST")
+    assert not APIKeyMiddleware._is_dashboard_public_request("/secrets.js", "GET")
+    assert not APIKeyMiddleware._is_dashboard_public_request("/v1/findings", "GET")

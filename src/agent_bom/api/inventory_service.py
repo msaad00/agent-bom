@@ -335,8 +335,8 @@ def empty_summary(*, tenant_id: str) -> dict[str, Any]:
             "status": "unknown",
             "reason": "No graph snapshot is available yet.",
         },
-        "facets": {},
-        "facet_metadata": {},
+        "facets": {key: {"buckets": []} for key in ("type", "environment", "source", "provider", "severity")},
+        "facet_metadata": {"basis": "no_snapshot", "mode": "self_excluding", "exact": True, "scan_id": ""},
         "completeness": graph_completeness(returned=0, total=0),
         "status": "no_snapshot",
     }

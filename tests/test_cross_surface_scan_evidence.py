@@ -288,3 +288,24 @@ def test_completed_empty_scan_is_not_reported_as_no_scan() -> None:
     assert payload["evidence_snapshot"]["returned"] == 0
     assert "No completed scans available" not in payload["executive_summary"]
     assert "unavailable or unscanned sources are not claimed clean" in payload["executive_summary"]
+
+
+def test_suppression_projection_retains_typed_receipt_without_free_text():
+    row = safe_finding_response_payload(
+        {
+            "suppressed": True,
+            "suppression_id": "exception-1",
+            "status": "open",
+            "actionable": False,
+            "suppression_reason": "private investigation notes",
+        }
+    )
+    assert row["suppressed"] is True
+    assert row["suppression_id"] == "exception-1"
+    assert row["status"] == "suppressed"
+    assert row["lifecycle_status"] == "open"
+    assert row["actionable"] is False
+    assert "suppression_reason" not in row
+    invalid = safe_finding_response_payload({"suppressed": "true", "suppression_id": {"unsafe": "value"}})
+    assert "suppressed" not in invalid
+    assert "suppression_id" not in invalid

@@ -2551,6 +2551,38 @@ components:
           - type: 'null'
       title: CredentialRefUpdate
       type: object
+    CurrentRemediationResponse:
+      additionalProperties: false
+      properties:
+        remediation_plan:
+          items:
+            additionalProperties: true
+            type: object
+          title: Remediation Plan
+          type: array
+        schema_version:
+          const: remediation.current.v1
+          default: remediation.current.v1
+          title: Schema Version
+          type: string
+        source_findings:
+          title: Source Findings
+          type: integer
+        truncated:
+          title: Truncated
+          type: boolean
+        warnings:
+          items:
+            type: string
+          title: Warnings
+          type: array
+      required:
+      - remediation_plan
+      - source_findings
+      - truncated
+      - warnings
+      title: CurrentRemediationResponse
+      type: object
     DatasetCardsRequest:
       additionalProperties: false
       description: Request body for POST /v1/scan/dataset-cards.
@@ -15955,6 +15987,21 @@ paths:
       summary: Remove Finding Feedback
       tags:
       - enterprise
+  /v1/findings/remediation:
+    get:
+      description: Package upgrade actions from the tenant's current findings across
+        targets.
+      operationId: get_current_remediation_v1_findings_remediation_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentRemediationResponse'
+          description: Successful Response
+      summary: Get Current Remediation
+      tags:
+      - scan
   /v1/findings/triage:
     get:
       description: List tenant-scoped finding triage queue items.
@@ -28502,16 +28549,11 @@ paths:
       - scan
   /v1/scan/{job_id}/remediation:
     get:
-      description: "Get the remediation plan for a completed scan, and nothing else.\n\
-        \n``GET /v1/scan/{job_id}`` returns the canonical AI-BOM document \u2014 every\n\
-        finding, blast radius, asset and exposure path. The remediation surface read\n\
-        one field off it, so the transfer tracked the size of the estate rather than\n\
-        the size of the plan. Measured on the demo estate (2,068 assets / 2,716\n\
-        findings): an 8.7 MB job payload for a 41 KB plan, 99.5% of it discarded by\n\
-        the caller and all of it parsed by the browser first.\n\nThe plan is inherently\
-        \ bounded \u2014 one entry per upgradable package, not per\nasset \u2014 so\
-        \ it is returned whole, with ``total`` stated rather than left for\nthe client\
-        \ to infer."
+      description: 'Return package upgrade actions without transferring the full scan
+        report.
+
+
+        One entry per package, with an explicit total for the client.'
       operationId: get_remediation_plan_v1_scan__job_id__remediation_get
       parameters:
       - in: path

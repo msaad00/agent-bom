@@ -1874,6 +1874,13 @@ export const api = {
   },
 
   // ── Remediation ──
+  getCurrentRemediation: () => get<{
+    schema_version: "remediation.current.v1";
+    remediation_plan: RemediationItem[];
+    source_findings: number;
+    truncated: boolean;
+    warnings: string[];
+  }>("/v1/findings/remediation"),
   /** Remediation plan for a completed scan.
    *
    * Reads the dedicated endpoint rather than `/v1/scan/{id}`. The whole-job

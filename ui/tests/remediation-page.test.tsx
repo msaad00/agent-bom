@@ -8,6 +8,7 @@ const { apiMock, navigationState } = vi.hoisted(() => ({
   apiMock: {
     listJobs: vi.fn(),
     getRemediation: vi.fn(),
+    getCurrentRemediation: vi.fn(),
     listTickets: vi.fn(),
     listRiskCampaigns: vi.fn(),
     listRiskCampaignVerificationQueue: vi.fn(),
@@ -55,7 +56,10 @@ function remediationItem(pkg: string, severity: string) {
 describe("RemediationPage", () => {
   beforeEach(() => {
     navigationState.query = "";
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    apiMock.getCurrentRemediation.mockImplementation(async () => ({
+      remediation_plan: await apiMock.getRemediation(), truncated: false, warnings: [],
+    }));
     apiMock.listJobs.mockResolvedValue({
       jobs: [{ job_id: "job-1", status: "done", created_at: "2026-08-12T00:00:00Z" }],
     });
@@ -89,6 +93,23 @@ describe("RemediationPage", () => {
       count: 0,
       connections: [],
     });
+  });
+
+  it("shows retained current findings when the newest scan has no remediation", async () => {
+    apiMock.getRemediation.mockResolvedValue([]);
+    apiMock.getCurrentRemediation.mockResolvedValue({ remediation_plan: [remediationItem("retained-pkg", "critical")], truncated: false, warnings: [] });
+    render(<RemediationPage />);
+    expect(await screen.findByText("retained-pkg")).toBeInTheDocument();
+    expect(apiMock.listJobs).not.toHaveBeenCalled();
+  });
+
+  it("discloses bounded plans without implying an empty estate is clean", async () => {
+    apiMock.getCurrentRemediation.mockResolvedValue({ remediation_plan: [], truncated: true, warnings: ["Evidence unavailable"] });
+    render(<RemediationPage />);
+    expect(await screen.findByText("No package remediation actions in this view")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("limited set of current findings");
+    expect(screen.getByRole("status")).toHaveTextContent("Evidence unavailable");
+    expect(screen.queryByText("Run a scan to see remediation recommendations")).not.toBeInTheDocument();
   });
 
   it("reports taxonomy mappings without claiming controls are cleared", async () => {
@@ -141,6 +162,7 @@ describe("RemediationPage", () => {
 
     await waitFor(() => expect(apiMock.getRemediation).toHaveBeenCalledWith("scan-from-results"));
     expect(apiMock.listJobs).not.toHaveBeenCalled();
+    expect(apiMock.getCurrentRemediation).not.toHaveBeenCalled();
   });
 
   it("singularizes the caption for a single matching package", async () => {

@@ -397,3 +397,12 @@ it("explains incompatible category filters without claiming missing collection a
     expect.objectContaining({ type: ["package"], provider: "aws", environment: "production" })));
   expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ type: "", provider: "aws", environment: "production" }));
 });
+
+
+it("gives a fresh installation a scan or connection next step", async () => {
+  vi.mocked(api.getInventorySummary).mockResolvedValue(summary({scan_id:"", total_assets:0, by_type:{}, by_group:{}, finding_count:0}));
+  render(<InventoryProvider><InventoryIndex /></InventoryProvider>);
+  expect(await screen.findByText("No assets discovered yet")).toBeVisible();
+  expect(screen.getByRole("link", {name:"Run a scan"})).toHaveAttribute("href", "/scan");
+  expect(screen.getByRole("link", {name:"Connect a source"})).toHaveAttribute("href", "/connections");
+});

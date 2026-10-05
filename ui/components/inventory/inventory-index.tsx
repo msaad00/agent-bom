@@ -74,7 +74,7 @@ export function InventoryIndex() {
     );
   }
 
-  if (!summary) {
+  if (!summary || !summary.scan_id) {
     return (
       <div className="space-y-5">
         {header}

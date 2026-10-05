@@ -24,6 +24,8 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from agent_bom.evidence.finding_status import public_finding_status
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.finding import FindingSource, FindingType
 
@@ -690,8 +692,6 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     ordinal = row.get("bulk_ordinal")
     if isinstance(ordinal, int) and not isinstance(ordinal, bool) and 0 <= ordinal <= 2**63 - 1:
         payload["bulk_ordinal"] = ordinal
-
-    from agent_bom.evidence.finding_status import public_finding_status
 
     payload.update(public_finding_status(row))
 

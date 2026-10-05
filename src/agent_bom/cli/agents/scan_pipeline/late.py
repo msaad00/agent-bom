@@ -306,7 +306,7 @@ def _scan_secrets(opts: ScanOptions, st: ScanState) -> None:
             from agent_bom.secret_scanner import scan_secrets as _scan_secrets
 
             _secret_result = _scan_secrets(opts.project, aws_live_validation=False) if opts.offline else _scan_secrets(opts.project)
-            if _secret_result.total > 0 or _secret_result.warnings:
+            if _secret_result.total > 0 or _secret_result.warnings or _secret_result.exclusions:
                 st.report.ai_inventory_data = st.report.ai_inventory_data or {}
                 st.report.ai_inventory_data["secrets"] = _secret_result.to_dict()
                 st.scan_sources.append("secret_scan")

@@ -150,7 +150,8 @@ def test_explicitly_scanned_root_is_never_self_ignored(tmp_path: Path) -> None:
     assert result.findings == []
     assert result.files_scanned == 0
     assert result.ignored_paths > 0
-    assert any("ignore" in w.lower() for w in result.warnings), result.warnings
+    assert not result.warnings
+    assert any("ignore" in w.lower() for w in result.exclusions), result.exclusions
 
 
 def test_ignored_coverage_is_disclosed(tmp_path: Path) -> None:

@@ -27,6 +27,8 @@ from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from agent_bom.coverage import SCOPE_EXCLUSION_REASONS
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent_bom.scanners.repo_ignore import RepositoryIgnore
 
@@ -125,6 +127,38 @@ def _prune_dirnames(
     dirnames[:] = kept
 
 
+def _coverage_recorder(root: Path) -> Callable[[str, str], None]:
+    # Every consumer contributes to the existing CLI/API coverage channel,
+    # including discovery helpers whose return type is only a list of paths.
+    # Aggregate within the walk to bound diagnostics independently of tree size.
+    from agent_bom.scanners.state import record_coverage_warning
+
+    warnings_by_reason: dict[str, dict] = {}
+    root_id = hashlib.sha256(os.fsencode(root.absolute())).hexdigest()[:16]
+
+    def report_gap(reason: str, detail: str) -> None:
+        warning = warnings_by_reason.get(reason)
+        if warning is None:
+            warning = {
+                "kind": "scope_exclusion" if reason in SCOPE_EXCLUSION_REASONS else "coverage_gap",
+                "ecosystem": "filesystem-discovery",
+                "release": f"filesystem-discovery:{root_id}:{reason}",
+                "reason": reason,
+                "detail": detail,
+                "package_count": 0,
+                "advisory_rows": 0,
+                "excluded_count": 0,
+            }
+            warnings_by_reason[reason] = warning
+            record_coverage_warning(warning)
+            logger = logging.getLogger(__name__)
+            log = logger.info if reason in SCOPE_EXCLUSION_REASONS else logger.warning
+            log("Directory traversal receipt: %s", detail)
+        warning["excluded_count"] += 1
+
+    return report_gap
+
+
 def iter_discovery_files(
     root: Path,
     *,
@@ -156,30 +190,7 @@ def iter_discovery_files(
     the (already filtered, typically small) result.
     """
     root = Path(root)
-    # Every consumer contributes to the existing CLI/API coverage channel,
-    # including discovery helpers whose return type is only a list of paths.
-    # Aggregate within the walk to bound diagnostics independently of tree size.
-    from agent_bom.scanners.state import record_coverage_warning
-
-    warnings_by_reason: dict[str, dict] = {}
-    root_id = hashlib.sha256(os.fsencode(root.absolute())).hexdigest()[:16]
-
-    def report_gap(reason: str, detail: str, count: int = 1) -> None:
-        warning = warnings_by_reason.get(reason)
-        if warning is None:
-            warning = {
-                "ecosystem": "filesystem-discovery",
-                "release": f"filesystem-discovery:{root_id}:{reason}",
-                "reason": reason,
-                "detail": detail,
-                "package_count": 0,
-                "advisory_rows": 0,
-                "excluded_count": 0,
-            }
-            warnings_by_reason[reason] = warning
-            record_coverage_warning(warning)
-            logging.getLogger(__name__).warning("Directory traversal incomplete: %s", detail)
-        warning["excluded_count"] += count
+    report_gap = _coverage_recorder(root)
 
     def note_pruned(path: Path, reason: str) -> None:
         report_gap(
@@ -238,6 +249,7 @@ def iter_discovery_files(
                 rel_file = f"{rel_dir}/{name}" if rel_dir else name
                 if ignore.is_ignored_file(rel_file):
                     ignore.note_ignored()
+                    report_gap("repository_ignore", "Files were excluded by repository ignore rules.")
                     continue
             if max_files is not None and yielded >= max_files:
                 report_gap(

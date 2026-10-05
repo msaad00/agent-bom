@@ -7,6 +7,7 @@ duplicating inventory and materialising millions of paths (memory blow-up).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from agent_bom.parsers.dataset_cards import discover_dataset_files
@@ -169,6 +170,7 @@ def test_vendor_skip_dirs_cover_common_generated_trees():
 
 
 def test_all_consumers_record_ancestor_pruning(tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger="agent_bom.traversal")
     from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
 
     reset_scan_warnings()

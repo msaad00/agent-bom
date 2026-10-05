@@ -26,7 +26,6 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,7 +33,9 @@ from agent_bom import config
 from agent_bom.runtime.patterns import CODE_CALL_ASSIGNMENT, CREDENTIAL_PATTERNS, PII_PATTERNS
 from agent_bom.scanners.aws_secret_validation import AwsCredentialValidator
 from agent_bom.scanners.credential_validation import CredentialValidator, ValidationStatus
-from agent_bom.scanners.repo_ignore import GITIGNORE_FILENAME, SCANNER_IGNORE_FILENAME, RepositoryIgnore
+from agent_bom.scanners.repo_ignore import RepositoryIgnore
+from agent_bom.scanners.secret_models import SecretFinding as SecretFinding
+from agent_bom.scanners.secret_models import SecretScanResult as SecretScanResult
 from agent_bom.traversal import iter_discovery_files
 
 logger = logging.getLogger(__name__)
@@ -311,79 +312,6 @@ def _entropy_findings(line: str, rel_path: str, line_num: int) -> list[SecretFin
 
 
 # ── Data model ───────────────────────────────────────────────────────────────
-
-
-@dataclass
-class SecretFinding:
-    """A hardcoded secret found in a source/config file."""
-
-    file_path: str
-    line_number: int
-    secret_type: str  # "AWS Access Key", "Email Address", etc.
-    severity: str  # "critical", "high", "medium"
-    matched_preview: str  # redacted evidence label; never includes matched bytes
-    category: str  # "credential", "pii", "secret"
-    validation_status: ValidationStatus | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            "file": self.file_path,
-            "line": self.line_number,
-            "type": self.secret_type,
-            "severity": self.severity,
-            "preview": self.matched_preview,
-            "category": self.category,
-            **({"validation_status": self.validation_status} if self.validation_status is not None else {}),
-        }
-
-
-@dataclass
-class SecretScanResult:
-    """Complete secret scan results for a project."""
-
-    findings: list[SecretFinding] = field(default_factory=list)
-    files_scanned: int = 0
-    warnings: list[str] = field(default_factory=list)
-    # Paths excluded by repository ignore rules. Skipping is a coverage claim,
-    # so it is counted and reported rather than silently dropped.
-    ignored_paths: int = 0
-    pruned_directories: int = 0
-
-    @property
-    def total(self) -> int:
-        return len(self.findings)
-
-    @property
-    def critical_count(self) -> int:
-        return sum(1 for f in self.findings if f.severity == "critical")
-
-    def to_dict(self) -> dict:
-        return {
-            "findings": [f.to_dict() for f in self.findings],
-            "files_scanned": self.files_scanned,
-            "ignored_paths": self.ignored_paths,
-            "pruned_directories": self.pruned_directories,
-            "total": self.total,
-            "critical": self.critical_count,
-            "by_type": _group_by(self.findings, "secret_type"),
-            "by_category": _group_by(self.findings, "category"),
-            # A refused path or a file-capped walk both report ``total: 0``.
-            # Without the warnings that reads as "this tree holds no secrets"
-            # instead of "we did not finish looking".
-            "warnings": list(self.warnings),
-            "complete": not self.warnings,
-        }
-
-
-def _group_by(findings: list[SecretFinding], attr: str) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for f in findings:
-        key = getattr(f, attr)
-        counts[key] = counts.get(key, 0) + 1
-    return counts
-
-
-# ── Scanner ──────────────────────────────────────────────────────────────────
 
 
 def _should_scan(path: Path) -> bool:
@@ -669,8 +597,12 @@ def scan_secrets(
 
     ignore = RepositoryIgnore.for_root(project)
 
+    unsafe_pruned = 0
+
     def note_pruned(_path: Path, _reason: str) -> None:
+        nonlocal unsafe_pruned
         result.pruned_directories += 1
+        unsafe_pruned += int(_reason == "directory_symlink")
 
     def traversal_limit(limit: int) -> None:
         result.warnings.append(f"Directory traversal stopped at {limit} discovered files")
@@ -711,14 +643,5 @@ def scan_secrets(
         result.findings.extend(findings)
 
     result.files_scanned = file_count
-    result.ignored_paths = ignore.ignored_count
-    if result.pruned_directories:
-        result.warnings.append(
-            f"Skipped {result.pruned_directories} directory subtree(s) by scanner policy or nested-worktree exclusion; "
-            "their contents were not inspected. Scan an excluded directory explicitly to inspect it."
-        )
-    if ignore.ignored_count:
-        result.warnings.append(
-            f"Skipped {ignore.ignored_count} path(s) excluded by repository ignore rules ({GITIGNORE_FILENAME} / {SCANNER_IGNORE_FILENAME})"
-        )
+    result.record_exclusions(ignore.ignored_count, unsafe_pruned)
     return result

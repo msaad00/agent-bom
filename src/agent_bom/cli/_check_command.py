@@ -77,6 +77,7 @@ class CheckRun:
     scan_warnings: list[Any] = field(default_factory=list)
     offline_coverage_gap: bool = False
     remote_lookup_gap: bool = False
+    package_version_gap: bool = False
     matched_pkg: Any = None
     vulns: list[Any] = field(default_factory=list)
     fail_threshold: str | None = None
@@ -246,6 +247,7 @@ def _scan(run: CheckRun) -> None:
 
     run.scan_warnings = consume_scan_warnings()
     coverage_warnings = consume_coverage_warnings()
+    run.package_version_gap = any(w.get("kind") == "package_version_gap" for w in coverage_warnings)
     run.offline_coverage_gap = run.offline and any(w.get("kind") == "offline_ecosystem_gap" for w in coverage_warnings)
     # Same failure, over the network: the local DB carried no advisories for the
     # ecosystem AND the remote lookup errored, so nothing was consulted. Exit 2
@@ -313,6 +315,8 @@ def _enrich(run: CheckRun) -> None:
 
 
 def _coverage_gap_message(run: CheckRun) -> str:
+    if run.package_version_gap:
+        return "Package version is unresolved or invalid; supply a valid release version for a trustworthy verdict."
     if run.remote_lookup_gap:
         return (
             f"Incomplete scan for {run.name}@{run.version} ({run.eco_display}). "
@@ -328,7 +332,7 @@ def _coverage_gap_message(run: CheckRun) -> str:
 
 
 def _gate_coverage_gap(run: CheckRun) -> None:
-    if not run.vulns and (run.offline_coverage_gap or run.remote_lookup_gap):
+    if not run.vulns and (run.offline_coverage_gap or run.remote_lookup_gap or run.package_version_gap):
         # An offline scan of an ecosystem the local DB carries no advisories
         # for — or an online one whose remote lookup errored with the same
         # empty DB behind it — produced no vulns because nothing could be
@@ -341,6 +345,8 @@ def _gate_coverage_gap(run: CheckRun) -> None:
             sys.exit(2)
         if run.quiet:
             gap_label = "incomplete scan (remote lookup failed)" if run.remote_lookup_gap else "incomplete offline coverage"
+            if run.package_version_gap:
+                gap_label = "incomplete package lookup"
             click.echo(f"{run.name}@{run.version}: {gap_label} ({run.eco_display})")
         else:
             run.console.print(f"  [yellow]⚠ {message}[/yellow]\n")

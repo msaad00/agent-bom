@@ -20,6 +20,7 @@ from agent_bom.mcp_tools.scan_response import (
     section_page,
 )
 from agent_bom.parsers.sbom_context import imported_cloud_inventory
+from agent_bom.scanners.package_check_result import has_lookup_coverage_gap
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -653,7 +654,7 @@ async def check_impl(
                 f"MALICIOUS package {name}@{version} — {reason}. Do not install.",
             )
 
-        coverage_gap = any(warning.get("kind") in {"offline_ecosystem_gap", "remote_lookup_gap"} for warning in coverage_warnings)
+        coverage_gap = has_lookup_coverage_gap(coverage_warnings)
         if not pkg.vulnerabilities and coverage_gap:
             return service_result(
                 "incomplete",

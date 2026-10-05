@@ -88,7 +88,7 @@ GATEWAY_FAIL_MODE_MATRIX: tuple[SubsystemFailMode, ...] = (
         control="none (fixed)",
         on_failure=(
             "A control-plane bundle whose policies all fail to parse, carry "
-            "an invalid regex, or raise during evaluation denies the request; "
+            "an invalid regex, exceed regex evaluation limits, or raise during evaluation denies the request; "
             "an operator typo never silently disables enforcement."
         ),
     ),

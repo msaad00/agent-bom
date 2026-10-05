@@ -1904,7 +1904,17 @@ def test_relay_require_agent_identity_still_blocks_missing_on_loopback() -> None
     _assert_identity_blocked(resp)
 
 
-def test_relay_invalid_file_policy_blocks_jsonrpc_without_forwarding(tmp_path):
+@pytest.mark.parametrize(
+    "pattern,value",
+    [
+        ("private-pattern[", "sensitive-value"),
+        ("^(a+)+$", "a" * 100 + "!"),
+        ("a+a+$", "a" * 9999 + "!"),
+        ("secret", "x" * 10001 + "secret"),
+    ],
+    ids=["malformed", "nested", "timeout", "oversize"],
+)
+def test_relay_invalid_file_policy_blocks_jsonrpc_without_forwarding(tmp_path, pattern, value):
     calls = []
     events = []
 
@@ -1915,12 +1925,12 @@ def test_relay_invalid_file_policy_blocks_jsonrpc_without_forwarding(tmp_path):
     async def audit(event):
         events.append(event)
 
-    policy = {"rules": [{"id": "invalid", "action": "block", "arg_pattern": {"private-field": "private-pattern["}}]}
+    policy = {"rules": [{"id": "invalid", "action": "block", "arg_pattern": {"private-field": pattern}}]}
     path = tmp_path / "policy.json"
     path.write_text(json.dumps(policy))
     settings = GatewaySettings(registry=_simple_registry(), policy=policy, policy_path=path, upstream_caller=caller, audit_sink=audit)
     with TestClient(create_gateway_app(settings)) as client:
-        response = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read", arguments={"private-field": "sensitive-value"}))
+        response = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read", arguments={"private-field": value}))
     assert response.status_code == 200 and response.json()["error"]["code"] == -32001
     assert calls == []
     assert events and events[0]["action"] == "gateway.policy_blocked"

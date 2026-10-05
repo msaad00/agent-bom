@@ -310,8 +310,12 @@ class TestRegexHelpers:
         assert not _safe_regex_search("xyz", "hello world")
 
     def test_oversized_input_rejected(self):
-        assert not _safe_regex_match("test", "x" * 20000)
-        assert not _safe_regex_search("test", "x" * 20000)
+        from agent_bom.runtime.policy_validation import PolicyEvaluationLimitError
+
+        with pytest.raises(PolicyEvaluationLimitError):
+            _safe_regex_match("test", "x" * 20000)
+        with pytest.raises(PolicyEvaluationLimitError):
+            _safe_regex_search("test", "x" * 20000)
 
 
 # -- ProxyMetrics --

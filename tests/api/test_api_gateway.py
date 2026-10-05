@@ -408,11 +408,20 @@ def test_policy_writes_reject_invalid_regex_without_mutating_store():
     client, store = _fresh_client()
     store.put_policy(_make_policy())
     original = store.get_policy("p-1").model_dump()
-    for fields in ({"tool_name_pattern": "["}, {"arg_pattern": {"secret-name": "["}}, {"tool_name_pattern": "x" * 501}):
+    for fields in (
+        {"tool_name_pattern": "["},
+        {"arg_pattern": {"secret-name": "["}},
+        {"tool_name_pattern": "x" * 501},
+        {"tool_name_pattern": "^(a+)+$"},
+        {"arg_pattern": {"secret-name": "^(a|aa)+$"}},
+        {"tool_name_pattern": "a{1000000000}"},
+    ):
         rules = [{"id": "invalid", "action": "block", **fields}]
         created = client.post("/v1/gateway/policies", json={"name": "bad", "rules": rules})
         assert created.status_code in (400, 422)
+        assert "secret-name" not in created.text
         updated = client.put("/v1/gateway/policies/p-1", json={"name": "changed", "rules": rules})
         assert updated.status_code in (400, 422)
+        assert "secret-name" not in updated.text
         assert store.get_policy("p-1").model_dump() == original
         assert len(store.list_policies()) == 1

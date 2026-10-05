@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Bound gateway and proxy policy regex execution; reject unsafe pattern structures and fail closed on oversized inputs or exhausted match budgets, with explicit audit-mode receipts.
+
 - Match recognized native Ruby artifact versions using the underlying gem version, retaining platform evidence. Resolve uv workspace members from their shared lockfile; missing or malformed locks remain incomplete instead of falling back to registry-selected versions.
 
 - Require separate authenticated admin approval, exact finding/package scope and a future timezone-aware expiry for suppression. Feedback, triage, MCP and imported VEX requests remain pending; legacy automatic approvals require reapproval. Retain VEX assertions as evidence without silently changing risk or exit gates.

@@ -17,7 +17,7 @@ evaluator that raises. The canonical inventory is code, not prose:
 | Firewall policy (unloadable policy file) | fail-closed | yes |
 | Policy plugins (evaluation error) | fail-closed | yes |
 | Control-plane policy bundle (parse/eval error) | fail-closed | no |
-| Invalid or oversized regex in an applicable policy | enforce: deny; audit: explicit invalid-policy receipt | no |
+| Invalid, expensive, or oversized regex in an applicable policy | enforce: deny; audit: explicit invalid-policy receipt | no |
 | Conditional access (evaluation error) | fail-closed | no |
 | Caller identity (invalid/revoked or missing token) | fail-closed | no |
 | Runtime rate limit (store unavailable) | fail-closed (refuses startup) | no |
@@ -99,3 +99,39 @@ Correct the named setting and restart; mode errors never echo its supplied value
 ### Invalid policy expressions
 
 Policy creation and updates reject malformed regular expressions and patterns longer than 500 characters before changing stored state. Correct the indicated rule and retry the write. Existing stored policies and local JSON policy files receive the same validation at evaluation time: blocking rules fail closed; advisory rules produce an explicit invalid-policy warning. Disabled policies and policies bound to a different agent do not apply. Invalid-policy diagnostics omit patterns, argument names and argument values.
+
+### Bounded regular-expression evaluation
+
+Policy writes and stored/local policy evaluation reject nested repetitions,
+alternation inside repetitions, counted repetitions above 1,000, and expression
+nesting beyond 32 levels. The existing 500-character pattern limit still applies.
+Rewrite an affected rule using simpler patterns before enabling enforcement.
+For example, replace `^(a+)+$` with `^a+$`. This is a conservative grammar guard,
+not a claim to identify every expensive expression.
+
+The matcher uses the timeout-capable [regex engine](https://pypi.org/project/regex/)
+in Python-compatible VERSION0 mode, with 25 ms per match and a shared 100 ms
+budget per policy evaluation. Inputs beyond 10,000 characters and exhausted
+budgets produce an explicit evaluation-limit decision; they never count as
+non-matches. Enforce mode denies; audit mode permits with an explicit receipt.
+These limits are operational safeguards, not a gateway throughput guarantee.
+The bounded 512-entry compiled-pattern cache is process-local. Diagnostics omit
+regex text, argument names, and argument values; policy and rule IDs identify
+the affected configuration. Existing policy records are preserved for correction.
+
+VERSION0 does not give identical Unicode character classes to Python `re`.
+For Unicode-mode expressions, inputs whose word/digit/space classification
+differs between the engines (for example, certain combining marks and joiners)
+produce an explicit incomplete-evaluation decision: deny in enforce mode,
+receipt in audit mode. This guard is conservative, including for literal
+expressions on such inputs. Ordinary Unicode text with matching classifications
+remains supported. Use an explicit ASCII expression such as `(?a)\W` only when
+ASCII character-class semantics are intended; scoped Unicode overrides still
+receive the guard.
+
+Unicode case-insensitive evaluation is also conservative: when case-insensitive
+matching encounters non-ASCII input or non-ASCII/escaped literals, it returns the
+same incomplete-evaluation decision unless ASCII semantics are explicit.
+This avoids differing dotted/dotless-I case folds weakening an existing block.
+Escaped literals may trigger this guard even when they encode ASCII; write the
+literal directly or use explicit ASCII semantics when that is the intended rule.

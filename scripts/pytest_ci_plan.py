@@ -339,6 +339,16 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(candidate for candidate in available if candidate.stem.startswith(("test_gateway", "test_api_gateway")))
         if normalized.as_posix() in {"src/agent_bom/runtime/trace_metadata.py", "src/agent_bom/runtime/risk_conditions.py"}:
             selected.update(candidate for candidate in available if candidate.stem.startswith("test_proxy"))
+        if normalized.as_posix() in {
+            "src/agent_bom/runtime/policy_validation.py",
+            "src/agent_bom/proxy_policy.py",
+            "src/agent_bom/api/policy_inputs.py",
+        }:
+            selected.update(
+                candidate
+                for candidate in available
+                if candidate.stem.startswith(("test_gateway", "test_api_gateway", "test_proxy", "test_policy_regex"))
+            )
         if normalized.as_posix() in SHARED_JUDGMENT_SOURCES:
             selected.update(candidate for candidate in available if candidate.stem.startswith(SHARED_JUDGMENT_PREFIXES))
         if normalized.as_posix() in {

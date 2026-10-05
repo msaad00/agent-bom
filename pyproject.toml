@@ -39,6 +39,7 @@ dependencies = [
     "packageurl-python>=0.17",
     "packaging>=24.0",
     "pathspec>=1.1",
+    "regex>=2026.9.10",  # bounded runtime policy matching with engine-enforced timeouts
     "toml>=0.10",
     "pyyaml>=6.0",
     "jsonschema>=4.0",

@@ -2168,7 +2168,7 @@ def test_scan_cache_put_get(mock_pool):
     # Set up mock data for retrieval — (key, vulns_json, cached_at)
     import time
 
-    key = "pypi:requests@2.31.0"
+    key = cache._key("pypi", "requests", "2.31.0")
     mock_pool._conn._store.setdefault("osv_cache", {})[key] = (
         key,
         json.dumps(vulns),
@@ -2193,7 +2193,7 @@ def test_scan_cache_get_expired(mock_pool):
 
     cache = PostgresScanCache(pool=mock_pool, ttl_seconds=1)
 
-    key = "pypi:old@1.0.0"
+    key = cache._key("pypi", "old", "1.0.0")
     mock_pool._conn._store.setdefault("osv_cache", {})[key] = (
         key,
         json.dumps([]),
@@ -2229,7 +2229,7 @@ def test_scan_cache_size(mock_pool):
 def test_scan_cache_key():
     from agent_bom.api.postgres_store import PostgresScanCache
 
-    assert PostgresScanCache._key("pypi", "requests", "2.31.0") == "pypi:requests@2.31.0"
+    assert PostgresScanCache._key("pypi", "requests", "2.31.0") == "osv-complete-v2:pypi:requests@2.31.0"
 
 
 # ─── Lifespan schedule store Postgres path ───────────────────────────────────

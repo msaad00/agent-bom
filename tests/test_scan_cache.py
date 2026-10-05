@@ -92,7 +92,7 @@ class TestScanCacheTTL:
         # Manually backdate the cached_at timestamp
         cache._conn.execute(
             "UPDATE osv_cache SET cached_at = ? WHERE cache_key = ?",
-            (time.time() - 10, "npm:pkg@1.0"),
+            (time.time() - 10, cache._key("npm", "pkg", "1.0")),
         )
         cache._conn.commit()
 
@@ -106,7 +106,7 @@ class TestScanCacheTTL:
         # Backdate only one entry
         cache._conn.execute(
             "UPDATE osv_cache SET cached_at = ? WHERE cache_key = ?",
-            (time.time() - 10, "npm:old@1.0"),
+            (time.time() - 10, cache._key("npm", "old", "1.0")),
         )
         cache._conn.commit()
 

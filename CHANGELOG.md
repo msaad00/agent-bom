@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Cache OSV results only after every package query succeeds. Failed, malformed, truncated, and incomplete alias/ecosystem lookups remain retryable; a new cache-key generation excludes older potentially incomplete results. Incomplete scans no longer print a clean or complete-report claim.
+
+### Fixed
+
 - Run redaction traversal and generated-metrics contracts on relevant pull requests. Verify Postgres collated-index readiness separately from the planner's choice between eligible indexes.
 - Preserve the stable, redacted CLI input-error message for malformed SBOM JSON, duplicate keys and non-finite values.
 - Restore the cloud-inventory extension when importing CycloneDX or SPDX JSON through CLI, API and MCP scans, including cloud-only documents. Retain imported provenance and collection gaps, reject malformed or ambiguous extensions, and preserve imports alongside fresh cloud observations.

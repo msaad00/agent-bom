@@ -21,6 +21,9 @@ from agent_bom.storage import state_home
 logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_SECONDS = 86_400  # 24 hours
+# Earlier writers cached failed/partial lookups. A separate key namespace
+# retains those rows without accepting them as evidence or trusting old writers.
+CACHE_KEY_PREFIX = "osv-complete-v2:"
 # Test/embedding override; ``None`` resolves to the active state dir per call.
 DEFAULT_CACHE_DIR: Path | None = None
 
@@ -182,4 +185,4 @@ class ScanCache:
     def _key(ecosystem: str, name: str, version: str) -> str:
         from agent_bom.package_utils import normalize_package_name
 
-        return f"{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"
+        return f"{CACHE_KEY_PREFIX}{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"

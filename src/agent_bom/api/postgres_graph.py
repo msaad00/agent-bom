@@ -3724,6 +3724,6 @@ class PostgresScanCache:
 
     @staticmethod
     def _key(ecosystem: str, name: str, version: str) -> str:
-        from agent_bom.package_utils import normalize_package_name
+        from agent_bom.scan_cache import ScanCache
 
-        return f"{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"
+        return ScanCache._key(ecosystem, name, version)

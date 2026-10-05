@@ -1781,6 +1781,19 @@ async def scan_packages(
     return total_vulns
 
 
+def _print_vulnerability_summary(total_vulns: int, findings_count: int) -> None:
+    """Keep empty findings distinct from a complete negative assessment."""
+    if total_vulns:
+        console.print(f"  [red]⚠ Found {total_vulns} vulnerabilities across {findings_count} findings[/red]")
+    else:
+        from agent_bom.scanners.state import peek_coverage_warnings
+
+        if peek_coverage_warnings():
+            console.print("  [yellow]No vulnerabilities confirmed; coverage gaps limit this assessment[/yellow]")
+        else:
+            console.print("  [green]✓ No known vulnerabilities found[/green]")
+
+
 async def scan_agents(
     agents: list[Agent],
     *,
@@ -2020,10 +2033,7 @@ async def scan_agents(
     # Sort by risk score descending
     blast_radii.sort(key=lambda br: br.risk_score, reverse=True)
 
-    if total_vulns:
-        console.print(f"  [red]⚠ Found {total_vulns} vulnerabilities across {len(blast_radii)} findings[/red]")
-    else:
-        console.print("  [green]✓ No known vulnerabilities found[/green]")
+    _print_vulnerability_summary(total_vulns, len(blast_radii))
 
     _logger.info(
         "Scan summary: %d packages scanned, %d vulnerabilities, %d blast radius findings across %d agent(s)",

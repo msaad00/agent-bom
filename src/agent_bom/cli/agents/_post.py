@@ -506,7 +506,7 @@ def compute_exit_code(
     if exit_code != 0 and not quiet:
         con.print(
             "\n  [dim]Exit code 1 is a scan verdict, not a scanner error — the reason is above and the "
-            f"report above is complete.\n  Exit-code contract: {EXIT_CODE_CONTRACT_URL}[/dim]"
+            f"report records findings and coverage limits.\n  Exit-code contract: {EXIT_CODE_CONTRACT_URL}[/dim]"
         )
 
     # Push results to central dashboard

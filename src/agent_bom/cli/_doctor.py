@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from agent_bom.core.settings import env_raw, env_str
+from agent_bom.scan_cache import CACHE_KEY_PREFIX
 from agent_bom.storage import state_home
 
 
@@ -62,7 +63,7 @@ def doctor_cmd(offline: bool = False) -> None:
                 import sqlite3 as _sqlite3
 
                 _conn = _sqlite3.connect(str(db_path), check_same_thread=False)
-                _row = _conn.execute("SELECT COUNT(*) FROM osv_cache").fetchone()
+                _row = _conn.execute("SELECT COUNT(*) FROM osv_cache WHERE cache_key LIKE ?", (f"{CACHE_KEY_PREFIX}%",)).fetchone()
                 _conn.close()
                 entry_count = _row[0] if _row else 0
                 if entry_count == 0:

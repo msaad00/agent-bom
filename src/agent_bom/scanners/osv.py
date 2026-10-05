@@ -214,7 +214,9 @@ def _collect_batch_vulns(
     """Merge one ``/v1/querybatch`` payload into ``partial``; raise on a malformed shape."""
     if not isinstance(data, dict):
         raise ValueError(f"unexpected payload type: {type(data).__name__}")
-    osv_results = data.get("results", [])
+    osv_results = data.get("results")
+    if not isinstance(osv_results, list):
+        raise ValueError("OSV results must be an array")
     if len(osv_results) != batch_len:
         _logger.warning(
             "OSV batch response length mismatch: sent %d queries, got %d results. Some packages may have missed vulnerability detection.",
@@ -226,8 +228,17 @@ def _collect_batch_vulns(
             f" sent {batch_len} queries, got {len(osv_results)} results."
             f" [dim]Some packages may have missed vulnerability detection.[/dim]"
         )
+    incomplete = len(osv_results) != batch_len
     for index, result in enumerate(osv_results[:batch_len]):
+        if not isinstance(result, dict):
+            raise ValueError("OSV result must be an object")
+        if result.get("error") or result.get("next_page_token"):
+            incomplete = True
         vulns = result.get("vulns", [])
+        if not isinstance(vulns, list) or any(
+            not isinstance(vuln, dict) or not isinstance(vuln.get("id"), str) or not vuln["id"].strip() for vuln in vulns
+        ):
+            raise ValueError("OSV vulnerabilities must contain advisory identifiers")
         pkg_match = pkg_index.get(batch_start + index)
         if not vulns or not pkg_match:
             continue
@@ -239,6 +250,53 @@ def _collect_batch_vulns(
             if vuln.get("id") not in seen_ids:
                 existing.append(vuln)
                 seen_ids.add(vuln.get("id"))
+    if incomplete:
+        # Retain observed findings, but never cache this incomplete batch.
+        raise ValueError("OSV batch response is incomplete")
+
+
+async def _cache_complete_results(
+    cache: Any,
+    packages_to_query: list[Package],
+    results: dict[str, list[dict]],
+    pkg_index: dict[int, tuple[Package, str]],
+    completed_queries: set[int],
+    osv_ecosystems_for_package: Callable[[Package], list[str]],
+) -> None:
+    """Cache a package only when every contributing query completed."""
+    incomplete_packages = {
+        (pkg.ecosystem.lower(), normalize_package_name(pkg.name, pkg.ecosystem), pkg.version)
+        for index, (pkg, _name) in pkg_index.items()
+        if index not in completed_queries
+    }
+    cache_writes = [
+        (
+            pkg.ecosystem.lower()
+            if len(osv_ecosystems_for_package(pkg)) == 1
+            else f"{pkg.ecosystem.lower()}|{'|'.join(osv_ecosystems_for_package(pkg))}",
+            normalize_package_name(pkg.name, pkg.ecosystem),
+            pkg.version,
+            results.get(f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}", []),
+        )
+        for pkg in packages_to_query
+        if (pkg.ecosystem.lower(), normalize_package_name(pkg.name, pkg.ecosystem), pkg.version) not in incomplete_packages
+    ]
+    await asyncio.to_thread(cache.put_many, cache_writes)
+
+
+def _record_unavailable_osv(packages: list[Package], reason: str) -> None:
+    """A skipped remote lookup must reach the same verdict gate as a failure."""
+    from agent_bom.scanners.state import record_coverage_warning
+
+    record_coverage_warning(
+        {
+            "kind": "remote_lookup_error",
+            "release": "remote:osv",
+            "ecosystems": sorted({pkg.ecosystem.lower() for pkg in packages}),
+            "package_count": len(packages),
+            "reasons": [reason],
+        }
+    )
 
 
 async def query_osv_batch_impl(
@@ -359,9 +417,11 @@ async def query_osv_batch_impl(
         _logger.warning("OSV enrichment circuit is open; skipping %d remote query item(s)", len(queries))
         console.print("  [yellow]⚠[/yellow] OSV enrichment circuit open — using cache/local data only")
         record_scan_warning("OSV enrichment circuit open")
+        _record_unavailable_osv(packages_to_query, "circuit_open")
         return await enrich_results_if_needed_fn(results)
 
     lookup_errors: list[tuple[str, str, UpstreamError]] = []
+    completed_queries: set[int] = set()
     batch_size = min(_BATCH_SIZE, 1000)
     semaphore = get_api_semaphore()
     try:
@@ -428,10 +488,11 @@ async def query_osv_batch_impl(
 
                 try:
                     _collect_batch_vulns(response.json(), batch_start, len(batch), pkg_index, partial, console)
+                    completed_queries.update(range(batch_start, batch_start + len(batch)))
                     record_enrichment_source("osv", "success")
                 except (ValueError, KeyError, AttributeError, TypeError) as exc:
-                    record_enrichment_source("osv", "failure", error=f"parse error: {exc}")
-                    console.print(f"  [red]✗[/red] OSV response parse error: {exc}")
+                    record_enrichment_source("osv", "failure", error=f"parse error: {type(exc).__name__}")
+                    console.print("  [red]✗[/red] OSV returned an invalid or incomplete response")
                     _fail_batch(UpstreamInvalidResponseError("osv", f"parse error: {type(exc).__name__}"))
             return partial, batch_errors
 
@@ -458,18 +519,7 @@ async def query_osv_batch_impl(
     await enrich_results_if_needed_fn(results)
 
     if cache:
-        cache_writes = [
-            (
-                pkg.ecosystem.lower()
-                if len(osv_ecosystems_for_package(pkg)) == 1
-                else f"{pkg.ecosystem.lower()}|{'|'.join(osv_ecosystems_for_package(pkg))}",
-                normalize_package_name(pkg.name, pkg.ecosystem),
-                pkg.version,
-                results.get(f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}", []),
-            )
-            for pkg in packages_to_query
-        ]
-        await asyncio.to_thread(cache.put_many, cache_writes)
+        await _cache_complete_results(cache, packages_to_query, results, pkg_index, completed_queries, osv_ecosystems_for_package)
 
     total_skipped_eco = sum(skipped_ecosystems.values())
     scanned = len(packages) - skipped_versions - total_skipped_eco

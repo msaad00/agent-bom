@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent_bom.advisory_ids import vulnerability_enrichment_metadata
 from agent_bom.asset_provenance import (
     agent_discovery_provenance,
     package_discovery_provenance,
@@ -62,11 +63,7 @@ def _vulnerability_json(v: Any) -> dict[str, Any]:
         "match_confidence_tier": v.match_confidence_tier,
         "confidence": v.confidence,
         "cvss_score": v.cvss_score,
-        "epss_score": v.epss_score,
-        "epss_percentile": v.epss_percentile,
-        "is_kev": v.is_kev,
-        "kev_date_added": v.kev_date_added,
-        "kev_due_date": v.kev_due_date,
+        **vulnerability_enrichment_metadata(v),
         "exploit_likelihood": v.exploit_likelihood,
         "published_at": v.published_at,
         "modified_at": v.modified_at,

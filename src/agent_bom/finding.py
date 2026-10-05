@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
+from agent_bom.advisory_ids import finding_advisory_metadata, vulnerability_enrichment_metadata
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
 
 if TYPE_CHECKING:
@@ -759,7 +760,6 @@ class Finding:
             "advisory_ids": self.advisory_ids,
             "cve_ids": self.evidence.get("cve_ids") or ([self.cve_id] if self.cve_id else []),
             "match_confidence_tier": self.evidence.get("match_confidence_tier"),
-            "advisory_aliases": self.evidence.get("advisory_aliases") or [],
             "cwe_ids": self.cwe_ids,
             "cvss_score": self.cvss_score,
             "cvss_vector": self.cvss_vector,
@@ -768,6 +768,7 @@ class Finding:
             "privileges_required": self.privileges_required,
             "user_interaction": self.user_interaction,
             "network_exploitable": self.network_exploitable,
+            **finding_advisory_metadata(self.evidence),
             "epss_score": self.epss_score,
             "is_kev": self.is_kev,
             "is_malicious": self.is_malicious,
@@ -1647,9 +1648,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "privileges_required": getattr(vuln, "privileges_required", None),
         "user_interaction": getattr(vuln, "user_interaction", None),
         "network_exploitable": getattr(vuln, "network_exploitable", False),
-        "epss_percentile": getattr(vuln, "epss_percentile", None),
-        "kev_date_added": getattr(vuln, "kev_date_added", None),
-        "kev_due_date": getattr(vuln, "kev_due_date", None),
+        **vulnerability_enrichment_metadata(vuln),
         "vulnerability_compliance_tags": _sanitized_evidence_field(getattr(vuln, "compliance_tags", {}) or {}),
     }
     package_provenance = package_discovery_provenance(pkg)

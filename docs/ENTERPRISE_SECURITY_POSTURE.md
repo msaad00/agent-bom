@@ -86,6 +86,22 @@ configured SLO, and whether the current process sees the source as `ok`,
 `stale`, `degraded`, or `unknown`. Operators should review this surface before
 treating KEV, EPSS, or NVD-derived risk scoring as complete.
 
+OSV `upstream` links connect distro advisories to upstream CVEs without making
+those records aliases. EPSS uses the highest available probability and its
+matching percentile; KEV uses the earliest available remediation deadline and
+that entry's dates. `upstream_ids`, `epss_cve_id`, and `kev_cve_id` retain the
+relationship and selected source CVEs in scan/check JSON and finding evidence;
+CycloneDX/SPDX retain them through import/export. Upstream links do not replace
+the distro's fix, severity, or advisory identity with an upstream value.
+See the [OSV relationship definitions](https://ossf.github.io/osv-schema/#upstream-field).
+
+After upgrading an existing local vulnerability database, run
+`agent-bom db update --source osv --source epss --source kev` to repopulate upstream metadata.
+The schema upgrade retains known findings and invalidates the old OSV sync
+receipt. Old read-only databases stay readable but need a writable update to
+recover links that older releases discarded. Missing enrichment remains unknown;
+it does not establish that a vulnerability is unexploited.
+
 ## Tenant Isolation
 
 Tenant isolation is enforced across API middleware, stores, audit export,

@@ -103,6 +103,7 @@ ARTIFACT_VERSION_CONTRACTS = frozenset(
         "test_scanner_robustness.py",
         "test_online_scan_validation.py",
         "test_scanner_artifact_versions.py",
+        "test_scanner_package_identities.py",
         "test_cli_check.py",
         "test_mcp_package_scan_ecosystem.py",
         "test_parser_interop.py",

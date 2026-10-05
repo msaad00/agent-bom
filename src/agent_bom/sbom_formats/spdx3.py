@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from agent_bom.advisory_ids import upstream_advisory_ids
+
 
 class Spdx3PackageMetadata(TypedDict):
     license: str | None
@@ -196,3 +198,25 @@ def _spdx3_cvss(cvss_rel: dict, score_obj: dict, ann: dict[str, str]) -> tuple[f
         score = None
     vector = cvss_rel.get("security_vectorString") or ann.get("cvss-vector")
     return score, vector if isinstance(vector, str) and vector else None
+
+
+def upstream_enrichment_fields(annotations: dict) -> dict:
+    """Portable upstream relations remain distinct from vulnerability identity."""
+    return {
+        "upstream_ids": upstream_advisory_ids(annotations.get("upstream-ids", "").split(",")),
+        "epss_cve_id": annotations.get("epss-cve-id"),
+        "kev_cve_id": annotations.get("kev-cve-id"),
+        "kev_due_date": annotations.get("kev-due-date"),
+    }
+
+
+def upstream_enrichment_statements(vuln) -> list[str]:
+    """Encode relationships and selected CVEs as SPDX annotations."""
+    statements: list[str] = []
+    if vuln.upstream_ids:
+        statements.append(f"agent-bom:upstream-ids={','.join(vuln.upstream_ids)}")
+    for key in ("epss_cve_id", "kev_cve_id"):
+        value = getattr(vuln, key)
+        if value:
+            statements.append(f"agent-bom:{key.replace('_', '-')}={value}")
+    return statements

@@ -21,6 +21,7 @@ from agent_bom.sbom_formats.cyclonedx import (
     is_context_component,
     restore_dependency_hierarchy,
     restore_package_metadata,
+    restore_vulnerability_enrichment,
     software_components,
 )
 from agent_bom.sbom_formats.spdx3 import (
@@ -33,6 +34,7 @@ from agent_bom.sbom_formats.spdx3 import (
     _spdx3_purl,
     _spdx3_references,
     _spdx3_version,
+    upstream_enrichment_fields,
 )
 
 
@@ -230,6 +232,8 @@ def parse_cyclonedx(data: dict) -> list[Package]:
             references=references,
         )
 
+        restore_vulnerability_enrichment(vuln, vuln_data)
+
         # Map vulnerability to affected packages via affects[] array
         for affect in vuln_data.get("affects", []):
             if not isinstance(affect, dict):
@@ -334,7 +338,7 @@ def _spdx3_vulnerabilities(data: dict, pkg_by_id: dict[str, Package]) -> None:
                     epss_percentile=_as_float(ann.get("epss-percentile")),
                     is_kev=ann.get("kev") == "true",
                     kev_date_added=ann.get("kev-date-added"),
-                    kev_due_date=ann.get("kev-due-date"),
+                    **upstream_enrichment_fields(ann),
                     cwe_ids=cwe_ids,
                 )
             )

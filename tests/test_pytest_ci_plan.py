@@ -230,7 +230,13 @@ def test_shared_judgments_select_caller_parity(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("source", ["core/package_artifacts.py", "core/versions/ruby.py", "parsers/uv_lock.py", "parsers/uv_workspace.py"])
 def test_artifact_version_helpers_select_parser_and_check_consumers(tmp_path: Path, source: str) -> None:
-    names = ["test_scanner_artifact_versions.py", "test_cli_check.py", "test_mcp_package_scan_ecosystem.py", "test_parser_interop.py"]
+    names = [
+        "test_scanner_package_identities.py",
+        "test_scanner_artifact_versions.py",
+        "test_cli_check.py",
+        "test_mcp_package_scan_ecosystem.py",
+        "test_parser_interop.py",
+    ]
     expected = sorted(tmp_path / "tests" / name for name in names)
     for path in [*expected, tmp_path / "tests/test_unrelated.py"]:
         _write(path, 1)

@@ -64,7 +64,7 @@ def _validated_db_path(raw: str) -> Path:
 DB_PATH: Path = _validated_db_path(_RAW_DB_PATH)
 
 # Schema version — bump when DDL changes incompatibly
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 
 # Migration scripts: list of (from_version, to_version, sql) tuples.
 # Add a new entry here whenever _SCHEMA_VERSION is bumped.
@@ -101,6 +101,8 @@ _MIGRATIONS: list[tuple[int, int, str]] = [
         DELETE FROM sync_meta;
         """,
     ),
+    # Re-ingest OSV metadata dropped by older versions; retain known findings.
+    (5, 6, "ALTER TABLE vulns ADD COLUMN upstream_ids TEXT DEFAULT ''; DELETE FROM sync_meta WHERE source = 'osv';"),
 ]
 
 _DDL = """
@@ -122,6 +124,7 @@ CREATE TABLE IF NOT EXISTS vulns (
     fixed_version   TEXT,
     cwe_ids         TEXT DEFAULT '',    -- comma-separated CWE IDs (e.g. "CWE-79,CWE-89")
     aliases         TEXT DEFAULT '',    -- comma-separated advisory aliases (e.g. "CVE-2023-1234,PYSEC-2023-56")
+    upstream_ids    TEXT DEFAULT '',    -- upstream relationships, not identity aliases
     published       TEXT,               -- ISO-8601
     modified        TEXT,               -- ISO-8601
     source          TEXT NOT NULL       -- osv | nvd | ghsa | nvidia
@@ -291,12 +294,13 @@ def _migrate(conn: sqlite3.Connection, from_version: int) -> None:
         if current == src:
             _logger.info("Migrating local vuln DB schema v%d → v%d", src, dst)
             try:
-                conn.executescript(sql)
-                conn.execute("UPDATE schema_version SET version = ?", (dst,))
-                conn.commit()
+                # Only checked-in migration SQL and an integer version enter this transaction.
+                migration_sql = f"BEGIN IMMEDIATE;\n{sql}\nUPDATE schema_version SET version = {int(dst)};\nCOMMIT;"  # nosec B608
+                conn.executescript(migration_sql)
                 current = dst
                 _logger.info("Migration v%d → v%d complete", src, dst)
             except Exception as exc:
+                conn.rollback()
                 _logger.error(
                     "Migration v%d → v%d failed: %s — DB may be in a partial state. "
                     "Delete the DB and re-run 'agent-bom db update' to rebuild.",

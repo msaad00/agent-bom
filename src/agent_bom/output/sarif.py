@@ -420,7 +420,7 @@ def _kev_date_properties(finding: Finding) -> dict[str, str]:
     so SARIF emitting only the boolean was a per-format enrichment drop.
     """
     props: dict[str, str] = {}
-    for key in ("kev_date_added", "kev_due_date"):
+    for key in ("kev_date_added", "kev_due_date", "epss_cve_id", "kev_cve_id"):
         value = evidence(finding, key, "")
         if isinstance(value, str) and value.strip():
             props[key] = value.strip()

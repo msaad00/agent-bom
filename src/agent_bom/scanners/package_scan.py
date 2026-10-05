@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Optional, cast
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from agent_bom.advisory_ids import MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE
+from agent_bom.advisory_ids import MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE, upstream_advisory_ids
 from agent_bom.atlas import tag_blast_radius as tag_atlas_techniques
 from agent_bom.cis_controls import tag_blast_radius as tag_cis_controls
 from agent_bom.cmmc import tag_blast_radius as tag_cmmc
@@ -67,6 +67,7 @@ from agent_bom.package_utils import (
     ubuntu_release_branch,
 )
 from agent_bom.pci_dss import tag_blast_radius as tag_pci_dss
+from agent_bom.reachability_cve import advisory_affected_symbols_by_path, advisory_affected_symbols_list
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
 from agent_bom.scanners.osv import ecosystem_matches as _ecosystem_matches
@@ -941,11 +942,6 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             if isinstance(raw_cwes, list):
                 cwe_ids = [c for c in raw_cwes if isinstance(c, str) and c.startswith("CWE-")]
 
-        from agent_bom.reachability_cve import (
-            advisory_affected_symbols_by_path,
-            advisory_affected_symbols_list,
-        )
-
         affected_symbols = advisory_affected_symbols_list(vuln_data)
         affected_symbols_by_path = advisory_affected_symbols_by_path(vuln_data)
 
@@ -961,6 +957,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 references=references,
                 published_at=vuln_data.get("published"),
                 modified_at=vuln_data.get("modified"),
+                upstream_ids=upstream_advisory_ids(vuln_data.get("upstream")),
                 aliases=all_aliases,
                 cwe_ids=cwe_ids,
                 affected_symbols=affected_symbols,
@@ -1089,6 +1086,9 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         modified_at=getattr(lv, "modified_at", None),
         cwe_ids=getattr(lv, "cwe_ids", []),
         aliases=all_aliases,
+        upstream_ids=getattr(lv, "upstream_ids", []),
+        epss_cve_id=getattr(lv, "epss_cve_id", None),
+        kev_cve_id=getattr(lv, "kev_cve_id", None),
         references=[],
         advisory_sources=[advisory_source] if isinstance(advisory_source, str) and advisory_source else [],
         match_confidence_tier=getattr(lv, "match_confidence_tier", None)

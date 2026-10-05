@@ -76,17 +76,23 @@ def merge_advisory_clusters(records: list[Vulnerability]) -> list[Vulnerability]
         result.aliases = sorted(keys - {result.id})
         if len(cluster) > 1 or result.id != representative.id:
             result.severity_source = f"advisory:{_advisory_origin(representative)}"
-        for field in ("advisory_sources", "references", "cwe_ids", "affected_symbols"):
+        for field in ("advisory_sources", "references", "cwe_ids", "affected_symbols", "upstream_ids"):
             setattr(result, field, sorted({value for record in cluster for value in getattr(record, field)}))
         paths = {path for record in cluster for path in record.affected_symbols_by_path}
         result.affected_symbols_by_path = {
             path: sorted({symbol for record in cluster for symbol in record.affected_symbols_by_path.get(path, [])})
             for path in sorted(paths)
         }
-        result.is_kev = any(record.is_kev for record in cluster)
-        for field in ("kev_date_added", "kev_due_date"):
-            values = [getattr(record, field) for record in cluster if record.is_kev and getattr(record, field)]
-            if values:
-                setattr(result, field, min(values))
+        epss_records = [record for record in cluster if record.epss_score is not None]
+        if epss_records:
+            epss_record = min(epss_records, key=lambda record: (-(record.epss_score or 0), record.epss_cve_id or record.id))
+            for field in ("epss_score", "epss_percentile", "epss_cve_id", "exploitability"):
+                setattr(result, field, getattr(epss_record, field))
+        kev_records = [record for record in cluster if record.is_kev]
+        result.is_kev = bool(kev_records)
+        if kev_records:
+            kev_record = min(kev_records, key=lambda record: (record.kev_due_date or "9999", record.kev_cve_id or record.id))
+            for field in ("kev_date_added", "kev_due_date", "kev_cve_id"):
+                setattr(result, field, getattr(kev_record, field))
         merged.append(result)
     return sorted(merged, key=lambda record: record.id)

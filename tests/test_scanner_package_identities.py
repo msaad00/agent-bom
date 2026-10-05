@@ -215,19 +215,23 @@ def test_bun_jsonc_preserves_strings_and_rejects_duplicate_keys():
 
 
 @pytest.mark.asyncio
-async def test_ruby_artifact_filename_is_incomplete_without_platform_metadata(monkeypatch):
+@pytest.mark.parametrize("raw_version, expected", [("1.19.0-x86_64-linux-gnu", "1.19.0"), ("1.19.0-x86_64-linux-unknown", None)])
+async def test_ruby_artifact_identity_is_normalized_or_rejected_before_lookup(monkeypatch, raw_version, expected):
     import agent_bom.scanners as scanners
 
     called = []
     monkeypatch.setattr(scanners, "_scan_packages_local_db", lambda packages: (called.extend(packages) or 0, set()))
-    package = Package(name="nokogiri", version="1.19.0-x86_64-linux-gnu", ecosystem="rubygems")
+    package = Package(name="nokogiri", version=raw_version, ecosystem="rubygems")
     scanners.reset_scan_warnings()
     try:
         await scanners.scan_packages([package], options=scanners.ScanOptions(offline=True))
     except scanners.IncompleteScanError:
         pass
-    assert called == []  # invalid Gem::Version cannot broaden every local advisory range
-    assert scanners.consume_scan_warnings()
+    assert [pkg.version for pkg in called] == ([] if expected is None else [expected])
+    if expected is not None:
+        assert package.version_evidence == [{"type": "artifact_platform", "raw_version": raw_version, "platform": "x86_64-linux-gnu"}]
+    warnings = scanners.consume_scan_warnings()
+    assert bool(warnings) == (expected is None)
 
 
 def test_cli_invalid_ruby_version_cannot_be_clean():
@@ -235,7 +239,7 @@ def test_cli_invalid_ruby_version_cannot_be_clean():
 
     from agent_bom.cli import main
 
-    result = CliRunner().invoke(main, ["check", "nokogiri@1.19.0-x86_64-linux-gnu", "-e", "rubygems", "--offline", "-f", "json"])
+    result = CliRunner().invoke(main, ["check", "nokogiri@1.19.0-x86_64-linux-unknown", "-e", "rubygems", "--offline", "-f", "json"])
     assert result.exit_code == 2, result.output
     assert json.loads(result.output)["verdict"] == "incomplete"
 
@@ -246,7 +250,7 @@ async def test_mcp_invalid_ruby_version_cannot_be_clean():
 
     result = json.loads(
         await check_impl(
-            package="nokogiri@1.19.0-x86_64-linux-gnu",
+            package="nokogiri@1.19.0-x86_64-linux-unknown",
             ecosystem="rubygems",
             offline=True,
             _validate_ecosystem=lambda value: value,

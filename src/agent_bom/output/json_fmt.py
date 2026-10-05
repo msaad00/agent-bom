@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from agent_bom.advisory_ids import vulnerability_enrichment_metadata
 from agent_bom.asset_provenance import (
     agent_discovery_provenance,
     package_discovery_provenance,
@@ -912,8 +913,7 @@ def _blast_radius_json_entry(
         "advisory_coverage_state": br.vulnerability.advisory_coverage_state,
         "match_confidence_tier": br.vulnerability.match_confidence_tier,
         "cvss_score": br.vulnerability.cvss_score,
-        "epss_score": br.vulnerability.epss_score,
-        "is_kev": br.vulnerability.is_kev,
+        **vulnerability_enrichment_metadata(br.vulnerability),
         "exploit_likelihood": br.vulnerability.exploit_likelihood,
         "published_at": br.vulnerability.published_at,
         "modified_at": br.vulnerability.modified_at,

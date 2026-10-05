@@ -98,12 +98,15 @@ async function routeRemediation(page: Page) {
     jobs: [{ job_id: "job-remediation", status: "done", created_at: CREATED_AT, completed_at: CREATED_AT, request: {}, summary: {} }],
     count: 1, total: 1, limit: 25, offset: 0, status_counts: { done: 1 },
   } }));
-  // The page reads the plan from `/v1/scan/{id}/remediation`, which serves the
-  // plan alone rather than the whole 8.7 MB scan document. Playwright's
-  // `**/v1/scan/job-remediation` glob does NOT match that sub-path, so this
-  // route has to be declared separately -- and it is declared FIRST, because
-  // the broader pattern would otherwise claim the request and answer it with a
-  // whole-job payload the caller no longer reads.
+  // The default page reads current scoped findings; an explicit scan deep link
+  // uses the per-scan endpoint. Keep both contracts represented independently.
+  await page.route("**/v1/findings/remediation", (route) => route.fulfill({ json: {
+    schema_version: "remediation.current.v1",
+    remediation_plan: REMEDIATION_PLAN,
+    source_findings: 1,
+    truncated: false,
+    warnings: [],
+  } }));
   await page.route("**/v1/scan/job-remediation/remediation", (route) => route.fulfill({ json: {
     job_id: "job-remediation",
     remediation_plan: REMEDIATION_PLAN,
@@ -168,7 +171,11 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width, height: 900 });
       await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
       await routeRemediation(page);
+      const currentPlan = page.waitForResponse((response) =>
+        response.url().endsWith("/v1/findings/remediation") && response.status() === 200,
+      );
       await page.goto("/remediation");
+      await currentPlan;
       await page.getByText("Campaign workflow and verification", { exact: true }).click();
       await expect(page.getByRole("heading", { name: "Risk campaigns" })).toBeVisible();
 
@@ -311,3 +318,17 @@ for (const theme of ["light", "dark"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
   });
 }
+
+
+test("remediation scan deep link reads its selected scan", async ({ page }) => {
+  await routeRemediation(page);
+  const requestedPlans: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/remediation")) requestedPlans.push(new URL(request.url()).pathname);
+  });
+  await page.goto("/remediation?scan=job-remediation");
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await expect(page.getByText("Patch the package, then regenerate evidence.", { exact: true })).toBeVisible();
+  expect(requestedPlans).toContain("/v1/scan/job-remediation/remediation");
+  expect(requestedPlans).not.toContain("/v1/findings/remediation");
+});

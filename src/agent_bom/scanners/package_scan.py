@@ -54,7 +54,7 @@ from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, V
 from agent_bom.nist_800_53 import tag_blast_radius as tag_nist_800_53
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
-from agent_bom.os_advisory import apk_advisory_ecosystems, rpm_advisory_ecosystems
+from agent_bom.os_advisory import apk_advisory_ecosystems, rpm_advisory_ecosystems, scope_rpm_advisory
 from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
@@ -209,7 +209,7 @@ def set_offline_mode(value: bool) -> None:
 # when the maintainers actually ship a fix for the affected release. An entry
 # with no fix is therefore the tracker's "no-dsa / won't-fix / unimportant /
 # end-of-life (open)" verdict — not an actionable, patchable finding.
-_OS_DISTRO_ECOSYSTEMS = frozenset({"deb", "apk", "rpm"})
+_SUPPRESSIBLE_DISTRO_ECOSYSTEMS = frozenset({"deb", "apk"})
 
 # When False (default), distro advisories with no fix available for the scanned
 # release are suppressed so OS-package reporting matches mainstream scanner
@@ -232,7 +232,7 @@ def _include_unfixed_enabled() -> bool:
 
 
 def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
-    """Drop unfixed OS-package advisories from ``packages`` in place.
+    """Drop unfixed Debian/Alpine advisories from ``packages`` in place.
 
     Returns the number of vulnerabilities removed. Distro security trackers
     mark a vulnerability as fixed only once a patched package version exists for
@@ -245,12 +245,14 @@ def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
     because it would name another branch's version, which is not the same claim
     as "the distro will not fix this". Without the exemption every such finding
     would be filtered out and an unspecified-release scan would report clean.
+    RPM records without a fix remain visible: missing fix metadata does not
+    establish the vendor's remediation status.
     """
     if _include_unfixed_enabled():
         return 0
     removed = 0
     for pkg in packages:
-        if pkg.ecosystem.lower() not in _OS_DISTRO_ECOSYSTEMS:
+        if pkg.ecosystem.lower() not in _SUPPRESSIBLE_DISTRO_ECOSYSTEMS:
             continue
         vulns = getattr(pkg, "vulnerabilities", None)
         if not vulns:
@@ -462,8 +464,10 @@ def _scope_advisory_to_package_release(vuln_data: dict, package: Package) -> dic
     conservative unscoped behavior when release metadata is absent; otherwise
     an explicitly different release is not evidence for this package.
     """
-    if package.ecosystem.lower() not in {"deb", "apk"} or ambiguous_distro_releases(package):
+    if package.ecosystem.lower() not in {"deb", "apk", "rpm"} or ambiguous_distro_releases(package):
         return vuln_data
+    if package.ecosystem.lower() == "rpm":
+        return scope_rpm_advisory(vuln_data, package.distro_name, package.distro_version)
     expected = {value.lower() for value in _resolve_osv_ecosystems(package, for_local_db=False)}
     if not expected:
         return vuln_data

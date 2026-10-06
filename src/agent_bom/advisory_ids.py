@@ -83,7 +83,7 @@ def match_confidence_tier(
     eco = (db_ecosystem or package_ecosystem or "").lower()
     if eco.startswith(("alpine:", "debian:", "ubuntu:")):
         return MATCH_CONFIDENCE_DISTRO_CONFIRMED
-    if eco in {"apk", "deb", "rpm"} and not fixed_version:
+    if eco in {"apk", "deb"} and not fixed_version:
         return MATCH_CONFIDENCE_UNFIXED_DISTRO
     if fixed_version:
         return MATCH_CONFIDENCE_OSV_RANGE

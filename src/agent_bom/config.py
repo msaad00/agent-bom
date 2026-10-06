@@ -73,10 +73,10 @@ ACTIVATE_RUNTIME_EMITTER_PLUGINS = _bool("AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLU
 
 
 # ── OS-package reporting ──────────────────────────────────────────────────────
-# When False (default), OS/distro advisories with no fix for the scanned release
-# (no-dsa / won't-fix / end-of-life open) are suppressed so container reporting
-# matches mainstream scanner conventions. Set AGENT_BOM_INCLUDE_UNFIXED=1 to
-# surface them. The scanner re-reads this env var at scan time so it can be
+# When False (default), Debian/Alpine advisories with no fix for the scanned
+# release are suppressed. RPM advisories with unresolved fixes stay visible.
+# Set AGENT_BOM_INCLUDE_UNFIXED=1 to include unfixed Debian/Alpine advisories.
+# The scanner re-reads this env var at scan time so it can be
 # toggled per-invocation; see agent_bom.scanners.set_include_unfixed.
 
 INCLUDE_UNFIXED_OS_ADVISORIES = _bool("AGENT_BOM_INCLUDE_UNFIXED", False)

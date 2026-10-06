@@ -118,6 +118,18 @@ The artifact is the same findings report with lower-confidence unfixed distro
 rows included; review their match-confidence tier before using them as a CI
 block. Language-package coverage is unaffected by this switch.
 
+RHEL and other supported RPM distributions retain findings whose fix could not
+be resolved; missing fix metadata is not a vendor "won't fix" verdict. RHEL
+advisories are filtered to the observed Enterprise Linux major release before
+version comparison and fix extraction. For example:
+
+```bash
+agent-bom image registry.access.redhat.com/ubi9/ubi-minimal:9.2 -f json -o image-findings.json
+```
+
+Review the package versions and fix recommendations in `image-findings.json`;
+findings without a resolved fix require investigation or mitigation.
+
 ## IaC and cloud posture
 
 When a CloudFormation template contains unreadable or malformed containers,

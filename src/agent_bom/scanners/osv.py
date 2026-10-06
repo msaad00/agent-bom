@@ -18,6 +18,7 @@ from agent_bom.core.errors import (
 from agent_bom.enrichment_posture import enrichment_source_available, record_enrichment_source
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.models import Package
+from agent_bom.os_advisory import OS_DISTRO_COMPARATOR_FAMILIES
 from agent_bom.package_utils import normalize_package_name
 from agent_bom.scanners.osv_details import OSV_API_URL as OSV_API_URL
 from agent_bom.scanners.osv_details import enrich_results_if_needed as enrich_results_if_needed
@@ -62,6 +63,10 @@ def ecosystem_matches(osv_ecosystem: str, query_ecosystem: str) -> bool:
     osv_base = osv_ecosystem.split(":", 1)[0].strip().lower()
     query_base = query_ecosystem.split(":", 1)[0].strip().lower()
     if osv_base == query_base:
+        return True
+    # Inventory uses the package-manager name; OSV uses the distro family.
+    # Product/release selection is enforced before range and fix evaluation.
+    if OS_DISTRO_COMPARATOR_FAMILIES.get(osv_base) == query_base:
         return True
     # The queried ecosystem is often the internal code ("deb", "rpm", "conda")
     # while OSV uses its own name ("Debian:11", "Linux", "PyPI"). Map the query

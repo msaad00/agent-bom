@@ -24,6 +24,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
+from agent_bom.evidence.asset_display import iac_source_label
 from agent_bom.evidence.finding_status import public_finding_status
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -223,6 +224,9 @@ def _security_domain(
     if source is FindingSource.DSPM or finding_type is FindingType.SENSITIVE_DATA:
         return "dspm"
 
+    if _is_iac_misconfig(source, finding_type, ev):
+        return "aspm"
+
     if source is not None and source in {FindingSource.CLOUD_CIS, FindingSource.CLOUD_SECURITY}:
         provider = str(ev.get("provider") or "").strip().lower()
         # Snowflake governance findings carry a category + no CIS benchmark tag;
@@ -333,10 +337,9 @@ def _is_iac_misconfig(source: "FindingSource | None", ftype: "FindingType", ev: 
     """True when a misconfiguration finding describes infrastructure-as-code.
 
     IaC template scanning (Terraform / CloudFormation / K8s manifests in a repo)
-    is an application/code-layer concern, so such misconfigs also belong to the
-    ``aspm`` lens even though their primary cloud-config lane is ``cspm``.
-    Detected from evidence markers only — absent a marker this never fires, so
-    live-cloud CIS findings stay purely ``cspm``.
+    is application/code-layer evidence, so its primary lane is ``aspm``.
+    Declared provider coordinates do not establish observed cloud posture.
+    Live-cloud CIS findings without code evidence remain ``cspm``.
     """
     from agent_bom.finding import FindingType
 
@@ -588,18 +591,14 @@ def _safe_structural_text(value: Any, *, max_len: int) -> str | None:
     return safe
 
 
-def _safe_asset_projection(value: Any) -> dict[str, str] | None:
-    """Project only the asset fields required to identify a finding in the UI.
-
-    Raw identifiers and locations can contain account ids, local paths, URLs, or
-    credentials. They remain default-deny. The human label, type, and stable
-    opaque id are enough to avoid a meaningless ``asset`` placeholder while
-    preserving the response's privacy boundary.
-    """
+def _safe_asset_projection(value: Any, evidence: Any = None) -> dict[str, str] | None:
+    """Retain a safe label, type and opaque id; keep raw identifiers private."""
     if not isinstance(value, Mapping):
         return None
     result: dict[str, str] = {}
     name = _safe_optional_text(value.get("name"), max_len=256)
+    if name is not None and value.get("asset_type") == "iac_resource":
+        name = iac_source_label(name, evidence)
     if name is not None and not name.startswith("<"):
         result["name"] = name
     for key, max_len in (("asset_type", 64), ("stable_id", 128)):
@@ -654,7 +653,7 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload.update(cve_alias_metadata(row.get("aliases")))
     payload.update(safe_upstream_enrichment_metadata(row))
 
-    asset = _safe_asset_projection(row.get("asset"))
+    asset = _safe_asset_projection(row.get("asset"), row.get("evidence"))
     if asset is not None:
         payload["asset"] = asset
 

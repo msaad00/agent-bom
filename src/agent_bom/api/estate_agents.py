@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from agent_bom.api.findings_current import _finding_snapshot_jobs
+
 AGENT_COUNT_DEFINITION = "distinct canonical agent identities in the tenant's completed scans (latest observation wins)"
 
 
@@ -28,6 +30,7 @@ def scanned_estate_agents(jobs: Iterable[Any]) -> list[dict[str, Any]]:
     because their children already contribute the same agents. Order is
     first-seen, so pagination stays stable across rescans.
     """
+    jobs, _ = _finding_snapshot_jobs(list(jobs), since=None, require_authoritative_evidence=False)
     latest: dict[str, tuple[str, int, list[dict[str, Any]]]] = {}
     order: list[tuple[str | None, dict[str, Any] | None]] = []
     for job_index, job in enumerate(jobs):

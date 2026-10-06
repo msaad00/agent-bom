@@ -49,10 +49,12 @@ def test_current_suppression_is_visible_and_remediation_tracks_expiry(scan_store
     assert finding["suppressed"] is True
     assert finding["suppression_id"] == exc.exception_id
     assert finding["status"] == "suppressed"
+    assert [row["canonical_id"] for row in get_rows(status="suppressed")] == [finding["canonical_id"]]
     assert _plan()["remediation_plan"] == []
     exc.expires_at = "2020-01-01T00:00:00Z"
     exceptions.put(exc, tenant_id="history-tenant")
     assert not get_rows()[0].get("suppressed", False)
+    assert get_rows(status="suppressed") == []
     assert _plan()["remediation_plan"]
 
 
@@ -76,3 +78,37 @@ def test_current_remediation_requires_finding_read_scope(monkeypatch):
     finally:
         set_key_store(old)
         configure_api(api_key=None)
+
+
+def test_remediation_reads_retained_jobs_once_and_does_not_query_graph(scan_store, monkeypatch):  # noqa: F811
+    from unittest.mock import Mock
+
+    from agent_bom.api.routes import scan
+
+    row = pushed(8, scope="v1:" + "a" * 64)
+    template = row.result["findings"][0]
+    row.result["findings"] = [
+        {
+            **template,
+            "id": f"finding-{i}",
+            "canonical_id": f"finding-{i}",
+            "package": f"package-{i}",
+            "package_version": "1.0",
+            "fixed_version": "2.0",
+        }
+        for i in range(1001)
+    ]
+    scan_store.put(row)
+    with TestClient(app) as client:
+        client.headers.update(proxy_headers(role="analyst", tenant="history-tenant"))
+        reads = Mock(wraps=scan_store.list_all)
+        monkeypatch.setattr(scan_store, "list_all", reads)
+        graph_reads = Mock(wraps=scan._project_findings_reachability)
+        monkeypatch.setattr(scan, "_project_findings_reachability", graph_reads)
+        response = client.get("/v1/findings/remediation")
+        assert response.status_code == 200
+        assert response.json()["source_findings"] == 1001
+        assert reads.call_count == 1
+        assert graph_reads.call_count == 0
+    scan_store.put(pushed(9, scope="v1:" + "a" * 64, empty=True))
+    assert _plan()["source_findings"] == 0

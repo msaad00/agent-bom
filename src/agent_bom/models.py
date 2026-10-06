@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, Union
+from uuid import UUID
 
 if TYPE_CHECKING:
     from agent_bom.ai_schemas import AIFindingAssessment
@@ -674,6 +675,7 @@ class MCPServer:
     discovery_sources: list[str] = field(default_factory=list)
     discovery_provenance: Optional[dict[str, Any]] = None  # Sanitized discovery provenance contract for this server asset
     identity_bindings: list[CredentialIdentityBinding] = field(default_factory=list)
+    imported_canonical_id: Optional[str] = None  # Declared SBOM identity; never authorizes execution or trust.
 
     def __post_init__(self) -> None:
         """Scope child tool/resource/prompt identities to this server."""
@@ -702,6 +704,13 @@ class MCPServer:
         dedup identity so distinct servers (e.g. two remote SSE servers with no
         command but different urls) never collapse onto one ID.
         """
+        if self.surface == ServerSurface.SBOM and self.command == "sbom" and self.imported_canonical_id:
+            try:
+                declared = UUID(self.imported_canonical_id)
+                if declared.version == 5 and str(declared) == self.imported_canonical_id:
+                    return self.imported_canonical_id
+            except (ValueError, AttributeError):
+                pass
         return canonical_mcp_server_id(
             self.name,
             self.command,

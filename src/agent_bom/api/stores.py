@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom.api.storage.job_cache import (
     _COMPACTED_RESULT_MARKER as _COMPACTED_RESULT_MARKER,
@@ -540,7 +540,9 @@ def _get_graph_store() -> GraphStoreProtocol:
                     from agent_bom.api.graph_store import SQLiteGraphStore
 
                     _graph_store = SQLiteGraphStore()
-    return _graph_store
+    from agent_bom.api.current_graph import current_graph_store
+
+    return cast("GraphStoreProtocol", current_graph_store(cast(Any, _graph_store), _get_store()))
 
 
 def set_graph_store(store: GraphStoreProtocol) -> None:

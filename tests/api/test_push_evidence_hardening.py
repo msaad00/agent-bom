@@ -204,3 +204,18 @@ def test_postgres_push_redaction_audit_and_failed_write(monkeypatch):
         postgres_common.reset_pool()
         postgres_common.reset_current_tenant(token)
         configure_api(api_key=None)
+
+
+@pytest.mark.parametrize("credential", ["Bearer synthetic-short-token", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"])
+def test_pushed_credentials_cannot_return_through_inventory_or_durable_storage(durable_push, credential):
+    client, jobs, graph, audit = durable_push
+    body = payload()
+    body["agents"][0]["name"] = credential
+    body["agents"][0]["mcp_servers"][0]["name"] = credential
+    pushed = client.post("/v1/results/push", json=body)
+    assert pushed.status_code == 201, pushed.text
+    inventory = client.get("/v1/inventory")
+    assert inventory.status_code == 200, inventory.text
+    assert credential not in inventory.text
+    persisted = SQLiteJobStore(jobs._db_path).get(pushed.json()["job_id"], tenant_id="default")
+    assert credential not in json.dumps(persisted.result)

@@ -54,6 +54,16 @@ def test_normalize_account_ref_none_and_empty() -> None:
 
 # ---------------------------------------------------------------------------
 # FindingSource / FindingType -> security_domain
+
+
+def test_repository_iac_is_application_evidence_not_observed_cloud_posture():
+    from agent_bom.finding_scope import security_lenses_for
+
+    evidence = {"iac": True, "provider": "aws", "file_path": "main.tf"}
+    assert security_domain_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, evidence) == "aspm"
+    assert security_lenses_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, evidence) == {"aspm"}
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -132,7 +142,7 @@ def test_cloud_cis_lens_is_cspm_only() -> None:
 def test_iac_misconfig_lens_adds_aspm() -> None:
     """An IaC-template misconfig is application-layer as well as cloud config."""
     ev = {"benchmark": "CIS", "iac": True, "resource_type": "terraform"}
-    assert security_lenses_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, ev) == {"cspm", "aspm"}
+    assert security_lenses_for(FindingSource.CLOUD_CIS, FindingType.CIS_FAIL, ev) == {"aspm"}
 
 
 def test_ai_signal_lens_is_aispm_only() -> None:

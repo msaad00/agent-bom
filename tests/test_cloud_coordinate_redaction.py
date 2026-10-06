@@ -96,3 +96,39 @@ def test_coordinate_redaction_is_idempotent_and_cache_remains_field_sensitive():
     assert first == sanitize_sensitive_payload(first)
     assert first["id"] == REFERENCES[0]
     assert first["password"] == "***REDACTED***"
+
+
+@pytest.mark.parametrize("provider", ["azure", "gcp"])
+def test_distinct_native_resource_ids_survive_cyclonedx_roundtrip(provider, tmp_path):
+    import json
+
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_cyclonedx
+    from agent_bom.output.graph_export import build_graph_from_scan_data
+    from agent_bom.output.json_fmt import to_redacted_json
+    from agent_bom.parsers.sbom_context import imported_cloud_inventory, load_sbom_agent
+
+    inventory = []
+    for scope in ["example-a", "example-b"]:
+        collection, native = (
+            ("key_vaults", f"/subscriptions/{scope}/providers/Microsoft.KeyVault/vaults/shared")
+            if provider == "azure"
+            else ("cloud_sql_instances", f"projects/{scope}/instances/shared")
+        )
+        inventory.append(
+            {
+                "provider": provider,
+                "account_id": scope,
+                "subscription_id": scope,
+                "project_id": scope,
+                "status": "ok",
+                collection: [{"name": "shared", "id": native}],
+            }
+        )
+    path = tmp_path / "bom.cdx.json"
+    path.write_text(json.dumps(to_cyclonedx(AIBOMReport(cloud_inventory_data=inventory))))
+    imported, _ = load_sbom_agent(str(path))
+    report = to_redacted_json(AIBOMReport(agents=[imported], cloud_inventory_data=imported_cloud_inventory([imported])))
+    nodes = [n for n in build_graph_from_scan_data(report).nodes if n.attributes.get("resource_name") == "shared"]
+    assert len({node.id for node in nodes}) == 2
+    assert {node.attributes["resource_id"] for node in nodes} == {row[collection][0]["id"] for row in inventory}

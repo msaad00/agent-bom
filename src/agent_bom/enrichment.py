@@ -633,16 +633,9 @@ def _task_failure(source: str, exc: BaseException, *, affected: int = 1) -> Upst
     return UpstreamError(source, f"task failed ({type(exc).__name__})", affected=affected)
 
 
-def extract_cve_ids(vulnerabilities: list[Vulnerability]) -> list[str]:
-    """Extract CVE IDs from vulnerability list (including aliases)."""
-    cve_ids: set[str] = set()
-    for vuln in vulnerabilities:
-        if vuln.id.startswith("CVE-"):
-            cve_ids.add(vuln.id)
-        for alias in vuln.aliases:
-            if alias.startswith("CVE-"):
-                cve_ids.add(alias)
-    return list(cve_ids)
+def extract_cve_ids(vulnerabilities: list[Vulnerability], *, include_upstream: bool = True) -> list[str]:
+    """Extract identity and upstream CVEs for exploit-intelligence lookups."""
+    return sorted({cve for vuln in vulnerabilities for cve in vuln_cve_ids(vuln, include_upstream=include_upstream)})
 
 
 async def join_kev_catalog(vulnerabilities: list[Vulnerability], *, offline: bool = False) -> int:
@@ -734,7 +727,6 @@ async def enrich_vulnerabilities(
         async def _fetch_nvd() -> tuple[dict[str, dict], int, int]:
             if offline_enrichment or not enable_nvd or not cve_ids:
                 return {}, 0, 0
-            # Build set of CVE IDs that already have CWE data (local check)
             cves_with_cwes: set[str] = set()
             for vuln in vulnerabilities:
                 if vuln.cwe_ids:
@@ -744,8 +736,9 @@ async def enrich_vulnerabilities(
                         if alias.startswith("CVE-"):
                             cves_with_cwes.add(alias)
 
-            nvd_needed = [c for c in cve_ids if c not in cves_with_cwes]
-            skipped = len(cve_ids) - len(nvd_needed)
+            identity_cves = set(extract_cve_ids(vulnerabilities, include_upstream=False))
+            nvd_needed = sorted(identity_cves - cves_with_cwes)
+            skipped = len(identity_cves) - len(nvd_needed)
             if not nvd_needed:
                 return {}, skipped, 0
 

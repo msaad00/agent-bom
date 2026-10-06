@@ -17,6 +17,7 @@ from agent_bom.output.cloud_context import attach_cloud_context
 from agent_bom.output.dependency_hierarchy import spdx3_package_relationships
 from agent_bom.output.finding_views import cve_findings, package_ecosystem, package_name, package_version
 from agent_bom.package_utils import synthesize_purl
+from agent_bom.sbom_formats.spdx3 import upstream_enrichment_statements
 
 # Canonical SPDX 3.0.1 JSON-LD context (media type application/spdx+json-ld,
 # ``.spdx.json`` / ``.jsonld`` extension). Every SPDX 3.0.1 document references
@@ -404,6 +405,7 @@ def _vulnerability_statements(
     derivable so a missing statement never reads as "no SLA".
     """
     statements: list[str] = []
+    statements.extend(upstream_enrichment_statements(vuln))
     severity_value = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
     # agent-bom's severity may come from a non-CVSS source, so it is carried
     # verbatim rather than re-derived from the CVSS assessment's rating.

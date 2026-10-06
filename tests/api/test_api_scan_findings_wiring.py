@@ -52,6 +52,10 @@ def _report_with_known_vuln() -> dict:
         cvss_score=9.8,
         fixed_version="2.0.0",
         is_kev=True,
+        upstream_ids=["CVE-2026-9998"],
+        epss_cve_id="CVE-2026-9998",
+        kev_cve_id="CVE-2026-9998",
+        epss_score=0.9,
     )
     pkg = Package(
         name="demo-lib",
@@ -180,6 +184,10 @@ def test_scan_vuln_flows_to_findings_and_attack_paths(wired_client):
     finding_rows = findings.json()["findings"]
     finding_vulns = {row.get("vulnerability_id") for row in finding_rows}
     assert KNOWN_CVE in finding_vulns, f"known vuln missing from findings: {finding_vulns}"
+    row = next(row for row in finding_rows if row.get("vulnerability_id") == KNOWN_CVE)
+    assert row["upstream_ids"] == ["CVE-2026-9998"]
+    assert row["epss_cve_id"] == row["kev_cve_id"] == "CVE-2026-9998"
+    assert row["epss_score"] == 0.9
 
     attack_paths = wired_client.get("/v1/graph/attack-paths")
     assert attack_paths.status_code == 200

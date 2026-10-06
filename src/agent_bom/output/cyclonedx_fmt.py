@@ -28,7 +28,7 @@ from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.output.cloud_context import attach_cloud_context
 from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies, imported_bom_incomplete
 from agent_bom.package_utils import synthesize_purl
-from agent_bom.sbom_formats.cyclonedx import vulnerability_source
+from agent_bom.sbom_formats.cyclonedx import vulnerability_enrichment_properties, vulnerability_source
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 from agent_bom.vex import vex_justification_to_cdx
 
@@ -204,13 +204,7 @@ def _cyclonedx_vulnerability(
     cwes = _cwe_ids_to_integers(vuln.cwe_ids)
     if cwes:
         entry["cwes"] = cwes
-    vuln_properties: list[dict[str, str]] = []
-    if vuln.is_kev:
-        vuln_properties.append({"name": "agent-bom:kev", "value": "true"})
-        if vuln.kev_date_added:
-            vuln_properties.append({"name": "agent-bom:kev_date_added", "value": vuln.kev_date_added})
-        if vuln.kev_due_date:
-            vuln_properties.append({"name": "agent-bom:kev_due_date", "value": vuln.kev_due_date})
+    vuln_properties = vulnerability_enrichment_properties(vuln)
     # Severity-derived remediation SLA (KEV override) — one source of truth in
     # agent_bom.graph.sla. Only emitted when an anchor + policy make a deadline real.
     from agent_bom.graph.sla import sla_due_at as _compute_sla_due_at
@@ -224,10 +218,6 @@ def _cyclonedx_vulnerability(
     if sla_due is not None:
         vuln_properties.append({"name": "agent-bom:sla_due_at", "value": sla_due})
         vuln_properties.append({"name": "agent-bom:sla_due_at_source", "value": "severity-kev/v1"})
-    if vuln.epss_score is not None:
-        vuln_properties.append({"name": "agent-bom:epss_score", "value": str(vuln.epss_score)})
-    if vuln.epss_percentile is not None:
-        vuln_properties.append({"name": "agent-bom:epss_percentile", "value": str(vuln.epss_percentile)})
     if workflow_data:
         # A CycloneDX vulnerability can affect more than one component. Owner,
         # explicit SLA, and workflow state belong to the package observation,

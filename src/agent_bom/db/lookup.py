@@ -47,6 +47,9 @@ class LocalVuln:
     ecosystem: str = ""
     package_name: str = ""
     introduced: Optional[str] = None
+    upstream_ids: list[str] = field(default_factory=list)  # Relationships, never identity aliases
+    epss_cve_id: Optional[str] = None  # CVE supplying the selected maximum EPSS
+    kev_cve_id: Optional[str] = None  # CVE supplying the selected KEV dates
     aliases: list[str] = field(default_factory=list)
     cwe_ids: list[str] = field(default_factory=list)
     # Set only by the CPE matcher so the finding surfaces as nvd_cpe_candidate;
@@ -83,12 +86,12 @@ def _current_severity(severity: str, score: Optional[float], vector: Optional[st
     return severity, fresh
 
 
-def _cve_candidates(vuln_id: str, raw_aliases: str) -> list[str]:
+def _cve_candidates(vuln_id: str, raw_aliases: str, raw_upstream: str = "") -> list[str]:
     """Return unique CVE identifiers associated with one vulnerability row."""
     candidates: list[str] = []
     if vuln_id.startswith("CVE-"):
         candidates.append(vuln_id)
-    for alias in (raw_aliases or "").split(","):
+    for alias in ((raw_aliases or "") + "," + (raw_upstream or "")).split(","):
         alias = alias.strip()
         if alias.startswith("CVE-") and alias not in candidates:
             candidates.append(alias)
@@ -103,7 +106,7 @@ def _load_cve_enrichment(
     cve_ids: list[str] = []
     seen: set[str] = set()
     for row in rows:
-        for cve_id in _cve_candidates(row["id"], row["aliases"] or ""):
+        for cve_id in _cve_candidates(row["id"], row["aliases"] or "", row["upstream_ids"] or ""):
             if cve_id not in seen:
                 seen.add(cve_id)
                 cve_ids.append(cve_id)
@@ -111,22 +114,19 @@ def _load_cve_enrichment(
     if not cve_ids:
         return {}, {}
 
-    placeholders = ", ".join("?" for _ in cve_ids)
-    epss_query = f"""
-        SELECT cve_id, probability, percentile
-        FROM epss_scores
-        WHERE cve_id IN ({placeholders})
-    """  # nosec B608 - placeholders are generated solely from "?" markers
-    kev_query = f"""
-        SELECT cve_id, date_added, due_date
-        FROM kev_entries
-        WHERE cve_id IN ({placeholders})
-    """  # nosec B608 - placeholders are generated solely from "?" markers
-    epss_rows = conn.execute(epss_query, cve_ids).fetchall()
-    kev_rows = conn.execute(kev_query, cve_ids).fetchall()
-
-    epss_map = {row["cve_id"]: (row["probability"], row["percentile"]) for row in epss_rows}
-    kev_map = {row["cve_id"]: (row["date_added"], row["due_date"]) for row in kev_rows}
+    epss_map: dict[str, tuple[Optional[float], Optional[float]]] = {}
+    kev_map: dict[str, tuple[Optional[str], Optional[str]]] = {}
+    # An advisory can refer to many upstream CVEs; keep below SQLite limits.
+    for offset in range(0, len(cve_ids), 400):
+        chunk = cve_ids[offset : offset + 400]
+        placeholders = ", ".join("?" for _ in chunk)
+        # Only generated question-mark placeholders enter these SQL strings.
+        epss_query = f"SELECT cve_id, probability, percentile FROM epss_scores WHERE cve_id IN ({placeholders})"  # nosec B608
+        kev_query = f"SELECT cve_id, date_added, due_date FROM kev_entries WHERE cve_id IN ({placeholders})"  # nosec B608
+        epss_rows = conn.execute(epss_query, chunk).fetchall()
+        kev_rows = conn.execute(kev_query, chunk).fetchall()
+        epss_map.update({row["cve_id"]: (row["probability"], row["percentile"]) for row in epss_rows})
+        kev_map.update({row["cve_id"]: (row["date_added"], row["due_date"]) for row in kev_rows})
     return epss_map, kev_map
 
 
@@ -134,28 +134,24 @@ def _resolve_row_enrichment(
     row: sqlite3.Row,
     epss_map: dict[str, tuple[Optional[float], Optional[float]]],
     kev_map: dict[str, tuple[Optional[str], Optional[str]]],
-) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
-    """Return EPSS probability/percentile and KEV dates, falling back to CVE aliases.
+) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """Use the same maximum EPSS and earliest KEV deadline as live scanning."""
+    from agent_bom.scanners.enrichment_apply import epss_percentile, select_epss_cve, select_kev_cve
 
-    ``kev_due_date`` is the CISA BOD 22-01 remediation deadline. It is carried
-    alongside ``date_added`` because every downstream consumer (CSV, CycloneDX,
-    SPDX, Markdown, Parquet, the ``check`` CLI) already renders it.
-    """
-    epss_prob = row["epss_prob"]
-    epss_pct = row["epss_pct"]
-    kev_date = row["kev_date"]
-    kev_due = row["kev_due_date"]
-    if epss_prob is not None and kev_date is not None:
-        return epss_prob, epss_pct, kev_date, kev_due
+    ids = _cve_candidates(row["id"], row["aliases"] or "", row["upstream_ids"] or "")
+    epss = {cve: {"score": epss_map[cve][0]} for cve in ids if cve in epss_map}
+    kev = {cve: {"due_date": kev_map[cve][1]} for cve in ids if cve in kev_map}
+    epss_id = select_epss_cve(ids, epss)
+    kev_id = select_kev_cve(ids, kev)
+    probability, percentile = epss_map[epss_id] if epss_id else (None, None)
+    date_added, due_date = kev_map[kev_id] if kev_id else (None, None)
+    return probability, epss_percentile(percentile), date_added, due_date, epss_id, kev_id
 
-    for cve_id in _cve_candidates(row["id"], row["aliases"] or ""):
-        if epss_prob is None and cve_id in epss_map:
-            epss_prob, epss_pct = epss_map[cve_id]
-        if kev_date is None and cve_id in kev_map:
-            kev_date, kev_due = kev_map[cve_id]
-        if epss_prob is not None and kev_date is not None:
-            break
-    return epss_prob, epss_pct, kev_date, kev_due
+
+def _upstream_projection(conn: sqlite3.Connection) -> str:
+    # Older read-only air-gap bundles cannot migrate until their next update.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(vulns)")}
+    return "COALESCE(v.upstream_ids, '')" if "upstream_ids" in columns else "''"
 
 
 def lookup_package(
@@ -177,11 +173,12 @@ def lookup_package(
 
     span_cm = _LOOKUP_TRACER.start_as_current_span("db.lookup_package") if _LOOKUP_TRACER else nullcontext()
     with span_cm as span:
+        upstream_projection = _upstream_projection(conn)
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
-                COALESCE(v.aliases, '') AS aliases, v.source,
+                COALESCE(v.aliases, '') AS aliases, {upstream_projection} AS upstream_ids, v.source,
                 v.published, v.modified,
                 a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                 e.probability AS epss_prob, e.percentile AS epss_pct,
@@ -192,44 +189,14 @@ def lookup_package(
             LEFT JOIN kev_entries k ON k.cve_id = v.id
             WHERE a.ecosystem = ? AND a.package_name = ?
             ORDER BY v.cvss_score DESC NULLS LAST
-            """,
+            """,  # nosec B608 - projection is one of two static SQL literals; values are bound
             (eco_lower, norm_name),
         ).fetchall()
 
         epss_map, kev_map = _load_cve_enrichment(conn, rows)
         results: list[LocalVuln] = []
         for row in _select_vulnerability_rows(rows, version):
-            # Parse comma-separated CWE IDs from DB column
-            raw_cwes = row["cwe_ids"] or ""
-            cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
-            raw_aliases = row["aliases"] or ""
-            alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
-            epss_prob, epss_pct, kev_date, kev_due = _resolve_row_enrichment(row, epss_map, kev_map)
-            severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
-
-            results.append(
-                LocalVuln(
-                    id=row["id"],
-                    summary=row["summary"],
-                    severity=severity,
-                    cvss_score=cvss_score,
-                    cvss_vector=row["cvss_vector"],
-                    fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
-                    epss_probability=epss_prob,
-                    epss_percentile=epss_pct,
-                    is_kev=kev_date is not None,
-                    kev_date_added=kev_date,
-                    kev_due_date=kev_due,
-                    published_at=row["published"],
-                    modified_at=row["modified"],
-                    source=row["source"],
-                    ecosystem=row["ecosystem"],
-                    package_name=row["package_name"],
-                    introduced=row["introduced"],
-                    aliases=alias_list,
-                    cwe_ids=cwe_list,
-                )
-            )
+            results.append(_local_vuln_from_row(row, rows, version, epss_map, kev_map))
 
         if span is not None:
             span.set_attribute("agent_bom.lookup.ecosystem", eco_lower)
@@ -609,6 +576,7 @@ def lookup_packages_batch(
     span_cm = _LOOKUP_TRACER.start_as_current_span("db.lookup_packages_batch") if _LOOKUP_TRACER else nullcontext()
     with span_cm as span:
         # Fetch all rows in chunks
+        upstream_projection = _upstream_projection(conn)
         all_rows: list[sqlite3.Row] = []
         for start in range(0, len(pairs), chunk_size):
             chunk = pairs[start : start + chunk_size]
@@ -621,7 +589,7 @@ def lookup_packages_batch(
             query = f"""
                 SELECT
                     v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
-                    COALESCE(v.aliases, '') AS aliases, v.source,
+                    COALESCE(v.aliases, '') AS aliases, {upstream_projection} AS upstream_ids, v.source,
                     v.published, v.modified,
                     a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                     e.probability AS epss_prob, e.percentile AS epss_pct,
@@ -651,36 +619,7 @@ def lookup_packages_batch(
 
             vulns: list[LocalVuln] = []
             for row in _select_vulnerability_rows(rows, version):
-                raw_cwes = row["cwe_ids"] or ""
-                cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
-                raw_aliases = row["aliases"] or ""
-                alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
-                epss_prob, epss_pct, kev_date, kev_due = _resolve_row_enrichment(row, epss_map, kev_map)
-                severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
-
-                vulns.append(
-                    LocalVuln(
-                        id=row["id"],
-                        summary=row["summary"],
-                        severity=severity,
-                        cvss_score=cvss_score,
-                        cvss_vector=row["cvss_vector"],
-                        fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
-                        epss_probability=epss_prob,
-                        epss_percentile=epss_pct,
-                        is_kev=kev_date is not None,
-                        kev_date_added=kev_date,
-                        kev_due_date=kev_due,
-                        published_at=row["published"],
-                        modified_at=row["modified"],
-                        source=row["source"],
-                        ecosystem=row["ecosystem"],
-                        package_name=row["package_name"],
-                        introduced=row["introduced"],
-                        aliases=alias_list,
-                        cwe_ids=cwe_list,
-                    )
-                )
+                vulns.append(_local_vuln_from_row(row, rows, version, epss_map, kev_map))
             results[key] = vulns
 
         if span is not None:
@@ -766,3 +705,37 @@ class VulnDB:
         from agent_bom.db.schema import db_stats
 
         return db_stats(self._conn)
+
+
+def _local_vuln_from_row(row, rows, version, epss_map, kev_map) -> LocalVuln:
+    """Hydrate identical evidence for single and batch package lookups."""
+    raw_cwes = row["cwe_ids"] or ""
+    cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+    raw_aliases = row["aliases"] or ""
+    alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
+    epss_prob, epss_pct, kev_date, kev_due, epss_id, kev_id = _resolve_row_enrichment(row, epss_map, kev_map)
+    severity, cvss_score = _current_severity(row["severity"], row["cvss_score"], row["cvss_vector"])
+    return LocalVuln(
+        id=row["id"],
+        summary=row["summary"],
+        severity=severity,
+        cvss_score=cvss_score,
+        cvss_vector=row["cvss_vector"],
+        fixed_version=_resolve_fixed_version_with_aliases(row, rows, version),
+        epss_probability=epss_prob,
+        epss_percentile=epss_pct,
+        is_kev=kev_id is not None,
+        kev_date_added=kev_date,
+        kev_due_date=kev_due,
+        published_at=row["published"],
+        modified_at=row["modified"],
+        source=row["source"],
+        ecosystem=row["ecosystem"],
+        package_name=row["package_name"],
+        introduced=row["introduced"],
+        upstream_ids=[item for item in (row["upstream_ids"] or "").split(",") if item],
+        epss_cve_id=epss_id,
+        kev_cve_id=kev_id,
+        aliases=alias_list,
+        cwe_ids=cwe_list,
+    )

@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urljoin, urlparse
 
+from agent_bom.db.osv_metadata import osv_relationship_metadata
 from agent_bom.models import Severity
 from agent_bom.package_utils import ALPINE_SECDB_BRANCHES as _ALPINE_SECDB_BRANCHES
 from agent_bom.scanners.risk import osv_severity_basis, parse_cvss_vector
@@ -474,17 +475,6 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
             )
         affected_rows.extend(range_rows)
 
-    # Extract CWE IDs from database_specific (GHSA advisories store them here)
-    cwe_ids_list: list[str] = []
-    if isinstance(db_specific, dict):
-        raw_cwes = db_specific.get("cwe_ids", [])
-        if isinstance(raw_cwes, list):
-            cwe_ids_list = [c for c in raw_cwes if isinstance(c, str) and c.startswith("CWE-")]
-
-    # Store aliases for cross-reference deduplication (PYSEC↔GHSA↔CVE)
-    aliases_list = data.get("aliases", [])
-    aliases_str = ",".join(a for a in aliases_list if isinstance(a, str))
-
     vuln_row = {
         "id": vuln_id,
         "summary": summary[:500],
@@ -492,8 +482,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
         "cvss_score": cvss_score,
         "cvss_vector": cvss_vector,
         "fixed_version": fixed_version,
-        "cwe_ids": ",".join(cwe_ids_list),
-        "aliases": aliases_str,
+        **osv_relationship_metadata(data, db_specific),
         "published": published,
         "modified": modified,
         "source": "osv",
@@ -530,9 +519,10 @@ def _ingest_osv_file(conn: sqlite3.Connection, content: bytes, filename: str) ->
     conn.execute(
         """
         INSERT OR REPLACE INTO vulns
-            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, aliases, published, modified, source)
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, cwe_ids, aliases, upstream_ids, published, modified, source)
         VALUES
-            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :aliases, :published, :modified, :source)
+            (:id, :summary, :severity, :cvss_score, :cvss_vector, :fixed_version, :cwe_ids, :aliases,
+             :upstream_ids, :published, :modified, :source)
         """,
         vuln_row,
     )

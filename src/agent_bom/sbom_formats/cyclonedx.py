@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 
+from agent_bom.advisory_ids import upstream_advisory_ids
 from agent_bom.checksums import add_checksum
 from agent_bom.models import Package, Vulnerability
+from agent_bom.scanners.enrichment_apply import apply_epss_entry
 
 _CONTEXT_ROLES = {"ai-agent", "mcp-server"}
 
@@ -135,3 +137,45 @@ def vulnerability_source(vuln: Vulnerability) -> dict[str, str]:
     if vuln.severity_source == "sbom":
         return {"name": "SBOM"}
     return {"name": "OSV", "url": f"https://osv.dev/vulnerability/{vuln.id}"}
+
+
+def vulnerability_enrichment_properties(vuln: Vulnerability) -> list[dict[str, str]]:
+    """Preserve scalar intelligence with the CVE supplying each value."""
+    vuln_properties: list[dict[str, str]] = []
+    if vuln.upstream_ids:
+        vuln_properties.append({"name": "agent-bom:upstream_ids", "value": ",".join(vuln.upstream_ids)})
+    for key in ("epss_cve_id", "kev_cve_id"):
+        value = getattr(vuln, key)
+        if value:
+            vuln_properties.append({"name": f"agent-bom:{key}", "value": value})
+    if vuln.is_kev:
+        vuln_properties.append({"name": "agent-bom:kev", "value": "true"})
+        if vuln.kev_date_added:
+            vuln_properties.append({"name": "agent-bom:kev_date_added", "value": vuln.kev_date_added})
+        if vuln.kev_due_date:
+            vuln_properties.append({"name": "agent-bom:kev_due_date", "value": vuln.kev_due_date})
+    if vuln.epss_score is not None:
+        vuln_properties.append({"name": "agent-bom:epss_score", "value": str(vuln.epss_score)})
+    if vuln.epss_percentile is not None:
+        vuln_properties.append({"name": "agent-bom:epss_percentile", "value": str(vuln.epss_percentile)})
+    return vuln_properties
+
+
+def restore_vulnerability_enrichment(vuln: Vulnerability, vuln_data: dict) -> None:
+    """Restore only the portable enrichment properties written by this exporter."""
+    props = component_properties(vuln_data)
+    vuln.upstream_ids = upstream_advisory_ids(props.get("agent-bom:upstream_ids", "").split(","))
+    vuln.epss_cve_id = props.get("agent-bom:epss_cve_id")
+    vuln.kev_cve_id = props.get("agent-bom:kev_cve_id")
+    try:
+        score = float(props["agent-bom:epss_score"])
+        percentile = float(props["agent-bom:epss_percentile"]) if "agent-bom:epss_percentile" in props else None
+    except (KeyError, TypeError, ValueError):
+        pass
+    else:
+        key = vuln.epss_cve_id or vuln.id
+        apply_epss_entry(vuln, [key], {key: {"score": score, "percentile": percentile}})
+    vuln.is_kev = props.get("agent-bom:kev") == "true"
+    if vuln.is_kev:
+        vuln.kev_date_added = props.get("agent-bom:kev_date_added")
+        vuln.kev_due_date = props.get("agent-bom:kev_due_date")

@@ -11,6 +11,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Preserve OSV upstream CVE relationships through local database sync, scanning, EPSS/KEV enrichment, findings and SBOM round trips without merging those links as aliases.
+- Align Ruby artifact identity regressions and changed-domain CI selection with recognized native-platform normalization.
+
 - Bound gateway and proxy policy regex execution; reject unsafe pattern structures and fail closed on oversized inputs or exhausted match budgets, with explicit audit-mode receipts.
 
 - Match recognized native Ruby artifact versions using the underlying gem version, retaining platform evidence. Resolve uv workspace members from their shared lockfile; missing or malformed locks remain incomplete instead of falling back to registry-selected versions.

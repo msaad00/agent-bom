@@ -125,6 +125,9 @@ class Vulnerability:
         None  # NVD review status: RECEIVED, AWAITING_ANALYSIS, UNDERGOING_ANALYSIS, ANALYZED, MODIFIED, DEFERRED, REJECTED
     )
     cwe_ids: list[str] = field(default_factory=list)  # CWE weakness types
+    upstream_ids: list[str] = field(default_factory=list)  # Relationships, never identity aliases
+    epss_cve_id: Optional[str] = None  # CVE supplying the selected maximum EPSS
+    kev_cve_id: Optional[str] = None  # CVE supplying the selected KEV dates
     aliases: list[str] = field(default_factory=list)  # Cross-source aliases (e.g. GHSA↔CVE)
     exploitability: Optional[str] = None  # "HIGH", "MEDIUM", "LOW" based on EPSS
     vex_status: Optional[str] = None  # VEX status: affected, not_affected, fixed, under_investigation

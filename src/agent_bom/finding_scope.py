@@ -645,13 +645,14 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     Descriptions, local paths, raw evidence and private resource identifiers
     remain excluded; only validated structural metadata is restored.
     """
-    from agent_bom.advisory_ids import cve_alias_metadata
+    from agent_bom.advisory_ids import cve_alias_metadata, safe_upstream_enrichment_metadata
     from agent_bom.evidence import EvidenceTier, redact_for_persistence
     from agent_bom.security import mask_email
 
     redacted = redact_for_persistence(dict(row), EvidenceTier.SAFE_TO_STORE)
     payload = dict(redacted) if isinstance(redacted, dict) else {}
     payload.update(cve_alias_metadata(row.get("aliases")))
+    payload.update(safe_upstream_enrichment_metadata(row))
 
     asset = _safe_asset_projection(row.get("asset"))
     if asset is not None:

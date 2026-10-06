@@ -911,6 +911,27 @@ async def test_verify_audit_export_accepts_signed_json(monkeypatch):
     assert verified["payload_bytes"] > 0
 
 
+@pytest.mark.parametrize("format_name", ["json", "jsonl"])
+def test_audit_export_signature_covers_exact_response_bytes(monkeypatch, format_name):
+    from agent_bom.api.audit_log import verify_export_payload
+
+    store = InMemoryAuditLog()
+    store.append(
+        AuditEntry(action="scan", actor="Jos\u00e9", resource="job/1", details={"tenant_id": "tenant-alpha", "label": "\u8cc7\u7523"})
+    )
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+    response = enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"), format=format_name)
+    signature = response.headers["x-agent-bom-audit-export-signature"]
+    assert verify_export_payload(response.body, signature)
+    assert not verify_export_payload(response.body + b" ", signature)
+    verified = enterprise.verify_audit_export(
+        _request("tenant-alpha", "alice-admin"),
+        enterprise.AuditExportVerifyRequest(payload=response.body.decode("utf-8"), signature=signature),
+    )
+    assert verified["valid"] is True
+    assert verified["payload_bytes"] == len(response.body)
+
+
 @pytest.mark.asyncio
 async def test_verify_audit_export_rejects_tampered_payload(monkeypatch):
     store = InMemoryAuditLog()

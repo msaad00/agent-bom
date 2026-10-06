@@ -552,7 +552,7 @@ function SecurityCoverageLanes({
                     {known && total > 0 ? `${exact ? "" : "≥"}${lane.count.toLocaleString()}` : "—"}
                   </span>
                   {known && total > 0 ? (
-                    <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-ink-secondary">
+                    <span className="text-xs font-medium uppercase tracking-[0.08em] text-ink-secondary">
                       {lane.count === 1 ? "finding" : "findings"}
                     </span>
                   ) : null}
@@ -1117,7 +1117,7 @@ function CategoryChip({
     <ReportEvidenceLink localReport={localReport}
       href={href}
       title={title}
-      className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
+      className="inline-flex items-center gap-1 rounded-full border border-outline bg-surface-muted px-2 py-0.5 text-xs font-semibold text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
     >
       <Icon className="h-3 w-3 text-ink-secondary" aria-hidden="true" />
       {label} {value}
@@ -1289,7 +1289,7 @@ function SeverityIssueStrip({
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-[9px] text-ink-secondary">
+                <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-ink-secondary">
                   {issueTypes.map((issue) => {
                     const count = resolved[issue][band.key];
                     if (count <= 0) return null;
@@ -1318,7 +1318,7 @@ function SeverityIssueStrip({
               <ReportEvidenceLink localReport={localReport}
                 key={issue}
                 href={findingsHref({ scope: "all", issue })}
-                className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface px-2 py-0.5 text-[10px] text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
+                className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface px-2 py-0.5 text-xs text-ink-secondary transition hover:border-outline-strong hover:text-foreground"
               >
                 <Glyph className="h-3 w-3 text-ink-secondary" aria-hidden="true" />
                 {ISSUE_TYPE_SHORT[issue]} {total}

@@ -2972,18 +2972,18 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "context-map-live.png",
-      page: "/graph?lens=context&capture=1",
+      page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
     },
     {
       path: "context-map-light-live.png",
-      page: "/graph?lens=context&capture=1",
+      page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       presentation: "light desktop",
     },
     ...["dark", "light"].map(theme => ({
       path: `context-map-horizontal-${theme}-live.png`,
-      page: "/graph?lens=context&capture=1",
+      page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       presentation: `${theme} desktop 1760x860`,
     })),
@@ -3735,7 +3735,7 @@ async function main() {
     const contextNeighborhoodAssertions = {
       awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
       expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
-      expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
+      expectedApiPaths: ["/v1/jobs", "/v1/graph/agents", "/v1/graph/incident-edges"],
       minGraphNodes: 9,
       maxGraphNodes: 9,
       minGraphEdges: 8,
@@ -3743,7 +3743,7 @@ async function main() {
       minGraphNodeFontPx: 14,
       assertEdgeLabelsClearOfNodes: true,
     };
-    await capture(page, "/graph?lens=context&capture=1", "context-map-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
+    await capture(page, `/graph?lens=context&scan=${SCAN_ID}&capture=1`, "context-map-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/inventory?capture=1", "inventory-live.png", async (inventoryPage) => {
       await inventoryPage.getByRole("heading", { name: "Asset inventory" }).waitFor({
@@ -3853,10 +3853,10 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
-    await capture(lightPage, "/graph?lens=context&capture=1", "context-map-light-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
+    await capture(lightPage, `/graph?lens=context&scan=${SCAN_ID}&capture=1`, "context-map-light-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
     for (const theme of ["dark", "light"]) {
       const horizontalPage = await newCapturePage(theme, { width: 1760, height: 860 });
-      await capture(horizontalPage, "/graph?lens=context&capture=1", `context-map-horizontal-${theme}-live.png`, prepareHorizontalNeighborhood, contextNeighborhoodAssertions);
+      await capture(horizontalPage, `/graph?lens=context&scan=${SCAN_ID}&capture=1`, `context-map-horizontal-${theme}-live.png`, prepareHorizontalNeighborhood, contextNeighborhoodAssertions);
       await horizontalPage.close();
     }
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {

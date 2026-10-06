@@ -2,12 +2,13 @@ import { render, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { PersistedContextView } from "@/components/persisted-context-view";
 
-const state = vi.hoisted(() => ({ params: new URLSearchParams(), incident: vi.fn(), jobs: vi.fn() }));
+const state = vi.hoisted(() => ({ params: new URLSearchParams(), incident: vi.fn(), jobs: vi.fn(), summary: vi.fn() }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => state.params }));
 vi.mock("@/components/auth-provider", () => ({ useAuthState: () => ({ loading: false, session: { tenant_id: "fixture" } }) }));
 vi.mock("@/components/graph-lens-switcher", () => ({ GraphLensSwitcher: () => null }));
 vi.mock("@/lib/api", () => ({ api: {
   listJobs: state.jobs,
+  getInventorySummary: state.summary,
   listGraphAgents: vi.fn().mockResolvedValue({ scan_id: "snapshot", agents: [{ id: "agent:first", label: "First" }], pagination: { total: 1 } }),
 } }));
 vi.mock("@/hooks/use-incident-neighborhood", () => ({ useIncidentNeighborhood: (...args: unknown[]) => {
@@ -19,6 +20,7 @@ vi.mock("@/lib/use-context-layout", () => ({ useContextLayout: () => ({ nodes: [
 beforeEach(() => {
   vi.clearAllMocks();
   state.jobs.mockResolvedValue({ jobs: [], total: 0 });
+  state.summary.mockResolvedValue({scan_id: "current-estate:fixture"});
 });
 
 it.each(["root", "node", "agent"])("honors an exact %s deep link without substituting the first agent", async (parameter) => {
@@ -43,4 +45,11 @@ it("remounts the neighborhood when only the canonical root changes", async () =>
   state.params = new URLSearchParams({ scan: "snapshot", root: "server:b", agent: "display-name" });
   view.rerender(<PersistedContextView />);
   await waitFor(() => expect(state.incident).toHaveBeenLastCalledWith("snapshot", "server:b", "both", expect.any(String)));
+});
+
+
+it("opens the current tenant estate when scan scope is omitted", async () => {
+  state.params = new URLSearchParams({root: "server:retained"});
+  render(<PersistedContextView />);
+  await waitFor(() => expect(state.incident).toHaveBeenCalledWith("current-estate:fixture", "server:retained", "both", expect.any(String)));
 });

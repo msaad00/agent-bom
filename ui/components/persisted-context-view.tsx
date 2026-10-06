@@ -54,7 +54,7 @@ function ContextViewportControls({ selectedId }: { selectedId: string }) {
   return <Panel position="top-right" className="flex items-center gap-1 rounded-lg border border-outline bg-surface p-1 text-xs">
     <span className="hidden px-1 text-ink-secondary sm:inline">Pan to explore</span>
     <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Fit all entities" onClick={() => void fitView({ padding: 0.1, minZoom: 0.01, maxZoom: 1, duration: 200 })}>Fit all</button>
-    <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Readable view of selected entity" onClick={() => void fitView({ nodes: [{ id: selectedId }], padding: 0.15, minZoom: 0.75, maxZoom: 1, duration: 200 })}>Readable view</button>
+    <button className="rounded px-2 py-1 hover:bg-surface-elevated" aria-label="Readable view of selected entity" onClick={() => void fitView({ nodes: [{ id: selectedId }], padding: 0.15, minZoom: 0.8, maxZoom: 1, duration: 200 })}>Readable view</button>
   </Panel>;
 }
 
@@ -62,7 +62,7 @@ function ContextOverviewNode({ data, selected, targetPosition, sourcePosition }:
   const Icon = entityIcon(data.nodeType);
   return <div className="context-map-node" data-selected={selected || undefined}>
     <Handle type="target" position={targetPosition ?? Position.Left} className="!h-1.5 !w-1.5" />
-    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NODE_COLOR_MAP[data.nodeType] }} aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-normal text-[16px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
+    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NODE_COLOR_MAP[data.nodeType] }} aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-normal text-[18px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
     <p className="mt-1 truncate text-xs text-ink-secondary">{data.entityType?.replaceAll("_", " ") ?? data.nodeType}</p>
     <Handle type="source" position={sourcePosition ?? Position.Right} className="!h-1.5 !w-1.5" />
   </div>;
@@ -98,7 +98,7 @@ function OwnedContextView({ owner }: { owner: string }) {
       const done = data.jobs.filter(job => job.status === "done");
       setJobs(done);
       setJobTotal(data.total ?? done.length);
-      setJobId(current => current || params?.get("scan") || done[0]?.job_id || "");
+      setJobId(current => current || params?.get("scan") || "");
     }).catch(() => { if (active) setError("Unable to load completed scans."); });
     return () => { active = false; controller.abort(); };
   }, [owner, params, jobOffset]);
@@ -106,7 +106,14 @@ function OwnedContextView({ owner }: { owner: string }) {
     let active = true;
     const controller = new AbortController();
     setSnapshot(null);
-    if (!jobId) return;
+    if (!jobId || jobId.startsWith("current-estate:")) {
+      api.getInventorySummary().then(summary => {
+        if (!active) return;
+        setSnapshot({jobId, scanId: summary.scan_id});
+        setError(null);
+      }).catch(() => { if (active) setError("Unable to resolve the current tenant estate."); });
+      return () => { active = false; controller.abort(); };
+    }
     // Graph deep links carry a snapshot ID, not necessarily a scan-job ID.
     if (jobId === params?.get("scan")) { setSnapshot({ jobId, scanId: jobId }); return; }
     api.getScanStatus(jobId, controller.signal).then(job => {
@@ -120,15 +127,15 @@ function OwnedContextView({ owner }: { owner: string }) {
   const scanId = snapshot?.jobId === jobId ? snapshot.scanId : "";
   return <section aria-label="Persisted Context neighborhood" className="context-workspace">
     <header className="context-map-header"><div><h1 className="text-2xl font-semibold tracking-tight">Context Map</h1><p className="mt-1 text-sm text-ink-secondary">Select an entity or connection to inspect its evidence.</p></div>
-    <div className="flex min-w-0 flex-wrap items-end gap-3"><label className="context-field">Completed scan <select aria-label="Completed scan" className="context-action max-w-full" value={jobId} onChange={event => setJobId(event.target.value)}>
-      {!jobs.length && <option value="">No completed scans</option>}
+    <div className="flex min-w-0 flex-wrap items-end gap-3"><label className="context-field">Evidence scope <select aria-label="Completed scan" className="context-action max-w-full" value={jobId} onChange={event => setJobId(event.target.value)}>
+      <option value="">Current tenant estate</option>
       {jobId && !jobs.some(job => job.job_id === jobId) && <option value={jobId}>{jobId}</option>}
       {jobs.map(job => <option key={job.job_id} value={job.job_id}>{job.job_id}</option>)}
     </select></label>
     <details className="context-popover"><summary className="context-action inline-flex cursor-pointer items-center gap-2">Other views <ChevronDown size={14} aria-hidden="true" /></summary><div className="context-popover-panel"><GraphLensSwitcher variant="compact" scanId={scanId || undefined} /></div></details></div>
     {(jobOffset > 0 || jobOffset + 24 < jobTotal) && <div className="flex gap-2">{jobOffset > 0 && <button className="context-action" onClick={() => setJobOffset(offset => Math.max(0, offset - 24))}>Previous scans</button>}{jobOffset + 24 < jobTotal && <button className="context-action" onClick={() => setJobOffset(offset => offset + 24)}>Next scans</button>}</div>}</header>
     {error && <p role="alert">{error}</p>}
-    {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId, requestedRoot])} scanId={scanId} owner={owner} initialRootId={requestedRoot} /> : <p role="status">{jobId ? "Resolving snapshot…" : "Choose a completed scan to inspect persisted relationships."}</p>}
+    {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId, requestedRoot])} scanId={scanId} owner={owner} initialRootId={requestedRoot} /> : <p role="status">{jobId ? "Resolving snapshot…" : snapshot ? "No retained graph evidence in the current tenant scope." : "Resolving current tenant estate…"}</p>}
   </section>;
 }
 
@@ -235,7 +242,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
     {graph.capped && <p>Loaded evidence limit reached (240 relationships / 10 pages). Restart or choose another agent to continue.</p>}
     <div className="context-map-panels">
       <div ref={layout.canvasRef} aria-label="Persisted neighborhood canvas" data-layout-direction={layout.direction} className="context-map-canvas">
-        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction, viewportRevision])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.75, maxZoom: 1 }} minZoom={0.01} nodesDraggable={false}
+        {!!layout.nodes.length && <ReactFlow deleteKeyCode={null} key={JSON.stringify([focus, focusId, layout.direction, viewportRevision])} nodes={layout.nodes} edges={layout.edges} nodeTypes={contextNodeTypes} edgeTypes={contextEdgeTypes} fitView fitViewOptions={{ padding: 0.06, minZoom: 0.8, maxZoom: 1 }} minZoom={0.01} nodesDraggable={false}
           onNodeClick={(_, node) => { setSelectedId(node.id); setSelectedEdge(null); }} onEdgeClick={(_, selected) => { setSelectedEdge(JSON.stringify([selected.source, selected.target, selected.data?.relationship])); }}>
           <ContextViewportControls selectedId={selectedId || focus} />
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP * 1.5} size={0.5} /><Controls className={CONTROLS_CLASS} />

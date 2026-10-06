@@ -172,7 +172,7 @@ Distinguish storage, access evidence and collection sources; derived classificat
 
 ### Engineers and GRC: prioritize findings and verify fixes
 
-Open **Inventory → component → Findings → Compliance**. Both views retain the exact identifier and scan snapshot; inspect recorded relationships, sources and timestamps, then export the loaded evidence.
+Open **Inventory → component → Findings → Compliance**. Views retain the component identifier and selected evidence scope: the current tenant estate by default, or an explicit historical scan. Inspect recorded relationships, sources and timestamps, then export the loaded evidence.
 Open remediation for package upgrades, assign owners and re-scan to verify fixes. Control mappings are **not evaluated passes**.
 
 [Component findings](docs/images/component-findings-dark-live.png) · [Scoped controls](docs/images/component-controls-dark-live.png) · [Mobile component drawer](docs/images/component-detail-mobile-dark-live.png) · [Light-theme walkthrough](docs/GALLERY.md#follow-one-component).

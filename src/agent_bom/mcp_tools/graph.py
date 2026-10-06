@@ -247,6 +247,15 @@ def _empty_exposure_paths_message(*, total: int, min_risk: float) -> str | None:
     return "0 paths matched the current filters."
 
 
+def _graph_evidence_scope(scan_id: str, generation: str | None, source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "scan_id": scan_id,
+        "evidence_scope": source.get("evidence_scope", "current_estate" if scan_id.startswith("current-estate:") else "scan_snapshot"),
+        "snapshot_generation": generation,
+        "collection_coverage": source.get("collection_coverage", {"status": "unknown"}),
+    }
+
+
 async def exposure_paths_impl(
     *,
     tenant_id: str = "default",
@@ -381,7 +390,7 @@ async def exposure_paths_for_tenant(
             "schema_version": "v1",
             "tool": "exposure_paths",
             "tenant_id": tenant_id,
-            "scan_id": effective_scan_id,
+            **_graph_evidence_scope(effective_scan_id, generation, stats),
             "created_at": created_at,
             "count": len(ranked_paths),
             "total": total,
@@ -548,7 +557,7 @@ async def deploy_decision_for_tenant(
             "schema_version": "v1",
             "tool": "should_i_deploy",
             "tenant_id": tenant_id,
-            "scan_id": payload.get("scan_id", scan_id or ""),
+            **_graph_evidence_scope(payload.get("scan_id", scan_id or ""), payload.get("snapshot_generation"), payload),
             "candidate": {"value": candidate_value},
             "decision": decision,
             "maxRisk": max_risk,

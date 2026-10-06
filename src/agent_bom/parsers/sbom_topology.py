@@ -67,6 +67,7 @@ def restore_context_agents(document: dict, fallback: Agent, name: str | None) ->
             # case-sensitive component reference before command normalization.
             args=[fallback.config_path, "component:" + hashlib.sha256(ref.encode()).hexdigest()],
             surface=ServerSurface.SBOM,
+            imported_canonical_id=ref.removeprefix("mcp-server-") if ref.startswith("mcp-server-") else None,
             packages=[packages[p] for p in sorted(members)],
             tools=tools,
         )

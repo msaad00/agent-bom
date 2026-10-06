@@ -19,7 +19,7 @@ before replacing any published product image.
 
 ## Canonical capture environment
 
-1. Use a clean checkout on the release tag.
+1. Use a clean checkout of the intended release commit before tagging.
 2. Install the pinned UI toolchain, build the production dashboard, and run
    the deterministic capture harness:
 
@@ -43,8 +43,11 @@ before replacing any published product image.
    Kubernetes, MCP, and identity source receipt before opening a browser. A
    stale, hand-edited, or source-divergent artifact stops capture.
 
-3. Inspect all 44 PNGs and the manifest at the final README display size. The
+3. Inspect all 46 PNGs and the manifest at the final README display size. The
    harness stages files and publishes them only after every page passes.
+   README desktop captures use 1440×900; mobile captures use 390×844.
+   Capture the application viewport directly. Do not crop, edit, or enlarge
+   the viewport to conceal layout defects.
 
 Backend-connected release evidence is a separate end-to-end smoke. For that
 check, start `agent-bom serve` with a fresh SQLite database, generate the
@@ -83,8 +86,8 @@ deterministic public screenshot set.
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/?capture=1` (Overview) | Posture grade, unique findings breakdown, scan coverage, operational lanes | Command-center top frame |
-| `dashboard-paths-live.png` | `/?capture=1` (Overview) | Unique exposure paths, recent scans, activity | Lower overview frame |
+| `dashboard-live.png` | `/?capture=1` (Overview) | Posture grade, unique findings breakdown, scope and freshness; secondary sections collapsed | Compact command-center frame |
+| `dashboard-paths-live.png` | `/?capture=1` (Overview) | Expanded Compliance & frameworks and Findings by security area | Readable framework evidence frame |
 | `cloud-accounts-live.png` | `/connections?capture=1` | Connections header and provider gallery across cloud, code, AI, and data | Onboarding surface |
 | `new-scan-live.png` | `/scan?capture=1` | New Scan modes — connected account, ad-hoc, public repo URL | Scan scope clarity |
 | `mesh-live.png` | `/mesh?capture=1` | Capture-mode scopes developer-copilot + sre-runbook-agent on shared filesystem MCP with path focus off and labeled edges | README mesh proof must differ from lineage: multi-agent shared server, not the same single CVE chain |
@@ -100,7 +103,7 @@ deterministic public screenshot set.
 | `investigation-canvas-current-1512x811.png` | `/security-graph?lens=estate&rollup=1&capture=1` | Observed current-state estate roll-up at 1512x811 | Locks the audited desktop viewport to the canonical graph snapshot and explicit completeness |
 | `investigation-canvas-proposed-1568x780.png` | `/security-graph?lens=estate&rollup=1&scenario=...&state=proposed&capture=1` | Modeled proposed-state comparison at 1568x780 | Keeps scenario evidence visibly distinct from observed or deployed truth |
 | `lineage-graph-live.png` | `/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability` | Highest-risk directed sample path through identity, agent, GitHub MCP, explicit `next@` package, and DEMO-VULN | Keeps the seven-node path, six directed relationship labels, risk, freshness, and remediation action readable without mixing in the 31-node topology; gallery-only synthetic proof |
-| `context-map-live.png` | `/context?capture=1` | developer-copilot scope with capture path focus off — create_pull_request, GITHUB credential, MCP servers | Proof text must not require DEMO-VULN; lateral tools/creds topology is the hero |
+| `context-map-live.png` | `/graph?lens=context&scan=scan-proof-ai-platform&capture=1` | developer-copilot scope with expanded package, advisory, tool and credential relationships | Recorded neighborhood with explicit historical scope |
 | `inventory-live.png` | `/inventory?capture=1` | Unified asset-kind roll-up with coverage language and non-empty package, MCP, agent, identity, container, and code cards | The Discover journey must show the cross-source inventory rather than one narrow collector |
 | `fleet-state-live.png` | `/fleet?capture=1` | Expanded quarantined agent row with owner, environment, and enforcement state | Shows environment and lifecycle state as control-plane evidence instead of implying the local scan alone owns review state |
 | `identity-audit-live.png` | `/audit?capture=1` | Identity-resource posture summary with auth, key, and tenant-quota panels | Shows the visible IAM posture frame from the deterministic capture fixture |
@@ -114,24 +117,24 @@ the older single-column attack-path layout. The published media now ships
 as two dashboard frames rather than one stitched full-page export:
 
 1. `dashboard-live.png`
-   Overview command center — posture grade, unique findings, scan coverage, and operational lanes
+   Compact Overview — posture grade, unique findings, scope, and freshness
 2. `dashboard-paths-live.png`
-   Unique exposure paths, recent scans, and activity
+   Expanded Compliance & frameworks and Findings by security area
 3. `cloud-accounts-live.png`
    Connected evidence sources with provider catalog
 4. `new-scan-live.png`
    New Scan form with scope chips and public repo URL mode
 
 A capture set that misses either frame is incomplete. Re-shoot from the
-packaged UI and crop deliberately; do not publish another full-page stitched
-dashboard asset unless the layout materially changes again.
+packaged UI at the standard viewport; use scrolling and disclosure controls
+to show another section without cropping or stitching the image.
 
 Use the reference lab correlation views as the public README proof. Use
 `developer-copilot` only for the explicitly synthetic gallery scope. Its seeded
 path links the agent to GitHub MCP, a package, and `DEMO-VULN-21441` without
-implying whole-estate density. Use `/mesh?capture=1` for that gallery graph, then frame it
-so the title, graph controls, legend, nodes, and dependency/finding edges remain
-visible without the left navigation or a large empty canvas. Do not publish duplicate
+implying whole-estate density. Use `/mesh?capture=1` for that gallery graph, retain the application navigation and
+verify that the title, graph controls, legend, nodes, and dependency/finding
+edges remain readable at the declared viewport. Do not publish duplicate
 dark/light theme copies in the public README or Docker Hub description unless
 the section is specifically proving a theme bug fix. Do not publish a docs-only
 slide or card view in place of the graph screenshot.

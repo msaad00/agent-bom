@@ -5,6 +5,7 @@ import {
   attackPathRoleChain,
   attackPathSequenceLabels,
   buildGraphInvestigationHref,
+  buildFindingsHref,
   buildSecurityGraphHref,
   decodeGraphInvestigationParams,
   descriptiveAttackPathTitle,
@@ -30,6 +31,10 @@ import {
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
 describe("attack path helpers", () => {
+  it("opens current findings without treating the estate generation as a historical scan", () => {
+    expect(buildFindingsHref({scanId: "current-estate:abc", cve: "CVE-2026-1234"})).toBe("/findings?cve=CVE-2026-1234");
+    expect(buildFindingsHref({scanId: "historical-1"})).toBe("/findings?scan=historical-1");
+  });
   it("matches a package name without dropping version or finding constraints", () => {
     const path: AttackPath = { source: "package", target: "finding", hops: ["package", "finding"], edges: ["vulnerable_to"],
       composite_risk: 0, summary: "", credential_exposure: [], tool_exposure: [], vuln_ids: ["CVE-2020-14343"] };

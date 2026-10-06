@@ -380,7 +380,7 @@ def scan_collection_incomplete_reasons(job: _ScanJobLike) -> list[str]:
 
 
 def _finding_snapshot_jobs(
-    jobs: list[_ScanJobLike], *, since: str | None, require_authoritative_evidence: bool
+    jobs: Iterable[_ScanJobLike], *, since: str | None, require_authoritative_evidence: bool
 ) -> tuple[list[_ScanJobLike], dict[tuple[str, str], tuple[_ScanJobLike, list[str]]]]:
     """Retain the last replacement plus subsequent incomplete observations.
 

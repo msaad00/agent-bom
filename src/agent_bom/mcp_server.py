@@ -1041,7 +1041,7 @@ def create_mcp_server(
     @mcp.tool(annotations=_READ_ONLY, title="Exposure Paths")
     async def exposure_paths(
         tenant_id: Annotated[str, Field(description="Tenant ID for the graph snapshot. Defaults to 'default'.")] = "default",
-        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        scan_id: Annotated[str | None, Field(description="Optional historical scan ID. Omit for the current tenant estate.")] = None,
         limit: Annotated[int, Field(ge=1, le=100, description="Maximum number of ranked exposure paths to return.")] = 5,
         min_risk: Annotated[float, Field(ge=0, le=100, description="Minimum path risk score to include.")] = 0.0,
         cursor: Annotated[
@@ -1071,7 +1071,7 @@ def create_mcp_server(
     async def should_i_deploy(
         candidate: Annotated[str, Field(description="Candidate package, resource, CVE, node ID, or deployment label to evaluate.")],
         tenant_id: Annotated[str, Field(description="Tenant ID for the graph snapshot. Defaults to 'default'.")] = "default",
-        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        scan_id: Annotated[str | None, Field(description="Optional historical scan ID. Omit for the current tenant estate.")] = None,
         limit: Annotated[int, Field(ge=1, le=25, description="Maximum matched exposure paths to return.")] = 5,
         warn_risk: Annotated[float, Field(ge=0, le=100, description="Risk score at or above which the decision becomes warn.")] = 40.0,
         block_risk: Annotated[float, Field(ge=0, le=100, description="Risk score at or above which the decision becomes block.")] = 80.0,
@@ -1086,7 +1086,7 @@ def create_mcp_server(
             candidate: Package, resource, CVE, graph node ID, or deployment
                 label to evaluate.
             tenant_id: Tenant whose graph snapshot to read (default ``default``).
-            scan_id: Specific graph scan ID; omit to use the latest snapshot.
+            scan_id: Specific historical scan ID; omit for the current tenant estate.
             limit: Maximum matched exposure paths to return (1-25).
             warn_risk: Risk score at or above which the decision becomes warn.
             block_risk: Risk score at or above which the decision becomes block.
@@ -1316,7 +1316,7 @@ def create_mcp_server(
     @mcp.tool(annotations=_READ_ONLY, title="Asset Inventory Summary")
     async def inventory_summary(
         tenant_id: Annotated[str, Field(description="Tenant scope for the snapshot. Defaults to 'default'.")] = "default",
-        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        scan_id: Annotated[str | None, Field(description="Optional historical scan ID. Omit for the current tenant estate.")] = None,
         type: Annotated[str | None, Field(description="Comma-separated asset entity types; finding types are rejected.")] = None,
         search: Annotated[str | None, Field(description="Free-text search over asset name / label / attributes.")] = None,
         environment: Annotated[str | None, Field(description="Filter by environment facet.")] = None,
@@ -1327,7 +1327,7 @@ def create_mcp_server(
     ) -> str:
         """Return unified asset-inventory counts by type and source group.
 
-        Counts every non-finding asset in the tenant's current graph snapshot —
+        Counts every non-finding asset in the tenant's current graph estate —
         AI (agents, MCP servers, models, tools, credentials), cloud (resources,
         data stores, accounts), Snowflake, and identity — bucketed by OCSF entity
         type and by operator-facing group (ai / cloud / identity / secrets /
@@ -1364,7 +1364,7 @@ def create_mcp_server(
         min_severity: Annotated[
             str | None, Field(description="Minimum severity floor for included assets: critical / high / medium / low.")
         ] = None,
-        scan_id: Annotated[str | None, Field(description="Optional graph scan ID. Omit to use the latest snapshot.")] = None,
+        scan_id: Annotated[str | None, Field(description="Optional historical scan ID. Omit for the current tenant estate.")] = None,
         cursor: Annotated[str | None, Field(description="Opaque keyset cursor from a previous page's pagination.next_cursor.")] = None,
         offset: Annotated[int, Field(ge=0, description="Pagination offset for non-cursor paging.")] = 0,
         limit: Annotated[int, Field(ge=1, le=200, description="Maximum asset rows to return (1-200).")] = 50,

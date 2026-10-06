@@ -148,7 +148,7 @@ export function buildGraphTextAlternative(
       ({ value, count }) => ({ relationship: value, count }),
     ),
     rows,
-    rowsNote: `Listing ${rows.length.toLocaleString()} of ${visibleNodes.length.toLocaleString()} drawn nodes, highest severity and most connected first.`,
+    rowsNote: `Listing ${rows.length.toLocaleString()} of ${visibleNodes.length.toLocaleString()} drawn nodes, highest severity and most connected first. Connections count only visible relationships; zero does not establish isolation outside this view.`,
     connections,
     connectionsNote: `Listing ${connections.length.toLocaleString()} of ${visibleEdges.length.toLocaleString()} available relationships, busiest first.`,
   };

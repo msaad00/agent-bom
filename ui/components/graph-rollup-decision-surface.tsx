@@ -160,7 +160,7 @@ export function GraphRollupDecisionSurface({
             Prioritized findings and scopes
           </p>
           <p className="mt-1 text-xs text-ink-secondary">
-            {nodeScopeLabel} in this snapshot. Inspect the highest-severity nodes or expand their contained assets.
+            {nodeScopeLabel} in this evidence scope. Severity does not establish connectivity or assessed risk.
           </p>
           <p
             className="mt-1 text-[11px] text-ink-tertiary"
@@ -259,7 +259,7 @@ export function GraphRollupDecisionSurface({
                 </div>}
                 <div>
                   <p className="tabular-nums text-ink-secondary" title={`${relation.relationships} aggregated relationship evidence records`}>
-                    {relation.containers} connected {relation.containers === 1 ? "node" : "nodes"}
+                    {relation.containers} connected {relation.containers === 1 ? "node" : "nodes"} in this view
                   </p>
                 </div>
               </div>
@@ -298,7 +298,7 @@ export function GraphRollupDecisionSurface({
                 </ul>
                 {itemEdges.length > 12 && <p className="mt-2">Showing 12 of {itemEdges.length} rows.</p>}
                 {itemEdges.length > 12 && <button type="button" onClick={() => onInvestigate(item)} className="mt-2 text-sky-700 underline dark:text-sky-300">Inspect connections for {item.label}</button>}
-                {itemEdges.length === 0 && <p>No relationship rows returned for this node. Coverage may be incomplete.</p>}
+                {itemEdges.length === 0 && <p>No relationship rows returned for this node. Coverage may be incomplete; filters or pagination can omit connections.</p>}
               </details>
               {(item.aggregate.toxic_combo || item.aggregate.internet_exposed) && <div className="col-span-2 flex flex-wrap gap-1.5 text-[10px] md:col-span-3">
                 {item.aggregate.toxic_combo ? (

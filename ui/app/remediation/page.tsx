@@ -360,6 +360,7 @@ function RemediationPage() {
   const queryParam = (searchParams.get("q") ?? "").trim().toLowerCase();
   const scanParam = (searchParams.get("scan") ?? "").trim();
   const [items, setItems] = useState<RemediationItem[]>([]);
+  const [campaignsOpen, setCampaignsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -390,6 +391,8 @@ function RemediationPage() {
           ...current.warnings,
         ]);
       }
+
+      setLoading(false);
 
       // Non-fatal: surface any tickets already filed for these findings so the
       // rows show their key + status. A ticketing failure must not block the plan.
@@ -753,7 +756,7 @@ function RemediationPage() {
         </>
       )}
 
-      <details className="group overflow-hidden rounded-xl border border-outline bg-surface">
+      <details className="group overflow-hidden rounded-xl border border-outline bg-surface" onToggle={event => setCampaignsOpen(event.currentTarget.open)}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 marker:content-none">
           <div>
             <div className="text-sm font-semibold text-foreground">Campaign workflow and verification</div>
@@ -764,7 +767,7 @@ function RemediationPage() {
           <ChevronDown className="h-4 w-4 shrink-0 text-ink-tertiary transition-transform group-open:rotate-180" />
         </summary>
         <div className="border-t border-outline px-4 py-4">
-          <RiskCampaignCommandCenter />
+          {campaignsOpen && <RiskCampaignCommandCenter />}
         </div>
       </details>
 

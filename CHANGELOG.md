@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Reconcile default inventory and graph reads with the current tenant estate across REST, MCP and the dashboard. Retain clean assets, unrelated targets and partial evidence; preserve explicit historical views and reject stale pagination generations.
+- Load configured persisted scan evidence in standalone MCP before API startup, including base installations without API extras. Propagate configured storage failures instead of silently returning an empty estate.
+- Redact bearer credentials and short JWTs through pushed and persisted evidence. Retain safe IaC file/line labels, classify repository IaC as application evidence and apply only approved, active suppressions to finding filters.
+- Preserve imported server identities and validate actual HTTP report and graph exports against their published schemas.
+- Replace the permanent inventory detail panel with a keyboard-accessible drawer, collapse secondary metadata and improve mobile and light-theme readability. Explain graph connectivity separately from severity and derive freshness banners from displayed evidence.
+- Reduce repeated finding decoding and reconciliation, bound remediation projections and defer collapsed campaign requests. Refresh desktop and mobile product captures at documented viewport sizes.
+
 - Keep console verdicts coverage-aware for incomplete imported inventories and lookup warnings. Correct the bounded GitHub Action Dogfood fixture and ensure fixture changes run its workflow.
 - Preserve SARIF source locations, CycloneDX nested components and distinct imported server identities. Keep suppression state and recorded reachability evidence explicit in findings.
 - Restore inventory empty-state handling, persistent dashboard theme selection and remediation across current scan targets.

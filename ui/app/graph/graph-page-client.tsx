@@ -679,6 +679,7 @@ function GraphPageInner() {
   const [minimapExpanded, setMinimapExpanded] = useState(false);
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
+  const [currentEstateId, setCurrentEstateId] = useState("");
   const graphFetchLimit = graphFetchLimitForSnapshot(selectedScanId, expandedGraphScanId);
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
   const [scenarios, setScenarios] = useState<GraphScenario[]>([]);
@@ -975,20 +976,18 @@ function GraphPageInner() {
 
   useEffect(() => {
     setLoadingSnapshots(true);
-    api
-      // windowDays: 0 shows all retained snapshots so the picker never silently
-      // hides older scans; on-save retention purge still bounds storage (#4009).
-      .getGraphSnapshots(40, 0)
-      .then((items) => {
+    Promise.all([api.getGraphSnapshots(40, 0), !requestedScanIdRef.current || requestedScanIdRef.current.startsWith("current-estate:") ? api.getInventorySummary() : Promise.resolve(null)])
+      .then(([items, currentScope]) => {
         setSnapshots(items);
-        if (items.length > 0) {
+        setCurrentEstateId(currentScope?.scan_id ?? "");
+        if (items.length > 0 || currentScope?.scan_id || requestedScanIdRef.current) {
           setSelectedScanId((current) => {
             if (current) return current;
             const requested = requestedScanIdRef.current;
-            if (requested && items.some((item) => item.scan_id === requested)) {
+            if (requested && !requested.startsWith("current-estate:")) {
               return requested;
             }
-            return items[0]!.scan_id;
+            return currentScope?.scan_id ?? "";
           });
         }
       })
@@ -2965,6 +2964,7 @@ function GraphPageInner() {
         onChange={(event) => setSelectedScanId(event.target.value)}
         className="graph-page-select max-w-full"
       >
+        {currentEstateId && !snapshots.some(item => item.scan_id === currentEstateId) && <option value={currentEstateId}>Current tenant estate</option>}
         {snapshots.map((snapshot) => (
           <option key={snapshot.scan_id} value={snapshot.scan_id}>
             {snapshot.scan_id.slice(0, 12)} ·{" "}
@@ -3307,7 +3307,7 @@ function GraphPageInner() {
         </div>
 
         <div className="mt-2">
-          <GraphSnapshotReceipt snapshot={activeSnapshot ?? null} />
+          <GraphSnapshotReceipt snapshot={activeSnapshot ?? null} scanId={selectedScanId} />
           <GraphEvidenceSummary
             capturedAt={activeSnapshot?.created_at ?? null}
             returnedNodes={graphData?.completeness?.returned ?? graphData?.nodes.length ?? null}

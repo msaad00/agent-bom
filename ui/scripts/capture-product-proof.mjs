@@ -2449,7 +2449,18 @@ function isBenignAppRouterCancellation(request, failure) {
   return requestUrl.searchParams.has("_rsc");
 }
 
+const README_CAPTURE_FILES = new Set([
+  "component-controls-dark-live.png", "component-findings-dark-live.png",
+  "component-detail-dark-live.png", "component-detail-light-live.png",
+  "component-findings-dark-live.png", "component-findings-light-live.png",
+  "component-controls-dark-live.png", "component-controls-light-live.png",
+  "context-map-horizontal-dark-live.png", "context-map-horizontal-light-live.png",
+  "context-map-light-live.png", "context-map-live.png", "correlation-graph-live.png",
+  "dashboard-live.png", "dashboard-paths-live.png", "dashboard-risks-live.png", "inventory-live.png", "remediation-live.png",
+]);
+
 async function capture(page, urlPath, filename, beforeShot, options = {}) {
+  if (README_CAPTURE_FILES.has(filename)) await page.setViewportSize({ width: 1440, height: 900 });
   await page.clock.setFixedTime(urlPath.startsWith("/?") ? new Date(new Date(overviewProof.captured_at).getTime() + 60_000) : REFERENCE_CAPTURE_NOW);
   const browserErrors = [];
   const networkErrors = [];
@@ -2783,6 +2794,8 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
 async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
   const screenshotEntries = [
     ...["dark", "light"].flatMap((theme) => [
+      { path: `component-detail-mobile-${theme}-live.png`, page: `/inventory/packages?scan=${SCAN_ID}&capture=1`,
+        scope: "On-demand component drawer at a 390 by 844 viewport", presentation: `${theme} mobile` },
       { path: `component-detail-${theme}-live.png`, page: `/inventory/packages?scan=${SCAN_ID}&capture=1`,
         scope: "Synthetic component detail with recorded relationships and explicit collection-coverage limits", presentation: `${theme} desktop` },
       { path: `component-findings-${theme}-live.png`, page: `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`,
@@ -2793,7 +2806,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Combined posture and assessment overview with current findings, evaluated-control counts, and visible framework logos",
+      scope: "Posture and current findings with compliance and security-area disclosures collapsed using their controls",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
@@ -2824,7 +2837,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Default Overview assessment summary with four priority frameworks and risk mappings collapsed",
+      scope: "Expanded Overview assessment summary with four priority frameworks and risk mappings collapsed at 1440 by 900",
     },
     {
       path: "cloud-accounts-live.png",
@@ -2961,20 +2974,20 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "context-map-live.png",
-      page: "/graph?lens=context&capture=1",
+      page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
     },
     {
       path: "context-map-light-live.png",
-      page: "/graph?lens=context&capture=1",
+      page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       presentation: "light desktop",
     },
     ...["dark", "light"].map(theme => ({
       path: `context-map-horizontal-${theme}-live.png`,
-      page: "/graph?lens=context&capture=1",
+      page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
-      presentation: `${theme} desktop 1760x860`,
+      presentation: `${theme} desktop 1440x900`,
     })),
     {
       path: "inventory-live.png",
@@ -3087,19 +3100,26 @@ async function main() {
     };
     // Capture the shipped component workflow; fixture mappings are not assessments.
     for (const theme of ["dark", "light"]) {
-      const componentPage = await newCapturePage(theme, { width: 1440, height: 1340 });
+      const componentPage = await newCapturePage(theme, { width: 1440, height: 900 });
       await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-${theme}-live.png`, async (p) => {
         await p.getByText("next@15.2.2", { exact: true }).first().click();
         const relationships = p.getByRole("list", { name: "Recorded component relationships" });
         await expect(relationships).toBeVisible();
         await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toHaveAttribute("href", `/findings?asset=pkg%3Anext&scan=${SCAN_ID}`);
         const controls = p.getByRole("link", { name: "Compliance Recorded control evidence" });
-        await controls.scrollIntoViewIfNeeded();
+
         await expect(controls).toBeInViewport();
         await expect(relationships).toBeInViewport();
       }, { expectedText: ["next@15.2.2", "CVE-2025-29927", "Collection coverage and blast radius are not assessed"],
         expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
-      await componentPage.setViewportSize({ width: 1440, height: 780 });
+      await componentPage.setViewportSize({ width: 390, height: 844 });
+      await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-mobile-${theme}-live.png`, async (p) => {
+        await p.getByText("next@15.2.2", { exact: true }).first().click();
+        await expect(p.getByRole("dialog", { name: "Asset details" })).toBeVisible();
+        await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toBeInViewport();
+      }, { expectedText: ["next@15.2.2", "Collection coverage and blast radius are not assessed"],
+        expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
+      await componentPage.setViewportSize({ width: 1440, height: 900 });
       await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
         await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
         await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);
@@ -3127,13 +3147,6 @@ async function main() {
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
       await proofPage.getByTestId("graph-correlation-decision").waitFor({ state: "visible", timeout: 30_000 });
-      // Give the viewport enough trailing room to place the investigation outcome just
-      // below the fixed product header. Without this capture-only spacer the
-      // browser hits the document's maximum scroll position and leaves the
-      // previous path card in the hero frame.
-      await proofPage.evaluate(() => {
-        document.body.style.paddingBottom = "900px";
-      });
       const workflowTop = await workflow.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
@@ -3162,9 +3175,6 @@ async function main() {
       if (await sequence.evaluate((element) => element.scrollLeft) > 1) {
         throw new Error("Default path capture did not return to its first step");
       }
-      await proofPage.evaluate(() => {
-        document.body.style.paddingBottom = "900px";
-      });
       const pathTop = await selectedPath.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
@@ -3310,7 +3320,7 @@ async function main() {
       expectedText: [/Review these findings first/i, /Top risks/i, /Assets & coverage/i],
       expectedApiPaths: ["/v1/overview", "/v1/inventory/summary"], assertNoHorizontalOverflow: true,
     };
-    const overviewPage = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 1100 });
+    const overviewPage = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 900 });
     await capture(overviewPage, "/?capture=1", "dashboard-live.png", async (dashboardPage) => {
       await preparePosture(dashboardPage);
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
@@ -3321,24 +3331,26 @@ async function main() {
           || frameworkBox.x + frameworkBox.width > findingsBox.x) {
         throw new Error("Overview proof must retain the desktop side-by-side compliance and findings layout");
       }
-      const bottom = Math.ceil(Math.max(frameworkBox.y + frameworkBox.height, findingsBox.y + findingsBox.height));
-      await dashboardPage.setViewportSize({ width: 1440, height: bottom + 24 });
+      // Capture an actual compact disclosure state. The separate framework
+      // capture below verifies the expanded controls and assessment receipts.
+      await frameworks.getByRole("button", { name: /^Compliance & frameworks/ }).click();
+      await findings.getByRole("button", { name: /^Findings by security area/ }).click();
+      await expect(frameworks.getByRole("button", { name: /^Compliance & frameworks/ })).toHaveAttribute("aria-expanded", "false");
+      await expect(findings.getByRole("button", { name: /^Findings by security area/ })).toHaveAttribute("aria-expanded", "false");
       await scrollTo(dashboardPage, 0);
     }, {
       ...postureAssertions,
-      expectedText: [...postureAssertions.expectedText, "NIST AI RMF", "NIST SP 800-53", "CMMC 2.0", /Risk mappings/i],
+      expectedText: [...postureAssertions.expectedText, "Compliance & frameworks", "Findings by security area"],
       viewportSelectors: ['section[aria-label="Compliance & frameworks"]', 'section[aria-label="Findings by security area"]', '[role="tabpanel"][aria-label="Posture"]', "#demo-estate-watermark"],
-      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 1440, minFontPx: 12 },
+      readmeTextContract: { selector: '[role="tabpanel"][aria-label="Posture"]', targetWidthPx: 1440, minFontPx: 12 },
     });
     await overviewPage.close();
     await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
-    const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
+    const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 900 });
     await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
       await frameworks.scrollIntoViewIfNeeded();
       const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
-      const height = await frameworks.evaluate((element) => Math.ceil(element.getBoundingClientRect().height));
-      await dashboardPage.setViewportSize({ width: 1040, height: height + 116 });
       await scrollTo(dashboardPage, top - 92);
       for (const label of ["NIST SP 800-53", "CMMC 2.0", "FedRAMP Moderate", "NIST AI RMF"]) {
         await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
@@ -3351,7 +3363,7 @@ async function main() {
       expectedText: [/Control frameworks/i, "NIST AI RMF", "NIST SP 800-53", /Risk mappings/i, /Show all .* control frameworks/],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
       viewportSelectors: ['section[aria-label="Compliance & frameworks"]', "#demo-estate-watermark"],
-      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 920, minFontPx: 12 },
+      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 1440, minFontPx: 12 },
       assertNoHorizontalOverflow: true,
     });
     await frameworkPage.close();
@@ -3725,7 +3737,7 @@ async function main() {
     const contextNeighborhoodAssertions = {
       awaitResponses: [(response) => response.url().includes("/graph/incident-edges") && response.ok()],
       expectedText: ["Context Map", "developer-copilot", "CVE-2025-29927", "Persisted snapshot"],
-      expectedApiPaths: ["/v1/jobs", `/v1/scan/${SCAN_ID}/status`, "/v1/graph/agents", "/v1/graph/incident-edges"],
+      expectedApiPaths: ["/v1/jobs", "/v1/graph/agents", "/v1/graph/incident-edges"],
       minGraphNodes: 9,
       maxGraphNodes: 9,
       minGraphEdges: 8,
@@ -3733,7 +3745,7 @@ async function main() {
       minGraphNodeFontPx: 14,
       assertEdgeLabelsClearOfNodes: true,
     };
-    await capture(page, "/graph?lens=context&capture=1", "context-map-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
+    await capture(page, `/graph?lens=context&scan=${SCAN_ID}&capture=1`, "context-map-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
     await page.setViewportSize({ width: 1440, height: 980 });
     await capture(page, "/inventory?capture=1", "inventory-live.png", async (inventoryPage) => {
       await inventoryPage.getByRole("heading", { name: "Asset inventory" }).waitFor({
@@ -3809,7 +3821,7 @@ async function main() {
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: ["42.5% modeled window risk"],
-      expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+      expectedApiPaths: ["/v1/findings/remediation"],
     });
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
@@ -3843,16 +3855,16 @@ async function main() {
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first"],
       readySelector: '[data-testid="selected-exposure-path"]',
     });
-    await capture(lightPage, "/graph?lens=context&capture=1", "context-map-light-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
+    await capture(lightPage, `/graph?lens=context&scan=${SCAN_ID}&capture=1`, "context-map-light-live.png", prepareContextNeighborhood, contextNeighborhoodAssertions);
     for (const theme of ["dark", "light"]) {
       const horizontalPage = await newCapturePage(theme, { width: 1760, height: 860 });
-      await capture(horizontalPage, "/graph?lens=context&capture=1", `context-map-horizontal-${theme}-live.png`, prepareHorizontalNeighborhood, contextNeighborhoodAssertions);
+      await capture(horizontalPage, `/graph?lens=context&scan=${SCAN_ID}&capture=1`, `context-map-horizontal-${theme}-live.png`, prepareHorizontalNeighborhood, contextNeighborhoodAssertions);
       await horizontalPage.close();
     }
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
-      expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+      expectedApiPaths: ["/v1/findings/remediation"],
     });
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
@@ -3893,7 +3905,7 @@ async function main() {
     await capture(mobilePage, "/remediation?capture=1", "remediation-mobile-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
-      expectedApiPaths: ["/v1/campaigns", "/v1/campaigns/verification-queue"],
+      expectedApiPaths: ["/v1/findings/remediation"],
       assertNoHorizontalOverflow: true,
     });
     await writeScreenshotManifest(stageDir);

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from agent_bom.api.models import JobStatus
+
 if TYPE_CHECKING:
     from agent_bom.api.models import ScanJob
 _COMPACTED_RESULT_MARKER = "_agent_bom_hot_cache_compacted"
@@ -11,8 +13,6 @@ _COMPACTED_RESULT_MARKER = "_agent_bom_hot_cache_compacted"
 
 def _compact_terminal_job(job: ScanJob) -> ScanJob:
     """Return a hot-cache copy that keeps status/progress but drops full results."""
-    from agent_bom.api.models import JobStatus
-
     if job.status not in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
         return job
 

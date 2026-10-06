@@ -432,6 +432,7 @@ def test_python_smoke_gate_combines_changed_domain_and_cross_surface_contracts()
     assert "tests/test_cli_entry_points.py" in run
     assert "tests/test_product_surface_contract.py" in run
     assert "tests/api/test_api_scan_findings_wiring.py" in run
+    assert "tests/api/test_live_export_contracts.py" in run
 
 
 def test_readme_contracts_run_for_ui_and_documentation_only_changes() -> None:

@@ -127,16 +127,17 @@ def _prune_dirnames(
     dirnames[:] = kept
 
 
-def _coverage_recorder(root: Path) -> Callable[[str, str], None]:
+def _coverage_recorder(root: Path) -> Callable[..., None]:
     # Every consumer contributes to the existing CLI/API coverage channel,
     # including discovery helpers whose return type is only a list of paths.
     # Aggregate within the walk to bound diagnostics independently of tree size.
     from agent_bom.scanners.state import record_coverage_warning
+    from agent_bom.security import sanitize_path_label
 
     warnings_by_reason: dict[str, dict] = {}
     root_id = hashlib.sha256(os.fsencode(root.absolute())).hexdigest()[:16]
 
-    def report_gap(reason: str, detail: str) -> None:
+    def report_gap(reason: str, detail: str, path: Path | str | None = None) -> None:
         warning = warnings_by_reason.get(reason)
         if warning is None:
             warning = {
@@ -148,12 +149,16 @@ def _coverage_recorder(root: Path) -> Callable[[str, str], None]:
                 "package_count": 0,
                 "advisory_rows": 0,
                 "excluded_count": 0,
+                "source_labels": [],
             }
             warnings_by_reason[reason] = warning
             record_coverage_warning(warning)
             logger = logging.getLogger(__name__)
             log = logger.info if reason in SCOPE_EXCLUSION_REASONS else logger.warning
             log("Directory traversal receipt: %s", detail)
+        label = sanitize_path_label(path or root)
+        if label not in warning["source_labels"] and len(warning["source_labels"]) < 8:
+            warning["source_labels"].append(label)
         warning["excluded_count"] += 1
 
     return report_gap
@@ -200,7 +205,7 @@ def iter_discovery_files(
             on_prune(path, reason)
 
     def note_error(exc: OSError) -> None:
-        report_gap("directory_read_error", "One or more directories could not be read.")
+        report_gap("directory_read_error", "One or more directories could not be read.", exc.filename)
         if on_error is not None:
             on_error(exc)
 
@@ -214,7 +219,7 @@ def iter_discovery_files(
         if not os.access(dirpath_str, os.X_OK):
             # Listable without search permission: no entry can be stat'ed or
             # opened, so yielding names would only move the error to consumers.
-            report_gap("directory_read_error", "One or more directories could not be read.")
+            report_gap("directory_read_error", "One or more directories could not be read.", dirpath)
             dirnames[:] = []
             continue
         _prune_dirnames(dirpath, dirnames, skip, note_pruned)

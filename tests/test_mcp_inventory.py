@@ -313,3 +313,78 @@ async def test_mcp_inventory_summary_matches_the_http_no_snapshot_behaviour(tmp_
         await inventory_summary_impl(scan_id="nope", _get_graph_store=_store_factory(store), _truncate_response=lambda v: v)
     )
     assert "error" in pinned
+
+
+@pytest.mark.parametrize("without_api", [False, True])
+def test_fresh_mcp_process_reads_current_and_historical_persisted_estate(tmp_path, without_api):
+    import os
+    import subprocess
+    import sys
+
+    from agent_bom.api.graph_store import SQLiteGraphStore
+    from agent_bom.api.store import SQLiteJobStore
+    from tests.api.test_scan_job_sla_history import job
+
+    jobs_path = tmp_path / "jobs.db"
+    graph_path = tmp_path / "graph.db"
+    jobs = SQLiteJobStore(str(jobs_path))
+    graphs = SQLiteGraphStore(str(graph_path))
+    for month, target, labels, tenant in (
+        (7, "repo-a", ["retained-a"], "mcp-fixture"),
+        (8, "repo-b", ["retired-b"], "mcp-fixture"),
+        (9, "repo-b", [], "mcp-fixture"),
+        (10, "other-repo", ["private-other-tenant"], "other-tenant"),
+    ):
+        scan = job(month, tenant=tenant, target=target, findings=[])
+        scan.result.update(scan_id=scan.job_id, scan_run={"outcome": "complete"})
+        graph = UnifiedGraph(scan_id=scan.job_id, tenant_id=tenant, created_at=scan.completed_at)
+        for label in labels:
+            graph.add_node(_node(label, EntityType.PACKAGE, label))
+        graphs.save_graph(graph)
+        jobs.put(scan)
+    historical = job(8, tenant="mcp-fixture", target="repo-b", findings=[]).job_id
+    script = """
+import asyncio,json,sys
+if sys.argv[2] == "1":
+ import importlib.abc
+ class NoApiExtra(importlib.abc.MetaPathFinder):
+  def find_spec(self, fullname, path=None, target=None):
+   if fullname == "fastapi" or fullname.startswith("fastapi."):
+    raise ModuleNotFoundError("API extra intentionally unavailable in base MCP regression")
+ sys.meta_path.insert(0, NoApiExtra())
+from agent_bom.mcp_tools.inventory import inventory_list_impl,inventory_summary_impl
+from agent_bom.mcp_tools.graph import exposure_paths_impl,deploy_decision_impl
+async def read():
+ current=json.loads(await inventory_list_impl())
+ summary=json.loads(await inventory_summary_impl())
+ historical=json.loads(await inventory_list_impl(scan_id=sys.argv[1]))
+ paths=json.loads(await exposure_paths_impl())
+ decision=json.loads(await deploy_decision_impl(candidate="retained-a"))
+ print(json.dumps({"current":current,"summary":summary,"historical":historical,"paths":paths,"decision":decision}))
+asyncio.run(read())
+"""
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"SNOWFLAKE_ACCOUNT", "AGENT_BOM_POSTGRES_URL", "AGENT_BOM_GRAPH_BACKEND"}
+    }
+    env.update(
+        AGENT_BOM_DB=str(jobs_path),
+        AGENT_BOM_GRAPH_DB=str(graph_path),
+        AGENT_BOM_STATE_DIR=str(tmp_path),
+        AGENT_BOM_MCP_TENANT_ID="mcp-fixture",
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, historical, str(int(without_api))], env=env, capture_output=True, text=True, check=True, timeout=30
+    )
+    body = json.loads(result.stdout)
+    assert [row["id"] for row in body["current"]["assets"]] == ["retained-a"]
+    assert body["current"]["evidence_scope"] == "current_estate"
+    assert body["summary"]["scan_id"] == body["current"]["scan_id"]
+    assert body["summary"]["snapshot_generation"] == body["current"]["snapshot_generation"]
+    assert [row["id"] for row in body["historical"]["assets"]] == ["retired-b"]
+
+    for graph_read in (body["paths"], body["decision"]):
+        assert graph_read["scan_id"] == body["summary"]["scan_id"]
+        assert graph_read["evidence_scope"] == "current_estate"
+        assert graph_read["snapshot_generation"] == body["summary"]["snapshot_generation"]

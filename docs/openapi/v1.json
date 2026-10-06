@@ -7057,6 +7057,21 @@
             "title": "Edges",
             "type": "array"
           },
+          "evidence_scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "current_estate",
+                  "historical_scan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Scope"
+          },
           "found": {
             "title": "Found",
             "type": "boolean"
@@ -30249,7 +30264,7 @@
             }
           },
           {
-            "description": "Snapshot ID; latest initially. Reuse the returned ID for subsequent pages.",
+            "description": "Historical scan ID; omitted selects the current tenant estate. Reuse the returned ID and generation for subsequent pages.",
             "in": "query",
             "name": "scan_id",
             "required": false,
@@ -30264,7 +30279,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Snapshot ID; latest initially. Reuse the returned ID for subsequent pages.",
+              "description": "Historical scan ID; omitted selects the current tenant estate. Reuse the returned ID and generation for subsequent pages.",
               "title": "Scan Id"
             }
           },

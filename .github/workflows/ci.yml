@@ -1040,6 +1040,7 @@ jobs:
             tests/test_cli_entry_points.py
             tests/test_product_surface_contract.py
             tests/api/test_api_scan_findings_wiring.py
+            tests/api/test_live_export_contracts.py
           )
           mapfile -t TESTS < <(printf '%s\n' "${SMOKE[@]}" "${TARGETED[@]}" | sort -u)
           uv run pytest "${TESTS[@]}" -q --tb=short --durations=15 -m "not network and not slow and not graph_performance" -n 2 --dist loadfile

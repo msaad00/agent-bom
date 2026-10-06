@@ -62,7 +62,7 @@ function ContextOverviewNode({ data, selected, targetPosition, sourcePosition }:
   const Icon = entityIcon(data.nodeType);
   return <div className="context-map-node" data-selected={selected || undefined}>
     <Handle type="target" position={targetPosition ?? Position.Left} className="!h-1.5 !w-1.5" />
-    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NODE_COLOR_MAP[data.nodeType] }} aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-normal text-[16px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
+    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NODE_COLOR_MAP[data.nodeType] }} aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-words text-[20px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
     <p className="mt-1 truncate text-xs text-ink-secondary">{data.entityType?.replaceAll("_", " ") ?? data.nodeType}</p>
     <Handle type="source" position={sourcePosition ?? Position.Right} className="!h-1.5 !w-1.5" />
   </div>;
@@ -98,7 +98,7 @@ function OwnedContextView({ owner }: { owner: string }) {
       const done = data.jobs.filter(job => job.status === "done");
       setJobs(done);
       setJobTotal(data.total ?? done.length);
-      setJobId(current => current || params?.get("scan") || done[0]?.job_id || "");
+      setJobId(current => current || params?.get("scan") || "");
     }).catch(() => { if (active) setError("Unable to load completed scans."); });
     return () => { active = false; controller.abort(); };
   }, [owner, params, jobOffset]);
@@ -106,7 +106,14 @@ function OwnedContextView({ owner }: { owner: string }) {
     let active = true;
     const controller = new AbortController();
     setSnapshot(null);
-    if (!jobId) return;
+    if (!jobId || jobId.startsWith("current-estate:")) {
+      api.getInventorySummary().then(summary => {
+        if (!active) return;
+        setSnapshot({jobId, scanId: summary.scan_id});
+        setError(null);
+      }).catch(() => { if (active) setError("Unable to resolve the current tenant estate."); });
+      return () => { active = false; controller.abort(); };
+    }
     // Graph deep links carry a snapshot ID, not necessarily a scan-job ID.
     if (jobId === params?.get("scan")) { setSnapshot({ jobId, scanId: jobId }); return; }
     api.getScanStatus(jobId, controller.signal).then(job => {
@@ -120,15 +127,15 @@ function OwnedContextView({ owner }: { owner: string }) {
   const scanId = snapshot?.jobId === jobId ? snapshot.scanId : "";
   return <section aria-label="Persisted Context neighborhood" className="context-workspace">
     <header className="context-map-header"><div><h1 className="text-2xl font-semibold tracking-tight">Context Map</h1><p className="mt-1 text-sm text-ink-secondary">Select an entity or connection to inspect its evidence.</p></div>
-    <div className="flex min-w-0 flex-wrap items-end gap-3"><label className="context-field">Completed scan <select aria-label="Completed scan" className="context-action max-w-full" value={jobId} onChange={event => setJobId(event.target.value)}>
-      {!jobs.length && <option value="">No completed scans</option>}
+    <div className="flex min-w-0 flex-wrap items-end gap-3"><label className="context-field">Evidence scope <select aria-label="Completed scan" className="context-action max-w-full" value={jobId} onChange={event => setJobId(event.target.value)}>
+      <option value="">Current tenant estate</option>
       {jobId && !jobs.some(job => job.job_id === jobId) && <option value={jobId}>{jobId}</option>}
       {jobs.map(job => <option key={job.job_id} value={job.job_id}>{job.job_id}</option>)}
     </select></label>
     <details className="context-popover"><summary className="context-action inline-flex cursor-pointer items-center gap-2">Other views <ChevronDown size={14} aria-hidden="true" /></summary><div className="context-popover-panel"><GraphLensSwitcher variant="compact" scanId={scanId || undefined} /></div></details></div>
     {(jobOffset > 0 || jobOffset + 24 < jobTotal) && <div className="flex gap-2">{jobOffset > 0 && <button className="context-action" onClick={() => setJobOffset(offset => Math.max(0, offset - 24))}>Previous scans</button>}{jobOffset + 24 < jobTotal && <button className="context-action" onClick={() => setJobOffset(offset => offset + 24)}>Next scans</button>}</div>}</header>
     {error && <p role="alert">{error}</p>}
-    {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId, requestedRoot])} scanId={scanId} owner={owner} initialRootId={requestedRoot} /> : <p role="status">{jobId ? "Resolving snapshot…" : "Choose a completed scan to inspect persisted relationships."}</p>}
+    {scanId ? <SnapshotNeighborhood key={JSON.stringify([owner, scanId, requestedRoot])} scanId={scanId} owner={owner} initialRootId={requestedRoot} /> : <p role="status">{jobId ? "Resolving snapshot…" : snapshot ? "No retained graph evidence in the current tenant scope." : "Resolving current tenant estate…"}</p>}
   </section>;
 }
 
@@ -263,7 +270,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
           })}</div>
         </details>
         <p className="border-t border-outline pt-3 text-xs leading-5 text-ink-secondary">Recorded relationships do not establish execution or successful data access.</p>
-        <details><summary className="cursor-pointer text-sm">Scope &amp; evidence limits</summary><p className="my-2 text-xs leading-5 text-ink-secondary">{lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p><p className="break-all text-xs">Snapshot: {scanId}</p><p className="mt-2 text-sm text-ink-secondary">Permission and exploitability are not assessed by these pages. Shared infrastructure does not prove agents communicated. Page completeness is not estate or collection completeness.</p></details>
+        <details><summary className="cursor-pointer text-sm">Scope &amp; evidence limits</summary><p className="my-2 text-xs leading-5 text-ink-secondary">{lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p><p className="break-all text-xs">{scanId.startsWith("current-estate:") ? "Current tenant estate" : `Snapshot: ${scanId}`}</p><p className="mt-2 text-sm text-ink-secondary">Permission and exploitability are not assessed by these pages. Shared infrastructure does not prove agents communicated. Page completeness is not estate or collection completeness.</p></details>
       </aside>
     </div>
   </>;

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Union
 
 from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_band_rank
+from agent_bom.graph.compat import NODE_KIND_TO_ENTITY
 from agent_bom.output.finding_views import sanitize_output_text, with_output_sanitizer_cache
 from agent_bom.security import sanitize_sensitive_payload
 
@@ -643,15 +644,8 @@ def to_mermaid(
 
 
 @with_output_sanitizer_cache
-def to_json(graph: DepGraph) -> dict:
-    """Return a JSON-serialisable representation of the graph.
-
-    Args:
-        graph: Populated dependency graph.
-
-    Returns:
-        Dict with ``nodes``, ``edges``, and ``stats`` keys.
-    """
+def to_json(graph: DepGraph, *, scan_id: str | None = None, tenant_id: str | None = None) -> dict:
+    """Serialize sanitized dependency evidence, preserving legacy aliases and receipt objects."""
     graph = _sanitized_graph(graph)
     return {
         "nodes": [
@@ -659,12 +653,18 @@ def to_json(graph: DepGraph) -> dict:
                 "id": n.id,
                 "label": n.label,
                 "kind": n.kind,
+                "entity_type": NODE_KIND_TO_ENTITY[n.kind].value if n.kind in NODE_KIND_TO_ENTITY else n.kind,
                 "severity": n.severity,
                 "attributes": n.attributes,
             }
             for n in graph.nodes
         ],
-        "edges": [{"source": e.source, "target": e.target, "kind": e.kind, "evidence": e.evidence} for e in graph.edges],
+        "edges": [
+            {"source": e.source, "target": e.target, "kind": e.kind, "relationship": e.kind, "evidence": e.evidence} for e in graph.edges
+        ],
+        "schema_version": "1",
+        **({"scan_id": scan_id} if scan_id is not None else {}),
+        **({"tenant_id": tenant_id} if tenant_id is not None else {}),
         "stats": {
             "node_count": graph.node_count(),
             "edge_count": graph.edge_count(),

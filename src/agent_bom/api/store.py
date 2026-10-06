@@ -21,7 +21,7 @@ from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
 
-from .server import JobStatus, ScanJob
+from .models import JobStatus, ScanJob
 
 # Curated public-demo scan jobs have an existing TTL exemption so fixture
 # evidence remains available until an explicit reset or deletion. Ordinary scan

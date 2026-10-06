@@ -13,8 +13,10 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from agent_bom.api import stores as api_stores
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.server import app
+from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_graph_store
 from agent_bom.graph import (
     EntityType,
@@ -98,18 +100,18 @@ def _seed_graph(store: SQLiteGraphStore, *, tenant_id: str = "default", scan_id:
     store.save_graph(g)
 
 
-@pytest.fixture
-def inventory_store(tmp_path):
-    from agent_bom.api.stores import _get_graph_store
+@pytest.fixture(autouse=True)
+def isolated_graph_jobs(monkeypatch):
+    # Graph-only backend contracts must not inherit unrelated scan evidence.
+    monkeypatch.setattr(api_stores, "_store", InMemoryJobStore())
 
-    original = _get_graph_store()
+
+@pytest.fixture
+def inventory_store(tmp_path, monkeypatch):
     store = SQLiteGraphStore(tmp_path / "inventory.db")
     _seed_graph(store)
-    set_graph_store(store)
-    try:
-        yield store
-    finally:
-        set_graph_store(original)
+    monkeypatch.setattr(api_stores, "_graph_store", store)
+    yield store
 
 
 # ── Summary ──
@@ -252,9 +254,7 @@ def test_facet_counts_are_self_excluding_and_severity_means_linked_finding(inven
 
 
 def test_explicit_scan_is_resolved_once_and_tenant_scoped(tmp_path):
-    from agent_bom.api.stores import _get_graph_store
-
-    original = _get_graph_store()
+    original = api_stores._graph_store
     store = SQLiteGraphStore(tmp_path / "inv-scan-scope.db")
     _seed_graph(store, tenant_id="default", scan_id="visible")
     _seed_graph(store, tenant_id="tenant-b", scan_id="hidden")
@@ -335,9 +335,7 @@ def test_list_facet_filter_paginates_without_dropping_rows(tmp_path):
     row — not after the last consumed store page (which silently dropped the
     overflow and mis-reported ``has_more=False``). Paginating must return every
     matching asset exactly once."""
-    from agent_bom.api.stores import _get_graph_store
-
-    original = _get_graph_store()
+    original = api_stores._graph_store
     store = SQLiteGraphStore(tmp_path / "inv-many.db")
     total = 130
     g = UnifiedGraph(scan_id="inv-many", tenant_id="default")
@@ -371,9 +369,7 @@ def test_list_facet_filter_paginates_without_dropping_rows(tmp_path):
 
 def test_native_facet_query_has_no_legacy_5000_node_scan_cap(tmp_path):
     """A match sorted beyond 5,000 assets remains visible with an exact total."""
-    from agent_bom.api.stores import _get_graph_store
-
-    original = _get_graph_store()
+    original = api_stores._graph_store
     store = SQLiteGraphStore(tmp_path / "inv-over-legacy-cap.db")
     graph = UnifiedGraph(scan_id="inv-over-cap", tenant_id="default")
     for index in range(5_001):
@@ -478,9 +474,7 @@ def test_detail_cursor_rejects_replaced_snapshot(inventory_store):
 
 def test_tenant_isolation_no_cross_tenant_leak(tmp_path):
     """The endpoint scopes to the caller's tenant and never leaks another's nodes."""
-    from agent_bom.api.stores import _get_graph_store
-
-    original = _get_graph_store()
+    original = api_stores._graph_store
     store = SQLiteGraphStore(tmp_path / "iso.db")
     _seed_graph(store, tenant_id="default", scan_id="default-scan")
     # A different tenant's node must never surface in the default tenant's view.
@@ -555,9 +549,7 @@ def test_filter_at_the_length_limit_is_still_accepted(inventory_store, param):
 
 def test_no_snapshot_yet_returns_an_empty_summary_not_a_404(tmp_path):
     """Fresh install, pre-first-scan: dashboards get zero counts, not a 404."""
-    from agent_bom.api.stores import _get_graph_store
-
-    original = _get_graph_store()
+    original = api_stores._graph_store
     set_graph_store(SQLiteGraphStore(tmp_path / "no-snapshot.db"))
     try:
         client = TestClient(app)

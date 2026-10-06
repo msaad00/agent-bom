@@ -56,8 +56,9 @@ References:
 ## Follow one component
 
 In the self-hosted dashboard, open **Inventory → component → Findings → Compliance**.
-The views retain the exact component and scan snapshot, expose recorded relationships
-and source evidence, and export loaded evidence with completeness receipts. Control
+The views retain the component and selected evidence scope: the current tenant estate
+by default, or an explicit historical scan. They expose recorded relationships and
+source evidence, and export loaded evidence with completeness receipts. Control
 mappings do not establish evaluated passes or certification.
 
 From a source checkout, [run the connected-BOM example](https://github.com/msaad00/agent-bom/tree/main/examples/connected-bom).

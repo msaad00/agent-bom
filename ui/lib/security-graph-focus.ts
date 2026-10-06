@@ -34,7 +34,11 @@ export function selectInitialGraphSnapshot(
   snapshots: GraphSnapshot[],
   requestedScanId: string,
   latestCorrelation: GraphCorrelationRun | null,
+  currentEstateId?: string,
 ): string {
+  if (currentEstateId !== undefined) {
+    return requestedScanId && !requestedScanId.startsWith("current-estate:") ? requestedScanId : currentEstateId;
+  }
   if (requestedScanId) {
     return snapshots.some((snapshot) => snapshot.scan_id === requestedScanId)
       ? requestedScanId
@@ -91,7 +95,8 @@ export function buildCorrelationRemediationHref(
   const [splitPath, query = ""] = href.split("?", 2);
   const path = splitPath || href;
   const params = new URLSearchParams(query);
-  params.set("scan", scanId);
+  if (scanId.startsWith("current-estate:")) params.delete("scan");
+  else params.set("scan", scanId);
   if (finding) params.set("cve", finding);
   if (packageName) params.set("package", packageName);
   const encoded = params.toString();

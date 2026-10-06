@@ -169,7 +169,7 @@
       {
         "name": "scan_id",
         "type": "string",
-        "desc": "Optional graph scan ID. Omit to use the latest snapshot."
+        "desc": "Optional historical scan ID. Omit for the current tenant estate."
       },
       {
         "name": "limit",

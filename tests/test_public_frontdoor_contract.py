@@ -115,7 +115,7 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert "<summary>Explore graph navigation, permissions and evidence</summary>" in journey
     grc = journey.split("### Security, engineering and GRC:", 1)[1].split("### AppSec", 1)[0]
     assert "dashboard-live.png" in grc
-    assert "dashboard-paths-live.png" not in grc
+    assert "[expanded framework evidence](docs/images/dashboard-paths-live.png)" in grc
     assert "OWASP" in grc and "MITRE ATLAS" in grc
     assert "offline synthetic enterprise estate" in grc
     assert "evaluated" in grc

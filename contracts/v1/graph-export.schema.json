@@ -37,7 +37,10 @@
           "source": { "type": "string", "minLength": 1 },
           "target": { "type": "string", "minLength": 1 },
           "relationship": { "type": "string", "minLength": 1 },
-          "evidence": { "type": "array" }
+          "evidence": {
+            "type": ["object", "array"],
+            "description": "Recorded relationship receipt. Dependency exports retain their established object form; legacy consumers may emit receipt arrays."
+          }
         },
         "additionalProperties": true
       }

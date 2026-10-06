@@ -130,6 +130,7 @@ function AttackPathInvestigationContent() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [latestCorrelationRun, setLatestCorrelationRun] = useState<GraphCorrelationRun | null>(null);
   const [selectedScanId, setSelectedScanId] = useState("");
+  const [currentEstateId, setCurrentEstateId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
   const [fixFirstView, setFixFirstView] = useState<FixFirstGraphViewResponse | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
@@ -253,14 +254,16 @@ function AttackPathInvestigationContent() {
     async function load() {
       setLoadingSnapshots(true);
       try {
-        const [snapshotList, postureData, correlationList] = await Promise.all([
+        const [snapshotList, postureData, correlationList, currentScope] = await Promise.all([
           // windowDays: 0 keeps all retained snapshots visible (#4009).
           api.getGraphSnapshots(25, 0),
           api.getPosture().catch(() => null),
           api.listGraphCorrelations(20).catch(() => null),
+          !focus.scanId || focus.scanId.startsWith("current-estate:") ? api.getInventorySummary() : Promise.resolve(null),
         ]);
         if (cancelled) return;
         setSnapshots(snapshotList);
+        setCurrentEstateId(currentScope?.scan_id ?? "");
         setPosture(postureData);
         const latestCorrelation = latestCompletedCorrelation(correlationList?.items ?? []);
         setLatestCorrelationRun(latestCorrelation);
@@ -269,6 +272,7 @@ function AttackPathInvestigationContent() {
           snapshotList,
           requestedScanId,
           latestCorrelation,
+          currentScope?.scan_id ?? focus.scanId,
         );
         setSelectedScanId(initialScanId);
         setApiError(null);
@@ -370,10 +374,6 @@ function AttackPathInvestigationContent() {
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
   );
-  const requestedSnapshotMissing =
-    !loadingSnapshots &&
-    Boolean(focus.scanId) &&
-    !snapshots.some((snapshot) => snapshot.scan_id === focus.scanId);
   // Stale/empty snapshots (0 persisted nodes) and unrelated older scans pile up
   // in a long-lived graph store and drown the real ones in the chip row.
   // Default to the current scan plus at most a couple of recent populated
@@ -825,7 +825,7 @@ function AttackPathInvestigationContent() {
           )}
       </header>
 
-      <GraphSnapshotReceipt snapshot={selectedSnapshot} />
+      <GraphSnapshotReceipt snapshot={selectedSnapshot} scanId={selectedScanId} />
 
       <div className="hidden sm:block"><GraphLensSwitcher variant="compact" /></div>
       <details className="rounded-lg border border-outline bg-surface p-3 sm:hidden">
@@ -906,34 +906,6 @@ function AttackPathInvestigationContent() {
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             )}
-          </div>
-        </section>
-      ) : requestedSnapshotMissing ? (
-        <section className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-4">
-          <GraphEmptyState
-            title="Snapshot unavailable for requested scan"
-            detail={`No persisted graph snapshot exists for scan ${focus.scanId}. The investigation did not substitute evidence from a different scan.`}
-            suggestions={[
-              "Run or re-sync the requested scan with graph persistence enabled.",
-              "Choose another scan under Evidence scope to investigate older evidence explicitly.",
-              "Review the requested scan's findings while its graph snapshot is unavailable.",
-            ]}
-          />
-          <div className="mt-4 flex flex-wrap gap-3 border-t border-amber-500/20 pt-4">
-            <Link
-              href={buildFindingsHref({ scanId: focus.scanId })}
-              className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 transition hover:border-amber-600 dark:text-amber-200"
-            >
-              Review requested scan findings
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-            <Link
-              href="/security-graph"
-              className="sg-filter-chip"
-            >
-              Open latest snapshot
-              <GitBranch className="h-3.5 w-3.5" />
-            </Link>
           </div>
         </section>
       ) : allAttackPaths.length === 0 ? (
@@ -1171,7 +1143,7 @@ function AttackPathInvestigationContent() {
                 Current scan evidence
               </p>
               <p className="mt-1 font-mono text-sm text-[color:var(--foreground)]">
-                {selectedSnapshot ? selectedSnapshot.scan_id : "No scan selected"}
+                {selectedScanId.startsWith("current-estate:") ? "Current tenant estate" : selectedSnapshot ? selectedSnapshot.scan_id : "No scan selected"}
               </p>
               {selectedSnapshot ? <p className="mt-1 text-xs text-ink-tertiary">{formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges</p> : null}
             </div>
@@ -1198,6 +1170,7 @@ function AttackPathInvestigationContent() {
                 Manage snapshots
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
+                {currentEstateId && <button type="button" className="graph-chip-neutral" aria-pressed={selectedScanId === currentEstateId} onClick={() => selectSnapshot(currentEstateId)}>Current tenant estate</button>}
                 {displayedSnapshots.map((snapshot) => {
                   const selected = snapshot.scan_id === selectedScanId;
                   return (

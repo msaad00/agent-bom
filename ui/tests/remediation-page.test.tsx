@@ -95,6 +95,14 @@ describe("RemediationPage", () => {
     });
   });
 
+  it("renders usable package actions while ticket enrichment is pending", async () => {
+    apiMock.getRemediation.mockResolvedValue([remediationItem("ready-package", "high")]);
+    apiMock.listTickets.mockImplementation(() => new Promise(() => {}));
+    render(<RemediationPage />);
+    expect(await screen.findByText("ready-package")).toBeInTheDocument();
+    expect(screen.queryByText("Loading remediation plan...")).not.toBeInTheDocument();
+  });
+
   it("shows retained current findings when the newest scan has no remediation", async () => {
     apiMock.getRemediation.mockResolvedValue([]);
     apiMock.getCurrentRemediation.mockResolvedValue({ remediation_plan: [remediationItem("retained-pkg", "critical")], truncated: false, warnings: [] });

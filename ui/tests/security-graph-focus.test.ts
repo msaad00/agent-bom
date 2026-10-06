@@ -350,3 +350,17 @@ it("clears a removed cluster focus after expansion without hiding its members", 
   expect(visibleGraphFocus(expanded, "package:a")).toBe("package:a");
   expect(visibleGraphFocus(expanded, null)).toBeNull();
 });
+
+it("uses resolved current estate instead of the latest historical scan or correlation", () => {
+  expect(selectInitialGraphSnapshot([{ scan_id: "old" } as GraphSnapshot], "", null, "current-estate:g1")).toBe("current-estate:g1");
+  expect(selectInitialGraphSnapshot([], "current-estate:g0", null, "current-estate:g1")).toBe("current-estate:g1");
+  expect(selectInitialGraphSnapshot([], "older-explicit", null, "current-estate:g1")).toBe("older-explicit");
+});
+
+
+describe("current estate navigation", () => {
+  it("does not send a graph generation to the historical remediation endpoint", () => {
+    expect(buildCorrelationRemediationHref("/remediation?scan=old", "current-estate:abc", "CVE-2026-1234", "example"))
+      .toBe("/remediation?cve=CVE-2026-1234&package=example");
+  });
+});

@@ -6,6 +6,30 @@ The graph subsystem has one source of truth in code: enums in `src/agent_bom/gra
 
 ---
 
+## Current estate and historical scans
+
+An omitted `scan_id` on inventory and graph reads selects the current tenant
+estate. A complete rescan replaces only its own target. Incomplete observations
+retain prior evidence for that target; other targets and observed clean assets
+remain visible. Explicit historical scan IDs keep their original scope.
+
+```bash
+curl -H "X-API-Key: $AGENT_BOM_API_KEY" \
+  "$AGENT_BOM_API_URL/v1/inventory/assets?limit=25" > inventory.json
+```
+
+Inspect `evidence_scope`, `scan_id` and `snapshot_generation` in the response.
+A `current-estate:` identifier describes a derived set of source revisions, not
+one scan. Keep the returned cursor and generation together while paging; restart
+a page after a generation conflict. Select a recorded scan ID to investigate
+historical evidence. REST, MCP inventory tools and the dashboard share this scope.
+
+Current projections use a private rebuildable query cache. They do not add scans
+to history or modify source observations. Collection gaps remain visible and
+query completeness does not establish complete collection. Finding severity and
+recorded connections do not by themselves establish assessed risk or execution.
+
+
 ## 1. Coverage
 
 ### Entity types

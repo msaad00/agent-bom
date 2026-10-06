@@ -273,6 +273,12 @@ async function routeGraphPage(page: Page, graph = buildDenseGraph()) {
       body: JSON.stringify({ critical: 4, high: 17, medium: 1, low: 0, total: 22, kev: 0, compound_issues: 1 }),
     });
   });
+  // Graph-only fixtures expose their recorded snapshot through inventory too.
+  // Live scan-backed current-estate reconciliation is covered separately.
+  await page.route("**/v1/inventory/summary**", route => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", total_assets: graph.nodes.length,
+    evidence_scope: "historical_snapshot", snapshot_generation: "a".repeat(32),
+  } }));
   await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",

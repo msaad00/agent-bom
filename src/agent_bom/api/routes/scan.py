@@ -49,12 +49,15 @@ from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
-from agent_bom.api import job_status_count_cache
+from agent_bom.api import findings_current, job_status_count_cache
 from agent_bom.api.finding_collection import collect_scan_findings
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.finding_reachability import project_persisted_graph_reachability
+from agent_bom.api.finding_read_context import finding_read_snapshot, read_once
+from agent_bom.api.finding_snapshot_metadata import snapshot_metadata
 from agent_bom.api.finding_suppression import project_current_suppressions
+from agent_bom.api.findings_current import _finding_snapshot_jobs, current_scan_jobs
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
@@ -355,7 +358,10 @@ def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
 
 
 def _completed_jobs_for_tenant(tenant_id: str) -> list[ScanJob]:
-    return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+    return read_once(
+        ("jobs", tenant_id),
+        lambda: [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result],
+    )
 
 
 def iter_tenant_scan_spine_findings(
@@ -376,14 +382,9 @@ def iter_tenant_scan_spine_findings(
     the scan-job results already resident in memory (no per-tenant DB scan).
     """
     from agent_bom.api.compliance_hub_store import status_matches
-    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
+    from agent_bom.api.findings_current import scan_only_findings
 
-    rows = current_scan_findings(
-        _completed_jobs_for_tenant(tenant_id),
-        since=since,
-        scan_id=scan_id,
-        iter_findings=_iter_scan_findings,
-    )
+    rows = _current_scan_rows(tenant_id, since, scan_id)
     rows = scan_only_findings(rows, tenant_id, scan_id=scan_id)
     if severity:
         normalized = severity.lower()
@@ -1038,7 +1039,9 @@ def _context_graph_payload(result: dict[str, Any], *, agent: str | None, scan_id
     return sanitize_linked_document(attached)
 
 
-def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit: int) -> dict | str | PlainTextResponse:
+def _graph_export_response(
+    result: dict[str, Any], *, format: str, mermaid_limit: int, scan_id: str | None = None, tenant_id: str | None = None
+) -> dict | str | PlainTextResponse:
     from agent_bom.output.graph_export import (
         build_graph_from_scan_data,
         to_cypher,
@@ -1071,7 +1074,23 @@ def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit
     }
     if format in formats:
         return formats[format](graph)
-    return graph_to_json(graph)
+    return graph_to_json(graph, scan_id=scan_id, tenant_id=tenant_id)
+
+
+def _current_scan_rows(tenant_id: str, window_since: str | None, scan_id: str | None) -> list[dict[str, Any]]:
+    return read_once(
+        ("current_rows", json.dumps([tenant_id, window_since, scan_id])),
+        lambda: findings_current.current_scan_findings(
+            _completed_jobs_for_tenant(tenant_id),
+            since=window_since,
+            scan_id=scan_id,
+            iter_findings=_cached_scan_findings,
+        ),
+    )
+
+
+def _cached_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
+    return read_once(("rows", f"{job.tenant_id}:{job.job_id}:{id(job)}"), lambda: _iter_scan_findings(job))
 
 
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
@@ -2197,7 +2216,14 @@ async def get_graph_export(
     result = job.result if isinstance(job.result, dict) else {}
     return cast(
         "dict | str | PlainTextResponse",
-        await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit),
+        await _scan_graph_compute_call(
+            _graph_export_response,
+            result,
+            format=format,
+            mermaid_limit=mermaid_limit,
+            scan_id=job.job_id,
+            tenant_id=_tenant_id(request),
+        ),
     )
 
 
@@ -2242,9 +2268,16 @@ async def get_scan_agent_bom(
 @router.get("/findings/remediation", tags=["scan"], response_model=CurrentRemediationResponse)
 async def get_current_remediation(request: Request) -> CurrentRemediationResponse:
     """Package upgrade actions from the tenant's current findings across targets."""
-    from agent_bom.api.remediation_view import current_remediation_response
+    from agent_bom.api.remediation_view import current_remediation_response, remediation_finding_projection
 
-    snapshot = await asyncio.to_thread(current_findings_snapshot, request, max_findings=10_000, window_days=0)
+    snapshot = await asyncio.to_thread(
+        current_findings_snapshot,
+        request,
+        max_findings=10_000,
+        window_days=0,
+        project_graph_reachability=False,
+        row_projection=remediation_finding_projection,
+    )
     return current_remediation_response(snapshot)
 
 
@@ -3493,7 +3526,7 @@ def _list_findings_impl(
     # and qualifies them as unreconfirmed. Replacement snapshots retire absent
     # findings; cross-scope identity overlap is resolved by evidence time.
     # ``?scan_id=`` still returns that scan's rows verbatim.
-    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
+    from agent_bom.api.findings_current import scan_only_findings
 
     scope_filters = _canonical_scope_filters(
         provider,
@@ -3532,12 +3565,7 @@ def _list_findings_impl(
         if _completed_jobs_for_tenant(tenant_id):
             warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
     else:
-        scan_findings = current_scan_findings(
-            _completed_jobs_for_tenant(tenant_id),
-            since=window_since,
-            scan_id=scan_id,
-            iter_findings=_iter_scan_findings,
-        )
+        scan_findings = _current_scan_rows(tenant_id, window_since, scan_id)
         scan_findings = scan_only_findings(scan_findings, tenant_id, hub=store, scan_id=scan_id)
         if severity:
             normalized = severity.lower()
@@ -3855,6 +3883,16 @@ def _finding_triage_state(
     return None
 
 
+def _matches_reachability(reachable: Any, requested: str | None) -> bool:
+    return (
+        requested is None
+        or (requested == "reachable" and reachable is True)
+        or (requested == "unreachable" and reachable is False)
+        or (requested == "unassessed" and reachable is None)
+    )
+
+
+@finding_read_snapshot
 def _list_findings_view_impl(
     request: Request,
     q: str | None,
@@ -3890,7 +3928,8 @@ def _list_findings_view_impl(
     canonical keyset stream instead; this preserves occurrence IDs and avoids
     the dishonest client-side filtering of an already-selected page.
     """
-    if reachability is None and triage is None:
+    suppressed_only = status.strip().lower() == "suppressed"
+    if reachability is None and triage is None and not suppressed_only:
         return _list_findings_impl(
             request,
             q=q,
@@ -3950,7 +3989,7 @@ def _list_findings_view_impl(
             environment=environment,
             domain=domain,
             window_days=window_days,
-            status=status,
+            status="open" if suppressed_only else status,
             finding_class=finding_class,
             kev=kev,
             include_facets=False,
@@ -3976,16 +4015,10 @@ def _list_findings_view_impl(
                 row["triage_decision"] = triage_state.get("decision") if triage_state else None
                 row["triage_queue_state"] = triage_state.get("queue_state") if triage_state else None
 
-            reachable = row.get("graph_reachable")
-            reachability_matches = (
-                reachability is None
-                or (reachability == "reachable" and reachable is True)
-                or (reachability == "unreachable" and reachable is False)
-                or (reachability == "unassessed" and reachable is None)
-            )
+            reachability_matches = _matches_reachability(row.get("graph_reachable"), reachability)
             decision = triage_state.get("decision") if triage_state else None
             triage_matches = triage is None or decision == triage or (triage == "untriaged" and decision is None)
-            if reachability_matches and triage_matches:
+            if reachability_matches and triage_matches and (not suppressed_only or row.get("suppressed") is True):
                 matches.append(row)
 
         source_cursor = str(page.get("next_cursor") or "") or None
@@ -4000,6 +4033,8 @@ def _list_findings_view_impl(
     total = len(matches) if exhausted and cursor is None else None
     total_approximate = total is None
     filters = dict(first_page.get("filters") or {}) if first_page else {}
+    if suppressed_only:
+        filters["status"] = "suppressed"
     if reachability is not None:
         filters["reachability"] = reachability
     if triage is not None:
@@ -4100,6 +4135,7 @@ def _serialize_finding_group(group: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
+@finding_read_snapshot
 def _list_finding_groups_impl(
     request: Request,
     q: str | None,
@@ -4315,6 +4351,7 @@ def issue_severity_counts(request: Request) -> dict[str, Any]:
     return counts
 
 
+@finding_read_snapshot
 def current_findings_snapshot(
     request: Request,
     *,
@@ -4336,6 +4373,8 @@ def current_findings_snapshot(
     sla: str | None = None,
     reachability: str | None = None,
     triage: str | None = None,
+    project_graph_reachability: bool = True,
+    row_projection: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Collect the canonical current finding queue for an internal consumer.
 
@@ -4374,66 +4413,27 @@ def current_findings_snapshot(
             sla=sla,
             reachability=reachability,
             triage=triage,
+            project_graph_reachability=project_graph_reachability or reachability is not None,
+            redact_page=row_projection is None,
         )
         if first_metadata is None:
             first_metadata = page.get("count_metadata") if isinstance(page.get("count_metadata"), dict) else {}
             first_total = page.get("total") if isinstance(page.get("total"), int) else None
         page_rows = page.get("findings")
         if isinstance(page_rows, list):
-            rows.extend(row for row in page_rows if isinstance(row, dict))
+            rows.extend((row_projection(row) if row_projection else row) for row in page_rows if isinstance(row, dict))
         warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
         cursor = str(page.get("next_cursor") or "") or None
         if not cursor:
             break
 
     tenant_id = _tenant_id(request)
-    jobs = _completed_jobs_for_tenant(tenant_id)
-    agent_names: set[str] = set()
-    package_keys: set[tuple[str, str, str]] = set()
-    summary_agent_counts: list[int] = []
-    summary_package_counts: list[int] = []
-    generated_values: list[str] = []
-    completed_scan_ids: set[str] = set()
-    for job in jobs:
-        result = job.result if isinstance(job.result, dict) else {}
-        completed_scan_ids.add(str(result.get("scan_id") or job.job_id))
-        for agent in result.get("agents", []) if isinstance(result.get("agents"), list) else []:
-            if isinstance(agent, dict) and str(agent.get("name") or "").strip():
-                agent_names.add(str(agent["name"]).strip())
-        for package in result.get("packages", []) if isinstance(result.get("packages"), list) else []:
-            if isinstance(package, dict):
-                package_keys.add(
-                    (
-                        str(package.get("name") or ""),
-                        str(package.get("version") or ""),
-                        str(package.get("ecosystem") or ""),
-                    )
-                )
-        raw_summary = result.get("summary")
-        summary: dict[str, Any] = raw_summary if isinstance(raw_summary, dict) else {}
-        if isinstance(summary.get("total_agents"), int):
-            summary_agent_counts.append(summary["total_agents"])
-        if isinstance(summary.get("total_packages"), int):
-            summary_package_counts.append(summary["total_packages"])
-        generated = result.get("generated_at") or job.completed_at
-        if isinstance(generated, str) and generated:
-            generated_values.append(generated)
-
-    # Bulk-ingested/current findings can carry useful inventory identity even
-    # when no full report envelope exists. Count the observed identities; never
-    # manufacture placeholder agents or packages to match a summary scalar.
-    for row in rows:
-        raw_agents = row.get("affected_agents")
-        if isinstance(raw_agents, list):
-            agent_names.update(str(name).strip() for name in raw_agents if str(name).strip())
-        raw_asset = row.get("asset")
-        asset = raw_asset if isinstance(raw_asset, dict) else {}
-        package_value = str(row.get("package") or row.get("package_name") or "").strip()
-        if package_value:
-            package_keys.add((package_value, str(row.get("package_version") or ""), str(row.get("ecosystem") or "")))
-        elif str(asset.get("asset_type") or "").lower() == "package" and str(asset.get("name") or "").strip():
-            package_keys.add((str(asset["name"]).strip(), "", ""))
-
+    retained_jobs = _completed_jobs_for_tenant(tenant_id)
+    jobs = (
+        current_scan_jobs(retained_jobs, since=None, scan_id=scan_id)
+        if scan_id
+        else _finding_snapshot_jobs(retained_jobs, since=None, require_authoritative_evidence=True)[0]
+    )
     truncated = cursor is not None
     if truncated:
         warnings.append(f"Narrative evidence is bounded to {max_findings} current findings; additional rows remain.")
@@ -4443,11 +4443,7 @@ def current_findings_snapshot(
         "findings": rows,
         "count": len(rows),
         "total": first_total,
-        "total_agents": len(agent_names) if agent_names else max(summary_agent_counts, default=0),
-        "total_packages": len(package_keys) if package_keys else max(summary_package_counts, default=0),
-        "generated_at": max(generated_values, default=""),
-        "scan_ids": sorted(completed_scan_ids | {str(row.get("scan_id")) for row in rows if row.get("scan_id")}),
-        "completed_scan_count": len(jobs),
+        **snapshot_metadata(jobs, rows),
         "warnings": list(dict.fromkeys(warnings)),
         "count_metadata": first_metadata or {},
         "completeness": {

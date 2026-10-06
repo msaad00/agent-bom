@@ -2,7 +2,7 @@
 
 Both the HTTP route (``api/routes/inventory_assets.py``) and the agent-native MCP
 tools (``mcp_tools/inventory.py``) project the ONE tenant-scoped unified graph
-snapshot (``query_inventory`` / ``incident_edges_page``)
+scope (``query_inventory`` / ``incident_edges_page``)
 into the same asset-inventory shape. That projection lives here so the human
 cockpit and the headless agent surface share one implementation and one evidence
 model — no duplicated logic, no second store.
@@ -229,6 +229,24 @@ def asset_row(node: Any) -> dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _scope_metadata(result: dict[str, Any]) -> dict[str, Any]:
+    current = result.get("evidence_scope") == "current_estate"
+    return {
+        "evidence_scope": result.get("evidence_scope", "scan_snapshot"),
+        "snapshot_generation": result.get("snapshot_generation"),
+        "collection_coverage": result.get(
+            "collection_coverage",
+            {
+                "status": "unknown",
+                "reason": "Inventory query completeness does not establish source collection or assessment coverage.",
+            },
+        ),
+        "finding_count_scope": "current_estate" if current else "selected_snapshot",
+        "count_definition": "typed graph nodes excluding finding entity types in the selected tenant and "
+        + ("current estate" if current else "scan snapshot"),
+    }
+
+
 async def build_summary(
     *,
     store: Any,
@@ -288,7 +306,7 @@ async def build_summary(
     return {
         "schema_version": "inventory.summary.v1",
         "scope": "unified_graph_estate",
-        "count_definition": ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot"),
+        **_scope_metadata(result),
         "tenant_id": tenant_id,
         "scan_id": result.get("scan_id", ""),
         "created_at": result.get("created_at", ""),
@@ -296,14 +314,9 @@ async def build_summary(
         "by_type": dict(sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))),
         "by_group": {group: count for group, count in by_group.items() if count or group in _TYPE_GROUPS},
         "finding_count": int(result.get("finding_count", 0)),
-        "finding_count_scope": "selected_snapshot",
         "filters": result["filters"],
         "count_exact": True,
         "count_basis": "persisted_graph_nodes",
-        "collection_coverage": {
-            "status": "unknown",
-            "reason": "Inventory query completeness does not establish source collection or assessment coverage.",
-        },
         "facets": result["facets"],
         "facet_metadata": result["facet_metadata"],
         "completeness": graph_completeness(returned=total_assets, total=total_assets),
@@ -319,6 +332,7 @@ def empty_summary(*, tenant_id: str) -> dict[str, Any]:
     return {
         "schema_version": "inventory.summary.v1",
         "scope": "unified_graph_estate",
+        "evidence_scope": "no_snapshot",
         "count_definition": "typed graph nodes excluding finding entity types in the selected tenant and scan snapshot",
         "tenant_id": tenant_id,
         "scan_id": "",
@@ -437,13 +451,12 @@ async def build_asset_list(
     return {
         "schema_version": "inventory.assets.v1",
         "scope": "unified_graph_estate",
-        "count_definition": ("typed graph nodes excluding finding entity types in the selected tenant and scan snapshot"),
+        **_scope_metadata(result),
         "tenant_id": tenant_id,
         "scan_id": result.get("scan_id", ""),
         "created_at": result.get("created_at", ""),
         "assets": page_rows,
         "finding_count": int(result.get("finding_count", 0)),
-        "finding_count_scope": "selected_snapshot",
         "filters": {
             "type": sorted(entity_types) if entity_types else [],
             "search": query,
@@ -523,6 +536,7 @@ async def build_asset_detail(
     edges_in = [edge for edge in context["edges"] if edge.target == asset_id]
     return {
         "schema_version": "inventory.asset.v1",
+        "evidence_scope": context.get("evidence_scope", "scan_snapshot"),
         "tenant_id": tenant_id,
         "scan_id": context["scan_id"],
         "snapshot_generation": context["snapshot_generation"],

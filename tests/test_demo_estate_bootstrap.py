@@ -981,11 +981,13 @@ def test_demo_estate_agents_no_fallback_without_demo_mode(
     assert _discover_agents_with_demo_fallback() == []
 
 
+@pytest.mark.parametrize("durable", [False, True])
 def test_demo_estate_scan_findings_restored_after_restart(
     demo_estate_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    durable: bool,
 ) -> None:
-    """A restart resets the in-memory job store; demo mode must re-seed the scan
-    so posture + findings are restored (the graph snapshot already persists)."""
+    """Restart retains durable jobs or re-seeds an empty in-memory job store."""
     from agent_bom.api import stores as api_stores
     from agent_bom.demo_estate.bootstrap import (
         _tenant_has_demo_jobs,
@@ -996,13 +998,14 @@ def test_demo_estate_scan_findings_restored_after_restart(
     before = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 3}).json()
     assert before.get("total", 0) > 0
 
-    # Simulate a process restart: the in-memory job store is recreated empty
-    # while the persisted graph snapshot survives.
+    # The persisted graph survives both job-store lifecycle policies.
+    if not durable:
+        monkeypatch.delenv("AGENT_BOM_DB")
     api_stores._store = None
-    assert not _tenant_has_demo_jobs(api_stores._get_store(), SHOWCASE_TENANT)
+    assert _tenant_has_demo_jobs(api_stores._get_store(), SHOWCASE_TENANT) is durable
 
     summary = maybe_bootstrap_demo_estate()
-    assert summary.get("seeded") is True, summary
+    assert summary.get("seeded") is (not durable), summary
 
     after = demo_estate_client.get("/v1/findings", headers=VIEWER, params={"limit": 3}).json()
     assert after.get("total", 0) == before.get("total", 0), (before.get("total"), after.get("total"))
@@ -1013,6 +1016,33 @@ def test_demo_estate_scan_findings_restored_after_restart(
 # Once the estate is in the graph the snapshot no longer fits one severity-ranked
 # API page, so these read the whole snapshot explicitly and separately assert
 # that the *default* page says so rather than reading as the estate.
+
+
+def _demo_graph_get(client: TestClient, path: str, params: dict):
+    """Honor bounded backpressure while checking topology, not host throughput."""
+    for attempt in range(3):
+        response = client.get(path, headers=VIEWER, params=params)
+        if response.status_code != 429:
+            return response
+        detail = response.json().get("detail") or {}
+        if not isinstance(detail, dict) or detail.get("reason") != "p99_latency_threshold":
+            return response
+        delay = int(response.headers.get("retry-after", "0"))
+        assert 1 <= delay <= 30, response.text
+        if attempt < 2:
+            time.sleep(delay)
+    return response
+
+
+def test_demo_topology_reader_honors_bounded_backpressure(demo_estate_client):
+    from agent_bom.backpressure import _controller_for
+
+    controller = _controller_for("graph")
+    controller.open_until_monotonic = time.monotonic() + 1
+    controller.last_trigger_reason = "p99_latency_threshold"
+    response = _demo_graph_get(demo_estate_client, "/v1/graph", {"limit": 1})
+    assert response.status_code == 200, response.text
+    assert controller.rejected >= 1
 
 
 def _graph_with_all_nodes(client: TestClient) -> dict:
@@ -1031,7 +1061,7 @@ def _graph_with_all_nodes(client: TestClient) -> dict:
         params: dict[str, object] = {"limit": 5000, **identity}
         if cursor:
             params["cursor"] = cursor
-        response = client.get("/v1/graph", headers=VIEWER, params=params)
+        response = _demo_graph_get(client, "/v1/graph", params)
         assert response.status_code == 200, response.text
         payload = response.json()
         current = {key: payload[key] for key in ("scan_id", "snapshot_generation")}
@@ -1069,7 +1099,7 @@ def _outgoing_graph_edges(client: TestClient, graph: dict, node_ids: set[str], *
             params = {**identity, "node_id": node_id, "direction": "out", "limit": limit}
             if cursor:
                 params["cursor"] = cursor
-            response = client.get("/v1/graph/incident-edges", headers=VIEWER, params=params)
+            response = _demo_graph_get(client, "/v1/graph/incident-edges", params)
             assert response.status_code == 200, response.text
             page = response.json()
             assert page["found"], node_id

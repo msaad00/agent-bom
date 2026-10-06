@@ -75,23 +75,22 @@ def test_drilling_into_the_agent_returns_its_servers() -> None:
     assert sorted(child["id"] for child in payload["children"]) == ["server:filesystem", "server:github"]
 
 
-def test_rest_drill_down_walks_the_agent_stack(tmp_path) -> None:
+def test_rest_drill_down_walks_the_agent_stack(tmp_path, monkeypatch) -> None:
     pytest.importorskip("fastapi", reason="fastapi not installed")
     from fastapi.testclient import TestClient
 
+    from agent_bom.api import stores
     from agent_bom.api.graph_store import SQLiteGraphStore
     from agent_bom.api.server import app
-    from agent_bom.api.stores import set_graph_store
+    from agent_bom.api.store import InMemoryJobStore
 
     store = SQLiteGraphStore(tmp_path / "graph.db")
     store.save_graph(_agent_stack())
-    set_graph_store(store)
-    try:
-        client = TestClient(app)
-        top = client.get("/v1/graph/rollup").json()
-        drilled = client.get("/v1/graph/rollup", params={"node": "agent:project:sampleapp"}).json()
-    finally:
-        set_graph_store(None)
+    monkeypatch.setattr(stores, "_store", InMemoryJobStore())
+    monkeypatch.setattr(stores, "_graph_store", store)
+    client = TestClient(app)
+    top = client.get("/v1/graph/rollup").json()
+    drilled = client.get("/v1/graph/rollup", params={"node": "agent:project:sampleapp"}).json()
 
     assert _entry(top, "agent:project:sampleapp")["aggregate"]["worst_severity"] == "critical"
     assert sorted(child["id"] for child in drilled["children"]) == ["server:filesystem", "server:github"]

@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+from agent_bom.finding_scope import safe_finding_response_payload
 from agent_bom.output.json_fmt import remediation_json
 
 
@@ -17,6 +18,58 @@ class CurrentRemediationResponse(BaseModel):
     source_findings: int
     truncated: bool
     warnings: list[str]
+
+
+def remediation_finding_projection(row: dict[str, Any]) -> dict[str, Any]:
+    """Default-deny projection of the fields consumed by upgrade actions.
+
+    Avoid projecting full control records, graph context and asset attributes
+    for every finding. The retained fields pass through the same safe response
+    boundary as the full finding view; no unredacted values leave this module.
+    """
+    fields = {
+        "cve_id",
+        "vulnerability_id",
+        "suppressed",
+        "package_name",
+        "package",
+        "package_version",
+        "ecosystem",
+        "references",
+        "severity",
+        "title",
+        "fixed_version",
+        "is_kev",
+        "risk_score",
+        "affected_agents",
+        "exposed_credentials",
+        "exposed_tools",
+        "owasp_tags",
+        "atlas_tags",
+        "nist_ai_rmf_tags",
+        "owasp_mcp_tags",
+        "owasp_agentic_tags",
+        "eu_ai_act_tags",
+        "nist_csf_tags",
+        "iso_27001_tags",
+        "soc2_tags",
+        "cis_tags",
+    }
+    projected = {key: row[key] for key in fields if key in row}
+    evidence = row.get("evidence")
+    if isinstance(evidence, dict):
+        projected["evidence"] = {
+            key: evidence[key]
+            for key in (
+                "package_name",
+                "package_version",
+                "ecosystem",
+                "references",
+                "fixed_version",
+            )
+            if key in evidence
+        }
+    return safe_finding_response_payload(projected)
 
 
 def _strings(value: Any) -> list[str]:

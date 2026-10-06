@@ -249,7 +249,8 @@ _VALUE_CREDENTIAL_PATTERNS = [
     # so those keys reached reports verbatim. Requiring the literal `PRIVATE KEY`
     # keeps public material (`-----BEGIN CERTIFICATE-----`, `PUBLIC KEY`) out.
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----"),  # Private keys
-    re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}"),  # JWTs
+    re.compile(r"(?i:\bbearer[ \t]+)[A-Za-z0-9._~+/-]+=*"),  # RFC 6750 bearer credentials
+    re.compile(r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]*)?"),  # JWTs, including short claims
     re.compile(r"xox[bpsar]-[A-Za-z0-9-]{10,}"),  # Slack tokens
 ]
 

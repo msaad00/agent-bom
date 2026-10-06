@@ -262,6 +262,12 @@ async function routeCockpit(
       body: JSON.stringify({ critical: 2, high: 1, medium: 0, low: 0, total: 3, kev: 1, compound_issues: 1 }),
     });
   });
+  // Graph-only fixtures expose their recorded snapshot through inventory too.
+  // Live scan-backed current-estate reconciliation is covered separately.
+  await page.route("**/v1/inventory/summary**", route => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", total_assets: graph.nodes.length,
+    evidence_scope: "historical_snapshot", snapshot_generation: "a".repeat(32),
+  } }));
   await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -626,11 +632,19 @@ test("security-graph cockpit stays usable on a mobile viewport", async ({ page }
 test("requested scan without a graph snapshot never falls back to another scan", async ({ page }) => {
   await routeCockpit(page);
 
-  await page.goto("/security-graph?scan=scan-without-graph&cve=CVE-2099-MISSING");
-  await page.waitForLoadState("networkidle");
-
-  await expect(page.getByText("Snapshot unavailable for requested scan")).toBeVisible();
-  await expect(page.getByText(/did not substitute evidence from a different scan/i)).toBeVisible();
+  const requestedScopes: string[] = [];
+  // A retained historical scan can fall outside the snapshot selector's page.
+  // Resolve it through the API; an actual missing scan returns 404.
+  for (const endpoint of ["attack-paths", "views/fix-first"]) {
+    await page.route(`**/v1/graph/${endpoint}?**`, route => {
+      requestedScopes.push(new URL(route.request().url()).searchParams.get("scan_id") ?? "");
+      return route.fulfill({ status: 404, json: { detail: "Graph snapshot not found" } });
+    });
+  }
+  await page.goto("/security-graph?lens=attack-path&scan=scan-without-graph&cve=CVE-2099-MISSING");
+  await expect(page.getByText("Cannot load attack paths for this snapshot")).toBeVisible();
+  expect(requestedScopes.length).toBeGreaterThan(0);
+  expect(requestedScopes.every(scope => scope === "scan-without-graph")).toBe(true);
   await expect(page.getByRole("heading", { name: "Claude Desktop → CVE-2025-7783" })).toHaveCount(0);
 });
 

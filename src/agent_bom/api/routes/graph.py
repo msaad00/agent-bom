@@ -171,6 +171,8 @@ class IncidentEdgePageCompleteness(GraphCompletenessResponse):
 class IncidentEdgePageResponse(BaseModel):
     """Recorded relationship page, not a permission or collection-coverage verdict."""
 
+    evidence_scope: Literal["current_estate", "historical_scan"] | None = None
+
     snapshot_generation: str | None
     scan_id: str
     node_id: str
@@ -1035,6 +1037,8 @@ async def _graph_compute_call(fn: Callable[..., _GraphCallResult], /, *args: Any
 
 def _encoded_graph_response(payload: dict[str, Any]) -> Response:
     """Encode graph JSON off-loop; FastAPI otherwise revisits every nested field."""
+    if str(payload.get("scan_id", "")).startswith("current-estate:"):
+        payload = {**payload, "evidence_scope": "current_estate"}
     return JSONResponse(content=jsonable_encoder(payload))
 
 
@@ -2620,7 +2624,11 @@ async def get_graph_incident_edges(
     request: Request,
     node_id: GraphIdentifier = Query(..., min_length=1, max_length=4096, pattern=r"^[^\x00]*$", description="Exact canonical node ID"),
     scan_id: GraphIdentifier | None = Query(
-        None, max_length=4096, description="Snapshot ID; latest initially. Reuse the returned ID for subsequent pages."
+        None,
+        max_length=4096,
+        description=(
+            "Historical scan ID; omitted selects the current tenant estate. Reuse the returned ID and generation for subsequent pages."
+        ),
     ),
     snapshot_generation: str | None = Query(
         None, pattern="^[a-f0-9]{32}$", description="Expected generation returned by the initial page; reuse on every node expansion."
@@ -2677,6 +2685,7 @@ async def get_graph_incident_edges(
         }
     return {
         "scan_id": page["scan_id"],
+        "evidence_scope": "current_estate" if page["scan_id"].startswith("current-estate:") else "historical_scan",
         "snapshot_generation": page["snapshot_generation"],
         "node_id": node_id,
         "found": True,

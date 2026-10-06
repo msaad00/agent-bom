@@ -147,6 +147,7 @@ function renderPackages(ui: React.ReactElement) {
 }
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/inventory/packages");
   vi.clearAllMocks();
   vi.mocked(api.getInventorySummary).mockResolvedValue(summary());
   vi.mocked(api.getInventoryAssets).mockResolvedValue(page());
@@ -154,6 +155,33 @@ beforeEach(() => {
 });
 
 describe("AssetInventoryView inventory projection", () => {
+  it("restores a selected asset from the URL and keeps its scan when closing", async () => {
+    window.history.replaceState(null, "", `/inventory/packages?scan=${SNAPSHOT}&asset=pkg%3Arequests`);
+    renderPackages(<AssetInventoryView kind="packages" />);
+    expect(await screen.findByRole("dialog", { name: "Asset details" })).toBeVisible();
+    await waitFor(() => expect(api.getInventoryAsset).toHaveBeenCalledWith("pkg:requests", SNAPSHOT));
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(new URLSearchParams(window.location.search).get("scan")).toBe(SNAPSHOT);
+    expect(new URLSearchParams(window.location.search).has("asset")).toBe(false);
+  });
+
+  it.each(["kind", "index"] as const)("opens %s details on demand and restores focus on Escape", async (view) => {
+    renderPackages(view === "kind" ? <AssetInventoryView kind="packages" /> : <InventoryIndex />);
+    const table = await screen.findByRole("table");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const row = within(table).getByText("requests").closest("tr")!;
+    row.focus();
+    fireEvent.click(row);
+    const drawer = await screen.findByRole("dialog", { name: "Asset details" });
+    expect(within(drawer).getByRole("link", { name: /Findings/ })).toBeVisible();
+    const disclosure = within(drawer).getByText("Provenance and attributes").closest("details");
+    expect(disclosure).not.toHaveAttribute("open");
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(row).toHaveFocus();
+  });
+
   it("keeps scoped zero-result filters recoverable within the same snapshot", async () => {
     vi.mocked(api.getInventorySummary).mockImplementation(async (_scan, filters) =>
       filters?.search ? summary({ total_assets: 0, by_type: {} }) : summary());

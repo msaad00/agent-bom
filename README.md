@@ -148,9 +148,9 @@ Start with **Posture**, inspect evidence in **Top risks**, and scope inventory i
 OWASP and MITRE ATLAS risk mappings describe applicability, not control pass/fail.
 The offline synthetic enterprise estate includes evaluated checks; results do not establish certification or an audit opinion.
 
-<p align="center"><a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Overview of posture, findings and assessment gaps with evaluated-control counts and framework logos in a labeled sample environment" width="1440"></a></p>
+<p align="center"><a href="docs/images/dashboard-live.png"><img src="docs/images/dashboard-live.png" alt="Posture and open findings with compliance and security-area disclosures collapsed in a labeled sample environment" width="1440"></a></p>
 
-Explore [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), [framework controls and evidence](site-docs/features/compliance.md), and the [per-agent BOM preview](docs/SCAN_EVIDENCE_JOURNEY.md).
+Explore [expanded framework evidence](docs/images/dashboard-paths-live.png), [Top risks](docs/images/dashboard-risks-live.png), [scoped Inventory](docs/images/inventory-live.png), [recorded scan history](docs/GALLERY.md#compare-recorded-scan-history), [framework controls and evidence](site-docs/features/compliance.md), and the [per-agent BOM preview](docs/SCAN_EVIDENCE_JOURNEY.md).
 
 ### AppSec and cloud teams: explain why a finding matters
 
@@ -172,10 +172,10 @@ Distinguish storage, access evidence and collection sources; derived classificat
 
 ### Engineers and GRC: prioritize findings and verify fixes
 
-Open **Inventory → component → Findings → Compliance**. Both views retain the exact identifier and scan snapshot; inspect recorded relationships, sources and timestamps, then export the loaded evidence.
+Open **Inventory → component → Findings → Compliance**. Views retain the component identifier and selected evidence scope: the current tenant estate by default, or an explicit historical scan. Inspect recorded relationships, sources and timestamps, then export the loaded evidence.
 Open remediation for package upgrades, assign owners and re-scan to verify fixes. Control mappings are **not evaluated passes**.
 
-[Component findings](docs/images/component-findings-dark-live.png) · [Scoped controls](docs/images/component-controls-dark-live.png) · [Light-theme walkthrough](docs/GALLERY.md#follow-one-component).
+[Component findings](docs/images/component-findings-dark-live.png) · [Scoped controls](docs/images/component-controls-dark-live.png) · [Mobile component drawer](docs/images/component-detail-mobile-dark-live.png) · [Light-theme walkthrough](docs/GALLERY.md#follow-one-component).
 The [reproducible rescan example](examples/connected-bom/README.md) changes a dependency input and retains both snapshots. One pinned advisory disappears; an unrelated modeled cloud check remains failed. No package is installed and no deployment is changed.
 
 <p align="center"><a href="docs/images/component-detail-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/component-detail-light-live.png"><img src="docs/images/component-detail-dark-live.png" alt="Selected sample component with recorded relationships and explicit collection-coverage limits" width="920"></picture></a></p>

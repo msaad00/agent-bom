@@ -93,6 +93,8 @@ describe("GraphRollupDecisionSurface", () => {
       onDrill={vi.fn()} onInvestigate={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Priority 1" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("critical")).toBeInTheDocument();
+    expect(screen.getByText("0 connected nodes in this view")).toBeInTheDocument();
+    expect(screen.getByText(/Severity does not establish connectivity or assessed risk/)).toBeInTheDocument();
     expect(screen.queryByText("Scope quiet")).not.toBeInTheDocument();
     expect(screen.queryByText("Contains")).not.toBeInTheDocument();
     expect(screen.queryByText("0 / 0")).not.toBeInTheDocument();
@@ -155,7 +157,7 @@ describe("GraphRollupDecisionSurface", () => {
     const exposedFilter = screen.getByRole("button", { name: "Internet-exposed 1" });
     fireEvent.click(exposedFilter);
     expect(exposedFilter).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("1 connected node")).toBeInTheDocument();
+    expect(screen.getByText("1 connected node in this view")).toBeInTheDocument();
     expect(screen.queryByText("Scope quiet-23")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Open scope" }));

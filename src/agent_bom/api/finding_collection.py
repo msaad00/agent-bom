@@ -13,9 +13,8 @@ def _matching_key(scan: ModuleType, row: dict, key: str, grouped: dict, package_
     if scan._row_vuln_id(row) and key not in grouped:
         name, version, ecosystem = scan._package_identity(row)
         candidates = []
-        for candidate in package_groups.get((scan._row_vuln_id(row).lower(), name), []):
-            if scan._row_asset_key(row) and scan._row_asset_key(row) != scan._row_asset_key(grouped[candidate]):
-                continue
+        asset_key = scan._row_asset_key(row) or None
+        for candidate in package_groups.get((scan._row_vuln_id(row).lower(), name, asset_key), []):
             _, candidate_version, candidate_ecosystem = scan._package_identity(grouped[candidate])
             if version and candidate_version and version != candidate_version:
                 continue
@@ -45,7 +44,7 @@ def collect_scan_findings(job: ScanJob, attach: Callable[[dict[str, Any]], dict[
     # step with the overview count instead of emitting one row per representation.
     grouped: dict[str, dict[str, Any]] = {}
     order: list[str] = []
-    package_groups: dict[tuple[str, str], list[str]] = {}
+    package_groups: dict[tuple[str, str, str | None], list[str]] = {}
 
     def _absorb(row: dict[str, Any]) -> None:
         key = scan._canonical_group_key(row)
@@ -60,7 +59,13 @@ def collect_scan_findings(job: ScanJob, attach: Callable[[dict[str, Any]], dict[
             grouped[key] = row
             order.append(key)
             if scan._row_vuln_id(row):
-                package_groups.setdefault((scan._row_vuln_id(row).lower(), scan._package_base_name(row)), []).append(key)
+                package_key = (scan._row_vuln_id(row).lower(), scan._package_base_name(row))
+                # Named assets only match the same identity; legacy rows with
+                # no asset still inspect all candidates and reject ambiguity.
+                package_groups.setdefault((*package_key, None), []).append(key)
+                asset_key = scan._row_asset_key(row)
+                if asset_key:
+                    package_groups.setdefault((*package_key, asset_key), []).append(key)
             return
         scan._backfill_supplementary_fields(existing, row)
 

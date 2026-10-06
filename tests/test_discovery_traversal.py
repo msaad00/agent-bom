@@ -254,6 +254,7 @@ def test_unreadable_directory_is_skipped_and_counted_not_fatal(tmp_path):
         warnings = consume_coverage_warnings()
         read_errors = [w for w in warnings if w["reason"] == "directory_read_error"]
         assert read_errors and all(w["excluded_count"] >= 1 for w in read_errors)
+        assert all(w["source_labels"] == ["<path:locked>"] for w in read_errors)
         assert str(tmp_path) not in str(warnings)
     finally:
         locked.chmod(0o755)

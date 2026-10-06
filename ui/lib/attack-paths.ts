@@ -547,7 +547,7 @@ export function buildSecurityGraphHref(focus: AttackPathFocus): string {
 
 export function buildFindingsHref(focus: Pick<AttackPathFocus, "cve" | "scanId">): string {
   const params = new URLSearchParams();
-  if (focus.scanId) params.set("scan", focus.scanId);
+  if (focus.scanId && !focus.scanId.startsWith("current-estate:")) params.set("scan", focus.scanId);
   if (focus.cve) params.set("cve", focus.cve);
   const query = params.toString();
   return query ? `/findings?${query}` : "/findings";

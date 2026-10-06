@@ -109,6 +109,7 @@ def test_cyclonedx_import_retains_multiple_server_memberships(tmp_path):
     agent, _ = load_sbom_agent(str(source))
     assert {s.name: {p.name for p in s.packages} for s in agent.mcp_servers} == {"tools": {"a"}, "other-tools": {"b"}}
     assert len({server.stable_id for server in agent.mcp_servers}) == 2
+    assert {s.name: s.stable_id for s in agent.mcp_servers} == {s.name: s.stable_id for s in report.agents[0].mcp_servers}
     exported = to_cyclonedx(AIBOMReport(agents=[agent]))
     servers = {
         c["name"]: c
@@ -263,3 +264,17 @@ def test_cyclonedx_nested_components_do_not_disappear():
         ]
     }
     assert {p.name for p in parse_cyclonedx(doc)} == {"a", "b"}
+
+
+def test_declared_server_identity_is_limited_to_canonical_sbom_imports():
+    from agent_bom.models import ServerSurface
+
+    declared = MCPServer(name="original").stable_id
+    assert MCPServer(name="imported", surface=ServerSurface.SBOM, command="sbom", imported_canonical_id=declared).stable_id == declared
+    for fields in (
+        {"command": "execute", "surface": ServerSurface.SBOM, "imported_canonical_id": declared},
+        {"imported_canonical_id": declared},
+        {"command": "sbom", "surface": ServerSurface.SBOM, "imported_canonical_id": "not-a-uuid"},
+        {"command": "sbom", "surface": ServerSurface.SBOM, "imported_canonical_id": "00000000-0000-4000-8000-000000000001"},
+    ):
+        assert MCPServer(name="imported", **fields).stable_id != declared

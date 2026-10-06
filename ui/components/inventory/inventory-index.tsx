@@ -1,24 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { InventoryPagination } from "@/components/inventory/inventory-pagination";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
+import { Drawer } from "@/components/drawer";
 import { AssetDetail } from "@/components/inventory/asset-detail";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
+import { useInventorySelection } from "@/lib/inventory-selection";
 import { useInventory } from "@/lib/inventory-context";
 import { ASSET_KINDS, ASSET_KIND_BY_ID, type AssetRow } from "@/lib/inventory";
 
 export function InventoryIndex() {
   const { model, summary, filters, loading, error, errorKind,
     details, detailLoadingId, detailError, loadAssetDetail } = useInventory();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const rows = useMemo(() => Object.values(model?.rowsByKind ?? {}).flat(), [model]);
-  const selected = rows.find((row) => row.id === selectedId) ?? null;
+  const { selected, select } = useInventorySelection(rows, model?.scanId, loadAssetDetail);
 
   const header = (
     <header className="flex flex-wrap items-start justify-between gap-3">
@@ -120,6 +121,11 @@ export function InventoryIndex() {
       </nav>
 
       <InventoryFacetBar />
+      {summary.collection_coverage?.status === "partial" ? (
+        <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-ink-secondary">
+          Collection gap: {summary.collection_coverage.reason}
+        </p>
+      ) : null}
 
       {summary?.completeness && !summary.completeness.complete ? (
         <div
@@ -133,20 +139,23 @@ export function InventoryIndex() {
 
       {model && model.matchingTotal === 0 ? (
         <PageEmptyState
-          title="No assets match these filters"
-          detail="The snapshot contains assets, but none match the selected filters. Clear a filter or choose another source scope."
+          title={Object.values(filters).some(Boolean) ? "No assets match these filters" : "No assets in the current scope"}
+          detail={Object.values(filters).some(Boolean)
+            ? "No recorded assets match the selected scope and filters. Clear a filter or choose another scope."
+            : "The selected evidence contains no current assets. Earlier scan history remains available; this does not establish collection coverage."}
         />
       ) : null}
 
       {model && model.matchingTotal > 0 ? <>
         <InventoryPagination />
         <DataTable<AssetRow> columns={columns} rows={rows} rowKey={row => row.id} caption="Asset inventory"
-          selectedKey={selected?.id} maxHeight="32rem" onRowClick={row => { setSelectedId(row.id); void loadAssetDetail(row.id); }} />
-        {selected && model ? <section aria-label="Selected asset details">
-          <div className="mb-2 flex justify-end"><button type="button" onClick={() => setSelectedId(null)} className="text-xs underline">Close asset details</button></div>
+          selectedKey={selected?.id} maxHeight="32rem" onRowClick={row => { select(row.id); }} />
+        <Drawer open={selected !== null} onClose={() => select(null)} title="Asset details" ariaLabel="Asset details" size="xl" resizable={false}>
+        {selected && model ? <>
           <AssetDetail row={selected} config={ASSET_KIND_BY_ID[selected.kind]} detail={details[selected.id]}
             loading={detailLoadingId === selected.id} error={detailError} scanId={model.scanId} />
-        </section> : null}
+        </> : null}
+        </Drawer>
       </> : null}
 
     </div>

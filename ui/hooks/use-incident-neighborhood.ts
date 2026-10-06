@@ -54,10 +54,12 @@ export function useIncidentNeighborhood(scanId: string, rootId: string, directio
     publish({ ...previous, busy: true, error: null });
     const generation = previous.pages[0]?.snapshot_generation;
     try {
-      const page = await api.getGraphIncidentEdges(nodeId, { scanId, direction, signal: controller.signal,
+      const resolvedScan = previous.pages[0]?.scan_id ?? scanId;
+      const page = await api.getGraphIncidentEdges(nodeId, { scanId: resolvedScan, direction, signal: controller.signal,
         ...(cursor ? { cursor } : {}), ...(generation ? { snapshotGeneration: generation } : {}) });
       if (controller.signal.aborted || token !== sequence.current) return;
-      if (page.scan_id !== scanId || page.node_id !== nodeId || page.direction !== direction || (page.found && !page.snapshot_generation)
+      const sameScope = page.scan_id === resolvedScan || (!generation && scanId.startsWith("current-estate:") && page.scan_id.startsWith("current-estate:"));
+      if (!sameScope || page.node_id !== nodeId || page.direction !== direction || (page.found && !page.snapshot_generation)
         || (generation && page.snapshot_generation !== generation)) throw new Error("Scope changed");
       if (!page.found) {
         publish({ ...previous, busy: false, error: "Recorded node or snapshot unavailable; relationship coverage is unknown." });
@@ -67,7 +69,7 @@ export function useIncidentNeighborhood(scanId: string, rootId: string, directio
     } catch (error) {
       if (controller.signal.aborted || token !== sequence.current) return;
       // Discard every node's pages: never union generations after replacement.
-      if ((error instanceof ApiError && error.status === 400) || (error instanceof Error && error.message === "Scope changed")) {
+      if ((error instanceof ApiError && (error.status === 400 || error.status === 409)) || (error instanceof Error && error.message === "Scope changed")) {
         publish({ ...empty(scope), stale: true, error: "Snapshot changed. Restart the neighborhood to load consistent evidence." });
       } else publish({ ...previous, busy: false, error: "Unable to load recorded relationships. Retry or choose another snapshot." });
     }

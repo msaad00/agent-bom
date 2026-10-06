@@ -376,6 +376,13 @@ class TestNodeBudgetBoundsTheRead:
 # ── the API surfaces ────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def isolated_graph_jobs(monkeypatch):
+    from agent_bom.api.store import InMemoryJobStore
+
+    monkeypatch.setattr(api_stores, "_store", InMemoryJobStore())
+
+
 @pytest.fixture
 def client(sqlite_store: SQLiteGraphStore) -> Iterator[TestClient]:
     original = api_stores._graph_store

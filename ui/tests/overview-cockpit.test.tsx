@@ -551,14 +551,14 @@ describe("OverviewCockpit", () => {
   it("makes observed freshness prominent and keeps missing timestamps unavailable", () => {
     const { rerender } = render(<OverviewCockpit {...baseProps} />);
     const freshness = screen.getByTestId("overview-freshness");
-    expect(within(freshness).getByText("Last successful scan")).toBeInTheDocument();
+    expect(within(freshness).getByText("Latest observed scan")).toBeInTheDocument();
     expect(within(freshness).getByText("Jul 9, 10:45 PM")).toBeInTheDocument();
 
     rerender(
       <OverviewCockpit {...baseProps} latestScan={null} />,
     );
     expect(screen.getByTestId("overview-freshness")).toHaveTextContent(
-      "Last successful scan unavailable",
+      "Latest scan timestamp unavailable",
     );
 
     rerender(
@@ -584,7 +584,7 @@ describe("OverviewCockpit", () => {
     expect(screen.getByTestId("overview-freshness")).toHaveTextContent("Loading scan evidence");
     expect(screen.getByText("Loading posture…")).toBeInTheDocument();
     expect(screen.queryByText("Awaiting scan")).not.toBeInTheDocument();
-    expect(screen.queryByText("Last successful scan unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("Latest scan timestamp unavailable")).not.toBeInTheDocument();
   });
 
   it("keeps pending posture neutral even when a prior adverse score is present", () => {

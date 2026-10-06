@@ -19,7 +19,11 @@ Published schemas:
   by `--agent-mode` for assistant and automation callers.
 - `scan-report.schema.json` - top-level AI-BOM JSON scan output.
 - `graph-export.schema.json` - graph nodes, edges, and materialized attack
-  paths.
+  paths. HTTP dependency exports include authenticated tenant and job scope,
+  canonical `entity_type`/`relationship` fields, and retained `kind` aliases.
+  Relationship evidence retains its existing object form; the schema also
+  accepts legacy receipt arrays. Scan reports validate the `result` inside the
+  HTTP job envelope, not the envelope itself.
 - `fleet-snapshot.schema.json` - tenant/fleet agent posture rows.
 - `finding-feedback.schema.json` - tenant finding feedback and suppression
   lifecycle records.

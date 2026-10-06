@@ -382,14 +382,9 @@ def iter_tenant_scan_spine_findings(
     the scan-job results already resident in memory (no per-tenant DB scan).
     """
     from agent_bom.api.compliance_hub_store import status_matches
-    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
+    from agent_bom.api.findings_current import scan_only_findings
 
-    rows = current_scan_findings(
-        _completed_jobs_for_tenant(tenant_id),
-        since=since,
-        scan_id=scan_id,
-        iter_findings=_cached_scan_findings,
-    )
+    rows = _current_scan_rows(tenant_id, since, scan_id)
     rows = scan_only_findings(rows, tenant_id, scan_id=scan_id)
     if severity:
         normalized = severity.lower()
@@ -1044,7 +1039,9 @@ def _context_graph_payload(result: dict[str, Any], *, agent: str | None, scan_id
     return sanitize_linked_document(attached)
 
 
-def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit: int) -> dict | str | PlainTextResponse:
+def _graph_export_response(
+    result: dict[str, Any], *, format: str, mermaid_limit: int, scan_id: str | None = None, tenant_id: str | None = None
+) -> dict | str | PlainTextResponse:
     from agent_bom.output.graph_export import (
         build_graph_from_scan_data,
         to_cypher,
@@ -1077,7 +1074,7 @@ def _graph_export_response(result: dict[str, Any], *, format: str, mermaid_limit
     }
     if format in formats:
         return formats[format](graph)
-    return graph_to_json(graph)
+    return graph_to_json(graph, scan_id=scan_id, tenant_id=tenant_id)
 
 
 def _current_scan_rows(tenant_id: str, window_since: str | None, scan_id: str | None) -> list[dict[str, Any]]:
@@ -2219,7 +2216,14 @@ async def get_graph_export(
     result = job.result if isinstance(job.result, dict) else {}
     return cast(
         "dict | str | PlainTextResponse",
-        await _scan_graph_compute_call(_graph_export_response, result, format=format, mermaid_limit=mermaid_limit),
+        await _scan_graph_compute_call(
+            _graph_export_response,
+            result,
+            format=format,
+            mermaid_limit=mermaid_limit,
+            scan_id=job.job_id,
+            tenant_id=_tenant_id(request),
+        ),
     )
 
 

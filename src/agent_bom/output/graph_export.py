@@ -643,7 +643,7 @@ def to_mermaid(
 
 
 @with_output_sanitizer_cache
-def to_json(graph: DepGraph) -> dict:
+def to_json(graph: DepGraph, *, scan_id: str | None = None, tenant_id: str | None = None) -> dict:
     """Return a JSON-serialisable representation of the graph.
 
     Args:
@@ -659,12 +659,24 @@ def to_json(graph: DepGraph) -> dict:
                 "id": n.id,
                 "label": n.label,
                 "kind": n.kind,
+                "entity_type": {
+                    "pkg": "package",
+                    "cve": "vulnerability",
+                    "server_cred": "server",
+                    "server_blocked": "server",
+                    "server_intel": "server",
+                }.get(n.kind, n.kind),
                 "severity": n.severity,
                 "attributes": n.attributes,
             }
             for n in graph.nodes
         ],
-        "edges": [{"source": e.source, "target": e.target, "kind": e.kind, "evidence": e.evidence} for e in graph.edges],
+        "edges": [
+            {"source": e.source, "target": e.target, "kind": e.kind, "relationship": e.kind, "evidence": e.evidence} for e in graph.edges
+        ],
+        "schema_version": "1",
+        **({"scan_id": scan_id} if scan_id is not None else {}),
+        **({"tenant_id": tenant_id} if tenant_id is not None else {}),
         "stats": {
             "node_count": graph.node_count(),
             "edge_count": graph.edge_count(),

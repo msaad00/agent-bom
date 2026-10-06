@@ -601,7 +601,7 @@ def _safe_asset_projection(value: Any, evidence: Any = None) -> dict[str, str] |
         name = iac_source_label(name, evidence)
     if name is not None and not name.startswith("<"):
         result["name"] = name
-    for key, max_len in (("asset_type", 64), ("stable_id", 128)):
+    for key, max_len in (("asset_type", 64), ("stable_id", 128), ("canonical_id", 128)):
         safe = _safe_structural_text(value.get(key), max_len=max_len)
         if safe is not None:
             result[key] = safe

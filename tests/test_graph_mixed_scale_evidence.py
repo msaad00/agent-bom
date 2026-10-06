@@ -197,7 +197,7 @@ def fake_run(tmp_path, monkeypatch):
                 return Response({})
             if not self.tenant:
                 return Response({}, 401)
-            time.sleep(0.005)
+            time.sleep(flags.get("request_delay", 0.005))
             if path == "/v1/graph":
                 self.pages += 1
                 if flags["request_error"] and self.pages == 2:
@@ -206,7 +206,7 @@ def fake_run(tmp_path, monkeypatch):
             return Response({"results": [node]} if path.endswith("search") else {"tenant_id": self.tenant, "nodes": [node], "edges": []})
 
         def post(self, path, **kwargs):
-            time.sleep(0.005)
+            time.sleep(flags.get("request_delay", 0.005))
             return Response({"tenant_id": self.tenant, "ingested": 2})
 
     original_write = Path.write_text
@@ -345,10 +345,41 @@ def test_server_diagnostics_redact_generated_and_credential_shaped_secrets():
     assert "private-value" not in text
 
 
-def test_sustained_workload_keeps_all_operations_active_until_deadline(fake_run):
+@pytest.fixture()
+def workload_clock(monkeypatch):
+    """Advance synthetic worker timelines independently of host scheduling/I/O."""
+    import threading
+    from types import SimpleNamespace
+
+    local = threading.local()
+    owner = threading.get_ident()
+    lock = threading.Lock()
+    latest = 0.0
+
+    def advance(seconds):
+        nonlocal latest
+        previous = getattr(local, "now", 0.0)
+        local.now = previous + seconds
+        with lock:
+            latest = max(latest, local.now)
+        return previous
+
+    def perf_counter():
+        # The coordinator observes the full elapsed synthetic workload after
+        # joining workers; setup and receipt writes consume no simulated time.
+        if threading.get_ident() == owner:
+            return latest
+        return advance(0.005)
+
+    monkeypatch.setattr(evidence, "time", SimpleNamespace(perf_counter=perf_counter, sleep=advance))
+
+
+@pytest.mark.parametrize("request_delay", [0.005, 0.2])
+def test_sustained_workload_keeps_all_operations_active_until_deadline(fake_run, workload_clock, request_delay):
     import json
 
     args, flags, _ = fake_run
+    flags["request_delay"] = request_delay
     args.duration_seconds = 0.15
     args.ingest_interval = 0.01
     assert evidence.run(args) == 0
@@ -362,10 +393,12 @@ def test_sustained_workload_keeps_all_operations_active_until_deadline(fake_run)
     assert receipt["overlap"]["read_attempts_overlapping_successful_ingest"] > 3
 
 
-def test_sustained_workload_failures_cannot_pass(fake_run):
+@pytest.mark.parametrize("request_delay", [0.005, 0.2])
+def test_sustained_workload_failures_cannot_pass(fake_run, workload_clock, request_delay):
     import json
 
     args, flags, _ = fake_run
+    flags["request_delay"] = request_delay
     args.duration_seconds = 0.1
     args.ingest_interval = 0.01
     flags["request_error"] = True

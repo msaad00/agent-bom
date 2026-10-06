@@ -211,11 +211,9 @@ def test_readme_storefront_is_concise_ordered_and_actionable() -> None:
     assert len(readme.splitlines()) <= 210
     images = re.findall(r'<img src="docs/images/([^"]+-live.png)"', readme)
     assert images == [
-        "context-map-live.png",
         "context-map-horizontal-dark-live.png",
         "dashboard-live.png",
         "correlation-graph-live.png",
-        "component-detail-dark-live.png",
         "remediation-live.png",
     ]
     assert "correlation-path-live.png" not in readme

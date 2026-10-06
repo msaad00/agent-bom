@@ -102,15 +102,13 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert images == [
         "dashboard-live.png",
         "correlation-graph-live.png",
-        "component-detail-dark-live.png",
         "remediation-live.png",
     ]
-    assert journey.count('width="920"') == 2
-    assert journey.count('width="1440"') == 2
+    assert journey.count('width="1440"') == 3
     assert 'width="450"' not in journey
     front = readme.split("## Self-host", 1)[0]
-    assert re.findall(r'<img src="docs/images/([^"]+)"', front) == ["context-map-live.png", "context-map-horizontal-dark-live.png"]
-    assert front.index("img.shields.io") < front.index("context-map-live.png")
+    assert re.findall(r'<img src="docs/images/([^"]+)"', front) == ["context-map-horizontal-dark-live.png"]
+    assert front.index("img.shields.io") < front.index("context-map-horizontal-dark-live.png")
     assert "labeled sample data" in front
     assert "<summary>Explore graph navigation, permissions and evidence</summary>" in journey
     grc = journey.split("### Security, engineering and GRC:", 1)[1].split("### AppSec", 1)[0]
@@ -120,12 +118,12 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert "offline synthetic enterprise estate" in grc
     assert "evaluated" in grc
     assert "do not establish certification or an audit opinion" in grc
-    follow_up = re.search(r"<details>\s*<summary>See package remediation and verification</summary>(.*?)</details>", journey, re.S)
-    assert follow_up and "remediation-live.png" in follow_up.group(1)
-    assert "dependency-map-live.png" not in follow_up.group(1)
+    assert "See the same graph" not in front
+    assert "Compare layouts" not in front
+    assert "component-detail-dark-live.png" not in journey
     for image in images:
         assert (ROOT / "docs/images" / image).is_file()
-    for marker in ("source receipts", "owners", "re-scan", "verify", "labeled sample data", "modeled infrastructure", "CVE-2023-4863"):
+    for marker in ("source receipts", "owners", "Re-scan", "verify", "labeled sample data", "modeled infrastructure", "CVE-2023-4863"):
         assert marker in journey
     assert "[Discover and scan](docs/GALLERY.md)" in journey
     assert "A blocked call does not establish" in journey

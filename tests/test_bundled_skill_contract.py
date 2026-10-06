@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,3 +89,13 @@ def test_scan_skill_documents_agentic_workflow_sequences() -> None:
         "JSON for automation/graph",
     ):
         assert phrase in content
+
+
+def test_scan_skill_default_tools_match_the_advertised_mcp_profile() -> None:
+    from agent_bom.mcp_server_metadata import build_server_card
+
+    content = (SKILL_ROOT / "scan" / "SKILL.md").read_text()
+    tool_table = content.split("## Tools (8)", 1)[1].split("## Examples", 1)[0]
+    documented = set(re.findall(r"^\| `([a-z_]+)` \|", tool_table, re.MULTILINE))
+    advertised = {tool["name"] for tool in build_server_card(profile="scan")["tools"]}
+    assert documented == advertised

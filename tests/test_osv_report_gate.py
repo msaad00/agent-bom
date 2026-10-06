@@ -101,3 +101,30 @@ def test_actual_workflow_wrapper(tmp_path, monkeypatch, status, payload, passes)
         capture_output=True,
     )
     assert (result.returncode == 0) is passes
+
+
+def test_failed_gate_names_package_advisory_and_fix(tmp_path, monkeypatch, capsys):
+    import json
+
+    data = report(fixed=True)
+    data["results"][0]["packages"][0]["package"] = {"name": "example", "version": "1.0", "ecosystem": "PyPI"}
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(data))
+    monkeypatch.setattr(gate.sys, "argv", [str(SCRIPT), str(path), "1"])
+    assert gate.main() == 1
+    output = capsys.readouterr().out
+    assert '"package": "example"' in output
+    assert '"version": "1.0"' in output
+    assert '"advisory": "TEST-1"' in output
+    assert '"fixed": ["2.0"]' in output
+
+
+@pytest.mark.parametrize("payload,status", [({"results": []}, 129), ({"results": [None]}, 1)])
+def test_failed_gate_reports_exit_status_without_crashing(tmp_path, monkeypatch, capsys, payload, status):
+    import json
+
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(payload))
+    monkeypatch.setattr(gate.sys, "argv", [str(SCRIPT), str(path), str(status)])
+    assert gate.main() == 1
+    assert f"OSV scanner exit status: {status}" in capsys.readouterr().out

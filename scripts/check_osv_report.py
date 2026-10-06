@@ -51,6 +51,35 @@ def evaluate(report: object, status: int) -> bool:
     return (status == 0 and findings == 0) or (status == 1 and findings > 0)
 
 
+def _objects(value: object) -> list[dict]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def print_failure_details(report: object, status: int) -> None:
+    """Show actionable fields without dumping paths or untrusted terminal text."""
+    print(f"OSV scanner exit status: {status}")
+    if not isinstance(report, dict):
+        return
+    for result in _objects(report.get("results")):
+        for package in _objects(result.get("packages")):
+            identity = package.get("package")
+            identity = identity if isinstance(identity, dict) else {}
+            for vulnerability in _objects(package.get("vulnerabilities")):
+                fixes = sorted(
+                    {
+                        event["fixed"]
+                        for affected in _objects(vulnerability.get("affected"))
+                        for version_range in _objects(affected.get("ranges"))
+                        for event in _objects(version_range.get("events"))
+                        if isinstance(event.get("fixed"), str)
+                    }
+                )
+                details = {key: identity.get(key) for key in ("version", "ecosystem")}
+                details.update(package=identity.get("name"), advisory=vulnerability.get("id"), fixed=fixes)
+                # JSON escapes line breaks and terminal controls in advisory data.
+                print("OSV finding: " + json.dumps(details, ensure_ascii=True, sort_keys=True))
+
+
 def main() -> int:
     try:
         report = json.loads(Path(sys.argv[1]).read_text())
@@ -59,6 +88,7 @@ def main() -> int:
         print("::error::OSV report is missing or invalid")
         return 1
     if not evaluate(report, status):
+        print_failure_details(report, status)
         print("::error::OSV scan failed, report is incomplete, or a finding has an available fix")
         return 1
     print("OSV gate passed: no findings or only advisories without recorded fixes")

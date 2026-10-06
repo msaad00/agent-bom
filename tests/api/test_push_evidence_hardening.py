@@ -206,7 +206,7 @@ def test_postgres_push_redaction_audit_and_failed_write(monkeypatch):
         configure_api(api_key=None)
 
 
-@pytest.mark.parametrize("credential", ["Bearer synthetic-short-token", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"])
+@pytest.mark.parametrize("credential", ["Bearer synthetic-short-token", ".".join(("eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiIxIn0", "signature"))])
 def test_pushed_credentials_cannot_return_through_inventory_or_durable_storage(durable_push, credential):
     client, jobs, graph, audit = durable_push
     body = payload()

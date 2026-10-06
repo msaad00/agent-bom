@@ -160,9 +160,16 @@ def test_enterprise_deployment_states_what_each_artifact_bundles():
     assert "agentbom/agent-bom" in body
 
 
-def _make_test_wheel(tmp_path: Path, *, include_index: bool = True, script_hashes: list[str] | None = None) -> Path:
+def _make_test_wheel(
+    tmp_path: Path, *, include_index: bool = True, script_hashes: list[str] | None = None, dashboard_version: str = "0.0.0"
+) -> Path:
     wheel = tmp_path / "agent_bom-0.0.0-py3-none-any.whl"
     with ZipFile(wheel, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("agent_bom-0.0.0.dist-info/METADATA", "Metadata-Version: 2.3\nName: agent-bom\nVersion: 0.0.0\n")
+        archive.writestr(
+            "agent_bom/ui_dist/_next/static/chunks/demo.js",
+            f'const commands = ["docker run --rm agentbom/agent-bom:{dashboard_version}", "uses: msaad00/agent-bom@v{dashboard_version}"];',
+        )
         archive.writestr("agent_bom/data/inventory.schema.json", "{}")
         archive.writestr("agent_bom/data/mcp-intelligence.schema.json", "{}")
         if include_index:
@@ -190,6 +197,13 @@ def test_release_wheel_verifier_accepts_dashboard_and_nonempty_csp_manifest(tmp_
 
     assert result.returncode == 0, result.stderr
     assert wheel.name in result.stdout
+
+
+def test_release_wheel_verifier_rejects_stale_dashboard_install_commands(tmp_path):
+    _make_test_wheel(tmp_path, dashboard_version="0.99.0")
+    result = _verify_wheels(tmp_path)
+    assert result.returncode == 1
+    assert "dashboard install pin" in result.stderr
 
 
 def test_release_wheel_verifier_rejects_a_dashboardless_wheel(tmp_path):

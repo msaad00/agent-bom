@@ -145,6 +145,8 @@ def exposure_path_for_blast_radius(br: BlastRadius, *, rank: int | None = None) 
 def _chain_token(hop: str) -> str:
     """Render a single hop ref (``server:database-server``) as a display token."""
 
+    if hop.startswith("pkg:") and hop.count(":") >= 2:
+        return hop.split(":", 2)[2]
     return hop.rsplit(":", 1)[-1] if ":" in hop else hop
 
 

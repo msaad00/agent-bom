@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
 
+from agent_bom.redaction.emails import _contains_email, mask_email
 from agent_bom.redaction.env_values import container_has_secret
 
 logger = logging.getLogger(__name__)
@@ -450,36 +451,6 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     return sanitized
 
 
-# Email is sensitive PII. We mask the local part and the domain label while
-# preserving enough shape to keep records correlatable (first char + TLD).
-# Conservative on purpose: only well-formed addresses are masked so legitimate
-# non-PII fields (versions, identifiers containing "@" such as scoped npm
-# package names like "@scope/pkg") are left untouched.
-_EMAIL_RE = re.compile(r"\b([A-Za-z0-9._%+\-]+)@([A-Za-z0-9.\-]+)\.([A-Za-z]{2,})\b")
-
-
-def _mask_email_match(local: str, domain: str, tld: str) -> str:
-    """Mask one parsed email address into ``a***@e***.com`` shape."""
-    local_masked = f"{local[0]}***" if local else "***"
-    domain_masked = f"{domain[0]}***" if domain else "***"
-    return f"{local_masked}@{domain_masked}.{tld}"
-
-
-def mask_email(value: object) -> str:
-    """Mask every email address in *value*, preserving non-email text.
-
-    ``alice@example.com`` → ``a***@e***.com``. Strings without a well-formed
-    address pass through unchanged, so scoped package names (``@scope/pkg``)
-    and version specifiers are not corrupted.
-    """
-    text = str(value)
-    return _EMAIL_RE.sub(lambda m: _mask_email_match(m.group(1), m.group(2), m.group(3)), text)
-
-
-def _contains_email(value: str) -> bool:
-    return bool(_EMAIL_RE.search(value))
-
-
 # Field names whose values are email addresses and must always be masked in
 # operational records (audit metadata, connector identity fields, evidence).
 _EMAIL_KEYS = {
@@ -695,7 +666,7 @@ def text_requires_redaction(value: object) -> bool:
     text = str(value)
     if "http://" in text.lower() or "https://" in text.lower():
         return True
-    if _EMAIL_RE.search(text) or _contains_value_credential(text):
+    if _contains_email(text) or _contains_value_credential(text):
         return True
     # The keyed-value grammar cannot match without an assignment delimiter.
     # Avoid starting its bounded-key regex at every character of large plain

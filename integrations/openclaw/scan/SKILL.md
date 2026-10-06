@@ -1,11 +1,10 @@
 ---
 name: agent-bom-scan
 description: >-
-  Open security scanner for agentic infrastructure — agents, MCP, packages,
-  blast radius, runtime, and trust for package CVEs (OSV, NVD, EPSS,
-  KEV), container images, provenance, filesystems, and SBOMs. Use
-  when: "check package", "scan image", "verify", "is this safe",
-  "scan dependencies", "CVE lookup", "blast radius".
+  Check vulnerabilities in a specified package/version, repository, container
+  image, or SBOM, or inspect a specified CVE. Discover local MCP clients only
+  when the user explicitly requests that discovery. Ask for the target when
+  a request such as "verify" or "is this safe" does not identify one.
 version: 0.108.1
 license: Apache-2.0
 compatibility: >-
@@ -18,7 +17,6 @@ metadata:
   source: https://github.com/msaad00/agent-bom
   pypi: https://pypi.org/project/agent-bom/
   scorecard: https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom
-  tests: 7239
   install:
     pipx: agent-bom
     pip: agent-bom
@@ -28,7 +26,7 @@ metadata:
       bins: []
       env: []
       credentials: none
-    credential_policy: "Zero credentials required. Optional env vars below increase rate limits. They are never auto-discovered, inferred, or transmitted."
+    credential_policy: "No credentials required for basic scanning. Do not discover or use cloud credentials through this skill. Use optional vulnerability-provider authentication only when configured for the requested scan."
     optional_env: []
     optional_bins:
       - semgrep
@@ -42,8 +40,10 @@ metadata:
       - linux
       - windows
     credential_handling: "sanitize_env_vars() redacts credential-like and sensitive environment values before reporting; benign configuration values may remain in the in-memory model. Source: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/security.py"
-    data_flow: "All scanning is local-first. Only public package names and CVE IDs are sent to vulnerability databases (OSV, NVD, EPSS, GitHub Advisories). No credentials, config file contents, or scan results leave the machine."
+    data_flow: "Online vulnerability lookups send package identifiers, versions and advisory IDs to providers. Confirm permission before querying private package identifiers. Image/repository inputs also contact the requested registry/host. Use offline mode when network queries are not authorized; report resulting coverage gaps. Do not upload configuration contents or scan reports through this skill."
     file_reads:
+      # Possible discovery inputs, not permission to read every listed source.
+      # Read only explicitly requested targets or authorized client discovery.
       # Claude Desktop
       - "~/Library/Application Support/Claude/claude_desktop_config.json"
       - "~/.config/Claude/claude_desktop_config.json"
@@ -96,7 +96,9 @@ metadata:
       - ".cursor/mcp.json"
       # User-provided files
       - "user-provided SBOM files (CycloneDX/SPDX JSON)"
-    file_writes: []
+    file_writes:
+      - "configured local scanner state and vulnerability caches"
+      - "user-requested report or SBOM output paths"
     network_endpoints:
       - url: "https://api.osv.dev/v1"
         purpose: "OSV vulnerability database — batch CVE lookup for packages"
@@ -111,7 +113,7 @@ metadata:
         purpose: "GitHub Security Advisories — supplemental CVE lookup"
         auth: false
     telemetry: false
-    persistence: false
+    persistence: true
     privilege_escalation: false
     always: false
     autonomous_invocation: restricted
@@ -126,14 +128,33 @@ provenance via Sigstore, scans filesystems, and generates SBOMs.
 
 ```bash
 pipx install agent-bom
-agent-bom scan             # discover agents and scan dependencies
 agent-bom check langchain==0.1.0  # check a specific package with version
-agent-bom image nginx:1.25   # scan container image (native)
-agent-bom fs .               # scan filesystem packages
-agent-bom scan . -f cyclonedx -o sbom.json  # generate an SBOM
+agent-bom scan --project . --no-discover  # scan the requested project
+agent-bom scan --image nginx:1.25 --no-discover  # scan the requested image
+agent-bom scan --sbom sbom.json --no-discover  # scan a supplied SBOM
+agent-bom scan --project . --no-discover -f cyclonedx -o sbom.json  # requested output
 agent-bom verify agent-bom   # verify Sigstore provenance
-agent-bom where              # show all discovery paths
 ```
+
+## Choose the Target First
+
+Use the narrowest input that satisfies the request. If the package/version,
+repository, image or SBOM is missing, ask for it. Do not interpret a generic
+"verify" or "is this safe" as permission to scan the host.
+
+For explicit CLI targets, pass `--no-discover`; for the MCP `scan` tool, pass
+`no_discover=True`. An invalid, empty or unreadable target is a collection gap,
+not permission to fall back to home-directory or MCP-client discovery. Report
+the gap and ask for a valid target.
+
+Home-directory configuration and MCP-client discovery require an explicit user
+request for those sources. The `file_reads` list discloses possible inputs; it
+does not authorize reading them. Do not use discovered cloud credentials.
+Cloud inventory requires the separately authorized cloud discovery skill.
+
+Scans can write local state and vulnerability caches. Write reports or SBOMs
+only to requested output paths. Offline scans may have incomplete advisory
+coverage; preserve that qualification in the result.
 
 ### As an MCP Server
 
@@ -150,26 +171,30 @@ agent-bom where              # show all discovery paths
 
 ## When to Use
 
-- "check package" / "is this package safe"
-- "scan image" / "scan container"
-- "verify" / "check provenance"
-- "is this safe" / "CVE lookup"
-- "scan dependencies"
-- "blast radius"
-- "generate SBOM"
+- Check a named package and version for vulnerabilities.
+- Scan a specified image, repository or SBOM.
+- Look up a named CVE or advisory.
+- Generate an SBOM for a specified project.
+- Discover local MCP clients when the user explicitly requests that scope.
 
 ## Tools (8)
 
 | Tool | Description |
 |------|-------------|
 | `check` | Check a package for CVEs (OSV, NVD, EPSS, KEV) |
-| `scan` | Full discovery + vulnerability scan pipeline |
-| `blast_radius` | Map CVE impact chain across agents, servers, credentials |
+| `scan` | Scan an explicit target; use `no_discover=True` to disable ambient discovery |
+| `intel_lookup` | Look up an advisory in the local vulnerability database |
+| `exposure_paths` | Inspect recorded exposure paths |
+| `compliance` | Map findings to compliance frameworks |
 | `remediate` | Prioritized remediation plan for vulnerabilities |
-| `verify` | Package integrity + SLSA provenance check |
-| `diff` | Compare two scan reports (new/resolved/persistent) |
-| `where` | Show MCP client config discovery paths |
-| `inventory` | List discovered agents, servers, packages |
+| `generate_sbom` | Generate an SBOM for an explicit configuration path |
+| `policy_check` | Evaluate a policy against scan evidence |
+
+These are the default `scan` MCP profile tools. Additional tools such as
+`registry_lookup` require a profile that advertises them; inspect the connected
+server's tool list before calling one. CLI commands such as `verify` and `diff`
+are not default MCP tools. Supply explicit inputs to tools that can discover
+clients when their target is omitted, including `compliance` and `generate_sbom`.
 
 ## Examples
 
@@ -177,14 +202,11 @@ agent-bom where              # show all discovery paths
 # Check a package before installing
 check(package="langchain", version="0.1.0", ecosystem="pypi")
 
-# Map blast radius of a CVE
-blast_radius(cve_id="CVE-2024-21538")
+# Look up an advisory in the local database
+intel_lookup(advisory_id="CVE-2024-21538")
 
-# Full scan
-scan()
-
-# Verify package provenance
-verify(package="agent-bom")
+# Scan only the project the user requested
+scan(config_path="/authorized/project", no_discover=True)
 ```
 
 ## Agentic Workflows
@@ -193,11 +215,11 @@ Use tool chains, not isolated calls, when the user asks for a decision:
 
 | User intent | Recommended sequence | Output |
 |-------------|----------------------|--------|
-| "Is this MCP safe to install?" | `registry_lookup` -> `check` -> `blast_radius` when a package/version is known | concise allow/warn/block recommendation with evidence |
-| "Gate this PR" | `scan` with SARIF output and fail on high/critical findings | SARIF for code scanning plus non-zero gate result |
-| "Audit my fleet inventory" | validate inventory -> `scan`/`agents` with JSON output -> `context_graph` | findings plus graph-ready JSON |
-| "What changed since last run?" | current scan -> `diff` against prior JSON | new/resolved/persistent findings |
-| "What should I fix first?" | `scan` -> `blast_radius` -> `remediate` plan | prioritized plan only; no file writes |
+| "Check this MCP package before installing" | `check` with the supplied package, version and ecosystem | vulnerability evidence and any lookup gaps; no installation |
+| "Gate this PR" | CLI `scan` of the requested project with `--no-discover`, SARIF output and fail on high/critical findings | SARIF for code scanning plus non-zero gate result |
+| "Audit this fleet inventory" | validate the supplied inventory -> CLI `scan --inventory inventory.json --no-discover` with JSON output | findings for the supplied inventory |
+| "What changed since last run?" | scoped current scan -> CLI `diff` against the supplied prior JSON | new/resolved/persistent findings |
+| "What should I fix first?" | scoped `scan` -> `exposure_paths` -> `remediate` plan | prioritized plan; no automatic dependency edits |
 
 Pick output by consumer: SARIF for CI, JSON for automation/graph, HTML or
 Markdown for human review, CycloneDX/SPDX for SBOM consumers.
@@ -205,16 +227,17 @@ Markdown for human review, CycloneDX/SPDX for SBOM consumers.
 For CLI gates, prefer:
 
 ```bash
-agent-bom scan --format sarif --output agent-bom.sarif --fail-on-severity high
+agent-bom scan --project . --no-discover --format sarif --output agent-bom.sarif --fail-on-severity high
 ```
 
 ## Guardrails
 
 - Show CVEs even when NVD analysis is pending or severity is `unknown` — a CVE ID is still a real finding.
 - Treat `UNKNOWN` severity as unresolved, not benign — it means data is not yet available.
-- Do not modify any files, install packages, or change system configuration.
-- Only public package names and CVE IDs leave the machine for vulnerability database lookups.
-- Ask before scanning paths outside the user's home directory.
+- Do not install packages, execute discovered commands, edit dependencies or change system configuration as part of a scan. Installation in the setup example is a separate user action.
+- Allow only the scanner's local state/cache writes and explicitly requested reports; do not overwrite unrelated files.
+- Online lookups transmit package identifiers and versions. Confirm permission before querying private identifiers, or use offline mode and report its coverage gaps.
+- Read only the authorized targets, whether inside or outside the user's home directory. Never print raw credentials or upload configuration contents.
 
 ## Privacy & Data Handling
 
@@ -230,13 +253,13 @@ pip install agent-bom
 # Step 3: Verify package provenance (Sigstore)
 agent-bom verify agent-bom
 
-# Step 4: Only then run scans
-agent-bom scan
+# Step 4: Scan only the requested project
+agent-bom scan --project . --no-discover
 ```
 
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
 - **Sigstore signed**: `agent-bom verify agent-bom@0.108.1`
-- **7,100+ tests** with CodeQL + OpenSSF Scorecard
-- **No telemetry**: Zero tracking, zero analytics
+- **Contracts**: `tests/test_bundled_skill_contract.py` checks skill metadata and the default MCP tool list.
+- **Network boundary**: Online scans use vulnerability providers and the explicitly requested repository or image host; use offline mode when those requests are not authorized.

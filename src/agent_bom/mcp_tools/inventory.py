@@ -55,7 +55,7 @@ async def inventory_summary_impl(
     _get_graph_store: Optional[Callable[[], Any]] = None,
     _truncate_response: Optional[Callable[[str], str]] = None,
 ) -> str:
-    """Return asset counts by type and group for the tenant's current snapshot."""
+    """Return asset counts by type and group for the tenant's selected evidence scope."""
     from agent_bom.api import inventory_service
 
     tenant_id = resolve_mcp_tool_tenant_id(tenant_id)

@@ -3,7 +3,8 @@
 All pluggable store backends (job, fleet, policy, analytics, schedule,
 exception, trend) are lazily initialized with double-checked locking.
 Call the ``set_*`` functions before server startup to swap backends
-(Snowflake, Postgres, SQLite); otherwise an in-memory default is used.
+(Snowflake, Postgres, SQLite). Job reads also honor backend environment
+configuration before API startup; unconfigured jobs remain in memory.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ import os
 import threading
 from typing import TYPE_CHECKING, Any, cast
 
+from agent_bom.api.neptune_graph import NeptuneGraphStore
+from agent_bom.api.storage.job_backends import configured_job_store
 from agent_bom.api.storage.job_cache import (
     _COMPACTED_RESULT_MARKER as _COMPACTED_RESULT_MARKER,
 )
@@ -48,14 +51,16 @@ _store: Any = None
 
 
 def _get_store() -> Any:
-    """Get the active job store, creating InMemoryJobStore if not yet set."""
+    """Get configured job evidence for API and standalone MCP readers.
+
+    Preserve explicit overrides. Configured backend failures propagate instead
+    of silently serving an empty in-memory estate.
+    """
     global _store
     if _store is None:
         with _store_lock:
             if _store is None:
-                from agent_bom.api.store import InMemoryJobStore
-
-                _store = InMemoryJobStore()
+                _store = configured_job_store()
     return _store
 
 
@@ -529,8 +534,6 @@ def _get_graph_store() -> GraphStoreProtocol:
             if _graph_store is None:
                 backend = os.environ.get("AGENT_BOM_GRAPH_BACKEND", "").strip().lower()
                 if backend == "neptune":
-                    from agent_bom.api.neptune_graph import NeptuneGraphStore
-
                     _graph_store = NeptuneGraphStore()
                 elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
                     from agent_bom.api.postgres_store import PostgresGraphStore

@@ -57,7 +57,7 @@ def test_partial_push_retains_prior_assets_and_older_arrival_does_not_replace(es
 
 
 def test_replay_changes_generation_and_rejects_stale_continuation(estate):
-    from fastapi import HTTPException
+    from starlette.exceptions import HTTPException
 
     from agent_bom.api.graph_generation import pin_generation
 
@@ -234,7 +234,7 @@ def test_current_incident_pages_accept_returned_generation(estate):
 
 
 def test_missing_retained_graph_fails_closed_without_substituting_latest(estate):
-    from fastapi import HTTPException
+    from starlette.exceptions import HTTPException
 
     record(estate, 8, "repo-a", "retained-a")
     record(estate, 9, "repo-b", "latest-b")
@@ -244,3 +244,18 @@ def test_missing_retained_graph_fails_closed_without_substituting_latest(estate)
     with pytest.raises(HTTPException) as exc:
         current()
     assert exc.value.status_code == 503
+
+    from starlette.testclient import TestClient
+
+    from agent_bom.api.server import app
+    from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+    enable_trusted_proxy_env()
+    try:
+        with TestClient(app) as client:
+            for endpoint in ("/v1/inventory/summary", "/v1/inventory/assets", "/v1/graph"):
+                response = client.get(endpoint, headers=proxy_headers(tenant="history-tenant"))
+                assert response.status_code == 503, response.text
+                assert "error" in response.json()
+    finally:
+        disable_trusted_proxy_env()

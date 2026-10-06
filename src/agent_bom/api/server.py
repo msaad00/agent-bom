@@ -67,11 +67,13 @@ from agent_bom.api.stores import (
     set_exception_store,
     set_fleet_store,
     set_graph_store,
-    set_job_store,
     set_policy_store,
     set_schedule_store,
     set_source_store,
     set_trend_store,
+)
+from agent_bom.api.stores import (
+    set_job_store as set_job_store,
 )
 from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
@@ -472,7 +474,6 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         from agent_bom.api.snowflake_store import (
             SnowflakeExceptionStore,
             SnowflakeFleetStore,
-            SnowflakeJobStore,
             SnowflakePolicyStore,
             SnowflakeScheduleStore,
             build_connection_params,
@@ -480,7 +481,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
         sf = build_connection_params()
         if _stores._store is None:
-            set_job_store(SnowflakeJobStore(sf))
+            _stores._get_store()
         if _stores._fleet_store is None:
             set_fleet_store(SnowflakeFleetStore(sf))
         if _stores._policy_store is None:
@@ -508,7 +509,6 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             PostgresExceptionStore,
             PostgresFleetStore,
             PostgresGraphStore,
-            PostgresJobStore,
             PostgresKeyStore,
             PostgresPolicyStore,
             PostgresSourceStore,
@@ -516,7 +516,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         )
 
         if _stores._store is None:
-            set_job_store(PostgresJobStore())
+            _stores._get_store()
         if _cost_store_mod._COST_STORE is None:
             set_cost_store(PostgresCostStore())
         if _stores._fleet_store is None:
@@ -543,9 +543,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
         db_path = os.environ["AGENT_BOM_DB"]
         if _stores._store is None:
-            from agent_bom.api.store import SQLiteJobStore
-
-            set_job_store(SQLiteJobStore(db_path))
+            _stores._get_store()
         if _stores._fleet_store is None:
             from agent_bom.api.fleet_store import SQLiteFleetStore
 

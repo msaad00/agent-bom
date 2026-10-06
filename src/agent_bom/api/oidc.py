@@ -36,6 +36,7 @@ Install the optional dependency::
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -222,11 +223,10 @@ def verify_oidc_token(
     jwks_uri: Optional[str] = None,
     required_nonce: Optional[str] = None,
     allowed_jwks_uris: tuple[str, ...] = (),
+    *,
+    single_use: bool = False,
 ) -> dict[str, Any]:
-    """Verify an OIDC JWT and return its claims.
-
-    Fetches the issuer's JWKS (cached for 1 hour) and verifies the token
-    signature, issuer, audience, and expiry.
+    """Return verified claims or raise OIDCError; JWKS is cached for one hour.
 
     Args:
         token: Raw JWT string (without "Bearer " prefix).
@@ -234,12 +234,9 @@ def verify_oidc_token(
         audience: Expected audience (``aud`` claim). Required for production OIDC use.
         jwks_uri: Override JWKS URI. If None, fetched from OIDC discovery.
         required_nonce: Optional nonce value that must match the token ``nonce`` claim.
+        single_use: Consume a replay receipt for an ID-token/assertion exchange.
+            Bearer access tokens remain reusable until expiry.
 
-    Returns:
-        Decoded JWT claims dict.
-
-    Raises:
-        OIDCError: On any verification failure.
     """
     _check_pyjwt()
     import jwt
@@ -247,11 +244,8 @@ def verify_oidc_token(
 
     explicit_jwks_uri = bool(jwks_uri)
     if not jwks_uri:
-        try:
-            discovery = discover_oidc(issuer)
-            jwks_uri = str(discovery["jwks_uri"])
-        except OIDCError:
-            raise
+        discovery = discover_oidc(issuer)
+        jwks_uri = str(discovery["jwks_uri"])
     jwks_uri = _validate_jwks_uri(
         issuer,
         jwks_uri,
@@ -284,7 +278,7 @@ def verify_oidc_token(
             raise OIDCError("JWT verification failed: nonce claim mismatch")
 
     jti = claims.get("jti")
-    if isinstance(jti, str) and jti.strip():
+    if single_use and isinstance(jti, str) and jti.strip():
         exp = claims.get("exp")
         if exp is not None:
             try:
@@ -293,8 +287,9 @@ def verify_oidc_token(
                 raise OIDCError("JWT verification failed: invalid exp claim") from exc
             from agent_bom.api.shared_auth_state import get_auth_state
 
+            scope = hashlib.sha256(json.dumps([issuer, audience, required_nonce, jti.strip()]).encode()).hexdigest()
             consumed = get_auth_state().consume_nonce_once(
-                f"oidc-jti:{jti.strip()}",
+                f"oidc-exchange:{scope}",
                 expires_at,
                 now=int(time.time()),
             )
@@ -310,8 +305,8 @@ def verify_oidc_token(
 def claims_to_role(claims: dict[str, Any], role_claim: str = "agent_bom_role") -> str:
     """Map OIDC JWT claims to an agent-bom role string.
 
-    Checks ``role_claim`` in the JWT, then falls back to ``roles`` and
-    ``groups`` arrays. Defaults to ``"viewer"`` if no role signal found.
+    An explicit ``role_claim`` is authoritative, including viewer or malformed
+    values. Only an absent claim permits fallback to ``roles``/``groups``.
 
     Args:
         claims: Decoded JWT claims.
@@ -326,11 +321,13 @@ def claims_to_role(claims: dict[str, Any], role_claim: str = "agent_bom_role") -
     # Direct role claim
     role_val = claims.get(role_claim, "")
     if isinstance(role_val, str) and role_val:
-        v = role_val.lower()
+        v = role_val.strip().lower()
         if v in admin_values:
             return "admin"
         if v in analyst_values:
             return "analyst"
+    if role_claim in claims:
+        return "viewer"
 
     # roles / groups array (common in Okta, Azure AD, GitHub OIDC)
     for array_claim in ("roles", "groups", "permissions"):
@@ -351,8 +348,8 @@ def claims_have_role_signal(claims: dict[str, Any], role_claim: str = "agent_bom
     analyst_values = {"analyst", "security-analyst", "engineer", "developer"}
 
     role_val = claims.get(role_claim, "")
-    if isinstance(role_val, str) and role_val and role_val.lower() in (admin_values | analyst_values):
-        return True
+    if role_claim in claims:
+        return isinstance(role_val, str) and role_val.strip().lower() in (admin_values | analyst_values | {"viewer"})
 
     for array_claim in ("roles", "groups", "permissions"):
         values = claims.get(array_claim, [])

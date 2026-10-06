@@ -429,12 +429,14 @@ def test_verify_oidc_token_rejects_replayed_jti():
                     "header.payload.signature",
                     "https://example.com",
                     jwks_uri="https://example.com/.well-known/jwks.json",
+                    single_use=True,
                 )
                 with pytest.raises(OIDCError, match="jti already consumed"):
                     verify_oidc_token(
                         "header.payload.signature",
                         "https://example.com",
                         jwks_uri="https://example.com/.well-known/jwks.json",
+                        single_use=True,
                     )
 
 

@@ -126,6 +126,17 @@ plane and persistence contract.
 
 ## OIDC claim-to-tenant mapping
 
+Valid bearer access tokens can be reused until expiry. Each request still
+validates the token signature, issuer, audience and time claims. Browser ID-token
+exchanges keep single-use replay protection, scoped to the issuer, audience and
+login nonce.
+
+The configured role claim takes precedence over group membership, including an
+explicit `viewer` role. If that claim is present but malformed or unrecognized,
+groups cannot elevate it: required-role validation rejects authentication;
+configurations that permit a missing role grant only viewer access. Group
+mapping applies only when the configured role claim is absent.
+
 The OIDC knobs are:
 
 ```bash

@@ -103,6 +103,13 @@ def package_lookup_names(pkg: Package) -> list[str]:
     return ordered
 
 
+def osv_query_names(pkg: Package) -> list[str]:
+    """Keep upstream query spelling separate from normalized local identity."""
+    if pkg.ecosystem.lower() in {"go", "nuget"}:
+        return list(dict.fromkeys(name.strip() for name in pkg.lookup_names if name.strip()))
+    return package_lookup_names(pkg)
+
+
 def parse_fixed_version(
     vuln_data: dict,
     package_name: str,
@@ -401,7 +408,7 @@ async def query_osv_batch_impl(
 
         osv_version = f"v{pkg.version}" if eco_key == "go" and not pkg.version.startswith("v") else pkg.version
         for osv_ecosystem in osv_ecosystems:
-            for norm_name in package_lookup_names(pkg):
+            for norm_name in osv_query_names(pkg):
                 queries.append(
                     {
                         "version": osv_version,

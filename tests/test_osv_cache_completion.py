@@ -80,6 +80,35 @@ async def test_successful_clean_lookup_is_cached(cache, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ecosystem,name,query_name,osv_ecosystem",
+    [
+        ("go", "github.com/Azure/azure-sdk-for-go", "github.com/Azure/azure-sdk-for-go", "Go"),
+        ("nuget", "System.Text.Encodings.Web", "System.Text.Encodings.Web", "NuGet"),
+        ("pypi", "Django_REST_Framework", "django-rest-framework", "PyPI"),
+    ],
+)
+async def test_query_spelling_preserves_ecosystem_case_without_changing_identity(
+    cache, monkeypatch, ecosystem, name, query_name, osv_ecosystem
+):
+    from agent_bom.core.packages import normalize_package_name
+
+    package = Package(name=name, version="1.0.0", ecosystem=ecosystem)
+    vulnerability = {"id": "GHSA-known"}
+    result, calls = await query(
+        cache, [package], [{"results": [{"vulns": [vulnerability]}]}], monkeypatch, ecosystems=lambda _: [osv_ecosystem]
+    )
+    assert calls[0]["queries"][0]["package"] == {"name": query_name, "ecosystem": osv_ecosystem}
+    normalized = normalize_package_name(name, ecosystem)
+    assert result == {f"{ecosystem}:{normalized}@1.0.0": [vulnerability]}
+    assert cache.get(ecosystem, normalized, "1.0.0") == [vulnerability]
+    assert osv.package_lookup_names(package) == [normalized]
+    cached_result, cached_calls = await query(cache, [package], [], monkeypatch, ecosystems=lambda _: [osv_ecosystem])
+    assert cached_calls == []
+    assert cached_result == result
+
+
+@pytest.mark.asyncio
 async def test_open_circuit_keeps_uncached_packages_incomplete(cache, monkeypatch):
     package = Package(name="requests", version="2.19.0", ecosystem="pypi")
     result, calls = await query(cache, [package], [], monkeypatch, available=False)

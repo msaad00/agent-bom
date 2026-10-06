@@ -3650,12 +3650,13 @@ def test_neighbor_lookup_omits_dangling_edges(recording_graph_store, monkeypatch
     assert body["completeness"]["complete"] is False
 
 
-def test_neighbor_lookup_without_snapshot_never_hydrates(recording_graph_store, monkeypatch):
+def test_neighbor_lookup_in_empty_current_estate_never_hydrates(recording_graph_store, monkeypatch):
     monkeypatch.setattr(recording_graph_store, "latest_snapshot_id", lambda **kwargs: "")
+    monkeypatch.setattr(recording_graph_store, "snapshot_identity", lambda **kwargs: ("", ""))
     body = TestClient(app).get("/v1/graph/node-neighbors", params={"node_id": "agent:a"}).json()
     assert body["found"] is False
     assert body["total_neighbors"] is None
-    assert body["completeness"]["reason"] == "snapshot_not_found"
+    assert body["completeness"]["reason"] == "node_not_found"
     assert not any(call[0] in {"node_context", "nodes_by_ids"} for call in recording_graph_store.calls)
 
 

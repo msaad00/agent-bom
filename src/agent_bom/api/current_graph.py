@@ -79,7 +79,7 @@ class CurrentGraphStore:
             def latest(*args: Any, **kwargs: Any) -> str:
                 if "snapshot_kind" in kwargs:
                     return str(method(*args, **kwargs))
-                return self._current_id(str(kwargs.get("tenant_id") or "default")) or str(method(*args, **kwargs))
+                return self._current_id(str(kwargs.get("tenant_id") or "default")) or str(method(*args, **kwargs, snapshot_kind="scan"))
 
             return latest
         if name not in _READS:
@@ -126,11 +126,33 @@ class CurrentGraphStore:
     def _revisions(self, tenant: str, scan_ids: Any) -> tuple[tuple[str, str], ...]:
         return tuple(self._graph_store.snapshot_identity(tenant_id=tenant, scan_id=scan, for_paging=True) for scan in scan_ids)
 
+    def _available_sources(self, tenant: str, jobs: list[Any]) -> tuple[list[Any], tuple[tuple[str, str], ...], set[str]]:
+        """Retain available target history while declaring missing graph evidence.
+
+        Track absent snapshots in the revision key too: a late graph commit
+        must invalidate the projection even if its job row never changes.
+        Exceptions from the backing store deliberately propagate.
+        """
+        missing: dict[str, str] = {}
+        reasons: set[str] = set()
+        while True:
+            eligible = [job for job in jobs if str((job.result or {}).get("scan_id") or job.job_id) not in missing]
+            selected, _ = _finding_snapshot_jobs(eligible, since=None, require_authoritative_evidence=False)
+            selected.sort(key=scan_evidence_authority_key)
+            reasons.update(reason for job in selected for reason in scan_collection_incomplete_reasons(job))
+            sources = list(dict.fromkeys(str((job.result or {}).get("scan_id") or job.job_id) for job in selected))
+            revisions = self._revisions(tenant, sources)
+            absent = {source: generation for source, generation in revisions if not generation}
+            if not absent:
+                return selected, tuple((*revisions, *sorted(missing.items()))), reasons
+            missing.update(absent)
+            reasons.add("graph_evidence_unavailable")
+
     def _current_id(self, tenant: str) -> str:
         # Summary reads do not deserialize retained report blobs on warm pages.
         summaries = self._job_store.list_summary(tenant_id=tenant, status=JobStatus.DONE)
         summaries = sorted((row for row in summaries if not row.get("child_job_ids")), key=lambda row: row["job_id"])
-        if not summaries:
+        if not summaries and self._graph_store.snapshot_identity(tenant_id=tenant, for_paging=True)[0]:
             return ""  # Legacy graph-only stores retain their explicit latest view.
         revision_reader = getattr(self._job_store, "overview_evidence_revision", None)
         jobs = None
@@ -154,12 +176,7 @@ class CurrentGraphStore:
             if jobs is None:
                 jobs = [self._job_store.get(row["job_id"], tenant_id=tenant) for row in summaries]
             jobs = [job for job in jobs if job is not None and job.tenant_id == tenant]
-            selected, _ = _finding_snapshot_jobs(jobs, since=None, require_authoritative_evidence=False)
-            selected.sort(key=scan_evidence_authority_key)
-            sources = list(dict.fromkeys(str((job.result or {}).get("scan_id") or job.job_id) for job in selected))
-            revisions = self._revisions(tenant, sources)
-            if any(not generation for _, generation in revisions):
-                raise HTTPException(503, "Current estate has retained scans whose graph evidence is unavailable; retry later.")
+            selected, revisions, coverage_reasons = self._available_sources(tenant, jobs)
             identity = CURRENT_PREFIX + _digest([tenant, fingerprint, revisions])[:32]
             if not self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=identity)[1]:
                 self._materialize(tenant, identity, selected, revisions)
@@ -174,13 +191,13 @@ class CurrentGraphStore:
                 _, _, evicted_id = self._cache.pop(evicted_tenant)
                 self._projection_store.delete_snapshot(tenant_id=evicted_tenant, scan_id=evicted_id)
                 self._coverage.pop(evicted_id, None)
-            reasons = sorted({reason for job in selected for reason in scan_collection_incomplete_reasons(job)})
+            reasons = sorted(coverage_reasons)
             if len(self._coverage) >= 256:
                 self._coverage.pop(next(iter(self._coverage)))
             self._coverage[identity] = {
                 "status": "partial" if reasons else "unknown",
                 "reason_codes": reasons,
-                "reason": "Incomplete collection; prior evidence is retained for affected targets."
+                "reason": "Incomplete collection or graph evidence; available prior evidence is retained for affected targets."
                 if reasons
                 else "Recorded inventory does not establish source collection or assessment coverage.",
             }
@@ -190,7 +207,9 @@ class CurrentGraphStore:
     def _materialize(self, tenant: str, identity: str, selected: Any, revisions: tuple[tuple[str, str], ...]) -> None:
         created_at = max((scan_evidence_authority_key(job)[0] for job in selected), default="")
         graph = UnifiedGraph(scan_id=identity, tenant_id=tenant, created_at=created_at)
-        for scan, _ in revisions:
+        for scan, generation in revisions:
+            if not generation:
+                continue
             source = self._graph_store.load_graph(tenant_id=tenant, scan_id=scan)
             if source.tenant_id != tenant:
                 raise ValueError("Current estate source tenant mismatch")

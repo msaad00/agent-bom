@@ -556,10 +556,10 @@ def test_no_snapshot_yet_returns_an_empty_summary_not_a_404(tmp_path):
         response = client.get("/v1/inventory/summary")
         assert response.status_code == 200
         body = response.json()
-        assert body["status"] == "no_snapshot"
+        assert body["collection_coverage"]["status"] == "unknown"
         assert all(body["facets"][key]["buckets"] == [] for key in ("type", "environment", "source", "provider", "severity"))
         assert body["total_assets"] == 0
-        assert body["scan_id"] == ""
+        assert body["scan_id"].startswith("current-estate:")
         assert body["completeness"]["status"] == "complete"
         # Pinning a snapshot that does not exist is still an honest 404: the
         # fallback must never confirm a requested scope as empty-and-clean.

@@ -21,6 +21,14 @@ loaded from the control plane.
 
 ## Data locations, access and evidence sources
 
+Graph and inventory requests without a scan ID use the current tenant estate.
+If a selected job has no persisted graph, these reads return available evidence,
+retain available prior evidence for that target, and report partial
+`collection_coverage` with `graph_evidence_unavailable`. A later authoritative
+scan with a valid empty graph still retires that target's earlier inventory.
+An empty estate is a successful empty result with unknown assessment coverage.
+Storage read failures remain errors. Explicit scan IDs retain historical scope.
+
 Open a completed scan in **Investigation**, select a recorded data store or dataset,
 then inspect its relationships and source evidence. The artifact is the persisted
 graph snapshot; use the recorded resource identity to investigate permissions or

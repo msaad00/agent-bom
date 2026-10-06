@@ -233,17 +233,14 @@ def test_current_incident_pages_accept_returned_generation(estate):
         disable_trusted_proxy_env()
 
 
-def test_missing_retained_graph_fails_closed_without_substituting_latest(estate):
-    from starlette.exceptions import HTTPException
+def test_missing_retained_graph_returns_partial_without_substituting_latest(estate):
 
     record(estate, 8, "repo-a", "retained-a")
     record(estate, 9, "repo-b", "latest-b")
     assert set(current().nodes) == {"retained-a", "latest-b"}
     first = job(8, tenant="history-tenant", target="repo-a", findings=[])
     estate[1].delete_snapshot(tenant_id="history-tenant", scan_id=first.job_id)
-    with pytest.raises(HTTPException) as exc:
-        current()
-    assert exc.value.status_code == 503
+    assert set(current().nodes) == {"latest-b"}
 
     from starlette.testclient import TestClient
 
@@ -255,7 +252,81 @@ def test_missing_retained_graph_fails_closed_without_substituting_latest(estate)
         with TestClient(app) as client:
             for endpoint in ("/v1/inventory/summary", "/v1/inventory/assets", "/v1/graph"):
                 response = client.get(endpoint, headers=proxy_headers(tenant="history-tenant"))
-                assert response.status_code == 503, response.text
-                assert "error" in response.json()
+                assert response.status_code == 200, response.text
+                assert response.json()["collection_coverage"]["status"] == "partial"
+                assert "graph_evidence_unavailable" in response.json()["collection_coverage"]["reason_codes"]
+    finally:
+        disable_trusted_proxy_env()
+
+
+@pytest.mark.parametrize("same_target", [False, True])
+@pytest.mark.parametrize("no_scan", [False, True])
+def test_graphless_job_retains_available_evidence_and_late_graph_invalidates_cache(estate, same_target, no_scan):
+    import asyncio
+
+    from agent_bom.api.inventory_service import build_summary
+
+    record(estate, 8, "repo-a", "retained-a")
+    target = "repo-a" if same_target else "repo-b"
+    latest = job(9, tenant="history-tenant", target=target, findings=[])
+    latest.result.update(scan_id=latest.job_id, no_scan=no_scan)
+    estate[0].put(latest)
+    assert set(current().nodes) == {"retained-a"}
+    before = current().scan_id
+    summary = asyncio.run(build_summary(store=stores._get_graph_store(), tenant_id="history-tenant"))
+    assert summary["collection_coverage"]["status"] == "partial"
+    assert "graph_evidence_unavailable" in summary["collection_coverage"]["reason_codes"]
+    # A graph arriving without a job mutation must still invalidate the cache.
+    graph = UnifiedGraph(scan_id=latest.job_id, tenant_id="history-tenant", created_at=latest.completed_at)
+    graph.add_node(UnifiedNode(id="late-package", entity_type=EntityType.PACKAGE, label="late"))
+    estate[1].save_graph(graph)
+    assert set(current().nodes) == ({"late-package"} if same_target and not no_scan else {"retained-a", "late-package"})
+    assert current().scan_id != before
+    summary = asyncio.run(build_summary(store=stores._get_graph_store(), tenant_id="history-tenant"))
+    assert "graph_evidence_unavailable" not in summary["collection_coverage"]["reason_codes"]
+
+
+def test_only_graphless_job_returns_empty_partial_estate(estate):
+    import asyncio
+
+    from agent_bom.api.inventory_service import build_summary
+
+    latest = job(9, tenant="history-tenant", findings=[])
+    estate[0].put(latest)
+    assert not current().nodes
+    summary = asyncio.run(build_summary(store=stores._get_graph_store(), tenant_id="history-tenant"))
+    assert summary["total_assets"] == 0
+    assert summary["collection_coverage"]["status"] == "partial"
+
+
+def test_empty_estate_has_a_valid_empty_generation(estate):
+    assert not current().nodes
+    assert current().scan_id.startswith("current-estate:")
+
+
+def test_storage_read_failure_is_not_reported_as_empty(estate, monkeypatch):
+    record(estate, 8, "repo-a", "retained-a")
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("storage unavailable")
+
+    monkeypatch.setattr(estate[1], "snapshot_identity", unavailable)
+    with pytest.raises(RuntimeError, match="storage unavailable"):
+        current()
+
+
+def test_empty_estate_rest_reads_are_successful_and_coverage_is_unknown(estate):
+    from starlette.testclient import TestClient
+
+    from agent_bom.api.server import app
+    from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+    enable_trusted_proxy_env()
+    try:
+        with TestClient(app, headers=proxy_headers(tenant="history-tenant")) as client:
+            for endpoint in ("/v1/graph", "/v1/inventory/summary", "/v1/inventory/assets"):
+                response = client.get(endpoint)
+                assert response.status_code == 200, response.text
+                assert response.json()["collection_coverage"]["status"] == "unknown"
     finally:
         disable_trusted_proxy_env()

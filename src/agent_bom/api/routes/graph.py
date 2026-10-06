@@ -1589,6 +1589,7 @@ def _encode_node_page(
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
         "created_at": created_at,
+        "collection_coverage": snapshot_stats.get("collection_coverage", {"status": "unknown"}),
         "nodes": [n.to_dict() for n in response_nodes],
         "edges": [e.to_dict() for e in response_edges],
         "attack_paths": _serialize_attack_path_batch(
@@ -1669,7 +1670,6 @@ async def get_graph(
     if not requested_scan_id and not await _graph_store_call(
         graph_store.latest_snapshot_id,
         tenant_id=tenant,
-        snapshot_kind="scan",
     ):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
@@ -1722,6 +1722,8 @@ async def get_graph(
             offset=offset,
             limit=limit,
         )
+        receipt = await _graph_store_call(graph_store.snapshot_stats, tenant_id=tenant, scan_id=requested_scan_id)
+        payload["collection_coverage"] = receipt.get("collection_coverage", {"status": "unknown"})
         if identity is not None:
             await _graph_store_call(verify_generation, graph_store, tenant=tenant, identity=identity, has_rows=bool(payload.get("nodes")))
             payload["snapshot_generation"] = identity[1]

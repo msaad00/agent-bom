@@ -3064,7 +3064,7 @@
     },
     "graph/builder.py": {
       "deferred_imports": 20,
-      "file_lines": 4972,
+      "file_lines": 4640,
       "graph_api_imports": 1
     },
     "graph/builder.py::_add_agent_cloud_lineage": {
@@ -3081,8 +3081,7 @@
       "function_lines": 120
     },
     "graph/builder.py::_add_cloud_inventory": {
-      "complexity": 47,
-      "function_lines": 548
+      "function_lines": 213
     },
     "graph/builder.py::_add_cloud_org_architecture_findings": {
       "function_lines": 87

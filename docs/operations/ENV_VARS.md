@@ -300,7 +300,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## OS-package reporting
 | Env var | Type | Default | Description |
 |---|---|---|---|
-| `AGENT_BOM_INCLUDE_UNFIXED` | `bool` | `False` | When False (default), OS/distro advisories with no fix for the scanned release (no-dsa / won't-fix / end-of-life open) are suppressed so container reporting matches mainstream scanner conventions. Set AGENT_BOM_INCLUDE_UNFIXED=1 to surface  |
+| `AGENT_BOM_INCLUDE_UNFIXED` | `bool` | `False` | When False (default), Debian/Alpine advisories with no fix for the scanned release are suppressed. RPM advisories with unresolved fixes stay visible. Set AGENT_BOM_INCLUDE_UNFIXED=1 to include unfixed Debian/Alpine advisories. The scanner r |
 
 ## Partition Retention (#3463)
 | Env var | Type | Default | Description |

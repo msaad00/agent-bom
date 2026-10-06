@@ -163,6 +163,24 @@ def rpm_advisory_ecosystems(
     return []
 
 
+def scope_rpm_advisory(vuln_data: dict, distro_name: str | None, distro_version: str | None) -> dict | None:
+    """Filter a live advisory to the observed RPM distro/product release.
+
+    The API accepts bare Red Hat, but returned records include other products
+    and releases. Canonicalize baseos/appstream keys without collapsing EUS,
+    OpenShift, or other product streams into Enterprise Linux.
+    """
+    expected = {value.lower() for value in rpm_advisory_ecosystems(distro_name, distro_version, for_local_db=True)}
+    if not expected:
+        return vuln_data
+    entries = [
+        entry
+        for entry in vuln_data.get("affected", [])
+        if normalize_redhat_ecosystem(str(entry.get("package", {}).get("ecosystem", ""))).lower() in expected
+    ]
+    return {**vuln_data, "affected": entries} if entries else None
+
+
 def apk_advisory_ecosystems(distro_name: str | None) -> list[str]:
     """Resolve OSV ecosystem key(s) for an apk package's non-Alpine distros.
 

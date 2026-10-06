@@ -170,6 +170,23 @@ def test_legacy_entries_are_retained_but_never_used_as_current_evidence(cache):
     assert cache._conn.execute("SELECT COUNT(*) FROM osv_cache").fetchone()[0] == 3
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ecosystem,name,osv_ecosystem", [("go", "github.com/Masterminds/goutils", "Go"), ("nuget", "System.Text.Encodings.Web", "NuGet")]
+)
+async def test_previous_query_spelling_cache_cannot_hide_corrected_lookup(cache, monkeypatch, ecosystem, name, osv_ecosystem):
+    package = Package(name=name, version="1.0.0", ecosystem=ecosystem)
+    old_key = f"osv-complete-v2:{ecosystem}:{name.lower()}@1.0.0"
+    cache._conn.execute("INSERT INTO osv_cache VALUES (?, ?, ?)", (old_key, "[]", time.time()))
+    cache._conn.commit()
+    result, calls = await query(
+        cache, [package], [{"results": [{"vulns": [{"id": "GHSA-recovered"}]}]}], monkeypatch, ecosystems=lambda _: [osv_ecosystem]
+    )
+    assert len(calls) == 1
+    assert result[f"{ecosystem}:{name.lower()}@1.0.0"] == [{"id": "GHSA-recovered"}]
+    assert cache._conn.execute("SELECT vulns_json FROM osv_cache WHERE cache_key = ?", (old_key,)).fetchone()[0] == "[]"
+
+
 def test_lookup_warning_never_prints_clean_cli_verdict():
     from types import SimpleNamespace
 

@@ -21,9 +21,9 @@ from agent_bom.storage import state_home
 logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_SECONDS = 86_400  # 24 hours
-# Earlier writers cached failed/partial lookups. A separate key namespace
-# retains those rows without accepting them as evidence or trusting old writers.
-CACHE_KEY_PREFIX = "osv-complete-v2:"
+# Earlier writers cached partial lookups or queried case-sensitive names in
+# lowercase. Retain old rows but re-query under corrected lookup semantics.
+CACHE_KEY_PREFIX = "osv-complete-v3:"
 # Test/embedding override; ``None`` resolves to the active state dir per call.
 DEFAULT_CACHE_DIR: Path | None = None
 

@@ -162,6 +162,7 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                 "src/agent_bom/enrichment",
                 "src/agent_bom/output/",
                 "src/agent_bom/cli/_check",
+                "src/agent_bom/cli/agents/scan_pipeline/",
                 "src/agent_bom/scanners/",
                 "tests/fixtures/check_characterization/",
                 "tests/fixtures/output_render/",
@@ -173,8 +174,10 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
                 if candidate.name
                 in {
                     "test_check_characterization.py",
+                    "test_console_reconciliation.py",
                     "test_output_render_characterization.py",
                     "test_scan_characterization.py",
+                    "test_scan_verdict_completeness.py",
                 }
             )
         if normalized.as_posix() in {

@@ -68,9 +68,11 @@ def test_headline_counts_match_unified_stream(demo_console_output, demo_json_rep
     assert int(match.group(3)) == by_sev["medium"]
 
 
-def test_progress_severity_line_is_scope_labeled(demo_console_output):
+def test_progress_severity_line_is_scope_labeled(demo_console_output, demo_json_report):
     """The scan-progress severity breakdown is package-CVE-scoped and says so."""
-    assert re.search(r"Scan complete — package CVEs: \d+ critical", demo_console_output)
+    match = re.search(r"Package scan complete — package CVEs: (\d+) critical", demo_console_output)
+    assert match, "complete package-scan severity breakdown missing"
+    assert int(match.group(1)) == demo_json_report["summary"]["critical_findings"]
 
 
 def test_unified_totals_line_reconciles_progress_with_summary(demo_console_output, demo_json_report):

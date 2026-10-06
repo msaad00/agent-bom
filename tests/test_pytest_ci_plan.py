@@ -396,6 +396,7 @@ def test_shared_regex_edits_select_policy_enforcement_callers(tmp_path, source):
         "src/agent_bom/enrichment/epss.py",
         "src/agent_bom/output/sarif.py",
         "src/agent_bom/cli/_check_command.py",
+        "src/agent_bom/cli/agents/scan_pipeline/matching.py",
         "src/agent_bom/scanners/package_scan.py",
         "tests/fixtures/check_characterization/golden.json",
         "tests/fixtures/output_render/manifest.json",
@@ -406,8 +407,10 @@ def test_output_changes_select_characterization_consumers(tmp_path, source):
         tmp_path / "tests" / name
         for name in (
             "test_check_characterization.py",
+            "test_console_reconciliation.py",
             "test_output_render_characterization.py",
             "test_scan_characterization.py",
+            "test_scan_verdict_completeness.py",
         )
     )
     for path in expected:

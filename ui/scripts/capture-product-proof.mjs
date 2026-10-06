@@ -2452,6 +2452,8 @@ function isBenignAppRouterCancellation(request, failure) {
 const README_CAPTURE_FILES = new Set([
   "component-controls-dark-live.png", "component-findings-dark-live.png",
   "component-detail-dark-live.png", "component-detail-light-live.png",
+  "component-findings-dark-live.png", "component-findings-light-live.png",
+  "component-controls-dark-live.png", "component-controls-light-live.png",
   "context-map-horizontal-dark-live.png", "context-map-horizontal-light-live.png",
   "context-map-light-live.png", "context-map-live.png", "correlation-graph-live.png",
   "dashboard-live.png", "dashboard-paths-live.png", "dashboard-risks-live.png", "inventory-live.png", "remediation-live.png",
@@ -2985,7 +2987,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       path: `context-map-horizontal-${theme}-live.png`,
       page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
-      presentation: `${theme} desktop 1760x860`,
+      presentation: `${theme} desktop 1440x900`,
     })),
     {
       path: "inventory-live.png",

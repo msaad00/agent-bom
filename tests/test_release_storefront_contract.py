@@ -422,3 +422,18 @@ def test_mutation_helper_refuses_tracked_checkout_files() -> None:
         with _mutate_repo_file(package_json, lambda original: original + b"\n"):
             pass
     assert package_json.read_bytes() == before
+
+
+def test_readme_application_captures_use_standard_viewports() -> None:
+    import struct
+
+    readme = (ROOT / "README.md").read_text()
+    captures = set(re.findall(r'docs/images/([^" )>]+\.png)', readme))
+    assert captures
+    for name in sorted(captures):
+        path = ROOT / "docs/images" / name
+        assert path.is_file(), f"Missing authentic capture: {name}"
+        data = path.read_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n", name
+        expected = (390, 844) if "-mobile-" in name else (1440, 900)
+        assert struct.unpack(">II", data[16:24]) == expected, name

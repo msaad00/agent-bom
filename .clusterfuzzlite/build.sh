@@ -11,5 +11,6 @@ python3 -m pip install --require-hashes -r "$SRC/agent-bom/.clusterfuzzlite/requ
 python3 -m pip install .
 
 for fuzzer in $SRC/agent-bom/fuzz/fuzz_*.py; do
-  compile_python_fuzzer "$fuzzer"
+  # PyInstaller does not infer JSON catalogs opened by pathlib/importlib.resources.
+  compile_python_fuzzer "$fuzzer" --collect-data agent_bom
 done

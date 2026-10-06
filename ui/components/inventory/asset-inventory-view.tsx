@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -8,10 +8,11 @@ import { InventoryPagination } from "@/components/inventory/inventory-pagination
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { PageLaneHeader } from "@/components/page-lane";
 import { SeverityBadge } from "@/components/severity-badge";
-import { SplitLayout } from "@/components/split-layout";
+import { Drawer } from "@/components/drawer";
 import { StatStrip } from "@/components/stat-strip";
 import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { AssetDetail } from "@/components/inventory/asset-detail";
+import { useInventorySelection } from "@/lib/inventory-selection";
 import { useInventory } from "@/lib/inventory-context";
 import {
   ASSET_KIND_BY_ID,
@@ -33,6 +34,9 @@ export function AssetInventoryView({
   const config = ASSET_KIND_BY_ID[kind];
   const {
     model,
+    filters,
+    page,
+    summary: estateSummary,
     loading,
     error,
     errorKind,
@@ -45,16 +49,12 @@ export function AssetInventoryView({
     reload,
     loadAssetDetail,
   } = useInventory();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const allRows = useMemo(() => model?.rowsByKind[kind] ?? [], [model, kind]);
   const total = model?.totalsByKind[kind] ?? 0;
   const loadedCount = model?.loadedByKind[kind] ?? 0;
   const summary = useMemo(() => summarizeRows(allRows), [allRows]);
-  const selected = useMemo(
-    () => allRows.find((row) => row.id === selectedId) ?? null,
-    [allRows, selectedId],
-  );
+  const { selected, select } = useInventorySelection(allRows, model?.scanId, loadAssetDetail);
 
   const header = (
     <PageLaneHeader
@@ -142,25 +142,27 @@ export function AssetInventoryView({
 
       </div>
 
+      {estateSummary?.collection_coverage?.status === "partial" ? (
+        <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-ink-secondary">
+          Collection gap: {estateSummary.collection_coverage.reason}
+        </p>
+      ) : null}
       <InventoryPagination />
 
       {model.matchingTotal === 0 ? (
         <PageEmptyState
-          title={`No ${config.label.toLowerCase()} match these filters`}
+          title={Object.values(filters).some(Boolean) || page?.pagination.facet_filtered ? `No ${config.label.toLowerCase()} match these filters` : `No ${config.label.toLowerCase()} in the current scope`}
           detail="No recorded assets of this type match the selected snapshot and filters. This does not establish collection coverage."
           action={{ label: "Clear filters", onClick: clearFilters, variant: "secondary" }}
         />
       ) : (
-        <SplitLayout
-        masterWidth="60%"
-        master={
+        <>
           <DataTable<AssetRow>
             columns={columns}
             rows={allRows}
             rowKey={(row) => row.id}
             onRowClick={(row) => {
-              setSelectedId(row.id);
-              void loadAssetDetail(row.id);
+              select(row.id);
             }}
             selectedKey={selected?.id}
             maxHeight="calc(100vh - 22rem)"
@@ -179,8 +181,8 @@ export function AssetInventoryView({
             }
             data-testid={`inventory-table-${kind}`}
           />
-        }
-        detail={selected ? (
+        <Drawer open={selected !== null} onClose={() => select(null)} title="Asset details" ariaLabel="Asset details" size="xl" resizable={false}>
+        {selected ? (
           <AssetDetail
             row={selected}
             config={config}
@@ -190,8 +192,8 @@ export function AssetInventoryView({
             scanId={model.scanId}
           />
         ) : null}
-        placeholder={`Select a ${config.singular} to see its posture, attributes, and correlations.`}
-        />
+        </Drawer>
+        </>
       )}
 
       {error && errorKind === "network" ? (
@@ -241,9 +243,9 @@ function buildColumns(kind: AssetKindId): DataTableColumn<AssetRow>[] {
         const secondary = secondaryFor(row);
         return (
           <div className="min-w-0">
-            <div className="truncate font-medium text-[color:var(--foreground)]">{row.label}</div>
+            <div className="break-words [overflow-wrap:anywhere] font-medium text-[color:var(--foreground)]">{row.label}</div>
             {secondary ? (
-              <div className="truncate text-[11px] text-[color:var(--text-tertiary)]">{secondary}</div>
+              <div className="break-words [overflow-wrap:anywhere] text-[11px] text-[color:var(--text-tertiary)]">{secondary}</div>
             ) : null}
           </div>
         );
@@ -270,7 +272,7 @@ function buildColumns(kind: AssetKindId): DataTableColumn<AssetRow>[] {
       width: "12rem",
       cell: (row) =>
         row.dataSources.length > 0 ? (
-          <span className="truncate text-[color:var(--text-tertiary)]">{row.dataSources.join(", ")}</span>
+          <span className="break-words [overflow-wrap:anywhere] text-[color:var(--text-tertiary)]">{row.dataSources.join(", ")}</span>
         ) : (
           <span className="text-[color:var(--text-tertiary)]">—</span>
         ),

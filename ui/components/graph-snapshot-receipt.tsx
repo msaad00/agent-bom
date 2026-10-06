@@ -4,7 +4,14 @@ import Link from "next/link";
 import type { GraphSnapshot } from "@/lib/api";
 
 /** Metadata for the selected snapshot, never a claim about upstream freshness. */
-export function GraphSnapshotReceipt({ snapshot }: { snapshot: GraphSnapshot | null }) {
+export function GraphSnapshotReceipt({ snapshot, scanId }: { snapshot: GraphSnapshot | null; scanId?: string }) {
+  const current = scanId?.startsWith("current-estate:");
+  if (current) return <details className="rounded-xl border border-outline bg-surface px-4 py-3 text-xs" aria-label="Current estate evidence">
+    <summary className="cursor-pointer font-medium text-foreground">Current tenant estate · Scope and evidence limits</summary>
+    <p className="mt-3 text-ink-secondary">Latest retained evidence for each target, including prior evidence retained after incomplete collection. This is an aggregate across observations.</p>
+    <p className="mt-2 break-all text-ink-secondary">Generation: {scanId?.slice("current-estate:".length)}</p>
+    <p className="mt-2 text-ink-secondary">Collection coverage and source freshness require the individual observation receipts.</p>
+  </details>;
   const captured = snapshot?.created_at ? new Date(snapshot.created_at) : null;
   return (
     <details className="rounded-xl border border-outline bg-surface px-4 py-3 text-xs" aria-label="Graph snapshot evidence">

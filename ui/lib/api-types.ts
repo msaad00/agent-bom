@@ -407,11 +407,13 @@ export interface InventorySummaryFilters {
 }
 
 export interface InventorySummaryResponse {
+  evidence_scope?: "current_estate" | "scan_snapshot" | "no_snapshot";
+  snapshot_generation?: string | null;
   schema_version: string;
   status?: "no_snapshot" | undefined;
   count_exact?: boolean | undefined;
   count_basis?: string | undefined;
-  finding_count_scope?: "selected_snapshot" | undefined;
+  finding_count_scope?: "selected_snapshot" | "current_estate" | undefined;
   filters?: Partial<{
     type: string[];
     search: string;
@@ -421,7 +423,7 @@ export interface InventorySummaryResponse {
     severity: string;
     min_severity: string;
   }> | undefined;
-  collection_coverage?: { status: "unknown"; reason: string } | undefined;
+  collection_coverage?: { status: "unknown" | "partial"; reason: string; reason_codes?: string[] } | undefined;
   tenant_id: string;
   scan_id: string;
   created_at?: string | undefined;
@@ -502,6 +504,8 @@ export interface InventoryPagination {
 }
 
 export interface InventoryAssetsResponse {
+  evidence_scope?: "current_estate" | "scan_snapshot" | "no_snapshot";
+  snapshot_generation?: string | null;
   schema_version: string;
   tenant_id: string;
   scan_id: string;
@@ -515,6 +519,7 @@ export interface InventoryAssetsResponse {
 }
 
 export interface InventoryAssetDetailResponse {
+  evidence_scope?: "current_estate" | "scan_snapshot";
   schema_version: string;
   tenant_id: string;
   scan_id: string;
@@ -5466,6 +5471,7 @@ export interface RiskCampaignTicketSyncResult {
 
 /** A page of recorded relationships; totals and source coverage remain unknown. */
 export interface GraphIncidentPage {
+  evidence_scope?: "current_estate" | "historical_scan" | null;
   scan_id: string;
   snapshot_generation: string | null;
   node_id: string;

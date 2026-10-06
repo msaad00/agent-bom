@@ -108,7 +108,7 @@ function ControlEvidence({ assetId, scanId, owner }: { assetId: string; scanId: 
       {last && !last.next_cursor && !graph.error && <p>All recorded relationship pages loaded. Collection coverage and evidence freshness are not assessed.</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <details className="rounded-lg border border-outline px-3 py-2"><summary className="cursor-pointer font-medium">Snapshot &amp; scope</summary>
-          <p className="mt-2 break-all">Component: {assetId}</p><p className="mt-1 break-all">Snapshot: {scanId}</p>
+          <p className="mt-2 break-all">Component: {assetId}</p><p className="mt-1 break-all">{scanId.startsWith("current-estate:") ? "Current tenant estate" : `Snapshot: ${scanId}`}</p>
           <p className="mt-2">Only this component and its directly linked evidence are included. Account checks apply at account scope; no result is inherited from a parent.</p>
         </details>
         <details className="rounded-lg border border-outline px-3 py-2"><summary className="cursor-pointer font-medium">Export control evidence</summary>

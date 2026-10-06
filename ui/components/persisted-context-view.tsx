@@ -263,7 +263,7 @@ export function SnapshotNeighborhood({ scanId, owner, initialRootId = "" }: { sc
           })}</div>
         </details>
         <p className="border-t border-outline pt-3 text-xs leading-5 text-ink-secondary">Recorded relationships do not establish execution or successful data access.</p>
-        <details><summary className="cursor-pointer text-sm">Scope &amp; evidence limits</summary><p className="my-2 text-xs leading-5 text-ink-secondary">{lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p><p className="break-all text-xs">Snapshot: {scanId}</p><p className="mt-2 text-sm text-ink-secondary">Permission and exploitability are not assessed by these pages. Shared infrastructure does not prove agents communicated. Page completeness is not estate or collection completeness.</p></details>
+        <details><summary className="cursor-pointer text-sm">Scope &amp; evidence limits</summary><p className="my-2 text-xs leading-5 text-ink-secondary">{lastPage && !lastPage.next_cursor ? "End of recorded pages in this direction; source collection coverage remains unknown." : "Additional relationships not counted."}</p><p className="break-all text-xs">{scanId.startsWith("current-estate:") ? "Current tenant estate" : `Snapshot: ${scanId}`}</p><p className="mt-2 text-sm text-ink-secondary">Permission and exploitability are not assessed by these pages. Shared infrastructure does not prove agents communicated. Page completeness is not estate or collection completeness.</p></details>
       </aside>
     </div>
   </>;

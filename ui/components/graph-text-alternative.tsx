@@ -70,7 +70,7 @@ export function GraphTextAlternative({
             <th scope="col">Node</th>
             <th scope="col">Type</th>
             <th scope="col">Severity</th>
-            <th scope="col">Connections</th>
+            <th scope="col">Visible connections</th>
           </tr>
         </thead>
         <tbody>

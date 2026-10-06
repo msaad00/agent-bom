@@ -21,7 +21,7 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="shrink-0 text-[11px] font-medium uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
         {label}
       </dt>
-      <dd className="min-w-0 truncate text-right text-sm text-[color:var(--foreground)]">{value}</dd>
+      <dd className="min-w-0 break-words [overflow-wrap:anywhere] text-right text-sm text-[color:var(--foreground)]">{value}</dd>
     </div>
   );
 }
@@ -75,16 +75,16 @@ export function AssetDetail({
   const compliance = complianceHref(row, effectiveScanId);
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4 elev-1">
+    <div className="flex min-w-0 flex-col gap-4">
       <header className="flex items-start gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]">
           <Icon className={ICON_SIZE.sm} aria-hidden="true" />
         </span>
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
-            {config.singular} · {row.entityType}
+            {config.singular}
           </p>
-          <h2 className="mt-0.5 break-words text-lg font-semibold text-[color:var(--foreground)]">
+          <h2 className="mt-0.5 break-words [overflow-wrap:anywhere] text-lg font-semibold text-[color:var(--foreground)]">
             {row.label}
           </h2>
         </div>
@@ -120,6 +120,22 @@ export function AssetDetail({
         </div>
       </div>
 
+      <div className="mt-1 flex flex-col gap-2 border-t border-[color:var(--border-subtle)] pt-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
+          Correlate
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <CorrelationLink href={findingsHref(row, effectiveScanId)} icon={Bug} label="Findings" hint="Recorded component evidence" />
+          <CorrelationLink href={securityGraphHref(row, effectiveScanId)} icon={Network} label="Security graph" hint="Blast radius" />
+          <CorrelationLink href={lineageHref(row, effectiveScanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
+          {compliance ? (
+            <CorrelationLink href={compliance} icon={FileCheck} label="Compliance" hint="Recorded control evidence" />
+          ) : null}
+        </div>
+      </div>
+
+      <details>
+        <summary className="cursor-pointer text-sm font-medium">Provenance and attributes</summary>
       <dl className="divide-y divide-[color:var(--border-subtle)]">
         <MetaRow label="Status" value={row.status} />
         {row.version ? <MetaRow label="Version" value={row.version} /> : null}
@@ -130,16 +146,18 @@ export function AssetDetail({
         <MetaRow label="Last seen" value={row.lastSeen || "Not recorded"} />
         <MetaRow
           label="Sources"
-          value={row.dataSources.length > 0 ? row.dataSources.join(", ") : "—"}
+          value={(detail?.evidence_sources ?? row.dataSources).join(", ") || "Not recorded"}
         />
         {attrRows.map(([key, value]) => (
           <MetaRow key={key} label={key.replace(/_/g, " ")} value={value} />
         ))}
       </dl>
 
-      <section className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+      </details>
+
+      <section className="border-t border-[color:var(--border-subtle)] pt-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
-          Snapshot context
+          Evidence context
         </p>
         {loading ? (
           <p className="mt-1 text-xs text-[color:var(--text-secondary)]">Loading recorded relationships…</p>
@@ -148,8 +166,8 @@ export function AssetDetail({
         ) : detail ? (
           <>
             <dl className="mt-1 divide-y divide-[color:var(--border-subtle)]">
-              <MetaRow label="Snapshot" value={detail.scan_id} />
-              <MetaRow label="Evidence sources" value={(detail.evidence_sources ?? row.dataSources).join(", ") || "Not recorded"} />
+              <MetaRow label="Scope" value={detail.evidence_scope === "current_estate" ? "Current tenant estate" : detail.scan_id} />
+
               <MetaRow label="Relationships shown" value={relationships.length.toLocaleString()} />
             </dl>
             <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
@@ -208,19 +226,7 @@ export function AssetDetail({
         </div>
       ) : null}
 
-      <div className="mt-1 flex flex-col gap-2 border-t border-[color:var(--border-subtle)] pt-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
-          Correlate
-        </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <CorrelationLink href={findingsHref(row, effectiveScanId)} icon={Bug} label="Findings" hint="Recorded component evidence" />
-          <CorrelationLink href={securityGraphHref(row, effectiveScanId)} icon={Network} label="Security graph" hint="Blast radius" />
-          <CorrelationLink href={lineageHref(row, effectiveScanId)} icon={Share2} label="Lineage" hint="Upstream & downstream" />
-          {compliance ? (
-            <CorrelationLink href={compliance} icon={FileCheck} label="Compliance" hint="Recorded control evidence" />
-          ) : null}
-        </div>
-      </div>
+
     </div>
   );
 }
@@ -245,7 +251,7 @@ function CorrelationLink({
       <span className="min-w-0">
         <span className="block text-sm font-medium text-[color:var(--foreground)]">{label}</span>
         {hint ? (
-          <span className="block truncate text-[11px] text-[color:var(--text-tertiary)]">{hint}</span>
+          <span className="block break-words text-[11px] text-[color:var(--text-tertiary)]">{hint}</span>
         ) : null}
       </span>
       <ExternalLink

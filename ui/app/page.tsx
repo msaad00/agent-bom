@@ -431,7 +431,7 @@ export default function Dashboard() {
 
       <div aria-label="Evidence scopes" className="[overflow-wrap:anywhere] flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-outline px-3 py-2 text-xs text-ink-secondary">
         <span>Findings: {importedReport ? "Imported report" : "Current tenant · configured window"}</span>
-        <span>Inventory: {importedReport ? "Not linked to a graph snapshot" : inventoryLoading ? "Loading snapshot" : inventorySummary?.scan_id ? `Snapshot ${inventorySummary.scan_id}` : inventorySummary ? "No snapshot yet" : "Unavailable"}</span>
+        <span>Inventory: {importedReport ? "Not linked to a graph snapshot" : inventoryLoading ? "Loading snapshot" : inventorySummary?.evidence_scope === "current_estate" ? "Current tenant estate" : inventorySummary?.scan_id ? `Snapshot ${inventorySummary.scan_id}` : inventorySummary ? "No snapshot yet" : "Unavailable"}</span>
         {!importedReport && inventorySummary?.scan_id ? <span>{inventorySummary?.filters?.environment ? `Inventory environment: ${inventorySummary.filters.environment}` : "Inventory includes unclassified environments"}</span> : null}
         {!importedReport && inventorySummary?.filters && Object.values(inventorySummary.filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? <span>Inventory filters do not change the findings window</span> : null}
       </div>

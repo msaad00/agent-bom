@@ -2449,7 +2449,16 @@ function isBenignAppRouterCancellation(request, failure) {
   return requestUrl.searchParams.has("_rsc");
 }
 
+const README_CAPTURE_FILES = new Set([
+  "component-controls-dark-live.png", "component-findings-dark-live.png",
+  "component-detail-dark-live.png", "component-detail-light-live.png",
+  "context-map-horizontal-dark-live.png", "context-map-horizontal-light-live.png",
+  "context-map-light-live.png", "context-map-live.png", "correlation-graph-live.png",
+  "dashboard-live.png", "dashboard-risks-live.png", "inventory-live.png", "remediation-live.png",
+]);
+
 async function capture(page, urlPath, filename, beforeShot, options = {}) {
+  if (README_CAPTURE_FILES.has(filename)) await page.setViewportSize({ width: 1440, height: 900 });
   await page.clock.setFixedTime(urlPath.startsWith("/?") ? new Date(new Date(overviewProof.captured_at).getTime() + 60_000) : REFERENCE_CAPTURE_NOW);
   const browserErrors = [];
   const networkErrors = [];
@@ -2783,6 +2792,8 @@ async function capture(page, urlPath, filename, beforeShot, options = {}) {
 async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
   const screenshotEntries = [
     ...["dark", "light"].flatMap((theme) => [
+      { path: `component-detail-mobile-${theme}-live.png`, page: `/inventory/packages?scan=${SCAN_ID}&capture=1`,
+        scope: "On-demand component drawer at a 390 by 844 viewport", presentation: `${theme} mobile` },
       { path: `component-detail-${theme}-live.png`, page: `/inventory/packages?scan=${SCAN_ID}&capture=1`,
         scope: "Synthetic component detail with recorded relationships and explicit collection-coverage limits", presentation: `${theme} desktop` },
       { path: `component-findings-${theme}-live.png`, page: `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`,
@@ -3087,19 +3098,26 @@ async function main() {
     };
     // Capture the shipped component workflow; fixture mappings are not assessments.
     for (const theme of ["dark", "light"]) {
-      const componentPage = await newCapturePage(theme, { width: 1440, height: 1340 });
+      const componentPage = await newCapturePage(theme, { width: 1440, height: 900 });
       await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-${theme}-live.png`, async (p) => {
         await p.getByText("next@15.2.2", { exact: true }).first().click();
         const relationships = p.getByRole("list", { name: "Recorded component relationships" });
         await expect(relationships).toBeVisible();
         await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toHaveAttribute("href", `/findings?asset=pkg%3Anext&scan=${SCAN_ID}`);
         const controls = p.getByRole("link", { name: "Compliance Recorded control evidence" });
-        await controls.scrollIntoViewIfNeeded();
+
         await expect(controls).toBeInViewport();
         await expect(relationships).toBeInViewport();
       }, { expectedText: ["next@15.2.2", "CVE-2025-29927", "Collection coverage and blast radius are not assessed"],
         expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
-      await componentPage.setViewportSize({ width: 1440, height: 780 });
+      await componentPage.setViewportSize({ width: 390, height: 844 });
+      await capture(componentPage, `/inventory/packages?scan=${SCAN_ID}&capture=1`, `component-detail-mobile-${theme}-live.png`, async (p) => {
+        await p.getByText("next@15.2.2", { exact: true }).first().click();
+        await expect(p.getByRole("dialog", { name: "Asset details" })).toBeVisible();
+        await expect(p.getByRole("link", { name: "Findings Recorded component evidence" })).toBeInViewport();
+      }, { expectedText: ["next@15.2.2", "Collection coverage and blast radius are not assessed"],
+        expectedApiPaths: ["/v1/inventory/assets/pkg%3Anext"], assertNoHorizontalOverflow: true });
+      await componentPage.setViewportSize({ width: 1440, height: 900 });
       await capture(componentPage, `/findings?asset=pkg%3Anext&scan=${SCAN_ID}&capture=1`, `component-findings-${theme}-live.png`, async (p) => {
         await expect(p.getByRole("list", { name: "Component finding records" })).toContainText("CVE-2025-29927");
         await expect(p.getByRole("link", { name: "Inspect control evidence" })).toHaveAttribute("href", `/compliance?asset=pkg%3Anext&scan=${SCAN_ID}`);
@@ -3127,13 +3145,6 @@ async function main() {
       const workflow = proofPage.getByTestId("graph-correlation-workflow");
       await workflow.waitFor({ state: "visible", timeout: 30_000 });
       await proofPage.getByTestId("graph-correlation-decision").waitFor({ state: "visible", timeout: 30_000 });
-      // Give the viewport enough trailing room to place the investigation outcome just
-      // below the fixed product header. Without this capture-only spacer the
-      // browser hits the document's maximum scroll position and leaves the
-      // previous path card in the hero frame.
-      await proofPage.evaluate(() => {
-        document.body.style.paddingBottom = "900px";
-      });
       const workflowTop = await workflow.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
@@ -3162,9 +3173,6 @@ async function main() {
       if (await sequence.evaluate((element) => element.scrollLeft) > 1) {
         throw new Error("Default path capture did not return to its first step");
       }
-      await proofPage.evaluate(() => {
-        document.body.style.paddingBottom = "900px";
-      });
       const pathTop = await selectedPath.evaluate(
         (element) => element.getBoundingClientRect().top + window.scrollY,
       );
@@ -3321,8 +3329,7 @@ async function main() {
           || frameworkBox.x + frameworkBox.width > findingsBox.x) {
         throw new Error("Overview proof must retain the desktop side-by-side compliance and findings layout");
       }
-      const bottom = Math.ceil(Math.max(frameworkBox.y + frameworkBox.height, findingsBox.y + findingsBox.height));
-      await dashboardPage.setViewportSize({ width: 1440, height: bottom + 24 });
+      await dashboardPage.setViewportSize({ width: 1440, height: 900 });
       await scrollTo(dashboardPage, 0);
     }, {
       ...postureAssertions,

@@ -31,7 +31,7 @@ function ComponentFindingEvidence({ assetId, scanId, owner }: { assetId: string;
     <header className="space-y-2">
       <p className="text-xs uppercase tracking-wide text-ink-secondary">Component finding evidence</p>
       <h1 className="break-words text-2xl font-semibold">{component?.label || assetId}</h1>
-      <p className="break-all text-sm text-ink-secondary">{assetId} · Snapshot {scanId}</p>
+      <p className="break-all text-sm text-ink-secondary">{assetId} · {scanId.startsWith("current-estate:") ? "Current tenant estate" : `Snapshot ${scanId}`}</p>
       <p className="max-w-3xl text-sm text-ink-secondary">Findings connected by recorded relationships to this exact component. These records do not establish exploitation or include findings elsewhere in the component chain.</p>
       <Link className="inline-block text-sm underline underline-offset-2" href={`/security-graph?${graphParams}`}>Investigate the component chain</Link>
       <Link className="ml-4 inline-block text-sm underline underline-offset-2" href={`/compliance?${new URLSearchParams({ asset: assetId, scan: scanId })}`}>Inspect control evidence</Link>

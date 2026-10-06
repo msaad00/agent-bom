@@ -371,10 +371,10 @@ function FreshnessStatus({
   const label = localReport ? (latestScan ? "Report timestamp" : "Report timestamp unavailable") : loading
     ? "Loading scan evidence"
     : latestScan
-    ? "Last successful scan"
+    ? "Latest observed scan"
     : scans === 0
       ? "No completed scan evidence"
-      : "Last successful scan unavailable";
+      : "Latest scan timestamp unavailable";
 
   return (
     <div
@@ -384,7 +384,7 @@ function FreshnessStatus({
     >
       <div className="flex items-center gap-2">
         <span
-          className={`h-2 w-2 rounded-full ${latestScan && !localReport ? "bg-emerald-500" : "bg-ink-tertiary"}`}
+          className="h-2 w-2 rounded-full bg-ink-tertiary"
           aria-hidden="true"
         />
         <span className="text-xs font-semibold text-foreground">{label}</span>
@@ -394,7 +394,7 @@ function FreshnessStatus({
           Refreshing current evidence.
         </span>
       ) : latestScan ? (
-        <time className="text-xs font-medium tabular-nums text-ink-secondary">
+        <time title="Newest observation in the displayed evidence. Other targets may have older or incomplete evidence." className="text-xs font-medium tabular-nums text-ink-secondary">
           {latestScan}
         </time>
       ) : (
@@ -420,7 +420,7 @@ const COVERAGE_SEVERITY_BANDS: { key: keyof OverviewCoverageLane["severity"]; la
  * The security-posture coverage lanes rendered 1:1 (CSPM / Vuln mgmt / ASPM /
  * DSPM / AISPM). These are overlapping posture *disciplines* (lenses), not a
  * partition: one finding can count in several lanes (a repo CVE is both Vuln
- * mgmt and ASPM; an IaC misconfig is both CSPM and ASPM), so the lanes are not
+ * mgmt and ASPM; repository IaC is ASPM), so the lanes are not
  * additive — the caption above says so, and nothing here presents a lane total.
  * Each lane retains its finding total and labeled severity counts. Unrated is
  * shown only when unknown-severity findings are present.

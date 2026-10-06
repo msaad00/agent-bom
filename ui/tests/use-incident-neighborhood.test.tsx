@@ -112,3 +112,14 @@ it("does not discard evidence when asked to collapse an unloaded entity or the r
   act(() => result.current.collapse("root"));
   expect(result.current.pages).toHaveLength(2);
 });
+
+it("resolves current estate on the first page and pins its continuation", async () => {
+  fetchPage.mockResolvedValueOnce({ ...page("root", "next"), scan_id: "current-estate:new" })
+    .mockRejectedValueOnce(new ApiError("changed", {status: 409, statusText: "Conflict", url: "/incident", method: "GET"}));
+  const {result} = renderHook(() => useIncidentNeighborhood("current-estate:old", "root", "both", "tenant-a"));
+  await waitFor(() => expect(result.current.pages).toHaveLength(1));
+  await act(() => result.current.load("root", "next"));
+  expect(fetchPage.mock.calls[1]?.[1]).toMatchObject({scanId: "current-estate:new", snapshotGeneration: generation});
+  expect(result.current.stale).toBe(true);
+  expect(result.current.nodes).toHaveLength(0);
+});

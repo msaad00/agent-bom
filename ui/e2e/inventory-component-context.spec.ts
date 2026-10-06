@@ -1,13 +1,14 @@
 import { test, expect } from "@playwright/test";
 
 for (const theme of ["light", "dark"] as const) {
-  test(`component relationships preserve evidence and scope in ${theme}`, async ({ page }, testInfo) => {
+ for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
+  test(`component relationships preserve evidence and scope in ${theme} at ${viewport.width}`, async ({ page }, testInfo) => {
     const broadFindingRequests: string[] = [];
-    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: theme });
     await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
     const scan = "component-context-fixture";
-    const asset = { id: "package:shared", type: "package", name: "shared-library", severity: "high", risk_score: 0,
+    const asset = { id: "package:shared", type: "package", name: "shared-library-" + "x".repeat(100), severity: "high", risk_score: 0,
       status: "active", source: "lockfile", sources: ["lockfile"], attributes: { owner: "platform" },
       compliance_tags: [], ecosystem: "pypi", version: "1.0.0", first_seen: "2026-09-01T00:00:00Z", last_seen: "2026-10-01T00:00:00Z",
       finding_summary: { total: 1, ids: ["finding:one"], by_severity: { high: 1 }, top_severity: "high" }, relationship_count: 2 };
@@ -50,7 +51,18 @@ for (const theme of ["light", "dark"] as const) {
       return route.fulfill({ status: 503, json: { detail: "Outside component fixture" } });
     });
     await page.goto(`/inventory/packages?scan=${scan}`);
-    await page.getByText("shared-library", { exact: true }).click();
+    const row = page.locator("tr").filter({hasText: asset.name});
+    await row.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", {name: "Asset details"});
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(row).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByText("Provenance and attributes")).toBeVisible();
+    await expect(page.getByText("platform", {exact:true})).not.toBeVisible();
     const relationships = page.getByRole("list", { name: "Recorded component relationships" });
     await expect(relationships.getByText("Parent · contains")).toBeVisible();
     await expect(relationships.getByRole("link", { name: "Application container" })).toHaveAttribute("href", `/security-graph?lens=estate&node=container%3Aapp&scan=${scan}`);
@@ -58,7 +70,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.getByText("Impact fields")).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-    await page.screenshot({ path: testInfo.outputPath(`component-context-${theme}.png`), fullPage: true, animations: "disabled" });
+    await page.screenshot({ path: testInfo.outputPath(`component-context-${theme}.png`), fullPage: false, animations: "disabled" });
     await page.getByRole("link", { name: "Findings Recorded component evidence" }).click();
     await expect(page).toHaveURL(url => url.searchParams.get("asset") === asset.id && url.searchParams.get("scan") === scan);
     await expect(page.getByRole("list", { name: "Component finding records" }).getByText("Dependency vulnerability")).toBeVisible();
@@ -70,5 +82,31 @@ for (const theme of ["light", "dark"] as const) {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`component-compliance-${theme}.png`), animations: "disabled" });
     expect(broadFindingRequests).toEqual([]);
+    await page.goBack();
+    await page.goBack();
+    await expect(dialog).toBeVisible();
+    await expect(page).toHaveURL(url => url.searchParams.get("asset") === asset.id && url.searchParams.get("scan") === scan);
+    await page.keyboard.press("Escape");
+
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route("**/v1/inventory/assets?**", async route => {
+      await pending;
+      await route.fulfill({json: {
+        schema_version: "inventory.assets.v1", tenant_id: "fixture", scan_id: scan, assets: [], filters: {},
+        pagination: {total: 0, offset: 0, limit: 100, next_cursor: "", has_more: false, facet_filtered: false},
+        facets, facet_metadata: metadata, completeness: {...completeness, returned: 0, total: 0},
+      }});
+    });
+    await page.reload({waitUntil: "domcontentloaded"});
+    await expect(page.getByText("Loading packages", {exact: true})).toBeVisible();
+    release();
+    await expect(page.getByRole("heading", {name: /^No packages/})).toBeVisible();
+    await expect(page.getByText(/does not establish collection coverage/)).toBeVisible();
+    await page.route("**/v1/inventory/assets?**", route => route.abort("failed"));
+    await page.reload({waitUntil: "domcontentloaded"});
+    await expect(page.getByRole("heading", {name: "Cannot connect to the agent-bom API"})).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
+}
 }

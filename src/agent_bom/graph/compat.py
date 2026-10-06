@@ -8,6 +8,11 @@ from agent_bom.graph.types import EntityType, RelationshipType
 NODE_KIND_TO_ENTITY: dict[str, EntityType] = {
     "agent": EntityType.AGENT,
     "server": EntityType.SERVER,
+    "server_cred": EntityType.SERVER,
+    "server_blocked": EntityType.SERVER,
+    "server_intel": EntityType.SERVER,
+    "pkg": EntityType.PACKAGE,
+    "cve": EntityType.VULNERABILITY,
     "credential": EntityType.CREDENTIAL,
     "tool": EntityType.TOOL,
     "vulnerability": EntityType.VULNERABILITY,

@@ -3892,6 +3892,7 @@ def _matches_reachability(reachable: Any, requested: str | None) -> bool:
     )
 
 
+@finding_read_snapshot
 def _list_findings_view_impl(
     request: Request,
     q: str | None,

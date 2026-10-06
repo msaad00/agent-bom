@@ -18,6 +18,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from agent_bom.api.finding_read_context import read_once
 from agent_bom.api.findings_current import _finding_snapshot_jobs, scan_collection_incomplete_reasons, scan_evidence_authority_key
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import JobStatus
@@ -105,6 +106,9 @@ class CurrentGraphStore:
 
         @wraps(method)
         def read(*args: Any, **kwargs: Any) -> Any:
+            requested = str(kwargs.get("scan_id") or "")
+            if requested and not requested.startswith(CURRENT_PREFIX):
+                return method(*args, **kwargs)
             # Retire rebuildable generations only after active readers finish.
             # Iterators hold the same lock while consuming their SQLite cursor.
             if name in {"iter_nodes", "iter_edges"}:
@@ -135,7 +139,10 @@ class CurrentGraphStore:
         else:
             # Backends without a durable revision must fingerprint the evidence,
             # including authority changes that preserve the original timestamps.
-            jobs = self._job_store.list_all(tenant_id=tenant)
+            jobs = read_once(
+                ("jobs", tenant),
+                lambda: [job for job in self._job_store.list_all(tenant_id=tenant) if job.status == JobStatus.DONE and job.result],
+            )
             evidence_revision = _digest([job.model_dump(mode="json") for job in jobs])
         fingerprint = _digest([summaries, evidence_revision])
         with self._lock:

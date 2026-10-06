@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Union
 
 from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_band_rank
+from agent_bom.graph.compat import NODE_KIND_TO_ENTITY
 from agent_bom.output.finding_views import sanitize_output_text, with_output_sanitizer_cache
 from agent_bom.security import sanitize_sensitive_payload
 
@@ -644,14 +645,7 @@ def to_mermaid(
 
 @with_output_sanitizer_cache
 def to_json(graph: DepGraph, *, scan_id: str | None = None, tenant_id: str | None = None) -> dict:
-    """Return a JSON-serialisable representation of the graph.
-
-    Args:
-        graph: Populated dependency graph.
-
-    Returns:
-        Dict with ``nodes``, ``edges``, and ``stats`` keys.
-    """
+    """Serialize sanitized dependency evidence, preserving legacy aliases and receipt objects."""
     graph = _sanitized_graph(graph)
     return {
         "nodes": [
@@ -659,13 +653,7 @@ def to_json(graph: DepGraph, *, scan_id: str | None = None, tenant_id: str | Non
                 "id": n.id,
                 "label": n.label,
                 "kind": n.kind,
-                "entity_type": {
-                    "pkg": "package",
-                    "cve": "vulnerability",
-                    "server_cred": "server",
-                    "server_blocked": "server",
-                    "server_intel": "server",
-                }.get(n.kind, n.kind),
+                "entity_type": NODE_KIND_TO_ENTITY[n.kind].value if n.kind in NODE_KIND_TO_ENTITY else n.kind,
                 "severity": n.severity,
                 "attributes": n.attributes,
             }

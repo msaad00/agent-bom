@@ -2454,7 +2454,7 @@ const README_CAPTURE_FILES = new Set([
   "component-detail-dark-live.png", "component-detail-light-live.png",
   "context-map-horizontal-dark-live.png", "context-map-horizontal-light-live.png",
   "context-map-light-live.png", "context-map-live.png", "correlation-graph-live.png",
-  "dashboard-live.png", "dashboard-risks-live.png", "inventory-live.png", "remediation-live.png",
+  "dashboard-live.png", "dashboard-paths-live.png", "dashboard-risks-live.png", "inventory-live.png", "remediation-live.png",
 ]);
 
 async function capture(page, urlPath, filename, beforeShot, options = {}) {
@@ -2804,7 +2804,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-live.png",
       page: "/?capture=1",
-      scope: "Combined posture and assessment overview with current findings, evaluated-control counts, and visible framework logos",
+      scope: "Posture and current findings with compliance and security-area disclosures collapsed using their controls",
       presentation: `${CAPTURE_THEME} desktop`,
     },
     {
@@ -2835,7 +2835,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "dashboard-paths-live.png",
       page: "/?capture=1",
-      scope: "Default Overview assessment summary with four priority frameworks and risk mappings collapsed",
+      scope: "Expanded Overview assessment summary with four priority frameworks and risk mappings collapsed at 1440 by 900",
     },
     {
       path: "cloud-accounts-live.png",
@@ -3318,7 +3318,7 @@ async function main() {
       expectedText: [/Review these findings first/i, /Top risks/i, /Assets & coverage/i],
       expectedApiPaths: ["/v1/overview", "/v1/inventory/summary"], assertNoHorizontalOverflow: true,
     };
-    const overviewPage = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 1100 });
+    const overviewPage = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 900 });
     await capture(overviewPage, "/?capture=1", "dashboard-live.png", async (dashboardPage) => {
       await preparePosture(dashboardPage);
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
@@ -3329,23 +3329,26 @@ async function main() {
           || frameworkBox.x + frameworkBox.width > findingsBox.x) {
         throw new Error("Overview proof must retain the desktop side-by-side compliance and findings layout");
       }
-      await dashboardPage.setViewportSize({ width: 1440, height: 900 });
+      // Capture an actual compact disclosure state. The separate framework
+      // capture below verifies the expanded controls and assessment receipts.
+      await frameworks.getByRole("button", { name: /^Compliance & frameworks/ }).click();
+      await findings.getByRole("button", { name: /^Findings by security area/ }).click();
+      await expect(frameworks.getByRole("button", { name: /^Compliance & frameworks/ })).toHaveAttribute("aria-expanded", "false");
+      await expect(findings.getByRole("button", { name: /^Findings by security area/ })).toHaveAttribute("aria-expanded", "false");
       await scrollTo(dashboardPage, 0);
     }, {
       ...postureAssertions,
-      expectedText: [...postureAssertions.expectedText, "NIST AI RMF", "NIST SP 800-53", "CMMC 2.0", /Risk mappings/i],
+      expectedText: [...postureAssertions.expectedText, "Compliance & frameworks", "Findings by security area"],
       viewportSelectors: ['section[aria-label="Compliance & frameworks"]', 'section[aria-label="Findings by security area"]', '[role="tabpanel"][aria-label="Posture"]', "#demo-estate-watermark"],
-      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 1440, minFontPx: 12 },
+      readmeTextContract: { selector: '[role="tabpanel"][aria-label="Posture"]', targetWidthPx: 1440, minFontPx: 12 },
     });
     await overviewPage.close();
     await capture(page, "/?capture=1", "dashboard-risks-live.png", prepareExecutiveRisks, executiveRiskAssertions);
-    const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1040, height: 1100 });
+    const frameworkPage = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 900 });
     await capture(frameworkPage, "/?capture=1", "dashboard-paths-live.png", async (dashboardPage) => {
       const frameworks = dashboardPage.getByRole("region", { name: "Compliance & frameworks", exact: true });
       await frameworks.scrollIntoViewIfNeeded();
       const top = await frameworks.evaluate((element) => element.getBoundingClientRect().top + window.scrollY);
-      const height = await frameworks.evaluate((element) => Math.ceil(element.getBoundingClientRect().height));
-      await dashboardPage.setViewportSize({ width: 1040, height: height + 116 });
       await scrollTo(dashboardPage, top - 92);
       for (const label of ["NIST SP 800-53", "CMMC 2.0", "FedRAMP Moderate", "NIST AI RMF"]) {
         await frameworks.getByText(label, { exact: false }).first().waitFor({ state: "visible" });
@@ -3358,7 +3361,7 @@ async function main() {
       expectedText: [/Control frameworks/i, "NIST AI RMF", "NIST SP 800-53", /Risk mappings/i, /Show all .* control frameworks/],
       expectedApiPaths: ["/v1/overview", "/v1/jobs"],
       viewportSelectors: ['section[aria-label="Compliance & frameworks"]', "#demo-estate-watermark"],
-      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 920, minFontPx: 12 },
+      readmeTextContract: { selector: '[data-testid="overview-framework-cards"]', targetWidthPx: 1440, minFontPx: 12 },
       assertNoHorizontalOverflow: true,
     });
     await frameworkPage.close();

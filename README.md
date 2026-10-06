@@ -109,7 +109,7 @@ The sample deliberately triggers a security gate (exit `1`). Save CI evidence wi
 </details>
 
 **Give assistants the same evidence:** `agent-bom mcp server` (MCP support is included by default).
-Source version: **v0.108.0** · Latest release: **v0.108.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
+Source version: **v0.108.1** · Latest release: **v0.108.0**. Start with eight focused tools, then select a graph, cloud, runtime or audit
 profile. The full catalog has 88 MCP tools, 7 resources, and 8 workflow prompts.
 [MCP workflows](docs/MCP_WORKFLOWS.md)
 

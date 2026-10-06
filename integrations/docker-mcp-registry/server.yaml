@@ -23,7 +23,7 @@ about:
 
 source:
   project: https://github.com/msaad00/agent-bom
-  commit: b7ced1e093bcefa7456b6764ac463b0664371f7c
+  commit: b0b55f024b23388f2c8b30a5268e7b6eb2898a65
 
 run:
   env:

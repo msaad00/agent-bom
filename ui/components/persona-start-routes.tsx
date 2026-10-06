@@ -19,14 +19,14 @@ const STARTS: PersonaStart[] = [
   {
     label: "Docker scan",
     persona: "Developer / evaluator",
-    command: "docker run --rm agentbom/agent-bom:0.108.0 scan --demo --offline",
+    command: "docker run --rm agentbom/agent-bom:0.108.1 scan --demo --offline",
     artifact: "Synthetic inventory and findings; exit 1 is the expected security verdict",
     href: "/scan",
   },
   {
     label: "GitHub Action",
     persona: "AppSec / SecOps",
-    command: "uses: msaad00/agent-bom@v0.108.0",
+    command: "uses: msaad00/agent-bom@v0.108.1",
     artifact: "SARIF, pull-request summary, and policy exit code",
     href: "/findings",
   },

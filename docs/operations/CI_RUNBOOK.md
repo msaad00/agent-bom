@@ -7,23 +7,24 @@ stuck, a workflow fails unexpectedly, or you need to retrigger checks.
 
 ## CI lanes
 
-PR CI is a fast lane (target: a mergeable verdict in about five minutes).
-Long suites run after merge on every `main` push and nightly. All of them live
-in `ci.yml` unless noted, so one workflow run carries the full proof.
+PR CI runs the full correctness suite on GitHub's merge result, alongside
+changed-domain tests and contract smoke. The selected tests provide early
+feedback; they do not replace the required full suite. Deployment and performance
+lanes also run on `main` and nightly. All lanes live in `ci.yml` unless noted.
 
 | Lane | Pull request | Push to `main` | Nightly / manual |
 |---|---|---|---|
 | Lint and Type Check (ruff, mypy with main-seeded cache) | yes (required) | yes | yes |
 | Security Scan (policy gates, bandit, OSV, npm advisories, release call-graph lint) | yes (required) | yes | yes |
 | Build Package (wheel + clean-venv MCP smoke) | yes (required, starts immediately) | yes | yes |
-| Test (Python 3.13): changed-domain tests + cross-surface contracts | yes (required) | yes | yes |
+| Test (Python 3.13): full correctness + changed-domain and cross-surface contracts | yes (required) | yes | yes |
 | Version Alignment (drift, counts, OpenAPI, schemas) | yes | yes | yes |
 | CodeQL (Python excluding `tests/`, Actions) | yes (required) | yes | weekly |
 | PR Security Gate (pip-audit, self-scan), Dependency Review, Gitleaks | yes | yes (except Dependency Review) | - |
 | UI Validate (lint, vitest, schema drift) + UI export build | when UI inputs change | when UI inputs change | yes |
 | Docs Strict, Helm, Compose, Endpoint packaging | when their inputs change | when their inputs change | yes |
 | Native App image and persistence | when its inputs change | yes | yes |
-| Full correctness suite, Python 3.11/3.12/3.13/3.14 (3.11 with coverage floor) | no | yes | yes |
+| Full correctness suite, Python 3.11/3.12/3.13/3.14 (3.11 with coverage floor) | yes (required through aggregation) | yes | yes |
 | Graph performance, Output scale performance, Extra-gated SDK smoke | no | yes | yes |
 | Postgres Integration Contract (live RLS, migrations, schema parity) | no | yes | yes |
 | Test (Alpine/musl) | no | subset; full on dependency changes | full suite nightly, subset manual |
@@ -40,16 +41,16 @@ nightly, merge-queue, and manual runs), `Python correctness aggregation`
 treats a skipped post-merge lane as a failure, and `Test (Python 3.13)`
 requires the Docker lane, so a green `main` run means the full suite, the
 performance/Postgres lanes, and the release image all passed. Superseded PR
-runs are cancelled; the concurrency policy preserves running `main` runs.
-A newer pending `main` run can replace an older pending run, so verify the
-exact SHA instead of treating an older or cancelled run as release proof.
+runs are cancelled; each `main` SHA has its own concurrency group so neither
+running nor pending evidence is superseded by another main commit. Verify the
+exact SHA instead of treating an older run as release proof.
 A post-merge regression opens a
 `ci-regression` issue through `main-failure-alert.yml`, which watches
 `CI/CD Pipeline`, `Runtime Helm Acceptance`, and `ClusterFuzzLite`.
 
-The tradeoff is explicit: a PR can merge with a failure the fast lane did not
-select, and the next `main` run reports it. Fix forward or revert; do not tag
-until `main` is green.
+When required main checks fail, freeze further merges and releases. Repair the
+failure through a reviewed change and verify that exact merged SHA before
+resuming. Do not automatically revert or tag over missing or failing evidence.
 
 ---
 
@@ -61,8 +62,9 @@ mixed, malformed, workflow, dependency, source, UI, and deployment path sets
 fail closed to the normal validation lanes.
 
 For a documentation-only pull request, the five branch-protection contexts
-still attach to the head SHA. Python, dependency scanning, type checking, and
-package construction use explicit fast-success steps instead of disappearing
+still attach to the head SHA. The full correctness suite remains mandatory.
+Selected smoke, dependency scanning, type checking and package construction
+use explicit fast-success steps instead of disappearing
 through workflow-level path filters. Public-doc hygiene, release-copy/count
 consistency, strict MkDocs validation when applicable, and the unconditional
 gitleaks range scan still run. Main pushes use the same classification; merge
@@ -77,8 +79,8 @@ does not weaken branch-protection or secret-scanning behavior.
 
 ## Inspect current protection first
 
-As verified on September 27, 2026, legacy `main` protection uses
-`required_status_checks.strict = false` and these five contexts:
+As verified on October 6, 2026, legacy `main` protection uses
+`required_status_checks.strict = true` and these five contexts:
 `Lint and Type Check`, `Test (Python 3.13)`, `Build Package`, `Security Scan`,
 and `CodeQL`. The branch rules endpoint returned no active ruleset rules.
 These are a dated settings snapshot, not configuration enforced by this file.
@@ -91,9 +93,9 @@ gh api repos/msaad00/agent-bom/rules/branches/main --jq '[.[] | .type] | unique'
 gh pr view <PR_NUMBER> --json headRefOid,reviewDecision,mergeStateStatus,statusCheckRollup
 ```
 
-With `strict=false`, a stale base alone is not an up-to-date branch-protection
-requirement. Review, signature, missing-context, or other rules can still block
-merging. Do not change protection settings to compensate for missing CI evidence.
+Strict protection requires validation against current main. Review, signature,
+missing-context and other rules can also block merging. Do not weaken protection
+to compensate for missing CI evidence.
 
 ## Ready PRs blocked behind `main`
 
@@ -107,8 +109,7 @@ readiness PRs are stacked behind a strict `main` branch protection rule.
 ### Root cause
 
 If live protection reports `required_status_checks.strict = true`, advancing
-`main` can require a refreshed PR head. This conditional diagnosis does not
-apply to the `strict=false` snapshot above. When a refresh is needed, follow
+`main` can require a refreshed PR head. When a refresh is needed, follow
 the signed local-rebase workflow in `AGENTS.md`, revalidate, and push once with
 `--force-with-lease`. Let the new head's checks finish.
 
@@ -243,8 +244,9 @@ not that a queue is enabled or available for the repository's plan.
 Use `scripts/enable_merge_queue.sh --check` for read-only inspection. If the
 owner enables a supported queue, copy the five live required contexts from
 the API output above and verify a real merge-group run. Do not configure the
-four full-correctness matrix job names as required PR contexts: they run in
-the post-merge lane. Keep the exact-main release gate regardless of queue use.
+four full-correctness matrix job names as separate required contexts: the stable
+`Test (Python 3.13)` aggregation already requires all of them. Keep strict
+protection when a queue is unavailable and retain the exact-main release gate.
 
 ---
 

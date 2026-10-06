@@ -16,6 +16,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from rich.console import Console
@@ -43,6 +44,7 @@ from agent_bom.constants import AI_PACKAGES as _AI_FRAMEWORK_PACKAGES
 from agent_bom.coverage import is_scope_exclusion
 from agent_bom.cpe_match import cpe_vendor_hint as _cpe_vendor_hint
 from agent_bom.eu_ai_act import tag_blast_radius as tag_eu_ai_act
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.fedramp import tag_blast_radius as tag_fedramp
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
@@ -1786,14 +1788,15 @@ async def scan_packages(
     return total_vulns
 
 
-def _print_vulnerability_summary(total_vulns: int, findings_count: int) -> None:
+def _print_vulnerability_summary(total_vulns: int, findings_count: int, *, agents: list[Agent] | None = None) -> None:
     """Keep empty findings distinct from a complete negative assessment."""
     if total_vulns:
         console.print(f"  [red]⚠ Found {total_vulns} vulnerabilities across {findings_count} findings[/red]")
     else:
-        from agent_bom.scanners.state import peek_coverage_warnings
+        from agent_bom.scanners.state import peek_coverage_warnings, peek_scan_warnings
 
-        if any(not is_scope_exclusion(warning) for warning in peek_coverage_warnings()):
+        run = effective_scan_run(SimpleNamespace(agents=agents or [], coverage_warnings=peek_coverage_warnings()))
+        if run.outcome is not ScanOutcome.COMPLETE or peek_scan_warnings():
             console.print("  [yellow]No vulnerabilities confirmed; coverage gaps limit this assessment[/yellow]")
         else:
             console.print("  [green]✓ No known vulnerabilities found[/green]")
@@ -2038,7 +2041,7 @@ async def scan_agents(
     # Sort by risk score descending
     blast_radii.sort(key=lambda br: br.risk_score, reverse=True)
 
-    _print_vulnerability_summary(total_vulns, len(blast_radii))
+    _print_vulnerability_summary(total_vulns, len(blast_radii), agents=agents)
 
     _logger.info(
         "Scan summary: %d packages scanned, %d vulnerabilities, %d blast radius findings across %d agent(s)",

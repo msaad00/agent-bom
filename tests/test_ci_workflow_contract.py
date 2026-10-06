@@ -676,3 +676,15 @@ def test_ui_first_failure_diagnostics_survive_without_retries() -> None:
     config = (ROOT / "ui" / "playwright.config.ts").read_text()
     assert 'trace: "retain-on-failure"' in config
     assert 'screenshot: "only-on-failure"' in config
+
+
+def test_action_classifier_includes_the_cyclonedx_dogfood_fixture() -> None:
+    import re
+
+    steps = _ci()["jobs"]["changes"]["steps"]
+    script = next(step["run"] for step in steps if step.get("id") == "classify")
+    pattern = re.search(r"grep -Eq '([^']+)'; then\n\s+action=true", script)
+    assert pattern is not None
+    for path in ("action.yml", "tests/fixtures/test-sbom.cdx.json", "tests/fixtures/test-policy.json"):
+        assert re.search(pattern[1], path), path
+    assert not re.search(pattern[1], "docs/readme.md")

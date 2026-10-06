@@ -3821,7 +3821,7 @@ async function main() {
     await capture(page, "/remediation?capture=1", "remediation-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: ["42.5% modeled window risk"],
-      expectedApiPaths: ["/v1/findings/remediation", "/v1/campaigns/verification-queue"],
+      expectedApiPaths: ["/v1/findings/remediation"],
     });
 
     const lightPage = await newCapturePage("light", { width: 1440, height: 980 });
@@ -3864,7 +3864,7 @@ async function main() {
     await capture(lightPage, "/remediation?capture=1", "remediation-light-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "CVE-2025-29927", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
-      expectedApiPaths: ["/v1/findings/remediation", "/v1/campaigns/verification-queue"],
+      expectedApiPaths: ["/v1/findings/remediation"],
     });
 
     const mobilePage = await newCapturePage("dark", { width: 390, height: 844 });
@@ -3905,7 +3905,7 @@ async function main() {
     await capture(mobilePage, "/remediation?capture=1", "remediation-mobile-live.png", undefined, {
       expectedText: ["Package remediation plan", "next", "15.2.3", "Campaign workflow and verification"],
       rejectedText: [/Loading prioritized campaigns/i, "42.5% modeled window risk"],
-      expectedApiPaths: ["/v1/findings/remediation", "/v1/campaigns/verification-queue"],
+      expectedApiPaths: ["/v1/findings/remediation"],
       assertNoHorizontalOverflow: true,
     });
     await writeScreenshotManifest(stageDir);

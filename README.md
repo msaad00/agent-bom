@@ -24,18 +24,14 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-<p align="center"><a href="docs/images/context-map-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-light-live.png"><img src="docs/images/context-map-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a></p>
+<p align="center"><a href="docs/images/context-map-horizontal-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-horizontal-light-live.png"><img src="docs/images/context-map-horizontal-dark-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a></p>
 
 agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account, matches packages against vulnerability advisories, and connects findings to recorded agent, tool and credential relationships.
-Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data. **Vertical** follows dependencies top to bottom; **Horizontal** traces the same connections left to right. [Compare layouts](docs/GALLERY.md#explore-the-same-graph-in-both-directions).
-
-<details><summary>See the same graph horizontally</summary>
-<p align="center"><a href="docs/images/context-map-horizontal-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-horizontal-light-live.png"><img src="docs/images/context-map-horizontal-dark-live.png" alt="Horizontal layout of the same nine entities: role to agent to MCP server to package to finding, with tool and credential branches" width="960"></picture></a></p>
-</details>
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data.
 
 **Start where you work:** [scan a repository](#quick-start), [run the shared dashboard](#self-host-in-your-environment), or [connect your assistant](docs/MCP_WORKFLOWS.md). Apache-2.0; the control plane runs in your own environment.
 
-**Follow one component:** Inventory → component → Findings → Compliance. Keep the exact component and retained snapshot in scope, inspect recorded relationships, and export the loaded evidence. [Try the connected-BOM walkthrough](examples/connected-bom/README.md).
+**Trace a vulnerable dependency to its impact:** connect the package to affected agents, inspect the supporting evidence, then carry the finding into remediation and control review. [Try the connected-BOM walkthrough](examples/connected-bom/README.md).
 
 ## Self-host in your environment
 **Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
@@ -170,22 +166,20 @@ opens permission receipts, CVE prerequisites and related activity; missing explo
 Distinguish storage, access evidence and collection sources; derived classifications do not prove contents or successful reads. [Data and evidence model](site-docs/architecture/security-graph-model.md#data-locations-access-and-evidence-sources).
 </details>
 
-### Engineers and GRC: prioritize findings and verify fixes
+### Engineers and GRC: turn exposure into an accountable fix
 
-Open **Inventory → component → Findings → Compliance**. Views retain the component identifier and selected evidence scope: the current tenant estate by default, or an explicit historical scan. Inspect recorded relationships, sources and timestamps, then export the loaded evidence.
-Open remediation for package upgrades, assign owners and re-scan to verify fixes. Control mappings are **not evaluated passes**.
+Connect the upgrade decision, the responsible owner and the evidence needed to close the risk.
 
-[Component findings](docs/images/component-findings-dark-live.png) · [Scoped controls](docs/images/component-controls-dark-live.png) · [Mobile component drawer](docs/images/component-detail-mobile-dark-live.png) · [Light-theme walkthrough](docs/GALLERY.md#follow-one-component).
-The [reproducible rescan example](examples/connected-bom/README.md) changes a dependency input and retains both snapshots. One pinned advisory disappears; an unrelated modeled cloud check remains failed. No package is installed and no deployment is changed.
+| Decision | Engineering and governance evidence |
+|---|---|
+| **What do we fix first?** | Prioritize package upgrades using severity, recorded agent and credential associations, and available fixes. |
+| **Who owns the work?** | Assign owners and SLAs, link tickets, and track remediation campaigns. |
+| **Did the fix hold?** | Re-scan the same scope, compare retained findings, and verify the campaign before closing it. |
+| **What supports the control review?** | Review evaluated checks, source receipts and assessment gaps; export scoped evidence. A control mapping alone is not a passing check. |
 
-<p align="center"><a href="docs/images/component-detail-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/component-detail-light-live.png"><img src="docs/images/component-detail-dark-live.png" alt="Selected sample component with recorded relationships and explicit collection-coverage limits" width="920"></picture></a></p>
+<p align="center"><a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Sample remediation plan with package fixes, affected agents, credential associations and an owner/SLA verification workflow" width="1440"></a></p>
 
-<details>
-<summary>See package remediation and verification</summary>
-
-<p align="center"><a href="docs/images/remediation-live.png"><img src="docs/images/remediation-live.png" alt="Actual remediation screen with sample package upgrades, affected controls and campaign verification workflow" width="920"></a></p>
-
-</details>
+[Run the before-and-after dependency example](examples/connected-bom/README.md) · [Review component control evidence](docs/images/component-controls-dark-live.png) · [Compliance evidence workflow](site-docs/features/compliance.md)
 
 These are application captures, not mockups. Overview, Findings and remediation use
 labeled sample data. The graph uses the reproducible reference lab: real parsers,

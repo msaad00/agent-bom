@@ -26,6 +26,7 @@ from agent_bom.graph.blast_projection import enrich_blast_radius, project_blast_
 from agent_bom.graph.build_analysis import GraphAnalysisPorts, apply_build_analysis
 from agent_bom.graph.build_indexes import BuildIndexes
 from agent_bom.graph.build_input import GraphBuildInput
+from agent_bom.graph.cloud_compute_projection import project_instances, project_security_groups
 from agent_bom.graph.cloud_context import (
     _add_account_resource_hierarchy as _add_account_resource_hierarchy,
 )
@@ -76,6 +77,8 @@ from agent_bom.graph.cloud_context import (
 )
 from agent_bom.graph.cloud_context import cloud_inventory_sources
 from agent_bom.graph.cloud_rbac import add_cloud_role_assignments as _add_cloud_role_assignments
+from agent_bom.graph.cloud_service_projection import project_aws_services, project_gcp_services
+from agent_bom.graph.cloud_storage_projection import project_buckets, project_databases, project_side_scan_targets
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
 from agent_bom.graph.finding_projection import _resolve_skill_audit_target_ids as _resolve_skill_audit_target_ids
@@ -2955,292 +2958,55 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
 
     resource_ids: list[str] = []
 
-    # ── Agentless side-scan targets → workload disk CLOUD_RESOURCE ──
-    for target in inventory.get("side_scan_targets", []) or []:
-        if not isinstance(target, dict):
-            continue
-        target_id_raw = target.get("target_id") or target.get("id") or target.get("name")
-        target_id = _clean_graph_part(target_id_raw)
-        if not target_id:
-            continue
-        target_provider = _clean_graph_part(target.get("provider")) or provider
-        target_type = _clean_graph_part(target.get("target_type")) or "disk"
-        target_location = _clean_graph_part(target.get("location")) or region
-        node_id = f"cloud_resource:{target_provider}:cwpp:{target_type}:{target_id}"
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"{target_type}: {target.get('name') or target_id}",
-                attributes={
-                    "resource_id": target_id_raw,
-                    "resource_name": _clean_graph_part(target.get("name")) or target_id,
-                    "resource_type": "workload_disk",
-                    "resource_kind": target_type,
-                    "cloud_provider": target_provider,
-                    "cloud_service": "cwpp-side-scan",
-                    "location": target_location,
-                    "account_id": target.get("account_id") or account_id,
-                    "side_scan_status": _clean_graph_part(target.get("status")) or "eligible",
-                    "side_scan_execution": _clean_graph_part(target.get("execution")) or "not_started",
-                    "side_scan_requires_snapshot_role": bool(target.get("requires_snapshot_role", True)),
-                    "size_gb": target.get("size_gb"),
-                    "encryption": _clean_graph_part(target.get("encryption")) or "unknown",
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=target_provider, surface="cwpp"),
-            )
-        )
-        resource_ids.append(node_id)
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node_id,
-                evidence={"source": "cloud-inventory", "reason": "side_scan_target"},
-            )
-
-    # ── S3 buckets → CLOUD_RESOURCE (CNAPP makes the DATA_STORE companion) ──
-    for bucket in inventory.get("buckets", []) or []:
-        if not isinstance(bucket, dict):
-            continue
-        name = _clean_graph_part(bucket.get("name"))
-        if not name:
-            continue
-        bucket_service = _clean_graph_part(bucket.get("_service")) or "s3"
-        bucket_kind = _clean_graph_part(bucket.get("_kind")) or "s3-bucket"
-        bucket_label = _clean_graph_part(bucket.get("_label")) or "s3 bucket"
-        bucket_tags = bucket.get("tags", {}) if isinstance(bucket.get("tags"), dict) else {}
-        bucket_env = _resource_environment(bucket)
-        node_id = f"cloud_resource:{provider}:{bucket_service}:bucket:{name}"
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
-                # Label carries a data-store keyword ("bucket"/"storage account")
-                # so the CNAPP overlay's data-store match fires and builds the
-                # DATA_STORE companion.
-                label=f"{bucket_label}: {name}",
-                attributes={
-                    "resource_id": bucket.get("arn") or bucket.get("id") or name,
-                    "resource_name": name,
-                    "resource_type": "bucket",
-                    "resource_kind": bucket_kind,
-                    "cloud_provider": provider,
-                    "cloud_service": bucket_service,
-                    "location": _clean_graph_part(bucket.get("location")) or region,
-                    **_recorded_exposure_attributes(bucket, "publicly_accessible"),
-                    "tags": bucket_tags,
-                    "account_id": account_id,
-                    "environment": bucket_env,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="s3", environment=bucket_env),
-            )
-        )
-        resource_ids.append(node_id)
-        # Redacted DSPM content-sampling evidence rides onto the resource node so
-        # the CNAPP/DSPM overlay's ``content_classification`` reader promotes the
-        # DATA_STORE companion to a sensitive crown jewel (parity with the DB path
-        # below). Copied verbatim — it is already redacted (types/counts only).
-        bucket_classification = bucket.get("content_classification")
-        if isinstance(bucket_classification, dict):
-            graph.nodes[node_id].attributes["content_classification"] = bucket_classification
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node_id,
-                evidence={"source": "cloud-inventory"},
-            )
-
-    # ── DSPM databases → CLOUD_RESOURCE (RDS/Postgres/warehouse content stores) ──
-    # A ``dspm_databases`` record carries the redacted database content-scan
-    # classification (``agent-bom.dspm.database_scan.v1``). Materialize each as a
-    # data-store-labelled CLOUD_RESOURCE carrying the classification so the CNAPP
-    # overlay attaches a DATA_STORE companion and, when publicly reachable, the
-    # public→sensitive toxic-combination path fires — the same surface S3/GCS
-    # content sampling feeds. Never raises into the builder.
-    for db in original_inventory.get("dspm_databases", []) or []:
-        if not isinstance(db, dict):
-            continue
-        db_name = _clean_graph_part(db.get("name"))
-        if not db_name:
-            continue
-        db_classification = db.get("content_classification")
-        db_attributes: dict[str, Any] = {
-            "resource_id": db.get("id") or db.get("arn") or db_name,
-            "resource_name": db_name,
-            "resource_type": "database",
-            "resource_kind": _clean_graph_part(db.get("engine")) or "database",
-            "cloud_provider": provider,
-            "cloud_service": "dspm-database",
-            "location": _clean_graph_part(db.get("location")) or region,
-            **_recorded_exposure_attributes(db, "publicly_accessible"),
-            "is_data_store": True,
-            "account_id": db.get("account_id") or account_id,
-        }
-        if isinstance(db_classification, dict):
-            db_attributes["content_classification"] = db_classification
-        node_id = f"cloud_resource:{provider}:database:{db_name}"
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
-                # Label carries the "database" data-store keyword so the CNAPP
-                # overlay's data-store match fires and builds the companion.
-                label=f"database: {db_name}",
-                attributes=db_attributes,
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="dspm"),
-            )
-        )
-        resource_ids.append(node_id)
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node_id,
-                evidence={"source": "cloud-inventory"},
-            )
-
-    # ── EC2 security groups → CLOUD_RESOURCE (carry structured exposure) ──
-    sg_node_by_id: dict[str, str] = {}
-    for group in inventory.get("security_groups", []) or []:
-        if not isinstance(group, dict):
-            continue
-        group_id = _clean_graph_part(group.get("group_id"))
-        if not group_id:
-            continue
-        sg_service = _clean_graph_part(group.get("_service")) or "ec2"
-        sg_kind = _clean_graph_part(group.get("_kind")) or "ec2-security-group"
-        sg_resource_type = _clean_graph_part(group.get("_resource_type")) or "security-group"
-        sg_env = _resource_environment(group)
-        node_id = f"cloud_resource:{provider}:{sg_service}:{sg_resource_type}:{group_id}"
-        sg_node_by_id[group_id] = node_id
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"{sg_resource_type}: {group.get('name') or group_id}",
-                attributes={
-                    "resource_id": group_id,
-                    "resource_name": _clean_graph_part(group.get("name")) or group_id,
-                    "resource_type": sg_resource_type,
-                    "resource_kind": sg_kind,
-                    "cloud_provider": provider,
-                    "cloud_service": sg_service,
-                    "location": region,
-                    "vpc_id": _clean_graph_part(group.get("vpc_id")),
-                    **_recorded_exposure_attributes(group, "internet_exposed"),
-                    "network_exposure": list(group.get("network_exposure", []) or []),
-                    # GCP firewall scoping (empty on AWS); the instance-matching
-                    # pass below reads these to know which instances a rule covers.
-                    "fw_network": _clean_graph_part(group.get("network")),
-                    "fw_target_tags": list(group.get("target_tags", []) or []),
-                    "fw_target_service_accounts": list(group.get("target_service_accounts", []) or []),
-                    "fw_source_ranges": list(group.get("source_ranges", []) or []),
-                    "account_id": account_id,
-                    "environment": sg_env,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2", environment=sg_env),
-            )
-        )
-        resource_ids.append(node_id)
-
-    # ── EC2 instances → CLOUD_RESOURCE (linked to their security groups) ──
-    # Track (node_id, raw-instance) so the GCP firewall-matching pass can mark
-    # exposure by network + target tags/SA (GCP has no per-instance SG-id list).
-    instance_nodes: list[tuple[str, dict[str, Any]]] = []
-    internet_facing_lbs: list[tuple[str, str]] = []
-    for instance in inventory.get("instances", []) or []:
-        if not isinstance(instance, dict):
-            continue
-        instance_id = _clean_graph_part(instance.get("instance_id"))
-        if not instance_id:
-            continue
-        inst_service = _clean_graph_part(instance.get("_service")) or "ec2"
-        inst_kind = _clean_graph_part(instance.get("_kind")) or "ec2-instance"
-        inst_label = _clean_graph_part(instance.get("_label")) or "ec2"
-        node_id = f"cloud_resource:{provider}:{inst_service}:instance:{instance_id}"
-        public_ip = _clean_graph_part(instance.get("public_ip"))
-        instance_env = _resource_environment(instance)
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"{inst_label}: {instance.get('name') or instance_id}",
-                attributes={
-                    "resource_id": instance_id,
-                    "resource_name": _clean_graph_part(instance.get("name")) or instance_id,
-                    "resource_type": "instance",
-                    "resource_kind": inst_kind,
-                    "cloud_provider": provider,
-                    "cloud_service": inst_service,
-                    "location": _clean_graph_part(instance.get("region")) or region,
-                    "instance_type": _clean_graph_part(instance.get("instance_type")),
-                    "image_id": _clean_graph_part(instance.get("image_id")),
-                    "state": _clean_graph_part(instance.get("state")),
-                    "vpc_id": _clean_graph_part(instance.get("vpc_id")),
-                    "public_ip": public_ip,
-                    "private_ip": _clean_graph_part(instance.get("private_ip")),
-                    "iam_instance_profile": _clean_graph_part(instance.get("iam_instance_profile")),
-                    "security_group_ids": list(instance.get("security_group_ids", []) or []),
-                    # GCP instance scoping (empty on AWS); the GCP firewall-matching
-                    # pass below reads these to decide which permissive rules apply.
-                    "network": _clean_graph_part(instance.get("network")),
-                    "network_tags": list(instance.get("network_tags", []) or []),
-                    "service_accounts": list(instance.get("service_accounts", []) or []),
-                    "account_id": account_id,
-                    "environment": instance_env,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="ec2", environment=instance_env),
-            )
-        )
-        resource_ids.append(node_id)
-        instance_nodes.append((node_id, instance))
-        for sg_id in instance.get("security_group_ids", []) or []:
-            sg_node_id = sg_node_by_id.get(_clean_graph_part(sg_id))
-            if not sg_node_id:
-                continue
-            graph.add_edge(
-                UnifiedEdge(
-                    source=node_id, target=sg_node_id, relationship=RelationshipType.PART_OF, evidence={"source": "cloud-inventory"}
-                )
-            )
-            # An internet-facing security group exposes the instances in it.
-            sg_node = graph.nodes.get(sg_node_id)
-            if sg_node is not None and coerce_truthy(sg_node.attributes.get("internet_exposed")):
-                graph.add_edge(
-                    UnifiedEdge(
-                        source=sg_node_id,
-                        target=node_id,
-                        relationship=RelationshipType.EXPOSED_TO,
-                        weight=6.0,
-                        evidence={"source": "cloud-inventory", "reason": "internet_facing_security_group"},
-                    )
-                )
-
-        # A user-assigned managed identity is assumed by the VM: the identity's
-        # permissions become the VM's blast radius. ASSUMES from the VM node to
-        # each managed-identity node (those nodes are added by the principal pass
-        # below; edges may reference them ahead of creation).
-        for mi_arm_id in instance.get("user_assigned_identity_ids", []) or []:
-            mi_clean = _clean_graph_part(mi_arm_id)
-            if not mi_clean:
-                continue
-            mi_node_id = _identity_node_id(EntityType.MANAGED_IDENTITY, provider, mi_clean)
-            graph.add_edge(
-                UnifiedEdge(
-                    source=node_id,
-                    target=mi_node_id,
-                    relationship=RelationshipType.ASSUMES,
-                    weight=5.0,
-                    evidence={"source": "cloud-inventory", "reason": "vm_user_assigned_identity"},
-                )
-            )
+    project_side_scan_targets(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
+    project_buckets(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
+    project_databases(
+        graph,
+        original_inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
+    sg_node_by_id = project_security_groups(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
+    instance_nodes = project_instances(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+        sg_node_by_id=sg_node_by_id,
+    )
 
     # ── GCP compute exposure: match permissive firewalls to instances ──────
     # GCP firewalls apply by network + target tags / target service accounts,
@@ -3257,123 +3023,26 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
         if iid:
             instance_node_by_id[iid] = inst_node_id
 
-    # ── AWS data + compute services (RDS / DynamoDB / Lambda / EKS) ──────
-    # (key, service, resource_type, kind, label, is_data_store)
-    for coll_key, svc, rtype, kind, label, is_data in (
-        ("rds_instances", "rds", "database", "rds-instance", "rds database", True),
-        ("dynamodb_tables", "dynamodb", "database", "dynamodb-table", "dynamodb table", True),
-        ("lambda_functions", "lambda", "function", "lambda-function", "lambda function", False),
-        ("eks_clusters", "eks", "container_cluster", "eks-cluster", "eks cluster", False),
-        ("elb_load_balancers", "elbv2", "load_balancer", "elb-load-balancer", "load balancer", False),
-        ("vpcs", "ec2", "virtual_network", "vpc", "vpc", False),
-        ("kms_keys", "kms", "key", "kms-key", "kms key", False),
-        ("secrets", "secretsmanager", "secret", "secretsmanager-secret", "secret", False),
-        ("cloudfront_distributions", "cloudfront", "cdn", "cloudfront-distribution", "cdn distribution", False),
-        ("ecr_repositories", "ecr", "container_registry", "ecr-repository", "container registry", False),
-        ("redshift_clusters", "redshift", "data_warehouse", "redshift-cluster", "redshift warehouse", True),
-        ("messaging", "messaging", "messaging", "aws-messaging", "messaging", False),
-    ):
-        for item in inventory.get(coll_key, []) or []:
-            if not isinstance(item, dict):
-                continue
-            name = _clean_graph_part(item.get("name"))
-            if not name:
-                continue
-            node_id = cloud_resource_node_id(provider, f"{svc}:{rtype}", item, account_id, region)
-            exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed", "endpoint_public")
-            item_env = _resource_environment(item)
-            graph.add_node(
-                UnifiedNode(
-                    id=node_id,
-                    entity_type=EntityType.DATA_STORE if is_data else EntityType.CLOUD_RESOURCE,
-                    label=f"{label}: {name}",
-                    attributes={
-                        "resource_id": _clean_graph_part(item.get("arn")) or name,
-                        "resource_name": name,
-                        "resource_type": rtype,
-                        "resource_kind": kind,
-                        "cloud_provider": provider,
-                        "cloud_service": svc,
-                        "location": _clean_graph_part(item.get("location")) or region,
-                        **exposure,
-                        "is_data_store": is_data,
-                        "engine": _clean_graph_part(item.get("engine")),
-                        "runtime": _clean_graph_part(item.get("runtime")),
-                        "encrypted": bool(item.get("encrypted")),
-                        "account_id": account_id,
-                        "environment": item_env,
-                    },
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider=provider, surface=svc, environment=item_env),
-                )
-            )
-            resource_ids.append(node_id)
-            if account_node_id:
-                _add_account_resource_hierarchy(
-                    graph,
-                    account_node_id,
-                    node_id,
-                    evidence={"source": "cloud-inventory"},
-                )
-            if coll_key == "elb_load_balancers" and exposure["internet_exposed"] is True:
-                internet_facing_lbs.append((node_id, _clean_graph_part(item.get("vpc_id"))))
-
-    # ── GCP estate breadth (GKE / Cloud Run / Functions / Cloud SQL / VPC /
-    # disks / Pub/Sub) → CLOUD_RESOURCE or DATA_STORE, OWNS from the project. ──
-    # Mirrors the AWS service loop above. Cloud SQL is a DATA_STORE so DSPM tiers
-    # apply; public-IP instances carry `internet_exposed` for CNAPP. Native IDs
-    # retain provider scope; local identifiers are bound to project and location.
-    if provider == "gcp":
-        for coll_key, svc, rtype, kind, label, is_data in (
-            ("gke_clusters", "gke", "container_cluster", "gke-cluster", "gke cluster", False),
-            ("cloud_run_services", "run", "function", "cloud-run-service", "cloud run service", False),
-            ("cloud_functions", "cloudfunctions", "function", "cloud-function", "cloud function", False),
-            ("cloud_sql_instances", "cloudsql", "database", "cloud-sql-instance", "cloud sql database", True),
-            ("vpc_networks", "compute", "virtual_network", "vpc-network", "vpc network", False),
-            ("disks", "compute", "storage", "persistent-disk", "persistent disk", False),
-            ("pubsub_topics", "pubsub", "messaging", "pubsub-topic", "pubsub topic", False),
-        ):
-            for item in inventory.get(coll_key, []) or []:
-                if not isinstance(item, dict):
-                    continue
-                name = _clean_graph_part(item.get("name"))
-                if not name:
-                    continue
-                node_id = cloud_resource_node_id("gcp", f"{svc}:{rtype}", item, account_id, region)
-                exposure = _recorded_exposure_attributes(item, "publicly_accessible", "internet_exposed")
-                item_env = _resource_environment(item)
-                graph.add_node(
-                    UnifiedNode(
-                        id=node_id,
-                        entity_type=EntityType.DATA_STORE if is_data else EntityType.CLOUD_RESOURCE,
-                        label=f"{label}: {name}",
-                        attributes={
-                            "resource_id": _clean_graph_part(item.get("id")) or name,
-                            "resource_name": name,
-                            "resource_type": rtype,
-                            "resource_kind": kind,
-                            "cloud_provider": "gcp",
-                            "cloud_service": svc,
-                            "location": _clean_graph_part(item.get("location")) or region,
-                            **exposure,
-                            "is_data_store": is_data,
-                            "engine": _clean_graph_part(item.get("database_version")),
-                            "encrypted": bool(item.get("encrypted")),
-                            "account_id": account_id,
-                            "environment": item_env,
-                        },
-                        data_sources=data_sources,
-                        dimensions=NodeDimensions(cloud_provider="gcp", surface=svc, environment=item_env),
-                    )
-                )
-                resource_ids.append(node_id)
-                if account_node_id:
-                    _add_account_resource_hierarchy(
-                        graph,
-                        account_node_id,
-                        node_id,
-                        evidence={"source": "cloud-inventory"},
-                    )
+    internet_facing_lbs = project_aws_services(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
+    project_gcp_services(
+        graph,
+        inventory,
+        provider=provider,
+        account_id=account_id,
+        account_node_id=account_node_id,
+        region=region,
+        data_sources=data_sources,
+        resource_ids=resource_ids,
+    )
 
     # ── Data / secret / registry / network resources (normalized model) ──
     _add_normalized_cloud_resources(

@@ -55,6 +55,9 @@ MCP_TOOL_CONTRACTS = (
 GRAPH_PROJECTION_SOURCES = frozenset(
     {
         "src/agent_bom/graph/builder.py",
+        "src/agent_bom/graph/cloud_compute_projection.py",
+        "src/agent_bom/graph/cloud_service_projection.py",
+        "src/agent_bom/graph/cloud_storage_projection.py",
         "src/agent_bom/graph/package_projection.py",
         "src/agent_bom/graph/runtime_projection.py",
         "src/agent_bom/graph/projection_support.py",

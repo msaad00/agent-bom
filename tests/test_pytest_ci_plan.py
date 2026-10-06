@@ -206,7 +206,16 @@ def test_report_projection_edits_select_builder_store_and_runtime_contracts(tmp_
     )
     for path in expected:
         _write(path, 1)
-    for module in ("builder", "package_projection", "runtime_projection", "projection_support", "ports"):
+    for module in (
+        "builder",
+        "package_projection",
+        "runtime_projection",
+        "projection_support",
+        "ports",
+        "cloud_compute_projection",
+        "cloud_service_projection",
+        "cloud_storage_projection",
+    ):
         assert select_targeted_tests(changed_files=[Path(f"src/agent_bom/graph/{module}.py")], root=tmp_path) == expected
 
 

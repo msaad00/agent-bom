@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from agent_bom.core.settings import env_raw
 from agent_bom.storage.base import BackendKind
 
 # DSN scheme → backend tier. Adding a backend registers one entry here instead
@@ -65,6 +66,19 @@ def _is_postgres_url(value: str) -> bool:
 def _scheme(value: str) -> str | None:
     head, sep, _ = value.partition("://")
     return head.strip().lower() if sep else None
+
+
+def validate_sqlite_path(path: str | os.PathLike[str]) -> str:
+    """Reject remote DSNs before SQLite can open files; never echo credentials."""
+    value = os.fspath(path)
+    if _scheme(value) or value.strip().lower().startswith(("postgres:/", "postgresql:/")):
+        raise ValueError("SQLite requires a filesystem path; configure AGENT_BOM_POSTGRES_URL for Postgres.")
+    return value
+
+
+def validate_configured_sqlite_path() -> None:
+    """Fail startup before initializing stores when the SQLite path is a DSN."""
+    validate_sqlite_path(env_raw("AGENT_BOM_DB") or ":memory:")
 
 
 def resolve_from_dsn(dsn: str) -> BackendSelection:

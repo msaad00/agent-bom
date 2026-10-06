@@ -24,6 +24,7 @@ from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.api.suppression_approval import suppression_active
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.core.timestamps import parse_identity_timestamp
+from agent_bom.storage.factory import validate_sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ class InMemoryExceptionStore:
 
 class SQLiteExceptionStore:
     def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 

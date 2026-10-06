@@ -1,8 +1,6 @@
 """Job storage backends for the agent-bom API server.
 
-Provides pluggable job persistence:
-- ``InMemoryJobStore`` — default, no persistence across restarts
-- ``SQLiteJobStore``  — persistent storage via stdlib sqlite3
+Pluggable persistence: in-memory by default, or durable SQLite via stdlib sqlite3.
 """
 
 from __future__ import annotations
@@ -20,6 +18,7 @@ from agent_bom.api.storage.sql import connection_session
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS
+from agent_bom.storage.factory import validate_sqlite_path
 
 from .models import JobStatus, ScanJob
 
@@ -345,7 +344,7 @@ class SQLiteJobStore:
     retains_job_objects_in_memory = False
 
     def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 

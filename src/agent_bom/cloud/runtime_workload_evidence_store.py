@@ -6,8 +6,7 @@ Three interchangeable backends behind one contract:
   (``AGENT_BOM_EPHEMERAL_STORE=1``); process-local, non-durable.
 * :class:`SQLiteRuntimeWorkloadEvidenceStore` — node-local default, restart-safe,
   and safe under cross-process writers (WAL + busy timeout).
-* :class:`PostgresRuntimeWorkloadEvidenceStore` — shared across control-plane
-  replicas.
+* :class:`PostgresRuntimeWorkloadEvidenceStore` — shared across control-plane replicas.
 
 :func:`get_runtime_workload_evidence_store` selects the tier via
 :func:`agent_bom.storage.factory.resolve_backend` with ``mode="durable"``
@@ -33,6 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Protocol
 
 from agent_bom.cloud.runtime_workload_evidence import RuntimeWorkloadSignal, normalize_runtime_observed_at
+from agent_bom.storage.factory import validate_sqlite_path
 
 if TYPE_CHECKING:
     from psycopg import Connection
@@ -213,7 +213,7 @@ class SQLiteRuntimeWorkloadEvidenceStore:
     """Node-local, restart-safe, cross-process-safe SQLite backend."""
 
     def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
-        self._path = str(path)
+        self._path = validate_sqlite_path(path)
         self._read_only = read_only
         if read_only:
             # Validate access without running migrations or creating SQLite

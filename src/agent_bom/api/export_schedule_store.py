@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.storage.base import BackendKind
-from agent_bom.storage.factory import resolve_backend
+from agent_bom.storage.factory import resolve_backend, validate_sqlite_path
 
 
 class ExportSchedule(BaseModel):
@@ -124,7 +124,7 @@ class SQLiteExportScheduleStore:
     """SQLite-backed persistent export-schedule store."""
 
     def __init__(self, db_path: str = "agent_bom_schedules.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 

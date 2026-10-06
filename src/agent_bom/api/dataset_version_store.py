@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.storage.factory import validate_sqlite_path
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,7 @@ class InMemoryDatasetVersionStore:
 
 class SQLiteDatasetVersionStore:
     def __init__(self, db_path: str = "agent_bom.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 

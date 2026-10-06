@@ -86,6 +86,11 @@ def record_degraded_coverage(degraded: DegradedCoverage | None) -> None:
     record_scan_warning(degraded.message())
 
 
+def peek_scan_warnings() -> list[str]:
+    """Read lookup warnings without consuming the final report's evidence."""
+    return list(_scan_warnings_state())
+
+
 def consume_scan_warnings() -> list[str]:
     warnings_state = _scan_warnings_state()
     warnings = list(warnings_state)

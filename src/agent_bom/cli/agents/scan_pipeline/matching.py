@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import time as _time
+from types import SimpleNamespace
 from typing import Any
 
 from agent_bom.cli._common import logger
 from agent_bom.cli.agents.scan_pipeline.helpers import _agents_patchable, _exit_incomplete_scan_with_partial_summary
 from agent_bom.cli.agents.scan_pipeline.options import ScanOptions
 from agent_bom.cli.agents.scan_pipeline.state import ScanState
+from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.scanners import IncompleteScanError, consume_scan_warnings
+from agent_bom.scanners.state import peek_coverage_warnings
 from agent_bom.scanners.supplied_findings import build_supplied_findings
 
 
@@ -105,6 +108,8 @@ def _join_kev_catalog(opts: ScanOptions, st: ScanState) -> None:
 
 
 def _print_scan_verdict(opts: ScanOptions, st: ScanState, input_vulnerability_count: int) -> None:
+    run = effective_scan_run(SimpleNamespace(agents=st.agents, coverage_warnings=[*st.coverage_warnings, *peek_coverage_warnings()]))
+    completion = "Package scan partial" if st.scan_warnings or run.outcome is not ScanOutcome.COMPLETE else "Package scan complete"
     if st.blast_radii:
         # Don't repeat the bare finding count — the scanner already
         # printed "Found N vulnerabilities across N finding(s)" above.
@@ -138,14 +143,16 @@ def _print_scan_verdict(opts: ScanOptions, st: ScanState, input_vulnerability_co
         # Scope-labeled: this breakdown covers package CVE findings
         # only. Graph-derived findings surface after graph analysis
         # below, and the all-categories totals line reconciles both.
-        st.con.print(f"  [red]⚠[/red] Scan complete — package CVEs: {_sev_str}")
+        st.con.print(f"  [red]⚠[/red] {completion} — package CVEs: {_sev_str}")
     elif input_vulnerability_count:
         st.con.print(
-            "  [yellow]⚠[/yellow] Scan complete — retained "
+            f"  [yellow]⚠[/yellow] {completion} — retained "
             f"{input_vulnerability_count} vulnerability record(s) supplied by the input inventory"
         )
     elif st.scan_warnings:
         st.con.print("  [yellow]⚠[/yellow] No vulnerabilities confirmed; lookup warnings limit this assessment")
+    elif run.outcome is not ScanOutcome.COMPLETE:
+        st.con.print("  [yellow]⚠[/yellow] No vulnerabilities confirmed; inventory or lookup coverage is incomplete")
     elif opts.offline:
         if st.unresolved:
             st.con.print(

@@ -88,7 +88,7 @@ jobs:
           # docs, or compose used to block on a downstream UI/main
           # regression they had nothing to do with. Opt in via path filter.
           ui=false
-          if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom(\.cdx)?|policy)\.json$)'; then
             action=true
           fi
           # Compose contract: every shipped compose file, the bootstrap SQL and

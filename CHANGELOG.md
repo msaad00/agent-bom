@@ -7,9 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.108.1] - 2026-10-06
 
 ### Fixed
+
+- Keep console verdicts coverage-aware for incomplete imported inventories and lookup warnings. Correct the bounded GitHub Action Dogfood fixture and ensure fixture changes run its workflow.
+- Preserve SARIF source locations, CycloneDX nested components and distinct imported server identities. Keep suppression state and recorded reachability evidence explicit in findings.
+- Restore inventory empty-state handling, persistent dashboard theme selection and remediation across current scan targets.
+- Refresh output characterization contracts and bundle framework catalogs in frozen fuzz targets.
 
 - Preserve OSV upstream CVE relationships through local database sync, scanning, EPSS/KEV enrichment, findings and SBOM round trips without merging those links as aliases.
 - Align Ruby artifact identity regressions and changed-domain CI selection with recognized native-platform normalization.
@@ -27,14 +32,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Cache OSV results only after every package query succeeds. Failed, malformed, truncated, and incomplete alias/ecosystem lookups remain retryable; a new cache-key generation excludes older potentially incomplete results. Incomplete scans no longer print a clean or complete-report claim.
 - Keep pushed findings scoped to the producer and explicit scan target. Complete rescans replace only their own target, partial scans preserve prior evidence, and older unscoped pushes remain independent observations with a coverage-neutral warning.
 
-### Fixed
-
 - Run redaction traversal and generated-metrics contracts on relevant pull requests. Verify Postgres collated-index readiness separately from the planner's choice between eligible indexes.
 - Preserve the stable, redacted CLI input-error message for malformed SBOM JSON, duplicate keys and non-finite values.
 - Restore the cloud-inventory extension when importing CycloneDX or SPDX JSON through CLI, API and MCP scans, including cloud-only documents. Retain imported provenance and collection gaps, reject malformed or ambiguous extensions, and preserve imports alongside fresh cloud observations.
 - Retain collected cloud inventory, native scope, environment tags and collection warnings alongside CycloneDX and SPDX software BOMs in a redacted, versioned evidence extension. Include these artifacts in the offline connected-BOM example.
 - Preserve recognized Azure ARM IDs, AWS ARNs and GCP resource coordinates across structured report and graph redaction, including resource-reference lists. Continue redacting embedded or encoded credentials and mask local Windows paths in identifier fields.
 - Preserve recorded package-to-package dependency relationships in CycloneDX and SPDX exports. Resolve parents within the same server and ecosystem, keep ambiguous or missing lineage explicit, and retain distinct package URL identities.
+
+### Security
+
+- Upgrade locked Mako, multidict, Werkzeug and source-map-js dependencies to versions that passed the repository advisory gate; raise the Werkzeug dependency floor.
 
 ## [0.108.0] - 2026-10-03
 
@@ -3881,7 +3888,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.1...HEAD
+[0.108.1]: https://github.com/msaad00/agent-bom/compare/v0.108.0...v0.108.1
 [0.108.0]: https://github.com/msaad00/agent-bom/compare/v0.107.2...v0.108.0
 [0.107.2]: https://github.com/msaad00/agent-bom/compare/v0.107.0...v0.107.2
 [0.107.0]: https://github.com/msaad00/agent-bom/compare/v0.106.1...v0.107.0

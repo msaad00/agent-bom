@@ -35,6 +35,15 @@ class _EmptyGremlinClient:
         return []
 
 
+@pytest.fixture(autouse=True)
+def isolated_graph_stores(monkeypatch):
+    from agent_bom.api import stores
+    from agent_bom.api.store import InMemoryJobStore
+
+    monkeypatch.setattr(stores, "_store", InMemoryJobStore())
+    monkeypatch.setattr(stores, "_graph_store", None)
+
+
 @pytest.fixture
 def neptune_client(monkeypatch):
     # The adapter is fail-closed: it refuses to construct unless the operator has

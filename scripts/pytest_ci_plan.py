@@ -87,6 +87,7 @@ CURRENT_EVIDENCE_SOURCES = frozenset(
         "src/agent_bom/api/inventory_service.py",
         "src/agent_bom/api/remediation_view.py",
         "src/agent_bom/api/stores.py",
+        "src/agent_bom/api/storage/job_backends.py",
         "src/agent_bom/api/routes/scan.py",
         "src/agent_bom/api/routes/graph.py",
         "src/agent_bom/api/routes/overview.py",
@@ -98,6 +99,9 @@ CURRENT_EVIDENCE_CONTRACTS = (
     "tests/test_findings_read_path_3641.py",
     "tests/test_graph_api.py",
     "tests/test_inventory_assets.py",
+    "tests/test_job_store_selection.py",
+    "tests/test_mcp_inventory.py",
+    "tests/test_neptune_unsupported_501.py",
     "tests/test_iac_findings_surface.py",
     "tests/api/test_api_agent_population.py",
     "tests/api/test_graph_scope_contract.py",
@@ -414,6 +418,7 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(candidate for candidate in available if candidate.name == "test_neptune_unsupported_501.py")
         if normalized.as_posix() in CURRENT_EVIDENCE_SOURCES:
             selected.update(root / path for path in CURRENT_EVIDENCE_CONTRACTS if root / path in available)
+            selected.update(candidate for candidate in available if candidate.stem.startswith(("test_graph_", "test_inventory_")))
         direct = root / normalized
         if normalized.parts and normalized.parts[0] == "tests" and direct in available:
             selected.add(direct)

@@ -47,8 +47,13 @@ def _proxy_headers(role: str = "admin", tenant: str = "tenant-alpha") -> dict[st
 
 
 @pytest.fixture(autouse=True)
-def _connection_env() -> Iterator[None]:
+def _connection_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Configure trusted-proxy auth + an encryption key, isolated per test."""
+    from agent_bom.api import stores
+    from agent_bom.api.store import InMemoryJobStore
+
+    # Provider credentials and mocked SDKs do not configure this fixture's job DB.
+    monkeypatch.setattr(stores, "_store", InMemoryJobStore())
     prior = {
         "AGENT_BOM_ALLOW_UNAUTHENTICATED_API": os.environ.get("AGENT_BOM_ALLOW_UNAUTHENTICATED_API"),
         "AGENT_BOM_TRUST_PROXY_AUTH": os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH"),

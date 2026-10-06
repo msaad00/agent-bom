@@ -102,6 +102,8 @@ CURRENT_EVIDENCE_CONTRACTS = (
     "tests/test_job_store_selection.py",
     "tests/test_mcp_inventory.py",
     "tests/test_neptune_unsupported_501.py",
+    "tests/test_demo_estate_bootstrap.py",
+    "tests/cloud/test_cloud_connections.py",
     "tests/test_iac_findings_surface.py",
     "tests/api/test_api_agent_population.py",
     "tests/api/test_graph_scope_contract.py",

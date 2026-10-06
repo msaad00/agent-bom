@@ -137,7 +137,7 @@ test("high-degree Context starts compact and focuses a returned canonical entity
   expect(await title.evaluate(element => {
     const node = element.closest<HTMLElement>(".react-flow__node")!;
     return parseFloat(getComputedStyle(element).fontSize) * node.getBoundingClientRect().width / node.offsetWidth;
-  })).toBeGreaterThanOrEqual(12);
+  })).toBeGreaterThanOrEqual(14);
   const requestsBeforePaging = incidentRequests;
   await page.getByRole("button", { name: "Next scans", exact: true }).click();
   await expect(page.getByRole("option", { name: "older", exact: true })).toBeAttached();

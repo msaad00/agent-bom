@@ -62,7 +62,7 @@ function ContextOverviewNode({ data, selected, targetPosition, sourcePosition }:
   const Icon = entityIcon(data.nodeType);
   return <div className="context-map-node" data-selected={selected || undefined}>
     <Handle type="target" position={targetPosition ?? Position.Left} className="!h-1.5 !w-1.5" />
-    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NODE_COLOR_MAP[data.nodeType] }} aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-normal text-[18px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
+    <div className="flex items-start gap-2"><Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: NODE_COLOR_MAP[data.nodeType] }} aria-hidden="true" /><span data-testid="context-overview-title" className="min-w-0 overflow-hidden line-clamp-2 break-words text-[20px] font-semibold leading-5" title={data.label}>{data.label}</span></div>
     <p className="mt-1 truncate text-xs text-ink-secondary">{data.entityType?.replaceAll("_", " ") ?? data.nodeType}</p>
     <Handle type="source" position={sourcePosition ?? Position.Right} className="!h-1.5 !w-1.5" />
   </div>;

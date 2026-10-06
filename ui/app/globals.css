@@ -916,7 +916,7 @@ main > div {
 .context-map-canvas .react-flow__attribution { background: var(--surface); color: var(--text-secondary); }
 .context-map-canvas .react-flow__attribution a { color: inherit; }
 .context-map-inspector { @apply min-w-0 space-y-4 overflow-y-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--surface)] p-5; max-height: none; }
-.context-map-node { @apply h-20 w-52 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-3 text-[var(--foreground)] shadow-sm; }
+.context-map-node { @apply h-20 w-52 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-[var(--foreground)] shadow-sm; }
 .context-map-node[data-selected] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), 0 3px 12px var(--shadow-color); }
 .context-investigate { @apply inline-flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-emerald-500; color: var(--foreground); background: var(--accent-soft); }
 .context-investigate:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }

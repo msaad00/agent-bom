@@ -87,10 +87,10 @@ for (const theme of ["light", "dark"] as const) test.describe(theme, () => {
       await row.hover();
       await readable(row.getByText(`fixture-${severity}`, { exact: true }));
       await row.click();
-      const details = page.getByRole("region", { name: "Selected asset details" });
+      const details = page.getByRole("dialog", { name: "Asset details" });
       await expect(details.getByRole("heading", { name: `fixture-${severity}`, exact: true })).toBeVisible();
       await readable(details.getByText(severity, { exact: true }));
-      await details.getByRole("button", { name: "Close asset details" }).click();
+      await details.locator("aside").getByRole("button", { name: "Close", exact: true }).click();
     }
   });
   test("compliance evaluated count contrast", async ({ page }) => {

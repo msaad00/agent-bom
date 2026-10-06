@@ -21,7 +21,10 @@ PROXY_SECRET = "synthetic-test-proxy-secret-with-32-bytes"
 
 
 @pytest.fixture
-def scoped_graph_client(tmp_path) -> Iterator[TestClient]:
+def scoped_graph_client(tmp_path, monkeypatch) -> Iterator[TestClient]:
+    from agent_bom.api.store import InMemoryJobStore
+
+    monkeypatch.setattr(api_stores, "_store", InMemoryJobStore())
     store = SQLiteGraphStore(tmp_path / "scoped-graph.db")
     graph = UnifiedGraph(
         scan_id="scope-scan",

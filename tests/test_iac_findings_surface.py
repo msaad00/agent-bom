@@ -47,7 +47,7 @@ def test_iac_finding_reaches_unified_stream():
     assert finding.finding_type == FindingType.CIS_FAIL
     assert finding.severity == "high"
     assert finding.evidence.get("rule_id") == "AVD-AWS-0088"
-    assert finding.security_domain == "cspm"
+    assert finding.security_domain == "aspm"
 
 
 def test_iac_counts_in_exec_total_and_severity():

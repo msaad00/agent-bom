@@ -96,6 +96,14 @@ def _sqlite_tenant_defaults(conn: sqlite3.Connection, tables: tuple[str, ...]) -
     return defaults
 
 
+@pytest.fixture(autouse=True)
+def isolated_graph_jobs(monkeypatch):
+    """Graph-only backend contracts must not inherit another test's scan jobs."""
+    from agent_bom.api.store import InMemoryJobStore
+
+    monkeypatch.setattr(api_stores, "_store", InMemoryJobStore())
+
+
 @pytest.fixture
 def graph_db():
     conn = sqlite3.connect(":memory:")

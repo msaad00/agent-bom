@@ -416,3 +416,32 @@ def test_output_changes_select_characterization_consumers(tmp_path, source):
     for path in expected:
         _write(path, 1)
     assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "src/agent_bom/api/current_graph.py",
+        "src/agent_bom/api/findings_current.py",
+        "src/agent_bom/api/routes/scan.py",
+        "src/agent_bom/api/finding_read_context.py",
+        "src/agent_bom/finding_scope.py",
+    ],
+)
+def test_current_evidence_edits_select_cross_view_contracts(tmp_path, source):
+    expected = sorted(
+        tmp_path / "tests" / name
+        for name in (
+            "test_findings_read_path_3641.py",
+            "test_graph_api.py",
+            "test_inventory_assets.py",
+            "test_iac_findings_surface.py",
+            "api/test_api_agent_population.py",
+            "api/test_graph_scope_contract.py",
+            "api/test_current_graph_estate.py",
+            "api/test_current_remediation.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

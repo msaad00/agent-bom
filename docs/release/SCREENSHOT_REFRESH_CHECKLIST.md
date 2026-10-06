@@ -22,12 +22,13 @@ PR clearly explains why an asset is unchanged.
 | Asset | Required proof |
 |---|---|
 | `dashboard-live.png` | Overview top frame with visible version, posture grade, unique findings, scan coverage, and operational lanes. |
-| `dashboard-paths-live.png` | Overview lower frame with unique exposure paths, recent scans, and activity. |
+| `dashboard-paths-live.png` | Overview with Compliance & frameworks and Findings by security area expanded. |
 | `mesh-live.png` | Focused active agent → MCP server → package → finding path with title, legend, and no large empty canvas. |
 | `security-graph-live.png` | Prioritized attack path with graph evidence export and remediation handoff. |
 | `lineage-graph-live.png` | Focused filtered attack-path lineage across agent, MCP server, package, and finding nodes. |
 | `context-map-live.png` | Lateral context view with selected agent scope, reachable tools, shared infrastructure, and evidence metadata. |
-| `component-{detail,findings,controls}-{dark,light}-live.png` | Exact component/snapshot navigation, visible source limits, and mapped controls marked not evaluated. |
+| `component-{detail,findings,controls}-{dark,light}-live.png` | On-demand component drawer, exact component/scope navigation, visible source limits, and mapped controls marked not evaluated. |
+| `component-detail-mobile-{dark,light}-live.png` | Full-width mobile drawer with readable identity, severity, findings, close action, and collapsed secondary details. |
 | `inventory-live.png` | Unified asset-kind roll-up with explicit evidence coverage and non-empty discovered asset cards. |
 | `fleet-state-live.png` | Fleet lifecycle review state with owner, environment, trust factors, and quarantine context. |
 | `gateway-policies-live.png` | Runtime gateway posture with enforcement, firewall decisions, policy rules, and bound agents. |
@@ -48,6 +49,9 @@ Update `docs/images/product-screenshots.json` in the same PR:
 ## Visual Review
 
 Before opening the PR, inspect every refreshed image:
+
+- README desktop captures use 1440×900 and mobile captures use 390×844; capture
+  the application viewport directly without cropping or editing screenshots
 
 - no private paths, credentials, customer names, local usernames, browser chrome,
   terminal windows, or dev overlays are visible

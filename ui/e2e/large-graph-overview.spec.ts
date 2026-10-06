@@ -219,6 +219,12 @@ async function routeLargeGraphPage(page: Page, environmentFixture = false) {
       }),
     });
   });
+  // Graph-only fixtures expose their recorded snapshot through inventory too.
+  // Live scan-backed current-estate reconciliation is covered separately.
+  await page.route("**/v1/inventory/summary**", route => route.fulfill({ json: {
+    scan_id: scanId, tenant_id: "default", total_assets: graph.nodes.length,
+    evidence_scope: "historical_snapshot", snapshot_generation: "a".repeat(32),
+  } }));
   await page.route("**/v1/graph/snapshots?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",

@@ -49,7 +49,7 @@ from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from werkzeug.security import safe_join
 
-from agent_bom.api import job_status_count_cache
+from agent_bom.api import findings_current, job_status_count_cache
 from agent_bom.api.finding_collection import collect_scan_findings
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
@@ -57,7 +57,7 @@ from agent_bom.api.finding_reachability import project_persisted_graph_reachabil
 from agent_bom.api.finding_read_context import finding_read_snapshot, read_once
 from agent_bom.api.finding_snapshot_metadata import snapshot_metadata
 from agent_bom.api.finding_suppression import project_current_suppressions
-from agent_bom.api.findings_current import _finding_snapshot_jobs, current_scan_findings, current_scan_jobs
+from agent_bom.api.findings_current import _finding_snapshot_jobs, current_scan_jobs
 from agent_bom.api.hub_ingest import hub_ingest_store_writes, hub_store_call
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
@@ -1080,7 +1080,7 @@ def _graph_export_response(
 def _current_scan_rows(tenant_id: str, window_since: str | None, scan_id: str | None) -> list[dict[str, Any]]:
     return read_once(
         ("current_rows", json.dumps([tenant_id, window_since, scan_id])),
-        lambda: current_scan_findings(
+        lambda: findings_current.current_scan_findings(
             _completed_jobs_for_tenant(tenant_id),
             since=window_since,
             scan_id=scan_id,

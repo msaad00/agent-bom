@@ -231,3 +231,16 @@ def test_current_incident_pages_accept_returned_generation(estate):
             assert second.status_code == 200, second.text
     finally:
         disable_trusted_proxy_env()
+
+
+def test_missing_retained_graph_fails_closed_without_substituting_latest(estate):
+    from fastapi import HTTPException
+
+    record(estate, 8, "repo-a", "retained-a")
+    record(estate, 9, "repo-b", "latest-b")
+    assert set(current().nodes) == {"retained-a", "latest-b"}
+    first = job(8, tenant="history-tenant", target="repo-a", findings=[])
+    estate[1].delete_snapshot(tenant_id="history-tenant", scan_id=first.job_id)
+    with pytest.raises(HTTPException) as exc:
+        current()
+    assert exc.value.status_code == 503

@@ -117,11 +117,10 @@ def test_remediation_reads_retained_jobs_once_and_does_not_query_graph(scan_stor
 def test_grouped_findings_and_facets_share_one_current_evidence_fold(scan_store, monkeypatch):  # noqa: F811
     from unittest.mock import Mock
 
-    from agent_bom.api.routes import scan
+    from agent_bom.api import findings_current
 
     scan_store.put(pushed(8, scope="v1:" + "a" * 64))
-    folds = Mock(wraps=scan.current_scan_findings)
-    monkeypatch.setattr(scan, "current_scan_findings", folds)
+    folds = Mock(wraps=findings_current.current_scan_findings)
     monkeypatch.setattr("agent_bom.api.findings_current.current_scan_findings", folds)
     with TestClient(app) as client:
         client.headers.update(proxy_headers(role="analyst", tenant="history-tenant"))

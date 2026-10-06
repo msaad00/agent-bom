@@ -5,11 +5,12 @@ from __future__ import annotations
 import pytest
 from starlette.testclient import TestClient
 
+from agent_bom.api import stores as api_stores
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
-from agent_bom.api.stores import _get_graph_store, _get_store, set_graph_store
+from agent_bom.api.stores import _get_store
 from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
@@ -40,15 +41,11 @@ def _complete_job(tenant: str, job_id: str) -> None:
 
 
 @pytest.fixture
-def graph_store(tmp_path):
-    original = _get_graph_store()
+def graph_store(tmp_path, monkeypatch):
     store = SQLiteGraphStore(tmp_path / "agents.db")
-    set_graph_store(store)
-    set_job_store(InMemoryJobStore())
-    try:
-        yield store
-    finally:
-        set_graph_store(original)
+    monkeypatch.setattr(api_stores, "_graph_store", store)
+    monkeypatch.setattr(api_stores, "_store", InMemoryJobStore())
+    yield store
 
 
 def _agent_list_total(client: TestClient, tenant: str) -> int:
@@ -97,7 +94,8 @@ def test_posture_agent_count_refreshes_when_a_new_scan_lands(graph_store) -> Non
 
     agents = client.get("/v1/posture/counts", headers=headers).json()["agents"]
     assert agents["total"] == 2 == _agent_list_total(client, tenant)
-    assert agents["scan_id"] == "agents-refresh-2"
+    assert agents["scan_id"].startswith("current-estate:")
+    assert agents["scan_id"] == client.get("/v1/inventory/summary", headers=headers).json()["scan_id"]
 
 
 def test_posture_counts_survive_a_graph_backend_without_inventory_queries(graph_store, monkeypatch) -> None:

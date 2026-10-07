@@ -217,6 +217,15 @@ describe("DemoEstatePage", () => {
     }
   });
 
+  it("qualifies a legitimate baseline while the showcase is prepared", async () => {
+    apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
+    apiMock.getDemoEstateStatus.mockResolvedValue({ ...alignedStatus, showcase_available: false, graph_owner_scan_id: null, graph_alignment: "unavailable", reason: "showcase_preparation_incomplete" });
+    render(<DemoEstatePage />);
+    expect(await screen.findByText(/Sample graph preparation is incomplete/)).toBeVisible();
+    expect(screen.queryByText(/holds non-demo graph data/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Open security graph/ })).not.toBeInTheDocument();
+  });
+
   it("never links a non-demo graph from the demo page when the demo is blocked", async () => {
     apiMock.getEnterpriseDemoStory.mockResolvedValue(story);
     apiMock.getDemoEstateStatus.mockResolvedValue({

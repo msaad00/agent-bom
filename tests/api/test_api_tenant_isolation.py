@@ -393,9 +393,12 @@ async def test_scan_routes_are_tenant_scoped():
     listed = await scan_routes.list_jobs(req)
     assert [j["job_id"] for j in listed["jobs"]] == ["job-alpha"]
     assert listed["jobs"][0]["tenant_id"] == "tenant-alpha"
-    assert listed["jobs"][0]["request"] == {}
-    assert listed["jobs"][0]["summary"] is None
-    assert listed["jobs"][0]["error"] is None
+    assert "request" not in listed["jobs"][0]
+    detailed = await scan_routes.list_jobs(req, include_details=True)
+    assert [j["job_id"] for j in detailed["jobs"]] == ["job-alpha"]
+    assert detailed["jobs"][0]["request"] == {}
+    assert detailed["jobs"][0]["summary"] is None
+    assert detailed["jobs"][0]["error"] is None
 
     got = await scan_routes.get_scan(req, "job-alpha")
     assert got.job_id == "job-alpha"

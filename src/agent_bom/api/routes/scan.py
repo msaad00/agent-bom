@@ -2564,24 +2564,22 @@ def _list_jobs_impl(
         status_counts = {}
     enriched: list[dict[str, Any]] = []
     for item in summary:
+        if not include_details:
+            enriched.append(item)
+            continue
         in_mem = _jobs_get(item["job_id"], tenant_id=tenant_id)
         if isinstance(in_mem, ScanJob) and _visible_to_tenant(in_mem, tenant_id):
             enriched.append(_job_summary_payload(in_mem))
             continue
 
-        if include_details:
-            # Keep list surfaces compatible with lightweight stores and tests
-            # that only implement paged summaries. Hydrate only when the caller
-            # asks for details and the job is not already in memory.
-            try:
-                get_job = getattr(store, "get", None)
-                full_job = get_job(item["job_id"], tenant_id=tenant_id) if callable(get_job) else None
-            except Exception:
-                full_job = None
-            enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
-            continue
-
-        enriched.append(item)
+        # Lightweight stores may expose only summaries. Detail hydration is
+        # explicit and bounded by the requested page, independent of cache warmth.
+        try:
+            get_job = getattr(store, "get", None)
+            full_job = get_job(item["job_id"], tenant_id=tenant_id) if callable(get_job) else None
+        except Exception:
+            full_job = None
+        enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
     return {
         # emit schema_version on terminal list responses
         # so downstream consumers can pin a contract independent of API path.

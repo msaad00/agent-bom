@@ -23,7 +23,7 @@
 # operators can pin a newer SDK-only build via --set collectorImage.tag=<tag>.
 
 ## ── Builder stage ────────────────────────────────────────────────────────────
-FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9 AS builder
+FROM python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f AS builder
 
 WORKDIR /app
 ARG HTTP_PROXY
@@ -61,7 +61,7 @@ RUN set -eu; \
     uv sync --locked --no-dev --no-editable ${sync_args}
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9
+FROM python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
 
 # Baked app-code version (provenance label). Runtime/base security overlays can
 # refresh independently; SDK version changes remain reviewable lockfile updates.

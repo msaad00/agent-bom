@@ -238,6 +238,44 @@ def test_native_scan_errors_on_zero_extracted_packages(monkeypatch, tmp_path):
 # ─── detect_multi_arch ───────────────────────────────────────────────────────
 
 
+def test_native_save_and_export_fallback_keep_requested_platform(monkeypatch):
+    from agent_bom.models import Package
+
+    monkeypatch.setattr("agent_bom.image._docker_inspect", lambda *args, **kwargs: {"Config": {}})
+    monkeypatch.setattr("agent_bom.oci_parser.scan_oci", lambda path: ([], "oci-tarball"))
+    package = Package(name="example", version="1.0", ecosystem="pypi")
+    monkeypatch.setattr("agent_bom.image._packages_from_tar", lambda path: [package])
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "container123\n", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert _scan_with_docker("example:latest", platform="linux/amd64") == [package]
+    for operation in ("save", "create"):
+        command = next(command for command in commands if command[1] == operation)
+        assert command[command.index("--platform") + 1] == "linux/amd64"
+
+
+def test_native_save_keeps_default_platform_when_unspecified(monkeypatch):
+    from agent_bom.models import Package
+
+    package = Package(name="example", version="1.0", ecosystem="pypi")
+    monkeypatch.setattr("agent_bom.image._docker_inspect", lambda *args, **kwargs: {"Config": {}})
+    monkeypatch.setattr("agent_bom.oci_parser.scan_oci", lambda path: ([package], "oci-tarball"))
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert _scan_with_docker("example:latest") == [package]
+    assert commands[0][1] == "save"
+    assert "--platform" not in commands[0]
+
+
 def test_detect_multi_arch_parsing(monkeypatch):
     """detect_multi_arch parses manifest inspect JSON."""
     monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/docker")

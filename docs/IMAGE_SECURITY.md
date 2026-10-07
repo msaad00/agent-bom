@@ -2,6 +2,17 @@
 
 `agent-bom` release images are treated as governed security artifacts, not just build outputs.
 
+## Scan a specific platform
+
+```bash
+agent-bom image <image:tag> --platform linux/amd64 --format json --output image-report.json
+```
+
+The requested platform is passed to Docker pull, archive save, and the stopped
+container used by the filesystem-export fallback. Docker must support the
+`save --platform` option. Review the report's findings and coverage before
+using its exit status as a policy gate; an extraction error is not a clean scan.
+
 ## Release policy
 
 Every public runtime image must:

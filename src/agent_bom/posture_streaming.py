@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
-from agent_bom.runtime.egress_transport import UnsafeDestinationError, validate_literal_destination
 from agent_bom.security import redact_secret_url, sanitize_error, sanitize_sensitive_payload
 from agent_bom.storage import state_home
 
@@ -65,6 +64,8 @@ def _validate_tenant_id(tenant_id: str) -> str:
 
 
 def _validate_destination_url(url: str, *, allow_private_networks: bool = False) -> str:
+    from agent_bom.runtime.egress_transport import UnsafeDestinationError, validate_literal_destination
+
     cleaned = url.strip()
     parsed = urlparse(cleaned)
     if parsed.scheme != "https":

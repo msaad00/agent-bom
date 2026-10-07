@@ -13,6 +13,7 @@ _logger = logging.getLogger(__name__)
 
 _scan_state_local = threading.local()
 _SCAN_PERF_TEMPLATE = {
+    "unfixed_os_findings_suppressed": 0,
     "packages_seen": 0,
     "packages_deduplicated": 0,
     "osv_cache_hits": 0,

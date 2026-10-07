@@ -160,8 +160,10 @@ function AttackPathInvestigationContent() {
   useEffect(() => setPathView(investigationView(searchParams.get("path_view"))), [searchParams]);
   const sharePathView = useCallback((view: ExposurePathView) => {
     setPathView(view);
-    router.replace(investigationHref(pathname, searchParams.toString(), { path_view: view }), { scroll: false });
-  }, [pathname, router, searchParams]);
+    // Switching an already loaded representation must not navigate/remount
+    // the workspace after its graph has scrolled into view.
+    window.history.replaceState(null, "", investigationHref(pathname, searchParams.toString(), { path_view: view }));
+  }, [pathname, searchParams]);
   const [investigationFilters, setInvestigationFilters] =
     useState<InvestigationPresetFilters>(EMPTY_INVESTIGATION_FILTERS);
   const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null);

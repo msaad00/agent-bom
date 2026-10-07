@@ -854,7 +854,15 @@ test(`a selected queue path missing from the canvas loads its exact graph in ${t
   if (width < 1024) await page.getByRole("button", { name: /Paths & filters/ }).click();
   await page.getByLabel("Attack path queue").getByRole("button", { name: /#1 FIX FIRST/i }).click();
   const detail = page.getByRole("region", { name: "Selected path detail" });
+  await page.waitForLoadState("networkidle");
+  const viewNavigations: string[] = [];
+  page.on("request", request => {
+    if (request.isNavigationRequest() || request.url().includes("_rsc=")) viewNavigations.push(request.url());
+  });
   await detail.getByRole("button", { name: "Graph", exact: true }).click();
+  await expect(page).toHaveURL(/path_view=graph/);
+  await page.waitForLoadState("networkidle");
+  expect(viewNavigations).toEqual([]);
   const canvas = detail.getByTestId("security-graph-investigation");
   await expect(canvas.locator(".react-flow__node")).toHaveCount(2);
   await expect(canvas.locator(".react-flow__edge")).toHaveCount(1);

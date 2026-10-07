@@ -711,3 +711,10 @@ def test_action_classifier_includes_the_cyclonedx_dogfood_fixture() -> None:
     for path in ("action.yml", "tests/fixtures/test-sbom.cdx.json", "tests/fixtures/test-policy.json"):
         assert re.search(pattern[1], path), path
     assert not re.search(pattern[1], "docs/readme.md")
+
+
+def test_every_main_push_runs_all_release_ui_lanes():
+    for name in ("ui", "ui-export", "ui-e2e"):
+        condition = _ci()["jobs"][name]["if"]
+        assert "github.event_name == 'push'" in condition
+        assert "github.ref == 'refs/heads/main'" in condition

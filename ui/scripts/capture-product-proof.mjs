@@ -3124,7 +3124,13 @@ async function main() {
     };
     const prepareCorrelationPath = async (proofPage) => {
       await proofPage.locator(".react-flow__node").first().waitFor({ state: "visible" });
-      await fitReactFlow(proofPage);
+      if (proofPage.viewportSize().width < 768) {
+        await proofPage.getByRole("button", { name: "Readable view", exact: true }).click();
+        await proofPage.waitForTimeout(500);
+        await scrollTo(proofPage, 0);
+      } else {
+        await fitReactFlow(proofPage);
+      }
     };
     const correlationPathAssertions = {
       expectedText: ["CVE-2023-4863", "Modeled customer records"],
@@ -3711,6 +3717,7 @@ async function main() {
       {
         ...correlationPathAssertions,
         readySelector: ".react-flow__node",
+        minGraphNodeFontPx: 12,
         viewportSelectors: ["#demo-estate-watermark"],
         readmeTextContract: undefined,
         assertNoHorizontalOverflow: true,

@@ -409,6 +409,7 @@ describe("URL state codec", () => {
     expect(params.get("layers")).toContain("dataStore");
 
     const decoded = decodeFiltersFromParams(params);
+    expect(decoded.layers).toEqual(filters.layers);
     expect(decoded.severity).toBe("high");
     expect(decoded.agentName).toBe("claude-desktop");
     expect(decoded.maxDepth).toBe(4);

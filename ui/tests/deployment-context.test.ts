@@ -42,6 +42,9 @@ describe("deployment-context helpers", () => {
     expect(deploymentModeLabel("fleet")).toBe("Fleet");
     expect(deploymentModeLabel("cluster")).toBe("Cluster");
     expect(deploymentModeLabel("hybrid")).toBe("Hybrid");
+    expect(deploymentModeLabel("ingest")).toBe("Evidence intake");
+    expect(deploymentModeLabel("ci")).toBe("CI/CD");
+    expect(deploymentModeLabel(undefined)).toBe("Not observed");
   });
 
   it("detects when deployment signals exist", () => {
@@ -87,4 +90,11 @@ describe("deployment-context helpers", () => {
     expect(state.detail).toBe("No local agent evidence found");
     expect(state.capabilities.length).toBeGreaterThan(0);
   });
+});
+
+it("keeps ingested agent evidence visible without implying a local scan", () => {
+  const counts = makeCounts({ deployment_mode: "ingest", has_agent_context: true, has_local_scan: false, scan_count: 1 });
+  expect(isDeploymentSurfaceAvailable("agents", counts)).toBe(true);
+  expect(isNavLinkVisible("/agents", counts)).toBe(true);
+  expect(counts.has_local_scan).toBe(false);
 });

@@ -16,7 +16,7 @@ export function newerGraphSnapshot(items: GraphSnapshot[], scanId: string): Grap
 /** Read only bounded snapshot metadata; never mutate the graph or its viewport. */
 export function useNewerGraphSnapshot(scanId: string, owner: string, enabled: boolean) {
   const scope = JSON.stringify([scanId, owner]);
-  const [state, setState] = useState<{ scope: string; newer: GraphSnapshot | null; error: boolean; checked: boolean; checking: boolean }>({ scope, newer: null, error: false, checked: false, checking: false });
+  const [state, setState] = useState<{ scope: string; newer: GraphSnapshot | null; error: boolean; checked: boolean; checking: boolean; baselineKnown?: boolean }>({ scope, newer: null, error: false, checked: false, checking: false });
   const active = useRef<AbortController | null>(null);
   const denied = useRef(false);
   const refresh = useCallback(async (manual = false) => {
@@ -28,7 +28,7 @@ export function useNewerGraphSnapshot(scanId: string, owner: string, enabled: bo
       const items = await api.getGraphSnapshots(40, 0, { signal: controller.signal });
       if (controller.signal.aborted) return;
       const known = items.some(item => item.scan_id === scanId && Number.isFinite(Date.parse(item.created_at)));
-      setState({ scope, newer: newerGraphSnapshot(items, scanId), error: !known, checked: true, checking: false });
+      setState({ scope, newer: newerGraphSnapshot(items, scanId), error: false, baselineKnown: known, checked: true, checking: false });
     } catch (error) {
       if (controller.signal.aborted) return;
       denied.current = error instanceof ApiError && (error.status === 401 || error.status === 403);
@@ -43,5 +43,5 @@ export function useNewerGraphSnapshot(scanId: string, owner: string, enabled: bo
     document.addEventListener("visibilitychange", checkVisible);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", checkVisible); active.current?.abort(); active.current = null; };
   }, [refresh]);
-  return { ...(state.scope === scope ? state : { newer: null, error: false, checked: false, checking: false }), refresh };
+  return { ...(state.scope === scope ? state : { newer: null, error: false, checked: false, checking: false, baselineKnown: undefined }), refresh };
 }

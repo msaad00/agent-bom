@@ -105,11 +105,11 @@ function EvidenceSourceRow({ source }: { source: AiBomEvidenceSource }) {
     >
       <div className="min-w-0">
         <p className="truncate text-xs font-medium text-[color:var(--foreground)]">{source.label}</p>
-        <p className="mt-0.5 truncate text-[10px] text-[color:var(--text-tertiary)]">{source.detail}</p>
+        <p className="mt-0.5 truncate text-[10px] text-[color:var(--foreground)]">{source.detail}</p>
       </div>
       <span
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-          source.active ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-[color:var(--surface)] text-[color:var(--text-tertiary)]"
+          source.active ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-[color:var(--surface)] text-[color:var(--text-secondary)]"
         }`}
       >
         {source.status}

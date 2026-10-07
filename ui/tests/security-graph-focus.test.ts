@@ -1,6 +1,5 @@
+import { selectedPathFixture } from "./fixtures/selected-path-graph";
 import { resolveSecurityGraphSurface } from "@/lib/security-graph-route";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createFocusedGraphFilters } from "@/components/lineage-filter";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import { describe, expect, it, vi } from "vitest";
@@ -20,11 +19,10 @@ import {
 import type { GraphCorrelationRun, GraphSnapshot } from "@/lib/api-types";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 
-it("retains every reference-lab path hop even when estate identity and data layers are hidden", () => {
-  const proof = JSON.parse(readFileSync(join(process.cwd(), "../examples/reference-evidence-lab/generated/correlation-proof.json"), "utf8"));
-  const graph = proof.capture_fixture.graph as UnifiedGraphData;
+it("retains every selected path hop even when estate identity and data layers are hidden", () => {
+  const graph = selectedPathFixture;
   const path = graph.attack_paths[0];
-  if (!path) throw new Error("Reference lab is missing its exposure path");
+  if (!path) throw new Error("Synthetic fixture is missing its selected path");
   const focused = buildFocusedGraphData(graph, path)!;
   const filters = createFocusedGraphFilters();
   filters.layers.serviceAccount = false;

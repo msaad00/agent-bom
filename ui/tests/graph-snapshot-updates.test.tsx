@@ -83,6 +83,15 @@ it("polls bounded metadata and stops background retries after denied access", as
 it("treats an unavailable selected snapshot as unknown, not up to date", async () => {
   fetchSnapshots.mockResolvedValue([newer]);
   render(<GraphSnapshotUpdates />);
-  expect(await screen.findByText(/update check unavailable/)).toBeVisible();
+  expect(await screen.findByText(/Selected snapshot metadata is outside this bounded response/)).toBeVisible();
+  expect(screen.queryByText(/update check unavailable/)).toBeNull();
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+
+it("does not compare current-estate generations with retained snapshot metadata", () => {
+  state.query = "scan=current-estate:tenant:generation";
+  render(<GraphSnapshotUpdates />);
+  expect(fetchSnapshots).not.toHaveBeenCalled();
+  expect(screen.queryByText(/update check unavailable/)).toBeNull();
 });

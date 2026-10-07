@@ -2,6 +2,8 @@ import type { Vulnerability } from "@/lib/api";
 import type { FindingFacets, FindingOccurrenceSummary, FindingReconfirmation, WorkloadRuntimeEvidence } from "@/lib/api-types";
 
 export interface EnrichedVuln extends Vulnerability {
+  /** Verified against the repository scan root by the scanner; absent is unknown. */
+  repository_relative_path?: string | undefined;
   observation_status?: "observed" | "unreconfirmed" | undefined;
   reconfirmation?: FindingReconfirmation | undefined;
   unreconfirmed_occurrence_count?: number | undefined;
@@ -385,4 +387,11 @@ export function computeFindingColumns(rows: EnrichedVuln[]): FindingColumnVisibi
     }
   }
   return columns;
+}
+
+
+export function verifiedRepositoryLocation(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim() || /^[\/\\]|^[a-zA-Z]:|[\x00-\x1f]/.test(value)) return undefined;
+  if (value.includes("\\") || value.split("/").some(part => part === ".." || part === "." || !part)) return undefined;
+  return value;
 }

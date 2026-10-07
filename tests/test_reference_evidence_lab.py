@@ -37,7 +37,7 @@ def test_reference_lab_vulnerable_input_is_not_an_installable_manifest() -> None
     assert not (LAB / "requirements.txt").exists()
 
 
-def test_reference_lab_proves_exact_end_to_end_chain() -> None:
+def test_reference_lab_preserves_source_receipts_and_evidence_boundaries() -> None:
     payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
 
     assert payload["label"] == "Reference evidence lab — modeled local infrastructure"
@@ -55,29 +55,24 @@ def test_reference_lab_proves_exact_end_to_end_chain() -> None:
         for receipt in payload["correlation"]["input_manifest"]
     )
 
-    proof = payload["proof_path"]
-    assert proof["reachability"] == "confirmed"
-    assert len(proof["hops"]) == 8
-    assert len(proof["hop_evidence"]) == 7
-    assert all(receipt["complete"] for receipt in proof["hop_evidence"])
-    assert all(receipt["source_snapshot_ids"] for receipt in proof["hop_evidence"])
-    assert {receipt["evidence_tier"] for receipt in proof["hop_evidence"]} >= {
-        "static_evidence",
-        "modeled_infrastructure",
-        "runtime_observed",
-    }
-    assert any(receipt["runtime_observed_state"] == "observed" for receipt in proof["hop_evidence"])
+    path = payload["proof_path"]
+    assert path["edges"] == ["uses", "authenticates_as", "has_permission"]
+    assert path["vuln_ids"] == []
+    assert path["tool_exposure"] == []
+    assert all(hop["runtime_observed_state"] == "not_observed" for hop in path["hop_evidence"])
+    assert payload["evidence_matrix"]["exploitability"]["status"] == "not_established"
+    assert payload["evidence_matrix"]["granted_access"]["status"] == "modeled"
     assert payload["runtime_control"]["strict_block"] == "verified"
     assert payload["runtime_control"]["verification"] == "live_jsonrpc_gateway_smoke"
     assert payload["runtime_control"]["allow_result"] == "upstream_called"
     assert payload["runtime_control"]["blocked_error_code"] == -32001
-    assert payload["runtime_control"]["policy_source"] == "graph_reachability"
+    assert payload["runtime_control"]["policy_source"] == "file"
     assert payload["runtime_control"]["tool_id"] == "mcp-tool:reference-lab:render-untrusted-image"
-    assert proof["analysis"]["status"] == "complete"
 
     capture = payload["capture_fixture"]
     assert capture["graph"]["scan_id"] == payload["correlation"]["output_scan_id"]
-    assert capture["graph"]["attack_paths"] == [proof]
+    assert capture["graph"]["attack_paths"] == [path]
+    assert len(capture["fix_first"]["cards"]) == 1
     assert len(capture["snapshots"]) == 6
     assert all(snapshot["snapshot_kind"] == "scan" for snapshot in capture["snapshots"])
 
@@ -129,3 +124,45 @@ def test_reference_lab_keeps_image_inventory_separate_from_deployment_occurrence
     assert len(containers) == 2
     assert all(receipt["basis"] != "oci_digest" for receipt in payload["join_receipts"])
     assert payload["artifact_bindings"][0]["basis"] == "modeled_pinned_image_composition"
+
+
+def test_reference_lab_does_not_invent_exploitability_or_resource_activity() -> None:
+    payload = json.loads(OUTPUT.read_text(encoding="utf-8"))
+    graph = payload["capture_fixture"]["graph"]
+    assert not any(edge["relationship"] == "exploitable_via" for edge in graph["edges"])
+    assert not any(edge["relationship"] == "accessed" for edge in graph["edges"])
+    assert not any(edge["relationship"] == "authenticates_as" and edge["evidence"].get("runtime_observed") for edge in graph["edges"])
+    assert all(node["risk_score"] == 0 for node in graph["nodes"] if node["entity_type"] in {"tool", "data_store"})
+    assert payload["runtime_control"]["policy_source"] == "file"
+    assert payload["evidence_matrix"]["resource_activity"]["status"] == "not_observed"
+
+
+def test_reference_lab_local_session_contains_real_before_after_scans(tmp_path):
+    destination = tmp_path / "session"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/generate_reference_evidence_lab.py"), "--output-dir", str(destination)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    session = json.loads((destination / "local-session.json").read_text())
+    assert session["schema_version"] == "agent-bom.reference-lab-session/v1"
+    assert [scan["phase"] for scan in session["scans"]] == ["before", "after"]
+    assert session["scans"][0]["input_sha256"] != session["scans"][1]["input_sha256"]
+    for scan in session["scans"]:
+        assert scan["result"]["document_type"] == "AI-BOM"
+        assert scan["result"]["agents"]
+        assert scan["input_sha256"] == hashlib.sha256((destination / (scan["phase"] + "-input.txt")).read_bytes()).hexdigest()
+    verification = session["remediation_verification"]
+    assert "CVE-2023-4863" in verification["before"]
+    assert "CVE-2023-4863" not in verification["after"]
+    original = (destination / "local-session.json").read_bytes()
+    repeat = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/generate_reference_evidence_lab.py"), "--output-dir", str(destination)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert repeat.returncode != 0
+    assert (destination / "local-session.json").read_bytes() == original

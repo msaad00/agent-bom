@@ -63,22 +63,23 @@ describe("GraphLensSwitcher", () => {
     expect(screen.getByText("Inspect recorded relationships within a selected snapshot.")).toBeVisible();
   });
 
-  it("treats the unfocused security graph as the estate canvas", () => {
+  it("treats the unfocused security graph as ranked paths", () => {
     pathname = "/security-graph";
     render(<GraphLensSwitcher variant="compact" />);
 
     expect(screen.getByRole("button", { name: /estate/i })).toHaveAttribute(
       "aria-pressed",
-      "true",
+      "false",
     );
     expect(screen.getByRole("button", { name: /attack paths/i })).toHaveAttribute(
       "aria-pressed",
-      "false",
+      "true",
     );
   });
 
   it("opens attack paths as an explicit lens", () => {
     pathname = "/security-graph";
+    params = new URLSearchParams({ lens: "estate" });
     render(<GraphLensSwitcher variant="compact" />);
 
     fireEvent.click(screen.getByRole("button", { name: /attack paths/i }));

@@ -100,3 +100,12 @@ export function filterAttackPathsForInvestigation(
     return true;
   });
 }
+
+/** Question presets narrow the loaded server-ranked queue without rescoring it. */
+export function filterInvestigationQuestion(paths: AttackPath[], nodes: Map<string, UnifiedNode>, question: string | null): AttackPath[] {
+  if (question === "credentials") return paths.filter(path => path.credential_exposure.length > 0
+    || path.hops.some(id => nodes.get(id)?.entity_type === "credential"));
+  if (question === "critical") return paths.filter(path => pathSeverity(path, nodes) === "critical"
+    && path.hops.some(id => nodes.get(id)?.entity_type === "package"));
+  return paths;
+}

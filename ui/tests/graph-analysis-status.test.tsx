@@ -35,6 +35,13 @@ describe("GraphAnalysisStatusBanner", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Results are partial");
   });
 
+  it("does not prescribe local scanning for missing ingested analysis", () => {
+    const copy = graphAnalysisStatusCopy(undefined);
+    expect(copy.detail).not.toMatch(/run a fresh scan/i);
+    expect(copy.detail).toMatch(/analysis receipt/i);
+    expect(copy.tone).toBe("neutral");
+  });
+
   it("labels legacy snapshots as unverified", () => {
     render(<GraphAnalysisStatusBanner />);
     expect(screen.getByText("Analysis status unavailable")).toBeInTheDocument();

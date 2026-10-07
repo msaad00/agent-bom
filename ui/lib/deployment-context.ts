@@ -41,8 +41,14 @@ export function deploymentModeLabel(mode?: DeploymentMode): string {
     case "hybrid":
       return "Hybrid";
     case "local":
-    default:
       return "Local";
+    case "ci":
+      return "CI/CD";
+    case "ingest":
+      return "Evidence intake";
+    case "unknown":
+    default:
+      return "Not observed";
   }
 }
 
@@ -66,8 +72,8 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
   agents: {
     label: "Agents",
     navHref: "/agents",
-    isAvailable: (counts) => bool(counts?.has_local_scan),
-    requirement: "Local agent discovery or workstation scan evidence",
+    isAvailable: (counts) => bool(counts?.has_local_scan) || bool(counts?.has_agent_context),
+    requirement: "Recorded agent discovery or ingested agent evidence",
     command: "agent-bom agents --push-url https://<control-plane>/v1/fleet/sync",
     actionHref: "/scan",
     actionLabel: "Run a scan",
@@ -77,7 +83,7 @@ const SURFACE_DEFINITIONS: Record<DeploymentSurface, DeploymentSurfaceDefinition
       "Agent detail views sourced from local scan output",
     ],
     summary: (mode) =>
-      `The Agents page is populated by local workstation discovery. Your current deployment mode is ${mode}, so this surface stays empty until local agent scans are pushed into the control plane.`,
+      `The Agents page uses recorded agent evidence. The observed evidence label is ${mode}; collect or ingest agent inventory to populate this surface.`,
   },
   fleet: {
     label: "Fleet",

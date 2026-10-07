@@ -216,7 +216,7 @@ describe("environment map groups", () => {
 
 it.each(["type", "environment"] as const)("packs %s clusters organically, with stable positions and separated bounds", grouping => {
   const types = ["agent", "package", "vulnerability"] as const;
-  const nodes = types.flatMap((type, group) => Array.from({ length: [1, 120, 35][group]! }, (_, index) => node(`${type}-${index.toString().padStart(3, "0")}`, {
+  const nodes = types.flatMap((type, group) => Array.from({ length: [1, 60, 35][group]! }, (_, index) => node(`${type}-${index.toString().padStart(3, "0")}`, {
     nodeType: type, severity: "critical", dimensions: { cloud_provider: "aws", environment: `scope-${group}` },
   })));
   const links = [edge("recorded", "agent-000", "package-000", "uses")];
@@ -250,11 +250,11 @@ it.each(["type", "environment"] as const)("packs %s clusters organically, with s
 it("keeps a bounded estate of many environment clusters finite and distinct", () => {
   const nodes = Array.from({ length: 3000 }, (_, index) => node(`node-${index}`, { dimensions: { environment: `scope-${index}` } }));
   const model = buildSigmaGraphOverviewModel(nodes, [], "environment");
-  expect(model.graph.order).toBe(3000);
+  expect(model.graph.order).toBe(100);
   expect(model.graph.size).toBe(0);
-  expect(model.groups).toHaveLength(3000);
+  expect(model.groups).toHaveLength(100);
   expect(model.overview.nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y))).toBe(true);
-  expect(new Set(model.overview.nodes.map(node => `${node.x}:${node.y}`)).size).toBe(3000);
+  expect(new Set(model.overview.nodes.map(node => `${node.x}:${node.y}`)).size).toBe(100);
 });
 
 it("bounds a large inventory without inventing connections or losing total counts", () => {
@@ -263,7 +263,7 @@ it("bounds a large inventory without inventing connections or losing total count
   const started = performance.now();
   const model = buildSigmaGraphOverviewModel(nodes, edges);
   console.info(`100k inventory overview projection: ${Math.round(performance.now() - started)} ms`);
-  expect(model.graph.order).toBeLessThanOrEqual(3000);
+  expect(model.graph.order).toBeLessThanOrEqual(100);
   expect(model.graph.size).toBeLessThanOrEqual(6000);
   expect(model.summary.nodes).toBe(100_000);
   expect(model.overview.omittedNodeCount + model.graph.order).toBe(100_000);
@@ -282,11 +282,11 @@ describe("scope exploration before draw budgeting", () => {
     const all = buildSigmaGraphOverviewModel(nodes, [], "environment");
     const small = all.scopes.find(scope => scope.label.includes("small"))!;
     expect(small.count).toBe(1000);
-    expect(all.overview.nodes).toHaveLength(3000);
+    expect(all.overview.nodes).toHaveLength(100);
     const focused = buildSigmaGraphOverviewModel(nodes, [], "environment", small.key);
-    expect(focused.overview.nodes).toHaveLength(1000);
+    expect(focused.overview.nodes).toHaveLength(100);
     expect(focused.groups[0]!.loadedCount).toBe(1000);
-    expect(focused.overview.omittedNodeCount).toBe(0);
+    expect(focused.overview.omittedNodeCount).toBe(900);
   });
   it("does not turn evidence source into location or invent cluster relationships", () => {
     const model = buildSigmaGraphOverviewModel([node("a", { attributes: { source: "aws" } }), node("b")], [], "environment");
@@ -303,7 +303,7 @@ it.each([5000, 25000, 100000])("bounds a %i-asset loaded estate before renderer 
   const start = performance.now();
   const model = buildSigmaGraphOverviewModel(nodes, edges, "environment");
   console.info(JSON.stringify({ assets: count, modelMs: Math.round(performance.now() - start), renderedNodes: model.graph.order, renderedEdges: model.graph.size }));
-  expect(model.graph.order).toBeLessThanOrEqual(3000);
+  expect(model.graph.order).toBeLessThanOrEqual(100);
   expect(model.graph.size).toBeLessThanOrEqual(6000);
   expect(model.scopes.reduce((sum, scope) => sum + scope.count, 0)).toBe(count);
 });

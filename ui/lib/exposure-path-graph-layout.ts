@@ -197,7 +197,7 @@ export function buildPathGraphLayout(
   options: BuildPathGraphLayoutOptions = {},
 ): PathGraphLayout {
   const totalHopCount = path.hops.length;
-  const collapsed = options.expanded !== true && shouldCollapsePath(totalHopCount, options.availableWidth);
+  const collapsed = totalHopCount > 100 || (options.expanded !== true && shouldCollapsePath(totalHopCount, options.availableWidth));
   const hiddenHops = collapsed ? path.hops.slice(1, -1) : [];
   const hiddenHopSummary = summarizeHiddenHops(hiddenHops);
   const visibleHops: ExposureEntityRef[] = collapsed

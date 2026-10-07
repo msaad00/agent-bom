@@ -35,7 +35,7 @@ export function IntegrationRequiredState({
         <div className="grid gap-4 lg:grid-cols-[1.3fr_0.9fr]">
           <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-              <Database className="h-4 w-4 text-emerald-400" />
+              <Database className="h-4 w-4 text-emerald-800 dark:text-emerald-400" />
               {title}
             </div>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{summary}</p>
@@ -57,7 +57,7 @@ export function IntegrationRequiredState({
               <div className="mt-3 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                 {primaryAction ? "Headless / agent equivalent" : "First command"}
               </div>
-              <code className="mt-1 block whitespace-pre-wrap font-mono text-sm leading-7 text-emerald-300">
+              <code className="mt-1 block whitespace-pre-wrap font-mono text-sm leading-7 text-emerald-800 dark:text-emerald-300">
                 {command}
               </code>
             </div>
@@ -70,7 +70,7 @@ export function IntegrationRequiredState({
 
           <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface)]/60 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-              <Settings2 className="h-4 w-4 text-blue-400" />
+              <Settings2 className="h-4 w-4 text-blue-800 dark:text-blue-400" />
               What this unlocks
             </div>
             <ul className="mt-4 space-y-2">

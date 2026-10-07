@@ -204,6 +204,7 @@ export default function DemoEstatePage() {
                 Review findings
               </Link>
             </div>
+            {demoStatus.reason === "showcase_preparation_incomplete" ? <p role="status" className="mt-3 rounded-xl border border-outline bg-surface px-3 py-2 text-xs text-ink-secondary">Sample graph preparation is incomplete. The retained baseline is demo evidence; the completed showcase is not available yet.</p> : null}
             {demoStatus.graph_alignment === "blocked" ? (
               <p
                 className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-200"

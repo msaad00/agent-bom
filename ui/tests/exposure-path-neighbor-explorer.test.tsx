@@ -222,3 +222,14 @@ it("reports unknown totals without inventing an omitted-neighbor count", async (
   expect(await screen.findByText("Neighbor coverage is incomplete; total unknown.")).toBeVisible();
   expect(screen.queryByText(/more neighbors? not shown/)).not.toBeInTheDocument();
 });
+
+
+it("bounds loaded hop rows and pages remaining evidence without prefetching", () => {
+  const hops = Array.from({length: 1000}, (_, i) => ({id: `hop:${i}`, label: `Hop ${i}`, role: "agent" as const}));
+  render(<ExposurePathNeighborExplorer path={{...path, hops}} scanId="scan-1" />);
+  expect(screen.getAllByRole("button", {name: /Expand neighbors of/})).toHaveLength(100);
+  fireEvent.click(screen.getByRole("button", {name: "Next hop page"}));
+  expect(screen.getByRole("button", {name: "Expand neighbors of Hop 100"})).toBeInTheDocument();
+  expect(screen.queryByRole("button", {name: "Expand neighbors of Hop 0"})).not.toBeInTheDocument();
+  expect(apiMock.getGraphNodeNeighbors).not.toHaveBeenCalled();
+});

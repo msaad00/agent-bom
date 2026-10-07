@@ -1,13 +1,12 @@
+import { selectedPathFixture } from "./fixtures/selected-path-graph";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSelectedPathGraph } from "@/hooks/use-selected-path-graph";
 import { api, type GraphQueryResponse } from "@/lib/api";
 import type { AttackPath, UnifiedGraphData } from "@/lib/graph-schema";
 
 vi.mock("@/lib/api", () => ({ api: { queryGraph: vi.fn() } }));
-const fixture = JSON.parse(readFileSync(join(process.cwd(), "../examples/reference-evidence-lab/generated/correlation-proof.json"), "utf8")).capture_fixture.graph as UnifiedGraphData;
+const fixture = selectedPathFixture;
 const path = fixture.attack_paths[0]!;
 const graph: UnifiedGraphData = { ...fixture, nodes: [], edges: [], attack_paths: [] };
 const response = { ...fixture, truncated: false, missing_roots: [] } as unknown as GraphQueryResponse;

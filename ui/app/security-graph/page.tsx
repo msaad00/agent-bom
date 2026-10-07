@@ -1,5 +1,8 @@
 "use client";
 
+import { AdvisoryFreshness } from "@/components/advisory-freshness";
+
+import { investigationHref, investigationView } from "@/lib/investigation-url";
 import { selectAttackPathQueue } from "@/lib/attack-path-queue";
 import { GraphSnapshotReceipt } from "@/components/graph-snapshot-receipt";
 import Link from "next/link";
@@ -29,7 +32,7 @@ import {
   InvestigationPathWorkspace,
   InvestigationTools,
 } from "@/components/investigation-path-workspace";
-import { GraphEvidenceExportButton } from "@/components/graph-chrome";
+import { InvestigationExportButton } from "@/components/investigation-export-button";
 import { GraphLensSwitcher } from "@/components/graph-lens-switcher";
 import { DeployGatePanel } from "@/components/deploy-gate-panel";
 import { ExposurePathLens } from "@/components/exposure-path-lens";
@@ -103,6 +106,7 @@ import {
 import {
   collectPathEnvironments,
   filterAttackPathsForInvestigation,
+  filterInvestigationQuestion,
 } from "@/lib/investigation-path-filters";
 
 const EMPTY_INVESTIGATION_FILTERS: InvestigationPresetFilters = {
@@ -113,9 +117,9 @@ const EMPTY_INVESTIGATION_FILTERS: InvestigationPresetFilters = {
 };
 
 /** First/next fetch size for GET /v1/graph/attack-paths (API offset paging). */
-const ATTACK_PATH_FETCH_PAGE = 25;
-const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
-const FIX_FIRST_CARD_LIMIT = 12;
+const ATTACK_PATH_FETCH_PAGE = 10;
+const ATTACK_PATH_QUEUE_PAGE_SIZE = 10;
+const FIX_FIRST_CARD_LIMIT = 10;
 const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 
 function AttackPathInvestigationContent() {
@@ -149,7 +153,14 @@ function AttackPathInvestigationContent() {
   const [morePathsError, setMorePathsError] = useState<string | null>(null);
   const pathPageRequest = useRef<AbortController | null>(null);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
-  const [pathView, setPathView] = useState<ExposurePathView>("path");
+  const [pathView, setPathView] = useState<ExposurePathView>(() => investigationView(searchParams.get("path_view")));
+  const requestedQuestion = searchParams.get("question");
+  const requestedSelectedPath = searchParams.get("selected_path");
+  useEffect(() => setPathView(investigationView(searchParams.get("path_view"))), [searchParams]);
+  const sharePathView = useCallback((view: ExposurePathView) => {
+    setPathView(view);
+    router.replace(investigationHref(pathname, searchParams.toString(), { path_view: view }), { scroll: false });
+  }, [pathname, router, searchParams]);
   const [investigationFilters, setInvestigationFilters] =
     useState<InvestigationPresetFilters>(EMPTY_INVESTIGATION_FILTERS);
   const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null);
@@ -186,6 +197,7 @@ function AttackPathInvestigationContent() {
       const params = new URLSearchParams(searchParams.toString());
       if (next === "path") params.delete("step");
       else params.set("step", next);
+      params.set("path_view", next === "impact" ? "graph" : "path");
       const query = params.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
       setCompletedSteps((current) => ({ ...current, [next]: true }));
@@ -446,8 +458,8 @@ function AttackPathInvestigationContent() {
     [allAttackPaths, graphNodeById],
   );
   const attackPaths = useMemo(
-    () => filterAttackPathsForInvestigation(presentationAttackPaths, graphNodeById, investigationFilters),
-    [graphNodeById, investigationFilters, presentationAttackPaths],
+    () => filterInvestigationQuestion(filterAttackPathsForInvestigation(presentationAttackPaths, graphNodeById, investigationFilters), graphNodeById, requestedQuestion),
+    [graphNodeById, investigationFilters, presentationAttackPaths, requestedQuestion],
   );
   const pathEnvironments = useMemo(
     () => collectPathEnvironments(allAttackPaths, graphNodeById),
@@ -770,6 +782,10 @@ function AttackPathInvestigationContent() {
       setSelectedAttackPathKey(null);
       return;
     }
+    if (requestedSelectedPath && attackPaths.some(path => attackPathKey(path) === requestedSelectedPath)) {
+      setSelectedAttackPathKey(requestedSelectedPath);
+      return;
+    }
     if (!focusApplied && hasFocusContext) {
       const focusedPath =
         attackPaths.find((path) => matchesAttackPathFocus(path, graphNodeById, focus)) ?? attackPaths[0]!;
@@ -784,7 +800,7 @@ function AttackPathInvestigationContent() {
     if (!attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)) {
       setSelectedAttackPathKey(attackPathKey(attackPaths[0]!));
     }
-  }, [attackPaths, focus, focusApplied, graphNodeById, hasFocusContext, selectedAttackPathKey]);
+  }, [attackPaths, focus, focusApplied, graphNodeById, hasFocusContext, requestedSelectedPath, selectedAttackPathKey]);
 
   if (apiError && !loadingSnapshots && snapshots.length === 0) {
     const fallbackTitle = apiErrorKind === "network" ? "Cannot load the security graph" : undefined;
@@ -803,10 +819,7 @@ function AttackPathInvestigationContent() {
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Investigation</h1>
         {captureMode ? undefined : (
           <div className="hidden flex-wrap items-center gap-2 sm:flex">
-            <GraphEvidenceExportButton
-              scanId={selectedScanId || undefined}
-              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
-            />
+            <InvestigationExportButton path={selectedExposurePath} scanId={selectedScanId} />
             <Link
               href={fullGraphHref}
               className="sg-action"
@@ -825,7 +838,16 @@ function AttackPathInvestigationContent() {
           )}
       </header>
 
+      <div role="group" aria-label="Investigation starting questions" className="flex flex-wrap gap-2">
+        <button type="button" className="sg-action" aria-pressed={!requestedQuestion} onClick={() => router.replace(investigationHref(pathname, searchParams.toString(), { question: null, selected_path: null }), { scroll: false })}>All ranked paths</button>
+        <button type="button" className="sg-action" aria-pressed={requestedQuestion === "credentials"} onClick={() => router.replace(investigationHref(pathname, searchParams.toString(), { question: "credentials", selected_path: null }), { scroll: false })}>Credential exposure</button>
+        <button type="button" className="sg-action" aria-pressed={requestedQuestion === "critical"} onClick={() => router.replace(investigationHref(pathname, searchParams.toString(), { question: "critical", selected_path: null }), { scroll: false })}>Critical dependencies</button>
+        <button type="button" className="sg-action" onClick={() => setInvestigationStep("impact")}>Potential blast radius</button>
+      </div>
+      {requestedQuestion && <p role="status" className="text-xs text-ink-secondary">Question filters apply to the loaded ranked paths. Load another page to widen this search; an empty page does not establish complete coverage.</p>}
       <GraphSnapshotReceipt snapshot={selectedSnapshot} scanId={selectedScanId} />
+      <AdvisoryFreshness />
+      {requestedSelectedPath && graphData && !allAttackPaths.some(path => attackPathKey(path) === requestedSelectedPath) && <p role="status" className="graph-callout-amber">The shared path is not in this loaded queue page. Load more paths or inspect its retained evidence scope; the currently shown path is a different result.</p>}
 
       <div className="hidden sm:block"><GraphLensSwitcher variant="compact" /></div>
       <details className="rounded-lg border border-outline bg-surface p-3 sm:hidden">
@@ -997,6 +1019,7 @@ function AttackPathInvestigationContent() {
           selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
           onSelect={(key) => {
             setSelectedAttackPathKey(key);
+            router.replace(investigationHref(pathname, searchParams.toString(), { selected_path: key, path_view: "path", scan: selectedScanId }), { scroll: false });
             setCompletedSteps((current) => ({ ...current, path: true }));
             setPathView("path");
           }}
@@ -1046,7 +1069,7 @@ function AttackPathInvestigationContent() {
                 actions={selectedPathActions}
                 scanId={selectedScanId || undefined}
                 view={pathView}
-                onViewChange={setPathView}
+                onViewChange={sharePathView}
                 techniquesSlot={
                   selectedAttackPath ? (
                     <AttackPathCorrelationProof
@@ -1110,10 +1133,7 @@ function AttackPathInvestigationContent() {
         scope={
         <div className="space-y-4">
           {!captureMode ? <div className="flex flex-wrap gap-2 sm:hidden">
-            <GraphEvidenceExportButton
-              scanId={selectedScanId || undefined}
-              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
-            />
+            <InvestigationExportButton path={selectedExposurePath} scanId={selectedScanId} />
             <Link
               href={fullGraphHref}
               className="sg-action"

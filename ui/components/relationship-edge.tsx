@@ -68,7 +68,7 @@ export function RelationshipEdge(props: EdgeProps) {
       {...(props.markerEnd ? { markerEnd: props.markerEnd } : {})}
       {...(props.interactionWidth !== undefined ? { interactionWidth: props.interactionWidth } : {})} />
     {props.label != null && <EdgeLabelRenderer>
-      <div className="nodrag nopan" style={{
+      <div className="nodrag nopan graph-relationship-label" style={{
         position: "absolute",
         transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
         fontSize: props.labelStyle?.fontSize ?? 12,

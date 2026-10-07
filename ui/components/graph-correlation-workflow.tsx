@@ -329,7 +329,7 @@ export function GraphCorrelationWorkflow({
                   Review exposure candidates
                 </a>
               ) : null}
-              {isComplete && run.output_scan_id && !boundOutcome ? (
+              {isComplete && attackPaths > 0 && run.output_scan_id && !boundOutcome ? (
                 <button data-testid="correlation-open-path" type="button" onClick={() => onOpenSnapshot(run.output_scan_id)} className="gc-open-path">
                   Open top path
                 </button>

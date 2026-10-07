@@ -431,7 +431,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
         >
           <div className="space-y-5 p-5 sm:p-6">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-400">Configure</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-400">Configure</p>
               <h2 className="mt-1 text-base font-semibold text-[color:var(--foreground)]">
                 {scanMode === "connected"
                   ? "Select a connected cloud boundary"
@@ -745,7 +745,7 @@ function ScanAccessNotice({
     return (
       <div
         role="note"
-        className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100"
+        className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100"
       >
         Scans require the Contributor role or higher. Ask an administrator to grant scan access.
       </div>
@@ -755,7 +755,7 @@ function ScanAccessNotice({
     return (
       <div
         role="note"
-        className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100"
+        className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100"
       >
         Managed trial scans run from a verified AWS connection. Ad-hoc, data-source, and AI / ML execution stay unavailable in this environment.
       </div>
@@ -819,7 +819,7 @@ function ScanWorkspacePanel({
 
       <section className="rounded-xl border border-emerald-700/30 bg-emerald-500/[0.06] p-3" aria-label="Read-only boundary">
         <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--foreground)]">
-          <ShieldCheck className="h-4 w-4 text-emerald-400" />
+          <ShieldCheck className="h-4 w-4 text-emerald-800 dark:text-emerald-400" />
           Read-only boundary
         </div>
         <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--text-secondary)]">{boundaryCopy(mode, target)}</p>
@@ -857,7 +857,7 @@ function ConnectedAccountPanel({
     return (
       <div className="space-y-3">
         <p className="text-sm text-[color:var(--text-secondary)]">No accounts connected.</p>
-        <Link href="/connections" className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300">
+        <Link href="/connections" className="inline-flex items-center gap-1.5 text-sm text-emerald-800 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300">
           Connect account <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
@@ -907,7 +907,7 @@ function ScheduledSourcePanel({
   }
   if (sources.length === 0) {
     return (
-      <Link href="/sources" className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300">
+      <Link href="/sources" className="inline-flex items-center gap-1.5 text-sm text-emerald-800 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300">
         Register data source <ArrowRight className="h-3.5 w-3.5" />
       </Link>
     );
@@ -952,7 +952,7 @@ function RepoSurfaceCatalog() {
         </div>
         <p className="mt-2 text-[10px] text-[color:var(--text-tertiary)]">
           Shallow read-only clone. Optional Semgrep SAST reports findings, clean, skipped, or failed explicitly. SaaS connectors use{" "}
-          <Link href="/sources" className="text-emerald-400 hover:text-emerald-300">Data Sources</Link>, not git URLs.
+          <Link href="/sources" className="text-emerald-800 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300">Data Sources</Link>, not git URLs.
         </p>
       </div>
     </details>

@@ -264,7 +264,10 @@ function NeighborGroup({ label, entries }: { label: string; entries: NeighborEnt
 }
 
 export function ExposurePathNeighborExplorer({ path, scanId }: { path: ExposurePath; scanId?: string | undefined }) {
-  const hops = path.hops;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(path.hops.length / 100));
+  const currentPage = Math.min(page, pageCount - 1);
+  const hops = path.hops.slice(currentPage * 100, (currentPage + 1) * 100);
   if (hops.length === 0) return null;
   const anyExpandable = hops.some((hop) => Boolean(hop.id));
   if (!anyExpandable) return null;
@@ -275,6 +278,11 @@ export function ExposurePathNeighborExplorer({ path, scanId }: { path: ExposureP
         <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Expand path neighbors</div>
         <div className="text-[10px] text-[color:var(--text-tertiary)]">Direct relationships · loaded on demand</div>
       </div>
+      {pageCount > 1 ? <nav aria-label="Hop pages" className="flex gap-3 text-sm">
+        <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous hop page</button>
+        <span>Page {currentPage + 1} of {pageCount}</span>
+        <button type="button" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Next hop page</button>
+      </nav> : null}
       <div className="space-y-2">
         {hops.map((hop) => (
           <HopRow key={`${scanId}:${hop.id}`} hop={hop} scanId={scanId} />

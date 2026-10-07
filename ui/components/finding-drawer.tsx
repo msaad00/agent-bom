@@ -21,6 +21,7 @@ import {
 } from "@/lib/findings-lens";
 import {
   type EnrichedVuln,
+  verifiedRepositoryLocation,
   uniqueStrings,
   findingWorkloadScope,
   sbomSourceName,
@@ -261,6 +262,9 @@ function EvidenceTab({ vuln }: { vuln: EnrichedVuln }) {
           {whyItMatters.links.map((link) => <Link key={link.href} href={link.href} className="mr-3 inline-block text-accent-mint hover:underline">{link.label}</Link>)}
         </div> : null}
       </Panel>
+      {vuln.finding_class === "misconfiguration" || vuln.repository_relative_path !== undefined ? <Panel title="Repository location">
+        <p className="break-words text-sm text-ink-secondary">{verifiedRepositoryLocation(vuln.repository_relative_path) ?? "Unknown — no verified repository-relative location supplied"}</p>
+      </Panel> : null}
       <Panel title="Investigation sources">
         <div className="space-y-3">
           <TagList label="Signals" values={investigationSources} />

@@ -69,16 +69,18 @@ export function readableLineageDagreLr(
   };
 }
 
+export const COMPACT_GRAPH_MIN_ZOOM = 0.75;
+
 /** A bounded selected context keeps full labels and card-sized layout boxes. */
 export function compactInvestigationLayout(explicitContext: boolean, nodeCount: number): DagreLrOptions | undefined {
   if (!explicitContext || nodeCount < 1 || nodeCount > 16) return undefined;
   // Preserve the established short-chain framing. Larger contexts reserve the
-  // three-line label and metadata height while tightening unused rank space.
+  // three-line label and metadata height. Reserve a lane for relationship badges.
   const height = nodeCount <= 4 ? 140 : 188;
   return readableLineageDagreLr({
     nodeWidth: 260,
     nodeHeight: height,
-    rankSep: 32,
+    rankSep: 216,
     nodeSep: 24,
     minSeparation: { width: 260, height, gap: 24 },
   });

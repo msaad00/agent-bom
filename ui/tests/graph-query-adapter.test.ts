@@ -61,9 +61,9 @@ describe("graph query response adapter", () => {
 
 describe("graph loading budget", () => {
   it("starts with a small selection and expands only the requested snapshot", () => {
-    expect(graphFetchLimitForSnapshot("scan-a", null)).toBe(250);
-    expect(graphFetchLimitForSnapshot("scan-a", "scan-a")).toBe(3000);
-    expect(graphFetchLimitForSnapshot("scan-b", "scan-a")).toBe(250);
-    expect(graphFetchLimitForSnapshot("", null)).toBe(250);
+    expect(graphFetchLimitForSnapshot("scan-a", null)).toBe(50);
+    expect(graphFetchLimitForSnapshot("scan-a", "scan-a")).toBe(100);
+    expect(graphFetchLimitForSnapshot("scan-b", "scan-a")).toBe(50);
+    expect(graphFetchLimitForSnapshot("", null)).toBe(50);
   });
 });

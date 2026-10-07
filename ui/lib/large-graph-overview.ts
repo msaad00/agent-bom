@@ -6,7 +6,7 @@ import { RELATIONSHIP_COLOR_MAP } from "@/lib/graph-schema";
 
 export const LARGE_GRAPH_OVERVIEW_NODE_THRESHOLD = 200;
 export const LARGE_GRAPH_OVERVIEW_EDGE_THRESHOLD = 500;
-export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES = 3000;
+export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES = 100;
 export const LARGE_GRAPH_OVERVIEW_MAX_RENDERED_EDGES = 6000;
 
 export interface LargeGraphOverviewDecision {

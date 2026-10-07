@@ -103,6 +103,16 @@ describe("FindingsPage", () => {
     });
   });
 
+  it("preserves verified repository-relative IaC evidence into the drawer", async () => {
+    apiMock.listFindings.mockResolvedValue({ findings: [{ ...canonicalFinding, finding_class: "misconfiguration", evidence: { repository_relative_path: "infra/main.tf", file_path: "/private/host/main.tf" } }], total: 1, has_more: false });
+    render(<FindingsPage />);
+    await screen.findAllByText("CVE-2026-1234");
+    fireEvent.click(screen.getAllByRole("button", { name: "Investigate" })[0]!);
+    fireEvent.click(screen.getByRole("tab", { name: "Evidence" }));
+    expect(screen.getByText("infra/main.tf")).toBeVisible();
+    expect(screen.queryByText("/private/host/main.tf")).not.toBeInTheDocument();
+  });
+
   it("shows an unreconfirmed collection qualifier through the API-to-drawer path", async () => {
     apiMock.listFindings.mockResolvedValue({ findings: [{ ...canonicalFinding,
       observation_status: "unreconfirmed",

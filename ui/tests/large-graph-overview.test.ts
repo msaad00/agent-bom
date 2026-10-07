@@ -35,6 +35,11 @@ function edge(id: string, source: string, target: string, relationship = "depend
 }
 
 describe("large graph overview", () => {
+  it.each([10, 1000, 10000])("renders at most 100 nodes for a %i-node fixture", (size) => {
+    const model = buildLargeGraphOverviewModel(Array.from({ length: size }, (_, index) => node(`node-${index}`)), []);
+    expect(model.nodes.length).toBeLessThanOrEqual(100);
+    expect(model.omittedNodeCount).toBe(size - model.nodes.length);
+  });
   it("only promotes broad, unfocused graph views to the canvas renderer", () => {
     expect(
       shouldUseLargeGraphOverview({

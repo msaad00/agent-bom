@@ -194,12 +194,13 @@ def _build_demo_estate_status(tenant_id: str) -> DemoEstateStatus:
     """Report whether the demo's default graph is the synthetic showcase.
 
     Demo mode only ever presents synthetic evidence. When the store's newest
-    snapshot is anything other than the showcase, the demo is ``blocked``: the
+    snapshot is neither the showcase nor its preparation baseline, the demo is
+    ``blocked``: the
     status withholds that snapshot's id so the demo surfaces never link to, or
     label as sample data, evidence the demo did not create.
     """
     from agent_bom.api.stores import _get_graph_store
-    from agent_bom.demo_estate.showcase_graph import SHOWCASE_SCAN_ID
+    from agent_bom.demo_estate.showcase_graph import SHOWCASE_BASELINE_SCAN_ID, SHOWCASE_SCAN_ID
 
     graph_store = _get_graph_store()
     owner = str(graph_store.latest_snapshot_id(tenant_id=tenant_id, snapshot_kind="scan") or "")
@@ -212,6 +213,8 @@ def _build_demo_estate_status(tenant_id: str) -> DemoEstateStatus:
         alignment, reason = "unavailable", "no_graph_snapshot"
     elif owner == SHOWCASE_SCAN_ID:
         alignment = "aligned"
+    elif owner == SHOWCASE_BASELINE_SCAN_ID:
+        alignment, reason = "unavailable", "showcase_preparation_incomplete"
     else:
         alignment, reason = "blocked", "non_demo_snapshot_present"
 

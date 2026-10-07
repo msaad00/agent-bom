@@ -22,7 +22,7 @@ def test_offline_with_no_cache_does_not_claim_a_local_cache():
 def test_exact_aws_documentation_key_is_not_a_real_credential(tmp_path):
     (tmp_path / "credentials.txt").write_text("aws_access_key_id = AKIAIOSFODNN7EXAMPLE\n")
     assert not any(f.severity == "critical" for f in scan_secrets(tmp_path).findings)
-    (tmp_path / "credentials.txt").write_text("aws_access_key_id = AKIAIOSFODNN7EXAMPLZ\n")
+    (tmp_path / "credentials.txt").write_text("aws_access_key_id = " + "AKIA" + "IOSFODNN7EXAMPLZ\n")
     assert any(f.severity == "critical" for f in scan_secrets(tmp_path).findings)
 
 

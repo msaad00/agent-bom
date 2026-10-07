@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.2",
-  "captured_at": "2026-10-07T02:07:37.117Z",
-  "source_commit": "96c0def8d3f3dab428315112a01ee915b52958aa",
+  "captured_at": "2026-10-07T03:24:22.382Z",
+  "source_commit": "2b90d2daad26dc19c34f6e2f0400c307b7649070",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:d94e78c15df5db7991e39da82c6e1d5cce88e738ad238ec336fcd043202e8508",
+  "capture_inputs_sha256": "sha256:c8aca727b571fc854bb439a316381a37a6118656d65aca372d009ed9f8dfdffd",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -188,7 +188,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.2",
-      "sha256": "sha256:8f1920d3d919f00f805524a85c9d14140e71dbe8b2965be4abc47e5634f59c96"
+      "sha256": "sha256:60b3576ebdaaa578161442289634d16492435536881540103e3b1e04f3f94878"
     },
     {
       "presentation": "dark desktop",
@@ -273,7 +273,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.2",
-      "sha256": "sha256:c8ea2ba8ff2b8166896bbfc53a02d2ff7e9861c05739f1a4bb70191bbf1fb60f"
+      "sha256": "sha256:f1b6c0bd962061f63dd945aea225cc5bc6d45969fa71d644e835b917d44505fe"
     },
     {
       "presentation": "dark mobile",
@@ -281,7 +281,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.108.2",
-      "sha256": "sha256:f0436c6c6e364513262a071e6c06a3170ba4cfd15595dc0794f41fc74fec1d97"
+      "sha256": "sha256:8f022bab5067a020b38e1c0e47b7bbcd84d98f737c6995f311577384df04e7bd"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.2",
-      "sha256": "sha256:6e6813fafa1f40bae761b28d91fd1ae4a36b5b74c999ee03cfd66e876968f27a"
+      "sha256": "sha256:b985c29d5b4fd0bb9de7320e52531214cdb8f1599ebccb509066f33c31f0ddc8"
     },
     {
       "presentation": "dark desktop 1440x900",
@@ -337,7 +337,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.2",
-      "sha256": "sha256:b373bb6bb37e699f33aff5f8e4a10979bf940be1a5b364fa6aaff08ca459f6a0"
+      "sha256": "sha256:2c5085da2044529331b232287bc32eb81c7545c51d338b228f760b3fe1a9fd5e"
     },
     {
       "presentation": "dark desktop",
@@ -369,7 +369,7 @@
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
       "visible_version": "0.108.2",
-      "sha256": "sha256:6eebc10052c62b1784babe07f8c92435c5794d08d6570ecdaffc3962880b8025"
+      "sha256": "sha256:327a6dc1c6c48b95d3b50b0fd8c4d4c20893b8b7a0361dbc60d23354ad52c5a3"
     },
     {
       "presentation": "dark desktop",

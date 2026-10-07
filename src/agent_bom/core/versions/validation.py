@@ -6,6 +6,8 @@ import logging
 import re
 from functools import lru_cache
 
+from agent_bom.os_advisory import OS_DISTRO_COMPARATOR_FAMILIES
+
 _logger = logging.getLogger(__name__)
 
 
@@ -121,12 +123,20 @@ def strip_pip_extras(name: str) -> tuple[str, str]:
     return name.strip(), ""
 
 
+_DISTRO_PACKAGE_FAMILIES = frozenset({"deb", "debian", "ubuntu", "apk", "alpine", "rpm", *OS_DISTRO_COMPARATOR_FAMILIES})
+
+
 def is_prerelease_version(version: str, ecosystem: str) -> bool:
     """Return True when a version string represents a prerelease/canary build."""
     if not version:
         return False
 
     eco = ecosystem.lower()
+    # A distro package version is a build the distro already shipped to that
+    # release, so it is never an upstream prerelease. PEP 440 parsing would
+    # misread tzdata ``2025b-0+deb11u2`` as a beta and drop a real fix.
+    if eco.split(":", 1)[0].strip() in _DISTRO_PACKAGE_FAMILIES:
+        return False
     candidate = version if eco == "go" else version.lstrip("v")
     try:
         from packaging.version import Version

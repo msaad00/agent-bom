@@ -359,8 +359,11 @@ def _cli_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.delenv(var)
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path / "product"))
     monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)
-    from agent_bom.api import stores
+    from agent_bom.api import connection_crypto, stores
 
+    # Environment isolation must also reset the process-resolved key: a prior
+    # encryption test can otherwise suppress local key-file provisioning.
+    monkeypatch.setattr(connection_crypto, "_RESOLVED_KEY", None)
     monkeypatch.setattr(stores, "_store", None)
 
 
@@ -383,11 +386,14 @@ def test_cli_demo_estate_pins_the_demo_data_dir(monkeypatch: pytest.MonkeyPatch,
     assert summaries[0]["Demo data"] == str(demo_dir)
 
 
-def test_demo_cli_fixture_restores_connection_key_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("prior_cached_key", [None, b"previous-test-key"])
+def test_demo_cli_fixture_restores_connection_key_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prior_cached_key) -> None:
     from click.testing import CliRunner
 
+    from agent_bom.api import connection_crypto
     from agent_bom.cli._server import api_cmd
 
+    monkeypatch.setattr(connection_crypto, "_RESOLVED_KEY", prior_cached_key)
     monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_FILE", raising=False)
     monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY", raising=False)
     with monkeypatch.context() as scoped:

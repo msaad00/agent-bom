@@ -9,6 +9,26 @@ from agent_bom.models import Package
 _SCOPED_TYPES = {"runtime": "runtime", "build": "build", "dev": "dev", "test": "test", "optional": "optional", "provided": "provided"}
 
 
+def context_role(element: dict) -> str | None:
+    """Recognize declared agent/server containers, not arbitrary applications."""
+    purpose = next(
+        (
+            element[key]
+            for key in ("primaryPackagePurpose", "primaryPurpose", "software/primaryPurpose", "software_primaryPurpose")
+            if element.get(key)
+        ),
+        "",
+    )
+    if str(purpose).lower() != "application":
+        return None
+    description = str(element.get("description", element.get("comment", "")))
+    if description.startswith("AI Agent ("):
+        return "ai-agent"
+    if description.startswith("MCP Server ("):
+        return "mcp-server"
+    return None
+
+
 def dependency_relationships(document: dict) -> list[tuple[str, str, str]]:
     """Read native SPDX 2 dependency kinds and SPDX 3 lifecycle scopes."""
     result = []

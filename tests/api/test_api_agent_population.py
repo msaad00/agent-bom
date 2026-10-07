@@ -79,7 +79,10 @@ def test_posture_agent_count_is_tenant_isolated(graph_store) -> None:
     assert counts(alpha)["total"] == 4 == _agent_list_total(client, alpha)
     assert counts(beta)["total"] == 1 == _agent_list_total(client, beta)
     assert counts(beta)["scan_id"] == "agents-iso-b"
-    assert counts(empty) == {"total": 0, "scan_id": None, "basis": "graph_agents"}
+    empty_counts = counts(empty)
+    assert empty_counts["total"] == 0
+    assert empty_counts["basis"] == "graph_agents"
+    assert empty_counts["scan_id"].startswith("current-estate:")
 
 
 def test_posture_agent_count_refreshes_when_a_new_scan_lands(graph_store) -> None:
@@ -100,6 +103,7 @@ def test_posture_agent_count_refreshes_when_a_new_scan_lands(graph_store) -> Non
 
 def test_posture_counts_survive_a_graph_backend_without_inventory_queries(graph_store, monkeypatch) -> None:
     tenant = "agent-population-unsupported"
+    _save_snapshot(graph_store, tenant, "unsupported-scan", ["one"])
 
     def unsupported(*args, **kwargs):
         raise NotImplementedError("query_inventory")

@@ -150,8 +150,8 @@ class PostgresAuditLog:
                 _ensure_tenant_rls(conn, "audit_log", "team_id")
                 _ensure_tenant_rls(conn, "audit_chain_checkpoint", "tenant_id")
                 conn.commit()
-        # Migration-owned deployments skip runtime DDL, but still need the
-        # fork guard and legacy checkpoint reconciliation.
+        # Verify migration-owned guards without requiring runtime DDL privileges;
+        # bootstrap installations may still create a missing index.
         self._ensure_fork_guard_index()
         self._hydrate_checkpoints()
 
@@ -169,13 +169,38 @@ class PostgresAuditLog:
         """
         try:
             with self._pool.connection() as conn:
+                guard = conn.execute(
+                    """
+                    SELECT i.indisunique AND i.indisvalid AND i.indisready
+                           AND i.indpred IS NULL AND i.indexprs IS NULL
+                           AND i.indnatts = 2 AND i.indrelid = to_regclass('audit_log')
+                           AND ARRAY(
+                               SELECT a.attname::text
+                               FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, position)
+                               JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+                               ORDER BY k.position
+                           ) = ARRAY['team_id', 'prev_signature']
+                    FROM pg_index i
+                    JOIN pg_class idx ON idx.oid = i.indexrelid
+                    WHERE i.indrelid = to_regclass('audit_log') AND idx.relname = %s
+                    """,
+                    (_AUDIT_FORK_GUARD_INDEX,),
+                ).fetchone()
+                if guard is not None:
+                    if guard[0]:
+                        return
+                    logger.warning(
+                        "Audit fork-guard index %s exists but does not enforce the required chain uniqueness; "
+                        "apply the audit schema migration before relying on concurrent chain integrity",
+                        _AUDIT_FORK_GUARD_INDEX,
+                    )
+                    return
                 conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {_AUDIT_FORK_GUARD_INDEX} ON audit_log (team_id, prev_signature)")
                 conn.commit()
         except Exception:
             logger.warning(
-                "Could not create audit_log fork-guard unique index %s "
-                "(pre-existing chain forks?); appends will retry but forks cannot "
-                "be rejected at the DB until the existing rows are reconciled",
+                "Could not verify or create audit_log fork-guard unique index %s; "
+                "check audit schema migrations and database privileges before relying on concurrent chain integrity",
                 _AUDIT_FORK_GUARD_INDEX,
                 exc_info=False,
             )

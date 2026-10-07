@@ -245,6 +245,10 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             selected.update(
                 candidate for candidate in available if candidate.name in {"test_scan_export_perf.py", "test_cloud_coordinate_redaction.py"}
             )
+        if normalized.as_posix() == "src/agent_bom/sbom.py" or normalized.as_posix().startswith(
+            ("src/agent_bom/sbom_formats/", "src/agent_bom/parsers/spdx", "src/agent_bom/parsers/sbom")
+        ):
+            selected.update(candidate for candidate in available if candidate.name.startswith(("test_sbom", "test_spdx")))
         if normalized.as_posix() in {
             "src/agent_bom/sbom.py",
             "src/agent_bom/parsers/sbom_context.py",

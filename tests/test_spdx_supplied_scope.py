@@ -26,8 +26,10 @@ def test_spdx2_supplied_scope_is_preserved(scope, relation):
         "relationships": [{"spdxElementId": "p", "relationshipType": relation, "relatedSpdxElement": "app"}],
     }
     packages = parse_spdx(document)
-    assert packages[0].dependency_scope == scope
-    assert packages[0].is_direct is True
+    assert {package.name for package in packages} == {"application", "library"}
+    library = next(package for package in packages if package.name == "library")
+    assert library.dependency_scope == scope
+    assert library.is_direct is True
     agent = Agent(
         name="import",
         agent_type=AgentType.CUSTOM,
@@ -50,7 +52,8 @@ def test_spdx3_lifecycle_scope_is_preserved():
             ],
         }
     )
-    assert packages[0].dependency_scope == "test"
+    assert {package.name for package in packages} == {"application", "library"}
+    assert next(package for package in packages if package.name == "library").dependency_scope == "test"
 
 
 @pytest.mark.parametrize("format_name", ["spdx2", "spdx3"])
@@ -79,4 +82,6 @@ def test_supplied_scope_survives_spdx_reexport(format_name):
         ]
     )
     document = to_spdx2(report) if format_name == "spdx2" else to_spdx(report)
-    assert parse_spdx(document)[0].dependency_scope == "test"
+    restored = parse_spdx(document)
+    assert {package.name for package in restored} == {"application", "library"}
+    assert next(package for package in restored if package.name == "library").dependency_scope == "test"

@@ -57,6 +57,7 @@ class VulnException:
     revoked_at: str = ""
     tenant_id: str = "default"
     approval_version: int = 0
+    decided_by: str = ""
 
     def __post_init__(self) -> None:
         if not self.exception_id:
@@ -93,6 +94,7 @@ class VulnException:
             "revoked_at": self.revoked_at,
             "tenant_id": self.tenant_id,
             "approval_version": self.approval_version,
+            "decided_by": self.decided_by,
         }
 
 
@@ -194,7 +196,7 @@ class SQLiteExceptionStore:
         return conn
 
     def _init_db(self) -> None:
-        ensure_sqlite_schema_version(self._conn, "exceptions", version=2)
+        ensure_sqlite_schema_version(self._conn, "exceptions", version=3)
         self._conn.execute("""CREATE TABLE IF NOT EXISTS exceptions (
             exception_id TEXT PRIMARY KEY,
             vuln_id TEXT NOT NULL,
@@ -210,8 +212,11 @@ class SQLiteExceptionStore:
             revoked_at TEXT NOT NULL DEFAULT '',
             tenant_id TEXT NOT NULL DEFAULT 'default'
         )""")
-        if "approval_version" not in {row[1] for row in self._conn.execute("PRAGMA table_info(exceptions)")}:
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(exceptions)")}
+        if "approval_version" not in columns:
             self._conn.execute("ALTER TABLE exceptions ADD COLUMN approval_version INTEGER NOT NULL DEFAULT 0")
+        if "decided_by" not in columns:
+            self._conn.execute("ALTER TABLE exceptions ADD COLUMN decided_by TEXT NOT NULL DEFAULT ''")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_status ON exceptions(status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_tenant ON exceptions(tenant_id)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_exc_vuln ON exceptions(vuln_id)")
@@ -224,13 +229,13 @@ class SQLiteExceptionStore:
         tenant = exception_write_tenant(exc, tenant_id)
         cursor = self._conn.execute(
             "INSERT INTO exceptions (exception_id, vuln_id, package_name, server_name, reason, "
-            "requested_by, approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "requested_by, approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version, "
+            "decided_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (exception_id) DO UPDATE SET vuln_id=excluded.vuln_id, package_name=excluded.package_name, "
             "server_name=excluded.server_name, reason=excluded.reason, requested_by=excluded.requested_by, "
             "approved_by=excluded.approved_by, status=excluded.status, created_at=excluded.created_at, "
             "expires_at=excluded.expires_at, approved_at=excluded.approved_at, revoked_at=excluded.revoked_at, "
-            "approval_version=excluded.approval_version "
+            "approval_version=excluded.approval_version, decided_by=excluded.decided_by "
             "WHERE exceptions.tenant_id=excluded.tenant_id",
             (
                 exc.exception_id,
@@ -247,6 +252,7 @@ class SQLiteExceptionStore:
                 exc.revoked_at,
                 tenant,
                 exc.approval_version,
+                exc.decided_by,
             ),
         )
         self._conn.commit()
@@ -257,7 +263,7 @@ class SQLiteExceptionStore:
         tenant = require_explicit_tenant_id(tenant_id)
         row = self._conn.execute(
             "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
-            "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version "
+            "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version, decided_by "
             "FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
             (exception_id, tenant),
         ).fetchone()
@@ -279,6 +285,7 @@ class SQLiteExceptionStore:
                 revoked_at=row[11],
                 tenant_id=row[12],
                 approval_version=row[13],
+                decided_by=row[14],
             ),
             tenant,
         )
@@ -302,7 +309,7 @@ class SQLiteExceptionStore:
         where = " AND ".join(clauses)
         rows = self._conn.execute(
             f"SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "  # nosec B608 — clauses are static strings, values are parameterized
-            f"approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version "
+            f"approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id, approval_version, decided_by "
             f"FROM exceptions WHERE {where} ORDER BY created_at DESC",
             params,
         ).fetchall()
@@ -323,6 +330,7 @@ class SQLiteExceptionStore:
                     revoked_at=r[11],
                     tenant_id=r[12],
                     approval_version=r[13],
+                    decided_by=r[14],
                 ),
                 tenant,
             )

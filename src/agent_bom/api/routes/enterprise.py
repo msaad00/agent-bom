@@ -76,6 +76,7 @@ from agent_bom.api.suppression_approval import (
     reset_suppression_request,
     suppression_active,
     suppression_requested,
+    suppression_review_fields,
 )
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.security import sanitize_error, sanitize_text
@@ -359,8 +360,7 @@ def _triage_response(exc: Any) -> dict[str, Any]:
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,
         "vex_eligible": suppression_active(exc) and decision == "not_affected" and bool(data.get("justification")),
-        "approval_status": exc.status.value,
-        "approval_required": suppression_requested(exc) and not suppression_active(exc),
+        **suppression_review_fields(exc),
     }
 
 
@@ -2853,7 +2853,7 @@ def update_finding_triage_decision(request: Request, triage_id: str, req: Findin
             "reviewed_at": reviewed_at,
         }
     )
-    reset_suppression_request(exc)
+    reset_suppression_request(exc, decided_by=actor)
     if req.expires_at is not None:
         exc.expires_at = req.expires_at
     store.put(exc, tenant_id=tenant_id)
@@ -3138,7 +3138,7 @@ def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestReque
                 existing[(stmt.vulnerability_id, package)] = exc
             else:
                 exc.reason = reason
-            reset_suppression_request(exc)
+            reset_suppression_request(exc, decided_by=actor)
             store.put(exc, tenant_id=tenant_id)
             applied += 1
 

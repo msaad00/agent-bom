@@ -41,9 +41,11 @@ def expiry_window_error(expires_at: str, *, now: datetime | None = None) -> str 
     return None
 
 
-def require_distinct_approver(requested_by: str, approver: str) -> None:
-    requester = requested_by.strip().lower()
-    if requester and requester == approver.strip().lower() and not self_approval_allowed():
+def require_distinct_approver(requested_by: str, approver: str, *, decided_by: str = "") -> None:
+    """Reject an approver who requested the suppression or asserted its current decision."""
+    reviewer = approver.strip().lower()
+    asserted = {principal.strip().lower() for principal in (requested_by, decided_by)} - {""}
+    if reviewer in asserted and not self_approval_allowed():
         raise SelfApprovalError(
             f"Suppression approval requires a different approver than the requester; "
             f"single-operator deployments can set {ALLOW_SELF_APPROVAL_ENV}=1"

@@ -216,6 +216,9 @@ Expiries are bounded: create and approve reject an `expires_at` more than
 `AGENT_BOM_EXCEPTION_MAX_EXPIRY_DAYS` days ahead (default 365, accepted range
 1-3650) with a 422 (create) or 400 (approve). Approval also enforces four-eyes
 review: the principal that requested the suppression cannot approve it (403).
+When a triage decision is recorded later (`PUT /v1/findings/triage/{id}/decision`
+or VEX ingest), its author is stored as `decided_by` and is also barred from
+approving; triage responses keep the original requester in `created_by`.
 Shared identities such as a single static API key, an unauthenticated local
 server, or a trusted proxy without `X-Agent-Bom-Subject` all resolve to one
 principal, so such single-operator deployments must opt out explicitly with

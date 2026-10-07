@@ -3362,7 +3362,7 @@ async function main() {
     );
     await correlationPage.close();
 
-    await page.setViewportSize({ width: 1120, height: 920 });
+    await page.setViewportSize({ width: 1920, height: 1080 });
     await capture(
       page,
       `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
@@ -3371,7 +3371,7 @@ async function main() {
       correlationPathAssertions,
     );
     await page.setViewportSize({ width: 1440, height: 980 });
-    const referenceGraphPage = await newCapturePage("dark", { width: 1568, height: 980 });
+    const referenceGraphPage = await newCapturePage("dark", { width: 1920, height: 1080 });
     await capture(
       referenceGraphPage,
       `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
@@ -3662,7 +3662,7 @@ async function main() {
       prepareCorrelationReceipts,
       correlationReceiptAssertions,
     );
-    await lightPage.setViewportSize({ width: 1120, height: 920 });
+    await lightPage.setViewportSize({ width: 1920, height: 1080 });
     await capture(
       lightPage,
       `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,

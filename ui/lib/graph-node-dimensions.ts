@@ -80,7 +80,7 @@ export function compactInvestigationLayout(explicitContext: boolean, nodeCount: 
   return readableLineageDagreLr({
     nodeWidth: 260,
     nodeHeight: height,
-    rankSep: 120,
+    rankSep: 216,
     nodeSep: 24,
     minSeparation: { width: 260, height, gap: 24 },
   });

@@ -936,3 +936,27 @@ for (const theme of ["light", "dark"] as const) {
     await expect.poll(() => new URL(page.url()).searchParams.get("layers")).toBe("agent");
   });
 }
+
+for (const theme of ["light", "dark"] as const) {
+  test(`expanded reference graph keeps whole relationship words ${theme}`, async ({ page }, testInfo) => {
+    const proof = JSON.parse(await readFile("../examples/reference-evidence-lab/generated/correlation-proof.json", "utf8"));
+    const graph = { ...proof.capture_fixture.graph, scan_id: scanId };
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeGraphPage(page, graph);
+    await page.goto(`/graph?capture=1&scan=${scanId}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`);
+    await expect(page.locator(".react-flow__node")).toHaveCount(10);
+    await settledViewportZoom(page);
+    await page.getByRole("button", { name: "Fit all", exact: true }).click();
+    await settledViewportZoom(page);
+    const metrics = await page.locator(".graph-relationship-label .relationship-badge").evaluateAll(labels => labels.map(label => {
+      const text = label.querySelector("span")!;
+      const zoom = new DOMMatrixReadOnly(getComputedStyle(label.closest(".react-flow__edgelabel-renderer")!).transform).a;
+      return { text: text.textContent, wrap: getComputedStyle(label).overflowWrap,
+        lines: text.getBoundingClientRect().height / (parseFloat(getComputedStyle(text).lineHeight) * zoom) };
+    }));
+    expect(metrics.some(metric => metric.text === "Invoked (runtime)")).toBe(true);
+    expect(metrics.every(metric => metric.wrap !== "anywhere" && metric.lines <= 2.1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`expanded-reference-${theme}.png`), fullPage: true });
+  });
+}

@@ -2312,8 +2312,9 @@ def export_audit_entries(
         "entries": [entry.to_dict() for entry in entries],
     }
     payload = json.dumps(body, sort_keys=True).encode()
-    return JSONResponse(
-        content=body,
+    return Response(
+        content=payload,
+        media_type="application/json",
         headers={
             "Content-Disposition": 'attachment; filename="agent-bom-audit-export.json"',
             "X-Agent-Bom-Audit-Export-Signature": sign_export_payload(payload),

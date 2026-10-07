@@ -47,6 +47,7 @@ from agent_bom.api.postgres_common import (
 )
 from agent_bom.api.storage.sqlite_connection import open_wal_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version, ensure_sqlite_schema_version
+from agent_bom.storage.factory import validate_sqlite_path
 
 Dialect = Literal["sqlite", "postgres"]
 LikeMode = Literal["contains", "prefix"]
@@ -360,7 +361,7 @@ class SQLiteBackend:
     dialect: Dialect = "sqlite"
 
     def __init__(self, db_path: str, *, connection_factory: Callable[[], sqlite3.Connection] | None = None) -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._connection_factory = connection_factory
 

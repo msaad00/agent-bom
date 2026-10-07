@@ -6,6 +6,7 @@ import base64
 import binascii
 import hashlib
 import ipaddress
+import json
 import logging
 import math
 import os
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit, urlunsplit
 
+from agent_bom.redaction.emails import _contains_email, mask_email
 from agent_bom.redaction.env_values import container_has_secret
 
 logger = logging.getLogger(__name__)
@@ -235,6 +237,7 @@ def validate_path(
 
 
 _VALUE_CREDENTIAL_PATTERNS = [
+    re.compile(r"(?<![A-Za-z0-9_-])abom_[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])"),  # Generated control-plane API keys
     re.compile(r"(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}", re.I),  # Stripe/service keys
     # Require a token boundary so ordinary identifiers containing ``risk-``
     # are not truncated from the embedded ``sk-`` onward.
@@ -448,36 +451,6 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
             sanitized[key] = "***REDACTED***" if _looks_sensitive_value(str(value)) else str(value)
 
     return sanitized
-
-
-# Email is sensitive PII. We mask the local part and the domain label while
-# preserving enough shape to keep records correlatable (first char + TLD).
-# Conservative on purpose: only well-formed addresses are masked so legitimate
-# non-PII fields (versions, identifiers containing "@" such as scoped npm
-# package names like "@scope/pkg") are left untouched.
-_EMAIL_RE = re.compile(r"\b([A-Za-z0-9._%+\-]+)@([A-Za-z0-9.\-]+)\.([A-Za-z]{2,})\b")
-
-
-def _mask_email_match(local: str, domain: str, tld: str) -> str:
-    """Mask one parsed email address into ``a***@e***.com`` shape."""
-    local_masked = f"{local[0]}***" if local else "***"
-    domain_masked = f"{domain[0]}***" if domain else "***"
-    return f"{local_masked}@{domain_masked}.{tld}"
-
-
-def mask_email(value: object) -> str:
-    """Mask every email address in *value*, preserving non-email text.
-
-    ``alice@example.com`` → ``a***@e***.com``. Strings without a well-formed
-    address pass through unchanged, so scoped package names (``@scope/pkg``)
-    and version specifiers are not corrupted.
-    """
-    text = str(value)
-    return _EMAIL_RE.sub(lambda m: _mask_email_match(m.group(1), m.group(2), m.group(3)), text)
-
-
-def _contains_email(value: str) -> bool:
-    return bool(_EMAIL_RE.search(value))
 
 
 # Field names whose values are email addresses and must always be masked in
@@ -695,7 +668,7 @@ def text_requires_redaction(value: object) -> bool:
     text = str(value)
     if "http://" in text.lower() or "https://" in text.lower():
         return True
-    if _EMAIL_RE.search(text) or _contains_value_credential(text):
+    if _contains_email(text) or _contains_value_credential(text):
         return True
     # The keyed-value grammar cannot match without an assignment delimiter.
     # Avoid starting its bounded-key regex at every character of large plain
@@ -1001,8 +974,6 @@ def validate_json_file(path: Path) -> dict:
     Raises:
         SecurityError: If file is invalid or too large
     """
-    import json
-
     # Validate path
     path = validate_path(path, must_exist=True)
 
@@ -1258,17 +1229,11 @@ def validate_image_ref(ref: str) -> str:
 
 
 def sanitize_error(exc: Exception | str, generic: bool = False, *, max_length: int = 200) -> str:
-    """Return a safe error message suitable for API consumers.
+    """Redact credentials, PII, paths and URLs from API error messages.
 
-    Strips sensitive data (file paths, URLs) from exception messages while
-    preserving safe, actionable text.  Set ``generic=True`` to always return
-    a fixed non-diagnostic string regardless of the exception content.
-
-    ``max_length`` caps arbitrary SDK/exception text so a pathological message
-    cannot flood a response or a terminal. Callers passing text this codebase
-    *authored* (curated remediation guidance, which is bounded by construction)
-    may raise the cap so multi-sentence guidance is not chopped mid-word — the
-    redaction above always still applies.
+    ``generic=True`` returns a fixed non-diagnostic message. ``max_length``
+    bounds the response; callers with authored remediation text may raise
+    this cap without disabling redaction.
     """
     if generic:
         return "An internal error occurred. Please contact support."
@@ -1276,6 +1241,9 @@ def sanitize_error(exc: Exception | str, generic: bool = False, *, max_length: i
     msg = str(exc)
     # Strip URLs first (before path regex matches the path portion)
     msg = re.sub(r"https?://[^\s\"']+", "<url>", msg)
+    # Apply the same recognizable credential rules used for logs before the
+    # path scrubber can split a bearer token containing a slash.
+    msg = sanitize_text(msg, max_len=len(msg))
     # Strip inline credential assignments commonly included in SDK error strings.
     msg = re.sub(
         r"(?i)\b(token|secret|password|passwd|api[_-]?key|access[_-]?key|session[_-]?token)\s*=\s*[^\s,;]+",

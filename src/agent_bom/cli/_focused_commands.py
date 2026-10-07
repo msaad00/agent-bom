@@ -392,9 +392,8 @@ def secrets_cmd(
 ) -> None:
     """Scan a directory for hardcoded secrets and PII.
 
-    Uses 34 credential patterns + 11 PII patterns + 4 file-specific
-    patterns. Scans source code, config files, .env files, Dockerfiles,
-    Terraform, and more.
+    Detects credential and PII patterns with file-specific checks for source
+    code, config files, .env files, Dockerfiles, Terraform, and more.
 
     \b
     Examples:

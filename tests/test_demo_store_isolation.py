@@ -347,13 +347,23 @@ def test_demo_state_dir_accepts_the_pilot_demo_jobs_db(monkeypatch: pytest.Monke
 
 def _cli_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # setenv-then-delenv registers an undo, so values the CLI writes are restored.
-    for var in ("AGENT_BOM_DEMO_ESTATE", "AGENT_BOM_DB", "AGENT_BOM_DEMO_STATE_DIR", "AGENT_BOM_POSTGRES_URL", "AGENT_BOM_GRAPH_DB"):
+    for var in (
+        "AGENT_BOM_DEMO_ESTATE",
+        "AGENT_BOM_DB",
+        "AGENT_BOM_DEMO_STATE_DIR",
+        "AGENT_BOM_POSTGRES_URL",
+        "AGENT_BOM_GRAPH_DB",
+        "AGENT_BOM_CONNECTIONS_KEY_FILE",
+    ):
         monkeypatch.setenv(var, "")
         monkeypatch.delenv(var)
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path / "product"))
     monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)
-    from agent_bom.api import stores
+    from agent_bom.api import connection_crypto, stores
 
+    # Environment isolation must also reset the process-resolved key: a prior
+    # encryption test can otherwise suppress local key-file provisioning.
+    monkeypatch.setattr(connection_crypto, "_RESOLVED_KEY", None)
     monkeypatch.setattr(stores, "_store", None)
 
 
@@ -374,6 +384,25 @@ def test_cli_demo_estate_pins_the_demo_data_dir(monkeypatch: pytest.MonkeyPatch,
     demo_dir = tmp_path / "product" / "demo-estate"
     assert os.environ["AGENT_BOM_STATE_DIR"] == str(demo_dir)
     assert summaries[0]["Demo data"] == str(demo_dir)
+
+
+@pytest.mark.parametrize("prior_cached_key", [None, b"previous-test-key"])
+def test_demo_cli_fixture_restores_connection_key_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prior_cached_key) -> None:
+    from click.testing import CliRunner
+
+    from agent_bom.api import connection_crypto
+    from agent_bom.cli._server import api_cmd
+
+    monkeypatch.setattr(connection_crypto, "_RESOLVED_KEY", prior_cached_key)
+    monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_FILE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY", raising=False)
+    with monkeypatch.context() as scoped:
+        _cli_env(scoped, tmp_path)
+        result = CliRunner().invoke(api_cmd, ["--demo-estate", "--api-key", "synthetic-test-only-key"])
+        assert result.exit_code == 0, result.output
+        assert os.environ.get("AGENT_BOM_CONNECTIONS_KEY_FILE")
+    restored = os.environ.get("AGENT_BOM_CONNECTIONS_KEY_FILE")
+    assert restored is None
 
 
 @pytest.mark.parametrize("command_name", ["serve", "api"])

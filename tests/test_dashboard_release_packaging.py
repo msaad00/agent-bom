@@ -13,6 +13,8 @@ doc language so the defect cannot silently return.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +24,34 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_dashboard_rebuild_retires_setuptools_asset_cache(tmp_path, monkeypatch):
+    (tmp_path / "src/agent_bom").mkdir(parents=True)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(ROOT / "scripts/build-ui.sh", scripts / "build-ui.sh")
+    output = tmp_path / "ui/out"
+    output.mkdir(parents=True)
+    (output / "current.js").write_text("current dashboard")
+    cached = tmp_path / "build/lib/agent_bom/ui_dist"
+    cached.mkdir(parents=True)
+    (cached / "obsolete.js").write_text("old release command")
+    sibling = cached.parent / "models.py"
+    sibling.write_text("preserve other build outputs")
+    commands = tmp_path / "bin"
+    commands.mkdir()
+    for command in ("npm", "uv"):
+        executable = commands / command
+        executable.write_text("#!/bin/sh\nexit 0\n")
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.environ["PATH"])
+    subprocess.run(["bash", str(scripts / "build-ui.sh")], check=True, capture_output=True)
+    assert not cached.exists(), "setuptools would repackage retired dashboard chunks"
+    assert sibling.read_text() == "preserve other build outputs"
+    assert (tmp_path / "src/agent_bom/ui_dist/current.js").read_text() == "current dashboard"
+
+
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 DASHBOARD_ARTIFACT = "dashboard-ui-dist"
 DASHBOARD_PATH = "src/agent_bom/ui_dist"
@@ -160,9 +190,23 @@ def test_enterprise_deployment_states_what_each_artifact_bundles():
     assert "agentbom/agent-bom" in body
 
 
-def _make_test_wheel(tmp_path: Path, *, include_index: bool = True, script_hashes: list[str] | None = None) -> Path:
+def _make_test_wheel(
+    tmp_path: Path,
+    *,
+    include_index: bool = True,
+    script_hashes: list[str] | None = None,
+    dashboard_version: str = "0.0.0",
+    include_benchmark: bool = True,
+) -> Path:
     wheel = tmp_path / "agent_bom-0.0.0-py3-none-any.whl"
     with ZipFile(wheel, "w", compression=ZIP_DEFLATED) as archive:
+        if include_benchmark:
+            archive.writestr("agent_bom/cloud/benchmark_inventory.json", '{"providers":{}}')
+        archive.writestr("agent_bom-0.0.0.dist-info/METADATA", "Metadata-Version: 2.3\nName: agent-bom\nVersion: 0.0.0\n")
+        archive.writestr(
+            "agent_bom/ui_dist/_next/static/chunks/demo.js",
+            f'const commands = ["docker run --rm agentbom/agent-bom:{dashboard_version}", "uses: msaad00/agent-bom@v{dashboard_version}"];',
+        )
         archive.writestr("agent_bom/data/inventory.schema.json", "{}")
         archive.writestr("agent_bom/data/mcp-intelligence.schema.json", "{}")
         if include_index:
@@ -190,6 +234,13 @@ def test_release_wheel_verifier_accepts_dashboard_and_nonempty_csp_manifest(tmp_
 
     assert result.returncode == 0, result.stderr
     assert wheel.name in result.stdout
+
+
+def test_release_wheel_verifier_rejects_stale_dashboard_install_commands(tmp_path):
+    _make_test_wheel(tmp_path, dashboard_version="0.99.0")
+    result = _verify_wheels(tmp_path)
+    assert result.returncode == 1
+    assert "dashboard install pin" in result.stderr
 
 
 def test_release_wheel_verifier_rejects_a_dashboardless_wheel(tmp_path):
@@ -237,3 +288,10 @@ def test_floating_api_refresh_builds_and_serves_dashboard_before_publishing():
     assert checkout < setup < bundle < build < gate < publish
     assert "agent-bom:latest-refresh-test" in steps[gate]["run"]
     assert "index.html" in steps[gate]["run"]
+
+
+def test_release_wheel_verifier_rejects_missing_benchmark_inventory(tmp_path):
+    _make_test_wheel(tmp_path, include_benchmark=False)
+    result = _verify_wheels(tmp_path)
+    assert result.returncode == 1
+    assert "agent_bom/cloud/benchmark_inventory.json" in result.stderr

@@ -30,6 +30,22 @@ provide an explicit `WebhookDestination` and delivery function. Managed
 connector packages for Kafka, EventBridge, Pub/Sub, Event Hub, Kinesis, and
 Firehose remain roadmap work until adapter code and tests land.
 
+## Destination safety
+
+`POST /v1/webhooks` accepts private destinations only when the tenant explicitly
+sets the boolean `allow_private_networks: true` and the operator enables
+`AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS=1`. Metadata endpoints remain forbidden.
+Inline subscription delivery rechecks both approvals, validates every DNS answer
+at connection time, and connects to a validated address while preserving the
+hostname for HTTP and TLS verification. Redirects and ambient proxy variables
+are disabled on this delivery path. A forbidden destination fails closed and
+becomes a delivery failure, never a successful receipt.
+
+Registration validates URL structure and literal addresses. DNS is validated
+when the inline sender connects; accepting a hostname does not attest that its
+destination is reachable or safe. Custom senders supplied to the generic outbox
+must enforce the same destination policy at their transport boundary.
+
 ## Event Envelope
 
 Posture push connectors should emit:

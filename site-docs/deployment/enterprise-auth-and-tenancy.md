@@ -74,6 +74,14 @@ support data, see
 | Trusted proxy | same-origin ingress or auth gateway in front of API | `X-Agent-Bom-Tenant-ID` | `X-Agent-Bom-Role` | enable `AGENT_BOM_TRUST_PROXY_AUTH=1`; set exact `AGENT_BOM_TRUSTED_PROXY_HOPS` and API-facing `AGENT_BOM_TRUSTED_PROXY_CIDRS` before forwarded addresses affect auth rate limits |
 | mTLS | proxy/gateway → API transport | n/a | n/a | not an identity path |
 
+## Credential display and detection
+
+Error and log sanitization redact recognizable bearer credentials and generated
+`abom_` API keys. The file scanner and runtime credential detector also recognize
+short tokens in explicit bearer headers. Detection identifies exposed credential
+material; it does not prove that a token is valid. Runtime blocking still follows
+the configured proxy or gateway policy.
+
 ## RBAC model
 
 `agent-bom` keeps the role model intentionally small:
@@ -125,6 +133,17 @@ That means tenant scoping is not just a UI filter. It is part of the control
 plane and persistence contract.
 
 ## OIDC claim-to-tenant mapping
+
+Valid bearer access tokens can be reused until expiry. Each request still
+validates the token signature, issuer, audience and time claims. Browser ID-token
+exchanges keep single-use replay protection, scoped to the issuer, audience and
+login nonce.
+
+The configured role claim takes precedence over group membership, including an
+explicit `viewer` role. If that claim is present but malformed or unrecognized,
+groups cannot elevate it: required-role validation rejects authentication;
+configurations that permit a missing role grant only viewer access. Group
+mapping applies only when the configured role claim is absent.
 
 The OIDC knobs are:
 

@@ -121,6 +121,26 @@
   ],
   "credential_leak": [
     {
+      "name": "short_explicit_bearer_header",
+      "tool": "read_file",
+      "text": "Authorization: Bearer b7",
+      "expected_alert_count": 1,
+      "expected_message_contains": "Generic Bearer Token"
+    },
+    {
+      "name": "generated_control_plane_key",
+      "tool": "read_file",
+      "text": "abom_aB9_aB9_aB9_aB9_aB9_aB9_aB9_aB9_aB9_aB9_x-Y",
+      "expected_alert_count": 1,
+      "expected_message_contains": "Agent-Bom API Key"
+    },
+    {
+      "name": "noncredential_product_identifier",
+      "tool": "read_file",
+      "text": "abom_current_tenant Authorization: Bearer ${TOKEN}",
+      "expected_alert_count": 0
+    },
+    {
       "name": "clean_text_no_alert",
       "tool": "read_file",
       "text": "This is a normal file content with no secrets.",

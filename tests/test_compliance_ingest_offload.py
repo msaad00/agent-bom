@@ -175,3 +175,51 @@ async def test_hub_store_call_keeps_event_loop_responsive() -> None:
         f"event loop was blocked for {elapsed:.3f}s while a store write was in flight — offload is not effective"
     )
     assert await write_task == "written"
+
+
+@pytest.mark.parametrize("content", [b'{"content":"secret-marker",', b"\xff", b"[]"])
+def test_malformed_compliance_body_is_a_sanitized_client_error(content):
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.post(
+        "/v1/compliance/ingest",
+        content=content,
+        headers={**proxy_headers(role="admin", tenant="malformed-ingest"), "Content-Type": "application/json"},
+    )
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/json")
+    assert "secret-marker" not in response.text
+
+
+@pytest.mark.parametrize(
+    "field,value", [("format", 9), ("format", True), ("reconcile_absent", "false"), ("reconcile_absent", 1), ("observed_at", {})]
+)
+def test_compliance_ingest_invalid_fields_cannot_write_or_reconcile(field, value, monkeypatch):
+    calls = []
+    monkeypatch.setattr(hub_ingest_mod, "hub_ingest_store_writes", lambda *a, **kw: calls.append(kw))
+    body = {"format": "sarif", "content": _sarif_content(), field: value}
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.post("/v1/compliance/ingest", json=body, headers=proxy_headers(role="admin", tenant="invalid-ingest"))
+    assert response.status_code == 400
+    assert calls == []
+
+
+@pytest.mark.parametrize("reconcile,expected_status,expected_open", [("false", 400, 2), (False, 201, 2), (True, 201, 1)])
+def test_only_explicit_true_can_retire_unrelated_ingested_findings(reconcile, expected_status, expected_open):
+    tenant = "false-reconcile-" + uuid4().hex
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = proxy_headers(role="admin", tenant=tenant)
+    first = {"title": "First vulnerable component", "severity": "high", "asset_name": "first-package"}
+    other = {"title": "Other vulnerable component", "severity": "critical", "asset_name": "other-package"}
+    initial = client.post("/v1/compliance/ingest", json={"format": "json", "content": json.dumps([first, other])}, headers=headers)
+    assert initial.status_code == 201, initial.text
+    store = hub_store_mod.get_compliance_hub_store()
+    before, _, _ = store.list_current_page(tenant, limit=100, status="open")
+    assert len(before) == 2
+    response = client.post(
+        "/v1/compliance/ingest",
+        json={"format": "json", "content": json.dumps([first]), "reconcile_absent": reconcile},
+        headers=headers,
+    )
+    after, _, _ = store.list_current_page(tenant, limit=100, status="open")
+    assert len(after) == expected_open, "Only explicit true may retire the unrelated current finding"
+    assert response.status_code == expected_status

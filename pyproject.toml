@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.108.1"
+version = "0.108.2"
 description = "Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure."
 readme = "PYPI_README.md"
 license = "Apache-2.0"
@@ -325,7 +325,7 @@ override-dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_bom = ["mcp_registry.json", "ui_dist/**", "data/*.json", "demo_estate/data/*.jsonl", "output/vendor/*.js", "output/vendor/*.md"]
+agent_bom = ["mcp_registry.json", "cloud/benchmark_inventory.json", "ui_dist/**", "data/*.json", "demo_estate/data/*.jsonl", "output/vendor/*.js", "output/vendor/*.md"]
 
 [tool.smithery]
 server = "agent_bom.mcp_server:create_smithery_server"

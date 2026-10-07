@@ -110,7 +110,7 @@ async def graph_correlate_impl(
     except ValueError:
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "idempotency_key_conflict")
     except Exception:
-        logger.exception("MCP graph correlation creation failed")
+        logger.error("MCP graph correlation creation failed; internal details withheld")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 
@@ -154,7 +154,7 @@ async def graph_correlation_status_impl(
         encoded = json.dumps(run.to_dict(), indent=2, default=str)
         return _truncate_response(encoded) if _truncate_response is not None else encoded
     except Exception:
-        logger.exception("MCP graph correlation status failed")
+        logger.error("MCP graph correlation status failed; internal details withheld")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 
@@ -454,7 +454,7 @@ async def exposure_paths_for_tenant(
                 )
             payload["paths"] = payload["paths"][: max(1, returned // 2)]
     except Exception:
-        logger.exception("MCP graph tool error")
+        logger.error("MCP graph tool error; internal details withheld")
         return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 

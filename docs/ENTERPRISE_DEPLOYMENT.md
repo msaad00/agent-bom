@@ -400,10 +400,17 @@ sessions on a single-replica restart. Backend selection, with no extra wiring:
 
 | Configuration | Backend | Durability |
 |---|---|---|
-| `AGENT_BOM_POSTGRES_URL` set (or `AGENT_BOM_DB` is a Postgres URL) | PostgreSQL with tenant `FORCE ROW LEVEL SECURITY` | Multi-replica — state is consistent across every control-plane replica |
+| `AGENT_BOM_POSTGRES_URL` set | PostgreSQL with tenant `FORCE ROW LEVEL SECURITY` | Multi-replica — state is consistent across every control-plane replica |
 | `AGENT_BOM_DB` set to a file path | SQLite at that path | Single-node durable (survives restart) |
 | _nothing set_ (default) | SQLite at `${AGENT_BOM_STATE_DIR:-~/.agent-bom}/control-plane.db` | Single-node durable (survives restart) |
 | `AGENT_BOM_EPHEMERAL_STORE=1` | In-memory | **Not durable** — state is lost on restart |
+
+`AGENT_BOM_DB` accepts a SQLite filesystem path. A database URL in that
+variable stops API startup before stores initialize; diagnostics omit the URL
+and credentials. Configure PostgreSQL with `AGENT_BOM_POSTGRES_URL`. This
+validation does not migrate existing files or establish PostgreSQL parity for
+every store. Preserve any SQLite files created by earlier configurations for
+explicit inspection and import; changing configuration does not move their data.
 
 Tokens are stored only as SHA-256 hashes at rest, sessions stay signed with
 expiry and revocation, and tenant isolation holds across all three tiers — the

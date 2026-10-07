@@ -20,6 +20,7 @@ from agent_bom.output.cis_posture import (
     PASS,
     cis_pass_rate,
     cis_verdict,
+    finding_free_posture,
 )
 from agent_bom.output.compact import _compact_detail, _coverage_bar, _pct
 from agent_bom.output.finding_views import (
@@ -362,7 +363,6 @@ def print_posture_summary(report: AIBOMReport) -> None:
                 for cred in server.credential_names:
                     cred_map.setdefault(cred, []).append(f"{agent.name}/{server.name}")
 
-    # Vulnerability severity breakdown (excluding VEX-suppressed)
     from agent_bom.finding import FindingType
 
     sev_counts: Counter[str] = Counter()
@@ -390,8 +390,8 @@ def print_posture_summary(report: AIBOMReport) -> None:
         posture = "[bold yellow]PARTIAL COVERAGE[/bold yellow]"
         border_style = "yellow"
     elif report.total_vulnerabilities == 0 and not policy_findings:
-        posture = "[bold green]CLEAN[/bold green]"
-        border_style = "green"
+        border_style, label = finding_free_posture(report)
+        posture = f"[bold {border_style}]{label}[/bold {border_style}]"
     elif sev_counts.get("CRITICAL", 0) > 0:
         parts = []
         for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):

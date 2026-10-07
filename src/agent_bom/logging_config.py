@@ -18,8 +18,28 @@ import json
 import logging
 import os
 import sys
+from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
+
+
+class AccessLogPathFilter(logging.Filter):
+    """Omit queries from Uvicorn access records before any handler formats them."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) == 5:
+            client, method, target, version, status = record.args
+            if isinstance(target, str):
+                record.args = (client, method, target.split("?", 1)[0].split("#", 1)[0], version, status)
+        return True
+
+
+def api_log_config(default_config: dict[str, Any]) -> dict[str, Any]:
+    """Keep Uvicorn's logging behavior without retaining query credentials."""
+    config = deepcopy(default_config)
+    config.setdefault("filters", {})["access_path"] = {"()": "agent_bom.logging_config.AccessLogPathFilter"}
+    config["handlers"]["access"].setdefault("filters", []).append("access_path")
+    return config
 
 
 class JSONFormatter(logging.Formatter):

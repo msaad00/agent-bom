@@ -2,6 +2,11 @@
   "_comment": "Auto-generated from src/agent_bom/runtime/patterns.py — do not edit manually",
   "credential_patterns": [
     {
+      "name": "Agent-Bom API Key",
+      "pattern": "(?<![A-Za-z0-9_-])abom_[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])",
+      "flags": ""
+    },
+    {
       "name": "AWS Access Key",
       "pattern": "AKIA[0-9A-Z]{16}",
       "flags": ""
@@ -43,7 +48,7 @@
     },
     {
       "name": "Generic Bearer Token",
-      "pattern": "(?:Authorization|token|bearer)['\\\"]?\\s*[:=]\\s*['\\\"]?Bearer\\s+[A-Za-z0-9\\-_.~+/]{20,}=*",
+      "pattern": "\\b(?:Authorization|token|bearer)['\\\"]?\\s*[:=]\\s*['\\\"]?Bearer[ \\t]+[A-Za-z0-9\\-_.~+/]+=*",
       "flags": "i"
     },
     {

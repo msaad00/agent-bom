@@ -7,6 +7,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.108.2] - 2026-10-06
+
+### Fixed
+
+- Match RHEL/UBI advisories and fixes to applicable product streams. Keep unknown fix status and incomplete assessments explicit after suppression.
+- Retain available current-estate evidence when a scan has no graph, preserve unrelated inventory and authoritative clean replacements, and represent valid empty estates without masking storage failures.
+- Preserve validated package identities and PURLs through redaction. Use ecosystem-appropriate Go and NuGet lookup spelling and invalidate older OSV cache entries that may contain incomplete matches.
+- Persist configured SQLite exception approvals across restart and reject remote database URLs before SQLite can create local files. Postgres support for remaining governance stores is separate work.
+- Show “No assessment evidence” when an otherwise finding-free report has neither packages nor evaluated controls.
+- Bundle the cloud benchmark inventory, verify compiled dashboard installation pins against the wheel version, and retain the requested image platform through Docker save/export.
+
+### Security
+
+- Allow valid bearer access-token reuse while retaining replay protection for one-time OIDC exchanges. Honor explicit role claims, including viewer, and reject non-string tenant claims.
+- Remove request queries from both API launchers' access logs, redact short bearer tokens and control-plane keys, and suppress interpreter warnings that echo scanned source or filenames.
+- Reject malformed compliance ingestion bodies before writes and require an explicit JSON boolean for absent-finding reconciliation.
+- Sign the exact audit response bytes and reject malformed, past or timezone-less explicit exception expiries without changing separate approval requirements.
+- Pin webhook socket connections to validated DNS answers, block cloud metadata destinations, and require both tenant and operator opt-in for private subscription destinations. Disable automatic redirects and ambient proxies for inline delivery.
+
 ## [0.108.1] - 2026-10-06
 
 ### Fixed
@@ -3895,7 +3914,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.2...HEAD
+[0.108.2]: https://github.com/msaad00/agent-bom/compare/v0.108.1...v0.108.2
 [0.108.1]: https://github.com/msaad00/agent-bom/compare/v0.108.0...v0.108.1
 [0.108.0]: https://github.com/msaad00/agent-bom/compare/v0.107.2...v0.108.0
 [0.107.2]: https://github.com/msaad00/agent-bom/compare/v0.107.0...v0.107.2

@@ -100,7 +100,7 @@ def derive_push_summary(report: dict) -> None:
         "critical_findings": finding_summary["by_severity"]["critical"],
         "critical_unified_findings": finding_summary["by_severity"]["critical"],
         "high_unified_findings": finding_summary["by_severity"]["high"],
-        "coverage_warnings": report.get("warnings", []),
+        "coverage_warnings": report.get("coverage_warnings", []),
     }
     report["finding_summary"] = finding_summary
 

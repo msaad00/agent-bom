@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.storage.factory import validate_sqlite_path
 
 # Review decisions a reviewer may record against one item.
 DECISION_ATTEST = "attest"
@@ -203,7 +204,7 @@ class SQLiteAccessReviewStore:
     """SQLite-backed persistent access-review store."""
 
     def __init__(self, db_path: str = "agent_bom.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 

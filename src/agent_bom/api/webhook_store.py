@@ -26,6 +26,7 @@ from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.security import redact_secret_url
+from agent_bom.storage.factory import validate_sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ class InMemoryWebhookSubscriptionStore:
 
 class SQLiteWebhookSubscriptionStore:
     def __init__(self, db_path: str = "agent_bom.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 
@@ -324,6 +325,7 @@ def deliver_subscription_event(
         kind="webhook",
         signing_secret=subscription.signing_secret,
         allow_private_networks=subscription.allow_private_networks,
+        require_operator_private_opt_in=True,
         headers={
             "x-agent-bom-tenant-id": subscription.tenant_id,
         },

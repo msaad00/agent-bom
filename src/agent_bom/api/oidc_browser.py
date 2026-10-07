@@ -263,6 +263,7 @@ def verify_browser_id_token(cfg: OIDCBrowserConfig, id_token: str, *, nonce: str
         provider.jwks_uri,
         nonce,
         provider.allowed_jwks_uris,
+        single_use=True,
     )
     return claims
 

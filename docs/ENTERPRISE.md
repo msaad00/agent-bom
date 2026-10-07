@@ -192,6 +192,13 @@ deep where you need to.
 
 ### Suppression approval and upgrade behavior
 
+With `AGENT_BOM_DB` set to a SQLite file, exceptions persist across process
+restarts. `AGENT_BOM_POSTGRES_URL` selects the shared Postgres store. Explicit
+store overrides remain authoritative; configured storage failures propagate
+instead of falling back to memory. Restart preserves approval metadata and
+pending status; it does not approve a waiver or extend its expiry. SQLite
+restart coverage is single-node evidence, not multi-replica qualification.
+
 Create an exception with `POST /v1/exceptions` (fields `vuln_id`,
 `package_name`, `reason`, and optionally `expires_at`). The returned
 `exception_id` identifies a pending request: findings remain actionable.

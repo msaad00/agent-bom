@@ -7,11 +7,11 @@ import logging
 import re
 from typing import Any, NamedTuple
 
+from agent_bom.ast.source_reader import parse_python_source
 from agent_bom.parsers.skill_audit_types import SkillFinding
 
 logger = logging.getLogger(__name__)
 
-# ── Shell / dangerous keywords ───────────────────────────────────────────────
 
 _SHELL_COMMANDS = {"sh", "bash", "cmd", "powershell", "zsh"}
 
@@ -814,7 +814,7 @@ def _scan_python_ast_risks(raw_content: dict[str, str]) -> list[SkillFinding]:
             block = block_match.group(1)
             block_start_line, _block_column = _line_column(content, block_match.start(1))
             try:
-                tree = ast.parse(block)
+                tree = parse_python_source(block)
             except SyntaxError:
                 continue
 

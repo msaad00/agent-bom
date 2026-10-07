@@ -677,3 +677,10 @@ def test_compact_detail_never_ends_on_dangling_punctuation():
     assert out.endswith("…")
     trimmed = out[:-1].rstrip()
     assert not trimmed.endswith(("—", "·", "-", ","))
+
+
+def test_empty_inventory_is_not_a_clean_security_assessment():
+    report = AIBOMReport(agents=[_make_agent(servers=[_make_server()])])
+    output = _capture(print_compact_summary, report)
+    assert "CLEAN" not in output
+    assert "NO ASSESSMENT EVIDENCE" in output

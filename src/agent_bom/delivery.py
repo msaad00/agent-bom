@@ -1,8 +1,6 @@
 """Hardened outbound delivery foundation.
 
-Every outbound integration — governance webhooks, SIEM/OCSF export, exporters
-(siem, otel, slack, jira, vanta, drata, customer_archive) — should ride this
-single ``DeliveryClient`` so the platform has one place that owns:
+``DeliveryClient`` owns the outbound integration delivery contract:
 
   * Retries with exponential backoff + jitter, bounded attempts then a durable
     **dead-letter** record (never blocks the caller).
@@ -15,14 +13,8 @@ single ``DeliveryClient`` so the platform has one place that owns:
   * A queryable **delivery/audit log** — every attempt is recorded with a
     redacted payload preview; secret values are never persisted.
 
-The design deliberately mirrors the ``posture_streaming`` webhook outbox
-(durable SQLite, deterministic idempotency hash, sanitized errors) and the
-shared ``http_client`` retry loop, consolidating them behind one API. It is
-*graceful by construction*: a destination failure degrades to a dead-letter
-record plus an actionable warning and the caller continues.
-
-All time is taken from an injectable ``now`` callable so retry math and the
-audit log are deterministic under test.
+Destination failures produce a dead-letter record and warning. An injectable
+clock keeps retry and audit behavior deterministic under test.
 """
 
 from __future__ import annotations
@@ -43,6 +35,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
+from agent_bom.http_client import check_offline
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 from agent_bom.storage import state_home
 
@@ -107,6 +100,7 @@ class Destination:
     headers: dict[str, str] = field(default_factory=dict)
     accepted_statuses: frozenset[int] = field(default_factory=frozenset)
     allow_private_networks: bool = False
+    require_operator_private_opt_in: bool = False
     timeout: float = 30.0
 
     def __post_init__(self) -> None:
@@ -208,22 +202,25 @@ def http_sender(
     timeout: float,
     *,
     allow_private_networks: bool = False,
+    require_operator_private_opt_in: bool = False,
 ) -> SendOutcome:
-    """Default sender: one POST through the shared resilient sync client.
+    """One POST with preflight URL checks and connect-time address pinning.
 
-    The shared client already validates the URL (SSRF) and does connection-level
-    retries; the application-level retry/backoff lives in ``DeliveryClient`` so
-    every destination shares one policy.
+    Redirects and ambient proxies are disabled. Retry/backoff is owned by
+    ``DeliveryClient``; forbidden destinations are permanent failures.
     """
-    from agent_bom.http_client import create_sync_client
+    from agent_bom.runtime.egress_transport import UnsafeDestinationError, build_pinned_sync_client
     from agent_bom.security import SecurityError, validate_url
 
-    allow_private = allow_private_networks or os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {
+    operator_private = os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
+    allow_private = (
+        (allow_private_networks and operator_private) if require_operator_private_opt_in else (allow_private_networks or operator_private)
+    )
     try:
         validate_url(url, allowed_schemes=("https", "http") if allow_private else ("https",), allow_private=allow_private)
     except SecurityError as exc:
@@ -233,9 +230,12 @@ def http_sender(
             retryable=False,
         )
     try:
-        with create_sync_client(timeout=timeout) as client:
+        check_offline()
+        with build_pinned_sync_client(timeout=timeout, allow_private_networks=allow_private) as client:
             resp = client.request("POST", url, content=body, headers=headers)
         return SendOutcome(http_status=resp.status_code)
+    except UnsafeDestinationError:
+        return SendOutcome(http_status=None, error="destination rejected at connect time by outbound policy", retryable=False)
     except Exception as exc:  # noqa: BLE001 — any transport error becomes a retryable failure
         return SendOutcome(http_status=None, error=sanitize_error(exc))
 
@@ -685,7 +685,6 @@ class DeliveryClient:
         last_http: int | None = None
         last_error = ""
         attempts_made = 0
-
         for attempt in range(1, self.retry.max_attempts + 1):
             attempts_made = attempt
             headers = self._build_headers(destination, delivery, body, attempt)
@@ -696,6 +695,7 @@ class DeliveryClient:
                     body,
                     destination.timeout,
                     allow_private_networks=destination.allow_private_networks,
+                    require_operator_private_opt_in=destination.require_operator_private_opt_in,
                 )
             else:
                 outcome = self.sender(destination.url, headers, body, destination.timeout)

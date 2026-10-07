@@ -473,14 +473,14 @@ _exception_store: Any = None
 
 
 def _get_exception_store() -> Any:
-    """Get the active exception store, creating InMemoryExceptionStore if not set."""
+    """Keep explicit backend overrides; otherwise honor configured persistence."""
     global _exception_store
     if _exception_store is None:
         with _store_lock:
             if _exception_store is None:
-                from agent_bom.api.exception_store import InMemoryExceptionStore
+                from agent_bom.api.exception_store import configured_exception_store
 
-                _exception_store = InMemoryExceptionStore()
+                _exception_store = configured_exception_store()
     return _exception_store
 
 

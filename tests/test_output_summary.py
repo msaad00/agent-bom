@@ -232,3 +232,10 @@ def test_cis_status_badge_no_truncation_for_not_applicable():
     assert "NO DATA" in _cis_status_badge("no_data")
     # Unknown statuses fall back to the raw value, not a missing cell.
     assert _cis_status_badge("weird") == "weird"
+
+
+def test_empty_inventory_is_not_a_clean_security_assessment():
+    report = AIBOMReport(agents=[_make_agent(servers=[_make_server()])])
+    output = _capture_posture(report)
+    assert "CLEAN" not in output
+    assert "NO ASSESSMENT EVIDENCE" in output

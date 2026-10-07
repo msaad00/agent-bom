@@ -80,6 +80,35 @@ async def test_successful_clean_lookup_is_cached(cache, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ecosystem,name,query_name,osv_ecosystem",
+    [
+        ("go", "github.com/Azure/azure-sdk-for-go", "github.com/Azure/azure-sdk-for-go", "Go"),
+        ("nuget", "System.Text.Encodings.Web", "System.Text.Encodings.Web", "NuGet"),
+        ("pypi", "Django_REST_Framework", "django-rest-framework", "PyPI"),
+    ],
+)
+async def test_query_spelling_preserves_ecosystem_case_without_changing_identity(
+    cache, monkeypatch, ecosystem, name, query_name, osv_ecosystem
+):
+    from agent_bom.core.packages import normalize_package_name
+
+    package = Package(name=name, version="1.0.0", ecosystem=ecosystem)
+    vulnerability = {"id": "GHSA-known"}
+    result, calls = await query(
+        cache, [package], [{"results": [{"vulns": [vulnerability]}]}], monkeypatch, ecosystems=lambda _: [osv_ecosystem]
+    )
+    assert calls[0]["queries"][0]["package"] == {"name": query_name, "ecosystem": osv_ecosystem}
+    normalized = normalize_package_name(name, ecosystem)
+    assert result == {f"{ecosystem}:{normalized}@1.0.0": [vulnerability]}
+    assert cache.get(ecosystem, normalized, "1.0.0") == [vulnerability]
+    assert osv.package_lookup_names(package) == [normalized]
+    cached_result, cached_calls = await query(cache, [package], [], monkeypatch, ecosystems=lambda _: [osv_ecosystem])
+    assert cached_calls == []
+    assert cached_result == result
+
+
+@pytest.mark.asyncio
 async def test_open_circuit_keeps_uncached_packages_incomplete(cache, monkeypatch):
     package = Package(name="requests", version="2.19.0", ecosystem="pypi")
     result, calls = await query(cache, [package], [], monkeypatch, available=False)
@@ -139,6 +168,23 @@ def test_legacy_entries_are_retained_but_never_used_as_current_evidence(cache):
     cache.put("pypi", "clean", "1.0", [])
     assert cache.get("pypi", "clean", "1.0") == []
     assert cache._conn.execute("SELECT COUNT(*) FROM osv_cache").fetchone()[0] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ecosystem,name,osv_ecosystem", [("go", "github.com/Masterminds/goutils", "Go"), ("nuget", "System.Text.Encodings.Web", "NuGet")]
+)
+async def test_previous_query_spelling_cache_cannot_hide_corrected_lookup(cache, monkeypatch, ecosystem, name, osv_ecosystem):
+    package = Package(name=name, version="1.0.0", ecosystem=ecosystem)
+    old_key = f"osv-complete-v2:{ecosystem}:{name.lower()}@1.0.0"
+    cache._conn.execute("INSERT INTO osv_cache VALUES (?, ?, ?)", (old_key, "[]", time.time()))
+    cache._conn.commit()
+    result, calls = await query(
+        cache, [package], [{"results": [{"vulns": [{"id": "GHSA-recovered"}]}]}], monkeypatch, ecosystems=lambda _: [osv_ecosystem]
+    )
+    assert len(calls) == 1
+    assert result[f"{ecosystem}:{name.lower()}@1.0.0"] == [{"id": "GHSA-recovered"}]
+    assert cache._conn.execute("SELECT vulns_json FROM osv_cache WHERE cache_key = ?", (old_key,)).fetchone()[0] == "[]"
 
 
 def test_lookup_warning_never_prints_clean_cli_verdict():

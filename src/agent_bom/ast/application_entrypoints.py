@@ -14,6 +14,7 @@ import tomllib
 from pathlib import Path
 from typing import Iterable
 
+from agent_bom.ast.source_reader import parse_python_source
 from agent_bom.ast_models import ApplicationEntrypoint
 from agent_bom.ast_source_mask import mask_line_comments_and_strings
 
@@ -65,7 +66,7 @@ def _expr_name(node: ast.AST) -> str:
 
 def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationEntrypoint]:
     try:
-        tree = ast.parse(source, filename=str(path))
+        tree = parse_python_source(source, filename=str(path))
     except (SyntaxError, ValueError):
         return []
     rel = path.relative_to(project).as_posix()
@@ -459,7 +460,7 @@ def _packaging_entries(project: Path) -> list[ApplicationEntrypoint]:
         line_number = 1
         if candidate.is_file():
             try:
-                parsed = ast.parse(candidate.read_text(encoding="utf-8"), filename=str(candidate))
+                parsed = parse_python_source(candidate.read_text(encoding="utf-8"), filename=str(candidate))
                 function = next(
                     (
                         node

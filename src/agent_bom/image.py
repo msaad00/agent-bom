@@ -717,14 +717,14 @@ def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Pa
 
     image_ref = validate_image_ref(image_ref)
     platform = _validate_platform(platform)
+    platform_args = ["--platform", platform] if platform else []
 
-    # Confirm image exists / pull it
     _docker_inspect(image_ref, platform=platform)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         oci_tar_path = Path(tmpdir) / "image.tar"
         save = subprocess.run(
-            ["docker", "save", "-o", str(oci_tar_path), image_ref],
+            ["docker", "save", *platform_args, "-o", str(oci_tar_path), image_ref],
             capture_output=True,
             text=True,
             timeout=300,
@@ -746,7 +746,7 @@ def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Pa
     try:
         # Create a stopped container
         result = subprocess.run(
-            ["docker", "create", image_ref],
+            ["docker", "create", *platform_args, image_ref],
             capture_output=True,
             text=True,
             timeout=60,

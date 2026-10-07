@@ -81,6 +81,7 @@ from agent_bom.config import resolved_cors_origins_raw
 from agent_bom.demo_estate import boot_seed as _demo_boot_seed
 from agent_bom.output.brand_tokens import POSITIONING_META, PRODUCT_NAME, TAGLINE_CHAIN
 from agent_bom.storage import state_home as _state_home
+from agent_bom.storage.factory import validate_configured_sqlite_path
 
 _logger = logging.getLogger(__name__)
 
@@ -462,6 +463,7 @@ async def _prewarm_demo_story() -> None:
 @asynccontextmanager
 async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background cleanup task on startup, cancel on shutdown."""
+    validate_configured_sqlite_path()
     _state_home.activate_demo_state_dir()
     _log_control_plane_auth_posture()
     warn_if_ephemeral_hmac_key()

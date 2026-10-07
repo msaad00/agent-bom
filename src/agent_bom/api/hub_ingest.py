@@ -14,13 +14,44 @@ offload, mirroring the read path) around a single shared body,
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from functools import partial
 from typing import Any, TypeVar
 
 import anyio.to_thread
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr, ValidationError
+from starlette.exceptions import HTTPException
+from starlette.requests import Request
 
 _T = TypeVar("_T")
+
+
+class ComplianceIngestBody(BaseModel):
+    """Validate destructive reconciliation flags before parsing or storing findings."""
+
+    model_config = ConfigDict(extra="allow")
+    format: StrictStr
+    content: StrictStr
+    observed_at: StrictStr | None = None
+    reconcile_absent: StrictBool = False
+
+
+async def read_compliance_ingest_body(request: Request) -> dict[str, Any]:
+    """Return a validated object without echoing credentials or uploaded content."""
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, "Body must be a valid JSON object") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Body must be a JSON object")
+    try:
+        ComplianceIngestBody.model_validate(body)
+    except ValidationError as exc:
+        raise HTTPException(
+            400, "Invalid ingest fields: format/content must be strings, observed_at a string or null, and reconcile_absent a boolean."
+        ) from exc
+    return body
 
 
 async def hub_store_call(fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:

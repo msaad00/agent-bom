@@ -1,11 +1,12 @@
 """Producer and target identity for pushed scan evidence."""
 
+from types import SimpleNamespace
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 from agent_bom.evidence.push_scope import TARGET_SCOPE_PATTERN
-from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, ScanScope, ScanScopeStatus
+from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun, ScanScope, ScanScopeStatus, effective_scan_run
 
 
 class PushIdentityPayload(BaseModel):
@@ -23,9 +24,38 @@ class PushIdentityPayload(BaseModel):
         return value.strip()
 
 
+class PushEvidencePayload(PushIdentityPayload):
+    """Bounded producer evidence accompanying a push identity."""
+
+    agents: list[dict[str, Any]] = Field(default_factory=list)
+    blast_radii: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
+    coverage_warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
+    endpoint_inventory: dict[str, Any] | None = None
+
+
+def _structured_coverage(warnings: list[dict | str]) -> list[dict]:
+    return [dict(warning) if isinstance(warning, dict) else {"kind": "legacy_scan_warning", "detail": warning} for warning in warnings]
+
+
+def _agent_coverage_views(agents: list[dict[str, Any]]) -> list[SimpleNamespace]:
+    """Read import completeness without rebuilding producer package identities."""
+    return [
+        SimpleNamespace(metadata=agent.get("metadata") if isinstance(agent.get("metadata"), dict) else {})
+        for agent in agents
+        if isinstance(agent, dict)
+    ]
+
+
 def normalize_push_coverage(report: dict, *, source_id: str, target_scope: str | None) -> dict:
     """Normalize producer coverage and disclose an absent replacement scope."""
 
+    supplied_coverage = _structured_coverage(report.get("coverage_warnings") or [])
+    combined_coverage = list(supplied_coverage)
+    for warning in _structured_coverage(report.get("warnings") or []):
+        if warning not in combined_coverage:
+            combined_coverage.append(warning)
+    report["coverage_warnings"] = combined_coverage
     raw_scan_run_value = report.get("scan_run")
     raw_scan_run: dict[str, Any] = raw_scan_run_value if isinstance(raw_scan_run_value, dict) else {}
     issues: list[ScanIssue] = []
@@ -84,7 +114,13 @@ def normalize_push_coverage(report: dict, *, source_id: str, target_scope: str |
                 message="Target identity unavailable; this push retains independent evidence and cannot replace earlier scans.",
             )
         )
-    scan_run = ScanRun(outcome=outcome, issues=issues, scopes=scopes)
+    scan_run = effective_scan_run(
+        SimpleNamespace(
+            scan_run=ScanRun(outcome=outcome, issues=issues, scopes=scopes),
+            coverage_warnings=supplied_coverage,
+            agents=_agent_coverage_views(report.get("agents", [])),
+        )
+    )
     report["scan_run"] = {**raw_scan_run, **scan_run.to_dict()}
     report["warnings"] = scan_run.warnings
     return report

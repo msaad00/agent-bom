@@ -64,6 +64,8 @@ def _validate_tenant_id(tenant_id: str) -> str:
 
 
 def _validate_destination_url(url: str, *, allow_private_networks: bool = False) -> str:
+    from agent_bom.runtime.egress_transport import UnsafeDestinationError, validate_literal_destination
+
     cleaned = url.strip()
     parsed = urlparse(cleaned)
     if parsed.scheme != "https":
@@ -75,6 +77,10 @@ def _validate_destination_url(url: str, *, allow_private_networks: bool = False)
     hostname = parsed.hostname
     if not hostname:
         raise ValueError("webhook destination must include a host")
+    try:
+        validate_literal_destination(hostname, allow_private_networks=allow_private_networks)
+    except UnsafeDestinationError as exc:
+        raise ValueError("webhook destination violates private networks or metadata policy") from exc
     if not allow_private_networks:
         normalized_host = hostname.lower().strip("[]")
         if normalized_host in {"localhost", "localhost.localdomain"} or normalized_host.endswith(".localhost"):

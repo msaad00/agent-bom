@@ -12,6 +12,7 @@ import re
 
 # Each pattern: (name, compiled regex)
 CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("Agent-Bom API Key", re.compile(r"(?<![A-Za-z0-9_-])abom_[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])")),
     ("AWS Access Key", re.compile(r"AKIA[0-9A-Z]{16}")),
     (
         "AWS Secret Key",
@@ -29,7 +30,8 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Stripe Key", re.compile(r"[sr]k_(live|test)_[A-Za-z0-9]{20,}")),
     (
         "Generic Bearer Token",
-        re.compile(r"(?:Authorization|token|bearer)['\"]?\s*[:=]\s*['\"]?Bearer\s+[A-Za-z0-9\-_.~+/]{20,}=*", re.IGNORECASE),
+        # An explicit bearer header is credential evidence at any length.
+        re.compile(r"\b(?:Authorization|token|bearer)['\"]?\s*[:=]\s*['\"]?Bearer[ \t]+[A-Za-z0-9\-_.~+/]+=*", re.IGNORECASE),
     ),
     ("Generic API Key", re.compile(r"(?:api[_-]?key|apikey|access[_-]?token)\s*[=:]\s*['\"]?[A-Za-z0-9\-_.]{20,}", re.IGNORECASE)),
     ("Private Key Block", re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),

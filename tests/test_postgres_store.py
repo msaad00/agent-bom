@@ -2234,7 +2234,7 @@ def test_scan_cache_size(mock_pool):
 def test_scan_cache_key():
     from agent_bom.api.postgres_store import PostgresScanCache
 
-    assert PostgresScanCache._key("pypi", "requests", "2.31.0") == "osv-complete-v2:pypi:requests@2.31.0"
+    assert PostgresScanCache._key("pypi", "requests", "2.31.0") == "osv-complete-v3:pypi:requests@2.31.0"
 
 
 # ─── Lifespan schedule store Postgres path ───────────────────────────────────

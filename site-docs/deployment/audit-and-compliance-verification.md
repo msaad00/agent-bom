@@ -44,6 +44,16 @@ The JSON export body includes `filters`, `integrity`, and each entry's
 `hmac_signature` / `prev_signature` chain fields. JSONL exports carry the same
 entry shape one record per line.
 
+`X-Agent-Bom-Audit-Export-Signature` signs the exact exported response bytes.
+Save the body before formatting it; pass its UTF-8 text and the signature to
+`POST /v1/audit/export/verify`. Changes to whitespace or entry content invalidate
+that byte-level signature. Verification fails closed on a mismatched signature.
+
+These checks require a trusted key and an independently retained checkpoint or
+export. They cannot prove completeness against an actor who can rewrite both
+the records and their signing key or checkpoint. Missing events or exports are
+evidence gaps, not proof of a clean history.
+
 Typical audit event for compliance export:
 
 - `compliance.report_exported`

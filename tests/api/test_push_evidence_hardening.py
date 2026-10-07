@@ -219,3 +219,92 @@ def test_pushed_credentials_cannot_return_through_inventory_or_durable_storage(d
     assert credential not in inventory.text
     persisted = SQLiteJobStore(jobs._db_path).get(pushed.json()["job_id"], tenant_id="default")
     assert credential not in json.dumps(persisted.result)
+
+
+def test_pushed_coverage_warnings_keep_structured_report_contract():
+    original = payload()
+    original["warnings"] = ["A scanner could not assess a source", {"kind": "source_gap", "detail": "Unresolved source"}]
+    original["coverage_warnings"] = [{"kind": "remote_lookup_error", "detail": "Advisory provider unavailable"}]
+    report = _normalize_pushed_report(PushPayload(**original), fallback_scan_id="report")
+    warnings = report["coverage_warnings"]
+    assert all(isinstance(warning, dict) for warning in warnings)
+    assert {warning["detail"] for warning in warnings} >= {
+        "Advisory provider unavailable",
+        "A scanner could not assess a source",
+        "Unresolved source",
+    }
+    assert report["summary"]["coverage_warnings"] == warnings
+    assert report["scan_run"]["outcome"] != "complete"
+
+
+def test_structured_coverage_gap_cannot_keep_a_complete_pushed_verdict():
+    original = payload()
+    original["warnings"] = []
+    original["scan_run"] = {"outcome": "complete", "issues": [], "scopes": []}
+    original["coverage_warnings"] = [{"kind": "remote_lookup_error", "detail": "Advisory provider unavailable"}]
+    report = _normalize_pushed_report(PushPayload(**original), fallback_scan_id="report")
+    assert report["scan_run"]["outcome"] == "partial"
+    assert any(issue["affects_coverage"] for issue in report["scan_run"]["issues"])
+
+
+@pytest.mark.parametrize("reason", ["directory_policy", "nested_worktree", "repository_ignore"])
+def test_known_scope_exclusions_do_not_invent_a_pushed_coverage_gap(reason):
+    original = payload()
+    original["coverage_warnings"] = [
+        {
+            "kind": "scope_exclusion",
+            "ecosystem": "filesystem-discovery",
+            "reason": reason,
+            "detail": "Excluded from the requested scope",
+        }
+    ]
+    report = _normalize_pushed_report(PushPayload(**original), fallback_scan_id="report")
+    assert report["scan_run"]["outcome"] == "complete"
+    assert not any(issue["affects_coverage"] for issue in report["scan_run"]["issues"])
+    assert report["coverage_warnings"] == original["coverage_warnings"]
+
+
+def test_pushed_coverage_contract_survives_api_read_and_restart(durable_push):
+    client, jobs, graph, audit = durable_push
+    original = payload()
+    original["scan_run"] = {"outcome": "complete", "issues": [], "scopes": []}
+    original["coverage_warnings"] = [{"kind": "remote_lookup_error", "detail": "Advisory provider unavailable"}]
+    pushed = client.post("/v1/results/push", json=original)
+    assert pushed.status_code == 201, pushed.text
+    job_id = pushed.json()["job_id"]
+    fetched = client.get(f"/v1/scan/{job_id}")
+    assert fetched.status_code == 200, fetched.text
+    report = fetched.json()["result"]
+    assert report["coverage_warnings"] == original["coverage_warnings"]
+    assert report["summary"]["coverage_warnings"] == original["coverage_warnings"]
+    assert report["scan_run"]["outcome"] == "partial"
+    restored = SQLiteJobStore(jobs._db_path).get(job_id, tenant_id="default")
+    assert restored.result["coverage_warnings"] == report["coverage_warnings"]
+    assert restored.result["scan_run"]["outcome"] == "partial"
+
+
+@pytest.mark.parametrize("warnings", [False, 12, {"kind": "gap"}, [False], [12], [None]])
+def test_malformed_pushed_coverage_is_rejected_before_persistence(durable_push, warnings):
+    client, jobs, graph, audit = durable_push
+    original = payload()
+    original["coverage_warnings"] = warnings
+    response = client.post("/v1/results/push", json=original)
+    assert response.status_code == 422, response.text
+    assert jobs.list_all(all_tenants=True) == []
+
+
+@pytest.mark.parametrize(
+    "imported, expected",
+    [
+        ({"format": "spdx", "composition_complete": None}, "partial"),
+        ({"format": "spdx", "composition_complete": False}, "partial"),
+        ({"format": "spdx", "composition_complete": True}, "complete"),
+        (None, "complete"),
+    ],
+)
+def test_pushed_sbom_metadata_uses_canonical_completeness(imported, expected):
+    body = payload()
+    if imported is not None:
+        body["agents"][0]["metadata"] = {"sbom_import": imported}
+    report = _normalize_pushed_report(PushPayload(**body), fallback_scan_id="report")
+    assert report["scan_run"]["outcome"] == expected

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import ast
+import warnings
 from pathlib import Path
+from threading import RLock
 
 from agent_bom.coverage import record_scan_input_warning
+
+_PYTHON_PARSE_LOCK = RLock()
 
 
 def read_source_for_analysis(
@@ -35,3 +40,16 @@ def read_source_for_analysis(
         )
         return None
     return source
+
+
+def parse_python_source(source: str, *, filename: str = "<scan-input>") -> ast.Module:
+    """Parse without emitting interpreter warnings containing customer source/paths.
+
+    Syntax errors still propagate to each scanner's existing incomplete-input
+    handling. Non-fatal syntax warnings do not prevent building a valid AST.
+    """
+    # Warning filters are process-global on supported Python versions before
+    # context-aware warnings; overlapping contexts could restore unsafe output.
+    with _PYTHON_PARSE_LOCK, warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        return ast.parse(source, filename=filename)

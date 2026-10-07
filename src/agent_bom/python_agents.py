@@ -21,8 +21,6 @@ Frameworks supported
 | Semantic Kernel     | semantic-kernel                     | Microsoft    |
 | Haystack            | haystack-ai, farm-haystack          | deepset      |
 
-Zero extra dependencies — uses only ``re``, ``ast``, and ``pathlib`` from stdlib.
-
 Usage::
 
     from agent_bom.python_agents import scan_python_agents
@@ -38,6 +36,7 @@ import re
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from agent_bom.ast.source_reader import parse_python_source
 from agent_bom.ast_signal_utils import is_agent_tool_decorator
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, ServerSurface, TransportType
 from agent_bom.traversal import iter_discovery_files
@@ -336,7 +335,7 @@ def _extract_agent_defs_regex(content: str, filename: str) -> list[_PythonAgentD
 def _extract_agent_defs(content: str, filename: str) -> list[_PythonAgentDef]:
     """Extract agent definitions from Python source with AST heuristics."""
     try:
-        tree = ast.parse(content, filename=filename)
+        tree = parse_python_source(content, filename=filename)
     except SyntaxError:
         return _extract_agent_defs_regex(content, filename)
 

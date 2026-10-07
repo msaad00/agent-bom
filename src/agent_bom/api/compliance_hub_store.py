@@ -1,7 +1,6 @@
 """Tenant-scoped store for hub-ingested findings (#1044 PR C + persistence).
 
-Three backends share the same Protocol so callers (`api/routes/compliance.py`)
-don't care which is wired:
+Three backends share the Protocol used by `api/routes/compliance.py`:
 
 - ``InMemoryComplianceHubStore`` — process-local; ephemeral; the test default.
 - ``SQLiteComplianceHubStore`` — single-node persistence behind
@@ -59,6 +58,7 @@ from agent_bom.api.storage.sql import SQLiteBackend
 from agent_bom.api.storage.sqlite_connection import open_wal_connection
 from agent_bom.core.severity import severity_policy_rank
 from agent_bom.core.tenancy import require_explicit_tenant_id
+from agent_bom.storage.factory import validate_sqlite_path
 
 _logger = logging.getLogger(__name__)
 
@@ -1587,7 +1587,7 @@ class SQLiteComplianceHubStore:
         return SqlFindingReads(SQLiteBackend(self._db_path, connection_factory=lambda: self._conn))
 
     def __init__(self, db_path: str = "agent_bom.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._current_has_ledger_col: bool | None = None
         self._init_db()

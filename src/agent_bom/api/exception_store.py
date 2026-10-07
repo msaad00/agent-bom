@@ -22,8 +22,10 @@ from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.api.suppression_approval import suppression_active
+from agent_bom.core.settings import env_raw
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.core.timestamps import parse_identity_timestamp
+from agent_bom.storage.factory import validate_sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,17 @@ class ExceptionStore(Protocol):
     def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None: ...
 
 
+def configured_exception_store() -> ExceptionStore:
+    """Select persistence without converting configured storage errors to memory."""
+    if env_raw("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api.postgres_store import PostgresExceptionStore
+
+        return PostgresExceptionStore()
+    if path := env_raw("AGENT_BOM_DB"):
+        return SQLiteExceptionStore(path)
+    return InMemoryExceptionStore()
+
+
 def exception_write_tenant(exc: VulnException, tenant_id: str) -> str:
     """An exception record cannot choose a different tenant than its caller."""
     tenant = require_explicit_tenant_id(tenant_id)
@@ -167,7 +180,7 @@ class InMemoryExceptionStore:
 
 class SQLiteExceptionStore:
     def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
-        self._db_path = db_path
+        self._db_path = validate_sqlite_path(db_path)
         self._local = threading.local()
         self._init_db()
 

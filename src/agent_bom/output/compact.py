@@ -1,9 +1,6 @@
 """Compact terminal output — the default mode for CLI commands.
 
-Split out of ``agent_bom.output.__init__`` as part of the monolith-split
-work tracked in issue #1522. Zero behavior change: every function is
-re-exported from ``agent_bom.output`` for backward compatibility and
-existing call sites work unchanged.
+Functions are re-exported from ``agent_bom.output`` for compatibility.
 
 The compact family keeps the default output to roughly one screen.
 Verbose renderers live next to their concerns in
@@ -21,6 +18,7 @@ from rich.table import Table
 
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
 from agent_bom.output.brand_tokens import lane_title
+from agent_bom.output.cis_posture import finding_free_posture
 
 # The cross-cutting helpers (`console`, `_sev_badge`, `build_remediation_plan`)
 # live in the package's __init__. Import lazily inside functions to avoid a
@@ -214,8 +212,8 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
         posture = "[bold black on yellow] PARTIAL COVERAGE [/bold black on yellow]"
         border_style = "yellow"
     elif report.total_vulnerabilities == 0 and not active_findings and not policy_findings:
-        posture = "[bold white on green] CLEAN [/bold white on green]"
-        border_style = "green"
+        border_style, label = finding_free_posture(report)
+        posture = f"[bold white on {border_style}] {label} [/bold white on {border_style}]"
     else:
         badge_parts = []
         sev_map = [

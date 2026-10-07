@@ -1,6 +1,6 @@
 {
   "generated_on": "2026-10-06",
-  "version": "0.108.1",
+  "version": "0.108.2",
   "metrics": [
     {
       "name": "MCP default tools",
@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 1148,
+      "value": 1150,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

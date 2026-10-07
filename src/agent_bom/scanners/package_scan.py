@@ -70,6 +70,7 @@ from agent_bom.package_utils import (
 )
 from agent_bom.pci_dss import tag_blast_radius as tag_pci_dss
 from agent_bom.reachability_cve import advisory_affected_symbols_by_path, advisory_affected_symbols_list
+from agent_bom.scanners import cpython_advisory as runtime_cve
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
 from agent_bom.scanners.osv import ecosystem_matches as _ecosystem_matches
@@ -1009,14 +1010,14 @@ def deduplicate_packages(packages: list) -> list:
     Returns:
         Deduplicated list, preserving first-seen order.
     """
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, ...]] = set()
     result = []
     for pkg in packages:
         # Use normalized name for dedup (PEP 503: torch == Torch == pytorch)
         name = getattr(pkg, "name", "") or ""
         ecosystem = getattr(pkg, "ecosystem", "") or ""
         version = getattr(pkg, "version", "") or ""
-        key = canonical_package_identity(name, version, ecosystem, getattr(pkg, "purl", None))
+        key = (*canonical_package_identity(name, version, ecosystem, getattr(pkg, "purl", None)), runtime_cve.runtime_assessment_key(pkg))
         if key not in seen:
             seen.add(key)
             result.append(pkg)
@@ -1365,6 +1366,9 @@ async def scan_packages(
             pkg.name = normalize_package_name(pkg.name, pkg.ecosystem)
 
     reset_scan_warnings_only()
+    runtime_packages = [package for package in packages if runtime_cve.is_cpython_runtime(package)]
+    runtime_count = await runtime_cve.scan_cpython_runtimes(runtime_packages, offline=scan_offline)
+    packages = [package for package in packages if not runtime_cve.is_cpython_runtime(package)]
     try:
         from agent_bom.resolver import reset_performance_stats as _reset_resolver_performance
 
@@ -1503,7 +1507,7 @@ async def scan_packages(
     _warn_unresolved_packages(still_unresolved)
 
     if not scannable:
-        return 0
+        return runtime_count
 
     # ── Local DB lookup (fast, offline-capable) ───────────────────────────────
     # Demo mode uses bundled advisory rows first so published first-run evidence
@@ -1651,7 +1655,7 @@ async def scan_packages(
     if not scan_offline and osv_targets:
         _flag_remote_lookup_gap(osv_targets)
 
-    total_vulns = local_count
+    total_vulns = local_count + runtime_count
     for pkg in osv_targets:
         norm = normalize_package_name(pkg.name, pkg.ecosystem)
         key = f"{pkg.ecosystem.lower()}:{norm}@{pkg.version}"
@@ -1822,8 +1826,7 @@ async def scan_agents(
 
         console.print(f"\n[bold cyan]{PRODUCT_NAME}[/bold cyan]  [bold]Scanning for vulnerabilities…[/bold]\n")
 
-    def _pkg_key(pkg: Package) -> str:
-        return canonical_package_key(pkg.name, pkg.version, pkg.ecosystem, pkg.purl)
+    _pkg_key = runtime_cve.advisory_instance_key
 
     # Collect all unique packages
     all_packages = []
@@ -1853,6 +1856,7 @@ async def scan_agents(
         console.print(f"  Scanning {len(unique_packages)} unique packages across {len(agents)} agent(s)...")
 
     total_vulns = await _scanners_patchable("scan_packages")(unique_packages, options=scan_options)
+    runtime_cve.propagate_runtime_assessments(all_packages, unique_packages)
 
     # Propagate vulnerabilities back to all instances
     vuln_map = {}

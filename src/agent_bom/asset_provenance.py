@@ -124,6 +124,15 @@ _VERSION_EVIDENCE_STRING_FIELDS = (
     "container_image",
     "sbom_ref",
     "package_path",
+    "advisory_id",
+    "assessment",
+    "status",
+    "tag",
+    "checked_at",
+    "boundary",
+    "layer_id",
+    "repository_url",
+    "upstream_fix",
 )
 _VERSION_EVIDENCE_PATH_FIELDS = frozenset({"path", "source_file", "package_path"})
 _SENSITIVE_VALUE_RE = re.compile(r"(token|password|secret|api[_-]?key|credential|bearer|jwt)[^\s]*\s*[:=]", re.IGNORECASE)
@@ -427,7 +436,7 @@ def _sanitize_version_evidence_list(value: Any) -> list[dict[str, Any]]:
             if safe:
                 if field_name in _VERSION_EVIDENCE_PATH_FIELDS:
                     safe = sanitize_path_label(safe)
-                elif field_name == "url":
+                elif field_name in {"url", "repository_url", "upstream_fix"}:
                     safe = sanitize_url(safe) or ""
                     if not safe:
                         continue
@@ -435,6 +444,9 @@ def _sanitize_version_evidence_list(value: Any) -> list[dict[str, Any]]:
         line = raw.get("line")
         if isinstance(line, int) and line > 0:
             item["line"] = line
+        count = raw.get("advisory_count")
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            item["advisory_count"] = count
         if item:
             result.append(item)
     return result[:10]

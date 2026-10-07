@@ -106,6 +106,28 @@ and legacy RPM BerkeleyDB/NDB databases without requiring a scanner binary.
 Malformed legacy RPM databases fail the scan instead of producing a clean
 zero-package result.
 
+For an installed CPython runtime, inspect its release lookup and any observed
+backport alongside the package findings:
+
+```bash
+agent-bom image python:3.14.8-alpine3.23 -f json -o runtime-findings.json
+```
+
+Online scans verify the release against its upstream CPython header, then use
+OSV's repository Git-tag query. The JSON package's `version_provenance.evidence`
+records the lookup source, tag, timestamp and advisory count. Offline, failed,
+malformed or incomplete lookups retain `runtime_advisory_coverage_unknown`;
+zero findings in that state do not establish a complete assessment.
+
+An exact installed `tarfile.py` source match can identify the reviewed CPython
+3.14.8 backport for CVE-2026-87910. The report retains the advisory ID, source
+hash, layer and upstream fix instead of reporting that advisory as active.
+Imported hash claims do not establish this result, and replacing or deleting
+the measured module invalidates it. This is source-file evidence, not runtime
+attestation, application exploitability, or proof that every upstream advisory
+has been published. Review remaining findings and coverage warnings before
+using the image in a deployment.
+
 The default OS result remains precision-first and reports distro-confirmed
 advisories. To include unfixed, pending, no-DSA, and end-of-life distro
 advisories for an exhaustive review, run:

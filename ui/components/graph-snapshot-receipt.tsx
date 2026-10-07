@@ -19,7 +19,8 @@ export function GraphSnapshotReceipt({ snapshot, scanId }: { snapshot: GraphSnap
       <div className="mt-3 grid gap-3 text-ink-secondary sm:grid-cols-2">
         <div className="min-w-0 space-y-1">
           <p>Source: {snapshot?.snapshot_kind === "scan" ? "Scan snapshot" : snapshot?.snapshot_kind === "correlation" ? "Correlated evidence" : "Source kind not reported"}</p>
-          <p className="break-all">Snapshot ID: {snapshot?.scan_id || "Unavailable"}</p>
+          <p className="break-all">Snapshot ID: {snapshot?.scan_id || scanId || "Not selected"}</p>
+          {scanId && !snapshot && <p>Snapshot metadata is unavailable. The selected identifier is retained; this does not establish that its evidence was deleted.</p>}
           <p>Captured: {captured && !Number.isNaN(captured.getTime()) ? captured.toLocaleString() : "Unavailable"}</p>
           {snapshot?.snapshot_kind === "scan" ? <Link className="inline-block py-2 font-medium text-foreground underline underline-offset-4" href={`/findings?scan=${encodeURIComponent(snapshot.scan_id)}`}>Review findings for this snapshot</Link> : null}
         </div>

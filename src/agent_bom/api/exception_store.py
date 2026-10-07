@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.api.suppression_approval import suppression_active
+from agent_bom.core.settings import env_raw
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.core.timestamps import parse_identity_timestamp
 from agent_bom.storage.factory import validate_sqlite_path
@@ -101,6 +102,17 @@ class ExceptionStore(Protocol):
     def delete(self, exception_id: str, *, tenant_id: str) -> bool: ...
     def list_all(self, status: str | None = None, *, tenant_id: str) -> list[VulnException]: ...
     def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", *, tenant_id: str) -> VulnException | None: ...
+
+
+def configured_exception_store() -> ExceptionStore:
+    """Select persistence without converting configured storage errors to memory."""
+    if env_raw("AGENT_BOM_POSTGRES_URL"):
+        from agent_bom.api.postgres_store import PostgresExceptionStore
+
+        return PostgresExceptionStore()
+    if path := env_raw("AGENT_BOM_DB"):
+        return SQLiteExceptionStore(path)
+    return InMemoryExceptionStore()
 
 
 def exception_write_tenant(exc: VulnException, tenant_id: str) -> str:

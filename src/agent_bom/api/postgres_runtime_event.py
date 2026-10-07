@@ -81,6 +81,13 @@ class PostgresRuntimeEventStore:
         self.put_observations_batch([record])
 
     def put_observations_batch(self, records: list[RuntimeObservationRecord]) -> int:
+        return self._put_observations_batch(records, prune=True)
+
+    def restore_observations_batch(self, records: list[RuntimeObservationRecord]) -> int:
+        """Explicit operator recovery; preserve evidence instead of applying retention."""
+        return self._put_observations_batch(records, prune=False)
+
+    def _put_observations_batch(self, records: list[RuntimeObservationRecord], *, prune: bool) -> int:
         unique_records = _dedupe_observation_records(records)
         if not unique_records:
             return 0
@@ -144,7 +151,8 @@ class PostgresRuntimeEventStore:
                         json.dumps(session.to_dict(), sort_keys=True),
                     ),
                 )
-            prune_runtime_observations_for_tenant(conn, tenant_id, placeholder="%s")
+            if prune:
+                prune_runtime_observations_for_tenant(conn, tenant_id, placeholder="%s")
             conn.commit()
             return len(new_records)
 

@@ -13,6 +13,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from agent_bom.api import postgres_common
+from agent_bom.api.storage.canonical_import import CONTROL_TABLES, import_canonical_row, payload_of, validate_groups, validate_target_groups
 from agent_bom.api.storage.observation_registries import (
     PostgresIssueMappingStore,
     PostgresKspmPostureStore,
@@ -25,6 +26,7 @@ from agent_bom.api.storage.registry_stores import (
     PostgresEvaluationRunStore,
     PostgresWebhookSubscriptionStore,
 )
+from agent_bom.api.storage.runtime_import import RUNTIME_TABLES, import_runtime_groups, validate_runtime_groups
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.security import sanitize_error
 
@@ -45,15 +47,16 @@ ADAPTERS = {
 
 def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> list[tuple[str, Any, dict[str, Any]]]:
     """Read a consistent SQLite snapshot without schema initialization or mutation."""
-    if not tables or any(table not in ADAPTERS for table in tables):
+    adapters = {**ADAPTERS, **CONTROL_TABLES}
+    if not tables or any(table not in adapters for table in tables):
         raise ValueError("Select one or more supported registry tables explicitly")
     records = []
     with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as conn:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
-        for table in tables:
-            for row in conn.execute(f"SELECT * FROM {table} ORDER BY tenant_id, " + ", ".join(ADAPTERS[table].keys)):
+        for table in sorted(set(tables), key=lambda t: (t == "access_review_items", t)):
+            for row in conn.execute(f"SELECT * FROM {table} ORDER BY tenant_id, " + ", ".join(adapters[table].keys)):
                 raw = dict(row)
                 source_tenant = require_explicit_tenant_id(raw["tenant_id"])
                 if source_tenant not in tenant_map:
@@ -71,13 +74,24 @@ def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> li
                 if payload.get("tenant_id") != source_tenant:
                     raise ValueError("Source row and payload tenant disagree")
                 payload["tenant_id"] = target
-                record = ADAPTERS[table].record_type(**payload)
+                adapter = adapters[table]
+                if table in CONTROL_TABLES:
+                    control = CONTROL_TABLES[table]
+                    record = control.decode(payload)
+                    for column in control.scalar_fields:
+                        if raw[column] != getattr(record, column):
+                            raise ValueError("Source row and payload state disagree")
+                    payload = payload_of(record)
+                else:
+                    record = ADAPTERS[table].record_type(**payload)
                 # Check scalar keys against JSON before importing; never silently rewrite identity.
-                for key in ADAPTERS[table].keys:
+                for key in adapter.keys:
                     if raw[key] != getattr(record, key):
                         raise ValueError("Source row and payload identity disagree")
                 records.append((table, record, payload))
         conn.rollback()
+    validate_groups(records, tables)
+    validate_runtime_groups(records, tables)
     _validate_mapping_collisions(records)
     return records
 
@@ -85,7 +99,7 @@ def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> li
 def _validate_mapping_collisions(records: list[tuple[str, Any, dict[str, Any]]]) -> None:
     seen: dict[tuple[Any, ...], dict[str, Any]] = {}
     for table, record, payload in records:
-        keys = ADAPTERS[table].keys
+        keys = {**ADAPTERS, **CONTROL_TABLES}[table].keys
         if table == "issue_mappings":
             keys = ("target_kind", "target_id", "provider")
         identity = (table, record.tenant_id, *(getattr(record, key) for key in keys))
@@ -105,9 +119,25 @@ def import_registries(
     # Use the restricted app role. Each scope is explicit and transaction-local;
     # no maintenance bypass is needed to import operator-selected tenant mappings.
     with pool.connection() as conn:
+        if any(table in CONTROL_TABLES for table in tables):
+            # Static allowlisted identifiers only; one operator-selected import
+            # transaction excludes live writes while canonical upserts run.
+            locked = {CONTROL_TABLES[t].target_table or t if t in CONTROL_TABLES else t for t in tables}
+            if "sources" in tables:
+                locked.add("credential_refs")
+            conn.execute("LOCK TABLE " + ", ".join(sorted(locked)) + " IN SHARE ROW EXCLUSIVE MODE")
+
+        runtime_counts = import_runtime_groups(conn, records)
+        for key, count in runtime_counts.items():
+            counts[key] += count
         for table, record, payload in records:
+            if table in RUNTIME_TABLES:
+                continue
             conn.execute("SELECT set_config('app.tenant_id',%s,true)", (record.tenant_id,))
             conn.execute("SELECT set_config('app.bypass_rls','0',true)")
+            if table in CONTROL_TABLES:
+                counts[import_canonical_row(conn, table, record, payload)] += 1
+                continue
             adapter = ADAPTERS[table]
             keys = ("tenant_id", *adapter.keys)
             values = tuple(getattr(record, key) for key in keys)
@@ -133,6 +163,7 @@ def import_registries(
                 counts["inserted" if inserted else "unchanged"] += 1
             else:
                 counts["conflicts"] += 1
+        counts["conflicts"] += validate_target_groups(conn, records)
         if counts["conflicts"] or not apply:
             conn.rollback()
         else:
@@ -153,7 +184,7 @@ def main() -> None:
     parser.add_argument(
         "--tenant-map", required=True, type=Path, help="JSON object mapping every source tenant to an approved target tenant"
     )
-    parser.add_argument("--table", action="append", choices=sorted(ADAPTERS), required=True)
+    parser.add_argument("--table", action="append", choices=sorted({**ADAPTERS, **CONTROL_TABLES}), required=True)
     parser.add_argument("--apply", action="store_true", help="Commit only when every selected row is new or identical")
     args = parser.parse_args()
     try:

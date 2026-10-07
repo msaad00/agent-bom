@@ -47,9 +47,29 @@ means a conflict; other errors exit 1 with sanitized diagnostics.
 
 Supported table names are `webhook_subscriptions`, `dataset_versions`,
 `evaluation_runs`, `drift_incidents`, `mcp_observations`, `issue_mappings`,
-`skills_scan_run` and `kspm_cluster_posture`. This command does not migrate other
-control-plane stores. Importing an expired or inactive record does not approve
-or reactivate it. Pause webhook workers during a reviewed subscription import.
+`skills_scan_run`, `kspm_cluster_posture`, `credential_refs`, `sources`,
+`scan_schedules`, `access_review_campaigns`, `access_review_items`,
+`runtime_observations` and `runtime_sessions`.
+
+Select both access-review tables together. Campaign counts must match their
+items; existing decisions require their original actor and timestamp. Source
+credential references must already exist in the same target tenant or be included
+in the import. Disabled sources, paused schedules and retired credentials retain
+their state. Imported decisions do not execute revocation or create approvals.
+
+Select both runtime tables together. Recovery requires complete metadata-only
+observations that reproduce the recorded session summary. Pruned histories,
+raw tool payloads and differing target sessions require explicit reconciliation;
+the command refuses to infer missing history. Runtime recovery bypasses retention
+pruning during the transaction, preserving the selected evidence. Normal runtime
+writes subsequently apply the configured retention policy.
+
+Use a maintenance window and pause source, schedule, runtime and webhook workers.
+For the canonical control-plane stores, both dry-run and apply stage owner-validated
+writes under table locks; dry-run rolls all target changes back. No external job,
+webhook or review action is replayed. This command rejects unsupported tables,
+including compliance lifecycle, signed audit history and SCIM state; preserve
+those source files for a store-specific recovery procedure.
 
 ## Verification and rollback
 

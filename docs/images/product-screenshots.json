@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.2",
-  "captured_at": "2026-10-07T16:43:35.454Z",
-  "source_commit": "bfbd7304db8beaa0a9e81f848c231740a05c4d6a",
+  "captured_at": "2026-10-07T17:41:46.038Z",
+  "source_commit": "96b9a658263adc3edf9c484676c58f93989072b3",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:55ab678ea030699eec4905529135dfea6b606c68ec809227b64d8e40173ecfa8",
+  "capture_inputs_sha256": "sha256:8c09a1e43fd859189def9440ebb56f318a2cceba0ecd889acc4f29361de9ca57",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -172,7 +172,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.108.2",
-      "sha256": "sha256:f8adb6e230e6a0c1f628c7ef7b4002e49cfddfd665843c10f047578fd2b92a12"
+      "sha256": "sha256:ddaa22042b15b6e76b764d5f045225c797faa7cc24c7742e7c41ed152a130c4b"
     },
     {
       "presentation": "dark desktop",
@@ -265,7 +265,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.2",
-      "sha256": "sha256:98fd5ed5b97a3241fee0a40fadcc40b35ab7e351ea4bdcd2a4a4e624d9dd47c9"
+      "sha256": "sha256:fe37753e4fa3bc0d48f7d99fc22a61ae8112ee06a15cc1b229dcf1b4d7b2ab57"
     },
     {
       "presentation": "light desktop",
@@ -297,7 +297,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.108.2",
-      "sha256": "sha256:22db576ea66f3dfcdf9218e479ca58c670ab841a4e219dfcb8e680146845be64"
+      "sha256": "sha256:265b219aaa6dd36b5a05d81a5b28e408d0fe2041e931919b965944e2b8655a56"
     },
     {
       "presentation": "dark desktop",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.2",
-      "sha256": "sha256:6e6813fafa1f40bae761b28d91fd1ae4a36b5b74c999ee03cfd66e876968f27a"
+      "sha256": "sha256:aef6abed13d58e7d0a708206c0c34e864ccb5118e31f3e749c240552d52c6ac7"
     },
     {
       "presentation": "dark desktop 1440x900",
@@ -329,7 +329,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.2",
-      "sha256": "sha256:9bc1067cb932d29a0724f80504b92d45e07b5829cb3bc12e18fe318160a7ac17"
+      "sha256": "sha256:7d145ac12408611d7cffe768fe3abffd8221707467621951bcb5b0ea4cd29695"
     },
     {
       "presentation": "light desktop 1440x900",

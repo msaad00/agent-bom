@@ -40,6 +40,13 @@ claim that every dependency path was collected.
 These standard exports include agents, MCP servers and software packages.
 CycloneDX also supports model and dataset components.
 
+Import an existing inventory with `agent-bom scan --sbom inventory.spdx.json
+-f json -o findings.json`, then inspect `findings.json` for package findings and
+coverage warnings. SPDX 2 and 3 packages with purpose `APPLICATION` remain in
+software inventory, just like CycloneDX application components. Only explicitly
+declared agent/server context records without a package URL are excluded from
+package scanning; application purpose alone never excludes a package.
+
 ## Keep cloud context with the BOM
 
 When a scan collects `cloud_inventory`, standard exports retain that snapshot

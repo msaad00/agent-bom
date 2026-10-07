@@ -235,12 +235,9 @@ def _include_unfixed_enabled() -> bool:
 def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
     """Drop unfixed Debian/Alpine advisories from ``packages`` in place.
 
-    Returns the number of vulnerabilities removed. Distro security trackers
-    mark a vulnerability as fixed only once a patched package version exists for
-    that release; entries left without a fix are the tracker's no-dsa / won't-
-    fix / end-of-life (open) verdicts, which mainstream scanners suppress by
-    default. Application-ecosystem advisories (PyPI, npm, …) are never touched —
-    an unfixed app CVE is still actionable (pin, remove, or mitigate).
+    Return and record the number removed by the default OS-package filter.
+    Application-ecosystem advisories (PyPI, npm, …) are never touched — an
+    unfixed app CVE is still actionable (pin, remove, or mitigate).
 
     A finding whose release is ambiguous is exempt: its fix was withheld by us
     because it would name another branch's version, which is not the same claim
@@ -261,6 +258,7 @@ def _suppress_unfixed_os_advisories(packages: list[Package]) -> int:
         kept = [v for v in vulns if (v.fixed_version or "").strip() or v.match_confidence_tier == MATCH_CONFIDENCE_AMBIGUOUS_DISTRO_RELEASE]
         removed += len(vulns) - len(kept)
         pkg.vulnerabilities = kept
+    _bump_scan_perf("unfixed_os_findings_suppressed", removed)
     return removed
 
 

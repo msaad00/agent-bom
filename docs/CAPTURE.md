@@ -269,12 +269,15 @@ must return security-gate exit `1` and include every required output section.
 Upgrade and verification commands are displayed, never executed.
 
 Use a separate environment so the recording cannot silently switch to the
-editable checkout. Install the published version being demonstrated (the tape
-currently records `0.103.2`), plus Pillow, and put that environment first in PATH:
+editable checkout. Install the published version being demonstrated, plus Pillow,
+and put that environment first in PATH. Resolve the version from PyPI so this
+command cannot silently select an unreleased checkout version:
 
 ```bash
 uv venv /tmp/agent-bom-cli-recording
-uv pip install --python /tmp/agent-bom-cli-recording/bin/python 'agent-bom==0.103.2' pillow
+recording_version=$(curl -fsSL https://pypi.org/pypi/agent-bom/json | python3 -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])')
+uv pip install --python /tmp/agent-bom-cli-recording/bin/python "agent-bom==$recording_version" pillow
+/tmp/agent-bom-cli-recording/bin/agent-bom --version
 PATH="/tmp/agent-bom-cli-recording/bin:$PATH" bash scripts/render_demo_gif.sh
 ```
 

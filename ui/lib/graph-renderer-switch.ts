@@ -33,12 +33,14 @@ export interface GraphRendererDecision {
  * Roll-up navigation already bounds the React Flow node set to the current
  * hierarchy level. Virtualizing that tiny set before the first fitView
  * measurement can leave every card outside the initial viewport, so render
- * roll-up cards eagerly and retain virtualization for ordinary topology.
+ * roll-up cards and small neighborhoods eagerly; retain virtualization for
+ * larger topology. Unmeasured off-screen cards otherwise stall fitView.
  */
 export function shouldVirtualizeReactFlowNodes({
   rollupActive = false,
-}: Pick<GraphRendererDecisionInput, "rollupActive">): boolean {
-  return !rollupActive;
+  nodeCount,
+}: Pick<GraphRendererDecisionInput, "rollupActive"> & { nodeCount?: number }): boolean {
+  return !rollupActive && (nodeCount === undefined || nodeCount > 80);
 }
 
 export function decideGraphRenderer({

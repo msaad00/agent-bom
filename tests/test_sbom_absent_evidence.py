@@ -12,7 +12,7 @@ def spdx2():
         "spdxVersion": "SPDX-2.3",
         "SPDXID": "SPDXRef-DOCUMENT",
         "packages": [
-            {"SPDXID": "app", "name": "server", "primaryPackagePurpose": "APPLICATION"},
+            {"SPDXID": "app", "name": "server", "primaryPackagePurpose": "APPLICATION", "comment": "MCP Server (stdio)"},
             {"SPDXID": "parent", "name": "parent", "versionInfo": "1"},
             {"SPDXID": "child", "name": "child", "versionInfo": "1"},
             {"SPDXID": "orphan", "name": "orphan", "versionInfo": "1"},

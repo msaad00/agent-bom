@@ -20,6 +20,7 @@ from agent_bom.checksums import parse_sri
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
+from agent_bom.parsers.lockfile_topology import pnpm_topology, yarn_topology
 from agent_bom.parsers.node_lockfiles import has_node_lock, npm_alias, yarn_descriptor_name
 from agent_bom.parsers.node_lockfiles import parse_bun_packages as parse_bun_packages
 from agent_bom.parsers.npm_semver import npm_exact_version
@@ -503,7 +504,10 @@ def _node_lock_package(name: str, version: str, lock_file: Path) -> Package:
         version=version,
         ecosystem="npm",
         purl=_npm_purl(name, version),
-        is_direct=False,
+        is_direct=None,
+        version_source="lockfile",
+        reachability_evidence="lockfile",
+        dependency_scope="unknown",
         version_evidence=[{"type": "lockfile", "source_file": str(lock_file)}],
     )
 
@@ -578,6 +582,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
                             seen.add(key)
                             packages.append(_node_lock_package(name, version, lock_file))
                     current_names = []
+        yarn_topology(directory, packages, content)
     except Exception as exc:
         logger.debug("Failed to parse yarn.lock at %s: %s", lock_file, exc)
         record_manifest_parse_warning(
@@ -638,9 +643,11 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
                         ecosystem="npm",
                         purl=_npm_purl(name, version),
                         version_evidence=[{"type": "lockfile", "source_file": str(lock_file)}],
-                        is_direct=False,  # pnpm lock is flat; all entries are resolved
+                        is_direct=None,  # Rooted relationships are established by the topology pass.
+                        version_source="lockfile",
                     )
                 )
+        pnpm_topology(directory, packages, data)
     except Exception as exc:
         logger.debug("Failed to parse pnpm-lock.yaml at %s: %s", lock_file, exc)
         record_manifest_parse_warning(

@@ -198,3 +198,21 @@ def test_lookup_warning_never_prints_clean_cli_verdict():
     _print_scan_verdict(SimpleNamespace(offline=False), scan, 0)
     assert "No known vulnerabilities found" not in output.getvalue()
     assert "lookup warnings" in output.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_swift_repository_aliases_do_not_reuse_legacy_or_other_repository_cache(cache, monkeypatch):
+    cache.put("swift", "swift-nio-http2", "1.26.0", [])
+    package = Package(
+        name="swift-nio-http2", version="1.26.0", ecosystem="swift", repository_url="https://github.com/apple/swift-nio-http2.git"
+    )
+    payload = {"results": [{}, {"vulns": [{"id": "GHSA-repository"}]}]}
+    result, calls = await query(cache, [package], [payload], monkeypatch, ecosystems=lambda _: ["SwiftURL"])
+    assert len(calls) == 1
+    assert result["swift:swift-nio-http2@1.26.0"][0]["id"] == "GHSA-repository"
+    _, repeated = await query(cache, [package], [], monkeypatch, ecosystems=lambda _: ["SwiftURL"])
+    assert repeated == []
+    package.repository_url = "https://github.com/other/swift-nio-http2.git"
+    result, other = await query(cache, [package], [{"results": [{}, {}]}], monkeypatch, ecosystems=lambda _: ["SwiftURL"])
+    assert len(other) == 1
+    assert not result.get("swift:swift-nio-http2@1.26.0")

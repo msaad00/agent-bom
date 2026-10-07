@@ -22,7 +22,7 @@ from agent_bom.models import AIBOMReport, BlastRadius, Package, Severity, Vulner
 from agent_bom.output import to_json
 from agent_bom.output.sarif import to_sarif
 from agent_bom.parsers.python_parsers import parse_uv_lock
-from agent_bom.reachability_cve import FUNCTION_REACHABLE, PACKAGE_REACHABLE, UNREACHABLE
+from agent_bom.reachability_cve import FUNCTION_REACHABLE, PACKAGE_REACHABLE, UNKNOWN, UNREACHABLE
 
 
 def _reach(package: str, module: str, symbol: str) -> DependencySymbolReach:
@@ -211,7 +211,7 @@ def test_api_finding_projection_preserves_transitive_runtime_reach_provenance() 
     [
         (True, False, PACKAGE_REACHABLE),
         (False, True, UNREACHABLE),
-        (None, True, UNREACHABLE),
+        (None, True, UNKNOWN),
     ],
 )
 def test_graph_path_truth_drives_symbol_fallback_across_projections(
@@ -305,7 +305,7 @@ def test_ordinary_application_reaches_runtime_child_but_not_unused_manifest_depe
 
     assert runtime_child.symbol_reachability == PACKAGE_REACHABLE
     assert runtime_child.runtime_dependency_chain == ["rich", "markdown-it-py"]
-    assert unused.symbol_reachability == UNREACHABLE
+    assert unused.symbol_reachability == UNKNOWN
     assert unused.runtime_dependency_chain == []
 
 

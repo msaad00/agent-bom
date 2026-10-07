@@ -54,7 +54,7 @@ from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
 from agent_bom.parsers.sbom_context import imported_cloud_inventory
 from agent_bom.scanners.supplied_findings import build_supplied_findings
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 _logger = logging.getLogger(__name__)
 
@@ -504,7 +504,7 @@ class ScanPipeline:
         """Serialize step event to job.progress for SSE pickup (thread-safe)."""
         # Convert enum values to strings for JSON serialization
         serializable = {k: (v.value if isinstance(v, Enum) else v) for k, v in event.items()}
-        line = json.dumps(serializable)
+        line = json.dumps(sanitize_sensitive_payload(serializable))
         if self._lock:
             with self._lock:
                 self._job.progress.append(line)
@@ -1498,7 +1498,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             ]
             report.findings = [blast_radius_to_finding(br) for br in blast_radii] + non_cve_findings
             with lock:
-                job.progress.append(f"VEX applied: {_vex_count} vulnerabilities updated from {req.vex}")
+                job.progress.append(str(sanitize_sensitive_payload(f"VEX applied: {_vex_count} vulnerabilities updated from {req.vex}")))
         try:
             from agent_bom.scanners import consume_coverage_warnings
 

@@ -784,11 +784,11 @@ def _is_version_affected(
     package_version: str,
     ecosystem: str = "",
     source_package: str | None = None,
+    aliases: tuple[str, ...] = (),
 ) -> bool:
     """Check if a specific version falls within the OSV affected ranges.
 
-    Walks the ``affected[].ranges[].events[]`` structure and applies
-    semver/PEP 440 range logic:
+    Applies ecosystem version ordering to ``affected[].ranges[].events[]``:
 
     - ``introduced``: version >= introduced means potentially affected
     - ``fixed``: version >= fixed means NOT affected (patched)
@@ -800,7 +800,7 @@ def _is_version_affected(
     """
     from agent_bom.version_utils import compare_version_order
 
-    norm_names = _candidate_package_names(package_name, ecosystem, source_package)
+    norm_names = _candidate_package_names(package_name, ecosystem, source_package, aliases)
 
     found_package = False
 
@@ -912,6 +912,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
                 package.version,
                 package.ecosystem,
                 source_package=package.source_package,
+                aliases=tuple(package.lookup_names),
             ):
                 _logger.debug(
                     "Filtered %s: version %s not in affected range for %s",
@@ -934,6 +935,7 @@ def build_vulnerabilities(vuln_data_list: list[dict], package: Package) -> list[
             package.ecosystem,
             current_version=package.version or "",
             source_package=package.source_package,
+            aliases=tuple(package.lookup_names),
         )
 
         references = [ref.get("url", "") for ref in vuln_data.get("references", []) if ref.get("url")]
@@ -1548,13 +1550,9 @@ async def scan_packages(
         coverage_gaps = detect_release_coverage_gaps(scannable)
         for gap in coverage_gaps:
             record_coverage_warning(gap)
-            _emit_scan_warning(f"incomplete vulnerability coverage for {gap['release']} (likely end-of-life; results may under-report)")
-            console.print(
-                f"  [yellow]⚠[/yellow] [bold]Incomplete coverage:[/bold] {gap['release']} — "
-                f"{gap['package_count']} package(s) present but the data source carries only "
-                f"{gap['advisory_rows']} advisory row(s) for this release. Likely end-of-life; "
-                "results may UNDER-report. A low or zero count is not a clean bill of health."
-            )
+            detail = str(gap.get("detail") or f"Vulnerability coverage for {gap['release']} is incomplete.")
+            _emit_scan_warning(detail)
+            console.print(f"  [yellow]⚠[/yellow] [bold]Incomplete coverage:[/bold] {detail}")
     except Exception as exc:  # noqa: BLE001
         _logger.debug("coverage-gap detection skipped: %s", exc)
 

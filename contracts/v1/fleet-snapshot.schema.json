@@ -14,7 +14,7 @@
     "package_count": { "type": "integer", "minimum": 0 },
     "credential_count": { "type": "integer", "minimum": 0 },
     "vuln_count": { "type": "integer", "minimum": 0 },
-    "last_seen": { "type": "string", "format": "date-time" }
+    "last_seen": { "type": ["string", "null"], "format": "date-time", "description": "Latest scan or discovery observation; null when no observation is recorded." }
   },
   "additionalProperties": true
 }

@@ -12,7 +12,7 @@ from agent_bom.traversal import iter_discovery_files
 def test_directory_policy_exclusion_reports_complete_within_scope(tmp_path, name):
     skipped = tmp_path / "app" / name
     skipped.mkdir(parents=True)
-    (skipped / "credentials.env").write_text("AWS_ACCESS_KEY_ID=" + "AKIA" + "IOSFODNN7EXAMPLE\n")
+    (skipped / "credentials.env").write_text("AWS_ACCESS_KEY_ID=" + "AKIA" + "IOSFODNN7EXAMPLZ\n")
     result = scan_secrets(tmp_path)
     assert result.files_scanned == 0
     assert result.to_dict()["complete"] is True
@@ -24,7 +24,7 @@ def test_directory_policy_exclusion_reports_complete_within_scope(tmp_path, name
 def test_explicit_skipped_directory_root_can_be_scanned(tmp_path):
     root = tmp_path / "env"
     root.mkdir()
-    (root / "credentials.env").write_text("AWS_ACCESS_KEY_ID=" + "AKIA" + "IOSFODNN7EXAMPLE\n")
+    (root / "credentials.env").write_text("AWS_ACCESS_KEY_ID=" + "AKIA" + "IOSFODNN7EXAMPLZ\n")
     result = scan_secrets(root)
     assert result.files_scanned == 1
     assert result.total >= 1

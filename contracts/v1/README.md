@@ -24,7 +24,10 @@ Published schemas:
   Relationship evidence retains its existing object form; the schema also
   accepts legacy receipt arrays. Scan reports validate the `result` inside the
   HTTP job envelope, not the envelope itself.
-- `fleet-snapshot.schema.json` - tenant/fleet agent posture rows.
+- `fleet-snapshot.schema.json` - tenant/fleet agent posture rows from `GET /v1/fleet/agents`.
+  `agent_name` retains the existing `name` field as an additive alias. `last_seen`
+  is the latest recorded scan or discovery timestamp, and is null when neither
+  is available; edits to a registry row do not imply a new observation.
 - `finding-feedback.schema.json` - tenant finding feedback and suppression
   lifecycle records.
 - `audit-export.schema.json` - signed audit export envelope returned by

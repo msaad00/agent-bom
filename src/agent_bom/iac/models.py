@@ -53,6 +53,7 @@ class IaCFinding:
     atlas_techniques: list[str] = field(default_factory=list)  # MITRE ATLAS IDs, e.g. ["AML.T0010"]
     remediation: str = ""  # Fix guidance
     resource_type: IaCResourceType | None = None  # Structured resource type for graph/compliance wiring
+    repository_relative_path: str | None = None  # Set only by a scanner with a known repository root
 
 
 @dataclass
@@ -130,3 +131,10 @@ class ScanResult:
 
     findings: list[IaCFinding] = field(default_factory=list)
     verdicts: list[ScannerVerdict] = field(default_factory=list)
+
+
+def set_repository_context(findings: list[IaCFinding], relative_path: str) -> None:
+    """Attach the path supplied by dispatch with a known scan root."""
+    for finding in findings:
+        finding.repository_relative_path = relative_path
+        finding.file_path = relative_path

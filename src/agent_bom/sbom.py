@@ -36,6 +36,7 @@ from agent_bom.sbom_formats.spdx3 import (
     _spdx3_version,
     upstream_enrichment_fields,
 )
+from agent_bom.sbom_formats.spdx_hierarchy import restore_spdx_hierarchy
 
 
 def _ecosystem_from_purl(purl: str) -> str:
@@ -200,12 +201,15 @@ def parse_cyclonedx(data: dict) -> list[Package]:
         # Determine severity from ratings
         severity = Severity.UNKNOWN
         cvss_score: float | None = None
+        cvss_vector: str | None = None
         for rating in vuln_data.get("ratings", []):
             if not isinstance(rating, dict):
                 continue
             sev_str = (rating.get("severity") or "").lower()
             if sev_str in ("critical", "high", "medium", "low", "none"):
                 severity = Severity(sev_str)
+            vector = rating.get("vector")
+            cvss_vector = vector if isinstance(vector, str) else None
             score = rating.get("score")
             if score is not None:
                 try:
@@ -227,6 +231,7 @@ def parse_cyclonedx(data: dict) -> list[Package]:
             summary=summary,
             severity=severity,
             cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
             fixed_version=fixed,
             severity_source="sbom",
             references=references,
@@ -389,18 +394,6 @@ def parse_spdx(data: dict) -> list[Package]:
     data = _normalize_spdx3_graph(data)
     packages: list[Package] = []
 
-    # SPDX 3.0: build direct dependency set from DEPENDS_ON relationships. These
-    # may sit among the elements (third-party emitters) or in the top-level
-    # ``relationships`` array (agent-bom). Root → package edges mark direct deps.
-    _spdx3_direct_ids: set[str] = set()
-    _doc_id = data.get("SPDXID", "")
-    for rel in [*data.get("elements", []), *data.get("relationships", [])]:
-        if not isinstance(rel, dict) or str(rel.get("relationshipType") or "").lower() != "dependson":
-            continue
-        if rel.get("from", "") == _doc_id and _doc_id:
-            to = rel.get("to", [])
-            _spdx3_direct_ids.update(to if isinstance(to, list) else [to])
-
     # SPDX 3.0 format
     if "spdxVersion" in data and data.get("spdxVersion", "").startswith("SPDX-3"):
         pkg_by_id: dict[str, Package] = {}
@@ -422,33 +415,32 @@ def parse_spdx(data: dict) -> list[Package]:
             ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
 
             elem_spdxid = str(elem.get("spdxId") or elem.get("SPDXID") or "")
-            _is_direct_3 = elem_spdxid in _spdx3_direct_ids if _spdx3_direct_ids else True
 
             pkg = Package(
                 name=name,
                 version=version,
                 ecosystem=ecosystem,
                 purl=purl or None,
-                is_direct=_is_direct_3,
+                is_direct=None,
+                reachability_evidence="declaration_only",
+                dependency_scope="unknown",
+                version_source="sbom_ingest",
                 **_spdx3_package_metadata(elem, references),
             )
             packages.append(pkg)
             if elem_spdxid:
                 pkg_by_id[elem_spdxid] = pkg
 
+        restore_spdx_hierarchy(data, pkg_by_id)
         _spdx3_vulnerabilities(data, pkg_by_id)
         return packages
 
-    # SPDX 2.x: build direct dependency set from relationships
-    _spdx_direct_ids: set[str] = set()
-    doc_spdxid = data.get("SPDXID", "SPDXRef-DOCUMENT")
-    for rel in data.get("relationships", []):
-        if rel.get("spdxElementId") == doc_spdxid and rel.get("relationshipType") == "DEPENDS_ON":
-            _spdx_direct_ids.add(rel.get("relatedSpdxElement", ""))
-
     # SPDX 2.x format
+    pkg_by_id = {}
     for pkg in data.get("packages", []):
         if not isinstance(pkg, dict):
+            continue
+        if pkg.get("primaryPackagePurpose") == "APPLICATION":
             continue
         name = pkg.get("name", "")
         version = pkg.get("versionInfo", "unknown")
@@ -481,9 +473,7 @@ def parse_spdx(data: dict) -> list[Package]:
         if copyright_2x and copyright_2x.upper() == "NOASSERTION":
             copyright_2x = None
 
-        # Direct if in document's DEPENDS_ON relationships, or fallback to True
         pkg_spdxid = pkg.get("SPDXID", "")
-        _is_direct_2x = pkg_spdxid in _spdx_direct_ids if _spdx_direct_ids else True
 
         packages.append(
             Package(
@@ -491,7 +481,10 @@ def parse_spdx(data: dict) -> list[Package]:
                 version=version,
                 ecosystem=ecosystem,
                 purl=purl or None,
-                is_direct=_is_direct_2x,
+                is_direct=None,
+                reachability_evidence="declaration_only",
+                dependency_scope="unknown",
+                version_source="sbom_ingest",
                 license=lic_declared,
                 supplier=supplier_2x,
                 description=desc_2x[:300] if desc_2x else None,
@@ -501,6 +494,10 @@ def parse_spdx(data: dict) -> list[Package]:
             )
         )
 
+        if pkg_spdxid:
+            pkg_by_id[pkg_spdxid] = packages[-1]
+
+    restore_spdx_hierarchy(data, pkg_by_id)
     return packages
 
 
@@ -579,6 +576,9 @@ def load_sbom(path: str) -> tuple[list[Package], str, str | None]:
     if not p.exists():
         raise FileNotFoundError(f"SBOM file not found: {path}")
 
-    data = json.loads(p.read_text())
+    text = p.read_text()
+    if text.lstrip().startswith("SPDXVersion:"):
+        raise ValueError("SPDX tag-value input is not supported; supply SPDX JSON instead.")
+    data = json.loads(text)
 
     return parse_sbom_document(data, source_name=path)

@@ -58,3 +58,8 @@ a9ab4c116af8bc5086aca63933d12a675573bb4b:src/agent_bom/cloud/side_scan_targets.p
 # History-only: non-functional bearer/JWT redaction fixture. The current test
 # assembles the unusable JWT at runtime; this fingerprint exempts only its old line.
 cd496ee29315908bdc01d925ad155c10d96a4de5:tests/api/test_push_evidence_hardening.py:generic-api-key:209
+
+# History-only detector fixtures: intentionally altered AWS documentation key.
+# Current tests assemble the same non-functional detector input at runtime.
+f7b9e1c3a766d322afa17733fc5a20e8b961709d:tests/test_secret_scanner.py:aws-access-token:143
+f7b9e1c3a766d322afa17733fc5a20e8b961709d:tests/test_scanner_operator_messages.py:aws-access-token:25

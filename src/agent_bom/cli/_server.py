@@ -1192,13 +1192,11 @@ def mcp_server_cmd(
     \b
     Select graph, cloud, runtime or audit for specialized work. Reconnect after
     changing profiles. Use --profile full for existing workflows needing the
-    complete catalog, or --profile guided for the earlier workflow bundle.
-    Profiles do not grant authorization. See docs/MCP_WORKFLOWS.md.
+    complete catalog, or --profile guided. Profiles do not grant authorization; see docs/MCP_WORKFLOWS.md.
 
     \b
     Usage:
-      Local stdio:
-        agent-bom mcp server
+      Local stdio: agent-bom mcp server
       Remote with bearer auth:
         Provision the token and its absolute timezone-aware expiry within one hour.
         Set AGENT_BOM_MCP_BEARER_TOKEN_EXPIRES_AT through your secure environment.
@@ -1206,8 +1204,10 @@ def mcp_server_cmd(
         agent-bom mcp server --transport streamable-http --bearer-token <token>
 
     \b
-    Claude Desktop config (~/.claude/claude_desktop_config.json):
-      {"mcpServers": {"agent-bom": {"command": "agent-bom", "args": ["mcp", "server"]}}}
+    Claude Desktop config (mcpServers):
+      macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+      Linux: ~/.config/Claude/claude_desktop_config.json
+      Windows: %APPDATA%/Claude/claude_desktop_config.json
     """
     from agent_bom.logging_config import setup_logging
 

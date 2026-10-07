@@ -273,6 +273,8 @@ _ASSIGNED_VALUE_RE = re.compile(r"[=:]\s*['\"]?([^'\"\s,;#]+)")
 
 def _matched_assignment_is_placeholder(match: re.Match) -> bool:
     """Return whether a secret-pattern match is an explicit sample value."""
+    if match.group(0) == "AKIAIOSFODNN7EXAMPLE":
+        return True
     assigned = _ASSIGNED_VALUE_RE.search(match.group(0))
     return bool(assigned and _ENTROPY_PLACEHOLDER_RE.fullmatch(assigned.group(1)))
 

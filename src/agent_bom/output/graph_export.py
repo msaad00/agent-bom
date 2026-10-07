@@ -27,6 +27,7 @@ from typing import Any, Union
 from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_band_rank
 from agent_bom.graph.compat import NODE_KIND_TO_ENTITY
 from agent_bom.output.finding_views import sanitize_output_text, with_output_sanitizer_cache
+from agent_bom.output.package_attributes import _package_node_attributes
 from agent_bom.security import sanitize_sensitive_payload
 
 # ── Internal graph representation ──────────────────────────────────────────────
@@ -185,32 +186,6 @@ def _agent_node_attributes(agent: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _package_node_attributes(pkg: dict[str, Any]) -> dict[str, Any]:
-    raw_version_provenance = pkg.get("version_provenance")
-    version_provenance: dict[str, Any]
-    if isinstance(raw_version_provenance, dict):
-        version_provenance = raw_version_provenance
-    else:
-        discovery = pkg.get("discovery_provenance")
-        if isinstance(discovery, dict) and isinstance(discovery.get("version_provenance"), dict):
-            version_provenance = discovery["version_provenance"]
-        else:
-            version_provenance = {}
-    version_source = version_provenance.get("version_source") or pkg.get("version_source")
-    version_confidence = version_provenance.get("confidence") or pkg.get("version_confidence")
-    return _compact_attributes(
-        {
-            "name": pkg.get("name"),
-            "version": pkg.get("version"),
-            "ecosystem": pkg.get("ecosystem"),
-            "purl": pkg.get("purl"),
-            "version_source": version_source,
-            "version_confidence": version_confidence,
-            "version_provenance": version_provenance,
-        }
-    )
-
-
 def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
     """Build a :class:`DepGraph` from an in-memory scan JSON report."""
     graph = DepGraph()
@@ -276,7 +251,7 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
                 dep_depth = pkg.get("dependency_depth", 0)
                 vulns = pkg.get("vulnerabilities", [])
 
-                pkg_kind = "pkg_vuln" if vulns else ("pkg_transitive" if not is_direct else "pkg")
+                pkg_kind = "pkg_vuln" if vulns else ("pkg_transitive" if is_direct is False else "pkg")
                 pkg_id = f"pkg:{pkg_eco}/{pkg_name}@{pkg_ver}"
                 pkg_label = f"{pkg_name}@{pkg_ver}" if pkg_ver else pkg_name
                 if dep_depth and dep_depth > 0:
@@ -294,7 +269,7 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
                     vuln_id_str = vuln.get("id", "UNKNOWN")
                     severity = vuln.get("severity", "unknown").lower()
                     cve_id = f"cve:{vuln_id_str}"
-                    graph.add_node(cve_id, vuln_id_str, "cve", severity)
+                    graph.add_node(cve_id, vuln_id_str, "cve", severity, attributes={"canonical_node_id": f"vuln:{vuln_id_str}"})
                     graph.add_edge(pkg_id, cve_id, "affects")
 
     _merge_unified_graph_evidence(graph, data)

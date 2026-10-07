@@ -463,3 +463,27 @@ def test_current_evidence_edits_select_cross_view_contracts(tmp_path, source):
     for path in expected:
         _write(path, 1)
     assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "contracts"),
+    [
+        ("src/agent_bom/secret_scanner.py", ("test_sensitive_file_candidate_coverage.py", "test_secret_pruning_coverage.py")),
+        (
+            "src/agent_bom/iac/models.py",
+            ("test_iac_iam_policy.py", "test_iac_scanner_golden.py", "test_iac_scanner_golden_cfn_docker_helm.py"),
+        ),
+        (
+            "src/agent_bom/iac/__init__.py",
+            ("test_iac_iam_policy.py", "test_iac_scanner_golden.py", "test_iac_scanner_golden_cfn_docker_helm.py"),
+        ),
+        ("src/agent_bom/reachability_cve.py", ("test_symbol_reachability_export.py",)),
+        ("src/agent_bom/graph/blast_reach.py", ("test_symbol_reachability_export.py",)),
+    ],
+)
+def test_scanner_contract_changes_select_cross_surface_regressions(tmp_path, source, contracts):
+    expected = sorted(tmp_path / "tests" / name for name in contracts)
+    for path in expected:
+        _write(path, 1)
+    _write(tmp_path / "tests/test_unrelated.py", 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

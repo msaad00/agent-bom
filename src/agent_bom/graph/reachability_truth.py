@@ -32,7 +32,7 @@ def assess_reachability(
     graph_reachable: bool | None = None,
     symbol_reachability: str | None = None,
     dependency_reachable: bool | None = None,
-    direct_dependency: bool = False,
+    direct_dependency: bool | None = False,
     affected_agents: bool = False,
     exposed_credentials: bool = False,
     exposed_tools: bool = False,
@@ -62,6 +62,9 @@ def assess_reachability(
     if positive:
         return ReachabilityAssessment(ReachabilityVerdict.CONFIRMED, tuple(positive))
 
+    if symbol == "unknown":
+        return ReachabilityAssessment(ReachabilityVerdict.UNKNOWN, ("analysis_incomplete",))
+
     likely: list[str] = []
     if symbol == "package_reachable":
         likely.append("package_reachable")
@@ -75,6 +78,12 @@ def assess_reachability(
     if dependency_reachable is False and not declaration_only:
         return ReachabilityAssessment(ReachabilityVerdict.UNLIKELY, ("dependency_unreachable",))
 
+    return _unknown_context(declaration_only, exposed_credentials, exposed_tools, direct_dependency)
+
+
+def _unknown_context(
+    declaration_only: bool, exposed_credentials: bool, exposed_tools: bool, direct_dependency: bool | None
+) -> ReachabilityAssessment:
     context: list[str] = []
     if declaration_only:
         context.append("declaration_only")

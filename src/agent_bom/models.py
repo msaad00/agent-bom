@@ -355,7 +355,7 @@ class Package:
     distro_name: Optional[str] = None  # OS distribution family for OS packages (e.g. debian, ubuntu, alpine)
     distro_version: Optional[str] = None  # OS distribution version for OS packages (e.g. 13, 24.04, 3.21)
     vulnerabilities: list[Vulnerability] = field(default_factory=list)
-    is_direct: bool = True  # vs transitive dependency
+    is_direct: bool | None = True  # None when the supplied evidence does not establish directness
     parent_package: Optional[str] = None  # Name of parent package (for transitive deps)
     dependency_depth: int = 0  # 0 for direct, 1+ for transitive
     dependency_scope: str = "runtime"  # runtime, optional, peer, extra, conditional, dev, unknown

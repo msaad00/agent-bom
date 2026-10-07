@@ -319,10 +319,10 @@ class TestParseGoPackages:
         names = [p.name for p in pkgs]
         assert names.count("github.com/gin-gonic/gin") == 1
 
-    def test_go_sum_fallback_all_direct(self, tmp_path):
+    def test_go_sum_fallback_directness_unknown(self, tmp_path):
         (tmp_path / "go.sum").write_text(GO_SUM_BASIC)
         pkgs = parse_go_packages(tmp_path)
-        assert all(p.is_direct for p in pkgs)
+        assert all(p.is_direct is None for p in pkgs)
 
     def test_go_mod_preferred_over_go_sum(self, tmp_path):
         """When both exist, go.mod wins (provides direct/indirect distinction)."""

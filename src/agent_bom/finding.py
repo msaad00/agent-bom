@@ -1,8 +1,4 @@
-"""Unified Finding model — single stream for all finding types.
-
-Phase 1 (issue #566): core dataclasses + BlastRadius migration shim.
-Later phases will add cloud CIS, proxy alerts, SAST, and skill findings.
-"""
+"""Unified finding model and source-specific evidence projections."""
 
 from __future__ import annotations
 
@@ -13,6 +9,7 @@ from typing import TYPE_CHECKING, Optional
 
 from agent_bom.advisory_ids import finding_advisory_metadata, vulnerability_enrichment_metadata
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
+from agent_bom.core.packages import synthesize_purl
 
 if TYPE_CHECKING:
     from agent_bom.remediation import Remediation
@@ -1437,6 +1434,7 @@ def iac_finding_to_finding(iac: dict) -> "Finding":
             "category": category,
             "scan_type": "iac",
             "file_path": file_path,
+            "repository_relative_path": iac.get("repository_relative_path"),
             "line_number": line_number,
             "compliance": compliance,
         },
@@ -1603,7 +1601,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
         asset = Asset(
             name=pkg.name,
             asset_type="package",
-            identifier=f"pkg:{pkg.ecosystem}/{pkg.name}@{pkg.version}" if pkg.version else None,
+            identifier=pkg.purl or synthesize_purl(pkg.name, pkg.version, pkg.ecosystem),
         )
 
     # Collect evidence

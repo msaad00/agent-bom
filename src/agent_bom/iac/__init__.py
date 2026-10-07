@@ -36,7 +36,7 @@ from agent_bom.iac.dockerfile import scan_dockerfile
 from agent_bom.iac.helm import scan_chart_yaml, scan_values_yaml
 from agent_bom.iac.iam_policy import is_iam_policy_document, scan_iam_policy
 from agent_bom.iac.kubernetes import scan_k8s_manifest
-from agent_bom.iac.models import IaCFinding, ScanContext, ScannerVerdict, ScanResult
+from agent_bom.iac.models import IaCFinding, ScanContext, ScannerVerdict, ScanResult, set_repository_context
 from agent_bom.iac.terraform_security import scan_terraform_security
 from agent_bom.traversal import iter_discovery_files
 
@@ -154,10 +154,8 @@ def scan_iac_with_context(
     root: str | Path,
     context: ScanContext | None = None,
 ) -> ScanResult:
-    """Scan a directory tree for IaC misconfigurations, returning findings and
-    a per-scanner capability verdict table.
-
-    Two orthogonal gates are applied for each scanner on every file:
+    """Scan IaC files with per-scanner applicability and authorization verdicts.
+    Each file has two gates:
 
     1. **Authorization** — ``context.enabled_scanners`` acts as an allowlist.
        ``None`` (default) means all scanners are unlocked.  A non-empty
@@ -230,7 +228,7 @@ def scan_iac_with_context(
             if "node_modules" in path.parts or "__pycache__" in path.parts:
                 continue
 
-        # Dispatch in priority order: more specific checks first.
+        first_finding = len(findings)
         if _is_chart_yaml(path) or _is_values_yaml(path):
             if "helm" not in disabled:
                 files_matched["helm"] += 1
@@ -276,6 +274,8 @@ def scan_iac_with_context(
             if "iam-policy" not in disabled:
                 files_matched["iam-policy"] += 1
                 findings.extend(scan_iam_policy(path))
+
+        set_repository_context(findings[first_finding:], path.relative_to(walk_root).as_posix())
 
     # Enrich with MITRE ATT&CK and MITRE ATLAS technique IDs
     from agent_bom.iac.atlas_mapping import get_atlas_techniques

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import timezone
@@ -192,7 +193,7 @@ def to_spdx(report: AIBOMReport) -> dict:
             for pkg in server.packages:
                 pkg_key = pkg.stable_id
                 if pkg_key not in pkg_ref_map:
-                    pkg_id = _next_id("SPDXRef-Pkg")
+                    pkg_id = f"{document_namespace}/SPDXRef-Pkg-" + hashlib.sha256(pkg.stable_id.encode()).hexdigest()[:24]
                     pkg_ref_map[pkg_key] = pkg_id
 
                     pkg_element: dict[str, object] = {
@@ -309,7 +310,7 @@ def to_spdx(report: AIBOMReport) -> dict:
 
     # Element IDs are minted here from the uuid5 namespace plus a fixed prefix
     # and counter, so they carry no input text; skip re-redacting each one.
-    minted_ids = re.compile(re.escape(document_namespace) + r"/SPDXRef-[A-Za-z]+(?:-[A-Za-z]+)*(?:-\d+)?")
+    minted_ids = re.compile(re.escape(document_namespace) + r"/SPDXRef-[A-Za-z]+(?:-[A-Za-z]+)*(?:-[0-9a-f]+)?")
     return attach_cloud_context(sanitize_linked_document(document, trusted_ids=minted_ids), report, "spdx")
 
 

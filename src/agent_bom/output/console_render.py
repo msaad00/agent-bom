@@ -23,6 +23,7 @@ from agent_bom.output.cis_posture import (
     finding_free_posture,
 )
 from agent_bom.output.compact import _compact_detail, _coverage_bar, _pct
+from agent_bom.output.dependency_hierarchy import dependency_count_label, dependency_groups
 from agent_bom.output.finding_views import (
     active_cve_findings,
     cve_findings,
@@ -600,16 +601,11 @@ def print_agent_tree(report: AIBOMReport) -> None:
                     tools_branch.add(f"[dim]...and {len(server.tools) - 10} more[/dim]")
 
             if server.packages:
-                # Separate direct and transitive packages
-                direct_pkgs = [p for p in server.packages if p.is_direct]
-                transitive_pkgs = [p for p in server.packages if not p.is_direct]
-
-                pkg_branch = server_branch.add(
-                    f"\U0001f4e6 Packages ({len(server.packages)}) \u2014 {len(direct_pkgs)} direct, {len(transitive_pkgs)} transitive"
-                )
+                direct_pkgs, transitive_pkgs, unknown_pkgs = dependency_groups(server.packages)
+                pkg_branch = server_branch.add(f"📦 Packages ({len(server.packages)}) — {dependency_count_label(server.packages)}")
 
                 # Show direct packages first
-                for pkg in direct_pkgs:
+                for pkg in [*direct_pkgs, *unknown_pkgs]:
                     vuln_str = ""
                     if pkg.has_vulnerabilities:
                         vuln_str = f" [red]({len(pkg.vulnerabilities)} vuln(s) - {pkg.max_severity.value})[/red]"

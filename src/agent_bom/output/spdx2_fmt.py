@@ -14,6 +14,7 @@ consume SPDX 2.x. This module emits the classic document shape:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import timezone
 from pathlib import Path
@@ -140,7 +141,7 @@ def to_spdx2(report: AIBOMReport, version: str = "2.3") -> dict:
             for pkg in server.packages:
                 pkg_key = pkg.stable_id
                 if pkg_key not in pkg_ref_map:
-                    pkg_id = _next_id("Package")
+                    pkg_id = "SPDXRef-Package-" + hashlib.sha256(pkg.stable_id.encode()).hexdigest()[:24]
                     pkg_ref_map[pkg_key] = pkg_id
 
                     declared_license = _license_field(pkg.license_expression or pkg.license)

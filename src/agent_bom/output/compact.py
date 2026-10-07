@@ -19,6 +19,7 @@ from rich.table import Table
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
 from agent_bom.output.brand_tokens import lane_title
 from agent_bom.output.cis_posture import finding_free_posture
+from agent_bom.output.dependency_hierarchy import dependency_count_label
 
 # The cross-cutting helpers (`console`, `_sev_badge`, `build_remediation_plan`)
 # live in the package's __init__. Import lazily inside functions to avoid a
@@ -246,9 +247,7 @@ def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None
 
     # Direct vs transitive package counts
     all_pkgs = [p for a in report.agents for s in a.mcp_servers for p in s.packages]
-    n_direct = sum(1 for p in all_pkgs if p.is_direct)
-    n_transitive = len(all_pkgs) - n_direct
-    pkg_detail = f" ({n_direct}D/{n_transitive}T)" if n_transitive else ""
+    pkg_detail = dependency_count_label(all_pkgs, compact=True)
 
     has_ai_inventory = bool(getattr(report, "ai_inventory_data", None) and (report.ai_inventory_data or {}).get("total_components", 0) > 0)
     has_more_context = bool(weak_dimensions or cred_names or elevated or has_ai_inventory or coverage_incomplete or scorecard.score < 90)

@@ -41,7 +41,7 @@ import pytest
 from agent_bom.secret_scanner import scan_secrets
 
 # A real-shaped AWS key, assembled so the literal never appears in this file.
-LEAKED_KEY = "AKIA" + "IOSFODNN7" + "EXAMPLE"
+LEAKED_KEY = "AKIA" + "IOSFODNN7" + "EXAMPLZ"
 
 
 def write_padded(path: Path, *, size: int, payload: str) -> None:

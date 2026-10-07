@@ -8,7 +8,7 @@ from agent_bom.secret_scanner import scan_secrets
 
 # Real-shaped only after Python joins the fragments, so the regression tests
 # credential detection without committing a token-shaped literal.
-LEAKED_KEY = "AKIA" + "IOSFODNN7" + "EXAMPLE"
+LEAKED_KEY = "AKIA" + "IOSFODNN7" + "EXAMPLZ"
 
 SENSITIVE_FILENAMES = (
     "server.pem",

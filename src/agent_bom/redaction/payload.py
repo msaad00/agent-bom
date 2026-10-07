@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from agent_bom import security
 from agent_bom.redaction.cloud_coordinates import sanitize_cloud_coordinate
+from agent_bom.redaction.filesystem_coordinates import sanitize_filesystem_coordinate, sanitize_progress_path
 from agent_bom.redaction.provenance import PROVENANCE_KEYS, sanitize_provenance_marker
 
 _CACHE_LIMIT = 262_144
@@ -25,6 +26,10 @@ KeyCache = dict[str, str]
 
 def sanitize_string(value: str, key: object | None, max_str_len: int) -> object:
     """Apply the complete field policy without traversal or cache state."""
+    value = sanitize_progress_path(value, security.sanitize_path_label)
+    private_coordinate = sanitize_filesystem_coordinate(value)
+    if private_coordinate is not None:
+        value = private_coordinate
     key_text = str(key) if key is not None else None
     marker = sanitize_provenance_marker(value) if key_text in PROVENANCE_KEYS else None
     if marker is None:

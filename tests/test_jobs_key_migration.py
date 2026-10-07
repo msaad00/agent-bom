@@ -120,7 +120,10 @@ def test_full_bootstrap_upgrade_preserves_populated_schema(database):
     assert database.execute("SELECT tenant_id,claimed_by,lease_expires_at FROM scan_dispatch_queue").fetchall() == [
         ("a", "worker:kept", "2099")
     ]
-    assert database.execute("SELECT version FROM control_plane_schema_versions WHERE component='scan_jobs'").fetchone()[0] == 2
+    assert database.execute("SELECT version FROM control_plane_schema_versions WHERE component='scan_jobs'").fetchone()[0] == 3
+    before_revision = database.execute("SELECT revision FROM job_overview_revisions WHERE tenant_id='a'").fetchone()[0]
+    database.execute("UPDATE scan_jobs SET status='done' WHERE job_id='same' AND team_id='a'")
+    assert database.execute("SELECT revision FROM job_overview_revisions WHERE tenant_id='a'").fetchone()[0] == before_revision + 1
     assert database.execute("SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='scan_jobs'::regclass").fetchone() == (
         True,
         True,

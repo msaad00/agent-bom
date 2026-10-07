@@ -4,6 +4,8 @@ Nothing survives the request: approvals, expiry, tenant filters and evidence
 changes are evaluated again on the next read. The context is thread/task-local.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from typing import Any, Callable, ParamSpec, TypeVar, cast
@@ -22,15 +24,23 @@ def read_once(key: tuple[str, str], load: Callable[[], _T]) -> _T:
     return cast(_T, cache[key])
 
 
+@contextmanager
+def finding_read_scope() -> Iterator[None]:
+    """Keep one evidence context across synchronous calls or awaited route work."""
+    if _read_cache.get() is not None:
+        yield
+        return
+    token = _read_cache.set({})
+    try:
+        yield
+    finally:
+        _read_cache.reset(token)
+
+
 def finding_read_snapshot(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     @wraps(fn)
     def read(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-        if _read_cache.get() is not None:
+        with finding_read_scope():
             return fn(*args, **kwargs)
-        token = _read_cache.set({})
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            _read_cache.reset(token)
 
     return read

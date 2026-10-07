@@ -36,33 +36,75 @@ _FIELD_TO_FRAMEWORK = {
 
 
 @dataclass
+class _RuntimeMatches:
+    blocked_count: int = 0
+    observed_count: int = 0
+    examples: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+
+
+@dataclass
 class RuntimeEvidenceIndex:
-    """Tenant-scoped runtime events indexed for finding correlation."""
+    """Tenant-scoped event snapshot, indexed by exact agent and tool identity.
+
+    Counts retain every event; at most eight examples per identity are retained
+    for bounded finding summaries. Build a new snapshot when evidence changes.
+    """
 
     blocked: list[dict[str, Any]] = field(default_factory=list)
     observed: list[dict[str, Any]] = field(default_factory=list)
+    _matches: dict[tuple[str, str], _RuntimeMatches] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        for ordinal, event in enumerate((*self.blocked, *self.observed)):
+            agent = str(event.get("agent") or "").strip()
+            tool = str(event.get("tool") or "").strip()
+            if not agent or not tool:
+                continue
+            match = self._matches.setdefault((agent, tool), _RuntimeMatches())
+            match.blocked_count += event.get("state") == RUNTIME_STATE_BLOCKED
+            match.observed_count += event.get("state") == RUNTIME_STATE_OBSERVED
+            if len(match.examples) < 8:
+                match.examples.append((ordinal, dict(event)))
+
+    def matching(self, agents: set[str], tools: set[str]) -> _RuntimeMatches:
+        result = _RuntimeMatches()
+        for agent in agents:
+            for tool in tools:
+                match = self._matches.get((agent, tool))
+                if match is not None:
+                    result.blocked_count += match.blocked_count
+                    result.observed_count += match.observed_count
+                    result.examples.extend(match.examples)
+        result.examples = sorted(result.examples, key=lambda item: item[0])[:8]
+        return result
+
+
+def build_incident_runtime_evidence_index(records: list[Mapping[str, Any]]) -> RuntimeEvidenceIndex:
+    """Index a scan's incidents once, retaining their original source order."""
+    return RuntimeEvidenceIndex(observed=_incident_records_to_events(records))
 
 
 def build_tenant_runtime_evidence_index(tenant_id: str) -> RuntimeEvidenceIndex:
     """Load recent proxy/gateway alerts for a tenant into a correlation index."""
     from agent_bom.api.routes.proxy import _load_proxy_alerts
 
-    index = RuntimeEvidenceIndex()
+    blocked: list[dict[str, Any]] = []
+    observed: list[dict[str, Any]] = []
     for alert in _load_proxy_alerts(tenant_id):
         if not isinstance(alert, dict):
             continue
         action = str(alert.get("action") or alert.get("event_type") or alert.get("type") or "").lower()
         effective = str(alert.get("effective_decision") or alert.get("decision") or "").lower()
         if action in {"blocked", "block", "deny", "denied"} or effective in {"block", "blocked", "deny", "denied"}:
-            index.blocked.append(_normalize_runtime_event(alert, state=RUNTIME_STATE_BLOCKED))
+            blocked.append(_normalize_runtime_event(alert, state=RUNTIME_STATE_BLOCKED))
         elif action in {"allowed", "allow", "permit", "authorized"} or effective in {"allow", "allowed", "permit"}:
-            index.observed.append(_normalize_runtime_event(alert, state=RUNTIME_STATE_OBSERVED))
+            observed.append(_normalize_runtime_event(alert, state=RUNTIME_STATE_OBSERVED))
         elif (
             str(alert.get("detector") or "").lower() in {"policy", "firewall", "dlp"}
             and str(alert.get("outcome") or "").lower() == "blocked"
         ):
-            index.blocked.append(_normalize_runtime_event(alert, state=RUNTIME_STATE_BLOCKED))
-    return index
+            blocked.append(_normalize_runtime_event(alert, state=RUNTIME_STATE_BLOCKED))
+    return RuntimeEvidenceIndex(blocked=blocked, observed=observed)
 
 
 def _normalize_runtime_event(alert: dict[str, Any], *, state: str) -> dict[str, Any]:
@@ -129,34 +171,27 @@ def _row_tools(row: Mapping[str, Any]) -> set[str]:
     return tools
 
 
-def _event_matches_row(row: Mapping[str, Any], event: Mapping[str, Any]) -> bool:
-    agents = _row_agents(row)
-    tools = _row_tools(row)
-    event_agent = str(event.get("agent") or "").strip()
-    event_tool = str(event.get("tool") or "").strip()
-    # Tool names are shared across agents, and agent activity alone does not
-    # identify a finding's tool. Missing identity stays uncorrelated; an exact
-    # agent-and-tool match is related activity, never vulnerable-code execution.
-    # These identities are case-sensitive; folding them can merge workloads.
-    return bool(event_agent and event_tool and event_agent in agents and event_tool in tools)
-
-
 def attach_runtime_evidence_to_finding(
     row: dict[str, Any],
     index: RuntimeEvidenceIndex | None,
     *,
     incidents: list[Mapping[str, Any]] | None = None,
+    incident_index: RuntimeEvidenceIndex | None = None,
 ) -> dict[str, Any]:
     """Attach ``runtime_evidence`` summary to a finding row (in-place)."""
+    agents, tools = _row_agents(row), _row_tools(row)
     events: list[dict[str, Any]] = []
-    if index is not None:
-        events.extend(event for event in index.blocked if _event_matches_row(row, event))
-        events.extend(event for event in index.observed if _event_matches_row(row, event))
-    if incidents:
-        events.extend(event for event in _incident_records_to_events(incidents) if _event_matches_row(row, event))
+    blocked_count = observed_count = 0
+    if incident_index is None and incidents:
+        incident_index = build_incident_runtime_evidence_index(incidents)
+    for source in (index, incident_index):
+        if source is None:
+            continue
+        match = source.matching(agents, tools)
+        blocked_count += match.blocked_count
+        observed_count += match.observed_count
+        events.extend(event for _, event in match.examples[: 8 - len(events)])
 
-    blocked_count = sum(1 for event in events if event.get("state") == RUNTIME_STATE_BLOCKED)
-    observed_count = sum(1 for event in events if event.get("state") == RUNTIME_STATE_OBSERVED)
     if blocked_count:
         state = RUNTIME_STATE_BLOCKED
     elif observed_count:
@@ -221,6 +256,7 @@ __all__ = [
     "RUNTIME_STATE_STATIC",
     "RuntimeEvidenceIndex",
     "attach_runtime_evidence_to_finding",
+    "build_incident_runtime_evidence_index",
     "build_tenant_runtime_evidence_index",
     "compliance_tags_from_finding_row",
 ]

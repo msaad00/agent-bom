@@ -43,6 +43,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import JSONResponse, Response
 
+from agent_bom.api.finding_read_context import finding_read_scope
 from agent_bom.api.graph_generation import optional_generation, pin_generation, verify_generation
 from agent_bom.api.graph_page_context import containment_ancestors, page_attack_context
 from agent_bom.api.graph_paging import _coalesce_alias, _enforce_node_offset_cap, _page_meta, _paginate
@@ -85,7 +86,7 @@ from agent_bom.graph.rollup import ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS
 from agent_bom.graph.view_payloads import _graph_rollup_payload, _semantic_cluster_payload
-from agent_bom.mcp_errors import CODE_UNSUPPORTED_BACKEND
+from agent_bom.mcp_errors import CODE_UNSUPPORTED_BACKEND, CODE_UPSTREAM_UNAVAILABLE
 from agent_bom.security import sanitize_error
 
 if TYPE_CHECKING:
@@ -115,7 +116,8 @@ class _GraphAdmissionRoute(APIRoute):
                 async with adaptive_backpressure("graph"):
                     token = _graph_request_admitted.set(True)
                     try:
-                        return await handler(request)
+                        with finding_read_scope():
+                            return await handler(request)
                     finally:
                         _graph_request_admitted.reset(token)
             except BackpressureRejectedError as exc:
@@ -1426,6 +1428,8 @@ def _raise_mcp_error_as_http(payload: dict[str, Any]) -> None:
     if not isinstance(error, dict):
         return
     category = str(error.get("category") or "internal")
+    if error.get("code") == CODE_UPSTREAM_UNAVAILABLE:
+        raise HTTPException(status_code=503, detail=error)
     if error.get("code") == CODE_UNSUPPORTED_BACKEND:
         # Same status the direct store calls use for a backend capability gap.
         raise HTTPException(status_code=501, detail=error)

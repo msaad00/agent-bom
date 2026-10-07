@@ -23,7 +23,7 @@ import json
 import logging
 import os
 import secrets
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
@@ -2365,42 +2365,21 @@ def _cached_issue_severity_counts(request: Request, tenant_jobs: list[Any]) -> d
 
 
 def estate_agent_count(tenant_id: str) -> dict[str, Any]:
-    """Distinct agents in the tenant's current graph snapshot.
+    """Count canonical agent nodes in the inventory's current graph scope.
 
-    Runs the exact query behind ``/v1/inventory/assets?type=agent`` so every
-    surface that shows an agent total agrees with the list it links to. Graph
-    node ids are canonical agent identities, so duplicates collapse.
+    The node page applies the same tenant, snapshot and entity-type predicates
+    without computing finding facets or joining every incident relationship.
     """
-    import asyncio
-
-    from agent_bom.api import inventory_service
-
-    async def _direct(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
-        return fn(*args, **kwargs)
-
     try:
-        page = asyncio.run(
-            inventory_service.build_asset_list(
-                store=_get_graph_store(),
-                tenant_id=tenant_id,
-                type="agent",
-                limit=1,
-                store_call=_direct,
-            )
+        scan_id, _, _, total, _ = _get_graph_store().page_nodes(
+            tenant_id=tenant_id,
+            entity_types={"agent"},
+            limit=1,
         )
-    except inventory_service.InventoryError as exc:
-        if exc.status_code == 404:
-            return {"total": 0, "scan_id": None, "basis": "graph_agents"}
-        _logger.warning("Estate agent count unavailable: %s", sanitize_text(exc))
-        return {"total": None, "scan_id": None, "basis": "graph_agents"}
     except Exception as exc:  # noqa: BLE001
         _logger.warning("Estate agent count unavailable: %s", sanitize_text(exc))
         return {"total": None, "scan_id": None, "basis": "graph_agents"}
-    return {
-        "total": int(page["pagination"]["total"]),
-        "scan_id": page.get("scan_id") or None,
-        "basis": "graph_agents",
-    }
+    return {"total": int(total), "scan_id": scan_id or None, "basis": "graph_agents"}
 
 
 def _cached_estate_agent_count(request: Request, tenant_jobs: list[Any]) -> dict[str, Any]:

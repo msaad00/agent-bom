@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -11,6 +10,7 @@ from enum import Enum
 from typing import Protocol
 
 from agent_bom.api.storage.finding_write_session import finding_write_session
+from agent_bom.api.storage_schema import postgres_deployment_configured
 
 MANAGED_TRIAL_DURATION = timedelta(days=14)
 MANAGED_TRIAL_CLEANUP_GRACE = timedelta(days=7)
@@ -315,7 +315,6 @@ def delete_tenant_records(tenant_id: str) -> dict[str, int]:
         set_current_tenant,
     )
     from agent_bom.api.routes.privacy import _delete_records
-    from agent_bom.api.storage_schema import postgres_deployment_configured
 
     token = set_current_tenant(tenant_id)
     try:
@@ -374,7 +373,7 @@ def get_tenant_lifecycle_store() -> TenantLifecycleStore:
     if _store is None:
         with _store_lock:
             if _store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.postgres_tenant_lifecycle import PostgresTenantLifecycleStore
 
                     _store = PostgresTenantLifecycleStore()

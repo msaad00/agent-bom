@@ -15,6 +15,7 @@ from agent_bom.api.audit_log import (
     _AuditChainCheckpoint,
     _verify_audit_chain_with_checkpoint,
 )
+from agent_bom.api.storage.audit_schema import AUDIT_FORK_GUARD_INDEX, ensure_audit_fork_guard
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
 from agent_bom.security import sanitize_error
@@ -60,7 +61,7 @@ def _tenant_scope(tenant_id: str | None) -> Iterator[None]:
 
 # Name of the per-tenant chain-head uniqueness guard. A concurrent fork violates
 # it (SQLSTATE 23505), which `append` catches to re-read the head and re-link.
-_AUDIT_FORK_GUARD_INDEX = "audit_log_team_prevsig_uniq"
+_AUDIT_FORK_GUARD_INDEX = AUDIT_FORK_GUARD_INDEX
 
 
 # Callers deliberately swallow audit failures so audit side effects never block
@@ -150,35 +151,14 @@ class PostgresAuditLog:
                 _ensure_tenant_rls(conn, "audit_log", "team_id")
                 _ensure_tenant_rls(conn, "audit_chain_checkpoint", "tenant_id")
                 conn.commit()
-        # Migration-owned deployments skip runtime DDL, but still need the
-        # fork guard and legacy checkpoint reconciliation.
+        # Verify migration-owned guards without requiring runtime DDL privileges;
+        # bootstrap installations may still create a missing index.
         self._ensure_fork_guard_index()
         self._hydrate_checkpoints()
 
     def _ensure_fork_guard_index(self) -> None:
-        """Serialize the hash chain at the DB via per-tenant head uniqueness.
-
-        ``UNIQUE (team_id, prev_signature)`` lets at most one row link to any
-        given predecessor (and exactly one genesis, ``prev_signature = ''``, per
-        tenant — the column is ``NOT NULL DEFAULT ''`` so no NULL defeats it), so
-        two writers across threadpool workers or ``uvicorn --workers N`` processes
-        cannot fork the chain: the loser's INSERT is rejected and retried against
-        the advanced head. Built defensively — pre-existing forks in older data
-        would fail index creation, so we log rather than refuse to start; appends
-        still retry, but forks cannot be rejected until the data is reconciled.
-        """
-        try:
-            with self._pool.connection() as conn:
-                conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {_AUDIT_FORK_GUARD_INDEX} ON audit_log (team_id, prev_signature)")
-                conn.commit()
-        except Exception:
-            logger.warning(
-                "Could not create audit_log fork-guard unique index %s "
-                "(pre-existing chain forks?); appends will retry but forks cannot "
-                "be rejected at the DB until the existing rows are reconciled",
-                _AUDIT_FORK_GUARD_INDEX,
-                exc_info=False,
-            )
+        """Verify the migrated guard or bootstrap a missing guard."""
+        ensure_audit_fork_guard(self._pool, logger)
 
     def _hydrate_checkpoints(self) -> None:
         # Enumerating DISTINCT team_id spans every tenant, which FORCE ROW LEVEL

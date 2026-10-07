@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-JOBS_SCHEMA_VERSION = 2
+JOBS_SCHEMA_VERSION = 3
 
 # Both the development bootstrap and Alembic use this exact transaction. Unknown
 # dependencies and inconsistent child ownership abort the upgrade, preserving data.

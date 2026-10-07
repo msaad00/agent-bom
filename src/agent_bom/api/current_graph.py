@@ -149,6 +149,15 @@ class CurrentGraphStore:
             reasons.add("graph_evidence_unavailable")
 
     def _current_id(self, tenant: str) -> str:
+        with self._lock:
+            identity = read_once((f"current-graph:{id(self)}", tenant), lambda: self._resolve_current_id(tenant))
+            # A concurrent request may retire this rebuildable projection. Never
+            # turn that race into an empty graph or silently switch generations.
+            if identity and not self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=identity)[1]:
+                raise HTTPException(409, "Current estate generation was retired; restart the query.")
+            return identity
+
+    def _resolve_current_id(self, tenant: str) -> str:
         # Summary reads do not deserialize retained report blobs on warm pages.
         summaries = self._job_store.list_summary(tenant_id=tenant, status=JobStatus.DONE)
         summaries = sorted((row for row in summaries if not row.get("child_job_ids")), key=lambda row: row["job_id"])

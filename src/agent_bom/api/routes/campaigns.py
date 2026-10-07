@@ -16,12 +16,17 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
-from agent_bom.api.campaign_store import MembershipEvidence, get_campaign_store
+from agent_bom.api.campaign_pagination import campaign_page
+from agent_bom.api.campaign_reconciliation import _assert_source_fresh, _campaigns, _reconcile_campaigns
+from agent_bom.api.campaign_store import get_campaign_store
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.risk_campaigns import CAMPAIGN_FINDING_LIMIT, derive_campaigns
+from agent_bom.api.storage.campaign_revisions import CampaignEvidenceChangedError
 from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.db.adoption_events import record_adoption_event_best_effort
 from agent_bom.rbac import require_authenticated_permission
+from agent_bom.ticketing.connection_store import get_ticketing_store
 from agent_bom.ticketing.service import TicketingError, create_ticket_for_finding, sync_ticket_status
 
 router = APIRouter(tags=["campaigns"])
@@ -91,6 +96,7 @@ class CampaignResponse(BaseModel):
     tenant_id: str
     title: str
     finding_ids: list[str]
+    finding_ids_truncated: bool = False
     finding_count: int
     severity: str
     priority_score: float
@@ -117,6 +123,10 @@ class CampaignListResponse(BaseModel):
     tenant_id: str
     campaigns: list[CampaignResponse]
     count: int
+    total_campaigns: int
+    limit: int
+    has_more: bool
+    next_cursor: str | None
     finding_window_days: int
     finding_limit: int
     truncated: bool
@@ -305,6 +315,7 @@ def _load_findings(request: Request) -> dict[str, Any]:
     from agent_bom.api.routes.scan import _list_findings_impl
 
     source_revision = _campaign_source_revision(request)
+    evidence_revision = get_campaign_store().evidence_state.revision(_tenant(request))
     rows: list[dict[str, Any]] = []
     identities: set[str] = set()
     seen_cursors: set[str] = set()
@@ -346,8 +357,20 @@ def _load_findings(request: Request) -> dict[str, Any]:
             and not isinstance(total, bool)
             and total == len(rows)
         )
-        if complete and _campaign_source_revision(request) == source_revision:
-            return {**source, "findings": rows, "has_more": False, "next_cursor": "", "total_approximate": False}
+        if (
+            complete
+            and _campaign_source_revision(request) == source_revision
+            and get_campaign_store().evidence_state.revision(_tenant(request)) == evidence_revision
+        ):
+            return {
+                **source,
+                "findings": rows,
+                "has_more": False,
+                "next_cursor": "",
+                "total_approximate": False,
+                "_source_revision": source_revision,
+                "_evidence_revision": evidence_revision,
+            }
         if (
             unstable
             or complete
@@ -380,71 +403,6 @@ def _source_incomplete(source: dict[str, Any]) -> bool:
 def _canonical_finding_id(row: dict[str, Any]) -> str:
     identity = str(row.get("canonical_id") or row.get("finding_id") or row.get("id") or "").strip()
     return "" if identity == str(row.get("vulnerability_id") or "").strip() else identity
-
-
-def _campaigns(request: Request, source: dict[str, Any]) -> list[dict[str, Any]]:
-    tenant_id = _tenant(request)
-    findings = source["findings"]
-    incomplete = _source_incomplete(source)
-    initial = derive_campaigns(
-        findings, tenant_id=tenant_id, workflow_by_id={}, window_days=90, finding_limit=CAMPAIGN_FINDING_LIMIT, truncated=incomplete
-    )
-    memberships: dict[str, MembershipEvidence] = {
-        str(item["id"]): (
-            str(item["membership_fingerprint"]),
-            tuple(sorted(str(value) for value in item["finding_ids"])),
-            str(item["title"])[:300],
-        )
-        for item in initial
-    }
-    before = {row.campaign_id: row for row in get_campaign_store().list(tenant_id)}
-    if incomplete:
-        workflows = {
-            campaign_id: row
-            for campaign_id, row in before.items()
-            if row.active and row.membership_fingerprint == (memberships.get(campaign_id) or (None, ()))[0]
-        }
-        campaigns = derive_campaigns(
-            findings,
-            tenant_id=tenant_id,
-            workflow_by_id=workflows,
-            window_days=90,
-            finding_limit=CAMPAIGN_FINDING_LIMIT,
-            truncated=True,
-        )
-        for campaign in campaigns:
-            # Assignment survives a partial collection; verification does not.
-            assigned = before.get(str(campaign["id"]))
-            if assigned and assigned.active:
-                if assigned.owner is not None:
-                    campaign["owner"] = assigned.owner
-                campaign["sla_due_at"] = assigned.sla_due_at
-            campaign["membership_complete"] = False
-            campaign["membership_provisional"] = True
-        return campaigns
-    reconciled = get_campaign_store().reconcile_memberships(tenant_id, memberships, complete=True)
-    for row in reconciled:
-        old = before.get(row.campaign_id)
-        if old is None:
-            _audit("risk_campaign.membership_observed", request, row.campaign_id, generation=row.generation)
-        elif row.generation != old.generation:
-            _audit("risk_campaign.membership_reset", request, row.campaign_id, generation=row.generation)
-    for campaign_id, old in before.items():
-        if old.active and campaign_id not in memberships:
-            _audit("risk_campaign.membership_retired", request, campaign_id, generation=old.generation)
-    workflows = {row.campaign_id: row for row in reconciled}
-    campaigns = derive_campaigns(
-        findings,
-        tenant_id=tenant_id,
-        workflow_by_id=workflows,
-        window_days=90,
-        finding_limit=CAMPAIGN_FINDING_LIMIT,
-        truncated=False,
-    )
-    for campaign in campaigns:
-        campaign["membership_complete"] = True
-        campaign["membership_provisional"] = False
-    return campaigns
 
 
 def _item_fingerprint(items: list[str]) -> str:
@@ -537,7 +495,6 @@ def _audit_for_actor(action: str, *, tenant_id: str, actor: str, campaign_id: st
 
 def _verification_unavailable(*, tenant_id: str, actor: str, campaign_id: str, retry_state: str, reason: str) -> None:
     """Fail closed without changing workflow state when absence cannot prove a fix."""
-    from agent_bom.db.adoption_events import record_adoption_event_best_effort
 
     record_adoption_event_best_effort("verification_completed", channel="control_plane", outcome="unavailable_evidence")
     _audit_for_actor(
@@ -575,6 +532,9 @@ def verify_campaign_workflow(
             reason="Campaign verification requires a complete findings snapshot.",
         )
 
+    request = Request({"type": "http"})
+    request.state.tenant_id = tenant_id
+    _assert_source_fresh(request, source)
     store = get_campaign_store()
     stored = store.get(tenant_id, campaign_id)
     if stored is None or not stored.member_ids:
@@ -589,9 +549,7 @@ def verify_campaign_workflow(
         truncated=False,
     )
     current = next((item for item in current_campaigns if item["id"] == campaign_id), None)
-    # Replacements in the selected remediation group contribute to remaining
-    # exposure just like original members. Their retained old observations
-    # cannot become a fresh still-affected verdict or replay a cached outcome.
+    # Unreconfirmed original/replacement observations cannot verify remediation.
     relevant_ids = original_ids | (set(current["finding_ids"]) if current else set())
     if any(row.get("observation_status") == "unreconfirmed" and _canonical_finding_id(row) in relevant_ids for row in source["findings"]):
         _verification_unavailable(
@@ -615,22 +573,12 @@ def verify_campaign_workflow(
             idempotency_key,
             request_hash=request_hash,
         )
-        # Only "still_affected" outcomes are replayed from the idempotency cache.
-        # "verified_fixed" outcomes are intentionally NOT replayed: older results
-        # may have been computed under a pre-repair logic that treated absence
-        # from a time window as proof of remediation. Replaying such a cached
-        # "fixed" outcome would bypass a fresh verification check — fail-closed
-        # means each positive claim re-earns its result. The cache write still
-        # happens (below) so the store is populated; the read guard here is the
-        # asymmetry. This is expected and must not be "fixed" to replay all
-        # outcomes.
+        # Replay only still-affected outcomes. Cached "verified_fixed" results
+        # never bypass a fresh evidence check; absence alone cannot prove a fix.
         if cached is not None and cached.get("outcome") == "still_affected":
             return cast("dict[str, Any]", cached)
 
-    # Campaign grouping depends on mutable enrichment (fixed version, purl,
-    # package identity). An original finding moving to another group is not a
-    # remediation. Check its persisted identity as well as any replacements in
-    # the original remediation group, deduplicating their shared members.
+    # Metadata regrouping is not remediation: retain original occurrence IDs.
     current_ids = {_canonical_finding_id(row) for row in source["findings"]}
     remaining_ids = set(stored.member_ids).intersection(current_ids)
     if current:
@@ -649,7 +597,13 @@ def verify_campaign_workflow(
                 "remaining paths. Workflow state is unchanged."
             ),
         )
-    verified = store.verify(tenant_id, campaign_id, expected_version=version, remaining_ids=remaining)
+    _assert_source_fresh(request, source)
+    try:
+        verified = store.verify(
+            tenant_id, campaign_id, expected_version=version, remaining_ids=remaining, evidence_revision=source.get("_evidence_revision")
+        )
+    except CampaignEvidenceChangedError as exc:
+        raise HTTPException(status_code=409, detail="Campaign evidence changed; refresh and retry.") from exc
     if verified is None:
         raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
 
@@ -684,7 +638,6 @@ def verify_campaign_workflow(
         retry_state=retry_state,
         remaining_count=len(remaining),
     )
-    from agent_bom.db.adoption_events import record_adoption_event_best_effort
 
     record_adoption_event_best_effort("verification_completed", channel="control_plane", outcome=outcome)
     if idempotency_key:
@@ -708,14 +661,20 @@ def update_campaign_workflow(
 ) -> dict[str, Any]:
     """Update owner, SLA, or state through one REST/MCP workflow service."""
     tenant_id = _tenant(request)
-    campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    campaign = _find_campaign(_reconcile_campaigns(request, source), campaign_id)
     _require_complete_membership(campaign)
     fields = body.model_dump(exclude_unset=True, exclude={"version"})
     if not fields:
         raise HTTPException(status_code=422, detail="At least one campaign workflow field is required.")
     if "owner" in fields:
         fields["owner"] = body.owner.strip() if body.owner else None
-    workflow = get_campaign_store().patch(tenant_id, campaign_id, expected_version=body.version, fields=fields)
+    _assert_source_fresh(request, source)
+    try:
+        workflow = get_campaign_store().patch(
+            tenant_id, campaign_id, expected_version=body.version, fields=fields, evidence_revision=source.get("_evidence_revision")
+        )
+    except CampaignEvidenceChangedError as exc:
+        raise HTTPException(status_code=409, detail="Campaign evidence changed; refresh and retry.") from exc
     if workflow is None:
         raise HTTPException(status_code=409, detail="Campaign changed; refresh and retry with the current version.")
     campaign.update(workflow.to_dict())
@@ -724,17 +683,18 @@ def update_campaign_workflow(
 
 
 @router.get("/campaigns", response_model=CampaignListResponse)
-async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]:
+async def list_campaigns(
+    request: Request, limit: int = Query(25, ge=1, le=100), cursor: str | None = Query(None, max_length=512), _role: Any = _READ
+) -> dict[str, Any]:
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
-    campaigns = _campaigns(request, source)
+    campaigns = await anyio.to_thread.run_sync(_campaigns, request, source)
     total = source.get("total")
     truncated = _source_incomplete(source)
     return {
         "schema_version": "risk-campaigns.v1",
         "tenant_id": tenant_id,
-        "campaigns": campaigns,
-        "count": len(campaigns),
+        **campaign_page(tenant_id, campaigns, limit=limit, cursor=cursor),
         "finding_window_days": 90,
         "finding_limit": CAMPAIGN_FINDING_LIMIT,
         "truncated": truncated,
@@ -821,7 +781,7 @@ async def create_campaign_tickets(
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
     decoded_cursor = _decode_cursor(body.cursor)
     findings = source["findings"]
-    campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    campaign = _find_campaign(_reconcile_campaigns(request, source), campaign_id)
     _require_complete_membership(campaign)
     rows: dict[str, dict[str, Any]] = {}
     for row in findings:
@@ -844,6 +804,7 @@ async def create_campaign_tickets(
     offset = _offset(decoded_cursor, cursor_context, len(all_ids))
     selected = all_ids[offset : offset + body.limit]
     for finding_id in selected:
+        _assert_source_fresh(request, source)
         try:
             tickets.append(
                 await create_ticket_for_finding(
@@ -894,12 +855,11 @@ async def sync_campaign_tickets(
     limit: int = Query(25, ge=1, le=25),
     _role: Any = _WRITE,
 ) -> dict[str, Any]:
-    from agent_bom.ticketing.connection_store import get_ticketing_store
 
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
     decoded_cursor = _decode_cursor(cursor)
-    campaign = _find_campaign(_campaigns(request, source), campaign_id)
+    campaign = _find_campaign(_reconcile_campaigns(request, source), campaign_id)
     _require_complete_membership(campaign)
     finding_ids = set(campaign["finding_ids"])
     links = await anyio.to_thread.run_sync(
@@ -921,6 +881,7 @@ async def sync_campaign_tickets(
     synced: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     for link in selected:
+        _assert_source_fresh(request, source)
         try:
             synced.append(await sync_ticket_status(tenant_id=tenant_id, ticket_id=link.id, actor=_actor(request)))
         except TicketingError as exc:

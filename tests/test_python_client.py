@@ -417,3 +417,15 @@ def test_lifecycle_client_keeps_ids_in_bounded_query_and_json_fields():
         "/v1/agent-lifecycle/runs",
     ]
     assert requests[7].url.params["record_id"] == "i/id"
+
+
+def test_client_campaign_page_preserves_opaque_cursor() -> None:
+    seen = []
+
+    def handler(request):
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"campaigns": [], "next_cursor": None})
+
+    with _client(handler) as client:
+        client.list_campaigns(limit=7, cursor="next+page/=")
+    assert seen == [{"limit": "7", "cursor": "next+page/="}]

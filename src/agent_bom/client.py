@@ -322,10 +322,10 @@ class AgentBomClient(EndpointClientMixin):
 
         return self._request("GET", "/v1/graph/correlations", params={"limit": limit})
 
-    def list_campaigns(self) -> JsonObject:
+    def list_campaigns(self, *, limit: int = 25, cursor: str | None = None) -> JsonObject:
         """List risk/remediation campaigns for the request tenant."""
 
-        return self._request("GET", "/v1/campaigns")
+        return self._request("GET", "/v1/campaigns", params={"limit": limit, **({"cursor": cursor} if cursor else {})})
 
     def campaign_verification_queue(self, *, cursor: str | None = None, limit: int = 100) -> JsonObject:
         """List one bounded page of inactive campaigns awaiting verification."""

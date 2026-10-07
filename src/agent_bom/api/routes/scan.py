@@ -101,6 +101,7 @@ from agent_bom.evidence.agent_bom import AgentBomDocument
 from agent_bom.evidence.scan_agent_bom import AgentSelectionError, build_scan_agent_bom
 from agent_bom.finding_runtime_evidence import (
     attach_runtime_evidence_to_finding,
+    build_incident_runtime_evidence_index,
     build_tenant_runtime_evidence_index,
     compliance_tags_from_finding_row,
 )
@@ -1098,8 +1099,9 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     reach = _effective_reach_lookup(job)
 
     tenant_id = str(getattr(job, "tenant_id", None) or "default")
-    runtime_index = build_tenant_runtime_evidence_index(tenant_id)
-    incidents = result.get("runtime_incident_feedback") if isinstance(result.get("runtime_incident_feedback"), list) else []
+    runtime_index = read_once(("runtime_events", tenant_id), lambda: build_tenant_runtime_evidence_index(tenant_id))
+    incidents = result.get("runtime_incident_feedback")
+    incident_index = build_incident_runtime_evidence_index(incidents if isinstance(incidents, list) else [])
 
     # CWPP runtime/EDR workload evidence (#4158 stage 3): additive, read-only.
     # Only workload-scoped rows are annotated, and only when this tenant actually
@@ -1114,7 +1116,10 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
 
     workload_runtime_index: RuntimeWorkloadEvidenceIndex | None = None
     try:
-        _wl_index = RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id)
+        _wl_index = read_once(
+            ("workload_runtime_events", tenant_id),
+            lambda: RuntimeWorkloadEvidenceIndex.from_store(get_runtime_workload_evidence_store(), tenant_id),
+        )
         if not _wl_index.is_empty():
             workload_runtime_index = _wl_index
     except Exception:  # noqa: BLE001 - runtime evidence is additive; never break the read path
@@ -1148,7 +1153,7 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         observed_at = getattr(job, "completed_at", None) or getattr(job, "created_at", None)
         if observed_at is not None:
             row.setdefault("last_observed", observed_at)
-        attach_runtime_evidence_to_finding(row, runtime_index, incidents=incidents)
+        attach_runtime_evidence_to_finding(row, runtime_index, incident_index=incident_index)
         if workload_runtime_index is not None:
             attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)
         return row
@@ -2564,24 +2569,22 @@ def _list_jobs_impl(
         status_counts = {}
     enriched: list[dict[str, Any]] = []
     for item in summary:
+        if not include_details:
+            enriched.append(item)
+            continue
         in_mem = _jobs_get(item["job_id"], tenant_id=tenant_id)
         if isinstance(in_mem, ScanJob) and _visible_to_tenant(in_mem, tenant_id):
             enriched.append(_job_summary_payload(in_mem))
             continue
 
-        if include_details:
-            # Keep list surfaces compatible with lightweight stores and tests
-            # that only implement paged summaries. Hydrate only when the caller
-            # asks for details and the job is not already in memory.
-            try:
-                get_job = getattr(store, "get", None)
-                full_job = get_job(item["job_id"], tenant_id=tenant_id) if callable(get_job) else None
-            except Exception:
-                full_job = None
-            enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
-            continue
-
-        enriched.append(item)
+        # Lightweight stores may expose only summaries. Detail hydration is
+        # explicit and bounded by the requested page, independent of cache warmth.
+        try:
+            get_job = getattr(store, "get", None)
+            full_job = get_job(item["job_id"], tenant_id=tenant_id) if callable(get_job) else None
+        except Exception:
+            full_job = None
+        enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
     return {
         # emit schema_version on terminal list responses
         # so downstream consumers can pin a contract independent of API path.

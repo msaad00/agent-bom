@@ -550,3 +550,167 @@ ON CONFLICT(component) DO UPDATE SET
 
 ALTER TABLE exceptions ADD COLUMN IF NOT EXISTS approval_version INTEGER NOT NULL DEFAULT 0;
 UPDATE control_plane_schema_versions SET version=2,updated_at=now() WHERE component='exceptions' AND version < 2;
+
+-- Committed job evidence revisions (migration 20261006_01).
+
+DO $job_revision_schema$
+BEGIN
+LOCK TABLE public.scan_jobs IN SHARE ROW EXCLUSIVE MODE;
+CREATE TABLE IF NOT EXISTS public.job_overview_revisions (
+    tenant_id TEXT PRIMARY KEY CHECK (length(btrim(tenant_id)) > 0),
+    generation TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    revision BIGINT NOT NULL DEFAULT 0 CHECK (revision >= 0)
+);
+ALTER TABLE public.job_overview_revisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_overview_revisions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS job_overview_revisions_tenant_isolation ON public.job_overview_revisions;
+CREATE POLICY job_overview_revisions_tenant_isolation ON public.job_overview_revisions
+    USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+    WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+
+CREATE OR REPLACE FUNCTION public.abom_bump_job_revision() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_OP <> 'DELETE' THEN
+        INSERT INTO public.job_overview_revisions (tenant_id, revision) VALUES (NEW.team_id, 1)
+        ON CONFLICT (tenant_id) DO UPDATE SET revision = job_overview_revisions.revision + 1;
+    END IF;
+    IF TG_OP = 'DELETE' OR (TG_OP = 'UPDATE' AND OLD.team_id IS DISTINCT FROM NEW.team_id) THEN
+        INSERT INTO public.job_overview_revisions (tenant_id, revision) VALUES (OLD.team_id, 1)
+        ON CONFLICT (tenant_id) DO UPDATE SET revision = job_overview_revisions.revision + 1;
+    END IF;
+    RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS scan_jobs_evidence_revision ON public.scan_jobs;
+CREATE TRIGGER scan_jobs_evidence_revision AFTER INSERT OR UPDATE OR DELETE ON public.scan_jobs
+    FOR EACH ROW EXECUTE FUNCTION public.abom_bump_job_revision();
+
+DO $$
+DECLARE previous_bypass TEXT := current_setting('app.bypass_rls', true);
+BEGIN
+    PERFORM set_config('app.bypass_rls', '1', true);
+    INSERT INTO public.job_overview_revisions (tenant_id, revision)
+        SELECT DISTINCT team_id, 1 FROM public.scan_jobs ON CONFLICT (tenant_id) DO NOTHING;
+    PERFORM set_config('app.bypass_rls', COALESCE(previous_bypass, '0'), true);
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_app') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON public.job_overview_revisions TO agent_bom_app;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_rls_maintenance') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON public.job_overview_revisions TO agent_bom_rls_maintenance;
+    END IF;
+END $$;
+END $job_revision_schema$;
+
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('scan_jobs',3,now())
+ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,excluded.version),updated_at=excluded.updated_at;
+
+-- Shared evidence registries (20261007_01).
+CREATE TABLE IF NOT EXISTS public.kspm_cluster_posture (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, run_id TEXT NOT NULL, cluster_ref TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(tenant_id,run_id));
+CREATE INDEX IF NOT EXISTS idx_kspm_cluster_posture_tenant ON public.kspm_cluster_posture (tenant_id);
+ALTER TABLE public.kspm_cluster_posture ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kspm_cluster_posture FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS kspm_cluster_posture_tenant_isolation ON public.kspm_cluster_posture;
+CREATE POLICY kspm_cluster_posture_tenant_isolation ON public.kspm_cluster_posture USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.kspm_cluster_posture TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('kspm_cluster_posture',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.mcp_observations (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, observation_id TEXT NOT NULL, server_canonical_id TEXT NOT NULL, server_name TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, observation_id));
+CREATE INDEX IF NOT EXISTS idx_mcp_observations_tenant ON public.mcp_observations (tenant_id);
+ALTER TABLE public.mcp_observations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mcp_observations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS mcp_observations_tenant_isolation ON public.mcp_observations;
+CREATE POLICY mcp_observations_tenant_isolation ON public.mcp_observations USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.mcp_observations TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('mcp_observations',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.skills_scan_run (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, run_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (tenant_id, run_id));
+CREATE INDEX IF NOT EXISTS idx_skills_scan_run_tenant ON public.skills_scan_run (tenant_id);
+ALTER TABLE public.skills_scan_run ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.skills_scan_run FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS skills_scan_run_tenant_isolation ON public.skills_scan_run;
+CREATE POLICY skills_scan_run_tenant_isolation ON public.skills_scan_run USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.skills_scan_run TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('skills_scan_run',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.issue_mappings (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, mapping_id TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, provider TEXT NOT NULL, PRIMARY KEY (tenant_id, mapping_id), UNIQUE(tenant_id,target_kind,target_id,provider));
+CREATE INDEX IF NOT EXISTS idx_issue_mappings_tenant ON public.issue_mappings (tenant_id);
+ALTER TABLE public.issue_mappings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.issue_mappings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS issue_mappings_tenant_isolation ON public.issue_mappings;
+CREATE POLICY issue_mappings_tenant_isolation ON public.issue_mappings USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.issue_mappings TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('issue_mappings',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.dataset_versions (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, dataset_id TEXT NOT NULL, version_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (tenant_id, dataset_id, version_id));
+CREATE INDEX IF NOT EXISTS idx_dataset_versions_tenant ON public.dataset_versions (tenant_id);
+ALTER TABLE public.dataset_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dataset_versions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS dataset_versions_tenant_isolation ON public.dataset_versions;
+CREATE POLICY dataset_versions_tenant_isolation ON public.dataset_versions USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.dataset_versions TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('dataset_versions',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.evaluation_runs (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, evaluation_id TEXT NOT NULL, dataset_id TEXT, created_at TEXT NOT NULL, PRIMARY KEY (tenant_id, evaluation_id));
+CREATE INDEX IF NOT EXISTS idx_evaluation_runs_tenant ON public.evaluation_runs (tenant_id);
+ALTER TABLE public.evaluation_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.evaluation_runs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS evaluation_runs_tenant_isolation ON public.evaluation_runs;
+CREATE POLICY evaluation_runs_tenant_isolation ON public.evaluation_runs USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.evaluation_runs TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('evaluation_runs',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.webhook_subscriptions (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, subscription_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (tenant_id, subscription_id));
+CREATE INDEX IF NOT EXISTS idx_webhook_subscriptions_tenant ON public.webhook_subscriptions (tenant_id);
+ALTER TABLE public.webhook_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.webhook_subscriptions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS webhook_subscriptions_tenant_isolation ON public.webhook_subscriptions;
+CREATE POLICY webhook_subscriptions_tenant_isolation ON public.webhook_subscriptions USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.webhook_subscriptions TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('webhook_subscriptions',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+CREATE TABLE IF NOT EXISTS public.drift_incidents (tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0), data JSONB NOT NULL, incident_id TEXT NOT NULL, resolved BOOLEAN NOT NULL, last_detected_at TEXT NOT NULL, PRIMARY KEY (tenant_id, incident_id));
+CREATE INDEX IF NOT EXISTS idx_drift_incidents_tenant ON public.drift_incidents (tenant_id);
+ALTER TABLE public.drift_incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.drift_incidents FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS drift_incidents_tenant_isolation ON public.drift_incidents;
+CREATE POLICY drift_incidents_tenant_isolation ON public.drift_incidents USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.drift_incidents TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('drift_incidents',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);
+
+
+CREATE TABLE IF NOT EXISTS public.campaign_evidence_state (
+    tenant_id TEXT PRIMARY KEY CHECK (length(btrim(tenant_id)) > 0),
+    revision BIGINT NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    reconciled_revision BIGINT NOT NULL DEFAULT 0 CHECK (reconciled_revision >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_evidence_pending ON public.campaign_evidence_state(tenant_id)
+    WHERE revision != reconciled_revision;
+ALTER TABLE public.campaign_evidence_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campaign_evidence_state FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS campaign_evidence_state_tenant_isolation ON public.campaign_evidence_state;
+CREATE POLICY campaign_evidence_state_tenant_isolation ON public.campaign_evidence_state
+    USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+    WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.campaign_evidence_state TO agent_bom_app, agent_bom_rls_maintenance;
+CREATE OR REPLACE FUNCTION public.abom_queue_campaign_evidence() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        INSERT INTO public.campaign_evidence_state(tenant_id,revision) VALUES (OLD.tenant_id,1)
+        ON CONFLICT(tenant_id) DO UPDATE SET revision=campaign_evidence_state.revision+1;
+    ELSE
+        INSERT INTO public.campaign_evidence_state(tenant_id,revision) VALUES (NEW.tenant_id,1)
+        ON CONFLICT(tenant_id) DO UPDATE SET revision=campaign_evidence_state.revision+1;
+    END IF;
+    RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS job_campaign_evidence ON public.job_overview_revisions;
+CREATE TRIGGER job_campaign_evidence AFTER INSERT OR UPDATE OR DELETE ON public.job_overview_revisions
+    FOR EACH ROW EXECUTE FUNCTION public.abom_queue_campaign_evidence();
+DROP TRIGGER IF EXISTS hub_campaign_evidence ON public.hub_overview_revisions;
+CREATE TRIGGER hub_campaign_evidence AFTER INSERT OR UPDATE OR DELETE ON public.hub_overview_revisions
+    FOR EACH ROW EXECUTE FUNCTION public.abom_queue_campaign_evidence();
+DO $$
+DECLARE previous_bypass TEXT := current_setting('app.bypass_rls', true);
+BEGIN
+    PERFORM set_config('app.bypass_rls','1',true);
+    INSERT INTO public.campaign_evidence_state(tenant_id,revision)
+        SELECT tenant_id,1 FROM public.job_overview_revisions
+        UNION SELECT tenant_id,1 FROM public.hub_overview_revisions ON CONFLICT DO NOTHING;
+    PERFORM set_config('app.bypass_rls',COALESCE(previous_bypass,'0'),true);
+END $$;
+INSERT INTO control_plane_schema_versions(component,version,updated_at)
+    VALUES ('campaign_evidence_state',1,now()) ON CONFLICT(component) DO NOTHING;

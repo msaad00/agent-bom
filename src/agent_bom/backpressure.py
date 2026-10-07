@@ -245,7 +245,10 @@ _CONTROLLERS_LOCK = Lock()
 # request. Give the findings path measured headroom while the concurrency limit
 # still sheds a genuine pile-up of deep reads (the event-loop-starvation case
 # this guard exists to prevent).
-_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000, "findings": 30_000}
+# Overview and posture counts share an aggregation controller. A measured cold
+# 10,000-finding Postgres read took 16 seconds; use the same headroom as findings
+# so later cached browsing is not rejected solely by that cold sample.
+_DEFAULT_P99_THRESHOLD_MS: dict[str, int] = {"graph": 12_000, "findings": 30_000, "overview": 30_000}
 _GENERIC_P99_THRESHOLD_MS = 2500
 
 

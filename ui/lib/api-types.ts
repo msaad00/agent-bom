@@ -5329,6 +5329,7 @@ export interface RiskCampaignExpectedReduction {
 }
 
 export interface RiskCampaign {
+  finding_ids_truncated?: boolean;
   id: string;
   tenant_id: string;
   title: string;
@@ -5355,6 +5356,10 @@ export interface RiskCampaign {
 }
 
 export interface RiskCampaignsResponse {
+  total_campaigns?: number;
+  limit?: number;
+  has_more?: boolean;
+  next_cursor?: string | null;
   schema_version: "risk-campaigns.v1";
   tenant_id: string;
   campaigns: RiskCampaign[];

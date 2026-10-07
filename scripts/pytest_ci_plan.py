@@ -361,6 +361,21 @@ def select_targeted_tests(*, changed_files: Iterable[Path], root: Path) -> list[
             or normalized.as_posix() == "src/agent_bom/mcp_strict_args.py"
         ):
             selected.update(root / path for path in MCP_TOOL_CONTRACTS if root / path in available)
+        if normalized.as_posix() in {
+            "src/agent_bom/api/middleware.py",
+            "src/agent_bom/api/tenant_lifecycle.py",
+            "src/agent_bom/api/storage_schema.py",
+        }:
+            selected.update(
+                root / path
+                for path in (
+                    "tests/api/test_api_oidc.py",
+                    "tests/api/test_managed_trial_invitations.py",
+                    "tests/api/test_managed_trial_guardrails.py",
+                    "tests/api/test_trial_completion_contract.py",
+                )
+                if root / path in available
+            )
         if normalized.as_posix() in AUTHORIZATION_SOURCES or normalized.as_posix().startswith("src/agent_bom/api/routes/"):
             selected.update(root / path for path in AUTHORIZATION_CONTRACTS if root / path in available)
         if normalized.as_posix() in {

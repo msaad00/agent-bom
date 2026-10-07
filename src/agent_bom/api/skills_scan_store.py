@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent_bom.api.storage_schema import postgres_deployment_configured
+
 
 class SkillsPersistenceUnavailableError(RuntimeError):
     """The configured durable tier has no Skills result backend."""
@@ -169,16 +171,23 @@ _default_lock = threading.Lock()
 def get_skills_scan_store() -> SkillsScanStore:
     """Select the supported configured store; never silently downgrade a durable tier.
 
-    Explicit injection wins. AGENT_BOM_DB can be a SQLite companion for Skills
-    when the other control-plane stores use a different backend.
+    Explicit injection wins; configured Postgres is shared across replicas.
+    A SQLite companion is supported when Snowflake is the remote evidence tier.
     """
     global _default_store
     with _default_lock:
         if _default_store is None:
             db_path = os.environ.get("AGENT_BOM_DB", "").strip()
-            if db_path.lower().startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
-                raise SkillsPersistenceUnavailableError("Skills results require a SQLite companion store.")
-            if db_path:
+            if postgres_deployment_configured():
+                from agent_bom.api.storage.observation_registries import PostgresSkillsScanStore
+
+                try:
+                    _default_store = PostgresSkillsScanStore()
+                except Exception as exc:
+                    raise SkillsPersistenceUnavailableError("Configured Postgres Skills persistence is unavailable") from exc
+            elif db_path.lower().startswith("postgresql+psycopg://"):
+                raise SkillsPersistenceUnavailableError("Use a postgres:// or postgresql:// AGENT_BOM_DB URL")
+            elif db_path:
                 _default_store = SQLiteSkillsScanStore(db_path)
             elif os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("SNOWFLAKE_ACCOUNT"):
                 raise SkillsPersistenceUnavailableError(

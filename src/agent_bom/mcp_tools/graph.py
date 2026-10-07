@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import logging
+import sqlite3
 import uuid
 from typing import Any
 
@@ -20,6 +21,7 @@ from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_RESOURCE,
     CODE_UNSUPPORTED_BACKEND,
+    CODE_UPSTREAM_UNAVAILABLE,
     CODE_VALIDATION_INVALID_ARGUMENT,
     CODE_VALIDATION_MISSING_REQUIRED,
     mcp_error_json,
@@ -27,6 +29,21 @@ from agent_bom.mcp_errors import (
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
 logger = logging.getLogger(__name__)
+
+_STORAGE_UNAVAILABLE_ERRORS: tuple[type[Exception], ...] = (OSError, sqlite3.OperationalError)
+try:
+    from psycopg import OperationalError as _PostgresOperationalError
+except ImportError:
+    pass  # Postgres is an optional deployment extra.
+else:
+    _STORAGE_UNAVAILABLE_ERRORS += (_PostgresOperationalError,)
+
+
+def _graph_read_error(exc: Exception) -> str:
+    if isinstance(exc, _STORAGE_UNAVAILABLE_ERRORS):
+        return mcp_error_json(CODE_UPSTREAM_UNAVAILABLE, "Graph storage is temporarily unavailable; retry the request.")
+    logger.error("MCP graph tool error; internal details withheld")
+    return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
 
 
 async def graph_correlate_impl(
@@ -44,7 +61,6 @@ async def graph_correlate_impl(
     **_audit: str,
 ) -> str:
     """Create a tenant-scoped immutable graph correlation."""
-
     from agent_bom.graph.correlation_service import CorrelationRequest, CorrelationServiceError, get_graph_correlation_service
 
     if not name.strip():
@@ -266,7 +282,6 @@ async def exposure_paths_impl(
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
-    """MCP tool entry point: the server-bound tenant overrides any client-supplied value."""
     return await exposure_paths_for_tenant(
         tenant_id=resolve_mcp_tool_tenant_id(tenant_id),
         scan_id=scan_id,
@@ -276,6 +291,17 @@ async def exposure_paths_impl(
         _get_graph_store=_get_graph_store,
         _truncate_response=_truncate_response,
     )
+
+
+async def _resolve_exposure_snapshot(tenant_id: str, scan_id: str | None) -> tuple[str | None, str | None]:
+    if not scan_id:
+        return scan_id, None
+    from agent_bom.api.graph_scan_ids import resolve_graph_scan_id
+
+    try:
+        return await asyncio.to_thread(resolve_graph_scan_id, tenant_id, scan_id), None
+    except _STORAGE_UNAVAILABLE_ERRORS as exc:
+        return None, _graph_read_error(exc)
 
 
 async def exposure_paths_for_tenant(
@@ -308,10 +334,9 @@ async def exposure_paths_for_tenant(
 
     if scan_id and "\x00" in scan_id:
         return mcp_error_json(CODE_VALIDATION_INVALID_ARGUMENT, "Invalid graph snapshot identifier.")
-    if scan_id:
-        from agent_bom.api.graph_scan_ids import resolve_graph_scan_id
-
-        scan_id = await asyncio.to_thread(resolve_graph_scan_id, tenant_id, scan_id)
+    scan_id, resolution_error = await _resolve_exposure_snapshot(tenant_id, scan_id)
+    if resolution_error:
+        return resolution_error
 
     # Cursors locate evidence; authorization always comes from the caller's
     # tenant. Pin the snapshot and filter so a new scan cannot shift page two.
@@ -453,9 +478,8 @@ async def exposure_paths_for_tenant(
                     "One exposure path exceeds the response budget; inspect its snapshot through bounded graph node endpoints.",
                 )
             payload["paths"] = payload["paths"][: max(1, returned // 2)]
-    except Exception:
-        logger.error("MCP graph tool error; internal details withheld")
-        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, "An internal error has occurred.")
+    except Exception as exc:
+        return _graph_read_error(exc)
 
 
 async def deploy_decision_impl(
@@ -469,7 +493,6 @@ async def deploy_decision_impl(
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
-    """MCP tool entry point: the server-bound tenant overrides any client-supplied value."""
     return await deploy_decision_for_tenant(
         candidate=candidate,
         tenant_id=resolve_mcp_tool_tenant_id(tenant_id),
@@ -493,7 +516,6 @@ async def deploy_decision_for_tenant(
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
-    """Return an allow/warn/block deployment decision for an already-authenticated tenant."""
     candidate_value = candidate.strip()
     if not candidate_value:
         return mcp_error_json(

@@ -82,6 +82,26 @@ const response: RiskCampaignsResponse = {
 };
 
 describe("RiskCampaignCommandCenter", () => {
+  it("loads later server-ranked pages without discarding the current cards", async () => {
+    vi.mocked(api.listRiskCampaigns).mockResolvedValueOnce({ ...response, total_campaigns: 2, has_more: true, next_cursor: "page-two" })
+      .mockResolvedValueOnce({ ...response, has_more: false, next_cursor: null, total_campaigns: 2, campaigns: [{ ...response.campaigns[0]!, id: "campaign-2", title: "Upgrade second package" }] });
+    render(<RiskCampaignCommandCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load next campaigns" }));
+    await screen.findByText("Upgrade second package");
+    expect(api.listRiskCampaigns).toHaveBeenLastCalledWith({ cursor: "page-two" });
+    expect(screen.getAllByText("Upgrade openssl to 3.0.14").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Load next campaigns" })).not.toBeInTheDocument();
+  });
+
+  it("retains loaded evidence when a later campaign page is stale", async () => {
+    vi.mocked(api.listRiskCampaigns).mockResolvedValueOnce({ ...response, total_campaigns: 2, has_more: true, next_cursor: "stale" })
+      .mockRejectedValueOnce(new Error("stale cursor"));
+    render(<RiskCampaignCommandCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load next campaigns" }));
+    await screen.findByRole("button", { name: "Refresh campaigns" });
+    expect(screen.getAllByText("Upgrade openssl to 3.0.14").length).toBeGreaterThan(0);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.listRiskCampaigns).mockResolvedValue(response);

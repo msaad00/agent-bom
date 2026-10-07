@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
+from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.rbac import Role, role_rank
 
 
@@ -571,7 +572,7 @@ def get_key_store() -> KeyStoreProtocol:
     if _key_store is None:
         with _store_lock:
             if _key_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.postgres_access import PostgresKeyStore
 
                     _key_store = PostgresKeyStore()

@@ -222,6 +222,11 @@ def test_test_job_timeout_leaves_margin_over_observed_worst_case() -> None:
     assert _ci()["jobs"]["test-main"]["timeout-minutes"] == 45
 
 
+def test_changed_domain_timeout_covers_broad_selections() -> None:
+    """A security change can select nearly the full suite, plus setup time."""
+    assert 30 <= _ci()["jobs"]["test-smoke"]["timeout-minutes"] <= 45
+
+
 def test_full_correctness_matrix_covers_every_supported_python_minor() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     supported = {

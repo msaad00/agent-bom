@@ -33,7 +33,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
-from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version, postgres_deployment_configured
 from agent_bom.storage.factory import validate_sqlite_path
 
 # Review decisions a reviewer may record against one item.
@@ -550,7 +550,7 @@ def get_access_review_store() -> AccessReviewStore:
     global _ACCESS_REVIEW_STORE
     if _ACCESS_REVIEW_STORE is not None:
         return _ACCESS_REVIEW_STORE
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if postgres_deployment_configured():
         from agent_bom.api.postgres_access_review import PostgresAccessReviewStore
 
         _ACCESS_REVIEW_STORE = PostgresAccessReviewStore()

@@ -470,7 +470,15 @@ def test_managed_trial_session_is_rejected_after_tenant_suspension(monkeypatch: 
     response = client.get("/v1/findings")
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Unauthorized — managed trial is inactive"}
+    body = response.json()
+    assert body["detail"] == "Unauthorized — managed trial is inactive"
+    assert body["error"] == {
+        "code": "AUTH_FAILED",
+        "message": body["detail"],
+        "details": body["detail"],
+        "correlation_id": body["error"]["correlation_id"],
+    }
+    assert body["error"]["correlation_id"]
 
 
 @pytest.mark.parametrize(

@@ -108,3 +108,67 @@ def test_runtime_activity_shared_tool_does_not_cross_agent_scope():
         row = {"affected_agents": [agent], "exposed_tools": ["read_file"]}
         attach_runtime_evidence_to_finding(row, index)
         assert row["runtime_evidence"]["observed_count"] == expected
+
+
+def test_runtime_join_does_not_rescan_unrelated_events_per_finding():
+    class CountedEvent(dict):
+        reads = 0
+
+        def get(self, key, default=None):
+            type(self).reads += 1
+            return super().get(key, default)
+
+    events = [CountedEvent(state=RUNTIME_STATE_OBSERVED, agent=f"agent-{i}", tool="read") for i in range(1000)]
+    index = RuntimeEvidenceIndex(observed=events)
+    # Index construction is allowed one pass. Subsequent findings must use it.
+    CountedEvent.reads = 0
+    for i in range(100):
+        row = {"affected_agents": [f"agent-{i}"], "exposed_tools": ["read"]}
+        attach_runtime_evidence_to_finding(row, index)
+        assert row["runtime_evidence"]["observed_count"] == 1
+    assert CountedEvent.reads < 2000
+
+
+def test_runtime_join_preserves_counts_and_bounded_source_order():
+    blocked = [dict(state=RUNTIME_STATE_BLOCKED, agent="a", tool="t", timestamp=str(i)) for i in range(12)]
+    observed = [dict(state=RUNTIME_STATE_OBSERVED, agent="b", tool="t", timestamp=str(i)) for i in range(20)]
+    row = {"affected_agents": ["b", "a", "a"], "exposed_tools": ["t", "t"]}
+    attach_runtime_evidence_to_finding(
+        row,
+        RuntimeEvidenceIndex(blocked=blocked, observed=observed),
+        incidents=[
+            {"kind": "kill_switch", "agent_id": "a", "observed_tool_labels": ["t"]},
+            {"kind": "observed", "agent_id": "b", "observed_tool_labels": ["t"]},
+        ],
+    )
+    assert row["runtime_evidence"] == {"state": RUNTIME_STATE_BLOCKED, "blocked_count": 13, "observed_count": 21, "events": blocked[:8]}
+
+
+def test_runtime_join_loads_once_per_tenant_per_read_context(monkeypatch):
+    from agent_bom.api.finding_read_context import finding_read_scope
+    from agent_bom.api.models import ScanJob, ScanRequest
+    from agent_bom.api.routes import scan
+    from agent_bom.cloud import runtime_workload_evidence
+
+    loaded = []
+    monkeypatch.setattr(scan, "_effective_reach_lookup", lambda job: {})
+    monkeypatch.setattr(scan, "collect_scan_findings", lambda job, attach: [])
+    monkeypatch.setattr(scan, "build_tenant_runtime_evidence_index", lambda tenant: loaded.append(tenant) or RuntimeEvidenceIndex())
+    monkeypatch.setattr(
+        runtime_workload_evidence.RuntimeWorkloadEvidenceIndex,
+        "from_store",
+        lambda *a: runtime_workload_evidence.RuntimeWorkloadEvidenceIndex(),
+    )
+    monkeypatch.setattr("agent_bom.api.routes.enterprise.build_tenant_triage_owner_index", lambda tenant: {})
+    monkeypatch.setattr(scan, "project_current_suppressions", lambda rows, tenant: rows)
+    jobs = [
+        ScanJob(job_id=f"job-{i}", tenant_id=tenant, request=ScanRequest(), created_at="2026-10-06T00:00:00Z")
+        for i, tenant in enumerate(["a", "a", "b"])
+    ]
+    with finding_read_scope():
+        for job in jobs:
+            scan._iter_scan_findings(job)
+    assert loaded == ["a", "b"]
+    with finding_read_scope():
+        scan._iter_scan_findings(jobs[0])
+    assert loaded == ["a", "b", "a"]

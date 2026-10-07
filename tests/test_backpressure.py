@@ -175,3 +175,20 @@ async def test_enrichment_backpressure_sheds_with_scan_warning(monkeypatch) -> N
     enrichment = next(path for path in posture["paths"] if path["path"] == "enrichment")
     assert enrichment["state"] == "open"
     assert enrichment["reason"] == "p99_latency_threshold"
+
+
+def test_overview_cold_posture_read_does_not_reject_subsequent_browsing() -> None:
+    from agent_bom.backpressure import _controller_for
+
+    controller = _controller_for("overview")
+    # A 10,000-finding Postgres cold posture aggregation measured 15,996 ms.
+    for duration in [16_000.0] + [20.0] * 24:
+        controller.try_enter()
+        controller.exit(duration)
+    assert controller.rejected == 0
+    for _ in range(controller.max_concurrency):
+        controller.try_enter()
+    with pytest.raises(BackpressureRejectedError, match="concurrency_limit"):
+        controller.try_enter()
+    for _ in range(controller.max_concurrency):
+        controller.exit(20.0)

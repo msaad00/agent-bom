@@ -17,10 +17,12 @@ import os
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom import __version__
+from agent_bom import config as _config
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
@@ -52,6 +54,7 @@ from agent_bom.api.models import (
     TracingHealth,
     VersionInfo,
 )
+from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.stores import (
     _get_credential_ref_store,
     _get_schedule_store,
@@ -286,9 +289,14 @@ def _apply_worker_thread_limit() -> None:
     """
     import anyio.to_thread
 
-    from agent_bom.config import WORKER_THREAD_LIMIT
+    anyio.to_thread.current_default_thread_limiter().total_tokens = _config.WORKER_THREAD_LIMIT
 
-    anyio.to_thread.current_default_thread_limiter().total_tokens = WORKER_THREAD_LIMIT
+
+def _validate_configured_registries() -> None:
+    if not os.environ.get("SNOWFLAKE_ACCOUNT") and postgres_deployment_configured():
+        from agent_bom.api.storage.registry_stores import validate_postgres_registries
+
+        validate_postgres_registries()
 
 
 def _preflight_postgres_tenant_isolation() -> None:
@@ -296,7 +304,7 @@ def _preflight_postgres_tenant_isolation() -> None:
     # Store selection is Snowflake > Postgres > SQLite. A dormant Postgres URL
     # must not load an optional driver or contact an unused backend when the
     # selected Snowflake control plane starts.
-    if os.environ.get("SNOWFLAKE_ACCOUNT") or not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if os.environ.get("SNOWFLAKE_ACCOUNT") or not postgres_deployment_configured():
         return
     from agent_bom.api.postgres_common import preflight_rls_capable_role
 
@@ -470,6 +478,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     _apply_worker_thread_limit()
     configure_otel_tracing()
     _preflight_postgres_tenant_isolation()
+    _validate_configured_registries()
     # Priority: Snowflake > Postgres > SQLite > InMemory (lazy default)
     snowflake_configured = bool(os.environ.get("SNOWFLAKE_ACCOUNT"))
     if snowflake_configured:
@@ -497,7 +506,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
         if _stores._graph_store is None:
             set_graph_store(NeptuneGraphStore())
-    elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    elif postgres_deployment_configured():
         from agent_bom.api import audit_log as _audit_log_mod
         from agent_bom.api import auth as _auth
         from agent_bom.api import cost_store as _cost_store_mod
@@ -574,7 +583,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             set_audit_log(SQLiteAuditLog(db_path))
 
     if _stores._source_store is None:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:
+        if postgres_deployment_configured() and not snowflake_configured:
             from agent_bom.api.postgres_store import PostgresSourceStore
 
             set_source_store(PostgresSourceStore())
@@ -588,7 +597,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
             set_source_store(InMemorySourceStore())
 
     if _stores._credential_ref_store is None:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:
+        if postgres_deployment_configured() and not snowflake_configured:
             from agent_bom.api.postgres_store import PostgresCredentialRefStore
 
             set_credential_ref_store(PostgresCredentialRefStore())
@@ -601,17 +610,17 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
             set_credential_ref_store(InMemoryCredentialRefStore())
 
-    # Skills results have a node-local SQLite implementation, not remote DB parity.
+    # Skills results share Postgres when configured; Snowflake needs a companion.
     from agent_bom.api.skills_scan_store import SkillsPersistenceUnavailableError, get_skills_scan_store
 
     try:
         get_skills_scan_store()
     except SkillsPersistenceUnavailableError:
-        _logger.warning("Skills result persistence unavailable: configure a SQLite AGENT_BOM_DB companion")
+        _logger.warning("Skills result persistence unavailable: configure a supported Postgres or SQLite store")
 
     # ── Schedule store ──
     if _stores._schedule_store is None:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL") and not snowflake_configured:
+        if postgres_deployment_configured() and not snowflake_configured:
             from agent_bom.api.postgres_store import PostgresScheduleStore
 
             set_schedule_store(PostgresScheduleStore())
@@ -836,7 +845,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
         shutdown_scan_executor(wait=False, cancel_futures=True)
     # Close Postgres connection pool if active
     try:
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if postgres_deployment_configured():
             from agent_bom.api import postgres_common as _postgres_common
 
             _postgres_common.reset_pool()
@@ -1107,11 +1116,10 @@ def configure_api(
     # used to let a no-auth viewer mutate sources, schedules, and scan jobs
     # directly.  The anonymous resolver preserves local self-hosted operation,
     # while DEMO_ESTATE still clamps the effective role to viewer.
-    from agent_bom.config import API_RESULT_PUSH_MAX_BYTES
 
-    if API_RESULT_PUSH_MAX_BYTES <= 0:
+    if _config.API_RESULT_PUSH_MAX_BYTES <= 0:
         raise ValueError("AGENT_BOM_API_RESULT_PUSH_MAX_BYTES must be positive")
-    _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": API_RESULT_PUSH_MAX_BYTES})
+    _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": _config.API_RESULT_PUSH_MAX_BYTES})
     _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
     _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
     # Wrap admission denials with security/correlation headers without reading bodies.
@@ -1307,7 +1315,10 @@ async def _cleanup_loop() -> None:
     #2261: rows in ``proxy_replay_log`` with ``not_after < now`` are deleted
     on every tick.
     """
+    from agent_bom.api.campaign_reconciliation import poll_campaign_reconciliation
+
     while True:
+        await asyncio.to_thread(poll_campaign_reconciliation)
         await asyncio.sleep(60)
         await _cleanup_tick()
 
@@ -1384,13 +1395,10 @@ async def _cleanup_tick() -> None:
     # the loop survives. Timestamp injected for deterministic, replica-safe
     # transitions.
     try:
-        from datetime import datetime as _dt
-        from datetime import timezone as _tz
-
         from agent_bom.api.agent_identity_store import get_agent_identity_store, run_nhi_lifecycle_cleanup
         from agent_bom.api.governance_audit_log import get_governance_audit_log
 
-        nhi_now = _dt.now(_tz.utc)
+        nhi_now = datetime.now(timezone.utc)
         nhi_result = await asyncio.to_thread(
             lambda: run_nhi_lifecycle_cleanup(
                 get_agent_identity_store(),
@@ -1438,8 +1446,6 @@ async def _cleanup_tick() -> None:
         )
     # Unstick jobs that have been RUNNING for too long
     try:
-        from datetime import datetime, timezone
-
         from agent_bom.api.scan_job_reconciliation import fail_stale_active_scan_jobs, reconcile_scan_jobs_active
 
         now = datetime.now(timezone.utc)
@@ -1456,8 +1462,6 @@ def _fail_stuck_running_jobs(store: Any, now: _datetime.datetime) -> None:
     Synchronous by design — ``store.put`` is a DB write, so the caller runs
     this in a worker thread.
     """
-    from datetime import datetime
-
     stuck_jobs: list[Any] = []
     with _jobs_lock:
         for job in list(_jobs.values()):
@@ -1722,12 +1726,10 @@ async def status() -> HealthResponse:
 
 def _mount_dashboard(application: FastAPI) -> None:
     """Mount pre-built Next.js dashboard if ui_dist/ exists in the package."""
-    import os as _os
-
     from fastapi import HTTPException as _HTTPException
 
     # REST-only mode (`serve --no-ui` / legacy `api`): never mount the dashboard.
-    if _os.environ.get("AGENT_BOM_NO_UI"):
+    if os.environ.get("AGENT_BOM_NO_UI"):
         return
 
     ui_dist = _dashboard_dist_dir()

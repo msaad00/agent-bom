@@ -1,10 +1,4 @@
-"""PostgreSQL-backed scan job persistence.
-
-Split out of ``postgres_store.py`` (issue #1522) with no behavior change;
-``postgres_store`` re-exports :class:`PostgresJobStore` for import stability.
-
-Requires ``pip install 'agent-bom[postgres]'``.
-"""
+"""PostgreSQL-backed scan jobs and committed tenant evidence revisions."""
 
 from __future__ import annotations
 
@@ -24,6 +18,7 @@ from agent_bom.api.postgres_common import (
     reset_current_tenant,
     set_current_tenant,
 )
+from agent_bom.api.storage.job_revisions import POSTGRES_JOB_REVISIONS_V1, read_postgres_job_revision
 from agent_bom.api.storage.jobs import get_job, put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, POSTGRES_TENANT_KEYS
 from agent_bom.api.storage.sql import connection_session
@@ -180,7 +175,6 @@ class PostgresJobStore:
                 "ON cis_benchmark_checks(team_id, cloud, status, priority, measured_at DESC)"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cis_checks_scan ON cis_benchmark_checks(scan_id)")
-            # Only the maintenance principal claims routing rows across tenants.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_dispatch_queue (
                     job_id           TEXT PRIMARY KEY REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
@@ -196,7 +190,11 @@ class PostgresJobStore:
             _ensure_tenant_rls(conn, "scan_jobs", "team_id")
             _ensure_tenant_rls(conn, "cis_benchmark_checks", "team_id")
             _ensure_tenant_rls(conn, "scan_dispatch_queue", "tenant_id")
+            conn.execute(POSTGRES_JOB_REVISIONS_V1)
             conn.commit()
+
+    def overview_evidence_revision(self, tenant_id: str) -> str:
+        return read_postgres_job_revision(self._pool, tenant_id)
 
     def put(self, job: ScanJob) -> None:
         with _tenant_connection(self._pool) as conn:

@@ -16,8 +16,10 @@ import time
 import uuid
 import zlib
 from collections import deque
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from datetime import datetime as _dt
+from datetime import timezone as _tz
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -33,6 +35,16 @@ from agent_bom.api.browser_session import (
     verify_browser_session_token,
     verify_csrf,
 )
+from agent_bom.api.error_envelope import (
+    _build_error_envelope,
+    with_middleware_error_envelope,
+)
+from agent_bom.api.error_envelope import (
+    _with_middleware_error_envelope as _with_middleware_error_envelope,
+)
+from agent_bom.api.error_envelope import (
+    install_error_envelope as install_error_envelope,
+)
 from agent_bom.api.route_policy import (
     PUBLIC_OPERATIONS,
     ROLE_RULES,
@@ -43,6 +55,7 @@ from agent_bom.api.route_policy import (
     required_scope,
     scope_catalog,
 )
+from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -57,7 +70,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from agent_bom.api.dashboard_csp import dashboard_csp_header, describe_dashboard_csp_posture
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_text
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
@@ -930,7 +943,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                     span.set_attribute("agent_bom.tracestate_present", True)
                 if trace_meta["baggage"]:
                     span.set_attribute("agent_bom.baggage_present", True)
-            if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            if postgres_deployment_configured():
                 from agent_bom.api.postgres_store import set_current_tenant
 
                 tenant_token = set_current_tenant(getattr(request.state, "tenant_id", "default"))
@@ -1304,6 +1317,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.auth_method = "anonymous"
         return await self._call_with_tenant_context(request, call_next)
 
+    @with_middleware_error_envelope
     async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         if self._DOCS_DISABLED and request.url.path in {"/docs", "/redoc", "/openapi.json"}:
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
@@ -1322,7 +1336,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if self._is_dashboard_public_request(request.url.path, request.method):
             return await call_next(request)
 
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if postgres_deployment_configured():
             from agent_bom.api.postgres_store import is_tenant_rls_bypassed
 
             if is_tenant_rls_bypassed():
@@ -1828,7 +1842,7 @@ DEFAULT_GLOBAL_IP_RATE_LIMIT_RPM = DEFAULT_READ_RATE_LIMIT_RPM * 4
 
 def _build_rate_limit_store(window_seconds: int) -> InMemoryRateLimitStore | PostgresRateLimitStore:
     """Build the shared/in-memory limiter store with fail-closed semantics."""
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if postgres_deployment_configured():
         try:
             return PostgresRateLimitStore(window_seconds=window_seconds)
         except Exception as exc:
@@ -1976,6 +1990,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return True
         return path in cls._WRITE_RATE_LIMIT_PATHS
 
+    @with_middleware_error_envelope
     async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         if self._is_dashboard_static_asset(request.url.path, request.method):
             return await call_next(request)
@@ -2040,6 +2055,7 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         return f"global-ip:{client_ip}"
 
+    @with_middleware_error_envelope
     async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         if RateLimitMiddleware._is_dashboard_static_asset(request.url.path, request.method):
             return await call_next(request)
@@ -2077,7 +2093,7 @@ def _shared_rate_limit_required() -> bool:
 
 def get_rate_limit_runtime_status() -> dict[str, object]:
     """Report whether API rate limiting is shared across replicas."""
-    postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
+    postgres_configured = postgres_deployment_configured()
     replicas = _configured_api_replicas()
     shared_required = _shared_rate_limit_required()
     backend = "postgres_shared" if postgres_configured else "inmemory_single_process"
@@ -2129,9 +2145,6 @@ def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
     - "max_age_exceeded":  key age past AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS
     - "unknown_age":       key configured but no last-rotated timestamp set
     """
-    from datetime import datetime as _dt
-    from datetime import timezone as _tz
-
     from agent_bom.api.secret_source import resolve_secret
     from agent_bom.config import (
         RATE_LIMIT_KEY_LAST_ROTATED,
@@ -2278,6 +2291,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         # 0 disables the floor entirely (debug/load-test escape hatch).
         return max(0, value)
 
+    @with_middleware_error_envelope
     async def dispatch(self, request: StarletteRequest, call_next: RequestResponseEndpoint) -> Response:
         path = getattr(request, "scope", {}).get("path", "")
         max_bytes = self._path_limits.get(path, self._max_bytes) if request.method == "POST" else self._max_bytes
@@ -2383,186 +2397,3 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
 # pin on without parsing free-form messages. The mapping is intentionally
 # narrow — every API error funnels through one of these buckets, with anything
 # else falling back to ``INTERNAL_ERROR``.
-_ERROR_CODE_BY_STATUS = {
-    400: "BAD_REQUEST",
-    401: "AUTH_FAILED",
-    403: "FORBIDDEN",
-    404: "NOT_FOUND",
-    405: "METHOD_NOT_ALLOWED",
-    409: "CONFLICT",
-    413: "PAYLOAD_TOO_LARGE",
-    415: "UNSUPPORTED_MEDIA_TYPE",
-    422: "VALIDATION_ERROR",
-    429: "RATE_LIMITED",
-    500: "INTERNAL_ERROR",
-    503: "SERVICE_UNAVAILABLE",
-}
-
-
-def _error_code_for_status(status_code: int) -> str:
-    return _ERROR_CODE_BY_STATUS.get(status_code, "INTERNAL_ERROR")
-
-
-def _error_message_for(status_code: int, detail: object) -> str:
-    """Best-effort short human message derived from the FastAPI detail."""
-    if isinstance(detail, str) and detail.strip():
-        return detail
-    if isinstance(detail, list) and detail:
-        # RequestValidationError serializes to a list of field-level errors;
-        # collapse the first message so the envelope still has a human field.
-        first = detail[0]
-        if isinstance(first, dict):
-            msg = first.get("msg")
-            if isinstance(msg, str) and msg.strip():
-                return msg
-    if isinstance(detail, dict):
-        msg = detail.get("message") or detail.get("msg")
-        if isinstance(msg, str) and msg.strip():
-            return msg
-    return {
-        400: "Bad request",
-        401: "Authentication required",
-        403: "Forbidden",
-        404: "Not found",
-        409: "Conflict",
-        413: "Payload too large",
-        422: "Validation error",
-        429: "Rate limited",
-        500: "Internal error",
-        503: "Service unavailable",
-    }.get(status_code, "Request failed")
-
-
-def _json_safe_validation_errors(errors: Sequence[object]) -> list[dict[str, object]]:
-    """Make Pydantic validation errors JSON-serializable and value-free.
-
-    Two failure modes are handled here:
-
-    * ``model_validator`` failures embed a live ``ValueError`` in
-      ``ctx['error']``, and a non-JSON request body (``text/plain``, form
-      encoding, or no ``Content-Type`` at all) makes Pydantic report the raw
-      ``bytes`` in ``input``. Serializing either verbatim raises *inside* the
-      validation handler, so the caller got a bare 500 with no ``error.code``
-      and no ``correlation_id`` — on every POST/PUT/PATCH.
-    * ``input`` reflected the submitted value back verbatim, so a
-      credential-shaped field ended up in CI logs, proxies, and error trackers.
-
-    Dropping ``input`` fixes both; ``jsonable_encoder`` is the backstop for any
-    remaining non-JSON value elsewhere in the error record.
-    """
-    from fastapi.encoders import jsonable_encoder
-
-    safe: list[dict[str, object]] = []
-    for err in errors:
-        if not isinstance(err, dict):
-            safe.append({"error": str(err)})
-            continue
-        item = {key: value for key, value in err.items() if key != "input"}
-        ctx = item.get("ctx")
-        if isinstance(ctx, dict):
-            item["ctx"] = {key: str(value) if isinstance(value, BaseException) else value for key, value in ctx.items()}
-        try:
-            safe.append(cast(dict[str, object], jsonable_encoder(item)))
-        except Exception:  # noqa: BLE001 — the error envelope must never fail to serialize
-            safe.append(
-                {
-                    "type": str(item.get("type", "value_error")),
-                    "loc": [str(part) for part in cast(Sequence[object], item.get("loc") or ())],
-                    "msg": str(item.get("msg", "Validation error")),
-                }
-            )
-    return safe
-
-
-def _build_error_envelope(
-    *,
-    status_code: int,
-    detail: object,
-    correlation_id: str,
-    headers: dict[str, str] | None = None,
-) -> JSONResponse:
-    payload = {
-        "error": {
-            "code": _error_code_for_status(status_code),
-            "message": _error_message_for(status_code, detail),
-            "correlation_id": correlation_id,
-            # Preserve the original FastAPI detail payload for backward
-            # compatibility — existing UIs that displayed `detail` still work
-            # while new clients can read `error.code` / `error.message`.
-            "details": detail,
-        },
-        # Top-level alias kept so callers that grew up on
-        # ``{"detail": "..."}`` still parse. New code should read ``error``.
-        "detail": detail,
-    }
-    response_headers = dict(headers or {})
-    response_headers.setdefault("X-Request-ID", correlation_id)
-    return JSONResponse(status_code=status_code, content=payload, headers=response_headers)
-
-
-def install_error_envelope(application: object) -> None:
-    """Register FastAPI exception handlers that emit the v1 error envelope.
-
-    The envelope is ``{error: {code, message, correlation_id, details}}`` and
-    is also surfaced as a top-level ``detail`` field for backward compatibility
-    with the historical FastAPI shape.
-    """
-    from fastapi import HTTPException
-    from fastapi.exceptions import RequestValidationError
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-
-    from agent_bom.api.idempotency_store import IdempotencyPayloadError
-
-    def _correlation_id(request: StarletteRequest) -> str:
-        return getattr(request.state, "request_id", "") or request.headers.get("x-request-id") or str(uuid.uuid4())
-
-    async def http_exception_handler(request: StarletteRequest, exc: HTTPException) -> JSONResponse:
-        if request.url.path.startswith("/scim/"):
-            from agent_bom.api.scim import scim_error_body
-
-            correlation_id = _correlation_id(request)
-            detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-            payload = scim_error_body(status_code=exc.status_code, detail=detail)
-            response_headers = dict(getattr(exc, "headers", None) or {})
-            response_headers.setdefault("X-Request-ID", correlation_id)
-            return JSONResponse(
-                status_code=exc.status_code,
-                content=payload,
-                media_type="application/scim+json",
-                headers=response_headers,
-            )
-        return _build_error_envelope(
-            status_code=exc.status_code,
-            detail=exc.detail,
-            correlation_id=_correlation_id(request),
-            headers=getattr(exc, "headers", None),
-        )
-
-    async def starlette_http_exception_handler(request: StarletteRequest, exc: StarletteHTTPException) -> JSONResponse:
-        return _build_error_envelope(
-            status_code=exc.status_code,
-            detail=exc.detail,
-            correlation_id=_correlation_id(request),
-            headers=getattr(exc, "headers", None),
-        )
-
-    async def validation_exception_handler(request: StarletteRequest, exc: RequestValidationError) -> JSONResponse:
-        return _build_error_envelope(
-            status_code=422,
-            detail=_json_safe_validation_errors(exc.errors()),
-            correlation_id=_correlation_id(request),
-        )
-
-    async def idempotency_payload_exception_handler(request: StarletteRequest, exc: Exception) -> JSONResponse:
-        # The payload that could not be fingerprinted is caller-controlled, so
-        # this is a client error — not an unhandled 500 that poisons 5xx alerting.
-        return _build_error_envelope(
-            status_code=422,
-            detail=sanitize_error(exc) or "Request payload could not be processed",
-            correlation_id=_correlation_id(request),
-        )
-
-    application.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[attr-defined]
-    application.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)  # type: ignore[attr-defined]
-    application.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[attr-defined]
-    application.add_exception_handler(IdempotencyPayloadError, idempotency_payload_exception_handler)  # type: ignore[attr-defined]

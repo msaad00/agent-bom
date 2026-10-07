@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import secrets as _secrets
 import sqlite3
 import threading
 from collections import defaultdict
@@ -28,7 +29,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from agent_bom.api.secret_source import resolve_secret
-from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version, postgres_deployment_configured
 from agent_bom.security import sanitize_path_label, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ def _production_audit_hmac_required() -> bool:
     )
     production_env = deployment in {"prod", "production"}
     clustered = _configured_control_plane_replicas() > 1
-    shared_postgres = bool((os.environ.get("AGENT_BOM_POSTGRES_URL") or "").strip())
+    shared_postgres = postgres_deployment_configured()
     return (production_env or clustered or shared_postgres) and not _env_enabled("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC")
 
 
@@ -195,8 +196,6 @@ else:
             "AGENT_BOM_ENV/AGENT_BOM_DEPLOYMENT_ENV/ENVIRONMENT is production, or "
             "AGENT_BOM_CONTROL_PLANE_REPLICAS is greater than 1, or AGENT_BOM_POSTGRES_URL uses a durable shared audit chain"
         )
-    import secrets as _secrets
-
     _HMAC_KEY = _secrets.token_bytes(32)
 
 # The operator warning is raised where audit evidence is produced (API startup,
@@ -866,7 +865,7 @@ def get_audit_log() -> AuditLogStore:
     if _audit_log is None:
         with _audit_lock:
             if _audit_log is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.postgres_store import PostgresAuditLog
 
                     _audit_log = PostgresAuditLog()

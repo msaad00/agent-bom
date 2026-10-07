@@ -1754,7 +1754,11 @@ export const api = {
 
   // ── Risk campaigns ──
   // Priorities and modeled risk reduction are authoritative server outputs.
-  listRiskCampaigns: () => get<RiskCampaignsResponse>("/v1/campaigns"),
+  listRiskCampaigns: (options: { cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 25) });
+    if (options.cursor) params.set("cursor", options.cursor);
+    return get<RiskCampaignsResponse>(`/v1/campaigns?${params.toString()}`);
+  },
   listRiskCampaignVerificationQueue: (
     options: { cursor?: string | null; limit?: number } = {},
   ) => {

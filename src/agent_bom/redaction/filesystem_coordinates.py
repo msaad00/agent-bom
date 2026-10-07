@@ -38,7 +38,10 @@ def sanitize_filesystem_coordinate(value: str) -> str | None:
             cursor = end.end()
             continue
         path_end = end.start() if end else len(value)
-        digest = hashlib.sha256(value[path_start:path_end].encode()).hexdigest()[:24]
+        # This digest is a deterministic graph-coordinate pseudonym, never a
+        # password verifier or authentication secret. Equality stays joinable;
+        # guessing a known path remains possible, as with other stable IDs.
+        digest = hashlib.sha256(value[path_start:path_end].encode()).hexdigest()[:24]  # lgtm[py/weak-sensitive-data-hashing]
         parts.extend((value[copied:path_start], f"path-{digest}"))
         copied = path_end
         cursor = end.end() if end else len(value)

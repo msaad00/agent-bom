@@ -286,7 +286,6 @@ PR_EXCLUDED_POST_MERGE_JOBS = (
     "graph-performance",
     "output-scale-performance",
     "sdk-import-smoke",
-    "postgres-integration",
     "test-alpine",
     "action-dogfood",
     "docker",
@@ -298,6 +297,7 @@ def test_pull_requests_require_full_correctness_before_merge() -> None:
     """The merge result runs every correctness test, regardless of selection."""
     jobs = _ci()["jobs"]
     assert jobs["test-main"]["if"] == "${{ !cancelled() }}"
+    assert jobs["postgres-integration"]["if"] == "${{ !cancelled() }}"
     checkout = jobs["test-main"]["steps"][0]
     assert "ref" not in checkout.get("with", {})
     assert "test-pr-shard" not in jobs
@@ -371,11 +371,13 @@ def test_pr_correctness_gate_rejects_failed_skipped_and_cancelled_full_suite() -
     import subprocess
 
     step = _ci()["jobs"]["test-core"]["steps"][0]
-    for outcome in ("success", "failure", "skipped", "cancelled"):
-        env = {**os.environ, **dict.fromkeys(step["env"], "skipped")}
-        env.update(EVENT_NAME="pull_request", SMOKE_RESULT="success", MAIN_RESULT=outcome)
-        result = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True)
-        assert (result.returncode == 0) is (outcome == "success"), result.stdout + result.stderr
+    for lane in ("MAIN_RESULT", "POSTGRES_RESULT"):
+        for outcome in ("success", "failure", "skipped", "cancelled"):
+            env = {**os.environ, **dict.fromkeys(step["env"], "skipped")}
+            env.update(EVENT_NAME="pull_request", SMOKE_RESULT="success", MAIN_RESULT="success", POSTGRES_RESULT="success")
+            env[lane] = outcome
+            result = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True)
+            assert (result.returncode == 0) is (outcome == "success"), result.stdout + result.stderr
 
 
 def test_ui_pr_lane_is_fast_and_e2e_runs_after_merge() -> None:

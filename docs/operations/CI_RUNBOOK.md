@@ -7,7 +7,7 @@ stuck, a workflow fails unexpectedly, or you need to retrigger checks.
 
 ## CI lanes
 
-PR CI runs the full correctness suite on GitHub's merge result, alongside
+PR CI runs the full correctness and live Postgres integration suites on GitHub's merge result, alongside
 changed-domain tests and contract smoke. The selected tests provide early
 feedback; they do not replace the required full suite. Deployment and performance
 lanes also run on `main` and nightly. All lanes live in `ci.yml` unless noted.
@@ -26,7 +26,7 @@ lanes also run on `main` and nightly. All lanes live in `ci.yml` unless noted.
 | Native App image and persistence | when its inputs change | yes | yes |
 | Full correctness suite, Python 3.11/3.12/3.13/3.14 (3.11 with coverage floor) | yes (required through aggregation) | yes | yes |
 | Graph performance, Output scale performance, Extra-gated SDK smoke | no | yes | yes |
-| Postgres Integration Contract (live RLS, migrations, schema parity) | no | yes | yes |
+| Postgres Integration Contract (live RLS, migrations, schema parity) | yes (required through aggregation) | yes | yes |
 | Test (Alpine/musl) | no | subset; full on dependency changes | full suite nightly, subset manual |
 | Docker (multi-arch) + image scans | no | yes | nightly only |
 | UI E2E and container smoke (Playwright, bundle budget) | no | when UI inputs change | yes |
@@ -96,6 +96,12 @@ gh pr view <PR_NUMBER> --json headRefOid,reviewDecision,mergeStateStatus,statusC
 Strict protection requires validation against current main. Review, signature,
 missing-context and other rules can also block merging. Do not weaken protection
 to compensate for missing CI evidence.
+
+Security changes and large diffs require an independent written review before
+merge. The reviewer records the head SHA, material correctness and security
+findings, verification considered, and any unresolved risks. A bare approval
+does not satisfy this review policy. GitHub's approval count does not validate
+the review's contents; the merge operator must check that evidence explicitly.
 
 ## Ready PRs blocked behind `main`
 

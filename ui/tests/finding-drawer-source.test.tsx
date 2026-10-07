@@ -85,3 +85,10 @@ it("does not imply runtime observation for static evidence", async () => {
   expect(screen.queryByText(/Related runtime activity:/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Matched agent or tool activity/)).not.toBeInTheDocument();
 });
+
+it.each(["infra/main.tf", undefined, "/private/host/infra/main.tf", "../outside/main.tf"])("shows only explicit repository-relative IaC context: %s", async (repository_relative_path) => {
+  render(<FindingDrawer vuln={{ ...base, finding_class: "misconfiguration", repository_relative_path } as EnrichedVuln} lens="trust" triage={undefined} triageBusy={false} onTriageDecision={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByText("Repository location")).toBeVisible();
+  expect(screen.getByText(repository_relative_path === "infra/main.tf" ? "infra/main.tf" : "Unknown — no verified repository-relative location supplied")).toBeVisible();
+  if (repository_relative_path?.startsWith("/") || repository_relative_path?.startsWith("..")) expect(screen.queryByText(repository_relative_path)).not.toBeInTheDocument();
+});

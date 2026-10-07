@@ -440,3 +440,16 @@ async def test_exposure_page_rejects_replacement_during_hydration(topology_store
     monkeypatch.setattr(topology_store, "nodes_by_ids", replace_after_nodes)
     payload = json.loads(await exposure_paths_impl(limit=1, _get_graph_store=lambda: topology_store))
     assert payload["error"]["code"] == "AGENTBOM_MCP_VALIDATION_INVALID_ARGUMENT"
+
+
+@pytest.mark.asyncio
+async def test_exposure_paths_failure_does_not_log_storage_credentials_or_paths(caplog):
+    class UnavailableStore:
+        def snapshot_identity(self, **kwargs):
+            raise RuntimeError("postgresql://operator:private-diagnostic-key@db/estate /Users/operator/private.db")
+
+    payload = json.loads(await exposure_paths_impl(_get_graph_store=UnavailableStore))
+    assert payload["error"]["code"] == "AGENTBOM_MCP_INTERNAL_UNEXPECTED"
+    assert "private-diagnostic-key" not in caplog.text
+    assert "/Users/operator/private.db" not in caplog.text
+    assert "private-diagnostic-key" not in json.dumps(payload)

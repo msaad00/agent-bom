@@ -52,4 +52,7 @@ def parse_python_source(source: str, *, filename: str = "<scan-input>") -> ast.M
     # context-aware warnings; overlapping contexts could restore unsafe output.
     with _PYTHON_PARSE_LOCK, warnings.catch_warnings():
         warnings.simplefilter("ignore", SyntaxWarning)
+        # Python 3.11 reports invalid source escapes as DeprecationWarning;
+        # Python 3.12+ uses SyntaxWarning for the same source text.
+        warnings.simplefilter("ignore", DeprecationWarning)
         return ast.parse(source, filename=filename)

@@ -25,10 +25,11 @@ def test_source_syntax_warning_does_not_escape_scanner(scanner, tmp_path):
             _python_entries(tmp_path, path, source)
         else:
             _scan_python_ast_risks({"SKILL.md": f"```python\n{source}```"})
-    assert not [item for item in observed if issubclass(item.category, SyntaxWarning)]
+    assert not observed
 
 
-def test_concurrent_source_parses_do_not_restore_warning_output_mid_parse(monkeypatch):
+@pytest.mark.parametrize("warning_category", [SyntaxWarning, DeprecationWarning])
+def test_concurrent_source_parses_do_not_restore_warning_output_mid_parse(monkeypatch, warning_category):
     import ast
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
@@ -49,7 +50,7 @@ def test_concurrent_source_parses_do_not_restore_warning_output_mid_parse(monkey
         else:
             second_entered.set()
             assert first_done.wait(3)
-            warnings.warn("synthetic private source", SyntaxWarning)
+            warnings.warn("synthetic private source", warning_category)
         return ast.Module(body=[], type_ignores=[])
 
     def first():

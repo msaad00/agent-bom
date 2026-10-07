@@ -763,8 +763,10 @@ test("ranked path selection opens the ordered path and can expand the interactiv
   expect(focusedDetailBox!.y).toBeLessThan(1000);
 });
 
-test("mobile ranked path selection moves the ordered path into view", async ({ page }) => {
+for (const theme of ["light", "dark"] as const) {
+test(`mobile ranked path selection moves the ordered path into view ${theme}`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript((value) => window.localStorage.setItem("agent-bom-theme", value), theme);
   await routeCockpit(page);
 
   await page.goto("/security-graph?lens=attack-path");
@@ -776,7 +778,9 @@ test("mobile ranked path selection moves the ordered path into view", async ({ p
   const detail = page.getByRole("region", { name: "Selected path detail" });
   await expect(detail.getByRole("button", { name: "Path", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
+  await page.screenshot({ path: testInfo.outputPath(`selected-path-${theme}.png`) });
 });
+}
 
 test("priority enrichment cannot replace or inflate the authoritative path queue", async ({ page }) => {
   await routeCockpit(page);

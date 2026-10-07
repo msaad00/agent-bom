@@ -121,19 +121,25 @@ describe("InvestigationPathWorkspace", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("scrolls the selected detail into view after a mobile path selection", () => {
+  it("scrolls only after the mobile pane and selected evidence have committed", () => {
     setNarrowViewport(true);
-    const scrollIntoView = vi.fn();
+    const scrollIntoView = vi.fn(function (this: Element) {
+      expect(this).toHaveTextContent("Graph for path B");
+      expect(this.closest("section")).toHaveAttribute("data-mobile-panel", "path");
+    });
     Element.prototype.scrollIntoView = scrollIntoView;
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(0);
       return 1;
     });
     render(<Harness />);
-
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Paths & filters (2)" }));
     fireEvent.click(screen.getByText("#2").closest("button")!);
-
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "instant", block: "start" });
+    fireEvent.click(screen.getByRole("button", { name: "Paths & filters (2)" }));
+    fireEvent.click(screen.getByText("#2").closest("button")!);
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
   it("uses arrow keys to focus and announce the next visible path", () => {

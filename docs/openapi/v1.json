@@ -23057,7 +23057,7 @@
     },
     "/v1/findings": {
       "get": {
-        "description": "List unified findings aggregated from completed scan results.\n\nThe heavy work \u2014 dedup/sort of in-memory scan findings plus synchronous\nstore reads \u2014 runs in a worker thread so a single deep read cannot block\nthe event loop and freeze unrelated requests (e.g. ``/health``) under load.\n``anyio.to_thread.run_sync`` propagates the current context, and the tenant\nscope is read from ``request.state`` and passed explicitly to the store, so\nbehavior is identical to running inline.\n\nThe read is additionally guarded by adaptive backpressure (the same shared\nprimitive the graph route uses): the in-memory default hub copies and\nre-sorts the whole current-state table per request, so a burst of deep\n``?sort=cvss`` reads at scale can pile up worker threads and starve\n``/health`` and unrelated endpoints. Under genuine saturation the guard\nsheds excess reads with ``429 + Retry-After`` instead of degrading every\nroute. Normal single-reader load never trips it.\n\n``offset`` is a compatibility path capped at 10,000 (a deep ``OFFSET`` scans\nlinearly): past the ceiling the endpoint returns ``400`` and steers callers\nto ``cursor``/``next_cursor``, the unbounded-depth pagination contract shared\nwith ``/v1/compliance/hub/findings``.",
+        "description": "List unified findings aggregated from completed scan results.\n\nDedup/sort and synchronous store reads run in a worker thread (the context,\nincluding tenant scope and the ``include`` projection, propagates) so a deep\nread cannot block the event loop. Adaptive backpressure sheds excess reads\nunder genuine saturation with ``429 + Retry-After`` instead of starving\n``/health`` and unrelated routes.\n\nRows carry ``framework_tags`` and ``controls_count``; ``?include=controls``\nrestores the full per-finding control mappings.\n\n``offset`` is a compatibility path capped at 10,000: past the ceiling the\nendpoint returns ``400`` and steers callers to ``cursor``/``next_cursor``,\nthe unbounded-depth contract shared with ``/v1/compliance/hub/findings``.",
         "operationId": "list_findings_v1_findings_get",
         "parameters": [
           {
@@ -23448,6 +23448,25 @@
               "default": false,
               "title": "Include Facets",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "Comma-separated opt-ins; `controls` returns full per-finding control mappings",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated opt-ins; `controls` returns full per-finding control mappings",
+              "title": "Include"
             }
           }
         ],

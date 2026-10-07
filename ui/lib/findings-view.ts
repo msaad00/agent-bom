@@ -43,6 +43,7 @@ export interface EnrichedVuln extends Vulnerability {
   effective_reach_band?: string | undefined;
   framework_tags?: string[] | undefined;
   controls?: Array<Record<string, unknown>> | undefined;
+  controls_count?: number | undefined;
   finding_type?: string | undefined;
   finding_class?: "vulnerability" | "misconfiguration" | "secret" | "pii" | "identity" | "unclassified" | undefined;
   phantom_tools?: string[] | undefined;

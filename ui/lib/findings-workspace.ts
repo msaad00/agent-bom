@@ -114,7 +114,10 @@ export function buildComplianceMetrics(
   facetsApproximate = false,
 ): FindingsWorkspaceMetric[] {
   const mapped = rows.filter(
-    (row) => (row.framework_tags?.length ?? 0) > 0 || (row.controls?.length ?? 0) > 0,
+    (row) =>
+      (row.framework_tags?.length ?? 0) > 0 ||
+      (row.controls?.length ?? 0) > 0 ||
+      (row.controls_count ?? 0) > 0,
   ).length;
   const triage = rows
     .map((row) => triageForFinding(row, triageByKey))

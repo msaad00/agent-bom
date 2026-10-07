@@ -38,6 +38,15 @@ def _structured_coverage(warnings: list[dict | str]) -> list[dict]:
     return [dict(warning) if isinstance(warning, dict) else {"kind": "legacy_scan_warning", "detail": warning} for warning in warnings]
 
 
+def _agent_coverage_views(agents: list[dict[str, Any]]) -> list[SimpleNamespace]:
+    """Read import completeness without rebuilding producer package identities."""
+    return [
+        SimpleNamespace(metadata=agent.get("metadata") if isinstance(agent.get("metadata"), dict) else {})
+        for agent in agents
+        if isinstance(agent, dict)
+    ]
+
+
 def normalize_push_coverage(report: dict, *, source_id: str, target_scope: str | None) -> dict:
     """Normalize producer coverage and disclose an absent replacement scope."""
 
@@ -109,11 +118,7 @@ def normalize_push_coverage(report: dict, *, source_id: str, target_scope: str |
         SimpleNamespace(
             scan_run=ScanRun(outcome=outcome, issues=issues, scopes=scopes),
             coverage_warnings=supplied_coverage,
-            agents=[
-                SimpleNamespace(metadata=agent.get("metadata") if isinstance(agent.get("metadata"), dict) else {})
-                for agent in report.get("agents", [])
-                if isinstance(agent, dict)
-            ],
+            agents=_agent_coverage_views(report.get("agents", [])),
         )
     )
     report["scan_run"] = {**raw_scan_run, **scan_run.to_dict()}

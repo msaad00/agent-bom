@@ -154,6 +154,7 @@ import type {
   GraphRollupResponse,
 } from "@/lib/api-types";
 import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
+import { boundedGraphElements } from "@/lib/graph-neighbor-expansion";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
@@ -199,7 +200,7 @@ import {
 // this request limit is not a promise about returned or rendered node counts.
 // Full-estate search and scope summaries remain independent of this selection.
 export function graphFetchLimitForSnapshot(scanId: string, expandedScanId: string | null): number {
-  return scanId && scanId === expandedScanId ? LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES : 250;
+  return scanId && scanId === expandedScanId ? LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES : 50;
 }
 
 const GraphDriftLegend = dynamic(
@@ -674,6 +675,7 @@ function GraphPageInner() {
   const { session, loading: authLoading } = useAuthState();
   const [snapshotRetry, setSnapshotRetry] = useState(0);
   const [graphRetry, setGraphRetry] = useState(0);
+  const [canvasPage, setCanvasPage] = useState(0);
   const [expandedGraphScanId, setExpandedGraphScanId] = useState<string | null>(null);
   const loadedGraphScope = useRef<string | null>(null);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
@@ -1023,6 +1025,7 @@ function GraphPageInner() {
 
   useEffect(() => {
     setExpandedClusterIds(new Set());
+    setCanvasPage(0);
     setPinnedFocusId(null);
     setHoveredNodeId(null);
     setReachabilitySummary(null);
@@ -1392,6 +1395,7 @@ function GraphPageInner() {
 
     api
       .getGraphRollup(selectedScanId, {
+        limit: 100,
         ...(drillNode ? { node: drillNode } : {}),
         ...(filters.severity ? { minSeverity: filters.severity } : {}),
         ...(childOffset ? { offset: childOffset, snapshotGeneration: rollupChildPage?.generation } : {}),
@@ -1733,6 +1737,7 @@ function GraphPageInner() {
 
   useEffect(() => {
     setExpandedClusterIds(new Set());
+    setCanvasPage(0);
     setPinnedFocusId(null);
     setHoveredNodeId(null);
   }, [graphIdentityKey]);
@@ -1756,10 +1761,10 @@ function GraphPageInner() {
     if (!selectedScenarioId || !scenarioComparison?.available || scenarioExpanded || attackPathLens || selectedAttackPath || investigationMode) return undefined;
     return graphScenarioContextIds(aggregated.nodes, aggregated.edges, scenarioComparison.difference, mergedGraphData?.edges);
   }, [selectedScenarioId, scenarioComparison, scenarioExpanded, attackPathLens, selectedAttackPath, investigationMode, aggregated.nodes, aggregated.edges, mergedGraphData?.edges]);
-  const layoutInput = useMemo(
-    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
-    [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
-  );
+  const layoutInput = useMemo(() => {
+    const selected = selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds);
+    return boundedGraphElements(selected.nodes, selected.edges, [...(attackPathNodeIds ?? scenarioContextIds ?? [])], canvasPage);
+  }, [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds, canvasPage]);
   const { nodes: layoutNodes, edges: layoutEdges, pending: layoutPending } = useGraphLayout(
     graphLayoutKind,
     layoutInput.nodes,
@@ -3901,6 +3906,11 @@ function GraphPageInner() {
 
           {(loadingGraph || loadingBlast) && graphData && <GraphRefreshOverlay label={loadingBlast ? "Computing blast radius · current view retained" : "Loading related assets · current view retained"} />}
 
+          {layoutInput.omittedNodes > 0 && <div role="group" aria-label="Canvas context pages" className="mt-2 flex flex-wrap items-center gap-2 border-t border-outline pt-2 text-xs text-ink-secondary">
+            <p role="status">{layoutInput.nodes.length} nodes on canvas · {layoutInput.omittedNodes} loaded nodes bundled off canvas.</p>
+            <button type="button" disabled={layoutInput.page === 0} className="graph-page-action disabled:opacity-50" onClick={() => setCanvasPage(layoutInput.page - 1)}>Previous context</button>
+            <button type="button" disabled={layoutInput.page + 1 >= layoutInput.pageCount} className="graph-page-action disabled:opacity-50" onClick={() => setCanvasPage(layoutInput.page + 1)}>Expand next context bundle</button>
+          </div>}
           {graphTruncated && !rollupCanvasOwnsPresentation && (
             <details className="mt-2 border-t border-outline pt-2 text-xs text-ink-secondary" data-testid="graph-partial-view">
               <summary className="cursor-pointer">

@@ -620,7 +620,7 @@ export function SecurityGraphInvestigation({
       {embedded && rendererDecision.kind === "webgl" && <div className="flex flex-wrap items-center justify-end gap-2 border-b border-outline px-3 py-2">{graphControls}</div>}
 
       {bounded && bounded.omittedNodes > 0 && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline px-3 py-2 text-xs" aria-label="Loaded graph context pages">
-        <p role="status">{bounded.graph.nodes.length} nodes on canvas · {bounded.omittedNodes} loaded context nodes bundled off canvas. Path nodes stay in view. Counts describe loaded evidence.</p>
+        <p role="status">{layout.nodes.length} nodes on canvas · {bounded.omittedNodes} loaded context nodes bundled off canvas. Path nodes stay in view. Counts describe loaded evidence.</p>
         <div className="flex gap-2">
           <button type="button" disabled={bounded.page === 0} className="graph-page-action disabled:opacity-50" onClick={() => setContextPage(bounded.page - 1)}>Previous context</button>
           <button type="button" disabled={bounded.page + 1 >= bounded.pageCount} className="graph-page-action disabled:opacity-50" onClick={() => setContextPage(bounded.page + 1)}>Expand next context bundle</button>

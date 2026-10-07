@@ -21,19 +21,24 @@ export const INVESTIGATION_NODE_LIMIT = 100;
  * Source stats remain estate/snapshot totals, never the count on this canvas.
  */
 export function boundedInvestigationGraph(graph: UnifiedGraphData, pinnedIds: string[], page: number) {
+  const bounded = boundedGraphElements(graph.nodes, graph.edges, pinnedIds, page);
+  return { ...bounded, graph: { ...graph, nodes: bounded.nodes, edges: bounded.edges } };
+}
+
+export function boundedGraphElements<N extends { id: string }, E extends { source: string; target: string }>(
+  sourceNodes: N[], sourceEdges: E[], pinnedIds: string[], page: number,
+) {
   const pinned = new Set(pinnedIds);
-  const anchors = graph.nodes.filter(node => pinned.has(node.id)).slice(0, INVESTIGATION_NODE_LIMIT);
-  const context = graph.nodes.filter(node => !pinned.has(node.id));
-  const pageSize = Math.max(1, INVESTIGATION_NODE_LIMIT - anchors.length);
-  const pageCount = Math.max(1, Math.ceil(context.length / pageSize));
+  const anchors = sourceNodes.filter(node => pinned.has(node.id)).slice(0, INVESTIGATION_NODE_LIMIT);
+  const context = sourceNodes.filter(node => !pinned.has(node.id));
+  const available = INVESTIGATION_NODE_LIMIT - anchors.length;
+  const pageSize = Math.max(1, available);
+  const pageCount = available === 0 ? 1 : Math.max(1, Math.ceil(context.length / pageSize));
   const currentPage = Math.min(Math.max(0, page), pageCount - 1);
-  const nodes = [...anchors, ...context.slice(currentPage * pageSize, (currentPage + 1) * pageSize)]
-    .slice(0, INVESTIGATION_NODE_LIMIT);
+  const nodes = [...anchors, ...context.slice(currentPage * pageSize, (currentPage + 1) * pageSize)].slice(0, INVESTIGATION_NODE_LIMIT);
   const ids = new Set(nodes.map(node => node.id));
   return {
-    graph: { ...graph, nodes, edges: graph.edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)) },
-    omittedNodes: graph.nodes.length - nodes.length,
-    pageCount,
-    page: currentPage,
+    nodes, edges: sourceEdges.filter(edge => ids.has(edge.source) && ids.has(edge.target)),
+    omittedNodes: sourceNodes.length - nodes.length, pageCount, page: currentPage,
   };
 }

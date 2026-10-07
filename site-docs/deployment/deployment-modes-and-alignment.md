@@ -67,8 +67,14 @@ and packaging.
 | **cluster** | EKS control plane + scheduled jobs + optional gateway/proxy | scan, API/UI, runtime, traces, cluster inventory | customer-managed EKS rollout |
 | **hybrid** | cluster mode plus endpoint proxy/fleet | fleet + runtime + control-plane review | enterprise with laptops and shared runtime surfaces |
 
-The UI should make these modes obvious instead of treating every install as if
-it were a fully populated hybrid deployment.
+The API's `deployment_mode` field describes observed evidence sources, not a
+configuration switch. It additionally returns `ci` for CI/CD receipts, `ingest`
+for evidence intake without observed local/fleet/cluster collection, and
+`unknown` when collection is not observed. `has_local_scan` requires an explicit
+local discovery source; imported SBOMs or agent relationships do not establish
+that a local scan ran. UI labels do not choose databases, enable enforcement,
+or change deployment policy. An ingestion-only control plane can still display
+recorded agents and their evidence.
 
 ## Customer EKS Story
 

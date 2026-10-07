@@ -4,16 +4,18 @@ permissions:
   contents: read
 
 # Lanes (see docs/operations/CI_RUNBOOK.md "CI lanes"):
-#   pull_request   fast lane: changed-domain tests and contract smoke, drift
-#                  gates, Postgres contract, and path-gated validators.
-#   merge_group    the merge result: the full suite on Python 3.13 sharded
-#                  across parallel jobs, plus every PR and post-merge lane.
+#   pull_request   the merge result: the full suite on Python 3.13 sharded
+#                  across parallel jobs, changed-domain tests and contract
+#                  smoke, drift gates, Postgres contract, and path-gated
+#                  validators.
+#   merge_group    not enabled for this repository; if it fires, it runs the
+#                  PR lanes plus the post-merge lanes.
 #   push to main   everything: full 4-version suite with coverage, performance,
 #                  Postgres, musl, Docker, UI E2E, dogfood. The release gate
 #                  reads this.
 #   schedule       nightly full run, including the full musl suite.
-# Superseded PR runs are cancelled; main and merge-queue runs never are,
-# because the queue and scripts/check_release_main_ci.py need completed runs.
+# Only superseded PR runs are cancelled; main runs never are, because
+# scripts/check_release_main_ci.py needs a completed run on the exact SHA.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -998,8 +1000,8 @@ jobs:
 
   # 3. Python correctness
   # Every event runs changed-domain tests plus cross-surface contracts and the
-  # Postgres contract. The merge queue adds the full suite sharded on 3.13;
-  # main pushes and nightly add the full four-version suite with coverage.
+  # Postgres contract. PRs add the full suite sharded on 3.13; main pushes and
+  # nightly add the full four-version suite with coverage.
   # Broad source changes can select nearly the full suite here, so allow
   # bounded headroom for setup and execution. The aggregator retains every
   # applicable lane; Test (Python 3.13) is the protection context.
@@ -1093,8 +1095,8 @@ jobs:
           print("OK")
           PYEOF
 
-  # Post-merge proof of every supported interpreter (3.11 with coverage). The
-  # merge queue proves the merge result with test-queue-shard instead.
+  # Post-merge proof of every supported interpreter (3.11 with coverage). PRs
+  # prove the merge result with test-shard instead.
   test-main:
     name: Full correctness (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -1126,16 +1128,16 @@ jobs:
             uv run pytest tests/ -q --tb=short --durations=25 -m "not network and not slow and not graph_performance" -n "$PYTEST_XDIST_WORKERS" --dist worksteal
           fi
 
-  # The merge queue's full correctness proof on the exact merge-group commit.
+  # The PR's full correctness proof on GitHub's merge result, in parallel.
   # scripts/pytest_ci_plan.py assigns every test module to exactly one shard,
   # so the shards together run the same selection as the full suite.
-  test-queue-shard:
+  test-shard:
     name: Full correctness shard (${{ matrix.shard }}, Python 3.13)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
-    if: ${{ !cancelled() && github.event_name == 'merge_group' }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     strategy:
       fail-fast: false
       matrix:
@@ -1219,7 +1221,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-    needs: [changes, test-smoke, test-main, test-queue-shard, graph-performance, output-scale-performance, sdk-import-smoke, postgres-integration]
+    needs: [changes, test-smoke, test-main, test-shard, graph-performance, output-scale-performance, sdk-import-smoke, postgres-integration]
     if: ${{ !cancelled() }}
     steps:
       - name: Require every applicable correctness lane
@@ -1227,7 +1229,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SMOKE_RESULT: ${{ needs.test-smoke.result }}
           MAIN_RESULT: ${{ needs.test-main.result }}
-          SHARD_RESULT: ${{ needs.test-queue-shard.result }}
+          SHARD_RESULT: ${{ needs.test-shard.result }}
           GRAPH_RESULT: ${{ needs.graph-performance.result }}
           OUTPUT_SCALE_RESULT: ${{ needs.output-scale-performance.result }}
           SDK_SMOKE_RESULT: ${{ needs.sdk-import-smoke.result }}
@@ -1249,14 +1251,14 @@ jobs:
               *) echo "Correctness lane ended with: $result" >&2; exit 1 ;;
             esac
           done
-          # The merge queue proves the merge result with the sharded full
-          # suite; main push, nightly and manual runs prove every interpreter.
-          if [ "$EVENT_NAME" = "merge_group" ]; then
+          # PRs prove the merge result with the sharded full suite; main
+          # push, nightly and manual runs prove every interpreter.
+          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "merge_group" ]; then
             if [ "$SHARD_RESULT" != "success" ]; then
               echo "Sharded full correctness suite ended with: $SHARD_RESULT" >&2
               exit 1
             fi
-          elif [ "$EVENT_NAME" != "pull_request" ] && [ "$MAIN_RESULT" != "success" ]; then
+          elif [ "$MAIN_RESULT" != "success" ]; then
             echo "Full correctness suite ended with: $MAIN_RESULT" >&2
             exit 1
           fi

@@ -299,18 +299,21 @@ PR_EXCLUDED_POST_MERGE_JOBS = (
 
 
 REQUIRED_CI_JOBS = ("security", "lint", "build", "test")
-QUEUE_SHARD_STEP = "Run full correctness shard"
+SHARD_STEP = "Run full correctness shard"
 
 
 def _marker_filter(run: str) -> str:
     return run.split(' -m "', 1)[1].split('"', 1)[0]
 
 
-def test_pull_requests_run_the_fast_lane_without_the_full_suite() -> None:
-    """PR feedback stays fast; the merge queue proves the merge result."""
+def test_pull_requests_run_the_full_suite_sharded_instead_of_the_matrix() -> None:
+    """PRs prove the merge result with the sharded 3.13 suite; main runs the matrix."""
     jobs = _ci()["jobs"]
     assert jobs["test-main"]["if"] == ("${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' }}")
-    assert jobs["test-queue-shard"]["if"] == "${{ !cancelled() && github.event_name == 'merge_group' }}"
+    assert jobs["test-shard"]["if"] == (
+        "${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}"
+    )
+    assert "test-queue-shard" not in jobs
     assert jobs["postgres-integration"]["if"] == "${{ !cancelled() }}"
     assert jobs["test-smoke"]["if"] == "${{ !cancelled() }}"
     assert "test-pr-shard" not in jobs
@@ -320,9 +323,9 @@ def test_pull_requests_run_the_fast_lane_without_the_full_suite() -> None:
         assert "!cancelled()" in condition, name
 
 
-def test_merge_queue_runs_the_whole_suite_sharded_on_the_merge_group_commit() -> None:
+def test_shards_run_the_whole_suite_on_the_merge_result() -> None:
     jobs = _ci()["jobs"]
-    shard = jobs["test-queue-shard"]
+    shard = jobs["test-shard"]
     assert shard["name"] == "Full correctness shard (${{ matrix.shard }}, Python 3.13)"
     assert "needs" not in shard
     assert "ref" not in shard["steps"][0].get("with", {})
@@ -332,8 +335,9 @@ def test_merge_queue_runs_the_whole_suite_sharded_on_the_merge_group_commit() ->
     indexes = shard["strategy"]["matrix"]["shard"]
     assert indexes == list(range(len(indexes))) and len(indexes) >= 2
     assert shard["timeout-minutes"] <= 20
+    assert "cancel-in-progress" not in shard.get("concurrency", {})
 
-    run = next(step["run"] for step in shard["steps"] if step.get("name") == QUEUE_SHARD_STEP)
+    run = next(step["run"] for step in shard["steps"] if step.get("name") == SHARD_STEP)
     assert f"--total {len(indexes)}" in run
     assert '--index "${{ matrix.shard }}"' in run
     assert "--durations=" in run
@@ -342,11 +346,11 @@ def test_merge_queue_runs_the_whole_suite_sharded_on_the_merge_group_commit() ->
     assert main_filters == {_marker_filter(run)}
 
 
-def test_merge_queue_shards_partition_every_test_module_exactly_once() -> None:
+def test_shards_partition_every_test_module_exactly_once() -> None:
     import subprocess
     import sys
 
-    shard = _ci()["jobs"]["test-queue-shard"]
+    shard = _ci()["jobs"]["test-shard"]
     total = len(shard["strategy"]["matrix"]["shard"])
     selected: list[str] = []
     for index in range(total):
@@ -366,7 +370,7 @@ def test_merge_queue_shards_partition_every_test_module_exactly_once() -> None:
 
 
 def test_required_contexts_report_on_pull_request_and_merge_group() -> None:
-    """A required check that never reports on merge_group stalls the queue."""
+    """Required contexts report on every event that can gate a merge."""
     workflow = _ci()
     triggers = workflow.get(True, workflow.get("on", {}))
     assert triggers["merge_group"] == {"types": ["checks_requested"]}
@@ -376,6 +380,16 @@ def test_required_contexts_report_on_pull_request_and_merge_group() -> None:
     for name in ("codeql.yml", "pr-security-gate.yml"):
         other = yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
         assert other.get(True, other.get("on", {}))["merge_group"] == {"types": ["checks_requested"]}, name
+
+
+def test_runbook_keeps_strict_protection_and_documents_pr_shards() -> None:
+    """No merge queue is available for this repository, so strict protection stays."""
+    runbook = " ".join((ROOT / "docs" / "operations" / "CI_RUNBOOK.md").read_text(encoding="utf-8").split())
+    total = len(_ci()["jobs"]["test-shard"]["strategy"]["matrix"]["shard"])
+    assert f"split into {total} parallel shards" in runbook
+    assert "-F strict=false" not in runbook
+    assert "rulesets" not in runbook
+    assert "| Merge queue |" not in runbook
 
 
 def test_main_push_aggregator_requires_the_full_suite() -> None:
@@ -390,7 +404,7 @@ def test_main_push_aggregator_requires_the_full_suite() -> None:
     lanes = (
         "test-smoke",
         "test-main",
-        "test-queue-shard",
+        "test-shard",
         "graph-performance",
         "output-scale-performance",
         "sdk-import-smoke",
@@ -438,7 +452,7 @@ def test_pull_request_classifiers_diff_from_the_merge_base() -> None:
     assert CI_WORKFLOW.read_text(encoding="utf-8").count(three_dot) == 2
 
 
-def test_pull_request_runs_cancel_superseded_but_main_and_queue_runs_do_not() -> None:
+def test_only_pull_request_runs_cancel_superseded_runs() -> None:
     concurrency = _ci()["concurrency"]
     assert "github.event.pull_request.number" in concurrency["group"]
     assert "github.event_name" in concurrency["group"]
@@ -450,8 +464,10 @@ def test_pull_request_runs_cancel_superseded_but_main_and_queue_runs_do_not() ->
 
 
 # Lanes each event must prove; every other lane must be skipped or succeed.
+# PRs (and merge groups, if a queue is ever enabled) prove the merge result
+# with the sharded 3.13 suite; main, nightly and manual runs prove the matrix.
 _EVENT_PROOF = {
-    "pull_request": ("SMOKE_RESULT", "POSTGRES_RESULT"),
+    "pull_request": ("SMOKE_RESULT", "POSTGRES_RESULT", "SHARD_RESULT"),
     "merge_group": (
         "SMOKE_RESULT",
         "POSTGRES_RESULT",

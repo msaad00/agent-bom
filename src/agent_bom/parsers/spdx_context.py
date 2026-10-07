@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from agent_bom.sbom_formats.spdx_hierarchy import dependency_relationships
+from agent_bom.sbom_formats.spdx_hierarchy import context_role, dependency_relationships
 
 
 def context_document(document: dict) -> dict:
@@ -40,12 +40,8 @@ def context_document(document: dict) -> dict:
             continue
         properties = []
         purpose = str(row.get("primaryPackagePurpose", row.get("software_primaryPurpose", ""))).lower()
-        description = str(row.get("description", row.get("comment", "")))
-        if purpose == "application":
-            if description.startswith("AI Agent ("):
-                properties.append({"name": "agent-bom:type", "value": "ai-agent"})
-            elif description.startswith("MCP Server ("):
-                properties.append({"name": "agent-bom:type", "value": "mcp-server"})
+        if role := context_role(row):
+            properties.append({"name": "agent-bom:type", "value": role})
         components.append(
             {
                 "bom-ref": ref,

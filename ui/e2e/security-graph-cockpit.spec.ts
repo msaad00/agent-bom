@@ -773,10 +773,23 @@ test(`mobile ranked path selection moves the ordered path into view ${theme}`, a
   await page.waitForLoadState("networkidle");
 
   await page.getByRole("button", { name: /Paths & filters/ }).click();
+  // Selecting an already loaded path is local state: a route navigation must
+  // not replace its document or reset the viewport while sharing the URL.
+  const selectionNavigations: string[] = [];
+  await page.route("**/security-graph?**", async route => {
+    if (route.request().headers()["rsc"] || route.request().isNavigationRequest()) {
+      selectionNavigations.push(route.request().url());
+    }
+    await route.continue();
+  });
   const queue = page.getByLabel("Attack path queue");
   await queue.getByRole("button", { name: /#2/ }).click();
   const detail = page.getByRole("region", { name: "Selected path detail" });
   await expect(detail.getByRole("button", { name: "Path", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
+  await expect(page).toHaveURL(/selected_path=/);
+  await page.waitForLoadState("networkidle");
+  expect(selectionNavigations).toEqual([]);
   await expect.poll(async () => (await detail.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(120);
   await page.screenshot({ path: testInfo.outputPath(`selected-path-${theme}.png`) });
 });

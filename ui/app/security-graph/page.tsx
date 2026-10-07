@@ -1026,7 +1026,9 @@ function AttackPathInvestigationContent() {
           onSelect={(key) => {
             sharedSelectionScan.current = focus.scanId === selectedScanId ? null : selectedScanId;
             setSelectedAttackPathKey(key);
-            router.replace(investigationHref(pathname, searchParams.toString(), { selected_path: key, path_view: "path", scan: selectedScanId }), { scroll: false });
+            // This path is already loaded. Share its selection without a route
+            // transition that can replace the workspace after it scrolls.
+            window.history.replaceState(null, "", investigationHref(pathname, searchParams.toString(), { selected_path: key, path_view: "path", scan: selectedScanId }));
             setCompletedSteps((current) => ({ ...current, path: true }));
             setPathView("path");
           }}

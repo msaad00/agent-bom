@@ -151,18 +151,25 @@ async function routeRemediation(page: Page) {
       message: "No matching findings remain in the current window, but fresh collection evidence for the original target scope is unavailable. Access revocation and alternate graph paths have not been verified. Complete a same-scope rescan and inspect remaining paths. Workflow state is unchanged.",
     },
   } }));
-  await page.route("**/v1/campaigns", (route) => route.fulfill({ json: {
+  await page.route(/\/v1\/campaigns(?:\?.*)?$/, (route) => {
+    const nextPage = new URL(route.request().url()).searchParams.get("cursor") === "fixture-next";
+    return route.fulfill({ json: {
     schema_version: "risk-campaigns.v1",
     tenant_id: "default",
-    campaigns: [campaign],
+    campaigns: [nextPage ? { ...campaign, id: "campaign-next", title: "Upgrade second package" } : campaign],
     count: 1,
+    total: 2,
+    limit: 25,
+    has_more: !nextPage,
+    next_cursor: nextPage ? null : "fixture-next",
     finding_window_days: 90,
     finding_limit: 1000,
     truncated: false,
     total_findings: 1,
     total_approximate: false,
     membership_complete: true,
-  } }));
+  } });
+  });
 }
 
 for (const theme of ["light", "dark"] as const) {
@@ -181,7 +188,16 @@ for (const theme of ["light", "dark"] as const) {
 
       const campaignSummary = page.getByText(campaign.title, { exact: true });
       await expect(campaignSummary).toBeVisible();
-      const priorityDisclosure = page.getByRole("button", { name: /Why this priority/i });
+      const nextPageRequest = page.waitForRequest((request) => {
+        const url = new URL(request.url());
+        return url.pathname === "/v1/campaigns" && url.searchParams.get("cursor") === "fixture-next";
+      });
+      await page.getByRole("button", { name: "Load next campaigns" }).click();
+      await nextPageRequest;
+      await expect(page.getByText("Upgrade second package", { exact: true })).toBeVisible();
+      await expect(campaignSummary).toBeVisible();
+      await expect(page.getByRole("button", { name: "Load next campaigns" })).toBeHidden();
+      const priorityDisclosure = page.getByRole("button", { name: /Why this priority/i }).first();
       await expect(priorityDisclosure).toBeVisible();
       await expect(priorityDisclosure).toHaveAttribute("aria-expanded", "false");
       await priorityDisclosure.click();

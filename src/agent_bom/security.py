@@ -6,6 +6,7 @@ import base64
 import binascii
 import hashlib
 import ipaddress
+import json
 import logging
 import math
 import os
@@ -972,8 +973,6 @@ def validate_json_file(path: Path) -> dict:
     Raises:
         SecurityError: If file is invalid or too large
     """
-    import json
-
     # Validate path
     path = validate_path(path, must_exist=True)
 

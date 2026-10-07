@@ -1,5 +1,5 @@
 ## ── Builder stage ────────────────────────────────────────────────────────────
-FROM python:3.11.12-slim@sha256:dbf1de478a55d6763afaa39c2f3d7b54b25230614980276de5cacdde79529d0c AS builder
+FROM python:3.11.17-slim@sha256:0dd364ba7e10242f07755449e3a3d0e35f9efd987952737b90def6709ab0c5ce AS builder
 
 WORKDIR /app
 ARG HTTP_PROXY
@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 RUN uv sync --locked --no-dev --no-editable --extra api --extra snowflake
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.11.12-slim@sha256:dbf1de478a55d6763afaa39c2f3d7b54b25230614980276de5cacdde79529d0c
+FROM python:3.11.17-slim@sha256:0dd364ba7e10242f07755449e3a3d0e35f9efd987952737b90def6709ab0c5ce
 
 ARG VERSION=0.108.2
 ARG HTTP_PROXY
@@ -54,9 +54,11 @@ RUN python -m pip uninstall --yes setuptools wheel pip \
     && rm -rf /root/.cache/pip
 
 # Create non-root user for least-privilege execution
-RUN addgroup --system abom && adduser --system --ingroup abom abom
+RUN addgroup --system abom && adduser --system --ingroup abom abom \
+    && install -d -m 0700 -o abom -g abom /var/lib/agent-bom
 USER abom
 
+ENV AGENT_BOM_STATE_DIR=/var/lib/agent-bom
 ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"

@@ -14,6 +14,9 @@ from psycopg.types.json import Jsonb
 
 from agent_bom.api import postgres_common
 from agent_bom.api.storage.canonical_import import CONTROL_TABLES, import_canonical_row, payload_of, validate_groups, validate_target_groups
+from agent_bom.api.storage.compliance_restore import lock_snapshot_tenants, restore_snapshot
+from agent_bom.api.storage.compliance_snapshot import COLUMNS as COMPLIANCE_COLUMNS
+from agent_bom.api.storage.compliance_snapshot import read_compliance_snapshots
 from agent_bom.api.storage.observation_registries import (
     PostgresIssueMappingStore,
     PostgresKspmPostureStore,
@@ -48,7 +51,7 @@ ADAPTERS = {
 def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> list[tuple[str, Any, dict[str, Any]]]:
     """Read a consistent SQLite snapshot without schema initialization or mutation."""
     adapters = {**ADAPTERS, **CONTROL_TABLES}
-    if not tables or any(table not in adapters for table in tables):
+    if not tables or any(table not in {*adapters, "compliance_hub"} for table in tables):
         raise ValueError("Select one or more supported registry tables explicitly")
     records = []
     with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as conn:
@@ -56,6 +59,9 @@ def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> li
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
         for table in sorted(set(tables), key=lambda t: (t == "access_review_items", t)):
+            if table == "compliance_hub":
+                records.extend(read_compliance_snapshots(conn, tenant_map))
+                continue
             for row in conn.execute(f"SELECT * FROM {table} ORDER BY tenant_id, " + ", ".join(adapters[table].keys)):
                 raw = dict(row)
                 source_tenant = require_explicit_tenant_id(raw["tenant_id"])
@@ -99,6 +105,8 @@ def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> li
 def _validate_mapping_collisions(records: list[tuple[str, Any, dict[str, Any]]]) -> None:
     seen: dict[tuple[Any, ...], dict[str, Any]] = {}
     for table, record, payload in records:
+        if table == "compliance_hub":
+            continue
         keys = {**ADAPTERS, **CONTROL_TABLES}[table].keys
         if table == "issue_mappings":
             keys = ("target_kind", "target_id", "provider")
@@ -119,10 +127,14 @@ def import_registries(
     # Use the restricted app role. Each scope is explicit and transaction-local;
     # no maintenance bypass is needed to import operator-selected tenant mappings.
     with pool.connection() as conn:
-        if any(table in CONTROL_TABLES for table in tables):
+        lock_snapshot_tenants(conn, records)
+        if any(table in {*CONTROL_TABLES, "compliance_hub"} for table in tables):
             # Static allowlisted identifiers only; one operator-selected import
             # transaction excludes live writes while canonical upserts run.
             locked = {CONTROL_TABLES[t].target_table or t if t in CONTROL_TABLES else t for t in tables}
+            if "compliance_hub" in locked:
+                locked.remove("compliance_hub")
+                locked.update(COMPLIANCE_COLUMNS)
             if "sources" in tables:
                 locked.add("credential_refs")
             conn.execute("LOCK TABLE " + ", ".join(sorted(locked)) + " IN SHARE ROW EXCLUSIVE MODE")
@@ -131,6 +143,10 @@ def import_registries(
         for key, count in runtime_counts.items():
             counts[key] += count
         for table, record, payload in records:
+            if table == "compliance_hub":
+                for key, count in restore_snapshot(conn, record).items():
+                    counts[key] += count
+                continue
             if table in RUNTIME_TABLES:
                 continue
             conn.execute("SELECT set_config('app.tenant_id',%s,true)", (record.tenant_id,))
@@ -173,7 +189,7 @@ def import_registries(
         "committed": apply and not counts["conflicts"],
         "source_snapshot_sha256": digest,
         "selected_tables": tables,
-        "row_count": len(records),
+        "row_count": sum(r.row_count if t == "compliance_hub" else 1 for t, r, _ in records),
         **counts,
     }
 
@@ -184,7 +200,7 @@ def main() -> None:
     parser.add_argument(
         "--tenant-map", required=True, type=Path, help="JSON object mapping every source tenant to an approved target tenant"
     )
-    parser.add_argument("--table", action="append", choices=sorted({**ADAPTERS, **CONTROL_TABLES}), required=True)
+    parser.add_argument("--table", action="append", choices=sorted({*ADAPTERS, *CONTROL_TABLES, "compliance_hub"}), required=True)
     parser.add_argument("--apply", action="store_true", help="Commit only when every selected row is new or identical")
     args = parser.parse_args()
     try:

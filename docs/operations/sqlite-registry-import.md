@@ -49,7 +49,8 @@ Supported table names are `webhook_subscriptions`, `dataset_versions`,
 `evaluation_runs`, `drift_incidents`, `mcp_observations`, `issue_mappings`,
 `skills_scan_run`, `kspm_cluster_posture`, `credential_refs`, `sources`,
 `scan_schedules`, `access_review_campaigns`, `access_review_items`,
-`runtime_observations` and `runtime_sessions`.
+`runtime_observations` and `runtime_sessions`. The `compliance_hub` selection
+restores the complete seven-table compliance snapshot as one group.
 
 Select both access-review tables together. Campaign counts must match their
 items; existing decisions require their original actor and timestamp. Source
@@ -64,11 +65,22 @@ the command refuses to infer missing history. Runtime recovery bypasses retentio
 pruning during the transaction, preserving the selected evidence. Normal runtime
 writes subsequently apply the configured retention policy.
 
+Compliance recovery requires the current SQLite schema, complete lifecycle
+observations, valid ledger/reference links and consistent ingestion counters.
+It preserves resolved/suppressed states, timestamps, payload references and the
+source evidence revision. It does not perform a new scan or reconcile absent
+findings. Stable finding identifiers remain unchanged; Postgres allocates fresh
+internal ledger ordinals and remaps their current-finding pointers. Those
+sequence allocations can advance during dry-run even though all evidence rows
+roll back. The target tenant hub must be empty or identical. Merging existing
+hub evidence, merging source tenants, or upgrading older source files requires
+an explicit compatibility procedure and is refused by this command.
+
 Use a maintenance window and pause source, schedule, runtime and webhook workers.
 For the canonical control-plane stores, both dry-run and apply stage owner-validated
 writes under table locks; dry-run rolls all target changes back. No external job,
 webhook or review action is replayed. This command rejects unsupported tables,
-including compliance lifecycle, signed audit history and SCIM state; preserve
+including signed audit history and SCIM state; preserve
 those source files for a store-specific recovery procedure.
 
 ## Verification and rollback

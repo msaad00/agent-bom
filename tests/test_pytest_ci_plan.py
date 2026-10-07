@@ -505,3 +505,14 @@ def test_auth_storage_edits_select_trial_and_oidc_contracts(tmp_path, source):
     for path in expected:
         _write(path, 1)
     assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    "source", ["src/agent_bom/sbom.py", "src/agent_bom/sbom_formats/spdx_hierarchy.py", "src/agent_bom/parsers/spdx_context.py"]
+)
+def test_spdx_import_edits_select_all_spdx_and_sbom_contracts(tmp_path, source):
+    expected = sorted(tmp_path / "tests" / name for name in ("test_sbom_application_inventory.py", "test_spdx_supplied_scope.py"))
+    for path in expected:
+        _write(path, 1)
+    _write(tmp_path / "tests/test_unrelated.py", 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

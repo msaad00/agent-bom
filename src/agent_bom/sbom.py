@@ -30,13 +30,12 @@ from agent_bom.sbom_formats.spdx3 import (
     _spdx3_fold_annotations,
     _spdx3_graph,
     _spdx3_package_metadata,
-    _spdx3_primary_purpose,
     _spdx3_purl,
     _spdx3_references,
     _spdx3_version,
     upstream_enrichment_fields,
 )
-from agent_bom.sbom_formats.spdx_hierarchy import restore_spdx_hierarchy
+from agent_bom.sbom_formats.spdx_hierarchy import context_role, restore_spdx_hierarchy
 
 
 def _ecosystem_from_purl(purl: str) -> str:
@@ -403,9 +402,9 @@ def parse_spdx(data: dict) -> list[Package]:
                 continue
             if elem.get("type") not in ("software/Package", "SOFTWARE_PACKAGE", "software_Package"):
                 continue
-            # Skip non-library elements (agent-bom emits agents and MCP servers as
-            # a package with APPLICATION purpose; only LIBRARY-purpose elements are deps).
-            if _spdx3_primary_purpose(elem) == "APPLICATION":
+            # Explicit agent/server containers are topology, but APPLICATION
+            # alone is a valid purpose for real, scannable software packages.
+            if context_role(elem) and not _spdx3_purl(elem):
                 continue
             name = elem.get("name", "")
             if not name:
@@ -440,8 +439,6 @@ def parse_spdx(data: dict) -> list[Package]:
     for pkg in data.get("packages", []):
         if not isinstance(pkg, dict):
             continue
-        if pkg.get("primaryPackagePurpose") == "APPLICATION":
-            continue
         name = pkg.get("name", "")
         version = pkg.get("versionInfo", "unknown")
         if not name or name == "NOASSERTION":
@@ -454,6 +451,9 @@ def parse_spdx(data: dict) -> list[Package]:
                 break
 
         ecosystem = _ecosystem_from_purl(purl) if purl else "unknown"
+
+        if context_role(pkg) and not purl:
+            continue
 
         # SPDX 2.x supply chain metadata
         lic_declared = pkg.get("licenseDeclared") or None

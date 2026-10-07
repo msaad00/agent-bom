@@ -4,15 +4,15 @@ permissions:
   contents: read
 
 # Lanes (see docs/operations/CI_RUNBOOK.md "CI lanes"):
-#   pull_request   fast lane only: required contexts, changed-domain tests,
-#                  drift gates, and path-gated validators. Target <= 5 min.
+#   pull_request   full correctness on the merge result, changed-domain tests,
+#                  drift gates, and path-gated validators.
 #   push to main   everything: full 4-version suite, performance, Postgres,
 #                  musl, Docker, UI E2E, dogfood. The release gate reads this.
 #   schedule       nightly full run, including the full musl suite.
 # Superseded PR runs are cancelled; main runs never are, because
 # scripts/check_release_main_ci.py needs a completed run on the exact SHA.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref == 'refs/heads/main' && github.sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
@@ -1096,7 +1096,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-    if: ${{ github.event_name != 'pull_request' && !cancelled() }}
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -1197,11 +1197,18 @@ jobs:
             echo "Changed-domain and contract smoke ended with: $SMOKE_RESULT" >&2
             exit 1
           fi
-          # Pull requests run the fast lane only. Every other event (main push,
-          # nightly, merge queue, manual) must prove the full suite: a skip is
-          # a failure there, because the release gate trusts a green main run.
+          if [ "$MAIN_RESULT" != "success" ]; then
+            echo "Full correctness suite ended with: $MAIN_RESULT" >&2
+            exit 1
+          fi
+          if [ "$POSTGRES_RESULT" != "success" ]; then
+            echo "Postgres integration suite ended with: $POSTGRES_RESULT" >&2
+            exit 1
+          fi
+          # Main push, nightly, merge queue and manual runs additionally prove
+          # the deployment and performance lanes; skipped proof is a failure.
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            for result in "$MAIN_RESULT" "$GRAPH_RESULT" "$OUTPUT_SCALE_RESULT" "$SDK_SMOKE_RESULT" "$POSTGRES_RESULT"; do
+            for result in "$GRAPH_RESULT" "$OUTPUT_SCALE_RESULT" "$SDK_SMOKE_RESULT"; do
               if [ "$result" != "success" ]; then
                 echo "Post-merge correctness lane ended with: $result" >&2
                 exit 1
@@ -1247,9 +1254,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    # Post-merge only, and unconditional there: every main push proves the
-    # live-Postgres/RLS contract instead of only pushes that touch known paths.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    # Every merge result proves live Postgres/RLS, migrations and schema parity.
+    if: ${{ !cancelled() }}
     permissions:
       contents: read
     services:

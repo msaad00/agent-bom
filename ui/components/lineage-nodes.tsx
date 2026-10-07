@@ -92,6 +92,7 @@ export type LineageNodeData = {
   evidenceCaptureReplay?: boolean | undefined;
   evidenceNotAfter?: string | undefined;
   renderBand?: "detail" | "summary" | "cluster" | undefined;
+  scenarioConnectionNote?: string | undefined;
 };
 
 type CardProps = {
@@ -191,6 +192,7 @@ function NodeCard({
       <p className="mb-1 break-words line-clamp-3 text-lg font-semibold leading-6 text-foreground">
         {data.label.split(/(?<=[_/-])/).map((part, index) => <span key={index}>{part}<wbr /></span>)}
       </p>
+      {data.scenarioConnectionNote && <p className="mt-2 text-sm leading-5 text-ink-secondary" data-testid="scenario-connection-note">{data.scenarioConnectionNote}</p>}
       {subtitle && (
         <div className="text-xs leading-4 text-ink-secondary truncate">
           {subtitle}

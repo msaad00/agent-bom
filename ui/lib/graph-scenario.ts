@@ -172,3 +172,18 @@ export function graphScenarioDifferenceGroups(
     items: difference[id].map(differenceItemLabel),
   }));
 }
+
+/** Explain missing proposal connections without asserting real-world isolation. */
+export function graphScenarioConnectionNotes(
+  nodeIds: readonly string[],
+  proposedEdges: readonly { source: string; target: string }[],
+  observedEdges: readonly { id: string; source: string; target: string }[],
+  removedEdges: readonly unknown[],
+): Map<string, string> {
+  const connected = new Set(proposedEdges.flatMap(edge => [edge.source, edge.target]));
+  const removedIds = new Set(removedEdges.map(item => typeof item === "string" ? item
+    : item && typeof item === "object" ? (item as Record<string, unknown>).edge_id ?? (item as Record<string, unknown>).id : null));
+  const removedEndpoints = new Set(observedEdges.filter(edge => removedIds.has(edge.id)).flatMap(edge => [edge.source, edge.target]));
+  return new Map(nodeIds.filter(id => !connected.has(id)).map(id => [id, removedEndpoints.has(id)
+    ? "Connection removed in proposal" : "No connection in supplied proposal"]));
+}

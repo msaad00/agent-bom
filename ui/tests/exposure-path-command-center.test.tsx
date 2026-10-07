@@ -95,9 +95,9 @@ const referencePath: ExposurePath = {
 };
 
 describe("ExposurePathCommandCenter", () => {
-  it("positions the mobile graph immediately before its navigation controls can take focus", async () => {
+  it.each([true, false])("positions the graph immediately on mobile=%s before navigation takes focus", async (mobile) => {
     const scrollIntoView = vi.fn();
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: mobile })));
     const original = HTMLElement.prototype.scrollIntoView;
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
     try {

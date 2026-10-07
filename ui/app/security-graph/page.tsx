@@ -152,6 +152,7 @@ function AttackPathInvestigationContent() {
   const [loadingMorePaths, setLoadingMorePaths] = useState(false);
   const [morePathsError, setMorePathsError] = useState<string | null>(null);
   const pathPageRequest = useRef<AbortController | null>(null);
+  const sharedSelectionScan = useRef<string | null>(null);
   const [investigationFocusMode, setInvestigationFocusMode] = useState(true);
   const [pathView, setPathView] = useState<ExposurePathView>(() => investigationView(searchParams.get("path_view")));
   const requestedQuestion = searchParams.get("question");
@@ -261,6 +262,11 @@ function AttackPathInvestigationContent() {
   );
 
   useEffect(() => {
+    // Pinning the already loaded snapshot into a shared path URL must not
+    // unmount the workspace and discard its announcement or scroll target.
+    const sharedScan = sharedSelectionScan.current;
+    sharedSelectionScan.current = null;
+    if (focus.scanId && sharedScan === focus.scanId) return;
     let cancelled = false;
 
     async function load() {
@@ -520,7 +526,7 @@ function AttackPathInvestigationContent() {
   ]);
 
   const queueContinuation = <GraphPathQueueContinuation graph={graphData} matches={attackPaths.length}
-    hiddenMatches={hiddenLoadedAttackPathCount} narrowed={filtersNarrowQueue || hasFocusContext}
+    pageSize={ATTACK_PATH_QUEUE_PAGE_SIZE} hiddenMatches={hiddenLoadedAttackPathCount} narrowed={filtersNarrowQueue || hasFocusContext}
     loading={loadingMorePaths} error={morePathsError} onMore={() => void loadMoreAttackPaths()} />;
 
   const rankedRows = useMemo<RankedPathRow[]>(
@@ -1018,6 +1024,7 @@ function AttackPathInvestigationContent() {
           rows={rankedRows}
           selectedKey={selectedAttackPath ? attackPathKey(selectedAttackPath) : null}
           onSelect={(key) => {
+            sharedSelectionScan.current = focus.scanId === selectedScanId ? null : selectedScanId;
             setSelectedAttackPathKey(key);
             router.replace(investigationHref(pathname, searchParams.toString(), { selected_path: key, path_view: "path", scan: selectedScanId }), { scroll: false });
             setCompletedSteps((current) => ({ ...current, path: true }));

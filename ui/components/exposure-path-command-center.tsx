@@ -151,7 +151,7 @@ export function ExposurePathCommandCenter({
   const setView = (next: ExposurePathView) => {
     if (!controlledView) setInternalView(next);
     onViewChange?.(next);
-    if (next === "graph" && window.matchMedia?.("(max-width: 639px)").matches) {
+    if (next === "graph") {
       // Complete document positioning before graph navigation can take focus.
       // A competing smooth scroll can jump the page away from the next node.
       requestAnimationFrame(() => graphViewRef.current?.scrollIntoView({ block: "start", behavior: "instant" }));

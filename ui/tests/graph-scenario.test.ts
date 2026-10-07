@@ -135,3 +135,16 @@ describe("graphScenarioContextIds", () => {
     expect(graphScenarioContextIds(nodes, edges, comparison.difference)).toBeUndefined();
   });
 });
+
+it("explains disconnected proposal nodes without inferring isolation or access", async () => {
+  const { graphScenarioConnectionNotes } = await import("@/lib/graph-scenario");
+  const observed = [{ id: "old", source: "server", target: "credential" }];
+  const notes = graphScenarioConnectionNotes(
+    ["server", "credential", "endpoint"], [], observed, ["old"],
+  );
+  expect(notes.get("credential")).toBe("Connection removed in proposal");
+  expect(notes.get("endpoint")).toBe("No connection in supplied proposal");
+  const connected = graphScenarioConnectionNotes(["server", "endpoint"], [{ source: "server", target: "endpoint" }], observed, []);
+  expect(connected.size).toBe(0);
+  expect(graphScenarioConnectionNotes(["credential"], [], observed, []).get("credential")).toBe("No connection in supplied proposal");
+});

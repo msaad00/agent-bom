@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
@@ -151,12 +151,12 @@ export function ExposurePathCommandCenter({
   const setView = (next: ExposurePathView) => {
     if (!controlledView) setInternalView(next);
     onViewChange?.(next);
-    if (next === "graph") {
-      // Complete document positioning before graph navigation can take focus.
-      // A competing smooth scroll can jump the page away from the next node.
-      requestAnimationFrame(() => graphViewRef.current?.scrollIntoView({ block: "start", behavior: "instant" }));
-    }
   };
+  useLayoutEffect(() => {
+    // Controlled view updates can commit after an event's animation frame.
+    // Scroll only once the graph section is mounted, before painting it.
+    if (view === "graph") graphViewRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [view]);
   const fixLabel = pathFixLabel(path);
   const evidence = path.evidence;
   const pathSummary =

@@ -282,6 +282,11 @@ def _build_report(opts: ScanOptions, st: ScanState) -> None:
             "skipped_non_osv_ecosystems": _scan_perf.get("skipped_non_osv_ecosystems", 0),
             "cache_hit_rate_pct": _scan_perf.get("osv_cache_hit_rate_pct", 0),
         },
+        **(
+            {"filtering": {"unfixed_os_findings_suppressed": _scan_perf["unfixed_os_findings_suppressed"]}}
+            if _scan_perf.get("unfixed_os_findings_suppressed")
+            else {}
+        ),
         "registry": _resolver_perf.get("registry_metadata", {}),
         "version_resolution": _resolver_perf.get("version_resolution", {}),
         "license_enrichment": _resolver_perf.get("license_enrichment", {}),
@@ -300,7 +305,9 @@ def _attach_context_data(opts: ScanOptions, st: ScanState) -> None:
     # API and MCP tool return the vuln-data source/age/staleness verbatim.
     if st.vuln_freshness is not None:
         try:
-            st.report.vuln_data_freshness = st.vuln_freshness.to_dict()
+            st.report.vuln_data_freshness = st.vuln_freshness.to_dict(
+                osv_performance=(st.report.scan_performance_data or {}).get("osv", {})
+            )
         except Exception:
             pass
 

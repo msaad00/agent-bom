@@ -689,9 +689,16 @@ test("partial investigations expand only after an explicit request", async ({ pa
   await page.getByRole("button", { name: "Show more connections", exact: true }).click();
   await next;
   await expect(page.getByTestId("graph-viewport-scope")).toContainText("8 displayed nodes");
-  // Off-screen nodes are virtualized until explicitly framed.
+  // Fit every loaded connection, including newly measured off-screen nodes.
   await page.getByRole("button", { name: "Fit all", exact: true }).click();
   await expect(page.locator(".react-flow__node")).toHaveCount(8);
+  await expect.poll(() => page.locator(".react-flow").evaluate(canvas => {
+    const frame = canvas.getBoundingClientRect();
+    return [...canvas.querySelectorAll(".react-flow__node")].every(node => {
+      const box = node.getBoundingClientRect();
+      return box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
+    });
+  })).toBe(true);
 });
 
 test("slow blast radius retains the canvas and ends with a retryable timeout", async ({ page }) => {

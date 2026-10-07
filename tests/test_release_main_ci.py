@@ -21,12 +21,15 @@ def _load_script():
     return module
 
 
-def _fetcher(*, branch_sha: str = SHA, runs: list[dict[str, Any]] | None = None):
+def _fetcher(*, branch_sha: str = SHA, runs: list[dict[str, Any]] | None = None, jobs: list[dict[str, Any]] | None = None):
     run_rows = runs if runs is not None else [_run()]
 
     def fetch(endpoint: str) -> dict[str, Any]:
         if "/git/ref/heads/" in endpoint:
             return {"object": {"sha": branch_sha}}
+        if "/jobs?" in endpoint:
+            rows = jobs if jobs is not None else _jobs()
+            return {"jobs": rows, "total_count": len(rows)}
         assert "/actions/workflows/ci.yml/runs?" in endpoint
         return {"workflow_runs": run_rows}
 
@@ -73,6 +76,8 @@ def test_candidate_run_is_found_when_unfiltered_history_omits_it() -> None:
     def fetch(endpoint: str) -> dict[str, Any]:
         if "/git/ref/heads/" in endpoint:
             return {"object": {"sha": SHA}}
+        if "/jobs?" in endpoint:
+            return {"jobs": _jobs(), "total_count": len(_jobs())}
         query = parse_qs(urlsplit(endpoint).query)
         # A busy workflow's first history page need not contain this commit.
         rows = [_run()] if query.get("head_sha") == [SHA] else [_run(head_sha="e" * 40)]
@@ -152,3 +157,57 @@ def test_release_workflow_requires_exact_main_ci_proof() -> None:
     assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
     assert "scripts/check_release_main_ci.py" in step["run"]
     assert '--sha "${{ github.sha }}"' in step["run"]
+
+
+def _jobs():
+    return [
+        {"name": name, "status": "completed", "conclusion": "success", "head_sha": SHA}
+        for name in ("UI Validate", "UI export build", "UI E2E and container smoke")
+    ]
+
+
+@pytest.mark.parametrize("name", ["UI Validate", "UI export build", "UI E2E and container smoke"])
+@pytest.mark.parametrize("conclusion", ["skipped", "failure", "cancelled", None, "missing"])
+def test_release_requires_every_ui_lane_to_execute_successfully(name, conclusion):
+    checker = _load_script()
+    jobs = _jobs()
+    if conclusion == "missing":
+        jobs = [job for job in jobs if job["name"] != name]
+    else:
+        next(job for job in jobs if job["name"] == name)["conclusion"] = conclusion
+    with pytest.raises(checker.ReleaseProofError, match="UI"):
+        checker.verify_release_candidate(repo="msaad00/agent-bom", sha=SHA, fetch_json=_fetcher(jobs=jobs))
+
+
+@pytest.mark.parametrize("bad_status", ["queued", "in_progress"])
+def test_release_rejects_ui_jobs_that_have_not_completed(bad_status):
+    checker = _load_script()
+    jobs = _jobs()
+    jobs[0]["status"] = bad_status
+    with pytest.raises(checker.ReleaseProofError, match="UI"):
+        checker.verify_release_candidate(repo="msaad00/agent-bom", sha=SHA, fetch_json=_fetcher(jobs=jobs))
+
+
+def test_release_reads_all_job_pages_from_latest_attempt():
+    checker = _load_script()
+    pages = []
+
+    def fetch(endpoint):
+        if "/jobs?" not in endpoint:
+            return _fetcher()(endpoint)
+        query = parse_qs(urlsplit(endpoint).query)
+        assert query["filter"] == ["latest"]
+        page = int(query["page"][0])
+        pages.append(page)
+        return {"jobs": [{"name": "Other"}] * 100 if page == 1 else _jobs(), "total_count": 103}
+
+    assert checker.verify_release_candidate(repo="msaad00/agent-bom", sha=SHA, fetch_json=fetch)["run_id"] == 123
+    assert pages == [1, 2]
+
+
+def test_release_rejects_job_evidence_for_another_sha():
+    checker = _load_script()
+    jobs = _jobs()
+    jobs[0]["head_sha"] = "e" * 40
+    with pytest.raises(checker.ReleaseProofError, match="UI"):
+        checker.verify_release_candidate(repo="msaad00/agent-bom", sha=SHA, fetch_json=_fetcher(jobs=jobs))

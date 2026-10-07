@@ -6173,6 +6173,15 @@ components:
             type: string
           - type: 'null'
           title: Correlation Cohort Id
+        coverage_warnings:
+          items:
+            anyOf:
+            - additionalProperties: true
+              type: object
+            - type: string
+          maxItems: 100
+          title: Coverage Warnings
+          type: array
         endpoint_inventory:
           anyOf:
           - additionalProperties: true

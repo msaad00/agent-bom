@@ -567,6 +567,7 @@ jobs:
     # main run still carries the complete UI proof the release gate reads.
     if: >-
       !cancelled() && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.ui == 'true'
@@ -674,6 +675,7 @@ jobs:
     # five-minute budget; same trigger as `ui`.
     if: >-
       !cancelled() && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (github.event_name != 'pull_request' && github.event_name != 'push') ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.ui == 'true'
@@ -712,10 +714,11 @@ jobs:
     timeout-minutes: 25
     needs: changes
     # Post-merge half of UI validation (standalone build, container boot,
-    # bundle budget, Playwright E2E). Runs on every UI-affecting main push and
+    # bundle budget, Playwright E2E). Runs on every main push and
     # on every scheduled or manual run.
     if: >-
       !cancelled() && github.event_name != 'pull_request' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         github.event_name != 'push' ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.ui == 'true'

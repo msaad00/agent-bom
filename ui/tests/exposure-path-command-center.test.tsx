@@ -1,8 +1,10 @@
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ExposurePathCommandCenter } from "@/components/exposure-path-command-center";
 import type { ExposurePath } from "@/lib/exposure-path";
+
+beforeEach(() => { HTMLElement.prototype.scrollIntoView = vi.fn(); });
 
 const basePath: ExposurePath = {
   id: "path-1",
@@ -405,5 +407,22 @@ it("preserves distinct same-name agent references without duplicate render keys"
     expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
   } finally {
     error.mockRestore();
+  }
+});
+
+
+it("scrolls to the graph only after a controlled view commits its section", () => {
+  const scroll = vi.fn();
+  const original = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scroll;
+  try {
+    const props = { path: basePath, onViewChange: vi.fn(), graphSlot: <div>Graph loaded</div> };
+    const { rerender } = render(<ExposurePathCommandCenter {...props} view="path" />);
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    expect(scroll).not.toHaveBeenCalled();
+    rerender(<ExposurePathCommandCenter {...props} view="graph" />);
+    expect(scroll).toHaveBeenCalledWith({ block: "start", behavior: "instant" });
+  } finally {
+    HTMLElement.prototype.scrollIntoView = original;
   }
 });

@@ -17,6 +17,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Persist configured SQLite exception approvals across restart and reject remote database URLs before SQLite can create local files. Postgres support for remaining governance stores is separate work.
 - Show “No assessment evidence” when an otherwise finding-free report has neither packages nor evaluated controls.
 - Bundle the cloud benchmark inventory, verify compiled dashboard installation pins against the wheel version, and retain the requested image platform through Docker save/export.
+- Resolve Maven properties from local parent POMs, retain Swift repository aliases for advisory lookup, and preserve supplied SBOM scope, package identity and recorded dependency evidence.
+- Keep repository IaC and filesystem coverage gaps explicit, retain Django URL reachability evidence, and inventory the CPython runtime in container images with applicable advisory checks.
+- Bound campaign reads, persist Postgres campaign evidence and keep missing evidence distinct from verification results.
+- Preserve graph investigation scope and navigation, keep loaded evidence readable in light and dark themes, and retain the selected mobile path position when updating shareable URLs.
+- Update service-image runtimes and honor CPython tarfile filter rejection while retaining runtime remediation evidence.
+- Update the pinned Python Alpine image and dashboard icon, accessibility and table dependencies.
+- Record OSV response-cache use and the default unfixed OS-advisory suppression count in scan JSON.
+- Require executed, successful dashboard validation, export and browser jobs on the exact main release commit; run those UI lanes on every main push.
 
 ### Security
 

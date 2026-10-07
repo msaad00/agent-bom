@@ -39,7 +39,7 @@ export function GraphViewControls({ filters, onChange, agentNames, validValues, 
 
   return (
     <section aria-label="Graph view and layers" className="rounded-xl border border-outline bg-surface" data-testid="graph-view-controls">
-      <div className="flex flex-wrap items-center gap-1 py-0.5 pl-1 pr-28">
+      <div className="flex flex-wrap items-center gap-1 py-0.5 pl-1 pr-36">
         <button
           type="button"
           aria-expanded={open}

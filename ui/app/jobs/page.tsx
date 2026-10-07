@@ -224,7 +224,7 @@ function JobsPageContent() {
           )}
           <Link
             href="/scan"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <ShieldAlert className="w-3.5 h-3.5" />
             New Scan
@@ -319,7 +319,7 @@ function JobsPageContent() {
                   </p>
                   <Link
                     href="/scan"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/20"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-800/20"
                   >
                     <ShieldAlert className="h-3.5 w-3.5" />
                     Run a scan

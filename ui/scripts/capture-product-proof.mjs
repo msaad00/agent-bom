@@ -78,11 +78,11 @@ for (const receipt of Object.values(REFERENCE_LAB.source_artifacts ?? {})) {
   }
 }
 if (
-  REFERENCE_LAB.runtime_control?.manifest_sha256 !== REFERENCE_LAB.correlation?.manifest_sha256
+  REFERENCE_LAB.runtime_control?.policy_source !== "file"
   || REFERENCE_LAB.runtime_control?.verification !== "live_jsonrpc_gateway_smoke"
   || REFERENCE_LAB.runtime_control?.strict_block !== "verified"
 ) {
-  throw new Error("Reference evidence lab runtime proof is not bound to the completed correlation");
+  throw new Error("Reference evidence lab explicit policy smoke is not verified");
 }
 const REFERENCE_CORRELATION_ID = REFERENCE_LAB.correlation.correlation_id;
 const referenceGraph = REFERENCE_LAB.capture_fixture.graph;
@@ -1034,108 +1034,8 @@ function fixFirstView() {
 }
 
 function referenceFixFirstView() {
-  const pathItem = referenceGraph.attack_paths[0];
-  const nodesById = new Map(referenceGraph.nodes.map((item) => [item.id, item]));
-  const digest = REFERENCE_LAB.container_digest;
-  return {
-    scan_id: REFERENCE_CORRELATION_ID,
-    tenant_id: REFERENCE_LAB.correlation.tenant_id,
-    created_at: REFERENCE_LAB.correlation.completed_at,
-    cards: [{
-      id: "reference-lab-path-1",
-      rank: 1,
-      title: "Public service reaches modeled customer records through CVE-2023-4863",
-      summary: `${REFERENCE_LAB.label}. Exact digest ${digest} contains pillow@9.0.0 and CVE-2023-4863. The gateway observed the correlated tool call; strict opt-in policy ${REFERENCE_LAB.runtime_control.policy_id} then blocked the same canonical tool and runtime.`,
-      attack_path: pathItem,
-      nodes: referenceGraph.nodes,
-      sequence_labels: pathItem.hops.map((hop) => {
-        const nodeItem = nodesById.get(hop);
-        if (nodeItem?.entity_type === "container") return `reference-evidence-api@${digest}`;
-        return nodeItem?.label ?? hop;
-      }),
-      risk_reasons: [
-        { kind: "exact_identity", label: "Exact identities", detail: "PURL, OCI digest, Kubernetes UID, stable MCP tool ID, and provider identity receipts support every cross-source join." },
-        { kind: "runtime_observed", label: "Runtime observed", detail: `Observed event ${REFERENCE_LAB.runtime_control.observed_event} binds the same runtime and tool.` },
-        { kind: "runtime_blocked", label: "Runtime blocked", detail: `Strict deny event ${REFERENCE_LAB.runtime_control.blocked_event} verifies the opt-in enforcement path.` },
-      ],
-      next_actions: [
-        { title: "Open pillow@9.0.0 remediation", detail: "Upgrade the vulnerable package, rebuild the digest, then verify the correlated path is absent.", href: "/remediation" },
-      ],
-      affected: {
-        agents: pathItem.hops.filter((hop) => hop.startsWith("workload:")),
-        servers: pathItem.hops.filter((hop) => hop.startsWith("service:")),
-        packages: pathItem.hops.filter((hop) => hop.startsWith("package:")),
-        findings: pathItem.vuln_ids,
-        credentials: pathItem.hops.filter((hop) => hop.startsWith("identity:")),
-        tools: pathItem.hops.filter((hop) => hop.startsWith("tool:")),
-      },
-    }],
-    summary: {
-      total_paths: referenceGraph.attack_paths.length,
-      matched_paths: 1,
-      returned_paths: 1,
-      highest_risk: pathItem.composite_risk,
-      covered_findings: pathItem.vuln_ids.length,
-      node_count: referenceGraph.nodes.length,
-      edge_count: referenceGraph.edges.length,
-    },
-    focus: { cve: "CVE-2023-4863", package: "pillow", agent: "" },
-  };
+  return REFERENCE_LAB.capture_fixture.fix_first;
 }
-
-const gatewayPolicies = [
-  {
-    policy_id: "policy-default-deny",
-    name: "Default-deny prod MCP runtime",
-    description: "Blocks shell and write-capable tools unless an approved JIT grant and environment match exist.",
-    mode: "enforce",
-    rules: [
-      { id: "block-shell", description: "Block command execution tools outside approved runbooks", action: "block", block_tools: ["execute_command", "shell", "exec"], tool_name: null, tool_name_pattern: ".*(exec|shell|command).*", arg_pattern: {}, rate_limit: null, require_registry_verified: false },
-      { id: "block-repo-write", description: "Block repository write tools for unreviewed agents", action: "block", block_tools: ["create_pull_request", "write_file"], tool_name: null, tool_name_pattern: ".*(write|pull_request).*", arg_pattern: {}, rate_limit: null, require_registry_verified: true },
-      { id: "watch-secret-paths", description: "Alert on tools touching credential or secret paths", action: "warn", block_tools: [], tool_name: null, tool_name_pattern: ".*", arg_pattern: { path: ".*(secret|token|credential).*" }, rate_limit: null, require_registry_verified: false },
-    ],
-    bound_agents: ["developer-copilot", "sre-runbook-agent"],
-    bound_agent_types: ["ide", "runbook"],
-    bound_environments: ["prod-ai-control-plane"],
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
-    enabled: true,
-  },
-  {
-    policy_id: "policy-rag-readonly",
-    name: "Finance RAG read-only data boundary",
-    description: "Allows Snowflake query tools only when scoped to approved warehouse roles.",
-    mode: "audit",
-    rules: [
-      { id: "readonly-snowflake", description: "Audit SQL tool use against approved read-only role", action: "warn", block_tools: [], tool_name: "run_sql", tool_name_pattern: null, arg_pattern: { role: "FINANCE_READONLY" }, rate_limit: 120, require_registry_verified: true },
-    ],
-    bound_agents: ["finance-rag-agent"],
-    bound_agent_types: ["rag"],
-    bound_environments: ["prod-finance"],
-    created_at: CREATED_AT,
-    updated_at: CREATED_AT,
-    enabled: true,
-  },
-];
-
-const gatewayAudit = [
-  ["blocked", "execute_command", "developer-copilot", "block-shell", "Blocked shell class until a JIT grant is issued"],
-  ["blocked", "create_pull_request", "developer-copilot", "block-repo-write", "Blocked repo-write tool for quarantined agent"],
-  ["alerted", "run_sql", "finance-rag-agent", "readonly-snowflake", "Audited Snowflake query against read-only role"],
-  ["allowed", "post_incident_update", "sre-runbook-agent", "watch-secret-paths", "Allowed messaging tool outside secret path scope"],
-  ["blocked", "write_file", "developer-copilot", "block-repo-write", "Blocked workspace write against protected path"],
-].map(([action, tool, agent, rule, reason], index) => ({
-  entry_id: `audit-${index + 1}`,
-  policy_id: index < 2 ? "policy-default-deny" : "policy-rag-readonly",
-  policy_name: index < 2 ? gatewayPolicies[0].name : gatewayPolicies[1].name,
-  rule_id: rule,
-  agent_name: agent,
-  tool_name: tool,
-  arguments_preview: { redacted: true },
-  action_taken: action,
-  reason,
-  timestamp: CREATED_AT,
-}));
 
 function overviewResponse() {
   const domain = (label, href, metric, metricLabel, status, detail = {}, graphHref) => ({
@@ -2882,8 +2782,8 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "correlation-graph-live.png",
-      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
-      scope: "Reference evidence lab interactive graph linking the real advisory to the modeled service and data asset, with remediation context",
+      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
+      scope: "Reference evidence lab graph with scanned dependency evidence, local tool invocation, and separate modeled identity permissions",
       presentation: "dark desktop",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2892,7 +2792,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-receipts-live.png",
       page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
-      scope: "Reference evidence lab correlation outcome with affected assets, real advisory, runtime state, and remediation action; source receipts remain inspectable",
+      scope: "Reference evidence lab modeled permission route with inspectable source receipts; no vulnerability exploit edge",
       presentation: `${CAPTURE_THEME} desktop`,
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2900,8 +2800,8 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "correlation-path-live.png",
-      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab evidence-complete path with exact OCI digest, advisory, hop provenance, freshness, runtime observation, strict block proof, and remediation handoff",
+      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
+      scope: "Reference evidence lab recorded relationships; exploitability and cloud resource activity remain unestablished",
       presentation: `${CAPTURE_THEME} desktop`,
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2918,8 +2818,8 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "correlation-path-light-live.png",
-      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab evidence-complete path and hop receipts in the light theme",
+      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
+      scope: "Reference evidence lab recorded relationships and evidence boundaries in the light theme",
       presentation: "light desktop",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -2936,8 +2836,8 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     },
     {
       path: "correlation-path-mobile-live.png",
-      page: `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
-      scope: "Reference evidence lab evidence-complete path and hop receipts at a 390 by 844 viewport",
+      page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
+      scope: "Reference evidence lab recorded relationships and evidence boundaries at a 390 by 844 viewport",
       presentation: "dark mobile",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -3155,145 +3055,30 @@ async function main() {
       }, { top: workflowTop, offset: 108 });
       await proofPage.waitForTimeout(500);
     };
-    const prepareCorrelationPath = async (proofPage) => {
-      const proof = proofPage.getByTestId("attack-path-correlation-proof");
-      await proof.waitFor({ state: "visible", timeout: 30_000 });
-      const selectedPath = proofPage.getByTestId("selected-exposure-path");
-      // Verify exact identifiers remain available through the real disclosure,
-      // then close it for the default operator view captured below.
-      const identifier = selectedPath.locator(".ep-identifier").first();
-      await identifier.locator("summary").click();
-      const identifierText = await identifier.locator("code").innerText();
-      if (!identifierText.includes(REFERENCE_LAB.container_digest)) {
-        throw new Error("Exact container digest is unavailable in the identifier disclosure");
-      }
-      await identifier.locator("summary").click();
-      // Inspecting a later identifier can scroll the ordered lane. Restore its
-      // initial position before recording the default operator view.
-      const sequence = selectedPath.getByTestId("exposure-path-sequence");
-      await sequence.evaluate((element) => element.scrollTo({ left: 0, behavior: "instant" }));
-      if (await sequence.evaluate((element) => element.scrollLeft) > 1) {
-        throw new Error("Default path capture did not return to its first step");
-      }
-      const pathTop = await selectedPath.evaluate(
-        (element) => element.getBoundingClientRect().top + window.scrollY,
-      );
-      const offset = 108;
-      await proofPage.evaluate(({ top, offset: topOffset }) => {
-        window.scrollTo({ top: top - topOffset, behavior: "instant" });
-      }, { top: pathTop, offset });
-      await proofPage.waitForTimeout(500);
-    };
     const correlationReceiptAssertions = {
-      expectedText: [
-        "Correlation result",
-        /retained paths? across 6 sources/i,
-        "Fresh evidence",
-        "0 conflicts",
-        "Analysis complete",
-        "Entry point",
-        "Vulnerable package",
-        "Path target",
-        "Open pillow@9.0.0 remediation",
-        "Open top path",
-        "Inspect source receipts",
-      ],
-      rejectedText: ["Correlation name", "Connect", "Discover"],
+      expectedText: ["Correlation result", "Modeled customer records", "Analysis complete", "Inspect source receipts"],
+      rejectedText: ["Exploitable Via", "Gateway block observed"],
       expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/correlations"],
       readySelector: '[data-testid="graph-correlation-decision"]',
       assertNoHorizontalOverflow: true,
       assertCollapsedDetailsWithin: '[data-testid="graph-correlation-workflow"]',
-
-      viewportSelectors: [
-        "#demo-estate-watermark",
-        '[data-testid="graph-correlation-decision"]',
-        '[data-testid="correlation-open-path"]',
-        '[data-testid="correlation-primary-action"]',
-      ],
-      nonOverlappingPairs: [[
-        "#demo-estate-watermark",
-        '[data-testid="graph-correlation-workflow"]',
-      ]],
-      readmeTextContract: {
-        selector: '[data-testid="graph-correlation-decision"]',
-        targetWidthPx: 920,
-        minFontPx: 12,
-      },
+      viewportSelectors: ["#demo-estate-watermark", '[data-testid="graph-correlation-decision"]'],
+    };
+    const prepareCorrelationPath = async (proofPage) => {
+      await proofPage.locator(".react-flow__node").first().waitFor({ state: "visible" });
+      await fitReactFlow(proofPage);
     };
     const correlationPathAssertions = {
-      expectedText: [
-        "Public reference-evidence-api service",
-        "reference-evidence-api workload",
-        /1\.\s*Service/i,
-        /2\.\s*Workload/i,
-        /3\.\s*Container/i,
-        /7\.\s*Identity/i,
-        /8\.\s*Data asset/i,
-        "CVE-2023-4863",
-        "pillow@9.0.0",
-        "Render Untrusted Image",
-        "reference-evidence-workload",
-        "Modeled customer records",
-        "Uses",
-        "Contains",
-        "Vulnerable To",
-        "Exploitable Via",
-        "Authenticates As",
-        "Has Permission",
-        `Digest ${REFERENCE_LAB.container_digest.slice(0, 19)}…`,
-        "Hop receipts complete",
-        "Runtime observed",
-        "Gateway block observed",
-        "Open pillow@9.0.0 remediation",
-      ],
-      rejectedText: [/hops hidden/i, "3. Server", "3. MCP server"],
-      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph/views/fix-first", "/v1/graph/attack-paths"],
-      readySelector: '[data-testid="exposure-path-sequence"]',
-      viewportSelectors: [
-        "#demo-estate-watermark",
-        '[data-testid="selected-exposure-path"]',
-        '[data-testid="exposure-path-sequence"]',
-        '[data-testid="attack-path-correlation-proof"]',
-        '[data-testid="exposure-path-primary-action"]',
-      ],
-      assertCollapsedDetailsWithin: '[data-testid="selected-exposure-path"]',
-      readmeTextContract: {
-        selector: '[data-testid="selected-exposure-path"]',
-        targetWidthPx: 920,
-        minFontPx: 12,
-      },
+      expectedText: ["CVE-2023-4863", "Modeled customer records"],
+      rejectedText: ["Exploitable Via"],
+      expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
+      readySelector: ".react-flow__node",
+      minGraphNodes: referenceGraph.nodes.length,
+      maxGraphNodes: referenceGraph.nodes.length,
+      minGraphEdges: referenceGraph.edges.length,
+      maxGraphEdges: referenceGraph.edges.length,
+      assertNoHorizontalOverflow: true,
     };
-    // Exercise the actual overview-to-detail handoff before capturing either
-    // state. The same snapshot and remediation context must survive navigation.
-    const flowPage = await newCapturePage("dark", { width: 1120, height: 900 });
-    await flowPage.goto(`${BASE_URL}/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`);
-    const openPath = flowPage.getByTestId("correlation-open-path");
-    await openPath.waitFor({ state: "visible" });
-    if (await flowPage.getByTestId("selected-exposure-path").count()) {
-      throw new Error("Correlation overview duplicates the selected path detail");
-    }
-    await openPath.click();
-    await flowPage.waitForURL((url) => url.searchParams.get("path") === "top" && url.searchParams.get("scan") === REFERENCE_CORRELATION_ID);
-    const remediation = flowPage.getByTestId("exposure-path-primary-action");
-    await remediation.waitFor({ state: "visible" });
-    const remediationUrl = new URL(await remediation.getAttribute("href"), BASE_URL);
-    if (remediationUrl.searchParams.get("scan") !== REFERENCE_CORRELATION_ID || remediationUrl.searchParams.get("cve") !== "CVE-2023-4863") {
-      throw new Error("Correlation drilldown lost its remediation context");
-    }
-    await flowPage.getByTestId("selected-exposure-path").getByRole("button", { name: "Graph", exact: true }).click();
-    for (const hop of referenceGraph.attack_paths[0].hops) {
-      await flowPage.locator(`.react-flow__node[data-id="${hop}"]`).waitFor({ state: "visible" });
-    }
-    if (await flowPage.locator(".react-flow__edge").count() !== 7) {
-      throw new Error("Focused investigation omitted reference-lab path relationships");
-    }
-    await flowPage.goBack();
-    await flowPage.getByTestId("correlation-open-path").waitFor({ state: "visible" });
-    if (await flowPage.getByTestId("selected-exposure-path").count()) {
-      throw new Error("Back navigation did not restore the investigation overview");
-    }
-    await flowPage.close();
-
     const page = await newCapturePage(CAPTURE_THEME, { width: 1440, height: 980 });
 
     const preparePosture = async (dashboardPage) => {
@@ -3522,7 +3307,7 @@ async function main() {
     await page.setViewportSize({ width: 1120, height: 920 });
     await capture(
       page,
-      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
       "correlation-path-live.png",
       prepareCorrelationPath,
       correlationPathAssertions,
@@ -3531,27 +3316,10 @@ async function main() {
     const referenceGraphPage = await newCapturePage("dark", { width: 1568, height: 980 });
     await capture(
       referenceGraphPage,
-      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&path=top&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore`,
+      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
       "correlation-graph-live.png",
-      async (graphPage) => {
-        await graphPage.getByTestId("focused-path-decision").waitFor({ state: "visible" });
-        await fitReactFlow(graphPage);
-        await graphPage.getByTestId("focused-path-surface").scrollIntoViewIfNeeded();
-        await graphPage.evaluate(() => window.scrollBy({ top: -76, behavior: "instant" }));
-        await graphPage.waitForTimeout(350);
-      },
-      {
-        expectedText: ["CVE-2023-4863", "Open remediation plan", "Modeled customer records", "7/7 directed traversable relationships evidenced"],
-        expectedApiPaths: ["/v1/graph/snapshots", "/v1/graph"],
-        readySelector: ".react-flow__node",
-        minGraphNodes: 8,
-        maxGraphNodes: 8,
-        minGraphEdges: 7,
-        maxGraphEdges: 7,
-        minGraphNodeFontPx: 12,
-        assertEdgeLabelsClearOfNodes: true,
-        assertNoHorizontalOverflow: true,
-      },
+      prepareCorrelationPath,
+      correlationPathAssertions,
     );
     await referenceGraphPage.close();
     const currentCanvasPage = await newCapturePage("dark", { width: 1512, height: 811 });
@@ -3839,7 +3607,7 @@ async function main() {
     await lightPage.setViewportSize({ width: 1120, height: 920 });
     await capture(
       lightPage,
-      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
       "correlation-path-light-live.png",
       prepareCorrelationPath,
       correlationPathAssertions,
@@ -3875,16 +3643,16 @@ async function main() {
       `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&correlation=1&capture=1`,
       "correlation-receipts-mobile-live.png",
       prepareCorrelationReceipts,
-      { ...correlationReceiptAssertions, viewportSelectors: ["#demo-estate-watermark", '[data-testid="correlation-primary-action"]', '[data-testid="correlation-open-path"]'], readmeTextContract: undefined, assertNoHorizontalOverflow: true },
+      { ...correlationReceiptAssertions, viewportSelectors: ["#demo-estate-watermark"], readmeTextContract: undefined, assertNoHorizontalOverflow: true },
     );
     await capture(
       mobilePage,
-      `/security-graph?lens=attack-path&scan=${REFERENCE_CORRELATION_ID}&cve=CVE-2023-4863&capture=1`,
+      `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
       "correlation-path-mobile-live.png",
       prepareCorrelationPath,
       {
         ...correlationPathAssertions,
-        readySelector: '[data-testid="exposure-path-sequence"]',
+        readySelector: ".react-flow__node",
         viewportSelectors: ["#demo-estate-watermark"],
         readmeTextContract: undefined,
         assertNoHorizontalOverflow: true,

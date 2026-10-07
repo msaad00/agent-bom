@@ -599,6 +599,14 @@ const URL_LAYER_KEYS: LineageNodeType[] = [
   "accessPolicy",
   "driftIncident",
   "dataStore",
+  "directory",
+  "sourceFile",
+  "configFile",
+  "codeModule",
+  "ciJob",
+  "toolCall",
+  "blueprint",
+  "apiGateway",
 ];
 
 /** Encode a FilterState into URLSearchParams (deterministic, no defaults). */

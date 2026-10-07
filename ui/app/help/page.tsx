@@ -87,7 +87,7 @@ export default function HelpPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
           <div className="mb-4 flex items-center gap-3">
-            <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-400">
+            <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-800 dark:text-emerald-400">
               <MessageSquareQuote className="h-5 w-5" />
             </div>
             <div>
@@ -145,7 +145,7 @@ export default function HelpPage() {
                 href={buildIssueUrl("bug_report.yml", bugTitle)}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg bg-rose-500 px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                className="inline-flex items-center gap-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
                 Open bug report
                 <ArrowUpRight className="h-4 w-4" />
@@ -172,7 +172,7 @@ export default function HelpPage() {
           </div>
           <div className="text-xs">
             {copyState === "copied" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-800 dark:text-emerald-400">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Copied
               </span>
@@ -186,6 +186,7 @@ export default function HelpPage() {
           </div>
         </div>
         <textarea
+          aria-label="Support bundle preview"
           readOnly
           value={supportBundle}
           className="min-h-[340px] w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 font-mono text-xs leading-6 text-[color:var(--foreground)] outline-none"
@@ -207,7 +208,7 @@ export default function HelpPage() {
             href="https://github.com/msaad00/agent-bom/blob/main/SECURITY.md"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-emerald-400 hover:text-emerald-300"
+            className="inline-flex items-center gap-2 text-sm font-medium text-emerald-800 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300"
           >
             Security policy
             <ArrowUpRight className="h-4 w-4" />
@@ -216,7 +217,7 @@ export default function HelpPage() {
             href="https://github.com/msaad00/agent-bom/discussions"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-emerald-400 hover:text-emerald-300"
+            className="inline-flex items-center gap-2 text-sm font-medium text-emerald-800 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-300"
           >
             Discussions
             <ArrowUpRight className="h-4 w-4" />

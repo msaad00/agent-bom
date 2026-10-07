@@ -1754,8 +1754,8 @@ for (const estateSize of [10, 1_000, 10_000]) {
           } });
         });
         await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({ json: {
-          scan_id: scanId, cards: [], stats: graph.stats,
-          completeness: { returned: 0, total: 0, truncated: false },
+          scan_id: scanId, tenant_id: "default", created_at: createdAt, cards: [], attack_campaigns: [],
+          summary: { total_paths: 2, matched_paths: 2, returned_paths: 0, highest_risk: 9.8, covered_findings: 1, node_count: estateSize, edge_count: graph.edges.length },
         } }));
         await page.route("**/v1/intel/sources", route => route.fulfill({ json: { sources: [] } }));
         const errors: string[] = [];

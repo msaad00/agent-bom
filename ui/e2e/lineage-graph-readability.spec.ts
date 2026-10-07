@@ -894,3 +894,45 @@ for (const theme of ["light", "dark"] as const) {
     });
   }
 }
+
+
+for (const theme of ["light", "dark"] as const) {
+  test(`small snapshot keeps readable horizontal cards ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeGraphPage(page);
+    const nodes = [node("agent:small", "agent", "Document processing agent"), node("server:small", "server", "Image processing MCP server"), node("package:small", "package", "Image dependency")];
+    const graph = { ...buildDenseGraph(), nodes, edges: [edge(nodes[0]!.id,nodes[1]!.id,"uses"),edge(nodes[1]!.id,nodes[2]!.id,"invoked")], attack_paths: [], stats: { total_nodes: 3, total_edges: 2, node_type_counts: { agent: 1, server: 1, package: 1 }, severity_counts: {} } };
+    await page.route("**/v1/graph?**",route=>route.fulfill({json:graph}));
+    await page.goto(`/graph?capture=1&scan=${scanId}&layers=agent,server,package`);
+    await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    await settledViewportZoom(page);
+    const sizes=await page.locator(".react-flow__node").evaluateAll(elements=>elements.map(element=>{
+      const zoom=new DOMMatrixReadOnly(getComputedStyle(element.closest(".react-flow__viewport")!).transform).a;
+      const heading=element.querySelector("h3")??element.querySelector("[data-testid=lineage-node-label]")??element;
+      return {width:element.getBoundingClientRect().width,font:parseFloat(getComputedStyle(heading).fontSize)*zoom};
+    }));
+    expect(sizes.every(size=>size.width>=200)).toBe(true);
+    await expect(page.locator(".relationship-badge").first()).toBeVisible();
+    const overlaps = await page.locator(".react-flow").evaluate(canvas => {
+      const cards = [...canvas.querySelectorAll(".react-flow__node")].map(n => n.getBoundingClientRect());
+      return [...canvas.querySelectorAll(".relationship-badge")].filter(label => {
+        const r = label.getBoundingClientRect();
+        return cards.some(n => r.left < n.right && r.right > n.left && r.top < n.bottom && r.bottom > n.top);
+      }).map(label => label.textContent);
+    });
+    expect(overlaps).toEqual([]);
+    await page.screenshot({path:testInfo.outputPath(`small-snapshot-${theme}.png`),fullPage:true});
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  test(`initial snapshot preserves explicit URL layers ${theme}`, async ({ page }) => {
+    await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+    await routeGraphPage(page);
+    await page.goto(`/graph?scan=${scanId}&layers=agent`);
+    await expect(page.getByTestId("rf__node-agent:desktop")).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(1);
+    await expect.poll(() => new URL(page.url()).searchParams.get("layers")).toBe("agent");
+  });
+}

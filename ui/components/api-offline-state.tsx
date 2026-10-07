@@ -76,14 +76,14 @@ export function ApiOfflineState({
           <>
             <div className="mt-8 grid gap-4 md:grid-cols-2">
               <div className="rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-300">
                   <PlayCircle className="h-4 w-4" />
                   Recommended: start the full product surface
                 </div>
                 <p className="mb-4 text-sm text-[var(--text-secondary)]">
                   This starts the API and serves the bundled dashboard from one command path.
                 </p>
-                <code className="block rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-sm leading-7 text-emerald-400">
+                <code className="block rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-sm leading-7 text-emerald-800 dark:text-emerald-400">
                   pip install &apos;agent-bom[ui]&apos;
                   <br />
                   agent-bom serve
@@ -91,14 +91,14 @@ export function ApiOfflineState({
               </div>
 
               <div className="rounded-2xl border border-blue-900/60 bg-blue-950/20 p-5">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-blue-300">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-300">
                   <Server className="h-4 w-4" />
                   API only
                 </div>
                 <p className="mb-4 text-sm text-[var(--text-secondary)]">
                   Use this if the dashboard is already running separately and only the backend is missing.
                 </p>
-                <code className="block rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-sm leading-7 text-blue-300">
+                <code className="block rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-sm leading-7 text-blue-800 dark:text-blue-300">
                   pip install &apos;agent-bom[api]&apos;
                   <br />
                   agent-bom api

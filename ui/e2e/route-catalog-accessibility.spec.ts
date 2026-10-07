@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { writeFile } from "node:fs/promises";
 import { PRODUCT_ROUTES, routeBaseline } from "./fixtures/route-catalog";
 
-const require = createRequire(import.meta.url);
+const resolveModule = createRequire(`${__dirname}/../package.json`);
 
 // Allow test-only axe instrumentation without weakening the shipped CSP.
 test.use({ bypassCSP: true });
@@ -12,6 +12,7 @@ for (const theme of ["light", "dark"] as const) {
   test(`all catalog routes have no serious or critical axe violations in ${theme}`, async ({ page }, testInfo) => {
     test.setTimeout(300_000);
     await routeBaseline(page);
+    await page.routeWebSocket("**/ws/proxy/metrics", () => {});
     await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -26,7 +27,7 @@ for (const theme of ["light", "dark"] as const) {
       expect(response?.status(), `${route} must render its application route`).toBeLessThan(400);
       await expect(page.locator("#main-content")).toBeVisible();
       await expect(page.getByText("Application error", { exact: false })).toHaveCount(0);
-      await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js") });
+      await page.addScriptTag({ path: resolveModule.resolve("axe-core/axe.min.js") });
       const result = await page.evaluate(async () => {
         const axe = (window as unknown as { axe: typeof import("axe-core") }).axe;
         const result = await axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] } });

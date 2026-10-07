@@ -77,7 +77,7 @@ import {
   type LineageNodeType,
 } from "@/components/lineage-nodes";
 import { useGraphLayout } from "@/lib/use-graph-layout";
-import { compactInvestigationLayout, readableLineageDagreLr } from "@/lib/graph-node-dimensions";
+import { COMPACT_GRAPH_MIN_ZOOM, compactInvestigationLayout, readableLineageDagreLr } from "@/lib/graph-node-dimensions";
 import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
 import {
   aggregateSiblings,
@@ -1033,6 +1033,7 @@ function GraphPageInner() {
   }, [serverFilterKey]);
 
   useEffect(() => {
+    if (!selectedScanId) return;
     investigationRequestId.current++;
     investigationAbort.current?.abort();
     setLoadingBlast(false);
@@ -1752,7 +1753,7 @@ function GraphPageInner() {
   const compactGroupedTopology = aggregated.clusters.size > 0 && aggregated.nodes.length <= 6;
   // A short investigation should fit as readable cards, not tiny summary pills
   // separated by the spacing intended for a much larger estate.
-  const investigationLayout = compactInvestigationLayout(Boolean(investigationMode), aggregated.nodes.length);
+  const investigationLayout = compactInvestigationLayout(Boolean(investigationMode) || (!rollupNavigationActive && flow.nodes.length <= 16), aggregated.nodes.length);
   const compactInvestigationTopology = investigationLayout !== undefined;
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
@@ -2303,6 +2304,7 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
+    if (!narrowViewport && compactInvestigationTopology) return { ...viewportOptions, minZoom: COMPACT_GRAPH_MIN_ZOOM, maxZoom: 1 };
     if (scenarioExpanded || scenarioContextIds || (investigationMode && displayNodes.length <= 8)) return { ...viewportOptions, maxZoom: 1 };
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
@@ -2316,7 +2318,7 @@ function GraphPageInner() {
         return typeof id === "string" ? [id] : [];
       });
     return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
-  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded, scenarioContextIds]);
+  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded, scenarioContextIds, narrowViewport, compactInvestigationTopology]);
   const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
   // React Flow shares this prop with its queued imperative fit operation.
   // Hover/LOD node objects must not overwrite a user's pending Fit all request
@@ -2328,9 +2330,10 @@ function GraphPageInner() {
         : viewportOptions;
       // Scenario views share width with the decision panel and app navigation.
       // Allow the complete proposed context to fit shorter desktop canvases.
+      if (compactInvestigationTopology && !narrowViewport) return { ...options, minZoom: COMPACT_GRAPH_MIN_ZOOM, maxZoom: 1 };
       return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.75, maxZoom: 1 } : options;
     },
-    [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
+    [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded, compactInvestigationTopology, narrowViewport],
   );
   const showMiniMap = useMemo(
     () =>

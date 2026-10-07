@@ -308,12 +308,8 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     policy_audit = policy_store.list_audit_entries(limit=1, tenant_id=tenant_id)
     has_gateway = bool(policies)
 
-    # has_proxy must also flip when a runtime proxy has reported alerts — the
-    # /v1/proxy/audit ingestion path lands in an in-process ring buffer that's
-    # independent of scan-result correlations and policy_store entries. Without
-    # this signal, sites that ingest proxy alerts via the dedicated endpoint
-    # see "no proxy data" on the dashboard even when alerts are sitting in
-    # /v1/proxy/status. (audit P1-B)
+    # Dedicated proxy alerts are independent of scans and policy audit entries;
+    # count them so reported runtime activity remains visible on the dashboard.
     has_proxy_alerts = _tenant_has_proxy_alerts(tenant_id)
 
     has_proxy = bool(policy_audit) or has_runtime_signals or has_proxy_alerts

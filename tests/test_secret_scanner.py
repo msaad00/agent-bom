@@ -140,7 +140,7 @@ def test_scan_secrets_still_flags_literal_token_passed_to_a_call(tmp_path: Path)
     # The call-assignment suppression must not hide a real literal secret that
     # merely happens to be passed as a function argument.
     (tmp_path / "loader.py").write_text(
-        'aws_key = load("AKIAIOSFODNN7EXAMPLE")\n',
+        'aws_key = load("AKIAIOSFODNN7EXAMPLZ")\n',
         encoding="utf-8",
     )
 

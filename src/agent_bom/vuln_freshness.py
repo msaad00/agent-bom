@@ -141,6 +141,8 @@ class VulnDataFreshness:
         sources = "+".join(self.sources) if self.sources else "OSV"
         if self.mode == "live":
             return f"Vuln data: {sources} live (no local cache — run `agent-bom db update` for faster offline scans)"
+        if self.mode == "offline" and not self.record_count and self.last_updated is None:
+            return "Vuln data: no local cache (offline — network skipped); run `agent-bom db update` before scanning offline"
         age = _humanize_age(self.age_hours)
         if self.mode == "offline":
             base = f"Vuln data: {sources} local cache, {age} (offline — network skipped)"

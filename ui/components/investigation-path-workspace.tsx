@@ -1,7 +1,7 @@
 "use client";
 
 import { SlidersHorizontal } from "lucide-react";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { RankedPathList, type RankedPathRow } from "@/components/ranked-path-list";
 
@@ -57,6 +57,14 @@ export function InvestigationPathWorkspace({
   const detailRef = useRef<HTMLDivElement>(null);
   const [announcement, setAnnouncement] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"path" | "queue">("path");
+  const [scrollRequest, setScrollRequest] = useState(0);
+
+  useLayoutEffect(() => {
+    if (scrollRequest === 0) return;
+    // The queue must be hidden and the selected evidence committed first.
+    // Smooth scrolling can be interrupted by the concurrent URL update.
+    detailRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [scrollRequest]);
 
   function handleSelect(key: string) {
     const row = rows.find((candidate) => candidate.selectionKey === key);
@@ -66,9 +74,7 @@ export function InvestigationPathWorkspace({
       setAnnouncement(`Focused path ${row.rank}: ${row.cve ? `${row.cve} · ` : ""}${row.title}`);
     }
     if (window.matchMedia?.("(max-width: 1023px)").matches) {
-      window.requestAnimationFrame(() => {
-        detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      setScrollRequest((request) => request + 1);
     }
   }
 

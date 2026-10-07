@@ -66,7 +66,7 @@ def _configured_store() -> SkillsScanStore:
     except SkillsPersistenceUnavailableError:
         raise HTTPException(
             status_code=503,
-            detail="Skills result persistence requires configured SQLite (AGENT_BOM_DB); this backend is unsupported.",
+            detail="Skills result persistence is unavailable; check the configured Postgres or SQLite backend.",
         ) from None
 
 

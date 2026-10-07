@@ -23,6 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent_bom.storage.base import BackendKind
+from agent_bom.storage.factory import resolve_backend
+
 
 @dataclass
 class KspmPostureRun:
@@ -170,7 +173,15 @@ def get_kspm_posture_store() -> KspmPostureStore:
     global _default_store
     with _default_lock:
         if _default_store is None:
-            _default_store = InMemoryKspmPostureStore()
+            selection = resolve_backend()
+            if selection.backend is BackendKind.POSTGRES:
+                from agent_bom.api.storage.observation_registries import PostgresKspmPostureStore
+
+                _default_store = PostgresKspmPostureStore()
+            elif selection.backend is BackendKind.SQLITE:
+                _default_store = SQLiteKspmPostureStore(selection.sqlite_path or "")
+            else:
+                _default_store = InMemoryKspmPostureStore()
         return _default_store
 
 

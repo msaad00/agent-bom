@@ -310,6 +310,9 @@ def test_migration_schema_covers_every_runtime_postgres_table_and_component() ->
 
     components = set(re.findall(r'(?:ensure_postgres_schema_version\(\w+,\s*|\.bootstrap\()"([^"]+)"', runtime_source))
     components.add("proxy_replay_log")
+    from agent_bom.api.storage.registry_schema import REGISTRY_TABLES
+
+    components.update(REGISTRY_TABLES)
     # Additive revisions own new components; replaying or modifying the old
     # baseline must not be required just to make this guard recognize them.
     marker_sections = re.findall(

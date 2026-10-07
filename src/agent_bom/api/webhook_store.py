@@ -16,7 +16,6 @@ import builtins
 import hashlib
 import json
 import logging
-import os
 import secrets
 import sqlite3
 import threading
@@ -26,7 +25,8 @@ from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.security import redact_secret_url
-from agent_bom.storage.factory import validate_sqlite_path
+from agent_bom.storage.base import BackendKind
+from agent_bom.storage.factory import resolve_backend, validate_sqlite_path
 
 logger = logging.getLogger(__name__)
 
@@ -346,8 +346,13 @@ def get_webhook_subscription_store() -> WebhookSubscriptionStore:
     global _WEBHOOK_SUBSCRIPTION_STORE
     if _WEBHOOK_SUBSCRIPTION_STORE is not None:
         return _WEBHOOK_SUBSCRIPTION_STORE
-    if os.environ.get("AGENT_BOM_DB"):
-        _WEBHOOK_SUBSCRIPTION_STORE = SQLiteWebhookSubscriptionStore(os.environ["AGENT_BOM_DB"])
+    selection = resolve_backend()
+    if selection.backend is BackendKind.POSTGRES:
+        from agent_bom.api.storage.registry_stores import PostgresWebhookSubscriptionStore
+
+        _WEBHOOK_SUBSCRIPTION_STORE = PostgresWebhookSubscriptionStore()
+    elif selection.backend is BackendKind.SQLITE:
+        _WEBHOOK_SUBSCRIPTION_STORE = SQLiteWebhookSubscriptionStore(selection.sqlite_path or "")
     else:
         _WEBHOOK_SUBSCRIPTION_STORE = InMemoryWebhookSubscriptionStore()
     return _WEBHOOK_SUBSCRIPTION_STORE

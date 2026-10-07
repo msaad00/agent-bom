@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sqlite3
 import threading
 from collections import defaultdict
@@ -19,7 +18,8 @@ from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
-from agent_bom.storage.factory import validate_sqlite_path
+from agent_bom.storage.base import BackendKind
+from agent_bom.storage.factory import resolve_backend, validate_sqlite_path
 
 
 @dataclass
@@ -227,8 +227,13 @@ def get_drift_incident_store() -> DriftIncidentStore:
     global _DRIFT_INCIDENT_STORE
     if _DRIFT_INCIDENT_STORE is not None:
         return _DRIFT_INCIDENT_STORE
-    if os.environ.get("AGENT_BOM_DB"):
-        _DRIFT_INCIDENT_STORE = SQLiteDriftIncidentStore(os.environ["AGENT_BOM_DB"])
+    selection = resolve_backend()
+    if selection.backend is BackendKind.POSTGRES:
+        from agent_bom.api.storage.registry_stores import PostgresDriftIncidentStore
+
+        _DRIFT_INCIDENT_STORE = PostgresDriftIncidentStore()
+    elif selection.backend is BackendKind.SQLITE:
+        _DRIFT_INCIDENT_STORE = SQLiteDriftIncidentStore(selection.sqlite_path or "")
     else:
         _DRIFT_INCIDENT_STORE = InMemoryDriftIncidentStore()
     return _DRIFT_INCIDENT_STORE

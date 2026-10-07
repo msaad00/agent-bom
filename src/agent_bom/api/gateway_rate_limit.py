@@ -8,6 +8,7 @@ import os
 from agent_bom.agent_identity import ANONYMOUS
 from agent_bom.api.gateway_request import _sanitize_for_log
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
+from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.runtime.gateway_settings import GatewaySettings
 
 logger = logging.getLogger("agent_bom.gateway_server")
@@ -33,7 +34,7 @@ def _gateway_shared_rate_limit_required(settings: GatewaySettings) -> bool:
 def _build_gateway_rate_limit_store(settings: GatewaySettings):
     if settings.runtime_rate_limit_per_tenant_per_minute <= 0:
         return None
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if postgres_deployment_configured():
         try:
             return PostgresRateLimitStore(window_seconds=60)
         except Exception as exc:
@@ -49,7 +50,7 @@ def _build_gateway_rate_limit_store(settings: GatewaySettings):
 
 
 def _gateway_rate_limit_runtime_status(settings: GatewaySettings) -> dict[str, object]:
-    postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
+    postgres_configured = postgres_deployment_configured()
     replicas = _gateway_configured_replicas()
     enabled = settings.runtime_rate_limit_per_tenant_per_minute > 0
     shared_required = _gateway_shared_rate_limit_required(settings) if enabled else False

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
-from agent_bom.storage.factory import validate_sqlite_path
+from agent_bom.storage.base import BackendKind
+from agent_bom.storage.factory import resolve_backend, validate_sqlite_path
 
 
 @dataclass(frozen=True)
@@ -146,8 +146,13 @@ def get_dataset_version_store() -> DatasetVersionStore:
     global _DATASET_VERSION_STORE
     if _DATASET_VERSION_STORE is not None:
         return _DATASET_VERSION_STORE
-    if os.environ.get("AGENT_BOM_DB"):
-        _DATASET_VERSION_STORE = SQLiteDatasetVersionStore(os.environ["AGENT_BOM_DB"])
+    selection = resolve_backend()
+    if selection.backend is BackendKind.POSTGRES:
+        from agent_bom.api.storage.registry_stores import PostgresDatasetVersionStore
+
+        _DATASET_VERSION_STORE = PostgresDatasetVersionStore()
+    elif selection.backend is BackendKind.SQLITE:
+        _DATASET_VERSION_STORE = SQLiteDatasetVersionStore(selection.sqlite_path or "")
     else:
         _DATASET_VERSION_STORE = InMemoryDatasetVersionStore()
     return _DATASET_VERSION_STORE

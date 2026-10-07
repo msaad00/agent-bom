@@ -18,6 +18,8 @@ import zlib
 from collections import deque
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime as _dt
+from datetime import timezone as _tz
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -43,6 +45,7 @@ from agent_bom.api.route_policy import (
     required_scope,
     scope_catalog,
 )
+from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -930,7 +933,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
                     span.set_attribute("agent_bom.tracestate_present", True)
                 if trace_meta["baggage"]:
                     span.set_attribute("agent_bom.baggage_present", True)
-            if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            if postgres_deployment_configured():
                 from agent_bom.api.postgres_store import set_current_tenant
 
                 tenant_token = set_current_tenant(getattr(request.state, "tenant_id", "default"))
@@ -1322,7 +1325,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if self._is_dashboard_public_request(request.url.path, request.method):
             return await call_next(request)
 
-        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        if postgres_deployment_configured():
             from agent_bom.api.postgres_store import is_tenant_rls_bypassed
 
             if is_tenant_rls_bypassed():
@@ -1828,7 +1831,7 @@ DEFAULT_GLOBAL_IP_RATE_LIMIT_RPM = DEFAULT_READ_RATE_LIMIT_RPM * 4
 
 def _build_rate_limit_store(window_seconds: int) -> InMemoryRateLimitStore | PostgresRateLimitStore:
     """Build the shared/in-memory limiter store with fail-closed semantics."""
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if postgres_deployment_configured():
         try:
             return PostgresRateLimitStore(window_seconds=window_seconds)
         except Exception as exc:
@@ -2077,7 +2080,7 @@ def _shared_rate_limit_required() -> bool:
 
 def get_rate_limit_runtime_status() -> dict[str, object]:
     """Report whether API rate limiting is shared across replicas."""
-    postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
+    postgres_configured = postgres_deployment_configured()
     replicas = _configured_api_replicas()
     shared_required = _shared_rate_limit_required()
     backend = "postgres_shared" if postgres_configured else "inmemory_single_process"
@@ -2129,9 +2132,6 @@ def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
     - "max_age_exceeded":  key age past AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS
     - "unknown_age":       key configured but no last-rotated timestamp set
     """
-    from datetime import datetime as _dt
-    from datetime import timezone as _tz
-
     from agent_bom.api.secret_source import resolve_secret
     from agent_bom.config import (
         RATE_LIMIT_KEY_LAST_ROTATED,

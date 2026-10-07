@@ -54,6 +54,10 @@ def test_explicit_store_is_preserved_over_configured_sqlite(monkeypatch, tmp_pat
 @pytest.mark.parametrize("setting", ["AGENT_BOM_POSTGRES_URL", "SNOWFLAKE_ACCOUNT"])
 def test_unsupported_durable_backend_is_skills_only_unavailable(monkeypatch, setting):
     monkeypatch.setenv(setting, "synthetic-configured-tier")
+    monkeypatch.setattr(
+        "agent_bom.api.storage.observation_registries.PostgresSkillsScanStore",
+        lambda: (_ for _ in ()).throw(RuntimeError("fixture backend unavailable")),
+    )
     app = FastAPI()
     app.include_router(router, prefix="/v1")
     client = TestClient(app)
@@ -96,6 +100,10 @@ def test_unsupported_tier_rejects_before_scanner_side_effects(monkeypatch, tmp_p
     from agent_bom import skills_service
 
     monkeypatch.setenv(setting, "synthetic-configured-tier")
+    monkeypatch.setattr(
+        "agent_bom.api.storage.observation_registries.PostgresSkillsScanStore",
+        lambda: (_ for _ in ()).throw(RuntimeError("fixture backend unavailable")),
+    )
     monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "enabled")
     monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(tmp_path))
     (tmp_path / "SKILL.md").write_text("# Fixture\n")
@@ -108,14 +116,20 @@ def test_unsupported_tier_rejects_before_scanner_side_effects(monkeypatch, tmp_p
     scanner.assert_not_called()
 
 
-def test_explicit_sqlite_companion_wins_over_remote_tier(monkeypatch, tmp_path):
+def test_postgres_tier_takes_precedence_over_sqlite_companion(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "synthetic-configured-tier")
     monkeypatch.setenv("AGENT_BOM_DB", str(tmp_path / "skills.db"))
-    assert isinstance(stores.get_skills_scan_store(), stores.SQLiteSkillsScanStore)
+    sentinel = object()
+    monkeypatch.setattr("agent_bom.api.storage.observation_registries.PostgresSkillsScanStore", lambda: sentinel)
+    assert stores.get_skills_scan_store() is sentinel
 
 
 @pytest.mark.parametrize("db", ["postgres://fixture/skills", "postgresql://fixture/skills", "postgresql+psycopg://fixture/skills"])
 def test_remote_db_url_never_becomes_sqlite_filename(monkeypatch, db):
     monkeypatch.setenv("AGENT_BOM_DB", db)
+    monkeypatch.setattr(
+        "agent_bom.api.storage.observation_registries.PostgresSkillsScanStore",
+        lambda: (_ for _ in ()).throw(RuntimeError("fixture backend unavailable")),
+    )
     with pytest.raises(stores.SkillsPersistenceUnavailableError):
         stores.get_skills_scan_store()

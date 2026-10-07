@@ -56,6 +56,7 @@ from agent_bom.api.storage.finding_reads import SqlFindingReads
 from agent_bom.api.storage.finding_write_session import finding_write_session
 from agent_bom.api.storage.sql import SQLiteBackend
 from agent_bom.api.storage.sqlite_connection import open_wal_connection
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version, postgres_deployment_configured
 from agent_bom.core.severity import severity_policy_rank
 from agent_bom.core.tenancy import require_explicit_tenant_id
 from agent_bom.storage.factory import validate_sqlite_path
@@ -1605,8 +1606,6 @@ class SQLiteComplianceHubStore:
         return conn
 
     def _init_db(self) -> None:
-        from agent_bom.api.storage_schema import ensure_sqlite_schema_version
-
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
             ensure_sqlite_schema_version(self._conn, _SCHEMA_KEY, _SCHEMA_VERSION)
@@ -2231,7 +2230,7 @@ def get_compliance_hub_store() -> ComplianceHubStore:
     if _HUB_STORE is not None:
         return _HUB_STORE
 
-    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+    if postgres_deployment_configured():
         from agent_bom.api.postgres_compliance_hub import PostgresComplianceHubStore
 
         _HUB_STORE = PostgresComplianceHubStore()

@@ -1,11 +1,4 @@
-"""Centralized store globals and thread-safe accessors for the agent-bom API.
-
-All pluggable store backends (job, fleet, policy, analytics, schedule,
-exception, trend) are lazily initialized with double-checked locking.
-Call the ``set_*`` functions before server startup to swap backends
-(Snowflake, Postgres, SQLite). Job reads also honor backend environment
-configuration before API startup; unconfigured jobs remain in memory.
-"""
+"""Shared backend registries for API lifecycle and request handlers."""
 
 from __future__ import annotations
 
@@ -27,6 +20,7 @@ from agent_bom.api.storage.job_cache import (
 from agent_bom.api.storage.job_cache import (
     _jobs_is_compacted as _jobs_is_compacted,
 )
+from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
@@ -152,7 +146,7 @@ def _get_idempotency_store() -> Any:
     if _idempotency_store is None:
         with _store_lock:
             if _idempotency_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     # Multi-replica deployments must share idempotency state so a
                     # retried write is recognized on any replica; a per-process
                     # in-memory map would silently drop the same-key-different-body
@@ -273,7 +267,7 @@ def _get_tenant_quota_store() -> TenantQuotaStore:
             if _tenant_quota_store is None:
                 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore, SqlTenantQuotaStore
 
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     _tenant_quota_store = SqlTenantQuotaStore.postgres()
                 elif os.environ.get("AGENT_BOM_DB"):
                     _tenant_quota_store = SqlTenantQuotaStore.sqlite(os.environ["AGENT_BOM_DB"])
@@ -298,7 +292,7 @@ def _get_tenant_graph_retention_store() -> TenantGraphRetentionStore:
     if _tenant_graph_retention_store is None:
         with _store_lock:
             if _tenant_graph_retention_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.tenant_graph_retention_store import PostgresTenantGraphRetentionStore
 
                     _tenant_graph_retention_store = PostgresTenantGraphRetentionStore()
@@ -329,7 +323,7 @@ def _get_tenant_score_config_store() -> TenantScoreConfigStore:
     if _tenant_score_config_store is None:
         with _store_lock:
             if _tenant_score_config_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.postgres_tenant_score_config import PostgresTenantScoreConfigStore
 
                     _tenant_score_config_store = PostgresTenantScoreConfigStore()
@@ -362,7 +356,7 @@ def _get_scim_store() -> SCIMStore:
     if _scim_store is None:
         with _store_lock:
             if _scim_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.postgres_scim import PostgresSCIMStore
 
                     _scim_store = PostgresSCIMStore()
@@ -428,7 +422,11 @@ def _get_mcp_observation_store() -> MCPObservationStore:
     if _mcp_observation_store is None:
         with _store_lock:
             if _mcp_observation_store is None:
-                if os.environ.get("AGENT_BOM_DB"):
+                if postgres_deployment_configured():
+                    from agent_bom.api.storage.observation_registries import PostgresMCPObservationStore
+
+                    _mcp_observation_store = PostgresMCPObservationStore()
+                elif os.environ.get("AGENT_BOM_DB"):
                     from agent_bom.api.mcp_observation_store import SQLiteMCPObservationStore
 
                     _mcp_observation_store = SQLiteMCPObservationStore(os.environ["AGENT_BOM_DB"])
@@ -451,7 +449,11 @@ def _get_issue_mapping_store() -> IssueMappingStore:
     if _issue_mapping_store is None:
         with _store_lock:
             if _issue_mapping_store is None:
-                if os.environ.get("AGENT_BOM_DB"):
+                if postgres_deployment_configured():
+                    from agent_bom.api.storage.observation_registries import PostgresIssueMappingStore
+
+                    _issue_mapping_store = PostgresIssueMappingStore()
+                elif os.environ.get("AGENT_BOM_DB"):
                     from agent_bom.api.issue_mapping_store import SQLiteIssueMappingStore
 
                     _issue_mapping_store = SQLiteIssueMappingStore(os.environ["AGENT_BOM_DB"])
@@ -501,7 +503,7 @@ def _get_trend_store() -> Any:
     if _trend_store is None:
         with _store_lock:
             if _trend_store is None:
-                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                if postgres_deployment_configured():
                     from agent_bom.api.postgres_store import PostgresTrendStore
 
                     _trend_store = PostgresTrendStore()
@@ -535,7 +537,7 @@ def _get_graph_store() -> GraphStoreProtocol:
                 backend = os.environ.get("AGENT_BOM_GRAPH_BACKEND", "").strip().lower()
                 if backend == "neptune":
                     _graph_store = NeptuneGraphStore()
-                elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                elif postgres_deployment_configured():
                     from agent_bom.api.postgres_store import PostgresGraphStore
 
                     _graph_store = PostgresGraphStore()
@@ -564,8 +566,6 @@ def _get_graph_scenario_store() -> GraphScenarioStore:
     if _graph_scenario_store is None:
         with _store_lock:
             if _graph_scenario_store is None:
-                from agent_bom.api.storage_schema import postgres_deployment_configured
-
                 if postgres_deployment_configured():
                     from agent_bom.api.postgres_graph_scenario import PostgresGraphScenarioStore
 

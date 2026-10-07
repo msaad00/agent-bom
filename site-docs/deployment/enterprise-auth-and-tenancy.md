@@ -74,6 +74,14 @@ support data, see
 | Trusted proxy | same-origin ingress or auth gateway in front of API | `X-Agent-Bom-Tenant-ID` | `X-Agent-Bom-Role` | enable `AGENT_BOM_TRUST_PROXY_AUTH=1`; set exact `AGENT_BOM_TRUSTED_PROXY_HOPS` and API-facing `AGENT_BOM_TRUSTED_PROXY_CIDRS` before forwarded addresses affect auth rate limits |
 | mTLS | proxy/gateway → API transport | n/a | n/a | not an identity path |
 
+## Credential display and detection
+
+Error and log sanitization redact recognizable bearer credentials and generated
+`abom_` API keys. The file scanner and runtime credential detector also recognize
+short tokens in explicit bearer headers. Detection identifies exposed credential
+material; it does not prove that a token is valid. Runtime blocking still follows
+the configured proxy or gateway policy.
+
 ## RBAC model
 
 `agent-bom` keeps the role model intentionally small:

@@ -237,6 +237,7 @@ def validate_path(
 
 
 _VALUE_CREDENTIAL_PATTERNS = [
+    re.compile(r"(?<![A-Za-z0-9_-])abom_[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])"),  # Generated control-plane API keys
     re.compile(r"(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}", re.I),  # Stripe/service keys
     # Require a token boundary so ordinary identifiers containing ``risk-``
     # are not truncated from the embedded ``sk-`` onward.
@@ -1228,17 +1229,11 @@ def validate_image_ref(ref: str) -> str:
 
 
 def sanitize_error(exc: Exception | str, generic: bool = False, *, max_length: int = 200) -> str:
-    """Return a safe error message suitable for API consumers.
+    """Redact credentials, PII, paths and URLs from API error messages.
 
-    Strips sensitive data (file paths, URLs) from exception messages while
-    preserving safe, actionable text.  Set ``generic=True`` to always return
-    a fixed non-diagnostic string regardless of the exception content.
-
-    ``max_length`` caps arbitrary SDK/exception text so a pathological message
-    cannot flood a response or a terminal. Callers passing text this codebase
-    *authored* (curated remediation guidance, which is bounded by construction)
-    may raise the cap so multi-sentence guidance is not chopped mid-word — the
-    redaction above always still applies.
+    ``generic=True`` returns a fixed non-diagnostic message. ``max_length``
+    bounds the response; callers with authored remediation text may raise
+    this cap without disabling redaction.
     """
     if generic:
         return "An internal error occurred. Please contact support."
@@ -1246,6 +1241,9 @@ def sanitize_error(exc: Exception | str, generic: bool = False, *, max_length: i
     msg = str(exc)
     # Strip URLs first (before path regex matches the path portion)
     msg = re.sub(r"https?://[^\s\"']+", "<url>", msg)
+    # Apply the same recognizable credential rules used for logs before the
+    # path scrubber can split a bearer token containing a slash.
+    msg = sanitize_text(msg, max_len=len(msg))
     # Strip inline credential assignments commonly included in SDK error strings.
     msg = re.sub(
         r"(?i)\b(token|secret|password|passwd|api[_-]?key|access[_-]?key|session[_-]?token)\s*=\s*[^\s,;]+",

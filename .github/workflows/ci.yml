@@ -105,7 +105,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(pyproject\.toml|uv\.lock|Dockerfile|\.github/actions/setup-python/)'; then
             alpine_full=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(deploy/docker/Dockerfile.native-app$|deploy/snowflake/native-app/|tests/test_native_app_persistence\.py$|src/agent_bom/(api/snowflake_store\.py|cloud/snowflake)|pyproject\.toml$|uv\.lock$|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(deploy/docker/Dockerfile.(native-app|snowpark)$|deploy/snowflake/native-app/|tests/test_(native_app_persistence|snowpark_image)\.py$|src/agent_bom/(api/snowflake_store\.py|cloud/snowflake)|pyproject\.toml$|uv\.lock$|\.github/workflows/ci\.yml$)'; then
             native_image=true
           fi
           # The measured graph heap/scale assertion takes about six minutes by
@@ -1803,10 +1803,13 @@ jobs:
       - uses: ./.github/actions/setup-python
         with:
           python-version: '3.11'
+      - name: Build standalone Snowpark image
+        run: docker buildx build --load --platform linux/amd64 -f deploy/docker/Dockerfile.snowpark -t agent-bom:snowpark-test .
       - name: Verify privilege drop and durable evidence across container replacement
         env:
           AGENT_BOM_TEST_NATIVE_IMAGE: agent-bom:native-test
-        run: uv run --extra dev pytest tests/test_native_app_persistence.py -q
+          AGENT_BOM_TEST_SNOWPARK_IMAGE: agent-bom:snowpark-test
+        run: uv run --extra dev pytest tests/test_native_app_persistence.py tests/test_snowpark_image.py -q
 
   # 5. Docker Build + Scan (multi-arch)
   # Post-merge only: the emulated arm64 build takes ~6 minutes. A Dockerfile or

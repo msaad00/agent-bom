@@ -62,9 +62,11 @@ def _observe_runtime_source(scan: _LayerScan, read_member: Callable) -> None:
     path = f"usr/local/lib/python{branch}/tarfile.py"
     hashes = getattr(package, "_cpython_source_hashes", {})
     whiteouts = {name.removeprefix("./") for name in _layer_whiteouts(scan.names)}
-    replaced = [member for member in scan.layer_tf.getmembers() if member.name.removeprefix("./") == path]
-    removed = any(path == name or (name.endswith("/") and path.startswith(name)) for name in whiteouts)
-    if not replaced and not removed:
+    members = {member.name.removeprefix("./").rstrip("/"): member for member in scan.layer_tf.getmembers()}
+    replaced = [members[path]] if path in members else []
+    obscured = any(path.startswith(name + "/") and not member.isdir() for name, member in members.items())
+    removed = any(path == name or path.startswith(name.rstrip("/") + "/") for name in whiteouts)
+    if not replaced and not removed and not obscured:
         return
     hashes.pop(path, None)
     package.version_evidence = [
@@ -73,7 +75,7 @@ def _observe_runtime_source(scan: _LayerScan, read_member: Callable) -> None:
     # A whiteout removes lower layers only; a same-layer regular replacement
     # supplies the final bytes. Links and unreadable/oversized members invalidate
     # an earlier observation without asserting a new one.
-    if replaced and replaced[-1].isfile():
+    if replaced and replaced[-1].isfile() and not obscured:
         stream = read_member(scan.layer_tf, replaced[-1].name)
         if stream is not None:
             content = stream.read(1_000_001)

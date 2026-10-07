@@ -145,13 +145,13 @@ def schedule_posture_precompute(tenant_id: str | None) -> None:
         _PRECOMPUTE_COND.notify_all()
 
 
-def announce_scan_evidence(jobs: Iterable[Any]) -> None:
+def announce_scan_evidence(jobs: Iterable[Any], *, source_is_memory: bool = False) -> None:
     """Job-store write hook: schedule a precompute for tenants with a completed scan."""
     for tenant_id in {job.tenant_id for job in jobs if getattr(getattr(job, "status", None), "value", None) == "done"}:
         schedule_posture_precompute(tenant_id)
         from agent_bom.api.campaign_reconciliation import notify_campaign_evidence
 
-        notify_campaign_evidence(tenant_id)
+        notify_campaign_evidence(tenant_id, source_is_memory=source_is_memory)
 
 
 def _next_due_tenant() -> str:

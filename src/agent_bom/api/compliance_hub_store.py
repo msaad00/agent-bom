@@ -933,7 +933,7 @@ class InMemoryComplianceHubStore:
         with self._lock:
             self._overview_revisions[tenant_id] = self._overview_revisions.get(tenant_id, 0) + 1
         invalidate_tenant(tenant_id)
-        hub_overview_cache.invalidate_tenant(tenant_id)
+        hub_overview_cache.invalidate_tenant(tenant_id, source_is_memory=True)
 
     def overview_evidence_revision(self, tenant_id: str) -> int:
         tenant_id = require_explicit_tenant_id(tenant_id)

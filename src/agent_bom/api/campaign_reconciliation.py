@@ -10,7 +10,13 @@ import logging
 from dataclasses import replace
 from typing import Any
 
-from agent_bom.api.campaign_store import InMemoryCampaignStore, MembershipEvidence, get_campaign_store
+from agent_bom.api.campaign_store import (
+    CampaignWorkflow,
+    InMemoryCampaignStore,
+    MembershipEvidence,
+    SQLiteCampaignStore,
+    get_campaign_store,
+)
 from agent_bom.api.risk_campaigns import derive_campaigns
 from agent_bom.api.storage.campaign_revisions import CampaignAlreadyReconciledError, CampaignEvidenceChangedError
 from agent_bom.api.tenant_worker import run_tenant_bound
@@ -19,12 +25,16 @@ _logger = logging.getLogger(__name__)
 _cursor = ""
 
 
-def notify_campaign_evidence(tenant_id: str) -> None:
+def notify_campaign_evidence(tenant_id: str, *, source_is_memory: bool = False) -> None:
     try:
         store = get_campaign_store()
         if isinstance(store, InMemoryCampaignStore):
             with store._lock:
                 store.evidence_state.changed(tenant_id)
+        elif source_is_memory and isinstance(store, SQLiteCampaignStore):
+            # Default single-node evidence is ephemeral, while workflow state
+            # is durable. No SQL source trigger can enqueue these writes.
+            store.evidence_state.changed(tenant_id)
     except Exception:  # broad-except: Notifications must not fail evidence writes that have already committed.
         # Persistent source triggers retain pending work despite notification failure.
         _logger.warning("Campaign evidence notification deferred")
@@ -194,3 +204,22 @@ def poll_campaign_reconciliation() -> None:
         reconcile_pending_campaigns()
     except Exception:  # broad-except: A queue read failure must not stop unrelated maintenance; the next poll retries.
         _logger.warning("Campaign evidence reconciliation poll deferred")
+
+
+def verification_membership(request: Any, campaign_id: str, source: dict[str, Any]) -> CampaignWorkflow:
+    """Seed only missing workflow evidence on a verification write, never a GET."""
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes.campaigns import _tenant
+
+    tenant_id = _tenant(request)
+    store = get_campaign_store()
+    stored = store.get(tenant_id, campaign_id)
+    if stored is None:
+        # Preserve historical membership for comparison when findings vanish.
+        # Complete-source and revision fences remain owned by reconciliation.
+        _reconcile_campaigns(request, source)
+        stored = store.get(tenant_id, campaign_id)
+    if stored is None or not stored.member_ids:
+        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
+    return stored

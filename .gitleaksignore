@@ -63,3 +63,8 @@ cd496ee29315908bdc01d925ad155c10d96a4de5:tests/api/test_push_evidence_hardening.
 # Current tests assemble the same non-functional detector input at runtime.
 f7b9e1c3a766d322afa17733fc5a20e8b961709d:tests/test_secret_scanner.py:aws-access-token:143
 f7b9e1c3a766d322afa17733fc5a20e8b961709d:tests/test_scanner_operator_messages.py:aws-access-token:25
+
+# History-only false positives from the default-campaign test fixture.
+# The current test generates its throwaway authentication value at runtime.
+a08bc8ae15904134d15fc289fff0d84a4067e639:tests/test_campaign_default_backend.py:generic-api-key:22
+a08bc8ae15904134d15fc289fff0d84a4067e639:tests/test_campaign_default_backend.py:generic-api-key:43

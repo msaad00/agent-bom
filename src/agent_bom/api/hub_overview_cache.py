@@ -156,7 +156,7 @@ def set_cached_failing_frameworks(
         _framework_entries[tenant_id] = _FrameworkEntry(counts=dict(counts), expires_at=now + ttl, revision=revision)
 
 
-def invalidate_tenant(tenant_id: str) -> None:
+def invalidate_tenant(tenant_id: str, *, source_is_memory: bool = False) -> None:
     """Drop the cached histogram for a tenant after any hub-ledger mutation.
 
     Every hub write path calls this, so it also schedules the tenant's
@@ -172,7 +172,7 @@ def invalidate_tenant(tenant_id: str) -> None:
     schedule_posture_precompute(tenant_id)
     from agent_bom.api.campaign_reconciliation import notify_campaign_evidence
 
-    notify_campaign_evidence(tenant_id)
+    notify_campaign_evidence(tenant_id, source_is_memory=source_is_memory)
 
 
 def reset_hub_overview_cache() -> None:

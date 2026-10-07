@@ -43,5 +43,5 @@ export function useNewerGraphSnapshot(scanId: string, owner: string, enabled: bo
     document.addEventListener("visibilitychange", checkVisible);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", checkVisible); active.current?.abort(); active.current = null; };
   }, [refresh]);
-  return { ...(state.scope === scope ? state : { newer: null, error: false, checked: false, checking: false }), refresh };
+  return { ...(state.scope === scope ? state : { newer: null, error: false, checked: false, checking: false, baselineKnown: undefined }), refresh };
 }

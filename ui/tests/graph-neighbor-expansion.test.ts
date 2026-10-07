@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mergeGraphNeighborExpansions } from "@/lib/graph-neighbor-expansion";
+import { mergeGraphNeighborExpansions, boundedInvestigationGraph } from "@/lib/graph-neighbor-expansion";
 import { EntityType, RelationshipType, type UnifiedGraphData } from "@/lib/graph-schema";
 
 const graph = {
@@ -34,5 +34,25 @@ describe("mergeGraphNeighborExpansions", () => {
     expect(expanded.nodes.map((node) => node.id)).toEqual(["agent:1", "server:1"]);
     expect(expanded.edges.map((edge) => edge.id)).toEqual(["edge:1"]);
     expect(expanded.scan_id).toBe("scan-1");
+  });
+});
+
+describe("bounded investigation", () => {
+  it.each([10, 1000, 10000])("retains selected-path evidence within the %i-node fixture", (size) => {
+    const nodes = Array.from({ length: size }, (_, index) => ({ ...graph.nodes[0]!, id: `n-${index}` }));
+    const edges = nodes.slice(1).map((node, index) => ({ id: `e-${index}`, source: nodes[index]!.id, target: node.id, relationship: RelationshipType.USES }));
+    const input = { ...graph, nodes, edges } as UnifiedGraphData;
+    const result = boundedInvestigationGraph(input, [`n-${size - 1}`], 0);
+    expect(result.graph.nodes.length).toBeLessThanOrEqual(100);
+    expect(result.graph.nodes.some(node => node.id === `n-${size - 1}`)).toBe(true);
+    const ids = new Set(result.graph.nodes.map(node => node.id));
+    expect(result.graph.edges.every(edge => ids.has(edge.source) && ids.has(edge.target))).toBe(true);
+    expect(result.omittedNodes).toBe(size - ids.size);
+    expect(result.graph.stats).toBe(input.stats);
+    if (size > 100) {
+      const next = boundedInvestigationGraph(input, [`n-${size - 1}`], 1);
+      expect(next.graph.nodes.map(node => node.id)).not.toEqual(result.graph.nodes.map(node => node.id));
+      expect(next.graph.nodes.some(node => node.id === `n-${size - 1}`)).toBe(true);
+    }
   });
 });

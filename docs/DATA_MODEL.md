@@ -480,8 +480,8 @@ completed scan jobs, fleet inventory, and gateway policy/audit stores.
 
 | Field | Meaning | Source |
 |---|---|---|
-| `deployment_mode` | `local`, `fleet`, `cluster`, or `hybrid` | derived from the booleans below |
-| `has_local_scan` | direct/local scan evidence exists | `scan_sources` + MCP/agent context |
+| `deployment_mode` | `local`, `fleet`, `cluster`, `hybrid`, `ci`, `ingest`, or `unknown` | observed collection sources; descriptive only |
+| `has_local_scan` | local discovery evidence exists | explicit `agent_discovery` or `filesystem` source receipts; agent/MCP associations alone are insufficient |
 | `has_fleet_ingest` | governed fleet inventory exists | fleet store |
 | `has_cluster_scan` | cluster/GPU/K8s evidence exists | `scan_sources` + fleet agent environment |
 | `has_ci_cd_scan` | CI/CD workflow scanning exists | `scan_sources` (`github_actions`) |

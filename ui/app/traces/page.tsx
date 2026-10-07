@@ -70,7 +70,7 @@ function TracesPageContent() {
               type="button"
               onClick={() => setMode("explorer")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
-                mode === "explorer" ? "bg-emerald-600 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                mode === "explorer" ? "bg-emerald-700 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
               }`}
             >
               <GitBranch className="h-3.5 w-3.5" />
@@ -80,7 +80,7 @@ function TracesPageContent() {
               type="button"
               onClick={() => setMode("queue")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
-                mode === "queue" ? "bg-emerald-600 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                mode === "queue" ? "bg-emerald-700 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
               }`}
             >
               <ShieldAlert className="h-3.5 w-3.5" />
@@ -90,7 +90,7 @@ function TracesPageContent() {
               type="button"
               onClick={() => setMode("ingest")}
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
-                mode === "ingest" ? "bg-emerald-600 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
+                mode === "ingest" ? "bg-emerald-700 text-white" : "text-[var(--text-secondary)] hover:text-[var(--foreground)]"
               }`}
             >
               <FileUp className="h-3.5 w-3.5" />
@@ -157,7 +157,7 @@ function TracesPageContent() {
             <button
               onClick={submit}
               disabled={loading || reading}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-800 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Run correlation

@@ -857,7 +857,7 @@ export function Nav() {
         {counts?.deployment_mode && (
           <span
             className="hidden rounded-full border border-outline bg-surface-elevated px-2.5 py-0.5 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-tertiary sm:inline-flex"
-            title={`${deploymentModeLabel(counts.deployment_mode)} deployment — evidence scope for this control plane`}
+            title={`${deploymentModeLabel(counts.deployment_mode)} evidence — observed source receipts; this label does not configure storage or enforcement`}
           >
             {deploymentModeLabel(counts.deployment_mode)}
           </span>

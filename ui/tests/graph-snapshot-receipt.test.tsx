@@ -18,3 +18,9 @@ describe("snapshot receipt", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });
+
+it("distinguishes an unresolved explicit snapshot from a missing snapshot selection", () => {
+  render(<GraphSnapshotReceipt snapshot={null} scanId="retained-id" />);
+  expect(screen.getByText(/Snapshot ID: retained-id/)).toBeInTheDocument();
+  expect(screen.getByText(/metadata is unavailable/i)).toBeInTheDocument();
+});

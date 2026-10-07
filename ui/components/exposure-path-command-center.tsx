@@ -529,7 +529,7 @@ function ExposurePathGraph({ path }: { path: ExposurePath }) {
         )}
       </div>
 
-      {collapsible ? (
+      {collapsible && path.hops.length <= 100 ? (
         <div className="ep-board-controls">
           <button
             type="button"
@@ -569,6 +569,9 @@ function ExposurePathSequence({
   showDesktop: boolean;
 }) {
   const sequenceRef = useRef<HTMLOListElement>(null);
+  const [stepPage, setStepPage] = useState(0);
+  const stepOffset = stepPage * 100;
+  const visibleSteps = path.hops.slice(stepOffset, stepOffset + 100);
   const [scrollState, setScrollState] = useState({ previous: false, next: false });
   const updateScrollState = () => {
     const list = sequenceRef.current;
@@ -591,7 +594,7 @@ function ExposurePathSequence({
   return (
     <div className={showDesktop ? "ep-sequence-lane" : "ep-sequence-lane sm:hidden"}>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[15px] text-ink-secondary">
-        <span>{path.hops.length} ordered steps</span>
+        <span>{path.hops.length} ordered steps{path.hops.length > 100 ? ` · showing ${stepOffset + 1}–${stepOffset + visibleSteps.length}` : ""}</span>
         <div className="flex gap-1">
           <button type="button" disabled={!scrollState.previous} onClick={() => moveSteps(-1)} className="ep-step-control" aria-label="Previous path steps">← Previous</button>
           <button type="button" disabled={!scrollState.next} onClick={() => moveSteps(1)} className="ep-step-control" aria-label="Next path steps">Next →</button>
@@ -605,7 +608,8 @@ function ExposurePathSequence({
       className="ep-sequence"
       data-testid="exposure-path-sequence"
     >
-      {path.hops.map((hop, index) => {
+      {visibleSteps.map((hop, pageIndex) => {
+        const index = stepOffset + pageIndex;
         const meta = ROLE_META[hop.role] ?? ROLE_META.unknown;
         const Icon = meta.icon;
         const roleLabel = hop.kindLabel ?? meta.label;
@@ -652,6 +656,10 @@ function ExposurePathSequence({
         );
       })}
     </ol>
+    {path.hops.length > 100 ? <nav aria-label="Ordered path pages" className="flex items-center gap-3 py-2">
+      <button type="button" className="ep-step-control" disabled={stepPage === 0} onClick={() => setStepPage(value => value - 1)}>Previous 100 steps</button>
+      <button type="button" className="ep-step-control" disabled={stepOffset + 100 >= path.hops.length} onClick={() => setStepPage(value => value + 1)}>Next 100 steps</button>
+    </nav> : null}
     </div>
   );
 }

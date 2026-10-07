@@ -191,3 +191,11 @@ it("renders malformed legacy receipts without granting proof", () => {
   render(<AttackPathCorrelationProof path={path} />);
   expect(screen.getByText("Hop receipts incomplete")).toBeInTheDocument();
 });
+
+it("shows the server ranking reasons without deriving a browser score", () => {
+  const path = { source: "a", target: "b", hops: ["a", "b"], edges: [], hop_evidence: [] } as unknown as GraphAttackPath;
+  render(<AttackPathCorrelationProof path={path} riskReasons={[{ kind: "credential", label: "Credential association", detail: "Recorded credential edge raises review priority; access remains unverified." }]} />);
+  expect(screen.getByText("Why this path ranks here")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Why this path ranks here"));
+  expect(screen.getByText(/Recorded credential edge raises review priority/)).toBeVisible();
+});

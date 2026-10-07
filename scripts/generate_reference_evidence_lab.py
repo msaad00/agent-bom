@@ -29,7 +29,6 @@ from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGr
 from agent_bom.graph.correlation_service import CorrelationRequest, GraphCorrelationService  # noqa: E402
 from agent_bom.iac import scan_iac_with_context  # noqa: E402
 from agent_bom.parsers import scan_project_directory  # noqa: E402
-from agent_bom.runtime.correlation_facts import create_runtime_facts_bundle_from_correlation  # noqa: E402
 from agent_bom.sbom import load_sbom  # noqa: E402
 from agent_bom.scanners.package_scan import default_scan_options, scan_packages  # noqa: E402
 
@@ -294,14 +293,7 @@ def _runtime_observation() -> dict[str, str]:
     }
 
 
-def _runtime_control(run: Any, graph: UnifiedGraph, snapshot_metadata: dict[str, Any], observation: dict[str, str]) -> dict[str, Any]:
-    fixed_now = CREATED + timedelta(minutes=6)
-
-    class FixedClock(datetime):
-        @classmethod
-        def now(cls, tz: Any = None) -> datetime:
-            return fixed_now if tz is None else fixed_now.astimezone(tz)
-
+def _runtime_control(observation: dict[str, str]) -> dict[str, Any]:
     audit: list[dict[str, Any]] = []
     upstream_calls: list[str] = []
 
@@ -312,55 +304,32 @@ def _runtime_control(run: Any, graph: UnifiedGraph, snapshot_metadata: dict[str,
     async def sink(event: dict[str, Any]) -> None:
         audit.append(event)
 
-    with patch("agent_bom.runtime.correlation_facts.datetime", FixedClock):
-        bundle = create_runtime_facts_bundle_from_correlation(
-            run,
-            graph,
-            snapshot_metadata=snapshot_metadata,
-            signing_key=_RUNTIME_FACTS_KEY,
-            ttl_seconds=300,
-            now=fixed_now,
-            key_id="reference-lab",
-        )
-
-        async def fetch() -> dict[str, Any]:
-            return bundle
-
-        settings = _gateway_settings(mode="enforce", caller=caller, audit_sink=sink)
-        settings.graph_reachability_bundle_fetcher = fetch
-        settings.graph_reachability_bundle_signing_key = _RUNTIME_FACTS_KEY
-        settings.graph_reachability_bundle_tenant_id = TENANT
-        settings.graph_reachability_bundle_poll_interval_seconds = 0
-        with patch.dict(
-            os.environ,
-            {"AGENT_BOM_EPHEMERAL_STORE": "1", "AGENT_BOM_TENANT_ID": TENANT},
-            clear=False,
-        ):
-            with TestClient(create_gateway_app(settings)) as client:
-                response = client.post(
-                    "/mcp/reference",
-                    headers={"Authorization": "Bearer reference-gateway-token"},
-                    json=_gateway_call(),
-                )
-
+    settings = _gateway_settings(mode="off", caller=caller, audit_sink=sink)
+    settings.policy = {
+        "agent_tokens": {"reference-token": RUNTIME_ID},
+        "rules": [{"id": "restrict-image-decoding", "action": "block", "block_tools": [TOOL_NAME]}],
+    }
+    with patch.dict(os.environ, {"AGENT_BOM_EPHEMERAL_STORE": "1", "AGENT_BOM_TENANT_ID": TENANT}, clear=False):
+        with TestClient(create_gateway_app(settings)) as client:
+            response = client.post("/mcp/reference", headers={"Authorization": "Bearer reference-gateway-token"}, json=_gateway_call())
     body = response.json()
     error = body.get("error") if isinstance(body, dict) else None
-    blocked = next((event for event in audit if event.get("action") == "gateway.graph_reachability_blocked"), None)
+    blocked = next((event for event in audit if event.get("action") == "gateway.policy_blocked"), None)
     if response.status_code != 200 or not isinstance(error, dict) or error.get("code") != -32001 or upstream_calls or blocked is None:
-        raise RuntimeError("reference lab strict gateway smoke failed")
+        raise RuntimeError("reference lab explicit policy gateway smoke failed")
     data = error.get("data") if isinstance(error.get("data"), dict) else {}
     return {
         **observation,
         "verification": "live_jsonrpc_gateway_smoke",
         "strict_block": "verified",
-        "blocked_event": str(blocked.get("event_id") or blocked.get("action") or "gateway.graph_reachability_blocked"),
+        "blocked_event": str(blocked.get("action")),
         "blocked_error_code": int(error["code"]),
-        "policy_id": "strict-correlated-evidence",
+        "policy_id": "restrict-image-decoding",
         "policy_source": str(data.get("policy_source") or ""),
-        "correlation_id": str(blocked.get("correlation_id") or ""),
-        "manifest_sha256": str(blocked.get("manifest_sha256") or ""),
+        "policy_condition": "explicit tool-name block",
         "failure_mode": "deny",
         "global_default": "off",
+        "evidence_boundary": "Local policy enforcement; no exploitability or cloud-resource activity inferred.",
     }
 
 
@@ -568,18 +537,6 @@ def _snapshots(
     mcp = _graph("reference-mcp-config-scan", 3)
     mcp.add_node(
         _node(
-            "vulnerability:mcp:cve-2023-4863",
-            EntityType.VULNERABILITY,
-            advisory,
-            source="mcp_config",
-            attributes={"canonical_id": advisory},
-            index=3,
-            severity="high",
-            risk_score=8.8,
-        )
-    )
-    mcp.add_node(
-        _node(
             "tool:mcp:render-untrusted-image",
             EntityType.TOOL,
             str(mcp_evidence["tool_name"]),
@@ -589,19 +546,6 @@ def _snapshots(
                 "stable_id": str(mcp_evidence["tool_id"]),
                 "capabilities": ["file_read", "image_decode"],
             },
-            index=3,
-            severity="high",
-            risk_score=8.0,
-        )
-    )
-    mcp.add_edge(
-        _edge(
-            "vulnerability:mcp:cve-2023-4863",
-            "tool:mcp:render-untrusted-image",
-            RelationshipType.EXPLOITABLE_VIA,
-            scan_id=mcp.scan_id,
-            source_kind="mcp_config",
-            evidence_tier="static_evidence",
             index=3,
         )
     )
@@ -623,13 +567,12 @@ def _snapshots(
     )
     runtime.add_node(
         _node(
-            "identity:runtime:reference-workload",
-            EntityType.SERVICE_ACCOUNT,
+            "agent:runtime:reference-workload",
+            EntityType.AGENT,
             str(identity["runtime_id"]),
             source="gateway_runtime",
             attributes={
-                "canonical_id": f"provider-identity:{identity['provider_identity_id']}",
-                "provider_identity_id": str(identity["provider_identity_id"]),
+                "canonical_id": f"runtime-agent:{runtime_observation['runtime_id']}",
                 "runtime_id": str(runtime_observation["runtime_id"]),
             },
             index=4,
@@ -637,9 +580,9 @@ def _snapshots(
     )
     runtime.add_edge(
         _edge(
+            "agent:runtime:reference-workload",
             "tool:runtime:render-untrusted-image",
-            "identity:runtime:reference-workload",
-            RelationshipType.AUTHENTICATES_AS,
+            RelationshipType.INVOKED,
             scan_id=runtime.scan_id,
             source_kind="gateway_runtime",
             evidence_tier="runtime_observed",
@@ -665,6 +608,27 @@ def _snapshots(
     )
     identity_graph.add_node(
         _node(
+            "agent:model:reference-workload",
+            EntityType.AGENT,
+            str(identity["runtime_id"]),
+            source="identity_model",
+            attributes={"canonical_id": f"runtime-agent:{identity['runtime_id']}", "runtime_id": identity["runtime_id"], "modeled": True},
+            index=5,
+        )
+    )
+    identity_graph.add_edge(
+        _edge(
+            "agent:model:reference-workload",
+            "identity:model:reference-workload",
+            RelationshipType.AUTHENTICATES_AS,
+            scan_id=identity_graph.scan_id,
+            source_kind="identity_model",
+            evidence_tier="modeled_infrastructure",
+            index=5,
+        )
+    )
+    identity_graph.add_node(
+        _node(
             "data-store:reference-customer-records",
             EntityType.DATA_STORE,
             str(target["label"]),
@@ -677,8 +641,6 @@ def _snapshots(
                 "modeled": True,
             },
             index=5,
-            severity="critical",
-            risk_score=9.5,
         )
     )
     identity_graph.add_edge(
@@ -729,24 +691,14 @@ async def _build_payload() -> dict[str, Any]:
         if completed.status.value != "complete":
             raise RuntimeError(f"reference correlation failed: {completed.failure_code}")
         output = store.load_graph(tenant_id=TENANT, scan_id=CORRELATION_ID)
-        proof = next(
-            (
-                path
-                for path in output.attack_paths
-                if path.source == "service:reference-api" and path.target == "data-store:reference-customer-records"
-            ),
-            None,
-        )
-        if proof is None:
-            raise RuntimeError("reference correlation did not produce the expected end-to-end attack path")
-        snapshot_metadata = next(row for row in store.list_snapshots(tenant_id=TENANT, limit=32) if row["scan_id"] == CORRELATION_ID)
-        runtime_control = _runtime_control(completed, output, snapshot_metadata, runtime_observation)
+        runtime_control = _runtime_control(runtime_observation)
+        from agent_bom.api.routes.graph import _fix_first_graph_view_payload
+
+        fix_first = _fix_first_graph_view_payload(output, cve="", package="", agent="", limit=10)
 
         purl = str(scanner_evidence["package"])
-        advisory = str(scanner_evidence["advisory"])
         image_digest = str(sources["sbom"]["image_digest"])
         tool_id = str(sources["mcp"]["tool_id"])
-        provider_identity_id = str(sources["identity"]["identity"]["provider_identity_id"])
 
         return {
             "schema_version": "agent-bom.reference-evidence-lab/v1",
@@ -771,29 +723,31 @@ async def _build_payload() -> dict[str, Any]:
                     "source_snapshots": ["reference-repository-scan", "reference-image-sbom-scan"],
                 },
                 {
-                    "entity_type": "vulnerability",
-                    "canonical_id": advisory,
-                    "basis": "canonical_advisory_id",
-                    "source_snapshots": ["reference-image-sbom-scan", "reference-mcp-config-scan"],
-                },
-                {
                     "entity_type": "tool",
                     "canonical_id": tool_id,
                     "basis": "stable_runtime_id",
                     "source_snapshots": ["reference-mcp-config-scan", "reference-runtime-observation"],
                 },
                 {
-                    "entity_type": "service_account",
-                    "canonical_id": f"provider-identity:{provider_identity_id}",
-                    "basis": "provider_identity_id",
+                    "entity_type": "agent",
+                    "canonical_id": f"runtime-agent:{RUNTIME_ID}",
+                    "basis": "stable_runtime_id",
                     "source_snapshots": ["reference-runtime-observation", "reference-identity-permission-scan"],
                 },
             ],
             "runtime_control": runtime_control,
             "correlation": completed.to_dict(),
-            "proof_path": proof.to_dict(),
+            "proof_path": output.attack_paths[0].to_dict() if output.attack_paths else None,
+            "evidence_matrix": {
+                "dependency_advisory": {"status": "matched", "basis": "pinned offline advisory"},
+                "tool_invocation": {"status": "observed", "basis": "local authenticated gateway call"},
+                "granted_access": {"status": "modeled", "basis": "local identity model"},
+                "resource_activity": {"status": "not_observed"},
+                "exploitability": {"status": "not_established"},
+            },
             "capture_fixture": {
                 "graph": output.to_dict(),
+                "fix_first": fix_first,
                 "snapshots": [
                     {
                         "scan_id": graph.scan_id,
@@ -824,8 +778,17 @@ def _render(payload: dict[str, Any]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Fail when the committed generated proof is stale.")
+    parser.add_argument("--output-dir", type=Path, help="Create a preserved local before/after scan session in a new directory.")
     args = parser.parse_args()
-    rendered = _render(asyncio.run(_build_payload()))
+    if args.check and args.output_dir:
+        parser.error("--check cannot write a local session")
+    payload = asyncio.run(_build_payload())
+    if args.output_dir:
+        from reference_lab_session import write_session
+
+        graphs = _snapshots(payload["scanner_evidence"], _source_evidence()[1], payload["runtime_control"])
+        asyncio.run(write_session(args.output_dir, payload, [graph.to_dict() for graph in graphs]))
+    rendered = _render(payload)
     rendered_digest = f"sha256:{hashlib.sha256(rendered.encode('utf-8')).hexdigest()}\n"
     if args.check:
         if (

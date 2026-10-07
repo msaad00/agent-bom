@@ -33,9 +33,7 @@ const CANONICAL_GRAPH_LENSES: GraphLens[] = [
     label: "Estate",
     icon: "◫",
     href: "/security-graph?lens=estate&rollup=1",
-    match: (p, _scope, lens, hasLegacyAttackFocus) =>
-      isSecurityGraphPath(p) &&
-      (lens === "estate" || (!lens && !hasLegacyAttackFocus)),
+    match: (p, _scope, lens) => isSecurityGraphPath(p) && lens === "estate",
   },
   {
     id: "cloud",
@@ -75,9 +73,7 @@ const CANONICAL_GRAPH_LENSES: GraphLens[] = [
     label: "Attack Paths",
     icon: "🎯",
     href: "/security-graph?lens=attack-path",
-    match: (p, _scope, lens, hasLegacyAttackFocus) =>
-      isSecurityGraphPath(p) &&
-      (lens === "attack-path" || (!lens && hasLegacyAttackFocus)),
+    match: (p, _scope, lens) => isSecurityGraphPath(p) && (lens === "attack-path" || !lens),
   },
   {
     id: "asset-drift",

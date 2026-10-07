@@ -21,7 +21,7 @@ export function graphAnalysisStatusCopy(status: GraphAnalysisStatus | undefined)
   if (!status || status.status === "not_recorded") {
     return {
       label: "Analysis status unavailable",
-      detail: "This snapshot does not prove whether attack-path analysis completed. Run a fresh scan for a verified result.",
+      detail: "No analysis receipt is available for this evidence scope. Inspect source observations or ingest a completed analysis; missing status is not a request failure or a clean result.",
       tone: "neutral",
     };
   }

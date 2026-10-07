@@ -77,7 +77,7 @@ import {
   type LineageNodeType,
 } from "@/components/lineage-nodes";
 import { useGraphLayout } from "@/lib/use-graph-layout";
-import { compactInvestigationLayout, readableLineageDagreLr } from "@/lib/graph-node-dimensions";
+import { COMPACT_GRAPH_MIN_ZOOM, compactInvestigationLayout, readableLineageDagreLr } from "@/lib/graph-node-dimensions";
 import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
 import {
   aggregateSiblings,
@@ -154,6 +154,7 @@ import type {
   GraphRollupResponse,
 } from "@/lib/api-types";
 import { buildRollupFlowGraph } from "@/lib/graph-rollup-view";
+import { boundedGraphElements } from "@/lib/graph-neighbor-expansion";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 import {
   LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES,
@@ -199,7 +200,7 @@ import {
 // this request limit is not a promise about returned or rendered node counts.
 // Full-estate search and scope summaries remain independent of this selection.
 export function graphFetchLimitForSnapshot(scanId: string, expandedScanId: string | null): number {
-  return scanId && scanId === expandedScanId ? LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES : 250;
+  return scanId && scanId === expandedScanId ? LARGE_GRAPH_OVERVIEW_MAX_RENDERED_NODES : 50;
 }
 
 const GraphDriftLegend = dynamic(
@@ -674,6 +675,7 @@ function GraphPageInner() {
   const { session, loading: authLoading } = useAuthState();
   const [snapshotRetry, setSnapshotRetry] = useState(0);
   const [graphRetry, setGraphRetry] = useState(0);
+  const [canvasPage, setCanvasPage] = useState(0);
   const [expandedGraphScanId, setExpandedGraphScanId] = useState<string | null>(null);
   const loadedGraphScope = useRef<string | null>(null);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
@@ -1023,6 +1025,7 @@ function GraphPageInner() {
 
   useEffect(() => {
     setExpandedClusterIds(new Set());
+    setCanvasPage(0);
     setPinnedFocusId(null);
     setHoveredNodeId(null);
     setReachabilitySummary(null);
@@ -1030,6 +1033,7 @@ function GraphPageInner() {
   }, [serverFilterKey]);
 
   useEffect(() => {
+    if (!selectedScanId) return;
     investigationRequestId.current++;
     investigationAbort.current?.abort();
     setLoadingBlast(false);
@@ -1392,6 +1396,7 @@ function GraphPageInner() {
 
     api
       .getGraphRollup(selectedScanId, {
+        limit: 100,
         ...(drillNode ? { node: drillNode } : {}),
         ...(filters.severity ? { minSeverity: filters.severity } : {}),
         ...(childOffset ? { offset: childOffset, snapshotGeneration: rollupChildPage?.generation } : {}),
@@ -1733,6 +1738,7 @@ function GraphPageInner() {
 
   useEffect(() => {
     setExpandedClusterIds(new Set());
+    setCanvasPage(0);
     setPinnedFocusId(null);
     setHoveredNodeId(null);
   }, [graphIdentityKey]);
@@ -1747,7 +1753,7 @@ function GraphPageInner() {
   const compactGroupedTopology = aggregated.clusters.size > 0 && aggregated.nodes.length <= 6;
   // A short investigation should fit as readable cards, not tiny summary pills
   // separated by the spacing intended for a much larger estate.
-  const investigationLayout = compactInvestigationLayout(Boolean(investigationMode), aggregated.nodes.length);
+  const investigationLayout = compactInvestigationLayout(Boolean(investigationMode) || (!rollupNavigationActive && flow.nodes.length <= 16), aggregated.nodes.length);
   const compactInvestigationTopology = investigationLayout !== undefined;
   const compactMobileTopology = narrowViewport && !selectedAttackPath &&
     !rollupNavigationActive && compactGroupedTopology;
@@ -1756,10 +1762,18 @@ function GraphPageInner() {
     if (!selectedScenarioId || !scenarioComparison?.available || scenarioExpanded || attackPathLens || selectedAttackPath || investigationMode) return undefined;
     return graphScenarioContextIds(aggregated.nodes, aggregated.edges, scenarioComparison.difference, mergedGraphData?.edges);
   }, [selectedScenarioId, scenarioComparison, scenarioExpanded, attackPathLens, selectedAttackPath, investigationMode, aggregated.nodes, aggregated.edges, mergedGraphData?.edges]);
-  const layoutInput = useMemo(
-    () => selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds),
-    [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds],
-  );
+  const layoutInput = useMemo(() => {
+    const selected = selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds);
+    // Decide broad-map rendering before paging the focused React Flow canvas.
+    // Otherwise the 100-node page can never reach the WebGL threshold.
+    const broadMap = !investigationMode && !scenarioContextIds && decideGraphRenderer({
+      nodeCount: selected.nodes.length, edgeCount: selected.edges.length,
+      captureMode, selectedAttackPath: Boolean(selectedAttackPath), rollupActive: rollupNavigationActive,
+      graphOnlyFindings: selected.nodes.every(node => ["vulnerability", "misconfiguration"].includes(node.data.nodeType)),
+    }).kind === "webgl";
+    if (broadMap) return { ...selected, omittedNodes: 0, pageCount: 1, page: 0 };
+    return boundedGraphElements(selected.nodes, selected.edges, [...(attackPathNodeIds ?? scenarioContextIds ?? [])], canvasPage);
+  }, [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds, canvasPage, investigationMode, captureMode, selectedAttackPath, rollupNavigationActive]);
   const { nodes: layoutNodes, edges: layoutEdges, pending: layoutPending } = useGraphLayout(
     graphLayoutKind,
     layoutInput.nodes,
@@ -2298,6 +2312,7 @@ function GraphPageInner() {
     [captureMode, displayEdges.length, displayNodes.length],
   );
   const initialViewportRequest = useMemo<ReturnType<typeof graphInitialFitViewOptions>>(() => {
+    if (!narrowViewport && compactInvestigationTopology) return { ...viewportOptions, minZoom: COMPACT_GRAPH_MIN_ZOOM, maxZoom: 1 };
     if (scenarioExpanded || scenarioContextIds || (investigationMode && displayNodes.length <= 8)) return { ...viewportOptions, maxZoom: 1 };
     // Whole-estate navigation starts with all returned scopes in frame.
     // A selected finding or proposed change keeps its explicit close-up.
@@ -2311,7 +2326,7 @@ function GraphPageInner() {
         return typeof id === "string" ? [id] : [];
       });
     return graphInitialFitViewOptions(displayNodes, viewportOptions, selectedNodeId, proposedIds);
-  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded, scenarioContextIds]);
+  }, [canvasLens, displayNodes, viewportOptions, selectedNodeId, selectedAttackPath, investigationMode, scenarioState, scenarioComparison, scenarioExpanded, scenarioContextIds, narrowViewport, compactInvestigationTopology]);
   const initialAnchorId = initialViewportRequest.nodes?.[0]?.id;
   // React Flow shares this prop with its queued imperative fit operation.
   // Hover/LOD node objects must not overwrite a user's pending Fit all request
@@ -2323,9 +2338,10 @@ function GraphPageInner() {
         : viewportOptions;
       // Scenario views share width with the decision panel and app navigation.
       // Allow the complete proposed context to fit shorter desktop canvases.
+      if (compactInvestigationTopology && !narrowViewport) return { ...options, minZoom: COMPACT_GRAPH_MIN_ZOOM, maxZoom: 1 };
       return selectedScenarioId && !scenarioExpanded ? { ...options, minZoom: 0.75, maxZoom: 1 } : options;
     },
-    [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded],
+    [initialAnchorId, viewportOptions, selectedScenarioId, scenarioExpanded, compactInvestigationTopology, narrowViewport],
   );
   const showMiniMap = useMemo(
     () =>
@@ -3901,6 +3917,11 @@ function GraphPageInner() {
 
           {(loadingGraph || loadingBlast) && graphData && <GraphRefreshOverlay label={loadingBlast ? "Computing blast radius · current view retained" : "Loading related assets · current view retained"} />}
 
+          {layoutInput.omittedNodes > 0 && <div role="group" aria-label="Canvas context pages" className="mt-2 flex flex-wrap items-center gap-2 border-t border-outline pt-2 text-xs text-ink-secondary">
+            <p role="status">{layoutInput.nodes.length} nodes on canvas · {layoutInput.omittedNodes} loaded nodes bundled off canvas.</p>
+            <button type="button" disabled={layoutInput.page === 0} className="graph-page-action disabled:opacity-50" onClick={() => setCanvasPage(layoutInput.page - 1)}>Previous context</button>
+            <button type="button" disabled={layoutInput.page + 1 >= layoutInput.pageCount} className="graph-page-action disabled:opacity-50" onClick={() => setCanvasPage(layoutInput.page + 1)}>Expand next context bundle</button>
+          </div>}
           {graphTruncated && !rollupCanvasOwnsPresentation && (
             <details className="mt-2 border-t border-outline pt-2 text-xs text-ink-secondary" data-testid="graph-partial-view">
               <summary className="cursor-pointer">

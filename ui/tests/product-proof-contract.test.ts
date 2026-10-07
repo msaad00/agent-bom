@@ -33,7 +33,7 @@ describe("product proof capture contract", () => {
     expect(source).toContain("REFERENCE_LAB_DIGEST_PATH");
     expect(source).toContain("Reference evidence lab proof is stale");
     expect(source).toContain("Reference evidence lab source receipt is stale");
-    expect(source).toContain("Reference evidence lab runtime proof is not bound to the completed correlation");
+    expect(source).toContain("Reference evidence lab explicit policy smoke is not verified");
     expect(source).toContain("REFERENCE_LAB.source_artifacts");
     expect(source).toContain("CVE-2023-4863");
     expect(source).not.toContain("DEMO-VULN-");
@@ -127,7 +127,7 @@ describe("product proof capture contract", () => {
     expect(source).not.toContain('"/security-graph?capture=1"');
   });
 
-  it("captures the reference-lab receipt DAG and evidence-complete path from one pinned artifact", () => {
+  it("captures the reference-lab receipts and bounded evidence graph from one pinned artifact", () => {
     expect(source).toContain('path: "correlation-receipts-live.png"');
     expect(source).toContain('path: "correlation-path-live.png"');
     expect(source).toContain('path: "correlation-receipts-light-live.png"');
@@ -137,25 +137,21 @@ describe("product proof capture contract", () => {
     expect(source).toContain('presentation: "light desktop"');
     expect(source).toContain('presentation: "dark mobile"');
     expect(source).toContain('getByTestId("graph-correlation-decision")');
-    expect(source).toContain('getByTestId("attack-path-correlation-proof")');
+    expect(source).toContain("REFERENCE_LAB.capture_fixture.fix_first");
     expect(source).toContain("referenceLabActualDigest");
     expect(source).toContain("correlation_manifest_sha256");
     expect(source).toContain("capturePage.clock.setFixedTime(REFERENCE_CAPTURE_NOW)");
-    expect(source).toContain("Gateway block observed");
+    expect(source).toContain('runtime_control?.policy_source !== "file"');
     expect(source).toContain("Reference evidence lab — modeled local infrastructure");
     expect(source).toContain('window.scrollTo({ top: top - offset, behavior: "instant" })');
     expect(source).toContain("assertNoHorizontalOverflow: true");
-    expect(source).toContain('\'[data-testid="correlation-primary-action"]\'');
+    expect(source).toContain('\'[data-testid="graph-correlation-decision"]\'');
     expect(source).not.toContain('hiddenSelectors: [\'[data-testid="correlation-primary-action"]\']');
     expect(source).toContain('getByTestId("selected-exposure-path")');
     expect(source).toContain('readySelector: \'[data-testid="exposure-path-sequence"]\'');
-    expect(source).toContain('/hops hidden/i');
-    expect(source).toContain('"3. Server"');
-    expect(source).toContain('selector: \'[data-testid="selected-exposure-path"]\'');
-    expect(source).toContain('\'[data-testid="exposure-path-primary-action"]\'');
-    expect(source).toContain("targetWidthPx: 920");
+    expect(source).toContain('rejectedText: ["Exploitable Via"]');
+    expect(source).toContain("maxGraphNodes: referenceGraph.nodes.length");
     expect(source).toContain("minFontPx: 12");
-    expect(source).toContain("const offset = 108;");
   });
 
   it("keeps the base graph fixture from swallowing graph subroutes", () => {

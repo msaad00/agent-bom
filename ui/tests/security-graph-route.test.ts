@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { resolveSecurityGraphSurface } from "@/lib/security-graph-route";
 
 describe("security graph entry routing", () => {
-  it("opens the current estate canvas for an unfocused investigation entry", () => {
-    expect(resolveSecurityGraphSurface(new URLSearchParams())).toBe("estate");
-    expect(resolveSecurityGraphSurface(new URLSearchParams("scan=scan-123"))).toBe("estate");
+  it("opens ranked paths while keeping explicit estate browsing", () => {
+    expect(resolveSecurityGraphSurface(new URLSearchParams())).toBe("attack-path");
+    expect(resolveSecurityGraphSurface(new URLSearchParams("scan=scan-123"))).toBe("attack-path");
   });
 
   it("keeps legacy focused finding links on the attack-path investigation", () => {

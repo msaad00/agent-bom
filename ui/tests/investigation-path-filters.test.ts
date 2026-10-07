@@ -108,3 +108,14 @@ it("preserves explicit unknown severity and never substitutes an asset risk", ()
   expect(filterAttackPathsForInvestigation([path({ hops: ["asset"], composite_risk: 100 })], nodes, filters)).toEqual([]);
   expect(filterAttackPathsForInvestigation([path({ hops: ["finding"], severity: "unknown", composite_risk: 100 })], nodes, filters)).toEqual([]);
 });
+
+it("question presets preserve server order and never infer credentials or criticality from priority", async () => {
+  const { filterInvestigationQuestion } = await import("@/lib/investigation-path-filters");
+  const nodes = new Map([["pkg", node("pkg", "package")], ["v", node("v", "vulnerability")]]);
+  const low = path({ hops: ["pkg", "v"], severity: "low", composite_risk: 99 });
+  const critical = path({ hops: ["pkg", "v"], severity: "critical", composite_risk: 10 });
+  const credential = path({ hops: ["pkg", "v"], credential_exposure: ["redacted credential"] });
+  expect(filterInvestigationQuestion([low, critical, credential], nodes, "critical")).toEqual([critical]);
+  expect(filterInvestigationQuestion([low, credential, critical], nodes, "credentials")).toEqual([credential]);
+  expect(filterInvestigationQuestion([low, critical], nodes, null)).toEqual([low, critical]);
+});

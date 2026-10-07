@@ -302,3 +302,12 @@ it("preserves reverse bidirectional context without inventing traversability", (
   const [edge] = buildPathGraphLayout(path).edges;
   expect(edge).toMatchObject({ label: "Shares Server", direction: "bidirectional", traversable: false });
 });
+
+
+it("keeps oversized expanded paths bounded without inventing a shortcut", () => {
+  const layout = buildPathGraphLayout(makePath(10_000), { expanded: true });
+  expect(layout.nodes.length).toBeLessThanOrEqual(100);
+  expect(layout.collapsed).toBe(true);
+  expect(layout.hiddenHopCount).toBe(9998);
+  expect(layout.edges.every(edge => edge.traversable !== true)).toBe(true);
+});

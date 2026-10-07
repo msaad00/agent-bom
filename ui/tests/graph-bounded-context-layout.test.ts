@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getViewportForBounds, type Edge, type Node } from "@xyflow/react";
 import { graphFitViewOptions } from "@/lib/graph-viewport";
 import { applyDagreLayout } from "@/lib/dagre-layout";
-import { compactInvestigationLayout, READABLE_LINEAGE_DAGRE_LR } from "@/lib/graph-node-dimensions";
+import { COMPACT_GRAPH_MIN_ZOOM, compactInvestigationLayout, READABLE_LINEAGE_DAGRE_LR } from "@/lib/graph-node-dimensions";
 
 function contextGraph() {
   const layers = [["asset"], ["bucket", "table"], ["role", "user", "service"], ["agent", "tool", "repo", "workload", "package"], ["finding"]];
@@ -14,12 +14,12 @@ function contextGraph() {
   return { nodes, edges };
 }
 
-function fit(nodes: Node[], width: number, height: number) {
+function fit(nodes: Node[], width: number, height: number, minZoom = 0.16) {
   const xs = nodes.map((n) => n.position.x), ys = nodes.map((n) => n.position.y);
   const options = graphFitViewOptions({ nodeCount: nodes.length, edgeCount: 16, selectedNode: false, mode: "lineage" });
   return getViewportForBounds({ x: Math.min(...xs), y: Math.min(...ys),
     width: Math.max(...xs) - Math.min(...xs) + width,
-    height: Math.max(...ys) - Math.min(...ys) + height }, 1322, 610, 0.16, options.maxZoom, options.padding).zoom;
+    height: Math.max(...ys) - Math.min(...ys) + height }, 1322, 610, minZoom, options.maxZoom, options.padding).zoom;
 }
 
 describe("bounded investigation layout", () => {
@@ -43,9 +43,9 @@ describe("bounded investigation layout", () => {
       expect(Math.abs(a.position.x - b.position.x) >= footprint.width + footprint.gap - 0.001 ||
         Math.abs(a.position.y - b.position.y) >= footprint.height + footprint.gap - 0.001).toBe(true);
     }
-    const zoom = fit(compact.nodes, footprint.width, footprint.height);
-    // Full-card 18px labels remain readable in the complete desktop fit;
-    // previous summary labels were 11px before the viewport scale.
+    const zoom = fit(compact.nodes, footprint.width, footprint.height, COMPACT_GRAPH_MIN_ZOOM);
+    // The initial viewport preserves readable cards and allows panning when
+    // the full topology exceeds the canvas; Fit all remains an explicit action.
     expect(zoom * 18).toBeGreaterThan(11);
     expect(zoom * 18).toBeGreaterThan(fit(previous.nodes, 300, 140) * 11 * 1.5);
   });

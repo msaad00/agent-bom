@@ -163,6 +163,7 @@ function collectUnifiedFindings(findings: UnifiedFinding[]): EnrichedVuln[] {
       agents: finding.affected_agents ?? [],
       sources: sourceLabel.length > 0 ? sourceLabel : ["finding"],
       detection_source: finding.source || undefined,
+      repository_relative_path: recordString(evidence, "repository_relative_path"),
       affected_servers: uniqueStrings([...(finding.affected_servers ?? []), ...(serverAsset && assetName !== "Unavailable" ? [assetName] : [])]),
       exposed_credentials: finding.exposed_credentials ?? [],
       reachable_tools: finding.exposed_tools ?? [],

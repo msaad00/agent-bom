@@ -227,6 +227,7 @@ describe("GraphCorrelationWorkflow", () => {
     render(<GraphCorrelationWorkflow snapshots={snapshots} initialRun={zeroPathRun} outcome={null} onOpenSnapshot={vi.fn()} />);
 
     expect(screen.getByText("No confirmed attack path in this correlation")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open top path" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review exposure candidates" })).toHaveAttribute(
       "href",
       "/security-graph?lens=attack-path&scan=corr-1",

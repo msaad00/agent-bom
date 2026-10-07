@@ -1116,7 +1116,7 @@ export interface GraphEdgeChangesResponse {
 export type GraphExportFormat =
   "json" | "dot" | "mermaid" | "graphml" | "cypher";
 
-export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid";
+export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid" | "ci" | "ingest" | "unknown";
 
 export type ServiceState = "locked" | "connected" | "live";
 

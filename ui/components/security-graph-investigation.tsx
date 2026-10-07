@@ -46,7 +46,7 @@ import { useGraphLayout } from "@/lib/use-graph-layout";
 import { useGraphPresentation } from "@/hooks/use-graph-presentation";
 import { graphTopologyKey, type GraphPresentationScope } from "@/lib/graph-presentation";
 import { useCaptureMode } from "@/lib/use-capture-mode";
-import { mergeGraphNeighborExpansions } from "@/lib/graph-neighbor-expansion";
+import { mergeGraphNeighborExpansions, boundedInvestigationGraph } from "@/lib/graph-neighbor-expansion";
 
 const INVESTIGATION_LAYERS = {
   provider: false,
@@ -331,6 +331,7 @@ export function SecurityGraphInvestigation({
   const [neighborExpansions, setNeighborExpansions] = useState<
     Record<string, GraphNodeNeighborsResponse>
   >({});
+  const [contextPage, setContextPage] = useState(0);
   const lastPinnedRef = useRef<string | null>(null);
   const investigationRequest = useRef(0);
   useEffect(() => {
@@ -353,20 +354,25 @@ export function SecurityGraphInvestigation({
 
   useEffect(() => {
     setNeighborExpansions({});
+    setContextPage(0);
   }, [attackPath, focusMode, graph?.scan_id, graph?.snapshot_generation, scanId, session?.tenant_id]);
+
+  const bounded = useMemo(() => activeGraph ? boundedInvestigationGraph(
+    activeGraph, attackPath?.hops ?? [], contextPage,
+  ) : null, [activeGraph, attackPath, contextPage]);
 
   const flow = useMemo(() => {
     if (!activeGraph) {
       return { nodes: [] as Node<LineageNodeData>[], edges: [] as Edge[], legend: [] };
     }
-    return buildUnifiedFlowGraph(activeGraph, {
+    return buildUnifiedFlowGraph(bounded!.graph, {
       layers: layersForFocusedPath(activeGraph, focusMode ? attackPath : null, INVESTIGATION_LAYERS),
       severity: null,
       agentName: null,
       vulnOnly: false,
       maxDepth: 12,
     });
-  }, [activeGraph, attackPath, focusMode]);
+  }, [activeGraph, attackPath, bounded, focusMode]);
 
   const layout = useGraphLayout("dagre-lr", flow.nodes, flow.edges, {
     dagreLr: { rankSep: 128, nodeSep: 48 },
@@ -555,7 +561,7 @@ export function SecurityGraphInvestigation({
             }`}
           >
             <Focus className="h-3.5 w-3.5" />
-            {focusMode ? "Focus on path" : "Full snapshot"}
+            {focusMode ? "Focus on path" : "Loaded context"}
           </button>
           <Link
             href={fullGraphHref}
@@ -579,7 +585,7 @@ export function SecurityGraphInvestigation({
           <p className="mt-0.5 text-xs text-ink-secondary">
             {focusMode
               ? "Focus mode highlights the selected exposure path. Pin a node to expand neighbors and impact."
-              : "Full snapshot mode shows the persisted subgraph for this scan."}
+              : "Loaded context shows a bounded page of recorded relationships. Expand neighbors to request more evidence."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">{graphControls}</div>
@@ -613,6 +619,13 @@ export function SecurityGraphInvestigation({
 
       {embedded && rendererDecision.kind === "webgl" && <div className="flex flex-wrap items-center justify-end gap-2 border-b border-outline px-3 py-2">{graphControls}</div>}
 
+      {bounded && bounded.omittedNodes > 0 && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline px-3 py-2 text-xs" aria-label="Loaded graph context pages">
+        <p role="status">{layout.nodes.length} nodes on canvas · {bounded.omittedNodes} loaded context nodes bundled off canvas. Path nodes take priority within the canvas limit. Counts describe loaded evidence.</p>
+        <div className="flex gap-2">
+          <button type="button" disabled={bounded.page === 0} className="graph-page-action disabled:opacity-50" onClick={() => setContextPage(bounded.page - 1)}>Previous context</button>
+          <button type="button" disabled={bounded.page + 1 >= bounded.pageCount} className="graph-page-action disabled:opacity-50" onClick={() => setContextPage(bounded.page + 1)}>Expand next context bundle</button>
+        </div>
+      </div>}
       <div
         id="security-graph-investigation-canvas"
         className={`relative bg-surface-muted ${embedded ? "h-[clamp(18rem,34vh,24rem)]" : "h-[clamp(32rem,56vh,42rem)]"}`}

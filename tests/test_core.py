@@ -4687,7 +4687,7 @@ def test_api_posture_counts_empty():
     assert "kev" in body
     assert "compound_issues" in body
     assert isinstance(body["total"], int)
-    assert body["deployment_mode"] == "local"
+    assert body["deployment_mode"] == "unknown"
     assert body["has_local_scan"] is False
     assert body["has_fleet_ingest"] is False
     assert body["has_cluster_scan"] is False
@@ -4752,7 +4752,7 @@ def test_api_posture_counts_with_data():
     assert body["kev"] >= 1
     assert body["compound_issues"] >= 1  # KEV + reachable_tools
     assert body["total"] >= 2
-    assert body["deployment_mode"] == "local"
+    assert body["deployment_mode"] == "hybrid"
     assert body["has_local_scan"] is True
     assert body["has_ci_cd_scan"] is True
     assert body["has_registry"] is True
@@ -4788,7 +4788,7 @@ def test_api_posture_counts_ci_cd_only_is_not_treated_as_local_runtime():
         disable_trusted_proxy_env()
     assert resp.status_code == 200
     body = resp.json()
-    assert body["deployment_mode"] == "local"
+    assert body["deployment_mode"] == "ci"
     assert body["has_ci_cd_scan"] is True
     assert body["has_local_scan"] is False
     assert body["has_fleet_ingest"] is False

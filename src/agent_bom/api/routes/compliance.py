@@ -84,20 +84,10 @@ _AUDIT_EVIDENCE_FETCH_LIMIT = 10_000
 _CLUSTER_SCAN_SOURCES = {"gpu_infra", "k8s"}
 _CI_CD_SCAN_SOURCES = {"github_actions"}
 _REGISTRY_SCAN_SOURCES = {"external_scan", "image", "sbom"}
-_LOCAL_SCAN_SOURCES = {
-    "agent_discovery",
-    "ast_analysis",
-    "browser_extensions",
-    "dataset_cards",
-    "external_scan",
-    "filesystem",
-    "image",
-    "jupyter",
-    "sbom",
-    "secret_scan",
-    "terraform",
-    "training_pipelines",
-}
+# Source receipts identify collection, independently of the API host or store.
+# SBOM, image and external results can arrive through ingestion alone.
+_LOCAL_SCAN_SOURCES = {"agent_discovery", "filesystem"}
+
 _CLUSTER_ENVIRONMENTS = {"aks", "cluster", "eks", "gke", "k8s", "kubernetes"}
 
 
@@ -310,12 +300,7 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
         str(getattr(agent, "environment", "") or "").strip().lower() in _CLUSTER_ENVIRONMENTS for agent in fleet_agents
     )
     has_ci_cd_scan = bool(scan_sources & _CI_CD_SCAN_SOURCES)
-    has_local_scan = (
-        bool(scan_sources & _LOCAL_SCAN_SOURCES)
-        or has_agent_context
-        or has_mcp_context
-        or (scan_count > 0 and not has_cluster_scan and not has_ci_cd_scan)
-    )
+    has_local_scan = bool(scan_sources & _LOCAL_SCAN_SOURCES)
     has_registry = bool(scan_sources & _REGISTRY_SCAN_SOURCES)
 
     policy_store = _get_policy_store()
@@ -323,12 +308,8 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     policy_audit = policy_store.list_audit_entries(limit=1, tenant_id=tenant_id)
     has_gateway = bool(policies)
 
-    # has_proxy must also flip when a runtime proxy has reported alerts — the
-    # /v1/proxy/audit ingestion path lands in an in-process ring buffer that's
-    # independent of scan-result correlations and policy_store entries. Without
-    # this signal, sites that ingest proxy alerts via the dedicated endpoint
-    # see "no proxy data" on the dashboard even when alerts are sitting in
-    # /v1/proxy/status. (audit P1-B)
+    # Dedicated proxy alerts are independent of scans and policy audit entries;
+    # count them so reported runtime activity remains visible on the dashboard.
     has_proxy_alerts = _tenant_has_proxy_alerts(tenant_id)
 
     has_proxy = bool(policy_audit) or has_runtime_signals or has_proxy_alerts
@@ -339,15 +320,21 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
         or bool(has_runtime_signals and (has_agent_context or has_fleet_ingest))
     )
 
-    active_modes = sum((has_local_scan, has_fleet_ingest, has_cluster_scan))
+    active_modes = sum((has_local_scan, has_fleet_ingest, has_cluster_scan, has_ci_cd_scan))
     if active_modes > 1:
         deployment_mode = "hybrid"
     elif has_cluster_scan:
         deployment_mode = "cluster"
     elif has_fleet_ingest:
         deployment_mode = "fleet"
-    else:
+    elif has_local_scan:
         deployment_mode = "local"
+    elif has_ci_cd_scan:
+        deployment_mode = "ci"
+    elif scan_count or has_runtime_signals or has_proxy_alerts:
+        deployment_mode = "ingest"
+    else:
+        deployment_mode = "unknown"
 
     return {
         "deployment_mode": deployment_mode,

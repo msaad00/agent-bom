@@ -144,7 +144,9 @@ def image_runtime(layers):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("replacement", [None, "modified", "symlink", "whiteout", "opaque", "new_header"])
+@pytest.mark.parametrize(
+    "replacement", [None, "modified", "symlink", "whiteout", "opaque", "new_header", "parent_symlink", "directory_whiteout"]
+)
 async def test_only_effective_measured_source_establishes_backport(monkeypatch, replacement):
     from agent_bom.scanners import cpython_advisory
 
@@ -162,6 +164,10 @@ async def test_only_effective_measured_source_establishes_backport(monkeypatch, 
         layers.append({"usr/local/lib/python3.14/.wh.tarfile.py": ""})
     if replacement == "opaque":
         layers.append({"usr/local/lib/python3.14/.wh..wh..opq": ""})
+    if replacement == "parent_symlink":
+        layers.append({"usr/local/lib/python3.14": None})
+    if replacement == "directory_whiteout":
+        layers.append({"usr/local/lib/.wh.python3.14": ""})
     if replacement == "new_header":
         layers.append({header: '#define PY_VERSION "3.14.8"\n'})
     package = image_runtime(layers)

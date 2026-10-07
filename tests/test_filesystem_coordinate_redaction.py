@@ -42,3 +42,46 @@ def test_legacy_progress_projection_redacts_paths_but_preserves_relative_context
         cleaned = sanitize_sensitive_payload({"message": message})["message"]
         assert "customer" not in cleaned
     assert sanitize_sensitive_payload({"message": "Scanning Terraform: infra/main.tf"})["message"].endswith("infra/main.tf")
+
+
+def test_adversarial_redaction_inputs_finish_within_bounded_time():
+    """Unterminated occurrences must not restart a scan for every prefix."""
+    import subprocess
+    import sys
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from agent_bom.redaction.filesystem_coordinates import "
+            "sanitize_filesystem_coordinate, sanitize_progress_path; "
+            "assert sanitize_filesystem_coordinate('fs:/' * 40000 + '<') is None; "
+            "value = 'VEX applied: ' + ' from /' * 40000 + '\\n'; "
+            "assert sanitize_progress_path(value, str) == value",
+        ],
+        check=True,
+        timeout=3,
+        capture_output=True,
+    )
+
+
+def test_filesystem_coordinates_preserve_delimiters_and_separate_paths():
+    from agent_bom.redaction.filesystem_coordinates import sanitize_filesystem_coordinate
+
+    cleaned = sanitize_filesystem_coordinate("fs:/first->server:fs:~/second->fs:C:\\private")
+    assert cleaned is not None
+    assert cleaned.count("fs:path-") == 3
+    assert "->server:" in cleaned
+    assert sanitize_filesystem_coordinate("prefixfs:/not-a-coordinate") is None
+    assert sanitize_filesystem_coordinate("fs:/invalid<tail") is None
+    assert sanitize_filesystem_coordinate("fs:/invalid>fs:/valid").startswith("fs:/invalid>fs:path-")
+
+
+def test_progress_parser_preserves_suffix_and_first_absolute_source():
+    from agent_bom.redaction.filesystem_coordinates import sanitize_progress_path
+
+    assert sanitize_progress_path("Loading inventory: /private...", lambda _: "hidden") == "Loading inventory: hidden..."
+    assert sanitize_progress_path("VEX applied: from count from /private from /nested", lambda _: "hidden") == (
+        "VEX applied: from count from hidden"
+    )
+    assert sanitize_progress_path("Loading inventory: relative/file", lambda _: "hidden") == "Loading inventory: relative/file"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from agent_bom.output.cis_posture import finding_free_posture
 from agent_bom.output.finding_views import cve_findings, severity_value, topology_package_key, with_output_sanitizer_cache
 from agent_bom.output.html._common import _esc
 from agent_bom.output.html.scripts import (
@@ -76,7 +77,7 @@ def to_html(
     elif total_vulns or policy_high or policy_findings:
         status_color, status_label = "#d97706", "SECURITY FINDINGS"
     else:
-        status_color, status_label = "#16a34a", "CLEAN"
+        status_color, status_label = finding_free_posture(report)
 
     # Sections
     vuln_sections = ""

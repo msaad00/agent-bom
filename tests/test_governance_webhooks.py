@@ -185,3 +185,31 @@ def test_identity_revoke_emits_webhook(client):
         assert any(evt == "identity.revoked" for evt, _url in captured)
     finally:
         ps.default_webhook_outbox = original
+
+
+@pytest.mark.parametrize("value", ["false", "true", 1, [], {}])
+def test_webhook_private_opt_in_requires_boolean(client, value):
+    response = client.post("/v1/webhooks", json={"url": "https://hooks.example.com/in", "allow_private_networks": value})
+    assert response.status_code == 400
+
+
+def test_webhook_tenant_cannot_enable_private_egress_without_operator(client, monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", raising=False)
+    response = client.post("/v1/webhooks", json={"url": "https://127.0.0.1/in", "allow_private_networks": True})
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "host", ["169.254.169.254", "100.100.100.200", "metadata.google.internal", "[fd00:ec2::254]", "[::ffff:169.254.169.254]"]
+)
+def test_webhook_metadata_is_forbidden_even_with_operator_opt_in(client, monkeypatch, host):
+    monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "1")
+    response = client.post("/v1/webhooks", json={"url": f"https://{host}/in", "allow_private_networks": True})
+    assert response.status_code == 400
+
+
+def test_webhook_explicit_private_approval_with_operator_opt_in(client, monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "1")
+    response = client.post("/v1/webhooks", json={"url": "https://10.0.0.5/in", "allow_private_networks": True})
+    assert response.status_code == 201
+    assert client.post("/v1/webhooks", json={"url": "https://10.0.0.5/in"}).status_code == 400

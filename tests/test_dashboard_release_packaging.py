@@ -161,10 +161,17 @@ def test_enterprise_deployment_states_what_each_artifact_bundles():
 
 
 def _make_test_wheel(
-    tmp_path: Path, *, include_index: bool = True, script_hashes: list[str] | None = None, dashboard_version: str = "0.0.0"
+    tmp_path: Path,
+    *,
+    include_index: bool = True,
+    script_hashes: list[str] | None = None,
+    dashboard_version: str = "0.0.0",
+    include_benchmark: bool = True,
 ) -> Path:
     wheel = tmp_path / "agent_bom-0.0.0-py3-none-any.whl"
     with ZipFile(wheel, "w", compression=ZIP_DEFLATED) as archive:
+        if include_benchmark:
+            archive.writestr("agent_bom/cloud/benchmark_inventory.json", '{"providers":{}}')
         archive.writestr("agent_bom-0.0.0.dist-info/METADATA", "Metadata-Version: 2.3\nName: agent-bom\nVersion: 0.0.0\n")
         archive.writestr(
             "agent_bom/ui_dist/_next/static/chunks/demo.js",
@@ -251,3 +258,10 @@ def test_floating_api_refresh_builds_and_serves_dashboard_before_publishing():
     assert checkout < setup < bundle < build < gate < publish
     assert "agent-bom:latest-refresh-test" in steps[gate]["run"]
     assert "index.html" in steps[gate]["run"]
+
+
+def test_release_wheel_verifier_rejects_missing_benchmark_inventory(tmp_path):
+    _make_test_wheel(tmp_path, include_benchmark=False)
+    result = _verify_wheels(tmp_path)
+    assert result.returncode == 1
+    assert "agent_bom/cloud/benchmark_inventory.json" in result.stderr

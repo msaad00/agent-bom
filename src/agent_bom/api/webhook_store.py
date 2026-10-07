@@ -325,6 +325,7 @@ def deliver_subscription_event(
         kind="webhook",
         signing_secret=subscription.signing_secret,
         allow_private_networks=subscription.allow_private_networks,
+        require_operator_private_opt_in=True,
         headers={
             "x-agent-bom-tenant-id": subscription.tenant_id,
         },

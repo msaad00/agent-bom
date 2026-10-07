@@ -718,7 +718,7 @@ def serve_cmd(
       Persistent jobs:
         agent-bom serve --persist ~/.agent-bom/control-plane.db --port 8422
     """
-    from agent_bom.logging_config import setup_logging
+    from agent_bom.logging_config import api_log_config, setup_logging
 
     setup_logging(level=log_level, json_output=log_json)
 
@@ -842,9 +842,9 @@ def serve_cmd(
         import uvicorn as _uvicorn
     except ImportError:
         _fail_missing_optional_dependencies("agent-bom serve", "ui", ["Uvicorn"])
-
     _uvicorn.run(
         "agent_bom.api.server:app",
+        log_config=api_log_config(_uvicorn.config.LOGGING_CONFIG),
         host=host,
         port=port,
         reload=reload,
@@ -1014,7 +1014,7 @@ def api_cmd(
         agent-bom api --port 9000
         agent-bom api --reload
     """
-    from agent_bom.logging_config import setup_logging
+    from agent_bom.logging_config import api_log_config, setup_logging
 
     setup_logging(level=log_level, json_output=log_json)
 
@@ -1115,14 +1115,13 @@ def api_cmd(
 
     uvicorn.run(
         "agent_bom.api.server:app",
+        log_config=api_log_config(uvicorn.config.LOGGING_CONFIG),
         host=host,
         port=port,
         reload=reload,
         workers=1 if reload else workers,
         log_level=log_level.lower(),
-        # Slowloris / connection-exhaustion hardening:
-        # Close idle keep-alive connections after 5s (uvicorn default is 5s but
-        # we set it explicitly so it's visible and auditable).
+        # Bound idle connections and concurrent requests.
         timeout_keep_alive=5,
         # Hard cap on concurrent in-flight requests; prevents thread/FD exhaustion
         # under a slow-connection flood. 500 ≫ any realistic single-server load.

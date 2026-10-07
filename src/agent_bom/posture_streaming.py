@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
+from agent_bom.runtime.egress_transport import UnsafeDestinationError, validate_literal_destination
 from agent_bom.security import redact_secret_url, sanitize_error, sanitize_sensitive_payload
 from agent_bom.storage import state_home
 
@@ -75,6 +76,10 @@ def _validate_destination_url(url: str, *, allow_private_networks: bool = False)
     hostname = parsed.hostname
     if not hostname:
         raise ValueError("webhook destination must include a host")
+    try:
+        validate_literal_destination(hostname, allow_private_networks=allow_private_networks)
+    except UnsafeDestinationError as exc:
+        raise ValueError("webhook destination violates private networks or metadata policy") from exc
     if not allow_private_networks:
         normalized_host = hostname.lower().strip("[]")
         if normalized_host in {"localhost", "localhost.localdomain"} or normalized_host.endswith(".localhost"):

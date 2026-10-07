@@ -225,7 +225,7 @@ def test_private_http_destination_approval_reaches_transport(tmp_path: Path, mon
         def request(self, *_args, **_kwargs):
             return _Response()
 
-    monkeypatch.setattr("agent_bom.http_client.create_sync_client", lambda **_kwargs: _Client())
+    monkeypatch.setattr("agent_bom.runtime.egress_transport.build_pinned_sync_client", lambda **_kwargs: _Client())
     client = DeliveryClient(
         DeliveryStore(tmp_path / "private-approved.db"),
         retry=RetryPolicy(max_attempts=2, initial_backoff=1.0),

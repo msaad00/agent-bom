@@ -22,6 +22,7 @@ from agent_bom.api.webhook_store import (
     get_webhook_subscription_store,
     set_subscription_status,
 )
+from agent_bom.core.settings import env_flag
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import redact_secret_url, sanitize_error
 
@@ -54,6 +55,11 @@ def create_webhook_subscription(request: Request, body: dict) -> dict[str, objec
     url = require_scalar_str(body, "url", max_length=2048)
     if not url:
         raise HTTPException(status_code=400, detail="'url' is required")
+    allow_private = body.get("allow_private_networks", False)
+    if not isinstance(allow_private, bool):
+        raise HTTPException(status_code=400, detail="'allow_private_networks' must be a boolean")
+    if allow_private and not env_flag("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS"):
+        raise HTTPException(status_code=400, detail="private webhook destinations require operator opt-in")
     raw_events = body.get("event_types", [])
     if not isinstance(raw_events, list):
         raise HTTPException(status_code=400, detail="'event_types' must be a list")
@@ -69,7 +75,7 @@ def create_webhook_subscription(request: Request, body: dict) -> dict[str, objec
             event_types=event_types,
             description=str(body.get("description", "") or ""),
             signing_secret=str(body.get("signing_secret", "") or ""),
-            allow_private_networks=bool(body.get("allow_private_networks", False)),
+            allow_private_networks=allow_private,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"invalid webhook URL: {sanitize_error(exc)}") from exc

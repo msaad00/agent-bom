@@ -125,8 +125,10 @@ def _optional_env_bool(name: str) -> bool | None:
 def _validate_tenant_claim_value(value: object) -> str:
     from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
 
+    if not isinstance(value, str):
+        raise OIDCError("OIDC tenant claim must be a string")
     try:
-        return validate_customer_tenant_id(str(value))
+        return validate_customer_tenant_id(value)
     except ReservedTenantIdError as exc:
         raise OIDCError(str(exc)) from exc
 

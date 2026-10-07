@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, computed_field, 
 
 from agent_bom.ai_schemas import AIFindingAssessment as _CoreAIFindingAssessment
 from agent_bom.ai_schemas import AIProvenance as _CoreAIProvenance
-from agent_bom.api.policy_inputs import PolicyRuleValidation as _PolicyRuleValidation
+from agent_bom.api import policy_inputs as _policy_inputs
 from agent_bom.api.push_models import PushIdentityPayload as _PushIdentityPayload
 from agent_bom.config import API_MAX_BATCH_SCAN_TARGETS
 from agent_bom.evidence.semantics import EvidenceCompletenessLedger as _CoreEvidenceCompletenessLedger
@@ -645,7 +645,7 @@ class FleetAgentUpdate(BaseModel):
 # ─── Gateway Models ───────────────────────────────────────────────────────
 
 
-class PolicyCreate(_PolicyRuleValidation):
+class PolicyCreate(_policy_inputs.PolicyRuleValidation):
     model_config = ConfigDict(extra="forbid")
     name: str
     description: str = ""
@@ -657,7 +657,7 @@ class PolicyCreate(_PolicyRuleValidation):
     enabled: bool = True
 
 
-class PolicyUpdate(_PolicyRuleValidation):
+class PolicyUpdate(_policy_inputs.PolicyRuleValidation):
     model_config = ConfigDict(extra="forbid")
     name: str | None = None
     description: str | None = None
@@ -1187,7 +1187,7 @@ class ExecScoreConfigUpdateRequest(BaseModel):
     display_format: str | None = None
 
 
-class ExceptionRequest(BaseModel):
+class ExceptionRequest(_policy_inputs.ExceptionExpiryValidation):
     model_config = ConfigDict(extra="forbid")
     vuln_id: str
     package_name: str

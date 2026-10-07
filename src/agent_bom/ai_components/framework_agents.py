@@ -1,7 +1,6 @@
 """First-class non-MCP agent framework discovery.
 
-This module keeps framework-native agents separate from MCP server records.
-The output is relationship-oriented so graph/fleet callers can attach
+Framework-native agents are distinct from MCP servers. Graph/fleet callers can attach
 capabilities, model references, credentials, and provenance without pretending
 LangGraph, AutoGen, CrewAI, or Assistants code is an MCP server.
 """
@@ -14,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_bom.ast.source_reader import parse_python_source
 from agent_bom.ast_signal_utils import is_agent_tool_decorator
 from agent_bom.constants import is_credential_key
 from agent_bom.finding import stable_id
@@ -198,7 +198,7 @@ def _scan_python_file(filepath: Path, root: Path) -> list[FrameworkAgent]:
         if filepath.stat().st_size > _MAX_FILE_SIZE:
             return []
         content = filepath.read_text(encoding="utf-8", errors="replace")
-        tree = ast.parse(content, filename=str(filepath))
+        tree = parse_python_source(content, filename=str(filepath))
     except (OSError, SyntaxError):
         return []
 

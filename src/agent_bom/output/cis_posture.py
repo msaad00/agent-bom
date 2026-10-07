@@ -72,3 +72,20 @@ def cis_pass_rate(bundle: dict[str, Any], checks: list[dict[str, Any]]) -> float
     tally = cis_check_tally(checks)
     evaluated = len(tally["evaluated"])
     return (len(tally["passed"]) / evaluated * 100) if evaluated else 0.0
+
+
+def finding_free_posture(report: Any) -> tuple[str, str]:
+    """Zero findings earn no clean verdict without package or evaluated-control evidence."""
+    bundles = (
+        getattr(report, name, None) or {}
+        for name in (
+            "cis_benchmark_data",
+            "azure_cis_benchmark_data",
+            "gcp_cis_benchmark_data",
+            "snowflake_cis_benchmark_data",
+            "databricks_security_data",
+            "aisvs_benchmark_data",
+        )
+    )
+    evaluated = any(cis_check_tally(bundle.get("checks") or [])["evaluated"] for bundle in bundles)
+    return ("#16a34a", "CLEAN") if report.total_packages or evaluated else ("#d97706", "NO ASSESSMENT EVIDENCE")

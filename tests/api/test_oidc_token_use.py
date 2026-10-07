@@ -85,3 +85,17 @@ def test_browser_verification_enables_single_use(monkeypatch):
     )
     verify_browser_id_token(cfg, "token", nonce="browser-nonce")
     assert seen["single_use"] is True
+
+
+@pytest.mark.parametrize("value", [123, True, False, ["tenant-a"], {"name": "tenant-a"}, 1.5])
+@pytest.mark.parametrize("claim", ["tenant_id", "tid", "organization_id"])
+def test_tenant_claims_require_strings_even_with_default_fallback(value, claim):
+    cfg = OIDCConfig(allow_default_tenant=True, require_tenant_claim=False)
+    with pytest.raises(OIDCError, match="must be a string"):
+        cfg.resolve_tenant({claim: value})
+
+
+def test_string_tenant_and_absent_optional_tenant_remain_supported():
+    cfg = OIDCConfig(allow_default_tenant=True, require_tenant_claim=False)
+    assert cfg.resolve_tenant({"tenant_id": "tenant-a"}) == "tenant-a"
+    assert cfg.resolve_tenant({}) == "default"

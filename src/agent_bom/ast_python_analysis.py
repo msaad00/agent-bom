@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agent_bom.ast.source_reader import read_source_for_analysis
+from agent_bom.ast.source_reader import parse_python_source, read_source_for_analysis
 from agent_bom.ast_models import (
     ApplicationEntrypoint,
     CallEdge,
@@ -1393,7 +1393,7 @@ def _analyze_file(
         return [], [], [], [], [], []
 
     try:
-        tree = ast.parse(source, filename=str(file_path))
+        tree = parse_python_source(source, filename=str(file_path))
     except SyntaxError:
         return [], [], [], [], [], []
 

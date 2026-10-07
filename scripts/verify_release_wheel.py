@@ -11,6 +11,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 REQUIRED_FILES = (
+    "agent_bom/cloud/benchmark_inventory.json",
     "agent_bom/data/inventory.schema.json",
     "agent_bom/data/mcp-intelligence.schema.json",
     "agent_bom/ui_dist/index.html",

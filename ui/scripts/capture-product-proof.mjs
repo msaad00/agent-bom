@@ -2895,7 +2895,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
     {
       path: "correlation-path-mobile-live.png",
       page: `/graph?capture=1&scan=${REFERENCE_CORRELATION_ID}&layers=server,agent,container,package,vulnerability,tool,serviceAccount,dataStore,sourceFile`,
-      scope: "Reference evidence lab recorded relationships and evidence boundaries at a 390 by 844 viewport",
+      scope: "Reference evidence lab readable focused graph context at a 390 by 844 viewport; pan to inspect adjacent recorded relationships",
       presentation: "dark mobile",
       evidence_artifact: path.relative(REPO_ROOT, REFERENCE_LAB_PROOF_PATH),
       evidence_sha256: referenceLabActualDigest,
@@ -3716,6 +3716,10 @@ async function main() {
       prepareCorrelationPath,
       {
         ...correlationPathAssertions,
+        expectedText: ["Reference Evidence Workload", "Focused view", "Readable view"],
+        minGraphNodes: 1,
+        maxGraphNodes: referenceGraph.nodes.length,
+        minGraphEdges: 0,
         readySelector: ".react-flow__node",
         minGraphNodeFontPx: 12,
         viewportSelectors: ["#demo-estate-watermark"],

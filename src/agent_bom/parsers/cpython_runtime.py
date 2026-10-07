@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import TYPE_CHECKING, Callable
 
@@ -19,8 +20,6 @@ def _python_metadata_kind(member_name: str) -> str | None:
 
 def extract_cpython_runtime(scan: _LayerScan, read_member: Callable) -> None:
     """Inventory exact installed CPython header evidence without running binaries."""
-    from agent_bom.oci_parser import _append_oci_warning
-
     for path in sorted(scan.names):
         if not re.fullmatch(r"(?:\./)?usr/local/include/python[0-9]+\.[0-9]+[a-z]*/patchlevel\.h", path) or scan.is_deleted(path):
             continue
@@ -34,16 +33,59 @@ def extract_cpython_runtime(scan: _LayerScan, read_member: Callable) -> None:
             scan.gap(path)
             continue
         version = match[1].decode("ascii")
+        previous = scan.packages_by_key.get(("cpython", "generic"))
+        if previous and any(
+            item.get("type") == "installed_metadata" and str(item.get("source_file", "")).removeprefix("./") != path.removeprefix("./")
+            for item in previous.version_evidence
+        ):
+            # The package map has one slot per name/ecosystem. Do not present
+            # a complete image assessment if it collapses multiple runtimes.
+            scan.gap(path)
         scan.add(path, "cpython", version, "generic", f"pkg:generic/python/cpython@{version}")
         package = scan.packages_by_key[("cpython", "generic")]
         package.is_direct = None
         package.version_source = "installed_package"
         package.version_evidence = [{"type": "installed_metadata", "source_file": path}]
-        if scan.warnings is not None and scan.coverage_warnings is not None:
-            _append_oci_warning(
-                scan.warnings,
-                scan.coverage_warnings,
-                path=path,
-                reason="runtime_advisory_coverage_unknown",
-                detail="CPython is inventoried from an installed header; version-verified runtime advisory coverage remains unknown.",
-            )
+        # Header replacement invalidates earlier runtime-specific observations.
+        package._cpython_source_hashes = {}  # type: ignore[attr-defined]
+    _observe_runtime_source(scan, read_member)
+
+
+def _observe_runtime_source(scan: _LayerScan, read_member: Callable) -> None:
+    """Measure the effective module bytes; never trust imported hash claims."""
+    from agent_bom.oci_parser import _layer_whiteouts
+
+    package = scan.packages_by_key.get(("cpython", "generic"))
+    if package is None:
+        return
+    branch = ".".join(package.version.split(".")[:2])
+    path = f"usr/local/lib/python{branch}/tarfile.py"
+    hashes = getattr(package, "_cpython_source_hashes", {})
+    whiteouts = {name.removeprefix("./") for name in _layer_whiteouts(scan.names)}
+    replaced = [member for member in scan.layer_tf.getmembers() if member.name.removeprefix("./") == path]
+    removed = any(path == name or (name.endswith("/") and path.startswith(name)) for name in whiteouts)
+    if not replaced and not removed:
+        return
+    hashes.pop(path, None)
+    package.version_evidence = [
+        item for item in package.version_evidence if not (item.get("type") == "runtime_source_sha256" and item.get("source_file") == path)
+    ]
+    # A whiteout removes lower layers only; a same-layer regular replacement
+    # supplies the final bytes. Links and unreadable/oversized members invalidate
+    # an earlier observation without asserting a new one.
+    if replaced and replaced[-1].isfile():
+        stream = read_member(scan.layer_tf, replaced[-1].name)
+        if stream is not None:
+            content = stream.read(1_000_001)
+            if len(content) <= 1_000_000:
+                digest = hashlib.sha256(content).hexdigest()
+                hashes[path] = digest
+                package.version_evidence.append(
+                    {
+                        "type": "runtime_source_sha256",
+                        "source_file": path,
+                        "sha256": digest,
+                        "layer_id": scan.layer.layer_id,
+                    }
+                )
+    package._cpython_source_hashes = hashes  # type: ignore[attr-defined]

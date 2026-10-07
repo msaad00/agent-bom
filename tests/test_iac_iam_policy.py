@@ -46,7 +46,10 @@ def test_standalone_iam_policy_is_scanned(tmp_path: Path, name: str, statement: 
     assert is_iac_file(policy, tmp_path) is True
     result = scan_iac_with_context(tmp_path)
 
-    assert any(finding.rule_id == rule_id and finding.file_path == str(policy) for finding in result.findings)
+    assert any(
+        finding.rule_id == rule_id and finding.file_path == policy.name and finding.repository_relative_path == policy.name
+        for finding in result.findings
+    )
     verdict = next(item for item in result.verdicts if item.scanner_id == "iam-policy")
     assert verdict.status == "ran"
     assert verdict.files_scanned == 1

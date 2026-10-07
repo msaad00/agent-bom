@@ -1734,3 +1734,42 @@ for (const theme of ["light", "dark"] as const) {
   }
 }
 }
+
+for (const estateSize of [10, 1_000, 10_000]) {
+  for (const theme of ["light", "dark"] as const) {
+    for (const width of [390, 1440]) {
+      test(`bounded investigation ${estateSize} nodes ${theme} ${width}`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.addInitScript(value => localStorage.setItem("agent-bom-theme", value), theme);
+        await routeCockpit(page, estateSize);
+        const graph = buildCockpitGraph(estateSize);
+        const requests: number[] = [];
+        await page.route("**/v1/graph/attack-paths?**", route => {
+          const limit = Number(new URL(route.request().url()).searchParams.get("limit"));
+          requests.push(limit);
+          return route.fulfill({ json: {
+            ...graph, nodes: graph.nodes.slice(0, 100),
+            pagination: { total: 2, offset: 0, limit, has_more: false },
+            completeness: { returned: 2, total: 2, truncated: false, reason: "" },
+          } });
+        });
+        await page.route("**/v1/graph/views/fix-first?**", route => route.fulfill({ json: {
+          scan_id: scanId, cards: [], stats: graph.stats,
+          completeness: { returned: 0, total: 0, truncated: false },
+        } }));
+        await page.route("**/v1/intel/sources", route => route.fulfill({ json: { sources: [] } }));
+        const errors: string[] = [];
+        page.on("pageerror", error => errors.push(error.message));
+        await page.goto(`/security-graph?lens=attack-path&scan=${scanId}&path_view=graph`);
+        await expect(page.getByRole("heading", { name: "Investigation", exact: true })).toBeVisible();
+        await expect.poll(() => page.locator(".react-flow__node").count()).toBeGreaterThan(0);
+        expect(await page.locator(".react-flow__node").count()).toBeLessThanOrEqual(100);
+        expect(requests.length).toBeGreaterThan(0);
+        expect(requests.every(limit => limit === 10)).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        expect(errors).toEqual([]);
+        await page.screenshot({ path: testInfo.outputPath(`bounded-${estateSize}-${theme}-${width}.png`), fullPage: true });
+      });
+    }
+  }
+}

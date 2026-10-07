@@ -694,6 +694,8 @@ export interface AuditExportVerifyResult {
 }
 
 export interface GraphExposureEntityRef {
+  entityType?: string | undefined;
+  rawLabel?: string | undefined;
   id: string;
   label: string;
   role: string;
@@ -713,6 +715,8 @@ export interface GraphExposureRelationshipRef {
 
 /** One ranked ExposurePath as returned by the MCP-compatible REST surface. */
 export interface GraphExposurePath {
+  evidence?: import("@/lib/exposure-path").ExposureEvidenceSummary | undefined;
+  dependencyContext?: import("@/lib/exposure-path").ExposureDependencyContext | undefined;
   id: string;
   rank?: number | undefined;
   label: string;

@@ -49,6 +49,8 @@ function toRole(role: string): ExposureEntityRole {
 function toEntityRef(ref: GraphExposureEntityRef): ExposureEntityRef {
   return {
     id: ref.id,
+    entityType: ref.entityType,
+    rawLabel: ref.rawLabel,
     label: ref.label,
     role: toRole(ref.role),
     severity: ref.severity,
@@ -92,6 +94,8 @@ export function toUiExposurePath(path: GraphExposurePath): ExposurePath {
     evidenceDimensions: path.evidenceDimensions,
     hopEvidence: path.hopEvidence,
     provenance: path.provenance,
+    evidence: path.evidence,
+    dependencyContext: path.dependencyContext,
   };
 }
 

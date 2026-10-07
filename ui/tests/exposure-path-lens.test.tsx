@@ -165,3 +165,20 @@ it("discloses lower-bound totals rather than claiming complete snapshot coverage
   expect(await screen.findByText("At least in snapshot")).toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("node budget");
 });
+
+it("preserves canonical agent identity and advisory conditions for investigation questions", () => {
+  const input = qualifiedPath("CVE-conditions");
+  Object.assign(input.hops[0]!, { entityType: "agent", rawLabel: "recorded-agent" });
+  Object.assign(input, {
+    evidence: { cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", attackVector: "NETWORK" },
+    dependencyContext: { packageName: "example", packageVersion: "1.0" },
+  });
+  const converted = toUiExposurePath(input);
+  expect(converted.hops[0]).toMatchObject({ entityType: "agent", rawLabel: "recorded-agent" });
+  expect(converted.evidence).toMatchObject({ attackVector: "NETWORK" });
+  expect(converted.dependencyContext).toMatchObject({ packageVersion: "1.0" });
+  // Broad presentation roles cannot establish a canonical agent or activity name.
+  const absent = toUiExposurePath(qualifiedPath("CVE-unknown"));
+  expect(absent.hops[0]?.entityType).toBeUndefined();
+  expect(absent.hops[0]?.rawLabel).toBeUndefined();
+});

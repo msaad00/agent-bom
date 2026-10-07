@@ -76,6 +76,11 @@ export function AttackPathCorrelationProof({
         </div>
       </div>
       {missingNodes.length > 0 && <p role="status" className="mt-2 text-[15px] text-amber-700 dark:text-amber-300">{missingNodes.length} path nodes unavailable</p>}
+      <details className="mt-2">
+        <summary className="cursor-pointer py-1 text-[15px] font-medium text-[color:var(--text-secondary)]">Why this path ranks here</summary>
+        {riskReasons.length ? <ul className="mt-2 space-y-2">{riskReasons.map((reason, index) => <li key={`${reason.kind}:${index}`}><strong>{reason.label}</strong><p className="text-[color:var(--text-secondary)]">{reason.detail}</p></li>)}</ul>
+          : <p className="mt-2 text-[color:var(--text-secondary)]">The server supplied this queue order without ranking explanations. Priority does not establish effective access or exploitability.</p>}
+      </details>
       <details className="mt-2 border-t border-[color:var(--border-subtle)] pt-2">
         <summary className="cursor-pointer py-1 text-[15px] text-[color:var(--text-secondary)]">Exact anchors · {anchors.length} artifacts · {sourceCount} source snapshots</summary>
         <div className="mt-2 flex flex-wrap gap-2">

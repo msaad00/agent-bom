@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvisoryFreshness } from "@/components/advisory-freshness";
+
 import { LocalReportEvidence } from "@/components/local-report-evidence";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
@@ -435,6 +437,7 @@ export default function Dashboard() {
         {!importedReport && inventorySummary?.scan_id ? <span>{inventorySummary?.filters?.environment ? `Inventory environment: ${inventorySummary.filters.environment}` : "Inventory includes unclassified environments"}</span> : null}
         {!importedReport && inventorySummary?.filters && Object.values(inventorySummary.filters).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? <span>Inventory filters do not change the findings window</span> : null}
       </div>
+      {!importedReport && <AdvisoryFreshness />}
       <OverviewCockpit
         localReport={Boolean(importedReport)}
         inventorySummary={importedReport ? null : inventorySummary}

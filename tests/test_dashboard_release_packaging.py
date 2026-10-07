@@ -13,6 +13,8 @@ doc language so the defect cannot silently return.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +24,34 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_dashboard_rebuild_retires_setuptools_asset_cache(tmp_path, monkeypatch):
+    (tmp_path / "src/agent_bom").mkdir(parents=True)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copy(ROOT / "scripts/build-ui.sh", scripts / "build-ui.sh")
+    output = tmp_path / "ui/out"
+    output.mkdir(parents=True)
+    (output / "current.js").write_text("current dashboard")
+    cached = tmp_path / "build/lib/agent_bom/ui_dist"
+    cached.mkdir(parents=True)
+    (cached / "obsolete.js").write_text("old release command")
+    sibling = cached.parent / "models.py"
+    sibling.write_text("preserve other build outputs")
+    commands = tmp_path / "bin"
+    commands.mkdir()
+    for command in ("npm", "uv"):
+        executable = commands / command
+        executable.write_text("#!/bin/sh\nexit 0\n")
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(commands) + os.pathsep + os.environ["PATH"])
+    subprocess.run(["bash", str(scripts / "build-ui.sh")], check=True, capture_output=True)
+    assert not cached.exists(), "setuptools would repackage retired dashboard chunks"
+    assert sibling.read_text() == "preserve other build outputs"
+    assert (tmp_path / "src/agent_bom/ui_dist/current.js").read_text() == "current dashboard"
+
+
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 DASHBOARD_ARTIFACT = "dashboard-ui-dist"
 DASHBOARD_PATH = "src/agent_bom/ui_dist"

@@ -1525,6 +1525,10 @@ async function fulfill(route, body, status = 200) {
 }
 
 async function installRoutes(page) {
+  // The offline fixture has no successful feed-run receipt; freshness stays unknown.
+  await page.route("**/v1/intel/sources", (route) => fulfill(route, {
+    schema_version: "intel.sources.v1", sources: [], count: 0,
+  }));
   // Canonical persisted neighborhood fixture. IDs and edges come from the same
   // demo snapshot used by the other graph surfaces; no label-based joins.
   const generation = "0123456789abcdef0123456789abcdef";

@@ -592,7 +592,7 @@ test("scope summary does not inherit the unrelated node-page warning", async ({ 
     edges: [], summary: { total_nodes: 1241, total_edges: 1860, top_level_count: 1, container_count: 1 },
     completeness: { status: "complete", returned: 1, total: 1, truncated: false, reasons: [] },
   } }));
-  await page.goto("/security-graph");
+  await page.goto("/security-graph?lens=estate");
   await expect(page.getByRole("group", { name: "Complete estate scope, org", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Summary", exact: true }).click();
   await expect(page.getByRole("region", { name: "Risk-prioritized estate scopes" })).toContainText("Complete estate scope");
@@ -688,6 +688,9 @@ test("partial investigations expand only after an explicit request", async ({ pa
   const next = page.waitForRequest(req => req.url().endsWith("/v1/graph/query") && req.postDataJSON().max_nodes === 8);
   await page.getByRole("button", { name: "Show more connections", exact: true }).click();
   await next;
+  await expect(page.getByTestId("graph-viewport-scope")).toContainText("8 displayed nodes");
+  // Off-screen nodes are virtualized until explicitly framed.
+  await page.getByRole("button", { name: "Fit all", exact: true }).click();
   await expect(page.locator(".react-flow__node")).toHaveCount(8);
 });
 
@@ -879,7 +882,13 @@ test("estate map renders a recorded scan without fabricating environment metadat
   console.info(JSON.stringify({ evidence: artifact ? "local offline repository scan" : "synthetic CI fixture", nodes: graph.nodes.length, edges: graph.edges.length, readyMs, groupingMs }));
   await sigma.getByText(/Environment groups/).click();
   await expect(sigma.getByText(/Unknown fields stay unknown/)).toBeVisible();
-  await expect(sigma.getByText(`Displayed: ${graph.nodes.length.toLocaleString()}/${graph.nodes.length.toLocaleString()} nodes · ${graph.edges.length.toLocaleString()}/${graph.edges.length.toLocaleString()} available connections.`, { exact: true })).toBeVisible();
+  const displayed = sigma.getByText(/^Displayed:/);
+  await expect(displayed).toContainText(`/${graph.nodes.length.toLocaleString()} nodes`);
+  await expect(displayed).toContainText(`/${graph.edges.length.toLocaleString()} available connections.`);
+  const counts = (await displayed.innerText()).match(/Displayed: ([\d,]+)\/[\d,]+ nodes ·\s*([\d,]+)\//)!;
+  expect(Number(counts[1]!.replaceAll(",", ""))).toBeLessThanOrEqual(100);
+  expect(Number(counts[1]!.replaceAll(",", ""))).toBeGreaterThan(0);
+  await expect(sigma.getByText("Partial overview", { exact: true })).toBeVisible();
   await expectSigmaCanvases(page);
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.screenshot({ path: testInfo.outputPath("recorded-scan-map.png"), fullPage: true });

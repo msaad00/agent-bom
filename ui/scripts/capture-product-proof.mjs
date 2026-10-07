@@ -3455,6 +3455,22 @@ async function main() {
           const proposal = document.querySelector(`[data-id="proposal:${scenarioId}:private-endpoint"]`)?.getBoundingClientRect();
           return frame && proposal && proposal.left >= frame.left && proposal.right <= frame.right && proposal.top >= frame.top && proposal.bottom <= frame.bottom;
         }, SCENARIO_ID, { timeout: 10_000 });
+        await expect.poll(() => canvasPage.locator(".react-flow__node").evaluateAll(nodes => nodes.flatMap(node => {
+          const box = node.getBoundingClientRect();
+          const frame = node.closest(".react-flow").getBoundingClientRect();
+          const scale = new DOMMatrixReadOnly(getComputedStyle(node.closest(".react-flow__viewport")).transform).a;
+          const text = [...node.querySelectorAll("span, p, .text-xs")].filter(element =>
+            element.children.length === 0 && (element.textContent ?? "").trim());
+          const separate = nodes.every(other => {
+            if (other === node) return true;
+            const peer = other.getBoundingClientRect();
+            return box.right + 8 <= peer.left || peer.right + 8 <= box.left || box.bottom + 8 <= peer.top || peer.bottom + 8 <= box.top;
+          });
+          const minFont = Math.min(...text.map(element => parseFloat(getComputedStyle(element).fontSize) * scale));
+          const contained = box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
+          return separate && contained && minFont >= 12 ? [] : [{ id: node.dataset.id, separate, contained, minFont, scale,
+            box: box.toJSON(), frame: frame.toJSON() }];
+        })), { timeout: 10_000 }).toEqual([]);
       },
       {
         awaitResponses: [

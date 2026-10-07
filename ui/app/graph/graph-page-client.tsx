@@ -191,6 +191,7 @@ import { graphTopologyKey, selectGraphSubgraph } from "@/lib/graph-presentation"
 import { roleCanConnect } from "@/lib/roles";
 import {
   graphScenarioContextIds,
+  graphScenarioConnectionNotes,
   parseGraphScenarioViewState,
   proposedGraphFromComparison,
   type GraphScenarioViewState,
@@ -1793,10 +1794,10 @@ function GraphPageInner() {
       dagreLr: readableLineageDagreLr(
         selectedAttackPath
           ? { rankSep: 72, nodeSep: 40, nodeWidth: 224, nodeHeight: 128, fitAspect: 2.65 }
+          : selectedScenarioId
+            ? { rankSep: 48, nodeSep: 12, nodeWidth: 260, minSeparation: { width: 260, height: 154, gap: 16 } }
           : compactInvestigationTopology
             ? investigationLayout
-          : selectedScenarioId
-            ? { rankSep: 48, nodeSep: 12, nodeWidth: 260, minSeparation: { width: 260, height: 140, gap: 12 } }
             : filters.agentName
               ? { rankSep: 152, nodeSep: 52 }
               : {},
@@ -2018,8 +2019,12 @@ function GraphPageInner() {
     }
   }, [graphDiff]);
 
+  const scenarioConnectionNotes = useMemo(() => scenarioState !== "current" && scenarioComparison?.available
+    ? graphScenarioConnectionNotes(scenarioComparison.proposed.nodes.map(node => node.id), scenarioComparison.proposed.edges,
+      mergedGraphData?.edges ?? [], scenarioComparison.difference.edges_removed)
+    : new Map<string, string>(), [scenarioState, scenarioComparison, mergedGraphData]);
   const displayNodes = useMemo<Node<LineageNodeData>[]>(() => {
-    let nodes = baseDisplayNodes;
+    let nodes = baseDisplayNodes.map(node => ({ ...node, data: { ...node.data, scenarioConnectionNote: scenarioConnectionNotes.get(node.id) } }));
     if (driftLensEngaged) {
       nodes = nodes.map((node) => {
         const kind = changeKindForNode(node.id, driftIndex);
@@ -2062,6 +2067,7 @@ function GraphPageInner() {
     } : node);
   }, [
     baseDisplayNodes,
+    scenarioConnectionNotes,
     driftIndex,
     driftLensEngaged,
     driftFilter,
@@ -3855,6 +3861,7 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
+              className={selectedScenarioId ? "scenario-context-canvas" : undefined}
               key={captureMode ? `lineage-capture:${scenarioExpanded ? "full" : "context"}` : `${presentation.storageKey}:${presentation.restoredSavedState ? "restored" : "initial"}:${scenarioExpanded ? "full" : "context"}`}
               nodes={presentation.nodes}
               edges={displayEdges}
@@ -3902,7 +3909,7 @@ function GraphPageInner() {
               }}
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-              <Controls className={CONTROLS_CLASS} />
+              <Controls position={selectedScenarioId ? "bottom-right" : "bottom-left"} className={CONTROLS_CLASS} />
               {minimapExpanded && showMiniMap && (canvasLens !== "estate" || graphViewport.zoom >= 1) && (
                 <MiniMap
                   style={narrowViewport ? { width: 96, height: 64 } : undefined}

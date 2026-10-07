@@ -535,7 +535,7 @@ for (const proof of [
     await expect(canvas.locator('.react-flow__edge[data-id="server:github->cred:gh-token:exposes_cred"]')).toHaveCount(0);
     await expect.poll(() => canvas.locator(".react-flow__viewport").evaluate(
       (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a,
-    )).toBeGreaterThanOrEqual(0.9);
+    )).toBeGreaterThanOrEqual(0.75);
     const canvasBox = await canvas.boundingBox();
     expect(canvasBox).not.toBeNull();
     expect(canvasBox!.height).toBeGreaterThanOrEqual(400);
@@ -546,6 +546,19 @@ for (const proof of [
     expect(proposedBox!.y).toBeGreaterThanOrEqual(canvasBox!.y);
     expect(proposedBox!.x + proposedBox!.width).toBeLessThanOrEqual(canvasBox!.x + canvasBox!.width);
     expect(proposedBox!.y + proposedBox!.height).toBeLessThanOrEqual(canvasBox!.y + canvasBox!.height);
+    await expect.poll(() => canvas.evaluate(flow => {
+      const frame = flow.getBoundingClientRect();
+      const controls = flow.querySelector(".react-flow__controls")!.getBoundingClientRect();
+      const zoom = new DOMMatrixReadOnly(getComputedStyle(flow.querySelector(".react-flow__viewport")!).transform).a;
+      const nodes = [...flow.querySelectorAll(".react-flow__node")];
+      return nodes.length === 5 && nodes.every(node => {
+        const box = node.getBoundingClientRect();
+        const overlap = box.left < controls.right && box.right > controls.left && box.top < controls.bottom && box.bottom > controls.top;
+        const text = [...node.querySelectorAll("p, span")].filter(el => el.textContent?.trim() && !el.querySelector("p, span"));
+        return box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom && !overlap
+          && text.every(el => parseFloat(getComputedStyle(el).fontSize) * zoom >= 12);
+      });
+    })).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`scenario-first-view-${proof.theme}-${capture}.png`) });
     await expect.poll(() => canvas.locator(".react-flow__node").evaluateAll((nodes) => {
       const frame = nodes[0]?.closest(".react-flow")?.getBoundingClientRect();
@@ -555,6 +568,8 @@ for (const proof of [
         return box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
       }).length;
     })).toBeGreaterThanOrEqual(3);
+    await expect(canvas.locator('[data-id="cred:gh-token"]').getByTestId("scenario-connection-note")).toHaveText("Connection removed in proposal");
+    await expect(canvas.locator('[data-id="proposal:scenario-private-endpoint:private-endpoint"]').getByTestId("scenario-connection-note")).toHaveText("No connection in supplied proposal");
     await expect(page.getByTestId("scenario-impact-summary")).toContainText("Observed paths touched");
     await expect(page.getByTestId("graph-viewport-scope")).toContainText("Fit all");
     await expect(page.getByTestId("graph-viewport-scope")).toContainText("Changes and neighbors");
@@ -1011,7 +1026,7 @@ for (const proof of [
       window.localStorage.setItem("agent-bom-theme", theme);
     }, proof.theme);
 
-    await page.goto("/security-graph");
+    await page.goto("/security-graph?lens=estate");
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("heading", { name: "Investigation Canvas" })).toBeVisible();
@@ -1143,15 +1158,16 @@ test("selected paths 13 and 25 retain hydrated anchors beyond fix-first enrichme
   });
   await page.goto("/security-graph?lens=attack-path");
   const queue = page.getByLabel("Attack path queue");
-  await expect(queue.getByRole("button", { name: /#12\b/ })).toBeVisible();
-  await page.getByRole("button", { name: "Show 12 more", exact: true }).click();
+  await expect(queue.getByRole("button", { name: /#10\b/ })).toBeVisible();
+  await page.getByRole("button", { name: "Show 2 more", exact: true }).click();
+  await page.getByRole("button", { name: "Show 10 more", exact: true }).click();
   await queue.getByRole("button", { name: /#13\b/ }).click();
   const proof = page.getByTestId("attack-path-correlation-proof");
   await proof.locator("summary").filter({ hasText: /^Exact anchors/ }).click();
   await expect(proof.getByText("runtime-anchor-13", { exact: true })).toBeVisible();
   await expect(proof.getByText("finding-anchor-13", { exact: true })).toBeVisible();
   await expect(proof.getByText(/path nodes unavailable/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Show 1 more", exact: true }).click();
+  await page.getByRole("button", { name: "Show 3 more", exact: true }).click();
   await queue.getByRole("button", { name: /#25\b/ }).click();
   await expect(proof.getByText("runtime-anchor-25", { exact: true })).toBeVisible();
   await expect(proof.getByText("finding-anchor-25", { exact: true })).toBeVisible();
@@ -1177,7 +1193,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await routeCockpit(page, 200, { rollupItemCount: 30 });
     await page.addInitScript((value) => localStorage.setItem("agent-bom-theme", value), theme);
-    await page.goto("/security-graph");
+    await page.goto("/security-graph?lens=estate");
     await expect(page.getByTestId("graph-rollup-decision-surface")).toBeVisible();
     const views = page.getByRole("group", { name: "Investigation view" });
     await views.getByRole("button", { name: "Graph", exact: true }).click();
@@ -1435,7 +1451,6 @@ for (const theme of ["light", "dark"] as const) {
     const canvas = page.getByTestId("security-graph-investigation");
     await expect(canvas.locator(".react-flow__node")).toHaveCount(4);
     await expect(canvas.locator(".react-flow__edge")).toHaveCount(3);
-    await page.evaluate(() => window.scrollTo(0, 0));
     let previousTransform = "";
     let unchangedSince = Date.now();
     await expect.poll(async () => {

@@ -27,3 +27,10 @@ it("does not call a consumed ranking window complete snapshot coverage", () => {
   expect(screen.getByText(/does not establish complete snapshot coverage/)).toBeVisible();
   expect(screen.queryByRole("button")).toBeNull();
 });
+
+it("labels the actual display page size for loaded and fetched paths", () => {
+  const { rerender } = render(<GraphPathQueueContinuation {...defaults} narrowed={false} hiddenMatches={17} pageSize={10} />);
+  expect(screen.getByRole("button", { name: "Show 10 more" })).toBeVisible();
+  rerender(<GraphPathQueueContinuation {...defaults} narrowed={false} pageSize={10} />);
+  expect(screen.getByRole("button", { name: "Show 10 more" })).toBeVisible();
+});

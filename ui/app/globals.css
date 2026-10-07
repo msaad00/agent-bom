@@ -946,3 +946,6 @@ main > div {
 }
 
 .context-inspector-heading { @apply sticky -top-5 z-10 -mx-5 space-y-2 bg-[var(--surface)] px-5 py-3; }
+
+/* Scenario cards share width with the decision panel; keep metadata legible. */
+.scenario-context-canvas .react-flow__node :is(span, p, .text-xs) { font-size: max(16px, 1em); }

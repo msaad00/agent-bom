@@ -3461,7 +3461,12 @@ async function main() {
           const scale = box.width / node.offsetWidth;
           const text = [...node.querySelectorAll("span, p, .text-xs")].filter(element =>
             element.children.length === 0 && (element.textContent ?? "").trim());
-          return box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom
+          const separate = nodes.every(other => {
+            if (other === node) return true;
+            const peer = other.getBoundingClientRect();
+            return box.right + 8 <= peer.left || peer.right + 8 <= box.left || box.bottom + 8 <= peer.top || peer.bottom + 8 <= box.top;
+          });
+          return separate && box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom
             && text.every(element => parseFloat(getComputedStyle(element).fontSize) * scale >= 12);
         })), { timeout: 10_000 }).toBe(true);
       },

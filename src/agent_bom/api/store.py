@@ -151,7 +151,7 @@ class InMemoryJobStore:
         with self._lock:
             self._jobs[(require_job_tenant(job.tenant_id), job.job_id)] = job
             self._evict_completed_locked()
-        announce_scan_evidence([job])
+        announce_scan_evidence([job], source_is_memory=True)
 
     def put_many_atomic(self, jobs: list[ScanJob]) -> None:
         """Publish a related parent/child set under one process-local lock."""
@@ -163,7 +163,7 @@ class InMemoryJobStore:
         with self._lock:
             self._jobs.update({(require_job_tenant(job.tenant_id), job.job_id): job for job in jobs})
             self._evict_completed_locked()
-        announce_scan_evidence(jobs)
+        announce_scan_evidence(jobs, source_is_memory=True)
 
     def put_many_if_absent_atomic(self, jobs: list[ScanJob]) -> list[str]:
         if not jobs:

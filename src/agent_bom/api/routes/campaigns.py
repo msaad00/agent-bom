@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.campaign_pagination import campaign_page
-from agent_bom.api.campaign_reconciliation import _assert_source_fresh, _campaigns, _reconcile_campaigns
+from agent_bom.api.campaign_reconciliation import _assert_source_fresh, _campaigns, _reconcile_campaigns, verification_membership
 from agent_bom.api.campaign_store import get_campaign_store
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.risk_campaigns import CAMPAIGN_FINDING_LIMIT, derive_campaigns
@@ -534,11 +534,10 @@ def verify_campaign_workflow(
 
     request = Request({"type": "http"})
     request.state.tenant_id = tenant_id
+    request.state.api_key_name = actor
     _assert_source_fresh(request, source)
     store = get_campaign_store()
-    stored = store.get(tenant_id, campaign_id)
-    if stored is None or not stored.member_ids:
-        raise HTTPException(status_code=404, detail="Campaign membership evidence was not found for this tenant.")
+    stored = verification_membership(request, campaign_id, source)
     original_ids = set(stored.member_ids)
     current_campaigns = derive_campaigns(
         source["findings"],

@@ -69,6 +69,7 @@ jobs:
           # vulnerable container after the default branch has the safe runtime.
           git checkout "${{ steps.release.outputs.main_sha }}" -- \
             Dockerfile \
+            deploy/docker/vendor/cpython-3.14.8 \
             deploy/docker/runtime-security-requirements.txt \
             .image-scan-ignore \
             security/image-exceptions.yaml

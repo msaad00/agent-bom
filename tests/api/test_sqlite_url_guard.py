@@ -51,14 +51,13 @@ def test_path_objects_and_other_remote_schemes_are_rejected(value):
         validate_sqlite_path(value)
 
 
-def test_startup_rejects_remote_url_before_initializing_any_store(monkeypatch):
-    from starlette.testclient import TestClient
-
-    from agent_bom.api.server import app
+@pytest.mark.asyncio
+async def test_lifespan_rejects_remote_url_before_initializing_any_store(monkeypatch):
+    from agent_bom.api.server import _lifespan, app
 
     monkeypatch.setenv("AGENT_BOM_DB", "postgresql://user:sentinel-password@db.example/production")
     monkeypatch.setattr(sqlite3, "connect", lambda *a, **kw: pytest.fail("Invalid config reached SQLite"))
     with pytest.raises(ValueError, match="SQLite.*filesystem") as exc:
-        with TestClient(app):
+        async with _lifespan(app):
             pass
     assert "sentinel-password" not in str(exc.value)

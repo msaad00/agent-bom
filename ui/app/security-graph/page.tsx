@@ -113,9 +113,9 @@ const EMPTY_INVESTIGATION_FILTERS: InvestigationPresetFilters = {
 };
 
 /** First/next fetch size for GET /v1/graph/attack-paths (API offset paging). */
-const ATTACK_PATH_FETCH_PAGE = 25;
-const ATTACK_PATH_QUEUE_PAGE_SIZE = 12;
-const FIX_FIRST_CARD_LIMIT = 12;
+const ATTACK_PATH_FETCH_PAGE = 10;
+const ATTACK_PATH_QUEUE_PAGE_SIZE = 10;
+const FIX_FIRST_CARD_LIMIT = 10;
 const DEFAULT_SNAPSHOT_CHIP_COUNT = 3;
 
 function AttackPathInvestigationContent() {

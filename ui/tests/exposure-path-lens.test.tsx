@@ -26,7 +26,7 @@ function response(paths: GraphExposurePathsResponse["paths"]): GraphExposurePath
     scan_id: "scan-1",
     count: paths.length,
     total: paths.length,
-    filters: { limit: 25, min_risk: 0 },
+    filters: { limit: 10, min_risk: 0 },
     paths,
   };
 }
@@ -72,7 +72,7 @@ describe("ExposurePathLens", () => {
     render(<ExposurePathLens scanId="scan-1" />);
 
     await waitFor(() =>
-      expect(apiMock.getGraphExposurePaths).toHaveBeenCalledWith({ scanId: "scan-1", limit: 25 }),
+      expect(apiMock.getGraphExposurePaths).toHaveBeenCalledWith({ scanId: "scan-1", limit: 10 }),
     );
     expect(await screen.findByTestId("exposure-path-lens")).toBeInTheDocument();
     expect(screen.getByText("Total in snapshot")).toBeInTheDocument();
@@ -136,10 +136,10 @@ it("preserves server evidence, direction, traversability and finding roles", () 
 it("shows uncertainty and pages without accumulating an unbounded canvas", async () => {
   apiMock.getGraphExposurePaths.mockResolvedValueOnce({
     ...response([qualifiedPath("CVE-first")]), total: 2,
-    pagination: { offset: 0, returned: 1, limit: 25, has_more: true, next_cursor: "page-two" },
+    pagination: { offset: 0, returned: 1, limit: 10, has_more: true, next_cursor: "page-two" },
   }).mockResolvedValueOnce({
     ...response([qualifiedPath("CVE-second")]), total: 2,
-    pagination: { offset: 1, returned: 1, limit: 25, has_more: false, next_cursor: null },
+    pagination: { offset: 1, returned: 1, limit: 10, has_more: false, next_cursor: null },
   }).mockResolvedValueOnce({ ...response([qualifiedPath("CVE-first")]), total: 2 });
   render(<ExposurePathLens />);
   expect(await screen.findByRole("region", { name: "Path evidence assessment" })).toHaveTextContent("Unknown");
@@ -148,11 +148,11 @@ it("shows uncertainty and pages without accumulating an unbounded canvas", async
   fireEvent.click(screen.getByRole("button", { name: "Next paths" }));
   expect(await within(await screen.findByRole("list", { name: "Exposure path queue" })).findByRole("button", { name: /CVE-second/ })).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Exposure path queue" })).queryByRole("button", { name: /CVE-first/ })).not.toBeInTheDocument();
-  expect(apiMock.getGraphExposurePaths).toHaveBeenLastCalledWith({ scanId: "scan-1", limit: 25, cursor: "page-two" });
+  expect(apiMock.getGraphExposurePaths).toHaveBeenLastCalledWith({ scanId: "scan-1", limit: 10, cursor: "page-two" });
   expect(screen.getByRole("button", { name: "Next paths" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Previous paths" }));
   expect(await within(await screen.findByRole("list", { name: "Exposure path queue" })).findByRole("button", { name: /CVE-first/ })).toBeInTheDocument();
-  expect(apiMock.getGraphExposurePaths).toHaveBeenLastCalledWith({ scanId: "scan-1", limit: 25 });
+  expect(apiMock.getGraphExposurePaths).toHaveBeenLastCalledWith({ scanId: "scan-1", limit: 10 });
 });
 
 it("discloses lower-bound totals rather than claiming complete snapshot coverage", async () => {

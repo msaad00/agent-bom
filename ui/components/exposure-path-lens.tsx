@@ -26,7 +26,7 @@ import {
 import { PageErrorState, PageEmptyState } from "@/components/states/page-state";
 import { StatStrip } from "@/components/stat-strip";
 
-const EXPOSURE_PATH_LIMIT = 25;
+const EXPOSURE_PATH_LIMIT = 10;
 
 const KNOWN_ROLES = new Set<ExposureEntityRole>([
   "agent",

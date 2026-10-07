@@ -6,7 +6,7 @@ import logging
 import re
 from functools import lru_cache
 
-from agent_bom.os_advisory import OS_DISTRO_COMPARATOR_FAMILIES
+from agent_bom.core.versions.distro import OS_DISTRO_COMPARATOR_FAMILIES
 
 _logger = logging.getLogger(__name__)
 

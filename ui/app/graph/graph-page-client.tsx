@@ -1764,8 +1764,16 @@ function GraphPageInner() {
   }, [selectedScenarioId, scenarioComparison, scenarioExpanded, attackPathLens, selectedAttackPath, investigationMode, aggregated.nodes, aggregated.edges, mergedGraphData?.edges]);
   const layoutInput = useMemo(() => {
     const selected = selectGraphSubgraph(aggregated.nodes, aggregated.edges, attackPathNodeIds ?? scenarioContextIds);
+    // Decide broad-map rendering before paging the focused React Flow canvas.
+    // Otherwise the 100-node page can never reach the WebGL threshold.
+    const broadMap = !investigationMode && !scenarioContextIds && decideGraphRenderer({
+      nodeCount: selected.nodes.length, edgeCount: selected.edges.length,
+      captureMode, selectedAttackPath: Boolean(selectedAttackPath), rollupActive: rollupNavigationActive,
+      graphOnlyFindings: selected.nodes.every(node => ["vulnerability", "misconfiguration"].includes(node.data.nodeType)),
+    }).kind === "webgl";
+    if (broadMap) return { ...selected, omittedNodes: 0, pageCount: 1, page: 0 };
     return boundedGraphElements(selected.nodes, selected.edges, [...(attackPathNodeIds ?? scenarioContextIds ?? [])], canvasPage);
-  }, [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds, canvasPage]);
+  }, [aggregated.edges, aggregated.nodes, attackPathNodeIds, scenarioContextIds, canvasPage, investigationMode, captureMode, selectedAttackPath, rollupNavigationActive]);
   const { nodes: layoutNodes, edges: layoutEdges, pending: layoutPending } = useGraphLayout(
     graphLayoutKind,
     layoutInput.nodes,

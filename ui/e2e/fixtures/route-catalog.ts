@@ -95,4 +95,3 @@ export async function routeBaseline(page: Page) {
     }),
   );
 }
-

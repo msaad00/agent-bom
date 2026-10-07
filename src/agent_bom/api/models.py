@@ -821,6 +821,7 @@ class PushPayload(_PushIdentityPayload):
     agents: list[dict[str, Any]] = Field(default_factory=list)
     blast_radii: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
+    coverage_warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
     scan_run: ScanRunPayload | None = None
     endpoint_inventory: dict[str, Any] | None = None
     correlation_cohort_id: str | None = Field(default=None, min_length=36, max_length=36)

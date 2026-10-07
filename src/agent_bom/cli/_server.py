@@ -728,20 +728,18 @@ def serve_cmd(
         {"FastAPI": "fastapi", "Uvicorn": "uvicorn"},
     )
 
-    import os as _os
-
     if demo_estate:
-        _os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
+        os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
     persist_path = str(Path(persist).expanduser().resolve()) if persist else None
     if persist_path:
-        _os.environ["AGENT_BOM_DB"] = persist_path
+        os.environ["AGENT_BOM_DB"] = persist_path
     demo_state_dir = _activate_demo_state_dir_or_fail()
     if cors_allow_all:
-        _os.environ["AGENT_BOM_CORS_ALL"] = "1"
+        os.environ["AGENT_BOM_CORS_ALL"] = "1"
     # REST-only mode: signal the API app (imported below) to skip mounting the
     # dashboard. Set before the first `agent_bom.api.server` import.
     if no_ui:
-        _os.environ["AGENT_BOM_NO_UI"] = "1"
+        os.environ["AGENT_BOM_NO_UI"] = "1"
     resolved_backend, resolved_url = _configure_analytics_backend(
         analytics_backend=analytics_backend,
         clickhouse_url=clickhouse_url,
@@ -1024,13 +1022,11 @@ def api_cmd(
         {"FastAPI": "fastapi", "Uvicorn": "uvicorn"},
     )
 
-    import os as _os
-
     if demo_estate:
-        _os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
+        os.environ["AGENT_BOM_DEMO_ESTATE"] = "1"
     if persist:
         persist = str(Path(persist).expanduser().resolve())
-        _os.environ["AGENT_BOM_DB"] = persist
+        os.environ["AGENT_BOM_DB"] = persist
     demo_state_dir = _activate_demo_state_dir_or_fail()
 
     try:

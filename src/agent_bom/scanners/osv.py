@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from typing import Any, Awaitable, Callable, Optional
 
@@ -35,9 +36,11 @@ OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
 _PIPELINE_429_BACKOFF = 60.0
 
 
-def candidate_package_names(package_name: str, ecosystem: str = "", source_package: str | None = None) -> set[str]:
+def candidate_package_names(
+    package_name: str, ecosystem: str = "", source_package: str | None = None, aliases: tuple[str, ...] = ()
+) -> set[str]:
     """Normalized candidate package names for matching advisories."""
-    names = {normalize_package_name(package_name, ecosystem)}
+    names = {normalize_package_name(name, ecosystem) for name in (package_name, *aliases)}
     if source_package:
         source_norm = normalize_package_name(source_package, ecosystem)
         if source_norm:
@@ -117,15 +120,15 @@ def parse_fixed_version(
     current_version: str = "",
     source_package: str | None = None,
     allow_prerelease: bool = False,
+    aliases: tuple[str, ...] = (),
 ) -> Optional[str]:
-    """Extract fixed version from OSV affected data."""
     from agent_bom.version_utils import (
         compare_version_order,
         is_prerelease_version,
         version_in_range,
     )
 
-    norm_inputs = candidate_package_names(package_name, ecosystem, source_package)
+    norm_inputs = candidate_package_names(package_name, ecosystem, source_package, aliases)
     prerelease_candidate: Optional[str] = None
     # ``same_branch_fix`` is the fix from the affected branch that actually
     # CONTAINS the installed version (introduced <= current < fixed); it is
@@ -267,6 +270,16 @@ def _collect_batch_vulns(
         raise ValueError("OSV batch response is incomplete")
 
 
+def _cache_ecosystem(pkg: Package, ecosystems: list[str]) -> str:
+    """Scope Swift cached evidence to the exact repository lookup aliases."""
+    ecosystem = pkg.ecosystem.lower()
+    key = ecosystem if len(ecosystems) == 1 else f"{ecosystem}|{'|'.join(ecosystems)}"
+    if ecosystem == "swift":
+        aliases = "\0".join(package_lookup_names(pkg))
+        key += "|aliases:" + hashlib.sha256(aliases.encode()).hexdigest()
+    return key
+
+
 async def _cache_complete_results(
     cache: Any,
     packages_to_query: list[Package],
@@ -283,9 +296,7 @@ async def _cache_complete_results(
     }
     cache_writes = [
         (
-            pkg.ecosystem.lower()
-            if len(osv_ecosystems_for_package(pkg)) == 1
-            else f"{pkg.ecosystem.lower()}|{'|'.join(osv_ecosystems_for_package(pkg))}",
+            _cache_ecosystem(pkg, osv_ecosystems_for_package(pkg)),
             normalize_package_name(pkg.name, pkg.ecosystem),
             pkg.version,
             results.get(f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}", []),
@@ -367,7 +378,7 @@ async def query_osv_batch_impl(
             bump_scan_perf("skipped_unresolvable_versions", 1)
             continue
         norm_name = normalize_package_name(pkg.name, eco_key)
-        cache_key_eco = eco_key if len(osv_ecosystems) == 1 else f"{eco_key}|{'|'.join(osv_ecosystems)}"
+        cache_key_eco = _cache_ecosystem(pkg, osv_ecosystems)
         if cache:
             cached = cache.get(cache_key_eco, norm_name, pkg.version)
             if cached is not None:

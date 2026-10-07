@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from agent_bom.core.packages import normalize_package_name
 from agent_bom.core.versions.ruby import split_gem_artifact_version
@@ -14,6 +15,7 @@ class PackageArtifact(Protocol):
     ecosystem: str
     purl: str | None
     source_package: str | None
+    repository_url: str | None
     version_evidence: list[dict[str, Any]]
 
 
@@ -60,6 +62,18 @@ def package_lookup_names(package: PackageArtifact) -> list[str]:
             parsed = None
         if parsed is not None and (parsed.type or "").lower() == "maven" and parsed.namespace and parsed.name:
             add_name(f"{parsed.namespace}:{parsed.name}")
+    if package.ecosystem.lower() == "swift" and package.repository_url:
+        repository = package.repository_url.strip()
+        if "://" not in repository and "@" in repository and ":" in repository:
+            repository = "ssh://" + repository.replace(":", "/", 1)
+        try:
+            parsed_url = urlsplit(repository)
+            if parsed_url.scheme in {"https", "http", "ssh", "git"} and parsed_url.hostname:
+                path = parsed_url.path.rstrip("/").removesuffix(".git")
+                if path and not any(part in {".", ".."} for part in path.split("/")):
+                    add_name(parsed_url.hostname + path)
+        except ValueError:
+            pass
     if package.source_package:
         source_name = package.source_package.strip()
         if source_name and normalize_package_name(source_name, package.ecosystem) != normalize_package_name(

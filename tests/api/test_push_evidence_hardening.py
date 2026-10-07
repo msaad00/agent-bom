@@ -291,3 +291,20 @@ def test_malformed_pushed_coverage_is_rejected_before_persistence(durable_push, 
     response = client.post("/v1/results/push", json=original)
     assert response.status_code == 422, response.text
     assert jobs.list_all(all_tenants=True) == []
+
+
+@pytest.mark.parametrize(
+    "imported, expected",
+    [
+        ({"format": "spdx", "composition_complete": None}, "partial"),
+        ({"format": "spdx", "composition_complete": False}, "partial"),
+        ({"format": "spdx", "composition_complete": True}, "complete"),
+        (None, "complete"),
+    ],
+)
+def test_pushed_sbom_metadata_uses_canonical_completeness(imported, expected):
+    body = payload()
+    if imported is not None:
+        body["agents"][0]["metadata"] = {"sbom_import": imported}
+    report = _normalize_pushed_report(PushPayload(**body), fallback_scan_id="report")
+    assert report["scan_run"]["outcome"] == expected

@@ -24,15 +24,26 @@ class PushIdentityPayload(BaseModel):
         return value.strip()
 
 
+class PushEvidencePayload(PushIdentityPayload):
+    """Bounded producer evidence accompanying a push identity."""
+
+    agents: list[dict[str, Any]] = Field(default_factory=list)
+    blast_radii: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
+    coverage_warnings: list[dict[str, Any] | str] = Field(default_factory=list, max_length=100)
+    endpoint_inventory: dict[str, Any] | None = None
+
+
+def _structured_coverage(warnings: list[dict | str]) -> list[dict]:
+    return [dict(warning) if isinstance(warning, dict) else {"kind": "legacy_scan_warning", "detail": warning} for warning in warnings]
+
+
 def normalize_push_coverage(report: dict, *, source_id: str, target_scope: str | None) -> dict:
     """Normalize producer coverage and disclose an absent replacement scope."""
 
-    def structured(warnings: list[dict | str]) -> list[dict]:
-        return [dict(warning) if isinstance(warning, dict) else {"kind": "legacy_scan_warning", "detail": warning} for warning in warnings]
-
-    supplied_coverage = structured(report.get("coverage_warnings") or [])
+    supplied_coverage = _structured_coverage(report.get("coverage_warnings") or [])
     combined_coverage = list(supplied_coverage)
-    for warning in structured(report.get("warnings") or []):
+    for warning in _structured_coverage(report.get("warnings") or []):
         if warning not in combined_coverage:
             combined_coverage.append(warning)
     report["coverage_warnings"] = combined_coverage
@@ -98,7 +109,11 @@ def normalize_push_coverage(report: dict, *, source_id: str, target_scope: str |
         SimpleNamespace(
             scan_run=ScanRun(outcome=outcome, issues=issues, scopes=scopes),
             coverage_warnings=supplied_coverage,
-            agents=[],
+            agents=[
+                SimpleNamespace(metadata=agent.get("metadata") if isinstance(agent.get("metadata"), dict) else {})
+                for agent in report.get("agents", [])
+                if isinstance(agent, dict)
+            ],
         )
     )
     report["scan_run"] = {**raw_scan_run, **scan_run.to_dict()}

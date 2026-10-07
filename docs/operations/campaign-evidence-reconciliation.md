@@ -13,6 +13,17 @@ after restart. A partial collection stays pending and cannot retire membership.
 A complete empty collection retires the previous memberships and persists its
 checkpoint. Retirement alone does not verify that a vulnerability was fixed.
 
+In the default single-node setup, jobs and hub findings are held in memory
+while campaign workflows use durable SQLite. Committed in-memory writes
+explicitly advance that SQLite queue. These notifications are process-local
+evidence delivery; they do not make the underlying findings survive a restart.
+Use configured SQLite or Postgres evidence storage when persistence is required.
+
+Verification may arrive before the maintenance worker runs. The REST and MCP
+verification writes can initialize missing membership from a complete, fresh
+current snapshot. Existing membership is retained for comparison; missing or
+incomplete evidence cannot prove remediation, and list requests remain read-only.
+
 Owner, SLA, state, verification, and ticket mutations check evidence freshness
 again. Membership and workflow writes use the source revision as a transaction
 fence; a stale source receives HTTP 409 and must be collected again. Ticket

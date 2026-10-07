@@ -89,6 +89,15 @@ class SQLiteCampaignEvidenceState:
         row = self.connection().execute("SELECT revision FROM campaign_evidence_state WHERE tenant_id=?", (tenant_id,)).fetchone()
         return int(row[0]) if row else 0
 
+    def changed(self, tenant_id: str) -> None:
+        """Enqueue evidence held outside SQLite, after its in-memory commit."""
+        with self.write(tenant_id, None) as conn:
+            conn.execute(
+                "INSERT INTO campaign_evidence_state(tenant_id,revision) VALUES (?,1) "
+                "ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1",
+                (tenant_id,),
+            )
+
     def pending_tenants(self, limit: int = 100, after: str = "") -> list[str]:
         return [
             r[0]

@@ -9,27 +9,28 @@ export function GraphSnapshotUpdates() {
   const params = useSearchParams();
   const { session, loading } = useAuthState();
   const scanId = params.get("scan") ?? "";
-  if (loading || !session || !scanId || params.get("capture") === "1" || params.get("scenario")) return null;
+  if (loading || !session || !scanId || scanId.startsWith("current-estate:") || params.get("capture") === "1" || params.get("scenario")) return null;
   const owner = JSON.stringify(session);
   return <SnapshotUpdates key={JSON.stringify([owner, scanId])} scanId={scanId} owner={owner} />;
 }
 
 function SnapshotUpdates({ scanId, owner }: { scanId: string; owner: string }) {
   const params = useSearchParams();
-  const { newer, error, checked, checking, refresh } = useNewerGraphSnapshot(scanId, owner, true);
+  const { newer, error, checked, checking, baselineKnown, refresh } = useNewerGraphSnapshot(scanId, owner, true);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const available = newer && newer.scan_id !== dismissed;
   const next = new URLSearchParams(params.toString());
   if (newer) next.set("scan", newer.scan_id);
   // Routine polling must not move the investigation canvas. Announce the
   // pinned state accessibly; expand the controls only when action is useful.
-  if (!available && !error && !dismissed) return <p role="status" className="sr-only">
+  if (!available && !error && !dismissed && baselineKnown !== false) return <p role="status" className="sr-only">
     {checked ? "Viewing a pinned snapshot. Updates never switch this investigation automatically." : "Checking saved snapshots…"}
   </p>;
   return <aside aria-label="Saved snapshot updates" className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-outline bg-surface px-3 py-2 text-xs text-ink-secondary">
     <p role="status" className="min-w-0 basis-full sm:basis-auto sm:flex-1">
       {available ? <>Newer saved snapshot available: <span className="break-all font-mono">{newer.scan_id}</span> · {new Date(newer.created_at).toLocaleString()}. Your current investigation stays pinned.</>
         : error ? "Snapshot update check unavailable. Your current investigation stays pinned."
+        : baselineKnown === false ? "Selected snapshot metadata is outside this bounded response. Its update status is unknown; the retained investigation stays selected."
         : checked ? "Viewing a pinned snapshot. Updates never switch this investigation automatically."
         : "Checking saved snapshots…"}
     </p>

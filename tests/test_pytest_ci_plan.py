@@ -487,3 +487,21 @@ def test_scanner_contract_changes_select_cross_surface_regressions(tmp_path, sou
         _write(path, 1)
     _write(tmp_path / "tests/test_unrelated.py", 1)
     assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    "source", ["src/agent_bom/api/middleware.py", "src/agent_bom/api/tenant_lifecycle.py", "src/agent_bom/api/storage_schema.py"]
+)
+def test_auth_storage_edits_select_trial_and_oidc_contracts(tmp_path, source):
+    expected = sorted(
+        tmp_path / "tests/api" / name
+        for name in (
+            "test_api_oidc.py",
+            "test_managed_trial_invitations.py",
+            "test_managed_trial_guardrails.py",
+            "test_trial_completion_contract.py",
+        )
+    )
+    for path in expected:
+        _write(path, 1)
+    assert select_targeted_tests(changed_files=[Path(source)], root=tmp_path) == expected

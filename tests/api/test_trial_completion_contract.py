@@ -235,7 +235,7 @@ def test_postgres_cleanup_discovers_all_tenant_tables_but_retains_audit_tombston
     fake_sql = SimpleNamespace(SQL=_SQL, Identifier=lambda table: f'"{table}"')
 
     monkeypatch.setattr("agent_bom.api.routes.privacy._delete_records", lambda tenant_id: {})
-    monkeypatch.setattr("agent_bom.api.storage_schema.postgres_deployment_configured", lambda: True)
+    monkeypatch.setattr("agent_bom.api.tenant_lifecycle.postgres_deployment_configured", lambda: True)
     # Managed-trial cleanup is intentionally cross-tenant maintenance work.
     # Keep this unit test on the explicit maintenance boundary rather than
     # teaching production code to fall back to the ordinary application pool.

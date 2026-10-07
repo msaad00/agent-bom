@@ -610,7 +610,15 @@ def test_api_key_middleware_reports_shared_replay_state_outage_as_503(monkeypatc
     client = TestClient(app)
     response = client.get("/secure", headers={"Authorization": "Bearer eyJhbGciOiJSUzI1NiJ9.e30.signature"})
     assert response.status_code == 503
-    assert response.json() == {"detail": "Authentication state unavailable"}
+    body = response.json()
+    assert body["detail"] == "Authentication state unavailable"
+    assert body["error"] == {
+        "code": "SERVICE_UNAVAILABLE",
+        "message": body["detail"],
+        "details": body["detail"],
+        "correlation_id": body["error"]["correlation_id"],
+    }
+    assert body["error"]["correlation_id"]
 
 
 def test_middleware_oidc_failure_does_not_raise():

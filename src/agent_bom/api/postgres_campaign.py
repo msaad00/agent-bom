@@ -7,6 +7,8 @@ from typing import Any, List
 
 from agent_bom.api.campaign_store import CampaignWorkflow, MembershipEvidence, _membership, _now
 from agent_bom.api.postgres_common import ConnectionPool, _ensure_tenant_rls, _get_pool, _tenant_connection
+from agent_bom.api.storage.campaign_revisions import PostgresCampaignEvidenceState
+from agent_bom.api.storage.campaign_schema import POSTGRES_CAMPAIGN_EVIDENCE_V1
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 
@@ -14,9 +16,12 @@ class PostgresCampaignStore:
     def __init__(self, pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._init_table()
+        self.evidence_state = PostgresCampaignEvidenceState(self._pool)
 
     def _init_table(self) -> None:
         with self._pool.connection() as conn:
+            if ensure_postgres_schema_version(conn, "campaign_evidence_state"):
+                conn.execute(POSTGRES_CAMPAIGN_EVIDENCE_V1)
             if not ensure_postgres_schema_version(conn, "risk_campaign_workflows"):
                 return
             conn.execute(
@@ -120,12 +125,14 @@ class PostgresCampaignStore:
         return row
 
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True, evidence_revision: int | None = None
     ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         now = _now()
         with _tenant_connection(self._pool) as conn:
+            self.evidence_state.guard(tenant_id, evidence_revision, conn)
+            self.evidence_state.claim(tenant_id, evidence_revision, conn)
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"risk_campaign:{tenant_id}",))
             rows = conn.execute(
                 "SELECT tenant_id, campaign_id, owner, sla_due_at, state, verification_status, "
@@ -166,13 +173,23 @@ class PostgresCampaignStore:
                     "WHERE tenant_id=%s AND campaign_id=%s AND active=TRUE",
                     (now, tenant_id, campaign_id),
                 )
+            self.evidence_state.checkpoint(tenant_id, evidence_revision, conn)
             conn.commit()
         return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
 
-    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
+    def verify(
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        remaining_ids: tuple[str, ...],
+        evidence_revision: int | None = None,
+    ) -> CampaignWorkflow | None:
         status = "failed" if remaining_ids else "verified"
         state = "open" if remaining_ids else "done"
         with _tenant_connection(self._pool) as conn:
+            self.evidence_state.guard(tenant_id, evidence_revision, conn)
             cursor = conn.execute(
                 "UPDATE risk_campaign_workflows SET verification_status=%s,state=%s,version=version+1,updated_at=%s "
                 "WHERE tenant_id=%s AND campaign_id=%s AND version=%s",
@@ -183,13 +200,22 @@ class PostgresCampaignStore:
                 return None
         return self.get(tenant_id, campaign_id)
 
-    def patch(self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]) -> CampaignWorkflow | None:
+    def patch(
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        fields: dict[str, str | None],
+        evidence_revision: int | None = None,
+    ) -> CampaignWorkflow | None:
         allowed = {"owner", "sla_due_at", "state"}
         assignments = [f"{key}=%s" for key in fields if key in allowed]
         values = [fields[key] for key in fields if key in allowed]
         if not assignments:
             return self.get(tenant_id, campaign_id)
         with _tenant_connection(self._pool) as conn:
+            self.evidence_state.guard(tenant_id, evidence_revision, conn)
             cursor = conn.execute(
                 f"UPDATE risk_campaign_workflows SET {','.join(assignments)}, version=version+1, updated_at=%s "  # nosec B608
                 "WHERE tenant_id=%s AND campaign_id=%s AND version=%s AND active=TRUE",

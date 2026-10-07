@@ -1,6 +1,6 @@
 """Tenant-scoped store for hub-ingested findings (#1044 PR C + persistence).
 
-Three backends share the Protocol used by `api/routes/compliance.py`:
+Backends share the same tenant-scoped protocol:
 
 - ``InMemoryComplianceHubStore`` — process-local; ephemeral; the test default.
 - ``SQLiteComplianceHubStore`` — single-node persistence behind
@@ -8,9 +8,7 @@ Three backends share the Protocol used by `api/routes/compliance.py`:
 - ``PostgresComplianceHubStore`` — multi-replica; required behind
   ``AGENT_BOM_POSTGRES_URL`` for clustered self-hosted deployments.
 
-Selection happens in ``stores.get_compliance_hub_store()``. Same env-var
-pattern as the SCIM lifecycle store, so an operator who's already
-configured Postgres for SCIM gets durable hub findings for free.
+Selection honors ``AGENT_BOM_DB`` and ``AGENT_BOM_POSTGRES_URL``.
 
 Schema is denormalised on the framework slugs: a CSV column
 ``applicable_frameworks_csv`` lets posture aggregation filter at the SQL
@@ -48,6 +46,7 @@ from agent_bom.api.hub_reference_store import (
     hydrate_finding_payloads_sqlite,
     normalize_finding_payload_for_store,
 )
+from agent_bom.api.storage.campaign_revisions import initialize_sqlite_campaign_evidence
 from agent_bom.api.storage.finding_current_reads import SqlCurrentFindingReads
 from agent_bom.api.storage.finding_current_writes import reconcile_current, write_current_batch
 from agent_bom.api.storage.finding_ingest_state import LedgerIngestState, ensure_sqlite_ingest_state, read_ingest_state, write_ingest_state
@@ -1472,6 +1471,8 @@ def _ensure_overview_revision_sqlite(conn: sqlite3.Connection) -> None:
         tenant_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0
         )"""
     )
+
+    initialize_sqlite_campaign_evidence(conn)
 
 
 def _bump_overview_revision_sqlite(conn: sqlite3.Connection, tenant_id: str) -> None:

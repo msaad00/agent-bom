@@ -10,6 +10,11 @@ from datetime import datetime, timezone
 from typing import Any, List, Protocol, cast
 
 from agent_bom.api.durable_store import select_backend, sqlite_path
+from agent_bom.api.storage.campaign_revisions import (
+    MemoryCampaignEvidenceState,
+    SQLiteCampaignEvidenceState,
+    initialize_sqlite_campaign_evidence,
+)
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
 MembershipEvidence = str | tuple[str, tuple[str, ...]] | tuple[str, tuple[str, ...], str]
@@ -40,17 +45,31 @@ class CampaignWorkflow:
 
 
 class CampaignStore(Protocol):
+    evidence_state: Any
+
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None: ...
     def list(self, tenant_id: str) -> List[CampaignWorkflow]: ...
     def list_verification_queue(self, tenant_id: str, *, after: str, limit: int) -> List[CampaignWorkflow]: ...
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True, evidence_revision: int | None = None
     ) -> List[CampaignWorkflow]: ...
     def patch(
-        self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        fields: dict[str, str | None],
+        evidence_revision: int | None = None,
     ) -> CampaignWorkflow | None: ...
     def verify(
-        self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        remaining_ids: tuple[str, ...],
+        evidence_revision: int | None = None,
     ) -> CampaignWorkflow | None: ...
     def upsert(
         self,
@@ -68,6 +87,7 @@ class InMemoryCampaignStore:
     def __init__(self) -> None:
         self._rows: dict[tuple[str, str], CampaignWorkflow] = {}
         self._lock = threading.Lock()
+        self.evidence_state = MemoryCampaignEvidenceState()
 
     def get(self, tenant_id: str, campaign_id: str) -> CampaignWorkflow | None:
         with self._lock:
@@ -116,11 +136,13 @@ class InMemoryCampaignStore:
         return replace(row)
 
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True, evidence_revision: int | None = None
     ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         with self._lock:
+            self.evidence_state.guard(tenant_id, evidence_revision)
+            self.evidence_state.claim(tenant_id, evidence_revision)
             tenant_rows = {cid: row for (tid, cid), row in self._rows.items() if tid == tenant_id}
             for campaign_id, evidence in memberships.items():
                 fingerprint, member_ids, title = _membership(evidence)
@@ -152,10 +174,20 @@ class InMemoryCampaignStore:
                     row.active = False
                     row.version += 1
                     row.updated_at = _now()
+            self.evidence_state.checkpoint(tenant_id, evidence_revision)
             return [replace(self._rows[(tenant_id, cid)]) for cid in memberships]
 
-    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
+    def verify(
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        remaining_ids: tuple[str, ...],
+        evidence_revision: int | None = None,
+    ) -> CampaignWorkflow | None:
         with self._lock:
+            self.evidence_state.guard(tenant_id, evidence_revision)
             row = self._rows.get((tenant_id, campaign_id))
             if row is None or row.version != expected_version:
                 return None
@@ -165,8 +197,17 @@ class InMemoryCampaignStore:
             row.updated_at = _now()
             return replace(row)
 
-    def patch(self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]) -> CampaignWorkflow | None:
+    def patch(
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        fields: dict[str, str | None],
+        evidence_revision: int | None = None,
+    ) -> CampaignWorkflow | None:
         with self._lock:
+            self.evidence_state.guard(tenant_id, evidence_revision)
             row = self._rows.get((tenant_id, campaign_id))
             if row is None or row.version != expected_version or not row.active:
                 return None
@@ -184,6 +225,7 @@ class SQLiteCampaignStore:
         self._db_path = db_path
         self._local = threading.local()
         self._init_db()
+        self.evidence_state = SQLiteCampaignEvidenceState(lambda: self._conn)
 
     @property
     def _conn(self) -> sqlite3.Connection:
@@ -194,6 +236,7 @@ class SQLiteCampaignStore:
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "risk_campaign_workflows")
+        initialize_sqlite_campaign_evidence(self._conn)
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS risk_campaign_workflows (
@@ -300,13 +343,15 @@ class SQLiteCampaignStore:
         return row
 
     def reconcile_memberships(
-        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True
+        self, tenant_id: str, memberships: dict[str, MembershipEvidence], *, complete: bool = True, evidence_revision: int | None = None
     ) -> List[CampaignWorkflow]:
         if not complete:
             return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
         conn = self._conn
         conn.execute("BEGIN IMMEDIATE")
         try:
+            self.evidence_state.guard(tenant_id, evidence_revision, conn)
+            self.evidence_state.claim(tenant_id, evidence_revision, conn)
             existing = {row.campaign_id: row for row in self.list(tenant_id)}
             now = _now()
             for campaign_id, evidence in memberships.items():
@@ -341,48 +386,65 @@ class SQLiteCampaignStore:
                         "WHERE tenant_id=? AND campaign_id=? AND active=1",
                         (now, tenant_id, campaign_id),
                     )
+            self.evidence_state.checkpoint(tenant_id, evidence_revision, conn)
             conn.commit()
         except Exception:
             conn.rollback()
             raise
         return [row for cid in memberships if (row := self.get(tenant_id, cid)) is not None]
 
-    def verify(self, tenant_id: str, campaign_id: str, *, expected_version: int, remaining_ids: tuple[str, ...]) -> CampaignWorkflow | None:
-        status = "failed" if remaining_ids else "verified"
-        state = "open" if remaining_ids else "done"
-        cursor = self._conn.execute(
-            "UPDATE risk_campaign_workflows SET verification_status=?, state=?, version=version+1, updated_at=? "
-            "WHERE tenant_id=? AND campaign_id=? AND version=?",
-            (status, state, _now(), tenant_id, campaign_id, expected_version),
-        )
-        self._conn.commit()
-        return self.get(tenant_id, campaign_id) if cursor.rowcount == 1 else None
+    def verify(
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        remaining_ids: tuple[str, ...],
+        evidence_revision: int | None = None,
+    ) -> CampaignWorkflow | None:
+        with self.evidence_state.write(tenant_id, evidence_revision):
+            status = "failed" if remaining_ids else "verified"
+            state = "open" if remaining_ids else "done"
+            cursor = self._conn.execute(
+                "UPDATE risk_campaign_workflows SET verification_status=?, state=?, version=version+1, updated_at=? "
+                "WHERE tenant_id=? AND campaign_id=? AND version=?",
+                (status, state, _now(), tenant_id, campaign_id, expected_version),
+            )
+            return self.get(tenant_id, campaign_id) if cursor.rowcount == 1 else None
 
-    def patch(self, tenant_id: str, campaign_id: str, *, expected_version: int, fields: dict[str, str | None]) -> CampaignWorkflow | None:
-        current = self.get(tenant_id, campaign_id)
-        if current is None:
-            return None
-        values = {
-            "owner": current.owner,
-            "sla_due_at": current.sla_due_at,
-            "state": current.state,
-            **fields,
-        }
-        cursor = self._conn.execute(
-            "UPDATE risk_campaign_workflows SET owner=?, sla_due_at=?, state=?, "
-            "version=version+1, updated_at=? WHERE tenant_id=? AND campaign_id=? AND version=? AND active=1",
-            (
-                values["owner"],
-                values["sla_due_at"],
-                values["state"],
-                _now(),
-                tenant_id,
-                campaign_id,
-                expected_version,
-            ),
-        )
-        self._conn.commit()
-        return self.get(tenant_id, campaign_id) if cursor.rowcount == 1 else None
+    def patch(
+        self,
+        tenant_id: str,
+        campaign_id: str,
+        *,
+        expected_version: int,
+        fields: dict[str, str | None],
+        evidence_revision: int | None = None,
+    ) -> CampaignWorkflow | None:
+        with self.evidence_state.write(tenant_id, evidence_revision):
+            current = self.get(tenant_id, campaign_id)
+            if current is None:
+                return None
+            values = {
+                "owner": current.owner,
+                "sla_due_at": current.sla_due_at,
+                "state": current.state,
+                **fields,
+            }
+            cursor = self._conn.execute(
+                "UPDATE risk_campaign_workflows SET owner=?, sla_due_at=?, state=?, "
+                "version=version+1, updated_at=? WHERE tenant_id=? AND campaign_id=? AND version=? AND active=1",
+                (
+                    values["owner"],
+                    values["sla_due_at"],
+                    values["state"],
+                    _now(),
+                    tenant_id,
+                    campaign_id,
+                    expected_version,
+                ),
+            )
+            return self.get(tenant_id, campaign_id) if cursor.rowcount == 1 else None
 
 
 _store: CampaignStore | None = None

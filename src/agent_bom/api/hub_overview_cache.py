@@ -170,6 +170,9 @@ def invalidate_tenant(tenant_id: str) -> None:
         _framework_entries.pop(tenant_id, None)
         _coverage_entries.pop(tenant_id, None)
     schedule_posture_precompute(tenant_id)
+    from agent_bom.api.campaign_reconciliation import notify_campaign_evidence
+
+    notify_campaign_evidence(tenant_id)
 
 
 def reset_hub_overview_cache() -> None:

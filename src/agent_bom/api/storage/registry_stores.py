@@ -179,6 +179,6 @@ def validate_postgres_registries() -> None:
     """Require all registry migrations before a configured API serves traffic."""
     pool = postgres_common._get_pool()
     with pool.connection() as conn:
-        for table in REGISTRY_TABLES:
+        for table in (*REGISTRY_TABLES, "campaign_evidence_state"):
             ensure_postgres_schema_version(conn, table)
             conn.execute(f"SELECT 1 FROM {table} LIMIT 0")

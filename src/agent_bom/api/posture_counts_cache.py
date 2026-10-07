@@ -27,6 +27,10 @@ from typing import Any
 
 from starlette.requests import Request
 
+from agent_bom.api.tenancy import require_request_tenant_id
+from agent_bom.api.tenant_worker import run_tenant_bound
+from agent_bom.config import _bool
+
 _logger = logging.getLogger(__name__)
 
 POSTURE_COUNTS_TTL_SECONDS = 15.0
@@ -73,7 +77,6 @@ def cached_posture_block(
     compute: Callable[[], dict[str, Any]],
 ) -> dict[str, Any]:
     """Posture-count block reused only while jobs and hub evidence are unchanged."""
-    from agent_bom.api.tenancy import require_request_tenant_id
 
     tenant_id = require_request_tenant_id(request)
     key = (tenant_id, kind, issue_counts_fingerprint(tenant_id, tenant_jobs))
@@ -114,7 +117,6 @@ def clear_posture_counts_cache() -> None:
 
 
 def posture_precompute_enabled() -> bool:
-    from agent_bom.config import _bool
 
     return _bool("AGENT_BOM_POSTURE_PRECOMPUTE", True)
 
@@ -146,6 +148,9 @@ def announce_scan_evidence(jobs: Iterable[Any]) -> None:
     """Job-store write hook: schedule a precompute for tenants with a completed scan."""
     for tenant_id in {job.tenant_id for job in jobs if getattr(getattr(job, "status", None), "value", None) == "done"}:
         schedule_posture_precompute(tenant_id)
+        from agent_bom.api.campaign_reconciliation import notify_campaign_evidence
+
+        notify_campaign_evidence(tenant_id)
 
 
 def _next_due_tenant() -> str:
@@ -163,7 +168,6 @@ def _next_due_tenant() -> str:
 
 
 def _precompute_loop() -> None:
-    from agent_bom.api.tenant_worker import run_tenant_bound
 
     while True:
         tenant_id = _next_due_tenant()

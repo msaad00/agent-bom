@@ -1485,14 +1485,13 @@ def test_ensure_tenant_rls_forces_policy_through_session_helpers():
 
 
 def test_server_lifespan_postgres_env_var():
-    """AGENT_BOM_POSTGRES_URL env var is checked in server lifespan."""
-    # Just verify the env var key is referenced in server.py
+    """Startup uses the shared selector for both documented Postgres settings."""
     import inspect
 
     from agent_bom.api import server
 
     source = inspect.getsource(server._lifespan)
-    assert "AGENT_BOM_POSTGRES_URL" in source
+    assert "postgres_deployment_configured()" in source
 
 
 # ─── PostgresScheduleStore ───────────────────────────────────────────────────

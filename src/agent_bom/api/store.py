@@ -1,7 +1,4 @@
-"""Job storage backends for the agent-bom API server.
-
-Pluggable persistence: in-memory by default, or durable SQLite via stdlib sqlite3.
-"""
+"""Tenant-scoped job persistence: SQLite by default, memory for ephemeral deployments."""
 
 from __future__ import annotations
 
@@ -12,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol, cast
 
 from agent_bom.api.posture_counts_cache import announce_scan_evidence
+from agent_bom.api.storage.campaign_revisions import initialize_sqlite_campaign_evidence
 from agent_bom.api.storage.jobs import get_job, put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, migrate_sqlite_job_key
 from agent_bom.api.storage.sql import connection_session
@@ -424,6 +422,7 @@ class SQLiteJobStore:
             )
             self._conn.execute("INSERT OR IGNORE INTO job_overview_identity VALUES (1, lower(hex(randomblob(16))))")
             self._conn.execute("CREATE TABLE IF NOT EXISTS job_overview_revisions (tenant_id TEXT PRIMARY KEY, revision INTEGER NOT NULL)")
+            initialize_sqlite_campaign_evidence(self._conn)
             self._conn.execute("""CREATE TRIGGER IF NOT EXISTS jobs_overview_insert AFTER INSERT ON jobs BEGIN
                 INSERT INTO job_overview_revisions VALUES (NEW.tenant_id, 1)
                 ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1;

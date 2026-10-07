@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom import __version__
+from agent_bom import config as _config
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
@@ -288,9 +289,7 @@ def _apply_worker_thread_limit() -> None:
     """
     import anyio.to_thread
 
-    from agent_bom.config import WORKER_THREAD_LIMIT
-
-    anyio.to_thread.current_default_thread_limiter().total_tokens = WORKER_THREAD_LIMIT
+    anyio.to_thread.current_default_thread_limiter().total_tokens = _config.WORKER_THREAD_LIMIT
 
 
 def _validate_configured_registries() -> None:
@@ -1117,11 +1116,10 @@ def configure_api(
     # used to let a no-auth viewer mutate sources, schedules, and scan jobs
     # directly.  The anonymous resolver preserves local self-hosted operation,
     # while DEMO_ESTATE still clamps the effective role to viewer.
-    from agent_bom.config import API_RESULT_PUSH_MAX_BYTES
 
-    if API_RESULT_PUSH_MAX_BYTES <= 0:
+    if _config.API_RESULT_PUSH_MAX_BYTES <= 0:
         raise ValueError("AGENT_BOM_API_RESULT_PUSH_MAX_BYTES must be positive")
-    _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": API_RESULT_PUSH_MAX_BYTES})
+    _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": _config.API_RESULT_PUSH_MAX_BYTES})
     _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
     _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
     # Wrap admission denials with security/correlation headers without reading bodies.
@@ -1317,7 +1315,10 @@ async def _cleanup_loop() -> None:
     #2261: rows in ``proxy_replay_log`` with ``not_after < now`` are deleted
     on every tick.
     """
+    from agent_bom.api.campaign_reconciliation import poll_campaign_reconciliation
+
     while True:
+        await asyncio.to_thread(poll_campaign_reconciliation)
         await asyncio.sleep(60)
         await _cleanup_tick()
 

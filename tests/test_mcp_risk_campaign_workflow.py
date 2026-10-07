@@ -129,3 +129,22 @@ def test_mcp_verification_preserves_unreconfirmed_evidence_rejection(monkeypatch
     assert result["outcome"] == "unavailable_evidence"
     assert result["retry_state"] == "awaiting_fresh_scope_evidence"
     assert store.get("tenant-alpha", campaign["id"]) == before
+
+
+def test_mcp_campaign_list_does_not_persist_membership_or_audit(monkeypatch):
+    store = InMemoryCampaignStore()
+    set_campaign_store(store)
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
+    monkeypatch.setattr(
+        "agent_bom.mcp_tools.risk_campaigns._load_source",
+        lambda tenant_id: {"findings": [{"id": "finding-a", "severity": "high"}], "total": 1, "has_more": False},
+    )
+    audit = []
+    monkeypatch.setattr("agent_bom.api.routes.campaigns.log_action", lambda *args, **kwargs: audit.append(args))
+    try:
+        result = json.loads(asyncio.run(risk_campaign_workflow_impl(action="list", tenant_id="tenant-alpha", _truncate_response=_truncate)))
+        assert result["count"] == 1
+        assert store.list("tenant-alpha") == []
+        assert audit == []
+    finally:
+        set_campaign_store(None)

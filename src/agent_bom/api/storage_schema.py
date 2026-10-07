@@ -69,6 +69,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
         version=3,
     ),
     StorageSchemaComponent("access_review_campaigns", "sqlite/postgres", ("access_review_campaigns", "access_review_items")),
+    StorageSchemaComponent("campaign_evidence_state", "sqlite/postgres", ("campaign_evidence_state",)),
     StorageSchemaComponent("risk_campaign_workflows", "sqlite/postgres", ("risk_campaign_workflows",)),
     StorageSchemaComponent("fleet", "sqlite/postgres/snowflake", ("fleet_agents", "fleet_endpoints")),
     StorageSchemaComponent(

@@ -14,6 +14,7 @@ import tomllib
 from pathlib import Path
 from typing import Iterable
 
+from agent_bom.ast.django_entrypoints import django_entries
 from agent_bom.ast.source_reader import parse_python_source
 from agent_bom.ast_models import ApplicationEntrypoint
 from agent_bom.ast_source_mask import mask_line_comments_and_strings
@@ -108,7 +109,7 @@ def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationE
             if isinstance(target, ast.Name):
                 instances[target.id] = framework
 
-    entries: list[ApplicationEntrypoint] = []
+    entries = django_entries(project, path, tree)
     for node in functions.values():
         for decorator in node.decorator_list:
             name = _expr_name(decorator)

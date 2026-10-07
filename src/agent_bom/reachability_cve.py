@@ -34,13 +34,13 @@ any) and intersect them with the project's reached symbol set. The result
 is a three-state reachability signal on the finding:
 
 * ``function_reachable`` — an affected symbol is actually reached from an
-  entrypoint. Highest-confidence noise reduction: this CVE is exploitable
-  through code you run.
+  entrypoint. This identifies a source-level call path; exploitability still requires
+  the advisory conditions and runtime context.
 * ``package_reachable`` — the package is imported / reached but either the
   advisory carries no symbol data or none of its symbols are reached. We
   *cannot prove* function reachability, so we never claim it.
-* ``unreachable`` — the package is present in the dependency set but no
-  entrypoint reaches it at all.
+* ``unreachable`` — complete declared analysis found no entrypoint path.
+* ``unknown`` — entrypoint or analysis coverage is insufficient for a negative conclusion.
 
 Honest scope: Python, npm, Go, Maven/Java, Maven/Kotlin, Cargo/Rust, NuGet/C#, RubyGems,
 Composer/PHP, and Swift SPM symbol-level call graphs are supported when import proof is
@@ -75,6 +75,7 @@ if TYPE_CHECKING:
 FUNCTION_REACHABLE = "function_reachable"
 PACKAGE_REACHABLE = "package_reachable"
 UNREACHABLE = "unreachable"
+UNKNOWN = "unknown"
 
 # Defensive bound: advisories occasionally carry pathological symbol lists.
 # We never need to compare more than this many symbols to decide the signal.
@@ -294,7 +295,7 @@ class RuntimeDependencyReachIndex:
             scope = (package.dependency_scope or "").strip().lower()
             evidence = (package.reachability_evidence or "").strip().lower()
             if (
-                package.is_direct
+                package.is_direct is not False
                 or package.dependency_depth < 1
                 or not parent
                 or scope != "runtime"
@@ -666,29 +667,11 @@ def classify_reachability(
     runtime_dependency_chain: Iterable[str] = (),
     ecosystem: str = "pypi",
 ) -> ReachabilitySignal:
-    """Classify one vulnerable package into a three-state reachability signal.
+    """Classify reached functions, reached packages, or explicitly assessed negatives.
 
-    Parameters
-    ----------
-    package:
-        The vulnerable package name (any case / separator style).
-    advisory:
-        The advisory carrying (or not) affected symbols. See
-        :func:`extract_affected_symbols`.
-    index:
-        Reached-symbol index for the scanned project.
-    package_reachable:
-        Optional evidence-backed attack-path signal from the graph layer
-        (``BlastRadius.graph_reachable``). When ``True`` it lets us report
-        ``package_reachable`` for a package on a proven path whose symbols
-        were not individually captured. ``None`` means the caller has no
-        graph-path evidence and we rely on the symbol index alone.
-    runtime_dependency_chain:
-        A resolved runtime-only package path beginning at a package reached
-        from an application entrypoint. Declaration-only and non-runtime edges
-        must not be passed here.
-    ecosystem:
-        Package ecosystem for index lookup (``pypi``, ``npm``, …).
+    Missing graph evidence or unrecognized entrypoints remain unknown. A runtime
+    dependency chain must contain resolved runtime-only edges from an observed
+    application entrypoint; dependency declarations alone are insufficient.
     """
     eco = normalize_package_ecosystem(ecosystem or "pypi")
     advisory_symbols = extract_affected_symbols(advisory)
@@ -753,9 +736,13 @@ def classify_reachability(
         )
 
     return ReachabilitySignal(
-        state=UNREACHABLE,
+        state=UNREACHABLE if package_reachable is False else UNKNOWN,
         package=package,
-        reason="package present in dependencies but not reached from any entrypoint",
+        reason=(
+            "package is outside the supplied assessed graph scope"
+            if package_reachable is False
+            else "entrypoint or analysis coverage is insufficient to establish non-reachability"
+        ),
         advisory_symbols=tuple(sorted(advisory_symbols)),
         advisory_identifiers=advisory_ids,
     )
@@ -765,6 +752,7 @@ __all__ = [
     "FUNCTION_REACHABLE",
     "PACKAGE_REACHABLE",
     "UNREACHABLE",
+    "UNKNOWN",
     "AdvisoryIdentifiers",
     "SymbolReachIndex",
     "RuntimeDependencyReachIndex",

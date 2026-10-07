@@ -29,7 +29,7 @@ from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
 from agent_bom.reachability_cve import (
     FUNCTION_REACHABLE,
     PACKAGE_REACHABLE,
-    UNREACHABLE,
+    UNKNOWN,
     RuntimeDependencyReachIndex,
     SymbolReachIndex,
     advisory_affected_symbols_by_path,
@@ -183,10 +183,10 @@ def test_package_reachable_when_advisory_has_no_symbols() -> None:
     assert "no symbol data" in signal.reason
 
 
-def test_unreachable_when_package_not_reached() -> None:
+def test_unknown_when_package_not_reached_without_coverage() -> None:
     index = SymbolReachIndex.from_reaches([_reach("requests", "requests", "get")])
     signal = classify_reachability(package="jinja2", advisory=_osv_with_symbols(["SandboxedEnvironment"]), index=index)
-    assert signal.state == UNREACHABLE
+    assert signal.state == UNKNOWN
 
 
 def test_graph_reach_fallback_yields_package_reachable() -> None:
@@ -227,7 +227,7 @@ def test_ecosystem_keys_do_not_cross_match() -> None:
         index=index,
         ecosystem="pypi",
     )
-    assert signal.state == UNREACHABLE
+    assert signal.state == UNKNOWN
 
 
 def test_npm_function_reachable_when_affected_symbol_is_reached() -> None:
@@ -460,7 +460,7 @@ def test_go_module_prefix_respects_module_boundary() -> None:
         index=index,
         ecosystem="go",
     )
-    assert signal.state == UNREACHABLE
+    assert signal.state == UNKNOWN
 
 
 def test_go_function_reachable_from_real_ast_analysis(tmp_path: Path) -> None:
@@ -650,11 +650,11 @@ def test_wiring_stamps_function_reachable_from_built_vulnerability_model() -> No
     assert br.symbol_reachability == FUNCTION_REACHABLE
 
 
-def test_wiring_stamps_unreachable_when_symbol_absent() -> None:
+def test_wiring_stamps_unknown_when_symbol_absent_without_coverage() -> None:
     br = _python_br(["get"], pkg_name="leftpad")
     stamped = apply_symbol_reachability_to_blast_radii([br], _ast_result_with_get())
     assert stamped == 1
-    assert br.symbol_reachability == UNREACHABLE
+    assert br.symbol_reachability == UNKNOWN
 
 
 def test_wiring_reaches_runtime_transitive_package_from_reached_parent() -> None:
@@ -775,7 +775,7 @@ def test_wiring_does_not_upgrade_unproven_transitive_edges(scope: str, evidence:
         packages=[Package(name="requests", version="2.19.1", ecosystem="pypi"), br.package],
     )
 
-    assert br.symbol_reachability == UNREACHABLE
+    assert br.symbol_reachability == UNKNOWN
     assert br.runtime_dependency_chain == []
 
 

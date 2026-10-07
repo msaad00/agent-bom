@@ -14,7 +14,9 @@ from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_e
 
 
 @pytest.fixture(params=["memory", "sqlite"])
-def scan_store(request, tmp_path):
+def scan_store(request, tmp_path, monkeypatch):
+    # Count request work separately from the independently tested campaign worker.
+    monkeypatch.setattr("agent_bom.api.campaign_reconciliation.poll_campaign_reconciliation", lambda: None)
     original = stores._store
     store = InMemoryJobStore() if request.param == "memory" else SQLiteJobStore(str(tmp_path / "jobs.db"))
     stores.set_job_store(store)

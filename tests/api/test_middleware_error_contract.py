@@ -96,3 +96,10 @@ def test_middleware_wrapper_preserves_scim_and_streaming_protocols():
     stream = StreamingResponse(iter([b"event: error\n\n"]), status_code=400, media_type="text/event-stream")
     request = Request({"type": "http", "path": "/v1/events", "headers": []})
     assert _with_middleware_error_envelope(request, stream) is stream
+
+
+@pytest.mark.parametrize("method,path", [("GET", "/v1/missing"), ("DELETE", "/v1/jobs")])
+def test_unclassified_operations_remain_denied_with_error_envelope(method, path):
+    client = TestClient(_app(APIKeyMiddleware, api_key="qualification-static-key", allow_unauthenticated=False))
+    response = client.request(method, path, headers={"Authorization": "Bearer qualification-static-key"})
+    _assert_envelope(response, 403, "FORBIDDEN")

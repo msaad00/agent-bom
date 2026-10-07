@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from agent_bom.api.audit_log import log_action
+from agent_bom.api.campaign_pagination import campaign_page
 from agent_bom.api.campaign_reconciliation import _assert_source_fresh, _campaigns, _reconcile_campaigns
 from agent_bom.api.campaign_store import get_campaign_store
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
@@ -95,6 +96,7 @@ class CampaignResponse(BaseModel):
     tenant_id: str
     title: str
     finding_ids: list[str]
+    finding_ids_truncated: bool = False
     finding_count: int
     severity: str
     priority_score: float
@@ -121,6 +123,10 @@ class CampaignListResponse(BaseModel):
     tenant_id: str
     campaigns: list[CampaignResponse]
     count: int
+    total_campaigns: int
+    limit: int
+    has_more: bool
+    next_cursor: str | None
     finding_window_days: int
     finding_limit: int
     truncated: bool
@@ -677,17 +683,18 @@ def update_campaign_workflow(
 
 
 @router.get("/campaigns", response_model=CampaignListResponse)
-async def list_campaigns(request: Request, _role: Any = _READ) -> dict[str, Any]:
+async def list_campaigns(
+    request: Request, limit: int = Query(25, ge=1, le=100), cursor: str | None = Query(None, max_length=512), _role: Any = _READ
+) -> dict[str, Any]:
     tenant_id = _tenant(request)
     source = _source_payload(await anyio.to_thread.run_sync(_load_findings, request))
-    campaigns = _campaigns(request, source)
+    campaigns = await anyio.to_thread.run_sync(_campaigns, request, source)
     total = source.get("total")
     truncated = _source_incomplete(source)
     return {
         "schema_version": "risk-campaigns.v1",
         "tenant_id": tenant_id,
-        "campaigns": campaigns,
-        "count": len(campaigns),
+        **campaign_page(tenant_id, campaigns, limit=limit, cursor=cursor),
         "finding_window_days": 90,
         "finding_limit": CAMPAIGN_FINDING_LIMIT,
         "truncated": truncated,

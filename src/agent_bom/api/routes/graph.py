@@ -86,7 +86,7 @@ from agent_bom.graph.rollup import ROLLUP_RELATIONSHIPS
 from agent_bom.graph.scope import GraphScopeKind, select_observed_scope
 from agent_bom.graph.semantic_clusters import SEMANTIC_CLUSTER_KINDS
 from agent_bom.graph.view_payloads import _graph_rollup_payload, _semantic_cluster_payload
-from agent_bom.mcp_errors import CODE_UNSUPPORTED_BACKEND
+from agent_bom.mcp_errors import CODE_UNSUPPORTED_BACKEND, CODE_UPSTREAM_UNAVAILABLE
 from agent_bom.security import sanitize_error
 
 if TYPE_CHECKING:
@@ -1428,6 +1428,8 @@ def _raise_mcp_error_as_http(payload: dict[str, Any]) -> None:
     if not isinstance(error, dict):
         return
     category = str(error.get("category") or "internal")
+    if error.get("code") == CODE_UPSTREAM_UNAVAILABLE:
+        raise HTTPException(status_code=503, detail=error)
     if error.get("code") == CODE_UNSUPPORTED_BACKEND:
         # Same status the direct store calls use for a backend capability gap.
         raise HTTPException(status_code=501, detail=error)

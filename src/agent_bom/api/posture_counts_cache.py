@@ -27,7 +27,6 @@ from typing import Any
 
 from starlette.requests import Request
 
-from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import _bool
 
@@ -77,6 +76,8 @@ def cached_posture_block(
     compute: Callable[[], dict[str, Any]],
 ) -> dict[str, Any]:
     """Posture-count block reused only while jobs and hub evidence are unchanged."""
+
+    from agent_bom.api.tenancy import require_request_tenant_id
 
     tenant_id = require_request_tenant_id(request)
     key = (tenant_id, kind, issue_counts_fingerprint(tenant_id, tenant_jobs))

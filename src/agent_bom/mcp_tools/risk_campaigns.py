@@ -59,6 +59,7 @@ async def risk_campaign_workflow_impl(
         CampaignUpdate,
         _campaigns,
         _source_incomplete,
+        campaign_page,
         campaign_verification_queue,
         create_campaign_tickets,
         sync_campaign_tickets,
@@ -77,8 +78,7 @@ async def risk_campaign_workflow_impl(
             result: dict[str, Any] = {
                 "schema_version": "risk-campaigns.v1",
                 "tenant_id": resolved_tenant,
-                "campaigns": campaigns,
-                "count": len(campaigns),
+                **campaign_page(resolved_tenant, campaigns, limit=limit, cursor=cursor or None),
                 "membership_complete": not _source_incomplete(source),
             }
         elif normalized_action == "update":

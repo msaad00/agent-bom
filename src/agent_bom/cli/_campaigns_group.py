@@ -61,9 +61,13 @@ def campaigns_cmd() -> None:
 
 
 @campaigns_cmd.command("list")
+@click.option("--limit", type=click.IntRange(1, 100), default=25, show_default=True)
+@click.option("--cursor", default=None, help="Continue a campaign page from its next_cursor.")
 @click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", show_default=True)
 @_common_api_options
 def list_campaigns_cmd(
+    limit: int,
+    cursor: str | None,
     api_url: str | None,
     api_key: str | None,
     bearer_token: str | None,
@@ -73,11 +77,13 @@ def list_campaigns_cmd(
     """List campaigns with owner, SLA, priority score, and workflow status."""
 
     client = _make_client(api_url, api_key, bearer_token, tenant_id)
-    payload = _run_request(client, lambda api: api.list_campaigns())
+    payload = _run_request(client, lambda api: api.list_campaigns(limit=limit, cursor=cursor))
     if output_format == "json":
         _emit_json(payload)
     else:
         _print_campaigns_table(payload)
+        if payload.get("has_more"):
+            click.echo(f"More campaigns available. Continue with --cursor {payload['next_cursor']}")
 
 
 @campaigns_cmd.command("verification-queue")

@@ -11,6 +11,11 @@ PR CI runs the full correctness and live Postgres integration suites on GitHub's
 changed-domain tests and contract smoke. The selected tests provide early
 feedback; they do not replace the required full suite. Deployment and performance
 lanes also run on `main` and nightly. All lanes live in `ci.yml` unless noted.
+Full correctness is a merge requirement; five minutes is an early-feedback target,
+not a PR completion guarantee. The changed-domain lane has a 30-minute bound
+because broad changes can select most of the suite, in addition to setup and
+contract checks. A timeout remains a failed gate until a successful replacement
+run completes; passing sibling jobs does not establish a green main commit.
 
 | Lane | Pull request | Push to `main` | Nightly / manual |
 |---|---|---|---|

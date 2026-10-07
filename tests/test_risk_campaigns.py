@@ -1628,3 +1628,42 @@ def test_campaign_get_projects_changed_membership_without_resetting_persisted_wo
     assert get_campaign_store().list("tenant-alpha") == before
     assert audit == []
     assert all(c["verification_status"] == "unverified" for c in result.json()["campaigns"])
+
+
+def test_campaign_list_pages_bound_response_and_reject_stale_or_cross_tenant_cursor(monkeypatch):
+    from agent_bom.api.server import app
+
+    rows = [{"id": f"unique-{i}", "severity": "high"} for i in range(10000)]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    client = TestClient(app)
+    first = client.get("/v1/campaigns", headers=_headers())
+    assert first.status_code == 200
+    body = first.json()
+    assert body["count"] == 25 and body["total_campaigns"] == 10000
+    assert body["has_more"] and body["next_cursor"]
+    assert len(first.content) < 250000
+    next_page = client.get("/v1/campaigns", params={"cursor": body["next_cursor"]}, headers=_headers()).json()
+    assert len(next_page["campaigns"]) == 25
+    assert not {c["id"] for c in body["campaigns"]} & {c["id"] for c in next_page["campaigns"]}
+    assert client.get("/v1/campaigns", params={"cursor": body["next_cursor"]}, headers=_headers(tenant="other")).status_code == 409
+    rows.pop()
+    assert client.get("/v1/campaigns", params={"cursor": body["next_cursor"]}, headers=_headers()).status_code == 409
+    assert client.get("/v1/campaigns?limit=101", headers=_headers()).status_code == 422
+    assert client.get("/v1/campaigns?cursor=not-a-cursor", headers=_headers()).status_code == 400
+
+
+def test_campaign_list_bounds_member_ids_without_truncating_action_membership(monkeypatch):
+    from agent_bom.api.server import app
+
+    rows = [dict(_findings()[0], id=f"member-{i}") for i in range(200)]
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    body = TestClient(app).get("/v1/campaigns", headers=_headers()).json()
+    campaign = body["campaigns"][0]
+    assert campaign["finding_count"] == 200
+    assert len(campaign["finding_ids"]) == 25 and campaign["finding_ids_truncated"]
+    assert campaign["membership_complete"]
+    from agent_bom.api.routes.campaigns import _campaigns, _source_payload
+    from agent_bom.mcp_tools.risk_campaigns import _request_for_tenant
+
+    full = _campaigns(_request_for_tenant("tenant-alpha", "reader"), _source_payload(rows))[0]
+    assert len(full["finding_ids"]) == 200

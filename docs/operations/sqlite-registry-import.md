@@ -49,7 +49,8 @@ Supported table names are `webhook_subscriptions`, `dataset_versions`,
 `evaluation_runs`, `drift_incidents`, `mcp_observations`, `issue_mappings`,
 `skills_scan_run`, `kspm_cluster_posture`, `credential_refs`, `sources`,
 `scan_schedules`, `access_review_campaigns`, `access_review_items`,
-`runtime_observations` and `runtime_sessions`. The `compliance_hub` selection
+`runtime_observations`, `runtime_sessions`, `fleet_agents`, `fleet_endpoints`,
+`gateway_policies`, `exceptions`, `scim_users` and `scim_groups`. The `compliance_hub` selection
 restores the complete seven-table compliance snapshot as one group.
 
 Select both access-review tables together. Campaign counts must match their
@@ -64,6 +65,16 @@ raw tool payloads and differing target sessions require explicit reconciliation;
 the command refuses to infer missing history. Runtime recovery bypasses retention
 pruning during the transaction, preserving the selected evidence. Normal runtime
 writes subsequently apply the configured retention policy.
+
+Fleet agents and endpoint records retain lifecycle and observation timestamps. Gateway
+policies retain their enabled state. Waivers retain original approval, revocation,
+expiry, and decision actors; recovery never approves or reactivates a waiver.
+The selected destination tenant must already be provisioned.
+
+Select both SCIM tables together. User deactivation, group membership, roles and
+original timestamps are preserved. Every membership must resolve in the selected
+tenant snapshot. The destination identity population must be empty or identical;
+recovery refuses to merge extra identities or infer missing memberships.
 
 Compliance recovery requires the current SQLite schema, complete lifecycle
 observations, valid ledger/reference links and consistent ingestion counters.
@@ -80,8 +91,14 @@ Use a maintenance window and pause source, schedule, runtime and webhook workers
 For the canonical control-plane stores, both dry-run and apply stage owner-validated
 writes under table locks; dry-run rolls all target changes back. No external job,
 webhook or review action is replayed. This command rejects unsupported tables,
-including signed audit history and SCIM state; preserve
-those source files for a store-specific recovery procedure.
+including signed audit history, idempotency fences, graph and trend snapshots,
+tenant score configuration, retention overrides and quota overrides. Preserve
+those source files and their compatibility metadata; this command does not
+provide recovery for those stores. Do not replay signed history through normal
+write APIs or generate replacement signatures. An audit recovery procedure must
+preserve the exact signed bytes, original chain and independent checkpoints;
+a missing checkpoint or truncated source is missing evidence. Do not replay
+idempotency records as operations or drop fences to make a retry succeed.
 
 ## Verification and rollback
 

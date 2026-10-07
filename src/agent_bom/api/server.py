@@ -293,7 +293,7 @@ def _apply_worker_thread_limit() -> None:
 
 
 def _validate_configured_registries() -> None:
-    if postgres_deployment_configured():
+    if not os.environ.get("SNOWFLAKE_ACCOUNT") and postgres_deployment_configured():
         from agent_bom.api.storage.registry_stores import validate_postgres_registries
 
         validate_postgres_registries()

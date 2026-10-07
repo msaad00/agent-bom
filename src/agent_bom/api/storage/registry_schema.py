@@ -39,7 +39,7 @@ def registry_migration_ddl() -> str:
                 "USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) "
                 "WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())",
                 f"GRANT SELECT, INSERT, UPDATE, DELETE ON public.{table} TO agent_bom_app, agent_bom_rls_maintenance",
-                "INSERT INTO control_plane_schema_versions(component,version,updated_at) "
+                "INSERT INTO control_plane_schema_versions(component,version,updated_at) "  # nosec B608 - table comes only from REGISTRY_TABLES
                 f"VALUES ('{table}',1,now()) ON CONFLICT(component) DO UPDATE SET "
                 "version=GREATEST(control_plane_schema_versions.version,1)",
             ]

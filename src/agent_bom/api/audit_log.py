@@ -80,7 +80,7 @@ def _production_audit_hmac_required() -> bool:
     )
     production_env = deployment in {"prod", "production"}
     clustered = _configured_control_plane_replicas() > 1
-    shared_postgres = bool((postgres_deployment_configured() or "").strip())
+    shared_postgres = postgres_deployment_configured()
     return (production_env or clustered or shared_postgres) and not _env_enabled("AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC")
 
 

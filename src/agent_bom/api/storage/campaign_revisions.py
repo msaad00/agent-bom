@@ -35,10 +35,10 @@ def initialize_sqlite_campaign_evidence(conn: Any) -> None:
         for event in ("INSERT", "UPDATE", "DELETE"):
             alias = "OLD" if event == "DELETE" else "NEW"
             conn.execute(
-                f"CREATE TRIGGER IF NOT EXISTS {table}_campaign_{event.lower()} AFTER {event} ON {table} BEGIN "
+                f"CREATE TRIGGER IF NOT EXISTS {table}_campaign_{event.lower()} AFTER {event} ON {table} BEGIN "  # nosec B608 - fixed table and event tuples
                 f"INSERT INTO campaign_evidence_state(tenant_id,revision) VALUES ({alias}.tenant_id,1) "
                 "ON CONFLICT(tenant_id) DO UPDATE SET revision=revision+1; END"
-            )  # nosec B608 - fixed table/event names
+            )
         conn.execute(f"INSERT OR IGNORE INTO campaign_evidence_state(tenant_id,revision) SELECT tenant_id,1 FROM {table}")  # nosec B608
 
 

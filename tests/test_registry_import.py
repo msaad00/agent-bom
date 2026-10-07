@@ -92,3 +92,28 @@ def test_import_dry_run_reports_existing_secondary_identity_conflict(tmp_path):
         assert not receipt["committed"]
     finally:
         pool.close()
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        "audit_log",
+        "idempotency_keys",
+        "graph_snapshots",
+        "trend_snapshots",
+        "tenant_score_config_overrides",
+        "tenant_graph_retention_overrides",
+        "tenant_quota_overrides",
+    ],
+)
+def test_unsupported_recovery_is_rejected_before_source_or_target_access(tmp_path, table):
+    source = tmp_path / "preserved.db"
+    source.write_bytes(b"preserved source evidence")
+
+    class NoTargetAccess:
+        def connection(self):
+            pytest.fail("unsupported recovery must not access the target")
+
+    with pytest.raises(ValueError, match="supported registry tables"):
+        import_registries(source, {"source": "target"}, [table], apply=True, pool=NoTargetAccess())
+    assert source.read_bytes() == b"preserved source evidence"

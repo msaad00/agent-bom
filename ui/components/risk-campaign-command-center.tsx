@@ -468,6 +468,8 @@ function VerificationQueue() {
     }
   }, []);
 
+
+
   useEffect(() => { void load(); }, [load]);
 
   const verify = useCallback(async (entry: RiskCampaignVerificationQueueEntry) => {
@@ -587,6 +589,10 @@ export function RiskCampaignCommandCenter() {
   const [totalFindings, setTotalFindings] = useState<number | null>(null);
   const [totalApproximate, setTotalApproximate] = useState(false);
   const [campaignPage, setCampaignPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [totalCampaigns, setTotalCampaigns] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pageError, setPageError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -594,6 +600,9 @@ export function RiskCampaignCommandCenter() {
     try {
       const response = await api.listRiskCampaigns();
       setCampaigns(response.campaigns);
+      setNextCursor(response.has_more ? response.next_cursor ?? null : null);
+      setTotalCampaigns(response.total_campaigns ?? response.campaigns.length);
+      setPageError("");
       setTruncated(response.truncated);
       setWindowDays(response.finding_window_days);
       setTotalFindings(response.total_findings);
@@ -611,6 +620,22 @@ export function RiskCampaignCommandCenter() {
       setLoading(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setPageError("");
+    try {
+      const response = await api.listRiskCampaigns({ cursor: nextCursor });
+      setCampaigns(current => [...current, ...response.campaigns.filter(row => !current.some(prior => prior.id === row.id))]);
+      setNextCursor(response.has_more ? response.next_cursor ?? null : null);
+      setTotalCampaigns(response.total_campaigns ?? totalCampaigns);
+    } catch {
+      setPageError("The next campaign page could not be loaded. Retry, or refresh if the evidence changed.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextCursor, loadingMore, totalCampaigns]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -642,7 +667,7 @@ export function RiskCampaignCommandCenter() {
           <div className="risk-campaign-kicker">Prioritized remediation</div>
           <h2 id="risk-campaigns-title" className="risk-page-title">Risk campaigns</h2>
           <p className="risk-page-copy">
-            Start with {campaigns[0]!.title}. {campaigns.length} prioritized action{campaigns.length === 1 ? "" : "s"} cover{campaigns.length === 1 ? "s" : ""} {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} in the current evidence window.
+            Start with {campaigns[0]!.title}. {campaigns.length} loaded of {totalCampaigns} prioritized action{campaigns.length === 1 ? "" : "s"} cover{campaigns.length === 1 ? "s" : ""} {campaignFindingCount} finding{campaignFindingCount === 1 ? "" : "s"} in the current evidence window.
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Remediation workflow summary">
             <span className="rounded-lg border border-outline bg-surface-muted px-2.5 py-1.5">
@@ -687,6 +712,10 @@ export function RiskCampaignCommandCenter() {
               className="rounded-xl border border-outline bg-surface-muted px-4 py-3"
             />
           ) : null}
+          {pageError ? <div role="alert" className="text-sm text-ink-secondary">{pageError} <button type="button" onClick={() => void load()}>Refresh campaigns</button></div> : null}
+          {nextCursor ? <button type="button" disabled={loadingMore} onClick={() => void loadMore()} className="risk-campaign-load-more">
+            {loadingMore ? "Loading campaigns…" : "Load next campaigns"}
+          </button> : null}
           <div className="risk-proof-note">
             <CheckCircle2 className="h-3.5 w-3.5" /> Priority is supplied by the server; modeled reduction appears only with its server-authored basis. Ticket actions use stored connections.
           </div>

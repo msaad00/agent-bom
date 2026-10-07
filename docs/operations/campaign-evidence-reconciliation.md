@@ -31,3 +31,23 @@ revision triggers. Runtime initialization validates the migration instead of
 selecting a fallback store. Back up before upgrading; its downgrade deliberately
 refuses to discard campaign checkpoints. Reverting application code does not
 remove the additive table or triggers.
+
+## Browse bounded campaign pages
+
+```bash
+agent-bom campaigns list --format json --limit 25
+agent-bom campaigns list --format json --limit 25 --cursor '<next_cursor>'
+```
+
+The JSON response includes `total_campaigns`, `has_more` and `next_cursor`.
+The API (`GET /v1/campaigns`) and MCP list action use the same cursor contract.
+The dashboard's **Load more** action appends another page; it retains the loaded
+rows if the next request fails. Limits range from 1 to 100 campaigns, with a
+default of 25. Each list row includes at most 25 finding identifiers and marks
+`finding_ids_truncated` when the complete membership is larger. `finding_count`
+continues to describe the complete campaign. Owner, state, verification and ticket
+actions always use the full membership, independently of the displayed excerpt.
+
+A cursor belongs to its tenant and evidence generation. HTTP 409 means that
+the list changed: refresh from the first page before continuing. Pagination
+bounds the response; global campaign ranking still reads the current findings.

@@ -994,16 +994,15 @@ jobs:
           ./scripts/build-msi.ps1 -BundleDir $env:BUNDLE_DIR -OutputPath (Join-Path $env:RUNNER_TEMP "agent-bom-endpoint.msi") -Version $version -DryRun
 
   # 3. Python correctness
-  # PRs run the changed-domain selection plus cross-surface contracts (public
-  # docs, CLI entry points, product surface, workflow contracts) -- the fast
-  # lane. The exhaustive 4-version suite, measured performance, Postgres, and
-  # musl lanes run on every main push and nightly; the core aggregator below
-  # requires all of them there, so the release gate's "green main" still means
-  # full coverage. `Test (Python 3.13)` is the branch-protection context.
+  # PRs and main run changed-domain tests plus cross-surface contracts alongside
+  # the required full four-version suite and Postgres. Broad source changes can
+  # select nearly the full suite here, so allow bounded headroom for setup and
+  # execution. Performance and musl also run on main/nightly. The aggregator
+  # retains every required lane; Test (Python 3.13) is the protection context.
   test-smoke:
     name: Python changed-domain and contract smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
     needs: changes

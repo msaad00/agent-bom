@@ -101,15 +101,28 @@ def test_posture_agent_count_refreshes_when_a_new_scan_lands(graph_store) -> Non
     assert agents["scan_id"] == client.get("/v1/inventory/summary", headers=headers).json()["scan_id"]
 
 
-def test_posture_counts_survive_a_graph_backend_without_inventory_queries(graph_store, monkeypatch) -> None:
+def test_posture_counts_survive_a_graph_backend_without_node_pages(graph_store, monkeypatch) -> None:
     tenant = "agent-population-unsupported"
     _save_snapshot(graph_store, tenant, "unsupported-scan", ["one"])
 
     def unsupported(*args, **kwargs):
-        raise NotImplementedError("query_inventory")
+        raise NotImplementedError("page_nodes")
 
-    monkeypatch.setattr(graph_store, "query_inventory", unsupported)
+    monkeypatch.setattr(graph_store, "page_nodes", unsupported)
     response = TestClient(app).get("/v1/posture/counts", headers=proxy_headers(role="analyst", tenant=tenant))
 
     assert response.status_code == 200
     assert response.json()["agents"] == {"total": None, "scan_id": None, "basis": "graph_agents"}
+
+
+def test_posture_count_avoids_inventory_relationship_enrichment(graph_store, monkeypatch):
+    from agent_bom.api.routes.compliance import estate_agent_count
+
+    tenant = "agent-count-bounded"
+    _save_snapshot(graph_store, tenant, "bounded-count", ["one", "two"])
+
+    def expensive_inventory(*args, **kwargs):
+        raise AssertionError("Counting agents must not join every finding relationship")
+
+    monkeypatch.setattr(graph_store, "query_inventory", expensive_inventory)
+    assert estate_agent_count(tenant) == {"total": 2, "scan_id": "bounded-count", "basis": "graph_agents"}

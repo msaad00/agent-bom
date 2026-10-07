@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, cast
 
 from agent_bom.api.finding_lifecycle import normalize_observed_at
-from agent_bom.api.hub_payload_codec import encode_hub_payload
+from agent_bom.api.hub_payload_codec import decode_hub_payload, encode_hub_payload
 from agent_bom.api.postgres_compliance_hub import PostgresComplianceHubStore
 from agent_bom.api.storage.canonical_import import PinnedImportPool
 from agent_bom.api.storage.compliance_snapshot import (
@@ -28,7 +28,6 @@ from agent_bom.api.storage.finding_current import CURRENT_COLUMNS, LEDGER_ORDINA
 from agent_bom.api.storage.finding_current_writes import current_upsert
 from agent_bom.api.storage.finding_ledger_writes import FIELDS, ledger_upsert
 from agent_bom.api.storage.finding_write_session import finding_write_session
-from agent_bom.api.storage.sql import load_json
 from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.tenant_worker import tenant_bound_context
 
@@ -36,13 +35,13 @@ from agent_bom.api.tenant_worker import tenant_bound_context
 def read_target_snapshot(conn: Any, tenant_id: str) -> dict[str, list[dict[str, Any]]]:
     tables = {}
     for table, columns in COLUMNS.items():
-        found = conn.execute(f"SELECT {', '.join(columns)} FROM {table} WHERE tenant_id=%s", (tenant_id,)).fetchall()
+        found = conn.execute(f"SELECT {', '.join(columns)} FROM {table} WHERE tenant_id=%s", (tenant_id,)).fetchall()  # nosec B608 - identifiers come from the fixed COLUMNS schema
         rows = [
             dict(zip(columns, (normalize_observed_at(value) if isinstance(value, datetime) else value for value in row))) for row in found
         ]
         for row in rows:
             if "payload" in row:
-                row["payload"] = load_json(row["payload"])
+                row["payload"] = decode_hub_payload(row["payload"])
         tables[table] = rows
     return tables
 
@@ -99,6 +98,6 @@ def _restore_rows(tx: Any, snapshot: ComplianceSnapshot) -> None:
 def _insert_rows(tx: Any, table: str, rows: list[dict[str, Any]]) -> None:
     columns = COLUMNS[table]
     values = ["CAST(? AS JSONB)" if column == "payload" else "?" for column in columns]
-    sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)})"
+    sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)})"  # nosec B608 - table and columns are validated by COLUMNS lookup
     for row in rows:
         tx.execute(sql, tuple(encode_hub_payload(row[key]) if key == "payload" else row[key] for key in columns))

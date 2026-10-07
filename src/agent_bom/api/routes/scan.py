@@ -1100,9 +1100,8 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
 
     tenant_id = str(getattr(job, "tenant_id", None) or "default")
     runtime_index = read_once(("runtime_events", tenant_id), lambda: build_tenant_runtime_evidence_index(tenant_id))
-    incidents = result.get("runtime_incident_feedback") if isinstance(result.get("runtime_incident_feedback"), list) else []
-
-    incident_index = build_incident_runtime_evidence_index(incidents)
+    incidents = result.get("runtime_incident_feedback")
+    incident_index = build_incident_runtime_evidence_index(incidents if isinstance(incidents, list) else [])
 
     # CWPP runtime/EDR workload evidence (#4158 stage 3): additive, read-only.
     # Only workload-scoped rows are annotated, and only when this tenant actually

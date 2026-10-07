@@ -315,6 +315,7 @@ def delete_tenant_records(tenant_id: str) -> dict[str, int]:
         set_current_tenant,
     )
     from agent_bom.api.routes.privacy import _delete_records
+
     token = set_current_tenant(tenant_id)
     try:
         deleted = _delete_records(tenant_id)

@@ -52,6 +52,10 @@ class PostgresSCIMStore:
 
     def put_user(self, user: SCIMUser) -> SCIMUser:
         user.updated_at = now_utc_iso()
+        return self.restore_user(user)
+
+    def restore_user(self, user: SCIMUser) -> SCIMUser:
+        """Write validated recovery state without changing its lifecycle timestamp."""
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """
@@ -126,6 +130,10 @@ class PostgresSCIMStore:
 
     def put_group(self, group: SCIMGroup) -> SCIMGroup:
         group.updated_at = now_utc_iso()
+        return self.restore_group(group)
+
+    def restore_group(self, group: SCIMGroup) -> SCIMGroup:
+        """Write validated recovery membership without assigning new timestamps."""
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """

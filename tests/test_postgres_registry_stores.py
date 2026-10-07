@@ -307,3 +307,15 @@ def test_existing_access_review_postgres_is_durable_and_tenant_scoped():
             assert PostgresAccessReviewStore(pool).get_campaign("same", tenant) == record
     finally:
         pool.close()
+
+
+@pytest.mark.parametrize("variable", ["AGENT_BOM_DB", "AGENT_BOM_POSTGRES_URL"])
+def test_runtime_exception_factory_honors_postgres_alias(monkeypatch, variable):
+    from agent_bom.api.exception_store import configured_exception_store
+
+    monkeypatch.delenv("AGENT_BOM_DB", raising=False)
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.setenv(variable, "postgresql://fixture.invalid/registry")
+    sentinel = object()
+    monkeypatch.setattr("agent_bom.api.postgres_store.PostgresExceptionStore", lambda: sentinel)
+    assert configured_exception_store() is sentinel

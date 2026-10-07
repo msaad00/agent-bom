@@ -9,12 +9,19 @@ from typing import Any, cast
 from psycopg.errors import InsufficientPrivilege, UniqueViolation
 
 from agent_bom.api.access_review import _VALID_DECISIONS, DECISION_PENDING, AccessReviewCampaign, AccessReviewItem
+from agent_bom.api.exception_store import ExceptionStatus, VulnException
+from agent_bom.api.fleet_store import FleetAgent, FleetEndpoint
 from agent_bom.api.models import CredentialRefRecord, SourceRecord
+from agent_bom.api.policy_store import GatewayPolicy
+from agent_bom.api.postgres_access import PostgresExceptionStore
 from agent_bom.api.postgres_access_review import PostgresAccessReviewStore
-from agent_bom.api.postgres_policy import PostgresCredentialRefStore, PostgresScheduleStore
+from agent_bom.api.postgres_fleet_store import PostgresFleetStore
+from agent_bom.api.postgres_policy import PostgresCredentialRefStore, PostgresPolicyStore, PostgresScheduleStore
 from agent_bom.api.postgres_runtime_event import PostgresRuntimeEventStore
+from agent_bom.api.postgres_scim import PostgresSCIMStore
 from agent_bom.api.runtime_event_store import RuntimeObservationRecord, RuntimeSessionRecord
 from agent_bom.api.schedule_store import ScanSchedule
+from agent_bom.api.scim_store import SCIMGroup, SCIMUser
 from agent_bom.api.source_postgres import PostgresSourceStore
 from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.tenant_worker import tenant_bound_context
@@ -36,13 +43,41 @@ class ImportAdapter:
     target_table: str = ""
 
     def decode(self, payload: dict[str, Any]) -> Any:
-        record = self.record_type(**payload)
+        values = dict(payload)
+        if self.record_type is VulnException:
+            values["status"] = ExceptionStatus(values["status"])
+        record = self.record_type(**values)
         if set(payload) - set(payload_of(record)):
             raise ValueError("Source has fields unsupported by the current store model")
         return record
 
 
 CONTROL_TABLES = {
+    "scim_users": ImportAdapter(
+        ("user_id",), SCIMUser, PostgresSCIMStore, ("external_id", "user_name", "active", "updated_at"), "get_user", "restore_user", False
+    ),
+    "scim_groups": ImportAdapter(
+        ("group_id",), SCIMGroup, PostgresSCIMStore, ("external_id", "display_name", "updated_at"), "get_group", "restore_group", False
+    ),
+    "fleet_agents": ImportAdapter(
+        ("agent_id",),
+        FleetAgent,
+        PostgresFleetStore,
+        ("canonical_id", "name", "lifecycle_state", "trust_score", "updated_at", "device_fingerprint"),
+        tenant_on_put=False,
+    ),
+    "fleet_endpoints": ImportAdapter(
+        ("endpoint_id",), FleetEndpoint, PostgresFleetStore, ("completeness", "updated_at"), "get_endpoint", "put_endpoint", False
+    ),
+    "gateway_policies": ImportAdapter(
+        ("policy_id",), GatewayPolicy, PostgresPolicyStore, ("name", "mode", "enabled", "updated_at"), "get_policy", "put_policy", False
+    ),
+    "exceptions": ImportAdapter(
+        ("exception_id",),
+        VulnException,
+        PostgresExceptionStore,
+        ("status", "approved_by", "approved_at", "revoked_at", "expires_at", "approval_version"),
+    ),
     "runtime_observations": ImportAdapter(
         ("observation_id",), RuntimeObservationRecord, PostgresRuntimeEventStore, ("session_id", "observed_at")
     ),
@@ -140,14 +175,14 @@ def import_canonical_row(conn: Any, table: str, record: Any, expected: dict[str,
                 is None
             ):
                 return "conflicts"
-        current = getter(key, tenant_id=record.tenant_id)
+        current = getter(**{adapter.keys[0]: key, "tenant_id": record.tenant_id})
         if current is not None:
             return "unchanged" if payload_of(current) == expected else "conflicts"
         try:
             with conn.transaction():
                 kwargs = {"tenant_id": record.tenant_id} if adapter.tenant_on_put else {}
                 getattr(owner, adapter.put_method)(record, **kwargs)
-                written = getter(key, tenant_id=record.tenant_id)
+                written = getter(**{adapter.keys[0]: key, "tenant_id": record.tenant_id})
                 if written is None or payload_of(written) != expected:
                     raise ValueError("Canonical store import did not preserve the selected record")
         except (InsufficientPrivilege, UniqueViolation, ValueError):

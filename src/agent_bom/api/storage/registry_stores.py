@@ -44,7 +44,7 @@ class RegistryStore:
         assignments = ", ".join(f"{column}=excluded.{column}" for column in columns if column not in ("tenant_id", *self.keys))
         with postgres_common._tenant_connection(self._pool) as conn:
             conn.execute(
-                f"INSERT INTO {self.table} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) "
+                f"INSERT INTO {self.table} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) "  # nosec B608 - identifiers and query fragments are fixed by internal adapters; values are bound
                 f"ON CONFLICT (tenant_id, {', '.join(self.keys)}) DO UPDATE SET {assignments}",
                 values,
             )
@@ -54,7 +54,7 @@ class RegistryStore:
         require_explicit_tenant_id(tenant_id)
         with postgres_common._tenant_connection(self._pool) as conn:
             row = conn.execute(
-                f"SELECT data FROM {self.table} WHERE tenant_id=%s AND " + " AND ".join(f"{key}=%s" for key in self.keys),
+                f"SELECT data FROM {self.table} WHERE tenant_id=%s AND " + " AND ".join(f"{key}=%s" for key in self.keys),  # nosec B608 - identifiers and query fragments are fixed by internal adapters; values are bound
                 (tenant_id, *keys),
             ).fetchone()
         return self.record_type(**row[0]) if row else None
@@ -63,7 +63,7 @@ class RegistryStore:
         require_explicit_tenant_id(tenant_id)
         with postgres_common._tenant_connection(self._pool) as conn:
             rows = conn.execute(
-                f"SELECT data FROM {self.table} WHERE tenant_id=%s {predicate} ORDER BY {order} LIMIT %s OFFSET %s",
+                f"SELECT data FROM {self.table} WHERE tenant_id=%s {predicate} ORDER BY {order} LIMIT %s OFFSET %s",  # nosec B608 - identifiers and query fragments are fixed by internal adapters; values are bound
                 (tenant_id, *params, max(0, limit), max(0, offset)),
             ).fetchall()
         return [self.record_type(**row[0]) for row in rows]
@@ -181,4 +181,4 @@ def validate_postgres_registries() -> None:
     with pool.connection() as conn:
         for table in (*REGISTRY_TABLES, "campaign_evidence_state"):
             ensure_postgres_schema_version(conn, table)
-            conn.execute(f"SELECT 1 FROM {table} LIMIT 0")
+            conn.execute(f"SELECT 1 FROM {table} LIMIT 0")  # nosec B608 - identifiers and query fragments are fixed by internal adapters; values are bound

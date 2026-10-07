@@ -10,9 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from psycopg import Error as PostgresError
 from psycopg.types.json import Jsonb
 
 from agent_bom.api import postgres_common
+from agent_bom.api.storage import scim_recovery
 from agent_bom.api.storage.canonical_import import CONTROL_TABLES, import_canonical_row, payload_of, validate_groups, validate_target_groups
 from agent_bom.api.storage.compliance_restore import lock_snapshot_tenants, restore_snapshot
 from agent_bom.api.storage.compliance_snapshot import COLUMNS as COMPLIANCE_COLUMNS
@@ -62,14 +64,14 @@ def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> li
             if table == "compliance_hub":
                 records.extend(read_compliance_snapshots(conn, tenant_map))
                 continue
-            for row in conn.execute(f"SELECT * FROM {table} ORDER BY tenant_id, " + ", ".join(adapters[table].keys)):
+            for row in conn.execute(f"SELECT * FROM {table} ORDER BY tenant_id, " + ", ".join(adapters[table].keys)):  # nosec B608 - table and keys are selected from the fixed adapter allowlist
                 raw = dict(row)
                 source_tenant = require_explicit_tenant_id(raw["tenant_id"])
                 if source_tenant not in tenant_map:
                     raise ValueError("Every source tenant requires an explicit mapping")
                 target = require_explicit_tenant_id(tenant_map[source_tenant])
-                if table == "issue_mappings":
-                    payload = raw
+                if table in {"issue_mappings", "exceptions"}:
+                    payload = dict(raw)
                 elif table in {"skills_scan_run", "kspm_cluster_posture"}:
                     payload = {key: raw[key] for key in ("tenant_id", "run_id", "created_at")}
                     payload["payload"] = json.loads(raw["payload_json"])
@@ -96,6 +98,7 @@ def read_source(path: Path, tenant_map: dict[str, str], tables: list[str]) -> li
                         raise ValueError("Source row and payload identity disagree")
                 records.append((table, record, payload))
         conn.rollback()
+    scim_recovery.validate_source(records, tables)
     validate_groups(records, tables)
     validate_runtime_groups(records, tables)
     _validate_mapping_collisions(records)
@@ -166,13 +169,13 @@ def import_registries(
                 columns = ("tenant_id", *adapter.columns, "data")
                 inserted = (
                     conn.execute(
-                        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) "
+                        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))}) "  # nosec B608 - fixed adapter identifiers and bound values
                         "ON CONFLICT DO NOTHING RETURNING 1",
                         (record.tenant_id, *(getattr(record, column) for column in adapter.columns), Jsonb(payload)),
                     ).fetchone()
                     is not None
                 )
-            rows = conn.execute(f"SELECT data FROM {table} WHERE {where} FOR UPDATE", values).fetchall()
+            rows = conn.execute(f"SELECT data FROM {table} WHERE {where} FOR UPDATE", values).fetchall()  # nosec B608 - fixed adapter identifiers and bound values
             if not rows and not apply:
                 counts["inserted"] += 1
             elif len(rows) == 1 and rows[0][0] == payload:
@@ -180,6 +183,7 @@ def import_registries(
             else:
                 counts["conflicts"] += 1
         counts["conflicts"] += validate_target_groups(conn, records)
+        counts["conflicts"] += scim_recovery.validate_target(conn, records)
         if counts["conflicts"] or not apply:
             conn.rollback()
         else:
@@ -205,7 +209,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         receipt = import_registries(args.source, json.loads(args.tenant_map.read_text()), args.table, apply=args.apply)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, sqlite3.Error, PostgresError) as exc:
         sys.stderr.write(sanitize_error(exc, generic=True) + "\n")
         raise SystemExit(1) from None
     sys.stdout.write(json.dumps(receipt, sort_keys=True) + "\n")

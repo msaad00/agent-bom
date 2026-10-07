@@ -60,7 +60,8 @@ def test_invalid_verified_key_context_never_reads_default_tenant(job_store, role
                 keys.add(key)
                 response = client.get("/v1/jobs/context-probe", headers={"Authorization": f"Bearer {raw}"})
                 assert response.status_code == 500
-                assert response.json() == {"detail": "Authenticated tenant context is unavailable"}
+                assert response.json()["detail"] == "Authenticated tenant context is unavailable"
+                assert response.json()["error"]["code"] == "INTERNAL_ERROR"
             assert reads == []
             for tenant, expected in (("default", "default"), (f"other-{uuid4().hex}", None)):
                 raw, key = create_api_key("valid-context", role, tenant_id=tenant)

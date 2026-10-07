@@ -746,9 +746,20 @@ components:
         finding_window_days:
           title: Finding Window Days
           type: integer
+        has_more:
+          title: Has More
+          type: boolean
+        limit:
+          title: Limit
+          type: integer
         membership_complete:
           title: Membership Complete
           type: boolean
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
         schema_version:
           title: Schema Version
           type: string
@@ -758,6 +769,9 @@ components:
         total_approximate:
           title: Total Approximate
           type: boolean
+        total_campaigns:
+          title: Total Campaigns
+          type: integer
         total_findings:
           anyOf:
           - type: integer
@@ -771,6 +785,10 @@ components:
       - tenant_id
       - campaigns
       - count
+      - total_campaigns
+      - limit
+      - has_more
+      - next_cursor
       - finding_window_days
       - finding_limit
       - truncated
@@ -819,6 +837,10 @@ components:
             type: string
           title: Finding Ids
           type: array
+        finding_ids_truncated:
+          default: false
+          title: Finding Ids Truncated
+          type: boolean
         generation:
           title: Generation
           type: integer
@@ -10790,6 +10812,24 @@ paths:
     get:
       operationId: list_campaigns_v1_campaigns_get
       parameters:
+      - in: query
+        name: limit
+        required: false
+        schema:
+          default: 25
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+      - in: query
+        name: cursor
+        required: false
+        schema:
+          anyOf:
+          - maxLength: 512
+            type: string
+          - type: 'null'
+          title: Cursor
       - in: header
         name: X-Agent-Bom-Role
         required: false

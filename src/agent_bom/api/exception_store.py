@@ -20,7 +20,7 @@ from enum import Enum
 from typing import Any, Protocol
 from uuid import uuid4
 
-from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version, postgres_deployment_configured
 from agent_bom.api.suppression_approval import suppression_active
 from agent_bom.core.settings import env_raw
 from agent_bom.core.tenancy import require_explicit_tenant_id
@@ -106,7 +106,7 @@ class ExceptionStore(Protocol):
 
 def configured_exception_store() -> ExceptionStore:
     """Select persistence without converting configured storage errors to memory."""
-    if env_raw("AGENT_BOM_POSTGRES_URL"):
+    if postgres_deployment_configured():
         from agent_bom.api.postgres_store import PostgresExceptionStore
 
         return PostgresExceptionStore()

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agent_bom.api.hub_payload_codec import decode_hub_payload
+from agent_bom.api.hub_reference_payload import batch_reference_keys
 from agent_bom.api.storage.finding_current import CURRENT_COLUMNS
 from agent_bom.api.storage.finding_ledger_writes import FIELDS
 from agent_bom.api.storage.finding_payloads import hydrate_ledger_rows
@@ -47,7 +48,7 @@ def read_compliance_snapshots(conn: Any, tenant_map: dict[str, str]) -> list[tup
         actual = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         if actual != set(columns):
             raise ValueError("Compliance source schema is unsupported; preserve it for explicit compatibility recovery")
-        tables[table] = [dict(row) for row in conn.execute(f"SELECT * FROM {table}")]
+        tables[table] = [dict(row) for row in conn.execute(f"SELECT * FROM {table}")]  # nosec B608 - table is a fixed COLUMNS schema key
         for row in tables[table]:
             if "payload" in row:
                 row["payload"] = decode_hub_payload(row["payload"])
@@ -78,7 +79,6 @@ def read_compliance_snapshots(conn: Any, tenant_map: dict[str, str]) -> list[tup
 
 def _validate_payloads(tables: dict[str, list[dict[str, Any]]], hydrated: list[dict[str, Any]]) -> None:
     from agent_bom.api.compliance_hub_store import _redact_finding
-    from agent_bom.api.hub_reference_payload import batch_reference_keys
 
     for row in tables[LEDGER]:
         payload = row["payload"]

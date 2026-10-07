@@ -453,3 +453,42 @@ async def test_exposure_paths_failure_does_not_log_storage_credentials_or_paths(
     assert "private-diagnostic-key" not in caplog.text
     assert "/Users/operator/private.db" not in caplog.text
     assert "private-diagnostic-key" not in json.dumps(payload)
+
+
+@pytest.mark.asyncio
+async def test_exposure_paths_storage_unavailable_is_retryable_and_sanitized():
+    import sqlite3
+
+    class UnavailableStore:
+        def snapshot_identity(self, **kwargs):
+            raise sqlite3.OperationalError("locked /private/customer.db password=private-value")
+
+    payload = json.loads(await exposure_paths_impl(_get_graph_store=lambda: UnavailableStore()))
+    assert payload["error"]["code"] == "AGENTBOM_MCP_UPSTREAM_UNAVAILABLE"
+    assert "private-value" not in json.dumps(payload)
+
+
+def test_exposure_paths_unavailable_http_mapping():
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes.graph import _raise_mcp_error_as_http
+    from agent_bom.mcp_errors import CODE_UPSTREAM_UNAVAILABLE, mcp_error_payload
+
+    with pytest.raises(HTTPException) as caught:
+        _raise_mcp_error_as_http(mcp_error_payload(CODE_UPSTREAM_UNAVAILABLE, "Graph storage is unavailable."))
+    assert caught.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_exposure_snapshot_lookup_unavailable_is_retryable(monkeypatch):
+    import sqlite3
+
+    from agent_bom.api import graph_scan_ids
+
+    def unavailable(*args):
+        raise sqlite3.OperationalError("locked /private/customer.db")
+
+    monkeypatch.setattr(graph_scan_ids, "resolve_graph_scan_id", unavailable)
+    payload = json.loads(await exposure_paths_impl(scan_id="snapshot"))
+    assert payload["error"]["code"] == "AGENTBOM_MCP_UPSTREAM_UNAVAILABLE"
+    assert "/private/customer.db" not in json.dumps(payload)

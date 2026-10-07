@@ -148,3 +148,30 @@ def test_mcp_campaign_list_does_not_persist_membership_or_audit(monkeypatch):
         assert audit == []
     finally:
         set_campaign_store(None)
+
+
+def test_mcp_campaign_list_paginates_and_rejects_cross_tenant_cursor(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
+    rows = [{"id": f"campaign-{i}", "finding_ids": [f"finding-{i}"]} for i in range(30)]
+    monkeypatch.setattr("agent_bom.mcp_tools.risk_campaigns._load_source", lambda tenant: {"findings": [], "has_more": False})
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._campaigns", lambda request, source: rows)
+
+    def fetch(**kwargs):
+        return json.loads(
+            asyncio.run(
+                risk_campaign_workflow_impl(
+                    action="list",
+                    tenant_id=kwargs.pop("tenant_id", "tenant-alpha"),
+                    _truncate_response=_truncate,
+                    **kwargs,
+                )
+            )
+        )
+
+    first = fetch()
+    assert len(first["campaigns"]) == 25 and first["total_campaigns"] == 30
+    second = fetch(cursor=first["next_cursor"])
+    assert len(second["campaigns"]) == 5 and not second["has_more"]
+    monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-beta")
+    rejected = fetch(tenant_id="tenant-beta", cursor=first["next_cursor"])
+    assert rejected["http_status"] == 409

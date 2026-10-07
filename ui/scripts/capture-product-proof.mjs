@@ -1037,6 +1037,60 @@ function referenceFixFirstView() {
   return REFERENCE_LAB.capture_fixture.fix_first;
 }
 
+const gatewayPolicies = [
+  {
+    policy_id: "policy-default-deny",
+    name: "Default-deny prod MCP runtime",
+    description: "Blocks shell and write-capable tools unless an approved JIT grant and environment match exist.",
+    mode: "enforce",
+    rules: [
+      { id: "block-shell", description: "Block command execution tools outside approved runbooks", action: "block", block_tools: ["execute_command", "shell", "exec"], tool_name: null, tool_name_pattern: ".*(exec|shell|command).*", arg_pattern: {}, rate_limit: null, require_registry_verified: false },
+      { id: "block-repo-write", description: "Block repository write tools for unreviewed agents", action: "block", block_tools: ["create_pull_request", "write_file"], tool_name: null, tool_name_pattern: ".*(write|pull_request).*", arg_pattern: {}, rate_limit: null, require_registry_verified: true },
+      { id: "watch-secret-paths", description: "Alert on tools touching credential or secret paths", action: "warn", block_tools: [], tool_name: null, tool_name_pattern: ".*", arg_pattern: { path: ".*(secret|token|credential).*" }, rate_limit: null, require_registry_verified: false },
+    ],
+    bound_agents: ["developer-copilot", "sre-runbook-agent"],
+    bound_agent_types: ["ide", "runbook"],
+    bound_environments: ["prod-ai-control-plane"],
+    created_at: CREATED_AT,
+    updated_at: CREATED_AT,
+    enabled: true,
+  },
+  {
+    policy_id: "policy-rag-readonly",
+    name: "Finance RAG read-only data boundary",
+    description: "Allows Snowflake query tools only when scoped to approved warehouse roles.",
+    mode: "audit",
+    rules: [
+      { id: "readonly-snowflake", description: "Audit SQL tool use against approved read-only role", action: "warn", block_tools: [], tool_name: "run_sql", tool_name_pattern: null, arg_pattern: { role: "FINANCE_READONLY" }, rate_limit: 120, require_registry_verified: true },
+    ],
+    bound_agents: ["finance-rag-agent"],
+    bound_agent_types: ["rag"],
+    bound_environments: ["prod-finance"],
+    created_at: CREATED_AT,
+    updated_at: CREATED_AT,
+    enabled: true,
+  },
+];
+
+const gatewayAudit = [
+  ["blocked", "execute_command", "developer-copilot", "block-shell", "Blocked shell class until a JIT grant is issued"],
+  ["blocked", "create_pull_request", "developer-copilot", "block-repo-write", "Blocked repo-write tool for quarantined agent"],
+  ["alerted", "run_sql", "finance-rag-agent", "readonly-snowflake", "Audited Snowflake query against read-only role"],
+  ["allowed", "post_incident_update", "sre-runbook-agent", "watch-secret-paths", "Allowed messaging tool outside secret path scope"],
+  ["blocked", "write_file", "developer-copilot", "block-repo-write", "Blocked workspace write against protected path"],
+].map(([action, tool, agent, rule, reason], index) => ({
+  entry_id: `audit-${index + 1}`,
+  policy_id: index < 2 ? "policy-default-deny" : "policy-rag-readonly",
+  policy_name: index < 2 ? gatewayPolicies[0].name : gatewayPolicies[1].name,
+  rule_id: rule,
+  agent_name: agent,
+  tool_name: tool,
+  arguments_preview: { redacted: true },
+  action_taken: action,
+  reason,
+  timestamp: CREATED_AT,
+}));
+
 function overviewResponse() {
   const domain = (label, href, metric, metricLabel, status, detail = {}, graphHref) => ({
     label,

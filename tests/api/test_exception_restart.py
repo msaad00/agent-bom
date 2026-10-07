@@ -99,3 +99,19 @@ def test_postgres_configuration_failure_cannot_become_in_memory(monkeypatch):
     with pytest.raises(RuntimeError, match="Configured backend unavailable"):
         stores._get_exception_store()
     assert stores._exception_store is None
+
+
+def test_store_import_does_not_initialize_unrelated_audit_signer():
+    env = {key: value for key, value in os.environ.items() if not key.startswith("AGENT_BOM_")}
+    env.update(
+        PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"),
+        AGENT_BOM_POSTGRES_URL="postgresql://unused.invalid/fixture",
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", "import sys; import agent_bom.api.stores; assert 'agent_bom.api.audit_log' not in sys.modules"],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr

@@ -22,6 +22,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Allow valid bearer access-token reuse while retaining replay protection for one-time OIDC exchanges. Honor explicit role claims, including viewer, and reject non-string tenant claims.
 - Remove request queries from both API launchers' access logs, redact short bearer tokens and control-plane keys, and suppress interpreter warnings that echo scanned source or filenames.
+- Reject malformed compliance ingestion bodies before writes and require an explicit JSON boolean for absent-finding reconciliation.
 - Sign the exact audit response bytes and reject malformed, past or timezone-less explicit exception expiries without changing separate approval requirements.
 - Pin webhook socket connections to validated DNS answers, block cloud metadata destinations, and require both tenant and operator opt-in for private subscription destinations. Disable automatic redirects and ambient proxies for inline delivery.
 

@@ -19,7 +19,6 @@ import pytest
 
 from agent_bom.http_client import create_client, create_sync_client, download_to_file
 
-PROXY_PORT = 8874
 PROXY_ENV_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy")
 
 
@@ -87,15 +86,32 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 def proxy_server(monkeypatch):
     for name in PROXY_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    server = ThreadingHTTPServer(("127.0.0.1", PROXY_PORT), _ProxyHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _ProxyHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{PROXY_PORT}"
+        yield f"http://127.0.0.1:{server.server_port}"
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_proxy_servers_can_coexist(monkeypatch) -> None:
+    """Concurrent test fixtures must each own a distinct listening socket."""
+    first = proxy_server.__wrapped__(monkeypatch)
+    second = proxy_server.__wrapped__(monkeypatch)
+    try:
+        first_url = next(first)
+        second_url = next(second)
+        assert first_url != second_url
+        with httpx.Client(trust_env=False, timeout=5) as client:
+            first_response = client.get(first_url)
+            second_response = client.get(second_url)
+        assert first_response.status_code == second_response.status_code == 418
+    finally:
+        second.close()
+        first.close()
 
 
 def test_sync_client_routes_through_the_configured_proxy(proxy_server, monkeypatch) -> None:

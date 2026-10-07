@@ -3458,7 +3458,7 @@ async function main() {
         await expect.poll(() => canvasPage.locator(".react-flow__node").evaluateAll(nodes => nodes.every(node => {
           const box = node.getBoundingClientRect();
           const frame = node.closest(".react-flow").getBoundingClientRect();
-          const scale = box.width / node.offsetWidth;
+          const scale = new DOMMatrixReadOnly(getComputedStyle(node.closest(".react-flow__viewport")).transform).a;
           const text = [...node.querySelectorAll("span, p, .text-xs")].filter(element =>
             element.children.length === 0 && (element.textContent ?? "").trim());
           const separate = nodes.every(other => {

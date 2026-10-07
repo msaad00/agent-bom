@@ -33,6 +33,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
+from agent_bom.api.hub_ingest import read_compliance_ingest_body
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.posture_counts_cache import POSTURE_COUNTS_CACHE, cached_posture_block
 from agent_bom.api.stores import (
@@ -2575,9 +2576,7 @@ async def ingest_compliance_findings(request: Request) -> dict:
     from agent_bom.compliance_coverage import normalize_framework_slug
     from agent_bom.compliance_hub_ingest import ingest_findings
 
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    body = await read_compliance_ingest_body(request)
     fmt = (body.get("format") or "").lower()
     if fmt not in _HUB_VALID_FORMATS:
         raise HTTPException(

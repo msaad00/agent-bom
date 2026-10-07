@@ -3455,6 +3455,15 @@ async function main() {
           const proposal = document.querySelector(`[data-id="proposal:${scenarioId}:private-endpoint"]`)?.getBoundingClientRect();
           return frame && proposal && proposal.left >= frame.left && proposal.right <= frame.right && proposal.top >= frame.top && proposal.bottom <= frame.bottom;
         }, SCENARIO_ID, { timeout: 10_000 });
+        await expect.poll(() => canvasPage.locator(".react-flow__node").evaluateAll(nodes => nodes.every(node => {
+          const box = node.getBoundingClientRect();
+          const frame = node.closest(".react-flow").getBoundingClientRect();
+          const scale = box.width / node.offsetWidth;
+          const text = [...node.querySelectorAll("span, p, .text-xs")].filter(element =>
+            element.children.length === 0 && (element.textContent ?? "").trim());
+          return box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom
+            && text.every(element => parseFloat(getComputedStyle(element).fontSize) * scale >= 12);
+        })), { timeout: 10_000 }).toBe(true);
       },
       {
         awaitResponses: [

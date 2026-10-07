@@ -30,6 +30,7 @@ from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, _get_trend_store, set_issue_mapping_store, set_job_store, set_trend_store
 from agent_bom.audit_integrity import compute_audit_record_mac
 from agent_bom.baseline import InMemoryTrendStore, TrendPoint
+from tests._clock_helpers import approvable_expiry
 
 
 def _request(tenant_id: str, api_key_name: str = "tenant-admin") -> SimpleNamespace:
@@ -222,7 +223,7 @@ async def test_create_exception_uses_authenticated_actor_not_body(isolated_excep
 
 @pytest.mark.asyncio
 async def test_approve_exception_uses_request_actor_and_tenant(isolated_exception_store):
-    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at=approvable_expiry())
     isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     approved = enterprise.approve_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
@@ -233,7 +234,7 @@ async def test_approve_exception_uses_request_actor_and_tenant(isolated_exceptio
 
 @pytest.mark.asyncio
 async def test_revoke_exception_uses_authenticated_actor(isolated_exception_store):
-    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at=approvable_expiry())
     exc.status = ExceptionStatus.ACTIVE
     isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
@@ -267,7 +268,7 @@ async def test_delete_exception_returns_404_for_cross_tenant(isolated_exception_
 
 @pytest.mark.asyncio
 async def test_delete_exception_audit_logs_actor_and_tenant(isolated_exception_store, isolated_audit_log):
-    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at=approvable_expiry())
     isolated_exception_store.put(exc, tenant_id=exc.tenant_id)
 
     enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
@@ -284,7 +285,7 @@ async def test_delete_exception_passes_tenant_to_store(monkeypatch):
         def __init__(self) -> None:
             self.get_calls: list[tuple[str, str | None]] = []
             self.delete_calls: list[tuple[str, str | None]] = []
-            self.exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at="2099-01-01T00:00:00Z")
+            self.exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha", expires_at=approvable_expiry())
 
         def put(self, exc: VulnException) -> None:
             self.exc = exc
@@ -582,7 +583,7 @@ async def test_finding_triage_exports_signed_openvex_for_eligible_decisions(isol
             enterprise.approve_exception(
                 _request("tenant-alpha"),
                 pending.exception_id,
-                SuppressionApprovalRequest(expires_at="2099-01-01T00:00:00Z"),
+                SuppressionApprovalRequest(expires_at=approvable_expiry()),
             )
 
     exported = enterprise.export_finding_triage_vex(_request("tenant-alpha"))
@@ -647,7 +648,7 @@ async def test_finding_triage_openvex_current_scope_matches_canonical_finding_fi
             enterprise.approve_exception(
                 _request("tenant-alpha"),
                 pending.exception_id,
-                SuppressionApprovalRequest(expires_at="2099-01-01T00:00:00Z"),
+                SuppressionApprovalRequest(expires_at=approvable_expiry()),
             )
 
     exported = enterprise.export_finding_triage_vex(
@@ -777,7 +778,7 @@ async def test_ingest_finding_triage_vex_applies_and_roundtrips(isolated_excepti
             enterprise.approve_exception(
                 _request("tenant-alpha"),
                 pending.exception_id,
-                SuppressionApprovalRequest(expires_at="2099-01-01T00:00:00Z"),
+                SuppressionApprovalRequest(expires_at=approvable_expiry()),
             )
 
     exported = enterprise.export_finding_triage_vex(_request("tenant-alpha"))

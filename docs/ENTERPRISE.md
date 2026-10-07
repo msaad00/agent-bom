@@ -207,10 +207,20 @@ this same approval boundary. Investigation notes need no approval.
 
 An authenticated admin must separately call
 `PUT /v1/exceptions/{exception_id}/approve`, optionally supplying
-`{"expires_at":"2099-01-01T00:00:00Z"}` as an example (choose the shortest
+`{"expires_at":"2026-12-31T00:00:00Z"}` as an example (choose the shortest
 appropriate real expiry). Approval requires an exact non-wildcard vulnerability
 and package plus a future ISO-8601 timestamp with a timezone. The equivalent MCP
 `approve_exception` tool uses the same validation and authenticated admin boundary.
+
+Expiries are bounded: create and approve reject an `expires_at` more than
+`AGENT_BOM_EXCEPTION_MAX_EXPIRY_DAYS` days ahead (default 365, accepted range
+1-3650) with a 422 (create) or 400 (approve). Approval also enforces four-eyes
+review: the principal that requested the suppression cannot approve it (403).
+Shared identities such as a single static API key, an unauthenticated local
+server, or a trusted proxy without `X-Agent-Bom-Subject` all resolve to one
+principal, so such single-operator deployments must opt out explicitly with
+`AGENT_BOM_EXCEPTION_ALLOW_SELF_APPROVAL=1`. The MCP tools return the same
+messages as `{"status": "rejected", "error": ...}`.
 Review `suppression_active` and `approval_required` on exception responses;
 historical `status` alone does not establish current suppression authority.
 

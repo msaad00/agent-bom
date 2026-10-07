@@ -21,3 +21,8 @@ def recent(iso: str) -> str:
     shifted = parsed + timedelta(days=(datetime.now(timezone.utc) - _ANCHOR).days)
     text = shifted.isoformat()
     return text.replace("+00:00", "Z") if zulu else text
+
+
+def approvable_expiry(days: int = 90) -> str:
+    """A suppression expiry inside the default approval window."""
+    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()

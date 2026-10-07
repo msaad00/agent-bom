@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 
 from agent_bom.api.suppression_approval import ApprovalPersistenceError, exception_response, persist_approval
+from agent_bom.api.suppression_policy import expiry_window_error
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
 
 
@@ -67,6 +68,8 @@ async def request_exception_impl(
                 raise ValueError("timezone required")
         except ValueError:
             return json.dumps({"status": "rejected", "error": "expires_at must be a timezone-aware ISO-8601 timestamp"})
+        if window_error := expiry_window_error(expires_at.strip()):
+            return json.dumps({"status": "rejected", "error": window_error})
 
     resolved_tenant = resolve_mcp_tool_tenant_id(tenant_id)
     actor = (_authenticated_actor or "mcp-operator").strip()

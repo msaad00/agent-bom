@@ -17,6 +17,7 @@ from agent_bom.api.report_worker import _run_report_job_sync
 from agent_bom.api.server import ScanJob, ScanRequest, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, set_exception_store
+from tests._clock_helpers import approvable_expiry
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 
@@ -137,7 +138,9 @@ def test_openvex_export_filters_by_assignee_and_product() -> None:
         )
         assert created.status_code == 201, created.text
         approved = client.put(
-            f"/v1/exceptions/{created.json()['id']}/approve", json={"expires_at": "2099-01-01T00:00:00Z"}, headers=_headers()
+            f"/v1/exceptions/{created.json()['id']}/approve",
+            json={"expires_at": approvable_expiry()},
+            headers={**_headers(), "X-Agent-Bom-Subject": "second-reviewer"},
         )
         assert approved.status_code == 200, approved.text
 

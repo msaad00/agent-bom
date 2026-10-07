@@ -296,6 +296,17 @@ class SAMLConfig:
         return cls()
 
 
+def saml_unavailable_reason() -> str | None:
+    """Why SP-initiated SAML cannot run on this deployment, or ``None``."""
+    if not saml_runtime_available():
+        return f"SAML SSO requires the optional [saml] extra. Install with: {SAML_INSTALL_HINT}"
+    try:
+        SAMLConfig.from_env().settings_dict()
+    except SAMLError as exc:
+        return str(exc)
+    return None
+
+
 def describe_saml_posture() -> dict[str, object]:
     """Return operator-facing SAML posture for auth policy surfaces."""
     config = SAMLConfig.from_env()

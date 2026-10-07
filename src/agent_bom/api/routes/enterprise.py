@@ -65,9 +65,11 @@ from agent_bom.api.models import (
     SAMLLoginRequest,
     TenantQuotaUpdateRequest,
 )
+from agent_bom.api.saml import saml_unavailable_reason
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
 from agent_bom.api.suppression_approval import (
     ApprovalPersistenceError,
+    SelfApprovalError,
     SuppressionApprovalRequest,
     exception_response,
     persist_approval,
@@ -2090,6 +2092,8 @@ def saml_metadata() -> PlainTextResponse:
 @router.post("/auth/saml/relay-state", tags=["enterprise"])
 def saml_relay_state() -> dict:
     """Issue a one-time RelayState nonce for SP-initiated SAML login."""
+    if reason := saml_unavailable_reason():
+        raise HTTPException(status_code=503, detail=reason)
     relay_state, expires_at = _new_saml_relay_state()
     return {
         "relay_state": relay_state,
@@ -2427,6 +2431,8 @@ def approve_exception(request: Request, exception_id: str, req: SuppressionAppro
         exc.expires_at = req.expires_at
     try:
         persist_approval(exc, store, actor=actor, tenant_id=tenant_id)
+    except SelfApprovalError as error:
+        raise HTTPException(status_code=403, detail=sanitize_error(error)) from None
     except ValueError as error:
         raise HTTPException(status_code=400, detail=sanitize_error(error)) from None
     except ApprovalPersistenceError:

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api import audit_log
+from agent_bom.api.suppression_policy import SelfApprovalError as SelfApprovalError
+from agent_bom.api.suppression_policy import expiry_window_error, require_distinct_approver
 from agent_bom.core.timestamps import parse_identity_timestamp
 
 if TYPE_CHECKING:
@@ -62,9 +64,10 @@ def activate_suppression(exc: "VulnException", *, actor: str) -> None:
     """Called only by separate authenticated admin approval surfaces."""
     if not actor.strip():
         raise ValueError("Authenticated approver identity is required")
-    error = approval_error(exc)
+    error = approval_error(exc) or expiry_window_error(exc.expires_at)
     if error:
         raise ValueError(error)
+    require_distinct_approver(exc.requested_by, actor)
     if exc.status.value not in {"pending", "active", "approved"}:
         raise ValueError("Exception state cannot be approved")
     exc.status = type(exc.status).ACTIVE

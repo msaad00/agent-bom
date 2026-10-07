@@ -1545,7 +1545,6 @@ jobs:
     # musl suite on dependency changes and every nightly run.
     if: >-
       !cancelled() && github.event_name != 'pull_request' && (
-        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         github.event_name != 'push' ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.alpine == 'true'
@@ -1965,7 +1964,6 @@ jobs:
     name: Dogfood GitHub Action
     if: >-
       !cancelled() && github.event_name != 'pull_request' && (
-        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         github.event_name != 'push' ||
         needs.changes.result != 'success' ||
         needs.changes.outputs.action == 'true'

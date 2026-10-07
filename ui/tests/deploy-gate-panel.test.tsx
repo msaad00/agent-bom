@@ -72,6 +72,8 @@ describe("DeployGatePanel", () => {
     const verdict = await screen.findByTestId("deploy-gate-verdict");
     expect(verdict).toHaveAttribute("data-decision", "allow");
     expect(verdict).toHaveTextContent("GO");
+    expect(verdict).not.toHaveTextContent("safe to ship");
+    expect(verdict).toHaveTextContent("Missing evidence remains unassessed");
   });
 
   it("renders REVIEW for a warn decision", async () => {

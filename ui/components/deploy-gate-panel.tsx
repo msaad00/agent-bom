@@ -27,7 +27,7 @@ type DisplayDecision = DeployDecision | "insufficient-evidence";
 const VERDICTS: Record<DisplayDecision, Verdict> = {
   allow: {
     label: "GO",
-    detail: "No blocking exposure path reaches this candidate — safe to ship.",
+    detail: "The available evidence did not trigger a blocking rule for this candidate. Missing evidence remains unassessed; review permissions, runtime outcomes and deployment conditions.",
     icon: CheckCircle2,
     container:
       "border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)]",

@@ -2,9 +2,12 @@
 
 import asyncio
 import json
+import secrets
 
 import pytest
 from starlette.testclient import TestClient
+
+_PROXY_SECRET = secrets.token_urlsafe(32)
 
 
 @pytest.fixture
@@ -19,7 +22,7 @@ def default_stores(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
     monkeypatch.setenv("AGENT_BOM_POSTURE_PRECOMPUTE", "0")
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
-    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "campaign-default-test-secret-with-32-bytes")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", _PROXY_SECRET)
     monkeypatch.setenv("AGENT_BOM_MCP_TENANT_ID", "tenant-alpha")
     set_campaign_store(None)
     set_compliance_hub_store(None)
@@ -40,7 +43,7 @@ def _headers():
     return {
         "X-Agent-Bom-Role": "admin",
         "X-Agent-Bom-Tenant-ID": "tenant-alpha",
-        "X-Agent-Bom-Proxy-Secret": "campaign-default-test-secret-with-32-bytes",
+        "X-Agent-Bom-Proxy-Secret": _PROXY_SECRET,
     }
 
 

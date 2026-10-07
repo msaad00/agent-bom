@@ -43,6 +43,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.responses import JSONResponse, Response
 
+from agent_bom.api.finding_read_context import finding_read_scope
 from agent_bom.api.graph_generation import optional_generation, pin_generation, verify_generation
 from agent_bom.api.graph_page_context import containment_ancestors, page_attack_context
 from agent_bom.api.graph_paging import _coalesce_alias, _enforce_node_offset_cap, _page_meta, _paginate
@@ -115,7 +116,8 @@ class _GraphAdmissionRoute(APIRoute):
                 async with adaptive_backpressure("graph"):
                     token = _graph_request_admitted.set(True)
                     try:
-                        return await handler(request)
+                        with finding_read_scope():
+                            return await handler(request)
                     finally:
                         _graph_request_admitted.reset(token)
             except BackpressureRejectedError as exc:

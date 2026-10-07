@@ -70,10 +70,12 @@ def restore_package_metadata(package: Package, component: dict) -> None:
         if isinstance(digest, dict) and isinstance(digest.get("alg"), str) and isinstance(digest.get("content"), str):
             add_checksum(package.checksums, digest["alg"], digest["content"])
     package.reachability_evidence = "declaration_only"
-    package.version_source = "sbom"
+    package.version_source = "sbom_ingest"
     package.resolved_from_registry = props.get("agent-bom:resolved-from-registry") == "true"
-    package.dependency_scope = props.get("agent-bom:dependency-scope", "unknown")
-    package.is_direct = props.get("agent-bom:is-direct") == "true"
+    scope = {"required": "runtime", "optional": "optional", "excluded": "excluded"}.get(str(component.get("scope", "")), "unknown")
+    package.dependency_scope = props.get("agent-bom:dependency-scope", scope)
+    direct = props.get("agent-bom:is-direct")
+    package.is_direct = {"true": True, "false": False}.get(direct or "")
     parent = props.get("agent-bom:parent-package")
     package.parent_package = parent or None
     depth = props.get("agent-bom:dependency-depth", "0")
@@ -123,13 +125,14 @@ def restore_dependency_hierarchy(document: dict, packages: dict[str, Package]) -
             package.parent_package = None  # the model cannot assert one of several parents
 
 
-def imported_composition_complete(document: dict) -> bool:
+def imported_composition_complete(document: dict) -> bool | None:
     compositions = document.get("compositions")
-    return (
-        isinstance(compositions, list)
-        and bool(compositions)
-        and all(isinstance(c, dict) and c.get("aggregate") == "complete" for c in compositions)
-    )
+    if not isinstance(compositions, list) or not compositions:
+        return None
+    aggregates = [c.get("aggregate") for c in compositions if isinstance(c, dict)]
+    if len(aggregates) != len(compositions) or any(a in {None, "unknown", "not_specified"} for a in aggregates):
+        return None
+    return all(a == "complete" for a in aggregates)
 
 
 def vulnerability_source(vuln: Vulnerability) -> dict[str, str]:

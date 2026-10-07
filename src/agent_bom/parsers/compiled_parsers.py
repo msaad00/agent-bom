@@ -24,6 +24,8 @@ import httpx
 from agent_bom.coverage import record_manifest_parse_warning
 from agent_bom.models import MCPServer, Package
 from agent_bom.package_utils import package_purl
+from agent_bom.parsers.cargo_lockfile import parse_cargo_lock
+from agent_bom.parsers.maven_properties import dependency_coordinates, local_properties, read_pom
 
 logger = logging.getLogger(__name__)
 
@@ -541,7 +543,7 @@ def parse_go_packages(
 
     Otherwise reads go.mod to correctly distinguish direct from indirect
     (transitive) dependencies and to apply ``replace`` directives.  Falls back
-    to go.sum only when go.mod is absent, marking all packages as direct.
+    to go.sum only when go.mod is absent, preserving unknown directness.
 
     Args:
         directory: Project root containing ``go.mod`` / ``go.sum``.
@@ -596,13 +598,11 @@ def parse_go_packages(
                 ecosystem="go",
                 purl=f"pkg:golang/{mod}@{ver}",
                 is_direct=is_direct,
+                version_source="manifest",
+                version_evidence=[{"type": "manifest", "source_file": str(go_mod)}],
             )
-            if resolve_versions and pkg.version_source == "detected":
-                # Mark the source so callers can distinguish
-                pass  # version_source stays "detected"; proxy resolution is transparent
             packages.append(pkg)
 
-        # Verify go.sum hashes for all direct modules
         if verify_checksums and go_sum.exists():
             modules_to_check = [(pkg.name, f"v{pkg.version}" if not pkg.version.startswith("v") else pkg.version) for pkg in packages]
             checksum_results = verify_go_checksums(go_sum, modules_to_check)
@@ -622,7 +622,7 @@ def parse_go_packages(
 
         return packages
 
-    # Fallback: go.sum only — all marked direct
+    # Fallback: go.sum is a checksum inventory; directness is unknown
     packages = []
     if go_sum.exists():
         seen: set[tuple[str, str]] = set()
@@ -656,7 +656,9 @@ def parse_go_packages(
                         version=clean_ver,
                         ecosystem="go",
                         purl=f"pkg:golang/{name}@{raw_ver}",
-                        is_direct=True,
+                        is_direct=None,
+                        version_source="lockfile",
+                        version_evidence=[{"type": "lockfile", "source_file": str(go_sum)}],
                     )
                 )
         if malformed_lines:
@@ -668,7 +670,7 @@ def parse_go_packages(
     return packages
 
 
-def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
+def _parse_pom_modules(root_dir: Path, depth: int = 0, *, scan_root: Path | None = None) -> list[Package]:
     """Recursively parse a Maven multi-module project.
 
     Reads the ``pom.xml`` at *root_dir*, collects its ``<dependency>``
@@ -688,21 +690,21 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
 
     import xml.etree.ElementTree as ET  # for ParseError type only
 
-    from defusedxml.ElementTree import parse as safe_xml_parse  # B314
-
-    pom = root_dir / "pom.xml"
+    scan_root = (scan_root or root_dir).resolve()
+    pom = (root_dir / "pom.xml").resolve()
+    if not pom.is_relative_to(scan_root):
+        return []
     if not pom.exists():
         return []
 
     try:
-        tree = safe_xml_parse(str(pom))
-        xml_root = tree.getroot()
-    except (ET.ParseError, OSError) as exc:
+        xml_root = read_pom(pom)
+    except (ET.ParseError, OSError, ValueError) as exc:
         logger.debug("Failed to parse pom.xml in %s: %s", root_dir, exc)
         record_manifest_parse_warning(
             ecosystem="maven",
             path=str(pom),
-            detail="pom.xml could not be read or parsed; Maven dependencies were not scanned",
+            detail="pom.xml could not be read within the parser size limit or parsed; Maven dependencies were not scanned",
         )
         return []
 
@@ -719,6 +721,7 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
         results = el.findall(f"{ns}{tag}")
         return results if results else el.findall(tag)
 
+    properties = local_properties(pom, xml_root, scan_root)
     non_direct_scopes = {"test", "provided", "system"}
     packages: list[Package] = []
 
@@ -737,16 +740,14 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
             if not group_id or not artifact_id:
                 continue
 
-            # Skip unresolved property references and missing versions
-            if version_el is None or not (version_el.text or "").strip():
+            coordinates = dependency_coordinates(
+                group_id, artifact_id, (version_el.text or "").strip() if version_el is not None else "", properties, pom
+            )
+            if coordinates is None:
                 continue
-            version = (version_el.text or "").strip()
-            if version.startswith("${"):
-                continue  # parent POM property — can't resolve statically
-
+            group_id, artifact_id, version = coordinates
             scope = (scope_el.text or "compile").strip().lower() if scope_el is not None else "compile"
             is_direct = scope not in non_direct_scopes
-
             name = f"{group_id}:{artifact_id}"
             purl = f"pkg:maven/{group_id}/{artifact_id}@{version}"
             packages.append(
@@ -767,12 +768,12 @@ def _parse_pom_modules(root_dir: Path, depth: int = 0) -> list[Package]:
             if not module_path:
                 continue
             sub_dir = root_dir / module_path
-            packages.extend(_parse_pom_modules(sub_dir, depth=depth + 1))
+            packages.extend(_parse_pom_modules(sub_dir, depth=depth + 1, scan_root=scan_root))
 
     return packages
 
 
-def parse_maven_packages(directory: Path, *, resolve_versions: bool = False) -> list[Package]:
+def parse_maven_packages(directory: Path, *, resolve_versions: bool = False, scan_root: Path | None = None) -> list[Package]:
     """Parse packages from pom.xml (Maven/Java projects).
 
     Supports multi-module Maven projects: if the root ``pom.xml`` contains a
@@ -784,7 +785,9 @@ def parse_maven_packages(directory: Path, *, resolve_versions: bool = False) -> 
     Dependencies with scope ``test``, ``provided``, or ``system`` are included
     but marked ``is_direct=False`` since they are not deployed at runtime.
     Dependencies without a ``<version>`` element (version inherited via parent
-    POM) are skipped — parent POM resolution requires network access.
+    POM) emit coverage warnings. Explicit property references resolve through
+    at most eight local parents within the repository or explicit scan root.
+    No parent POM is fetched remotely.
 
     Args:
         directory: Project directory containing ``pom.xml``.
@@ -797,7 +800,8 @@ def parse_maven_packages(directory: Path, *, resolve_versions: bool = False) -> 
     if not pom.exists():
         return []
 
-    all_packages = _parse_pom_modules(directory, depth=0)
+    boundary = scan_root or next((p for p in (directory, *directory.parents) if (p / ".git").exists()), directory)
+    all_packages = _parse_pom_modules(directory, depth=0, scan_root=boundary)
 
     # Deduplicate by (name, version) — first occurrence wins (root > submodule)
     maven_seen: set[tuple[str, str]] = set()
@@ -922,35 +926,7 @@ def parse_cargo_packages(directory: Path, *, resolve_versions: bool = False) -> 
     cargo_lock = directory / "Cargo.lock"
 
     if cargo_lock.exists():
-        current_name: Optional[str] = None
-        current_version: Optional[str] = None
-        try:
-            cargo_lines = cargo_lock.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError as exc:
-            logger.debug("Could not read Cargo.lock at %s: %s", cargo_lock, exc)
-            record_manifest_parse_warning(
-                ecosystem="cargo",
-                path=str(cargo_lock),
-                detail="Cargo.lock could not be read; Cargo dependencies were not scanned",
-            )
-            cargo_lines = []
-        for raw_line in cargo_lines:
-            stripped_line = raw_line.strip()
-            if stripped_line.startswith('name = "'):
-                current_name = stripped_line.split('"')[1]
-            elif stripped_line.startswith('version = "') and current_name:
-                current_version = stripped_line.split('"')[1]
-                cargo_packages.append(
-                    Package(
-                        name=current_name,
-                        version=current_version,
-                        ecosystem="cargo",
-                        purl=f"pkg:cargo/{current_name}@{current_version}",
-                        is_direct=True,
-                    )
-                )
-                current_name = None
-                current_version = None
+        cargo_packages = parse_cargo_lock(directory)
     elif (directory / "Cargo.toml").exists():
         # Manifest-only project (no lockfile): parse declared deps so the whole
         # cargo ecosystem isn't silently missed.

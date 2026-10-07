@@ -52,6 +52,7 @@ from typing import IO, Optional
 from agent_bom.coverage import record_scan_input_warning
 from agent_bom.models import Package, PackageOccurrence
 from agent_bom.package_utils import parse_debian_source_name
+from agent_bom.parsers.cpython_runtime import _python_metadata_kind, extract_cpython_runtime
 
 _logger = logging.getLogger(__name__)
 _MAX_JSON_MEMBER_BYTES = 100 * 1024 * 1024
@@ -826,15 +827,8 @@ def _present_candidates(scan: _LayerScan, bases: tuple[str, ...]) -> Iterator[st
                 yield prefix + base
 
 
-def _python_metadata_kind(member_name: str) -> str | None:
-    if member_name.endswith(".dist-info/METADATA"):
-        return "dist-info"
-    if member_name.endswith(".egg-info/PKG-INFO") or member_name.endswith(".egg-info/METADATA"):
-        return "egg-info"
-    return None
-
-
 def _extract_python_metadata(scan: _LayerScan) -> None:
+    extract_cpython_runtime(scan, _safe_extractfile)
     # Older base images (e.g. Debian buster) ship pip/setuptools/wheel as
     # ``*.egg-info/PKG-INFO`` rather than ``*.dist-info/METADATA``; both use the
     # same RFC822 headers and ``_add_package`` dedupes a package found via both.

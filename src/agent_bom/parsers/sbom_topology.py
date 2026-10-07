@@ -8,7 +8,9 @@ from copy import deepcopy
 from typing import Any, cast
 
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, ServerSurface
-from agent_bom.sbom_formats.cyclonedx import component_properties, dependency_map, software_components
+from agent_bom.parsers.spdx_context import context_document
+from agent_bom.sbom_formats.cyclonedx import component_properties, dependency_map, restore_dependency_hierarchy, software_components
+from agent_bom.sbom_formats.spdx_hierarchy import restore_spdx_hierarchy
 
 
 def _server_members(component: dict, edges: dict[str, set[str]], packages: dict[str, Package]) -> set[str]:
@@ -33,9 +35,21 @@ def _server_members(component: dict, edges: dict[str, set[str]], packages: dict[
     return seen & packages.keys()
 
 
+def _restore_scoped_hierarchy(document: dict, spdx_document: dict | None, ref: str, scoped_packages: dict[str, Package]) -> None:
+    scoped_document = {**document, "metadata": {"component": {"bom-ref": ref}}}
+    if spdx_document is None:
+        restore_dependency_hierarchy(scoped_document, scoped_packages)
+    else:
+        source = dict(spdx_document)
+        if "@graph" in source:
+            source["elements"] = source["@graph"]
+        restore_spdx_hierarchy(source, scoped_packages, root_refs={ref})
+
+
 def restore_context_agents(document: dict, fallback: Agent, name: str | None) -> list[Agent]:
-    if document.get("bomFormat") != "CycloneDX":
-        return [fallback]
+    spdx_document = document if document.get("bomFormat") != "CycloneDX" else None
+    if spdx_document is not None:
+        document = context_document(spdx_document)
     components = {c["bom-ref"]: c for c in software_components(document) if isinstance(c, dict) and isinstance(c.get("bom-ref"), str)}
     agent_refs = {ref for ref, c in components.items() if component_properties(c).get("agent-bom:type") == "ai-agent"}
     server_refs = {ref for ref, c in components.items() if component_properties(c).get("agent-bom:type") == "mcp-server"}
@@ -55,6 +69,8 @@ def restore_context_agents(document: dict, fallback: Agent, name: str | None) ->
         component = components[ref]
         members = _server_members(component, edges, packages)
         assigned.update(members)
+        scoped_packages = {p: deepcopy(packages[p]) for p in sorted(members)}
+        _restore_scoped_hierarchy(document, spdx_document, ref, scoped_packages)
         tools = []
         for prop in component.get("properties", []):
             if isinstance(prop, dict) and prop.get("name") == "agent-bom:mcp-tool" and isinstance(prop.get("value"), str):
@@ -63,12 +79,11 @@ def restore_context_agents(document: dict, fallback: Agent, name: str | None) ->
         servers[ref] = MCPServer(
             name=str(component.get("name") or ref),
             command="sbom",
-            # Imported commands are never trusted or executed. Hash the exact,
-            # case-sensitive component reference before command normalization.
+            # Never execute imported commands; hash the case-sensitive reference.
             args=[fallback.config_path, "component:" + hashlib.sha256(ref.encode()).hexdigest()],
             surface=ServerSurface.SBOM,
             imported_canonical_id=ref.removeprefix("mcp-server-") if ref.startswith("mcp-server-") else None,
-            packages=[packages[p] for p in sorted(members)],
+            packages=list(scoped_packages.values()),
             tools=tools,
         )
     agents = []

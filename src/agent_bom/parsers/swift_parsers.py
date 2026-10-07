@@ -69,7 +69,6 @@ def parse_package_resolved(directory: str | Path) -> list[Package]:
     packages: list[Package] = []
     seen: set[tuple[str, str]] = set()
 
-    # v2 and v3 both use "pins" array at top level or under "object"
     pins = data.get("pins", [])
     if not pins and "object" in data:
         pins = data["object"].get("pins", [])
@@ -101,9 +100,10 @@ def parse_package_resolved(directory: str | Path) -> list[Package]:
                 name=name,
                 version=version,
                 ecosystem="swift",
-                version_source="detected",
+                version_source="lockfile",
+                version_evidence=[{"type": "lockfile", "source_file": str(resolved)}],
                 purl=f"pkg:swift/{name}@{version}",
-                is_direct=True,  # Package.resolved doesn't distinguish
+                is_direct=None,  # Package.resolved does not supply root dependency relationships
                 repository_url=location or None,
             ),
         )

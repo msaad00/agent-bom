@@ -26,7 +26,12 @@ from agent_bom.checksums import cyclonedx_hashes, integrity_verdict, strongest_c
 from agent_bom.evidence.scan_run import ScanOutcome, effective_scan_run
 from agent_bom.models import AIBOMReport, Vulnerability
 from agent_bom.output.cloud_context import attach_cloud_context
-from agent_bom.output.dependency_hierarchy import cyclonedx_compositions, cyclonedx_package_dependencies, imported_bom_incomplete
+from agent_bom.output.dependency_hierarchy import (
+    cyclonedx_compositions,
+    cyclonedx_package_dependencies,
+    imported_bom_incomplete,
+    imported_bom_unknown,
+)
 from agent_bom.package_utils import synthesize_purl
 from agent_bom.sbom_formats.cyclonedx import vulnerability_enrichment_properties, vulnerability_source
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -763,7 +768,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
                 pkg_properties = [
                     {"name": "agent-bom:ecosystem", "value": pkg.ecosystem},
-                    {"name": "agent-bom:is-direct", "value": str(pkg.is_direct).lower()},
+                    {"name": "agent-bom:is-direct", "value": "unknown" if pkg.is_direct is None else str(pkg.is_direct).lower()},
                     {"name": "agent-bom:dependency-depth", "value": str(pkg.dependency_depth)},
                     {"name": "agent-bom:dependency-scope", "value": pkg.dependency_scope},
                     {"name": "agent-bom:reachability-evidence", "value": pkg.reachability_evidence},
@@ -944,6 +949,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     compositions = cyclonedx_compositions(
         components,
         incomplete=bool(unresolved_parents) or scan_run.outcome is not ScanOutcome.COMPLETE or imported_bom_incomplete(report.agents),
+        unknown=imported_bom_unknown(report.agents),
     )
     if compositions:
         cdx["compositions"] = compositions

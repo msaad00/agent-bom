@@ -95,11 +95,12 @@ def _packages(rows: list[dict], direct: set[str], lock_file: Path) -> list[Packa
                 version=version,
                 ecosystem="pypi",
                 purl=f"pkg:pypi/{name}@{version}",
-                is_direct=normalized in direct,
+                is_direct=True if normalized in direct else False if normalized in parents else None,
                 parent_package=parents.get(normalized),
                 dependency_depth=depths.get(normalized, 0),
                 dependency_scope="runtime" if normalized in direct or normalized in parents else "unknown",
                 reachability_evidence="lockfile",
+                version_source="lockfile",
                 version_evidence=[{"type": "lockfile", "source_file": str(lock_file)}],
             )
         )

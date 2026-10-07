@@ -27,6 +27,9 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def _json(text: str | bytes) -> Any:
+    prefix = text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
+    if prefix.lstrip().startswith("SPDXVersion:"):
+        raise ValueError("SPDX tag-value input is not supported; supply SPDX JSON instead.")
     try:
         return json.loads(text, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
     except (ValueError, RecursionError) as exc:
@@ -124,6 +127,7 @@ def _load_sbom_context(path: str, name: str | None = None) -> tuple[Agent, str, 
         "document_sha256": hashlib.sha256(raw).hexdigest(),
         "format": fmt,
         "coverage": "not_assessed",
+        "composition_complete": None,
     }
     if inventory is not None:
         for row in inventory if isinstance(inventory, list) else [inventory]:

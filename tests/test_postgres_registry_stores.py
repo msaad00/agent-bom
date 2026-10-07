@@ -33,14 +33,14 @@ def test_registry_restricted_replicas_and_cross_tenant(kind):
     from dataclasses import replace
     from uuid import uuid4
 
-    from psycopg.errors import InsufficientPrivilege
-
     from agent_bom.api.postgres_common import _new_application_pool
     from agent_bom.api.storage import registry_stores as stores
     from tests.test_postgres_job_evidence_revision import tenant_scope
 
     if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         pytest.skip("requires restricted-role Postgres")
+    from psycopg.errors import InsufficientPrivilege
+
     tenant, other = "registry-" + uuid4().hex, "registry-" + uuid4().hex
     now = "2026-10-07T00:00:00Z"
     cases = {
@@ -92,6 +92,7 @@ def test_drift_concurrent_replicas_preserve_occurrences():
 
     if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         pytest.skip("requires restricted-role Postgres")
+
     tenant = "drift-" + uuid4().hex
     record = DriftIncident("same", tenant, "bp", "drift_detected", 1, 1, 0, [], "first", "last")
     pools = [_new_application_pool(min_size=1, max_size=2) for _ in range(2)]
@@ -143,14 +144,14 @@ def test_additional_registry_replica_isolation(kind):
     import os
     from uuid import uuid4
 
-    from psycopg.errors import InsufficientPrivilege
-
     from agent_bom.api.postgres_common import _new_application_pool
     from agent_bom.api.storage import observation_registries as adapters
     from tests.test_postgres_job_evidence_revision import tenant_scope
 
     if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         pytest.skip("requires restricted-role Postgres")
+    from psycopg.errors import InsufficientPrivilege
+
     tenant, other = ("registry-" + uuid4().hex for _ in range(2))
     cls = {
         "mcp": adapters.PostgresMCPObservationStore,
@@ -256,6 +257,7 @@ def test_registry_tables_force_rls_and_reject_forged_bypass():
 
     if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         pytest.skip("requires restricted-role Postgres")
+
     pool = _new_application_pool(min_size=1, max_size=2)
     tenant = "registry-" + uuid4().hex
     try:
@@ -280,8 +282,6 @@ def test_existing_access_review_postgres_is_durable_and_tenant_scoped():
     from dataclasses import replace
     from uuid import uuid4
 
-    from psycopg.errors import InsufficientPrivilege
-
     from agent_bom.api.access_review import AccessReviewCampaign
     from agent_bom.api.postgres_access_review import PostgresAccessReviewStore
     from agent_bom.api.postgres_common import _new_application_pool
@@ -289,6 +289,8 @@ def test_existing_access_review_postgres_is_durable_and_tenant_scoped():
 
     if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
         pytest.skip("requires restricted-role Postgres")
+    from psycopg.errors import InsufficientPrivilege
+
     tenant, other = ("review-" + uuid4().hex for _ in range(2))
     pool = _new_application_pool(min_size=1, max_size=2)
     try:

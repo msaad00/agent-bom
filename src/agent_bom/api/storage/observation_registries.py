@@ -3,8 +3,6 @@
 from dataclasses import asdict
 from uuid import uuid4
 
-from psycopg.types.json import Jsonb
-
 from agent_bom.api import postgres_common
 from agent_bom.api.issue_mapping_store import IssueMapping, _utcnow
 from agent_bom.api.kspm_posture_store import KspmPostureRun
@@ -91,6 +89,8 @@ class PostgresIssueMappingStore(RegistryStore):
     def put(
         self, *, tenant_id: str, target_kind: str, target_id: str, provider: str, external_id: str, external_url: str, status: str = "open"
     ) -> IssueMapping:
+        from psycopg.types.json import Jsonb
+
         require_explicit_tenant_id(tenant_id)
         now = _utcnow()
         record = IssueMapping(
@@ -108,6 +108,8 @@ class PostgresIssueMappingStore(RegistryStore):
         return IssueMapping(**row[0])
 
     def update_status(self, mapping_id: str, *, tenant_id: str, status: str) -> IssueMapping | None:
+        from psycopg.types.json import Jsonb
+
         require_explicit_tenant_id(tenant_id)
         with postgres_common._tenant_connection(self._pool) as conn:
             row = conn.execute(

@@ -6,8 +6,6 @@ import builtins
 from dataclasses import asdict
 from typing import Any
 
-from psycopg.types.json import Jsonb
-
 from agent_bom.api import postgres_common
 from agent_bom.api.dataset_version_store import DatasetVersionRecord
 from agent_bom.api.drift_incident_store import DriftIncident
@@ -38,6 +36,8 @@ class RegistryStore:
         self._put_payload(record, asdict(record))
 
     def _put_payload(self, record: Any, payload: dict[str, Any]) -> None:
+        from psycopg.types.json import Jsonb
+
         require_explicit_tenant_id(record.tenant_id)
         columns = ("tenant_id", *self.columns, "data")
         values = (record.tenant_id, *(getattr(record, column) for column in self.columns), Jsonb(payload))
@@ -145,6 +145,8 @@ class PostgresDriftIncidentStore(RegistryStore):
         return self._list(tenant_id, "" if include_resolved else "AND NOT resolved", (), "last_detected_at DESC, incident_id", limit)
 
     def upsert(self, incident: DriftIncident) -> DriftIncident:
+        from psycopg.types.json import Jsonb
+
         require_explicit_tenant_id(incident.tenant_id)
         # A single statement handles both first insertion and concurrent increments.
         with postgres_common._tenant_connection(self._pool) as conn:
@@ -165,6 +167,8 @@ class PostgresDriftIncidentStore(RegistryStore):
         return DriftIncident(**row[0])
 
     def resolve(self, tenant_id: str, incident_id: str, *, by: str, note: str, at: str) -> DriftIncident | None:
+        from psycopg.types.json import Jsonb
+
         require_explicit_tenant_id(tenant_id)
         with postgres_common._tenant_connection(self._pool) as conn:
             row = conn.execute(

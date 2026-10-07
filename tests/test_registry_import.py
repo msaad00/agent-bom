@@ -117,3 +117,28 @@ def test_unsupported_recovery_is_rejected_before_source_or_target_access(tmp_pat
     with pytest.raises(ValueError, match="supported registry tables"):
         import_registries(source, {"source": "target"}, [table], apply=True, pool=NoTargetAccess())
     assert source.read_bytes() == b"preserved source evidence"
+
+
+def test_sqlite_recovery_validation_does_not_require_postgres_driver(tmp_path):
+    import subprocess
+    import sys
+
+    source = tmp_path / "source.db"
+    store = SQLiteDatasetVersionStore(str(source))
+    store.put(DatasetVersionRecord("source", "ds", "v1", "now", "fixture"))
+    script = """
+import importlib.abc
+import sys
+from pathlib import Path
+class NoPostgres(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'psycopg', 'psycopg_pool'}:
+            raise ModuleNotFoundError('Postgres extra deliberately absent')
+sys.meta_path.insert(0, NoPostgres())
+from agent_bom.api.storage.registry_import import read_source
+rows = read_source(Path(sys.argv[1]), {'source': 'target'}, ['dataset_versions'])
+assert len(rows) == 1 and rows[0][1].tenant_id == 'target'
+assert not any(name.split('.')[0] in {'psycopg', 'psycopg_pool'} for name in sys.modules)
+"""
+    result = subprocess.run([sys.executable, "-c", script, str(source)], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr

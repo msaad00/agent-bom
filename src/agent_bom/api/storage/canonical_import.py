@@ -6,8 +6,6 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, cast
 
-from psycopg.errors import InsufficientPrivilege, UniqueViolation
-
 from agent_bom.api.access_review import _VALID_DECISIONS, DECISION_PENDING, AccessReviewCampaign, AccessReviewItem
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
 from agent_bom.api.fleet_store import FleetAgent, FleetEndpoint
@@ -154,6 +152,8 @@ class PinnedImportPool:
 
 def import_canonical_row(conn: Any, table: str, record: Any, expected: dict[str, Any]) -> str:
     """Stage one owner-validated row; the outer transaction decides apply/dry-run."""
+    from psycopg.errors import InsufficientPrivilege, UniqueViolation
+
     if not postgres_deployment_configured():
         raise ValueError("Configure the Postgres deployment before importing control-plane state")
     adapter = CONTROL_TABLES[table]

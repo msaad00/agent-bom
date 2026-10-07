@@ -10,9 +10,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from psycopg import Error as PostgresError
-from psycopg.types.json import Jsonb
-
 from agent_bom.api import postgres_common
 from agent_bom.api.storage import scim_recovery
 from agent_bom.api.storage.canonical_import import CONTROL_TABLES, import_canonical_row, payload_of, validate_groups, validate_target_groups
@@ -126,6 +123,8 @@ def import_registries(
     records = read_source(path, tenant_map, tables)
     digest = hashlib.sha256(json.dumps([(t, p) for t, _, p in records], sort_keys=True).encode()).hexdigest()
     pool = pool or postgres_common._get_pool()
+    from psycopg.types.json import Jsonb
+
     counts = {"inserted": 0, "unchanged": 0, "conflicts": 0}
     # Use the restricted app role. Each scope is explicit and transaction-local;
     # no maintenance bypass is needed to import operator-selected tenant mappings.
@@ -207,6 +206,10 @@ def main() -> None:
     parser.add_argument("--table", action="append", choices=sorted({*ADAPTERS, *CONTROL_TABLES, "compliance_hub"}), required=True)
     parser.add_argument("--apply", action="store_true", help="Commit only when every selected row is new or identical")
     args = parser.parse_args()
+    try:
+        from psycopg import Error as PostgresError
+    except ImportError:
+        parser.error("PostgreSQL recovery requires the postgres extra: pip install 'agent-bom[postgres]'")
     try:
         receipt = import_registries(args.source, json.loads(args.tenant_map.read_text()), args.table, apply=args.apply)
     except (OSError, ValueError, TypeError, sqlite3.Error, PostgresError) as exc:

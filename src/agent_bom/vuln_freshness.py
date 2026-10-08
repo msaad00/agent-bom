@@ -114,10 +114,17 @@ class VulnDataFreshness:
             return None
         return self.age_hours // 24
 
-    def to_dict(self) -> dict:
-        """JSON-serializable view for API / MCP / report embedding."""
+    def to_dict(self, *, osv_performance: dict | None = None) -> dict:
+        """Report observed OSV response-cache use separately from feed-sync age.
+
+        Other providers may still use the network; a cache hit does not prove
+        an offline scan or establish the response cache's advisory freshness.
+        """
+        cache_hits = (osv_performance or {}).get("cache_hits", 0)
+        cache = {"packages": cache_hits, "live_queries": (osv_performance or {}).get("queries_sent", 0)}
         return {
-            "mode": self.mode,
+            "mode": "live-with-cache" if self.mode == "live" and cache_hits else self.mode,
+            **({"osv_response_cache": cache} if cache_hits else {}),
             "sources": list(self.sources),
             "last_updated": self.last_updated,
             "age_hours": self.age_hours,

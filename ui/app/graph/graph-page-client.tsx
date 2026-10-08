@@ -3884,6 +3884,7 @@ function GraphPageInner() {
               elementsSelectable
               deleteKeyCode={null}
               onlyRenderVisibleElements={shouldVirtualizeReactFlowNodes({
+                nodeCount: displayNodes.length,
                 rollupActive: rollupNavigationActive,
               })}
               defaultEdgeOptions={{ type: "smoothstep" }}

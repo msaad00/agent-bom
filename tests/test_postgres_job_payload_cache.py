@@ -36,7 +36,31 @@ def test_cache_is_byte_bounded_and_never_holds_an_oversized_payload():
 def test_disabled_cache_holds_nothing():
     cache = JobPayloadCache(max_bytes=0)
     cache.put("t", "a", "x")
+    cache.put("t", "empty", "")
     assert cache.get("a") is None and cache.tokens("t") == []
+
+
+def test_cache_budget_counts_serialized_utf8_bytes():
+    cache = JobPayloadCache(max_bytes=4)
+    cache.put("t", "oversized", "😀" * 4)
+    assert cache.get("oversized") is None
+    cache.put("t", "first", "éé")
+    cache.put("t", "second", "é")
+    assert cache.tokens("t") == ["second"]
+
+
+def test_replacement_and_forget_release_the_recorded_byte_size():
+    cache = JobPayloadCache(max_bytes=8)
+    token = "t\x1fjob\x1f10\x1f8"
+    cache.put("t", token, "😀😀")
+    cache.put("t", token, "é")
+    cache.put("t", "other", "ééé")
+    assert cache.tokens("t") == [token, "other"]
+    cache.forget("t", "job")
+    cache.put("t", "new", "é")
+    assert cache.tokens("t") == ["other", "new"]
+    cache.put("t", "last", "é")
+    assert cache.tokens("t") == ["new", "last"]
 
 
 live = pytest.mark.skipif(not os.environ.get("AGENT_BOM_POSTGRES_URL"), reason="requires restricted-role Postgres")

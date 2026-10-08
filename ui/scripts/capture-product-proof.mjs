@@ -2418,7 +2418,11 @@ const README_CAPTURE_FILES = new Set([
 ]);
 
 async function capture(page, urlPath, filename, beforeShot, options = {}) {
-  if (README_CAPTURE_FILES.has(filename)) await page.setViewportSize({ width: 1440, height: 900 });
+  if (README_CAPTURE_FILES.has(filename)) {
+    // Stack the inspector below the README hero so the graph gets the full image width.
+    const width = filename.startsWith("context-map-horizontal-") ? 1000 : 1440;
+    await page.setViewportSize({ width, height: 900 });
+  }
   await page.clock.setFixedTime(urlPath.startsWith("/?") ? new Date(new Date(overviewProof.captured_at).getTime() + 60_000) : REFERENCE_CAPTURE_NOW);
   const browserErrors = [];
   const networkErrors = [];
@@ -2945,7 +2949,7 @@ async function writeScreenshotManifest(outputDir = IMAGE_DIR) {
       path: `context-map-horizontal-${theme}-live.png`,
       page: `/graph?lens=context&scan=${SCAN_ID}&capture=1`,
       scope: "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
-      presentation: `${theme} desktop 1440x900`,
+      presentation: `${theme} responsive 1000x900`,
     })),
     {
       path: "inventory-live.png",

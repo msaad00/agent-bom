@@ -18,6 +18,8 @@ from typing import Annotated, Any
 
 from fastapi import HTTPException, Query
 
+from agent_bom.security import sanitize_error
+
 LIST_INCLUDE_OPTIONS: tuple[str, ...] = ("controls",)
 
 FindingListInclude = Annotated[
@@ -43,7 +45,7 @@ def list_include_or_422(value: str | None) -> tuple[str, ...]:
     try:
         return parse_list_include(value)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
+        raise HTTPException(status_code=422, detail=sanitize_error(exc)) from None
 
 
 @contextmanager

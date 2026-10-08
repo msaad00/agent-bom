@@ -96,6 +96,23 @@ def test_unknown_include_value_is_rejected() -> None:
     assert "controls" in resp.text
 
 
+def test_include_validation_sanitizes_unexpected_parser_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    from agent_bom.api import finding_list_projection as projection
+
+    secret = "ghp_" + "A" * 36
+
+    def invalid_parser(_value: str | None) -> tuple[str, ...]:
+        raise ValueError(f"invalid include: {secret}")
+
+    monkeypatch.setattr(projection, "parse_list_include", invalid_parser)
+    with pytest.raises(HTTPException) as caught:
+        projection.list_include_or_422("invalid")
+    assert caught.value.status_code == 422
+    assert secret not in caught.value.detail
+
+
 def test_grouped_list_honours_the_same_projection() -> None:
     _seed()
     client = TestClient(app)

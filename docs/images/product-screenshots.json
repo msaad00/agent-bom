@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.2",
-  "captured_at": "2026-10-07T22:13:46.963Z",
-  "source_commit": "ffb212cbf79b7945c3ed1408d53cf66dc7d14047",
+  "captured_at": "2026-10-08T01:00:04.647Z",
+  "source_commit": "240f8b9d93c8d6fce8ebfad0e9607908a69d9f61",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:e2ab959e4c33b9b8b56fda1dfa30e569d2ac7a39c5a861c494fe38ef7610b2aa",
+  "capture_inputs_sha256": "sha256:d2f1207631144c15d764174f7b3040aba731aee71030437152dec4dcbdb322f1",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -172,7 +172,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.108.2",
-      "sha256": "sha256:10806f121e66bf11eb0c1acf11257c334373d27764b10d6effc3ca7efb2c479e"
+      "sha256": "sha256:f8adb6e230e6a0c1f628c7ef7b4002e49cfddfd665843c10f047578fd2b92a12"
     },
     {
       "presentation": "dark desktop",
@@ -273,7 +273,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.2",
-      "sha256": "sha256:33c7976fe5b52ca6a417069786bd0a5f9dac7d0c286e62aa968edfdc9bae9446"
+      "sha256": "sha256:6708e79c5b96dae6b10fa7e63bdd8e521a907b2e198c355f14388324da111623"
     },
     {
       "presentation": "dark mobile",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.2",
-      "sha256": "sha256:6e6813fafa1f40bae761b28d91fd1ae4a36b5b74c999ee03cfd66e876968f27a"
+      "sha256": "sha256:aef6abed13d58e7d0a708206c0c34e864ccb5118e31f3e749c240552d52c6ac7"
     },
     {
       "presentation": "dark desktop 1440x900",
@@ -329,7 +329,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.2",
-      "sha256": "sha256:9bc1067cb932d29a0724f80504b92d45e07b5829cb3bc12e18fe318160a7ac17"
+      "sha256": "sha256:3194904edf2f4cd7f68fb95891f5c898f25607b1fb61a83d0184cd3c16efda02"
     },
     {
       "presentation": "light desktop 1440x900",

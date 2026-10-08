@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-bom-sdk"
-version = "0.108.2"
+version = "0.108.3"
 description = "Thin Python alias that re-exports the packaged agent-bom control-plane client."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -19,7 +19,7 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY docs/registry/PYPI_README.md ./docs/registry/
 COPY src/ ./src/
 
-ARG VERSION=0.108.2
+ARG VERSION=0.108.3
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -42,7 +42,7 @@ RUN uv sync --locked --no-dev --no-editable --extra runtime
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
 
-ARG VERSION=0.108.2
+ARG VERSION=0.108.3
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

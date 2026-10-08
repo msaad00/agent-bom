@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.108.3] - 2026-10-08
+
 ### Performance
 
 - Postgres job reads no longer transfer and decode every job payload on each call. A read sends the row versions this process already holds, and the database returns a payload only for rows that changed, so another replica's write is always seen. Payloads are cached as JSON text per tenant, with a byte limit (`AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB`, default 256). Reads outside one request's aggregate read still parse a fresh job.
@@ -3957,7 +3959,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.3...HEAD
+[0.108.3]: https://github.com/msaad00/agent-bom/compare/v0.108.2...v0.108.3
 [0.108.2]: https://github.com/msaad00/agent-bom/compare/v0.108.1...v0.108.2
 [0.108.1]: https://github.com/msaad00/agent-bom/compare/v0.108.0...v0.108.1
 [0.108.0]: https://github.com/msaad00/agent-bom/compare/v0.107.2...v0.108.0

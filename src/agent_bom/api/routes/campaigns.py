@@ -313,11 +313,7 @@ def _campaign_source_revision(request: Request) -> tuple[str, int]:
 
 @finding_read_snapshot
 def _load_findings(request: Request, *, deadline_seconds: float = 10.0) -> dict[str, Any]:
-    """Walk the canonical cursor without treating a bounded or unstable walk as complete.
-
-    Pages share one read context so resumed pages reuse the retained scan fold;
-    the revision fences below still reject a walk that spans an evidence change.
-    """
+    """Walk one read context's cursor; never treat a bounded, unstable or fenced-out walk as complete."""
     from agent_bom.api.routes.scan import _list_findings_impl
 
     source_revision = _campaign_source_revision(request)
@@ -354,13 +350,10 @@ def _load_findings(request: Request, *, deadline_seconds: float = 10.0) -> dict[
             rows.append(row)
         total = source.get("total")
         next_cursor = str(page.get("next_cursor") or "")
-        # Resumed merged pages skip the recount by design. Only the first page's
-        # exact total binds the walk; a later recount must agree with it.
-        recount_skipped = cursor is not None and page.get("total") is None
+        # Resumed merged pages skip the recount; the first page's exact total binds the walk.
+        recounted = cursor is None or page.get("total") is not None
         unstable = (
-            invalid
-            or source.get("total_approximate")
-            or (not recount_skipped and (page.get("total_approximate") or page.get("total") != total))
+            invalid or source.get("total_approximate") or (recounted and (page.get("total_approximate") or page.get("total") != total))
         )
         complete = (
             not unstable

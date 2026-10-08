@@ -18,7 +18,7 @@ from agent_bom.api.postgres_common import (
     reset_current_tenant,
     set_current_tenant,
 )
-from agent_bom.api.storage.job_payload_cache import TOKEN_SEPARATOR, JobPayloadCache
+from agent_bom.api.storage.job_payload_cache import JobPayloadCache, read_versioned_jobs
 from agent_bom.api.storage.job_revisions import POSTGRES_JOB_REVISIONS_V1, read_postgres_job_revision
 from agent_bom.api.storage.jobs import put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, POSTGRES_TENANT_KEYS
@@ -293,42 +293,13 @@ class PostgresJobStore:
         job_status_count_cache.invalidate_tenant(tenant_id)
         return inserted
 
-    def _read_jobs(self, conn: Connection, where: str, params: tuple, tenant_id: str | None, suffix: str) -> list[ScanJob]:
-        """Parse each row from its payload, transferring only versions not already held."""
-        from .server import ScanJob
-
-        token = "concat_ws(chr(31), team_id, job_id, xmin::text, pg_column_size(data)::text)"
-        rows = conn.execute(
-            f"SELECT team_id, {token}, CASE WHEN {token} = ANY(%s::text[]) THEN NULL ELSE data::text END "  # nosec B608
-            f"FROM scan_jobs{where} {suffix}",
-            (self._payloads.tokens(tenant_id), *params),
-        ).fetchall()
-        jobs = []
-        for team_id, version, payload in rows:
-            if payload is None:
-                payload = self._payloads.get(version)
-                if payload is None:
-                    # Evicted between the token snapshot and this read; fetch this row directly.
-                    payload = self._fetch_payload(conn, version)
-                    if payload is None:
-                        continue
-            else:
-                self._payloads.put(team_id, version, payload)
-            jobs.append(ScanJob.model_validate_json(payload))
-        return jobs
-
-    def _fetch_payload(self, conn: Connection, version: str) -> str | None:
-        team_id, job_id, _ = version.split(TOKEN_SEPARATOR, 2)
-        row = conn.execute("SELECT data::text FROM scan_jobs WHERE team_id = %s AND job_id = %s", (team_id, job_id)).fetchone()
-        return row[0] if row else None
-
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
         where, params = (
             (" WHERE job_id = %s", (job_id,)) if tenant_id is None else (" WHERE job_id = %s AND team_id = %s", (job_id, tenant_id))
         )
         with self._scope_connection(all_tenants=all_tenants) as conn:
-            jobs = self._read_jobs(conn, where, params, tenant_id, "LIMIT 2")
+            jobs = read_versioned_jobs(conn, self._payloads, where, params, tenant_id, "LIMIT 2")
         if len(jobs) > 1:
             raise ValueError("Ambiguous job identity requires a tenant_id")
         return jobs[0] if jobs else None
@@ -353,7 +324,7 @@ class PostgresJobStore:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_all()")
         where, params = ("", ()) if tenant_id is None else (" WHERE team_id = %s", (tenant_id,))
         with self._scope_connection(all_tenants=all_tenants) as conn:
-            return self._read_jobs(conn, where, params, tenant_id, "ORDER BY created_at DESC")
+            return read_versioned_jobs(conn, self._payloads, where, params, tenant_id, "ORDER BY created_at DESC")
 
     def list_summary(
         self,

@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
+from typing import Any
 
-from agent_bom.config import POSTGRES_JOB_PAYLOAD_CACHE_MB
+from agent_bom.config import _int
 
-DEFAULT_MAX_BYTES = POSTGRES_JOB_PAYLOAD_CACHE_MB * 1024 * 1024
+DEFAULT_MAX_BYTES = _int("AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB", 256) * 1024 * 1024
 TOKEN_SEPARATOR = "\x1f"
+_VERSION = "concat_ws(chr(31), team_id, job_id, xmin::text, pg_column_size(data)::text)"
 
 
 class JobPayloadCache:
@@ -57,3 +59,27 @@ class JobPayloadCache:
         with self._lock:
             for token in [token for token in self._entries if token.startswith(prefix)]:
                 self._bytes -= len(self._entries.pop(token)[1])
+
+
+def read_versioned_jobs(conn: Any, cache: JobPayloadCache, where: str, params: tuple, tenant_id: str | None, suffix: str) -> list[Any]:
+    """Parse each ``scan_jobs`` row, transferring only payload versions the cache does not hold."""
+    from agent_bom.api.models import ScanJob
+
+    rows = conn.execute(
+        f"SELECT team_id, {_VERSION}, CASE WHEN {_VERSION} = ANY(%s::text[]) THEN NULL ELSE data::text END "  # nosec B608
+        f"FROM scan_jobs{where} {suffix}",
+        (cache.tokens(tenant_id), *params),
+    ).fetchall()
+    jobs = []
+    for team_id, version, payload in rows:
+        if payload is not None:
+            cache.put(team_id, version, payload)
+        elif (payload := cache.get(version)) is None:
+            # Evicted after the token snapshot; read this row's current payload directly.
+            team, job_id, _ = version.split(TOKEN_SEPARATOR, 2)
+            row = conn.execute("SELECT data::text FROM scan_jobs WHERE team_id = %s AND job_id = %s", (team, job_id)).fetchone()
+            if row is None:
+                continue
+            payload = row[0]
+        jobs.append(ScanJob.model_validate_json(payload))
+    return jobs

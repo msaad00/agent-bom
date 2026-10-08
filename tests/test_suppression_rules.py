@@ -4,6 +4,7 @@ from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStor
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.output.json_fmt import to_json
 from agent_bom.suppression_rules import apply_tenant_suppression_rules
+from tests._clock_helpers import approvable_expiry
 
 
 def _blast_radius() -> BlastRadius:
@@ -36,7 +37,7 @@ def test_tenant_suppression_marks_finding_without_deleting_evidence():
             approval_version=1,
             approved_by="admin",
             approved_at="2026-01-01T00:00:00Z",
-            expires_at="2099-01-01T00:00:00Z",
+            expires_at=approvable_expiry(),
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -67,7 +68,7 @@ def test_tenant_suppression_does_not_cross_tenants():
             approval_version=1,
             approved_by="admin",
             approved_at="2026-01-01T00:00:00Z",
-            expires_at="2099-01-01T00:00:00Z",
+            expires_at=approvable_expiry(),
             tenant_id="tenant-b",
         ),
         tenant_id="tenant-b",
@@ -95,7 +96,7 @@ def test_suppression_metadata_is_exported_in_json_report():
             approval_version=1,
             approved_by="admin",
             approved_at="2026-01-01T00:00:00Z",
-            expires_at="2099-01-01T00:00:00Z",
+            expires_at=approvable_expiry(),
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -124,7 +125,7 @@ def test_needs_review_feedback_does_not_suppress_actionability():
             approval_version=1,
             approved_by="admin",
             approved_at="2026-01-01T00:00:00Z",
-            expires_at="2099-01-01T00:00:00Z",
+            expires_at=approvable_expiry(),
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -157,7 +158,7 @@ def test_approved_exception_has_one_suppression_contract_across_six_surfaces():
             approval_version=1,
             approved_by="admin",
             approved_at="2026-01-01T00:00:00Z",
-            expires_at="2099-01-01T00:00:00Z",
+            expires_at=approvable_expiry(),
             tenant_id="tenant-a",
         ),
         tenant_id="tenant-a",
@@ -221,7 +222,7 @@ def test_approved_vex_product_is_version_specific():
     br = _blast_radius()
     br.package.purl = "pkg:pypi/requests@2.31.0"
     store = InMemoryExceptionStore()
-    exc = VulnException(vuln_id=br.vulnerability.id, package_name=br.package.purl, expires_at="2099-01-01T00:00:00Z")
+    exc = VulnException(vuln_id=br.vulnerability.id, package_name=br.package.purl, expires_at=approvable_expiry())
     activate_suppression(exc, actor="admin")
     store.put(exc, tenant_id="default")
     assert apply_tenant_suppression_rules([br], store)["suppressed"] == 1

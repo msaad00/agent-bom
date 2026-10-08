@@ -12,6 +12,7 @@ import pytest
 from agent_bom.api import audit_log, stores
 from agent_bom.api.models import ExceptionRequest
 from agent_bom.api.routes import enterprise
+from tests._clock_helpers import approvable_expiry
 
 
 def test_configured_sqlite_exceptions_survive_new_process(monkeypatch, tmp_path):
@@ -22,12 +23,13 @@ def test_configured_sqlite_exceptions_survive_new_process(monkeypatch, tmp_path)
     request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-a", api_key_name="reviewer", api_key_role="admin"))
     approved = enterprise.create_exception(
         request,
-        ExceptionRequest(vuln_id="CVE-2025-0001", package_name="example", reason="Bounded acceptance", expires_at="2099-01-01T00:00:00Z"),
+        ExceptionRequest(vuln_id="CVE-2025-0001", package_name="example", reason="Bounded acceptance", expires_at=approvable_expiry()),
     )
-    enterprise.approve_exception(request, approved["exception_id"])
+    approver = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-a", api_key_name="approver", api_key_role="admin"))
+    enterprise.approve_exception(approver, approved["exception_id"])
     pending = enterprise.create_exception(
         request,
-        ExceptionRequest(vuln_id="CVE-2025-0002", package_name="example", reason="Awaiting review", expires_at="2099-01-01T00:00:00Z"),
+        ExceptionRequest(vuln_id="CVE-2025-0002", package_name="example", reason="Awaiting review", expires_at=approvable_expiry()),
     )
     original = {item.exception_id: item.to_dict() for item in stores._get_exception_store().list_all(tenant_id="tenant-a")}
     script = """

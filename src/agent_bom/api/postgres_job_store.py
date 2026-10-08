@@ -324,7 +324,9 @@ class PostgresJobStore:
 
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
-        where, params = (" WHERE job_id = %s", (job_id,)) if tenant_id is None else (" WHERE job_id = %s AND team_id = %s", (job_id, tenant_id))
+        where, params = (
+            (" WHERE job_id = %s", (job_id,)) if tenant_id is None else (" WHERE job_id = %s AND team_id = %s", (job_id, tenant_id))
+        )
         with self._scope_connection(all_tenants=all_tenants) as conn:
             jobs = self._read_jobs(conn, where, params, tenant_id, "LIMIT 2")
         if len(jobs) > 1:

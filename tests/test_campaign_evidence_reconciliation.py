@@ -91,7 +91,9 @@ def test_worker_incomplete_source_keeps_prior_membership_and_pending_checkpoint(
     set_campaign_store(store)
     before = store.reconcile_memberships("alpha", {"campaign": ("v1", ("finding",))})[0]
     store.evidence_state.changed("alpha")
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: {"findings": [], "total": 1, "has_more": True})
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings", lambda request, **_: {"findings": [], "total": 1, "has_more": True}
+    )
     monkeypatch.setattr("agent_bom.api.campaign_reconciliation._cursor", "")
     try:
         assert reconcile_pending_campaigns() == 0
@@ -366,5 +368,7 @@ def test_identity_less_row_keeps_the_collection_incomplete(monkeypatch):
     from agent_bom.api.routes.campaigns import _source_incomplete
 
     rows = _rows("a") + [{"id": "CVE-2026-1", "vulnerability_id": "CVE-2026-1", "severity": "high"}]
-    source = _paged_source(monkeypatch, [{"findings": rows, "total": 2, "total_approximate": False, "has_more": False, "next_cursor": None}])
+    source = _paged_source(
+        monkeypatch, [{"findings": rows, "total": 2, "total_approximate": False, "has_more": False, "next_cursor": None}]
+    )
     assert _source_incomplete(source)

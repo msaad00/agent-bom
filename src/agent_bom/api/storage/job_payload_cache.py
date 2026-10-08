@@ -11,9 +11,9 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 
-from agent_bom.config import _int
+from agent_bom.config import POSTGRES_JOB_PAYLOAD_CACHE_MB
 
-DEFAULT_MAX_BYTES = _int("AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB", 256) * 1024 * 1024
+DEFAULT_MAX_BYTES = POSTGRES_JOB_PAYLOAD_CACHE_MB * 1024 * 1024
 TOKEN_SEPARATOR = "\x1f"
 
 

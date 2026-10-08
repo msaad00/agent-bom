@@ -7,13 +7,41 @@ from types import ModuleType
 from typing import Any
 
 from agent_bom.api.models import ScanJob
+from agent_bom.canonical_ids import canonical_finding_id
+
+
+def _row_servers(row: dict) -> set[str]:
+    return {str(name) for name in row.get("affected_servers") or [] if name}
+
+
+def _candidate_servers(row: dict) -> set[str]:
+    servers = _row_servers(row)
+    asset = row.get("asset")
+    if isinstance(asset, dict) and asset.get("asset_type") == "mcp_server" and asset.get("name"):
+        servers.add(str(asset["name"]))
+    return servers
+
+
+def _with_occurrence_identity(scan: ModuleType, row: dict[str, Any]) -> dict[str, Any]:
+    """Give a standalone nested projection the occurrence identity its group key implies."""
+    vuln = scan._row_vuln_id(row)
+    if row.get("source") != "package_vulnerability" or row.get("canonical_id") or not vuln:
+        return row
+    name, version, ecosystem = scan._package_identity(row)
+    row["canonical_id"] = canonical_finding_id("package_vulnerability", vuln.lower(), name, version, ecosystem)
+    return row
 
 
 def _matching_key(scan: ModuleType, row: dict, key: str, grouped: dict, package_groups: dict) -> str:
     if scan._row_vuln_id(row) and key not in grouped:
         name, version, ecosystem = scan._package_identity(row)
         candidates = []
+        on_server = []
         asset_key = scan._row_asset_key(row) or None
+        # A nested projection names its MCP server. When several assets carry
+        # the same package version, only a finding on that server is the same
+        # occurrence; anything else stays ambiguous and is never merged.
+        servers = _row_servers(row) if asset_key is None else set()
         for candidate in package_groups.get((scan._row_vuln_id(row).lower(), name, asset_key), []):
             _, candidate_version, candidate_ecosystem = scan._package_identity(grouped[candidate])
             if version and candidate_version and version != candidate_version:
@@ -21,10 +49,14 @@ def _matching_key(scan: ModuleType, row: dict, key: str, grouped: dict, package_
             if ecosystem and candidate_ecosystem and ecosystem != candidate_ecosystem:
                 continue
             candidates.append(candidate)
-            if len(candidates) > 1:
-                break  # Ambiguous asset identity; never merge distinct assets.
+            if servers and servers & _candidate_servers(grouped[candidate]):
+                on_server.append(candidate)
+            if len(on_server) > 1 or (not servers and len(candidates) > 1):
+                break
         if len(candidates) == 1:
             return candidates[0]
+        if len(on_server) == 1:
+            return on_server[0]
     return key
 
 
@@ -85,4 +117,4 @@ def collect_scan_findings(job: ScanJob, attach: Callable[[dict[str, Any]], dict[
     for row in scan._iter_package_findings(job):
         _absorb(attach(row))
 
-    return [grouped[key] for key in order]
+    return [_with_occurrence_identity(scan, grouped[key]) for key in order]

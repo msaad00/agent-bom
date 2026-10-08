@@ -23,6 +23,7 @@ import threading
 import time
 from contextlib import closing
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -31,7 +32,22 @@ from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedNo
 from agent_bom.security import sanitize_text
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = "agentbom/agent-bom@sha256:803bb0e276935df05919520282650e63a2c80d9700066f5915f7fc14147d9c08"
+IMAGE_REPOSITORY = "agent-bom-mixed-scale-evidence"
+IMAGE_EXTRAS = "api"
+# Everything the root Dockerfile COPYs besides src/. The server image is built
+# from this frozen checkout so its dependencies always match the measured
+# source's lockfile; a pinned release image silently drifts behind it.
+BUILD_INPUTS = (
+    "Dockerfile",
+    "pyproject.toml",
+    "uv.lock",
+    "README.md",
+    "PYPI_README.md",
+    "LICENSE",
+    "deploy/supabase/postgres",
+    "deploy/docker/runtime-security-requirements.txt",
+    "deploy/docker/vendor",
+)
 
 
 def seed(db: Path, *, tenants: int, findings: int, assets: int, agents: int, servers: int) -> list[dict]:
@@ -206,8 +222,28 @@ def overlap_summary(rows: list[dict]) -> dict:
     }
 
 
-def docker(*args: str, env: dict[str, str] | None = None) -> str:
-    return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=180, env=env).stdout
+def freeze_build_context(root: Path, context: Path) -> None:
+    """Copy the Dockerfile's non-source inputs next to the frozen ``src`` copy."""
+    for relative in BUILD_INPUTS:
+        source, destination = root / relative, context / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        else:
+            shutil.copy2(source, destination)
+
+
+def build_image(context: Path) -> dict:
+    """Build the API image from the frozen context; the tag is its content digest."""
+    context_digest = tree_digest(context)
+    tag = f"{IMAGE_REPOSITORY}:{context_digest[:20]}"
+    docker("build", "--quiet", "--build-arg", f"AGENT_BOM_EXTRAS={IMAGE_EXTRAS}", "--tag", tag, str(context), timeout=1800)
+    image_id = docker("image", "inspect", "--format", "{{.Id}}", tag).strip()
+    return {"tag": tag, "id": image_id, "extras": IMAGE_EXTRAS, "build_context_sha256": context_digest}
+
+
+def docker(*args: str, env: dict[str, str] | None = None, timeout: int = 180) -> str:
+    return subprocess.run(["docker", *args], check=True, capture_output=True, text=True, timeout=timeout, env=env).stdout
 
 
 def sanitized_diagnostics(text: str, secret: str) -> str:
@@ -248,9 +284,9 @@ def run(args: argparse.Namespace) -> int:
     fixture.chmod(0o777)
     name = "agent-bom-scale-" + secrets.token_hex(6)
     secret = secrets.token_urlsafe(32)
-    receipt = {
+    receipt: dict[str, Any] = {
         "status": "running",
-        "image": IMAGE,
+        "image": None,
         "container_name": name,
         "source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "scope": (
@@ -289,13 +325,17 @@ def run(args: argparse.Namespace) -> int:
 
     save()
     try:
-        runtime_source = output / "runtime-source"
+        build_context = output / "build-context"
+        runtime_source = build_context / "src"
         receipt["source"] = {
             "runtime_tree_sha256": freeze_source(ROOT / "src", runtime_source),
             "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "working_tree_dirty": bool(subprocess.check_output(["git", "status", "--porcelain", "--", "src"], cwd=ROOT, text=True).strip()),
             "mount": "private-copy-read-only",
         }
+        freeze_build_context(ROOT, build_context)
+        receipt["image"] = build_image(build_context)
+        save()
         receipt["fixture"] = seed(
             fixture / "graph.db",
             tenants=args.tenants,
@@ -341,7 +381,7 @@ def run(args: argparse.Namespace) -> int:
             f"{runtime_source}:/candidate:ro",
             "--entrypoint",
             "python",
-            IMAGE,
+            receipt["image"]["tag"],
             "-m",
             "uvicorn",
             "agent_bom.api.server:app",
@@ -498,7 +538,7 @@ def run(args: argparse.Namespace) -> int:
     finally:
         # Cleanup is independent of persistence: disk-full/permission errors
         # must never skip removal of the container and its environment metadata.
-        cleanup = {"container": {"attempted": container_attempted, "ok": True}}
+        cleanup: dict[str, dict[str, Any]] = {"container": {"attempted": container_attempted, "ok": True}}
         if container_attempted:
             try:
                 result = subprocess.run(["docker", "logs", "--tail", "2000", name], capture_output=True, text=True, check=False, timeout=30)
@@ -507,8 +547,8 @@ def run(args: argparse.Namespace) -> int:
             except Exception as exc:
                 receipt["diagnostics"] = {"ok": False, "error_type": type(exc).__name__}
             try:
-                result = subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)
-                cleanup["container"].update(ok=result.returncode == 0, returncode=result.returncode)
+                removed = subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)
+                cleanup["container"].update(ok=removed.returncode == 0, returncode=removed.returncode)
             except Exception as exc:
                 cleanup["container"].update(ok=False, error_type=type(exc).__name__)
         receipt["cleanup"] = cleanup

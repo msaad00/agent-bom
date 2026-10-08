@@ -41,6 +41,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from agent_bom.core.versions.distro import OS_DISTRO_COMPARATOR_FAMILIES
+
 # ── distro os-release ID sets ────────────────────────────────────────────────
 # Values are the lowercased ``/etc/os-release`` ``ID`` fields we route on.
 
@@ -54,17 +56,6 @@ _OPENSUSE_LEAP_IDS = frozenset({"opensuse-leap", "opensuse", "opensuse-leap-micr
 _WOLFI_IDS = frozenset({"wolfi"})
 _CHAINGUARD_IDS = frozenset({"chainguard"})
 
-# Base ecosystem family (the part before the first ``:``, lowercased) → the
-# version comparator key. Consumed by ``db.lookup._ECO_FAMILY_TO_COMPARATOR``.
-OS_DISTRO_COMPARATOR_FAMILIES: dict[str, str] = {
-    "red hat": "rpm",
-    "rocky linux": "rpm",
-    "almalinux": "rpm",
-    "opensuse": "rpm",
-    "suse": "rpm",
-    "wolfi": "apk",
-    "chainguard": "apk",
-}
 
 # Base ecosystem family → human coverage label, in display order. Includes the
 # pre-existing Alpine/Debian/Ubuntu families so a single call reports the full

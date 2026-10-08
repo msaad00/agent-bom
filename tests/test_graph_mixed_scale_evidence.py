@@ -143,6 +143,14 @@ def fake_run(tmp_path, monkeypatch):
     root = tmp_path / "checkout"
     (root / "src").mkdir(parents=True)
     (root / "src" / "runtime.py").write_text("fixture")
+    for relative in evidence.BUILD_INPUTS:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if "." in path.name or path.name in {"Dockerfile", "LICENSE"}:
+            path.write_text(f"fixture {relative}")
+        else:
+            path.mkdir()
+            (path / "input.txt").write_text(f"fixture {relative}")
     monkeypatch.setattr(evidence, "ROOT", root)
     monkeypatch.setattr(evidence.subprocess, "check_output", lambda *a, **k: b"" if not k.get("text") else "revision\n")
     flags = {"request_error": False, "client_error": False, "cleanup_error": False, "write_error": False}
@@ -257,6 +265,50 @@ def test_unexpected_request_failure_preserves_all_attempts(fake_run):
     assert receipt["cleanup"]["container"]["ok"]
     assert not (args.output / ".container.env").exists()
     assert receipt["source"]["runtime_tree_sha256"] and receipt["source"]["harness_sha256"]
+
+
+def test_server_image_is_built_from_the_frozen_checkout_not_a_pinned_release(fake_run):
+    import json
+
+    args, flags, calls = fake_run
+    assert evidence.run(args) == 0
+    receipt = json.loads((args.output / "receipt.json").read_text())
+    build = next(call for call in calls if call[0] == "build")
+    launch = next(call for call in calls if call[0] == "run")
+    context = Path(build[-1])
+    tag = build[build.index("--tag") + 1]
+    # Dependencies come from the measured lockfile, so a dependency added to
+    # the source can never be missing from the server's environment.
+    assert (context / "uv.lock").read_text() == (evidence.ROOT / "uv.lock").read_text()
+    assert (context / "src" / "runtime.py").read_text() == "fixture"
+    assert context.is_relative_to(args.output)
+    assert "AGENT_BOM_EXTRAS=api" in build
+    assert tag in launch and not any("@sha256:" in argument for argument in launch)
+    assert calls.index(build) < calls.index(launch)
+    assert receipt["image"]["tag"] == tag
+    assert receipt["image"]["build_context_sha256"] == evidence.tree_digest(context)
+    assert receipt["image"]["extras"] == "api"
+
+
+def test_image_build_failure_fails_without_launching_a_container(fake_run, monkeypatch):
+    import json
+    import subprocess
+
+    args, flags, calls = fake_run
+    fake_docker = evidence.docker
+
+    def failing_build(*docker_args, **kwargs):
+        if docker_args[0] == "build":
+            raise subprocess.CalledProcessError(1, ["docker", "build"])
+        return fake_docker(*docker_args, **kwargs)
+
+    monkeypatch.setattr(evidence, "docker", failing_build)
+    assert evidence.run(args) == 1
+    receipt = json.loads((args.output / "receipt.json").read_text())
+    assert receipt["status"] == "failed"
+    assert receipt["error_type"] == "CalledProcessError"
+    assert not any(call[0] == "run" for call in calls)
+    assert receipt["cleanup"]["container"] == {"attempted": False, "ok": True}
 
 
 def test_worker_setup_failure_does_not_discard_other_workers(fake_run, monkeypatch):

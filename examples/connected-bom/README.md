@@ -76,3 +76,9 @@ local gateway allow/block proof, run the [reference evidence lab](../reference-e
 The [dashboard walkthrough](../../docs/GALLERY.md#follow-one-component) shows
 where operators inspect component relationships, finding records and scoped
 control evidence. Its screenshots use a separately labeled synthetic UI fixture.
+
+For a reviewed investigation in your own environment, follow
+[Measure an investigation and rescan](../../docs/operations/INVESTIGATION_MEASUREMENT.md).
+It compares privately retained graph snapshots against positive and negative
+relationship labels, reports investigation time and exact before/after checks,
+and keeps fixture evidence separate from operator-declared customer evidence.

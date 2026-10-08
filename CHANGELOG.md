@@ -37,6 +37,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Return compact `/v1/findings` list rows with `controls_count`; request full control mappings with `?include=controls` (CLI `--include-controls`, SDK `include_controls`). Reuse scan rows within posture reads to cut cold posture and remediation latency.
 - Treat Glama listing lag within 72 hours of a release as pending provider sync, and report the underlying Smithery catalog error with a longer convergence window.
 - Build the graph scale-evidence server image from the current source tree.
+- Reuse the persisted current-estate graph projection across server restarts when evidence is unchanged, instead of rebuilding it in every process.
 
 ### Security
 

@@ -189,7 +189,7 @@ def test_lake_extra_installs_the_documented_iceberg_runtime() -> None:
 
 def test_lake_extra_is_covered_by_the_extras_dependency_audit() -> None:
     workflow = (Path(__file__).parents[1] / ".github/workflows/extras-audit.yml").read_text()
-    assert 'extras: "postgres dashboard lake"' in workflow
+    assert 'extras: "postgres lake"' in workflow
 
 
 # ── round-trip against a fake REST catalog ────────────────────────────────────

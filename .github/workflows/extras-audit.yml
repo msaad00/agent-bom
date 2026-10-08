@@ -26,8 +26,8 @@ jobs:
             extras: "api oidc runtime"
           - name: mcp-surface
             extras: "mcp-server graph"
-          - name: analytics-ui
-            extras: "postgres dashboard lake"
+          - name: analytics
+            extras: "postgres lake"
           - name: cloud-surface
             extras: "cloud"
 

@@ -3,6 +3,7 @@
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import app
+from tests._clock_helpers import approvable_expiry
 from tests.api.test_push_replacement_scope import pushed
 from tests.api.test_scan_job_sla_history import scan_store  # noqa: F401
 from tests.auth_helpers import proxy_headers
@@ -40,7 +41,7 @@ def test_current_suppression_is_visible_and_remediation_tracks_expiry(scan_store
     row = pushed(8, scope="v1:" + "a" * 64)
     row.result["findings"][0].update(package="demo-lib", package_version="1.0.0", fixed_version="2.0.0")
     scan_store.put(row)
-    exc = VulnException(vuln_id="CVE-2026-4242", package_name="demo-lib", tenant_id="history-tenant", expires_at="2099-01-01T00:00:00Z")
+    exc = VulnException(vuln_id="CVE-2026-4242", package_name="demo-lib", tenant_id="history-tenant", expires_at=approvable_expiry())
     exceptions.put(exc, tenant_id="history-tenant")
     assert _plan()["remediation_plan"]
     activate_suppression(exc, actor="admin")

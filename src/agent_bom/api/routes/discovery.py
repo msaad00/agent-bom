@@ -74,15 +74,19 @@ def _host_agents_for_tenant(tenant_id: str) -> list[Any] | None:
     """Live host agents when this tenant may see them, else ``None``.
 
     The API host's own AI clients are not a tenant's estate. Live discovery is
-    served only in demo mode or when an operator bound this host to the tenant
-    (the same fail-closed gate the scan pipeline enforces for ``discover_host``).
+    served only to the showcase tenant in demo mode, or when an operator bound
+    this host to the tenant (the same fail-closed gate the scan pipeline
+    enforces for ``discover_host``).
     ``None`` tells callers to serve the tenant's scanned estate instead.
     """
     from agent_bom.api.scan_boundary import require_host_discovery_for_tenant
-    from agent_bom.demo_estate.bootstrap import demo_estate_enabled
+    from agent_bom.demo_estate.bootstrap import SHOWCASE_TENANT, demo_estate_enabled
     from agent_bom.security import SecurityError
 
-    if not demo_estate_enabled():
+    if demo_estate_enabled():
+        if tenant_id != SHOWCASE_TENANT:
+            return None
+    else:
         try:
             require_host_discovery_for_tenant(tenant_id)
         except SecurityError:
@@ -364,15 +368,33 @@ def _observation_index(tenant_id: str) -> dict[str, MCPObservation]:
     return {row.observation_id: row for row in _get_mcp_observation_store().list_by_tenant(tenant_id)}
 
 
-def _persist_agent_observations(
+def _live_observation_index(
+    tenant_id: str,
+    agents: list[Any],
+    fleet_index: dict[str, dict[str, Any]],
+    scan_history_index: dict[tuple[str, str], dict[str, Any]],
+    gateway_index: dict[tuple[str, str], dict[str, Any]],
+) -> dict[str, MCPObservation]:
+    """Stored observations with live discovery merged in memory only.
+
+    Read routes never persist: stored rows stay owned by explicit writers
+    (fleet sync, scans), so a GET cannot write into the caller's tenant.
+    """
+    index = _observation_index(tenant_id)
+    for agent in agents:
+        fleet_agent = fleet_index.get(getattr(agent, "canonical_id", ""))
+        _overlay_agent_observations(tenant_id, agent, fleet_agent, scan_history_index, gateway_index, index)
+    return index
+
+
+def _overlay_agent_observations(
     tenant_id: str,
     agent: Any,
-    *,
     fleet_agent: dict[str, Any] | None,
     scan_history_index: dict[tuple[str, str], dict[str, Any]],
     gateway_index: dict[tuple[str, str], dict[str, Any]],
+    observation_index: dict[str, MCPObservation],
 ) -> None:
-    store = _get_mcp_observation_store()
     for server in agent.mcp_servers:
         server_url = getattr(server, "url", None)
         scan_history = scan_history_index.get(
@@ -440,10 +462,10 @@ def _persist_agent_observations(
             last_seen=fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"],
             last_synced=fleet_agent.get("updated_at") if fleet_agent else None,
         )
-        existing = store.get(tenant_id, observation_id)
+        existing = observation_index.get(observation_id)
         if existing is None and legacy_observation_id:
-            existing = store.get(tenant_id, legacy_observation_id)
-        store.put(merge_observations(existing, candidate))
+            existing = observation_index.get(legacy_observation_id)
+        observation_index[observation_id] = merge_observations(existing, candidate)
 
 
 def _fleet_identity_index(tenant_id: str) -> dict[str, dict[str, Any]]:
@@ -484,15 +506,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
     # Only unique canonical identities bind discovery to fleet state. Names
     # remain labels, including for legacy rows lacking identity evidence.
     fleet_index = _fleet_identity_index(tenant_id)
-    for agent in agents:
-        _persist_agent_observations(
-            tenant_id,
-            agent,
-            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "")),
-            scan_history_index=scan_history_index,
-            gateway_index=gateway_index,
-        )
-    observation_index = _observation_index(tenant_id)
+    observation_index = _live_observation_index(tenant_id, agents, fleet_index, scan_history_index, gateway_index)
 
     return {
         # Scope marker so callers never conflate this population with the
@@ -600,15 +614,7 @@ def _get_agent_mesh_impl(request: Request) -> dict:
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
     fleet_index = _fleet_identity_index(tenant_id)
-    for agent in agents:
-        _persist_agent_observations(
-            tenant_id,
-            agent,
-            fleet_agent=fleet_index.get(getattr(agent, "canonical_id", "")),
-            scan_history_index=scan_history_index,
-            gateway_index=gateway_index,
-        )
-    observation_index = _observation_index(tenant_id)
+    observation_index = _live_observation_index(tenant_id, agents, fleet_index, scan_history_index, gateway_index)
     agents_data = [
         _serialize_agent(
             a,
@@ -691,17 +697,11 @@ def _get_agent_detail_impl(request: Request, agent_name: str) -> dict:
         severity_counts[sev if sev in severity_counts else "unrated"] += 1
 
     tenant_id = _tenant_id(request)
-    fleet_agent = _fleet_identity_index(tenant_id).get(agent.canonical_id)
+    fleet_index = _fleet_identity_index(tenant_id)
+    fleet_agent = fleet_index.get(agent.canonical_id)
     scan_history_index = _build_scan_history_index(tenant_id)
     gateway_index = _build_gateway_index(tenant_id)
-    _persist_agent_observations(
-        tenant_id,
-        agent,
-        fleet_agent=fleet_agent,
-        scan_history_index=scan_history_index,
-        gateway_index=gateway_index,
-    )
-    observation_index = _observation_index(tenant_id)
+    observation_index = _live_observation_index(tenant_id, [agent], fleet_index, scan_history_index, gateway_index)
 
     return {
         "agent": _serialize_agent(

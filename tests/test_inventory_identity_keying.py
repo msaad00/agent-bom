@@ -213,7 +213,7 @@ def test_build_agents_response_enriches_from_matching_source_record() -> None:
         patch.dict("os.environ", host_bound_to("default")),
         patch("agent_bom.discovery.discover_all", return_value=[local]),
         patch("agent_bom.parsers.extract_packages", return_value=[]),
-        patch.object(discovery_routes, "_persist_agent_observations", lambda *a, **k: None),
+        patch.object(discovery_routes, "_live_observation_index", return_value={}),
         patch.object(discovery_routes, "_build_scan_history_index", return_value={}),
         patch.object(discovery_routes, "_build_gateway_index", return_value={}),
         patch.object(discovery_routes, "_observation_index", return_value={}),

@@ -55,7 +55,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20261007_02"
+ALEMBIC_HEAD = "20261007_03"
 
 
 def _canonical_sql(text: str) -> str:
@@ -952,6 +952,42 @@ def test_live_suppression_upgrade_preserves_optional_store_and_unapproved_histor
             assert conn.execute("SELECT version FROM control_plane_schema_versions").fetchone()[0] == (2 if has_exceptions else 1)
             if has_exceptions:
                 assert conn.execute("SELECT id,status,approval_version FROM exceptions").fetchall() == [("legacy", "active", 0)]
+            else:
+                assert conn.execute("SELECT to_regclass('exceptions')").fetchone()[0] is None
+        conn.rollback()  # fixture-only schemas and rows never persist
+
+
+def test_live_decision_author_upgrade_keeps_legacy_rows_unattributed(monkeypatch):
+    """Existing exceptions gain an empty decision author; schemas without the store stay untouched."""
+    import os
+    from uuid import uuid4
+
+    import pytest
+
+    admin_url = os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL")
+    if not admin_url:
+        pytest.skip("AGENT_BOM_POSTGRES_ADMIN_URL required for real migration execution")
+    import psycopg
+    from psycopg import sql
+
+    migration = _load_module(VERSIONS_DIR / "20261007_03_suppression_decision_author.py", "decision_author_upgrade_live")
+    assert (migration.revision, migration.down_revision) == ("20261007_03", "20261007_02")
+    with psycopg.connect(admin_url) as conn:
+        for has_exceptions in (False, True):
+            schema = "decision_author_migration_" + uuid4().hex
+            conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+            conn.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(schema)))
+            conn.execute("CREATE TABLE control_plane_schema_versions (component TEXT PRIMARY KEY,version INTEGER,updated_at TIMESTAMPTZ)")
+            conn.execute("INSERT INTO control_plane_schema_versions VALUES ('exceptions',2,now())")
+            if has_exceptions:
+                conn.execute("CREATE TABLE exceptions (id TEXT PRIMARY KEY,requested_by TEXT,status TEXT)")
+                conn.execute("INSERT INTO exceptions VALUES ('legacy','bob','pending')")
+            monkeypatch.setattr(migration, "op", SimpleNamespace(execute=conn.execute))
+            migration.upgrade()
+            migration.upgrade()
+            assert conn.execute("SELECT version FROM control_plane_schema_versions").fetchone()[0] == (3 if has_exceptions else 2)
+            if has_exceptions:
+                assert conn.execute("SELECT id,requested_by,decided_by FROM exceptions").fetchall() == [("legacy", "bob", "")]
             else:
                 assert conn.execute("SELECT to_regclass('exceptions')").fetchone()[0] is None
         conn.rollback()  # fixture-only schemas and rows never persist

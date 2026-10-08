@@ -10,8 +10,9 @@ from agent_bom.api import stores
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStore, VulnException
 from agent_bom.api.server import app, configure_api
+from tests._clock_helpers import approvable_expiry
 
-FUTURE = "2099-01-01T00:00:00+00:00"
+FUTURE = approvable_expiry()
 
 
 @pytest.fixture

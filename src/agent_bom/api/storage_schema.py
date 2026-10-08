@@ -124,7 +124,7 @@ CONTROL_PLANE_SCHEMA_COMPONENTS: tuple[StorageSchemaComponent, ...] = (
     StorageSchemaComponent("tenant_graph_retention", "sqlite/postgres", ("tenant_graph_retention_overrides",)),
     StorageSchemaComponent("sources", "sqlite/postgres", ("sources", "control_plane_sources")),
     StorageSchemaComponent("schedules", "sqlite/postgres", ("scan_schedules",)),
-    StorageSchemaComponent("exceptions", "sqlite/postgres", ("vuln_exceptions",), version=2),
+    StorageSchemaComponent("exceptions", "sqlite/postgres", ("vuln_exceptions",), version=3),
     StorageSchemaComponent("idempotency", "sqlite/postgres", ("idempotency_keys",), version=2),
     StorageSchemaComponent("mcp_scan_results", "sqlite/postgres", ("mcp_scan_results",)),
     StorageSchemaComponent("mcp_observations", "sqlite/postgres", ("mcp_observations",)),

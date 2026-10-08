@@ -9,9 +9,13 @@ uv run python scripts/run_graph_mixed_scale_evidence.py --output /tmp/graph-mixe
 ```
 
 The output directory must not exist and must be outside the source checkout. The command creates an isolated API
-container limited to two CPUs and 2 GiB, using the digest pinned in the script
-with a hash-recorded private copy of the checkout's Python source mounted
-read-only. Its proxy secret
+container limited to two CPUs and 2 GiB. The image is built from a
+hash-recorded private copy of the checkout (root `Dockerfile`, `uv.lock` and
+`src/`, with the `api` extra), so the server's dependencies always match the
+measured source; the same frozen source is also mounted read-only and must be
+the imported package. The first run builds the image (several minutes); later
+runs reuse Docker's build cache. The receipt records the image tag, image ID
+and build-context digest. Its proxy secret
 is generated per run and passed through a private subprocess environment, never
 written to evidence files or command arguments. Docker administrators can inspect
 the container environment; use a trusted disposable Docker host. Cleanup removes

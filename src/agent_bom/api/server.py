@@ -26,6 +26,7 @@ from agent_bom import config as _config
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
+from agent_bom.api.foreground_activity import ForegroundActivityMiddleware
 from agent_bom.api.middleware import (
     DEFAULT_SCAN_RATE_LIMIT_RPM,
     MAX_RATE_LIMIT_RPM,
@@ -1028,6 +1029,7 @@ _apply_cors_middleware(_cors_origins)
 
 
 app.add_middleware(TrustHeadersMiddleware)
+app.add_middleware(ForegroundActivityMiddleware)
 # Starlette defaults to compresslevel=9, and GZipResponder.apply_compression is
 # synchronous — it runs on the event loop, so the whole worker stalls for the
 # duration. Measured on the 2.7 MB /v1/graph?limit=5000 payload: level 9 cost

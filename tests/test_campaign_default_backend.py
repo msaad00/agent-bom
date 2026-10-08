@@ -114,9 +114,12 @@ def test_default_campaign_verify_before_worker_tick(default_stores, surface):
     assert campaigns.list("tenant-beta") == []
 
 
-def test_default_background_maintenance_observes_campaigns(default_stores):
+def test_default_background_maintenance_observes_campaigns(default_stores, monkeypatch):
+    from agent_bom.api import foreground_activity
     from agent_bom.api.server import _cleanup_loop
 
+    # Maintenance yields to the ingest request for one quiet window first.
+    monkeypatch.setattr(foreground_activity, "QUIET_SECONDS", 0.05)
     campaigns, hub, _ = default_stores
     _ingest_findings()
 

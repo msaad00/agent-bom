@@ -16,6 +16,8 @@ import json
 import os
 import sqlite3
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache, wraps
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -90,6 +92,65 @@ def _durable_cache_path(graph_store: Any) -> Path | None:
     return path
 
 
+class _ProjectionLock:
+    """Readers share the projection; resolve and retire are exclusive.
+
+    A waiting writer blocks new readers so a steady read stream cannot starve a
+    rebuild. A thread that already reads may read again, but it may not escalate:
+    waiting for its own shared hold would deadlock, so that is a 409 instead.
+    """
+
+    def __init__(self) -> None:
+        self._cond = threading.Condition()
+        self._reads: dict[int, int] = {}
+        self._writer: int | None = None
+        self._writer_depth = 0
+        self._waiting_writers = 0
+
+    @contextmanager
+    def shared(self) -> Iterator[None]:
+        me = threading.get_ident()
+        with self._cond:
+            if self._writer != me and not self._reads.get(me):
+                while self._writer is not None or self._waiting_writers:
+                    self._cond.wait()
+            self._reads[me] = self._reads.get(me, 0) + 1
+        try:
+            yield
+        finally:
+            with self._cond:
+                if self._reads[me] == 1:
+                    del self._reads[me]
+                    self._cond.notify_all()
+                else:
+                    self._reads[me] -= 1
+
+    @contextmanager
+    def exclusive(self) -> Iterator[None]:
+        me = threading.get_ident()
+        with self._cond:
+            if self._writer == me:
+                self._writer_depth += 1
+            else:
+                if self._reads.get(me):
+                    raise HTTPException(409, "Current estate changed during the read; restart the query.")
+                self._waiting_writers += 1
+                try:
+                    while self._writer is not None or self._reads:
+                        self._cond.wait()
+                finally:
+                    self._waiting_writers -= 1
+                self._writer, self._writer_depth = me, 1
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._writer_depth -= 1
+                if not self._writer_depth:
+                    self._writer = None
+                    self._cond.notify_all()
+
+
 class CurrentGraphStore:
     """Add default current scope to graph reads over any durable graph backend."""
 
@@ -103,7 +164,7 @@ class CurrentGraphStore:
             durable = Path(self._cache_directory.name) / "projection.db"
         self._cache_path = str(durable)
         self._projection_store = SQLiteGraphStore(self._cache_path)
-        self._lock = threading.RLock()
+        self._lock = _ProjectionLock()
         self._coverage: dict[str, dict[str, Any]] = {}
         self._cache: dict[str, tuple[str, tuple[tuple[str, str], ...], str]] = {}
 
@@ -124,10 +185,6 @@ class CurrentGraphStore:
             return method
 
         def execute(*args: Any, **kwargs: Any) -> Any:
-            requested = str(kwargs.get("scan_id") or "")
-            if not requested or requested.startswith(CURRENT_PREFIX):
-                tenant = str(kwargs.get("tenant_id") or "default")
-                kwargs["scan_id"] = self._current_id(tenant)
             projected = str(kwargs.get("scan_id", "")).startswith(CURRENT_PREFIX)
             reader = getattr(self._projection_store, name) if projected else method
             result = reader(*args, **kwargs)
@@ -148,18 +205,26 @@ class CurrentGraphStore:
             if requested and not requested.startswith(CURRENT_PREFIX):
                 return method(*args, **kwargs)
             # Retire rebuildable generations only after active readers finish.
-            # Iterators hold the same lock while consuming their SQLite cursor.
+            # Iterators hold a shared read while consuming their SQLite cursor.
             if name in {"iter_nodes", "iter_edges"}:
 
                 def iterate() -> Any:
-                    with self._lock:
-                        yield from execute(*args, **kwargs)
+                    with self._reading(kwargs) as resolved:
+                        yield from execute(*args, **resolved)
 
                 return iterate()
-            with self._lock:
-                return execute(*args, **kwargs)
+            with self._reading(kwargs) as resolved:
+                return execute(*args, **resolved)
 
         return read
+
+    @contextmanager
+    def _reading(self, kwargs: dict[str, Any]) -> Iterator[dict[str, Any]]:
+        tenant = str(kwargs.get("tenant_id") or "default")
+        identity = self._resolved_id(tenant)
+        with self._lock.shared():
+            self._require_live(tenant, identity)
+            yield {**kwargs, "scan_id": identity}
 
     def _revisions(self, tenant: str, scan_ids: Any) -> tuple[tuple[str, str], ...]:
         return tuple(self._graph_store.snapshot_identity(tenant_id=tenant, scan_id=scan, for_paging=True) for scan in scan_ids)
@@ -186,14 +251,28 @@ class CurrentGraphStore:
             missing.update(absent)
             reasons.add("graph_evidence_unavailable")
 
+    def _resolved_id(self, tenant: str) -> str:
+        return read_once((f"current-graph:{id(self)}", tenant), lambda: self._resolve_current_id(tenant))
+
+    def _require_live(self, tenant: str, identity: str) -> None:
+        # A concurrent request may retire this rebuildable projection. Never
+        # turn that race into an empty graph or silently switch generations.
+        if identity and not self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=identity)[1]:
+            raise HTTPException(409, "Current estate generation was retired; restart the query.")
+
     def _current_id(self, tenant: str) -> str:
-        with self._lock:
-            identity = read_once((f"current-graph:{id(self)}", tenant), lambda: self._resolve_current_id(tenant))
-            # A concurrent request may retire this rebuildable projection. Never
-            # turn that race into an empty graph or silently switch generations.
-            if identity and not self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=identity)[1]:
-                raise HTTPException(409, "Current estate generation was retired; restart the query.")
-            return identity
+        identity = self._resolved_id(tenant)
+        with self._lock.shared():
+            self._require_live(tenant, identity)
+        return identity
+
+    def _cached_live_id(self, tenant: str, fingerprint: str) -> str:
+        cached = self._cache.get(tenant)
+        if cached and cached[0] == fingerprint:
+            revisions = self._revisions(tenant, (scan for scan, _ in cached[1]))
+            if revisions == cached[1] and self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=cached[2])[1]:
+                return cached[2]
+        return ""
 
     def _resolve_current_id(self, tenant: str) -> str:
         # Summary reads do not deserialize retained report blobs on warm pages.
@@ -214,12 +293,13 @@ class CurrentGraphStore:
             )
             evidence_revision = _digest([job.model_dump(mode="json") for job in jobs])
         fingerprint = _digest([summaries, evidence_revision])
-        with self._lock:
+        with self._lock.shared():
+            if live := self._cached_live_id(tenant, fingerprint):
+                return live
+        with self._lock.exclusive():
+            if live := self._cached_live_id(tenant, fingerprint):
+                return live
             cached = self._cache.get(tenant)
-            if cached and cached[0] == fingerprint:
-                revisions = self._revisions(tenant, (scan for scan, _ in cached[1]))
-                if revisions == cached[1] and self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=cached[2])[1]:
-                    return cached[2]
             if jobs is None:
                 jobs = [self._job_store.get(row["job_id"], tenant_id=tenant) for row in summaries]
             jobs = [job for job in jobs if job is not None and job.tenant_id == tenant]

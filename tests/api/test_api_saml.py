@@ -80,6 +80,14 @@ def isolated_key_store():
 def saml_runtime_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route tests mock SAMLConfig; opt in to the optional [saml] extra gate."""
     monkeypatch.setattr("agent_bom.api.saml.saml_runtime_available", lambda: True)
+    for key, value in {
+        "AGENT_BOM_SAML_IDP_ENTITY_ID": "https://idp.example.test/metadata",
+        "AGENT_BOM_SAML_IDP_SSO_URL": "https://idp.example.test/sso",
+        "AGENT_BOM_SAML_IDP_X509_CERT": "MIIC-test-cert",
+        "AGENT_BOM_SAML_SP_ENTITY_ID": "https://agent-bom.example.test/sp",
+        "AGENT_BOM_SAML_SP_ACS_URL": "https://agent-bom.example.test/v1/auth/saml/login",
+    }.items():
+        monkeypatch.setenv(key, value)
 
 
 def test_saml_config_disabled_when_env_missing():

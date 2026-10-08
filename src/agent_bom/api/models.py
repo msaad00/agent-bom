@@ -1222,7 +1222,7 @@ FindingTriageJustification = Literal[
 ]
 
 
-class FindingFeedbackRequest(BaseModel):
+class FindingFeedbackRequest(_policy_inputs.ExceptionExpiryValidation):
     """Request body for POST /v1/findings/feedback."""
 
     model_config = ConfigDict(extra="forbid")
@@ -1235,7 +1235,7 @@ class FindingFeedbackRequest(BaseModel):
     expires_at: str = Field("", max_length=64)
 
 
-class FindingTriageRequest(BaseModel):
+class FindingTriageRequest(_policy_inputs.ExceptionExpiryValidation):
     """Request body for POST /v1/findings/triage."""
 
     model_config = ConfigDict(extra="forbid")
@@ -1263,7 +1263,7 @@ class FindingTriageVexIngestRequest(BaseModel):
     vex: dict[str, Any] = Field(..., description="A decoded VEX document (OpenVEX @context + statements).")
 
 
-class FindingTriageDecisionRequest(BaseModel):
+class FindingTriageDecisionRequest(_policy_inputs.ExceptionExpiryValidation):
     """Request body for PUT /v1/findings/triage/{triage_id}/decision."""
 
     model_config = ConfigDict(extra="forbid")

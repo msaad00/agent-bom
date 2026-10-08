@@ -53,6 +53,7 @@ from agent_bom.api import findings_current, job_status_count_cache
 from agent_bom.api.finding_collection import collect_scan_findings
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
+from agent_bom.api.finding_list_projection import FindingListInclude, finding_list_projection, list_include_or_422, project_list_row
 from agent_bom.api.finding_reachability import project_persisted_graph_reachability
 from agent_bom.api.finding_read_context import finding_read_snapshot, read_once
 from agent_bom.api.finding_snapshot_metadata import snapshot_metadata
@@ -633,7 +634,7 @@ def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str,
 def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from agent_bom.finding_scope import safe_finding_response_payload
 
-    return [safe_finding_response_payload(row) for row in rows]
+    return [safe_finding_response_payload(project_list_row(row)) for row in rows]
 
 
 def _scan_source_labels(job: ScanJob) -> list[str]:
@@ -1091,7 +1092,26 @@ def _current_scan_rows(tenant_id: str, window_since: str | None, scan_id: str | 
 
 
 def _cached_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
-    return read_once(("rows", f"{job.tenant_id}:{job.job_id}:{id(job)}"), lambda: _iter_scan_findings(job))
+    key = json.dumps([job.tenant_id, job.job_id, str(job.status), job.completed_at])
+    return read_once(("rows", key), lambda: _iter_scan_findings(job))
+
+
+def current_open_scan_findings(jobs: list[Any]) -> list[dict[str, Any]]:
+    """Open, executed-evidence current rows, shared by every block of one aggregate read."""
+    from agent_bom.api import time_window
+    from agent_bom.api.compliance_hub_store import status_matches
+
+    since = time_window.window_since_iso(time_window.normalize_window_days(None))
+    tenant_id = str(getattr(jobs[0], "tenant_id", "default")) if jobs else "default"
+    job_keys = sorted((str(job.job_id), str(job.status), str(job.completed_at)) for job in jobs)
+
+    def load() -> list[dict[str, Any]]:
+        rows = findings_current.current_scan_findings(
+            jobs, since=since, scan_id=None, iter_findings=_cached_scan_findings, require_authoritative_evidence=True
+        )
+        return [row for row in findings_current.scan_only_findings(rows, tenant_id) if status_matches(row, "open")]
+
+    return read_once(("current_open_rows", json.dumps([tenant_id, since, job_keys])), load)
 
 
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
@@ -3290,59 +3310,57 @@ async def list_findings(
     reachability: Literal["reachable", "unreachable", "unassessed"] | None = None,
     triage: Literal["not_affected", "affected", "under_investigation", "untriaged"] | None = None,
     include_facets: bool = False,
+    include: FindingListInclude = None,
 ) -> dict:
     """List unified findings aggregated from completed scan results.
 
-    The heavy work — dedup/sort of in-memory scan findings plus synchronous
-    store reads — runs in a worker thread so a single deep read cannot block
-    the event loop and freeze unrelated requests (e.g. ``/health``) under load.
-    ``anyio.to_thread.run_sync`` propagates the current context, and the tenant
-    scope is read from ``request.state`` and passed explicitly to the store, so
-    behavior is identical to running inline.
+    Dedup/sort and synchronous store reads run in a worker thread (the context,
+    including tenant scope and the ``include`` projection, propagates) so a deep
+    read cannot block the event loop. Adaptive backpressure sheds excess reads
+    under genuine saturation with ``429 + Retry-After`` instead of starving
+    ``/health`` and unrelated routes.
 
-    The read is additionally guarded by adaptive backpressure (the same shared
-    primitive the graph route uses): the in-memory default hub copies and
-    re-sorts the whole current-state table per request, so a burst of deep
-    ``?sort=cvss`` reads at scale can pile up worker threads and starve
-    ``/health`` and unrelated endpoints. Under genuine saturation the guard
-    sheds excess reads with ``429 + Retry-After`` instead of degrading every
-    route. Normal single-reader load never trips it.
+    Rows carry ``framework_tags`` and ``controls_count``; ``?include=controls``
+    restores the full per-finding control mappings.
 
-    ``offset`` is a compatibility path capped at 10,000 (a deep ``OFFSET`` scans
-    linearly): past the ceiling the endpoint returns ``400`` and steers callers
-    to ``cursor``/``next_cursor``, the unbounded-depth pagination contract shared
-    with ``/v1/compliance/hub/findings``.
+    ``offset`` is a compatibility path capped at 10,000: past the ceiling the
+    endpoint returns ``400`` and steers callers to ``cursor``/``next_cursor``,
+    the unbounded-depth contract shared with ``/v1/compliance/hub/findings``.
     """
+    includes = list_include_or_422(include)
     try:
         async with adaptive_backpressure("findings"):
             implementation = _list_finding_groups_impl if group_occurrences else _list_findings_view_impl
-            return await anyio.to_thread.run_sync(
-                implementation,
-                request,
-                q,
-                severity,
-                scan_id,
-                sort,
-                limit,
-                offset,
-                cursor,
-                approximate_total,
-                provider,
-                account,
-                environment,
-                domain,
-                window_days,
-                status,
-                finding_class,
-                kev,
-                include_facets,
-                framework,
-                control,
-                owner,
-                sla,
-                reachability,
-                triage,
-            )
+            with finding_list_projection(include_controls="controls" in includes):
+                body = await anyio.to_thread.run_sync(
+                    implementation,
+                    request,
+                    q,
+                    severity,
+                    scan_id,
+                    sort,
+                    limit,
+                    offset,
+                    cursor,
+                    approximate_total,
+                    provider,
+                    account,
+                    environment,
+                    domain,
+                    window_days,
+                    status,
+                    finding_class,
+                    kev,
+                    include_facets,
+                    framework,
+                    control,
+                    owner,
+                    sla,
+                    reachability,
+                    triage,
+                )
+            body["include"] = list(includes)
+            return body
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,
@@ -4123,7 +4141,7 @@ def _serialize_finding_group(group: dict[str, Any]) -> dict[str, Any]:
     """
     from agent_bom.finding_scope import safe_finding_response_payload
 
-    public = safe_finding_response_payload(group)
+    public = safe_finding_response_payload(project_list_row(group))
     public["finding_group_id"] = str(group.get("finding_group_id") or "")
     public["finding_group_key"] = str(group.get("finding_group_key") or "")
     public["occurrence_count"] = int(group.get("occurrence_count") or 0)

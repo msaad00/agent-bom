@@ -65,15 +65,18 @@ from agent_bom.api.models import (
     SAMLLoginRequest,
     TenantQuotaUpdateRequest,
 )
+from agent_bom.api.saml import saml_unavailable_reason
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
 from agent_bom.api.suppression_approval import (
     ApprovalPersistenceError,
+    SelfApprovalError,
     SuppressionApprovalRequest,
     exception_response,
     persist_approval,
     reset_suppression_request,
     suppression_active,
     suppression_requested,
+    suppression_review_fields,
 )
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.security import sanitize_error, sanitize_text
@@ -357,8 +360,7 @@ def _triage_response(exc: Any) -> dict[str, Any]:
         "expires_at": exc.expires_at,
         "tenant_id": exc.tenant_id,
         "vex_eligible": suppression_active(exc) and decision == "not_affected" and bool(data.get("justification")),
-        "approval_status": exc.status.value,
-        "approval_required": suppression_requested(exc) and not suppression_active(exc),
+        **suppression_review_fields(exc),
     }
 
 
@@ -2090,6 +2092,8 @@ def saml_metadata() -> PlainTextResponse:
 @router.post("/auth/saml/relay-state", tags=["enterprise"])
 def saml_relay_state() -> dict:
     """Issue a one-time RelayState nonce for SP-initiated SAML login."""
+    if reason := saml_unavailable_reason():
+        raise HTTPException(status_code=503, detail=reason)
     relay_state, expires_at = _new_saml_relay_state()
     return {
         "relay_state": relay_state,
@@ -2427,6 +2431,8 @@ def approve_exception(request: Request, exception_id: str, req: SuppressionAppro
         exc.expires_at = req.expires_at
     try:
         persist_approval(exc, store, actor=actor, tenant_id=tenant_id)
+    except SelfApprovalError as error:
+        raise HTTPException(status_code=403, detail=sanitize_error(error)) from None
     except ValueError as error:
         raise HTTPException(status_code=400, detail=sanitize_error(error)) from None
     except ApprovalPersistenceError:
@@ -2847,7 +2853,7 @@ def update_finding_triage_decision(request: Request, triage_id: str, req: Findin
             "reviewed_at": reviewed_at,
         }
     )
-    reset_suppression_request(exc)
+    reset_suppression_request(exc, decided_by=actor)
     if req.expires_at is not None:
         exc.expires_at = req.expires_at
     store.put(exc, tenant_id=tenant_id)
@@ -3132,7 +3138,7 @@ def ingest_finding_triage_vex(request: Request, req: FindingTriageVexIngestReque
                 existing[(stmt.vulnerability_id, package)] = exc
             else:
                 exc.reason = reason
-            reset_suppression_request(exc)
+            reset_suppression_request(exc, decided_by=actor)
             store.put(exc, tenant_id=tenant_id)
             applied += 1
 

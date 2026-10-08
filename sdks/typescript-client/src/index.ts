@@ -58,6 +58,8 @@ export interface FindingsQuery {
   sort?: string;
   limit?: number;
   offset?: number;
+  /** Return full per-finding control mappings; rows otherwise carry controls_count. */
+  includeControls?: boolean;
 }
 
 export type HopAuthorityEvidence = {
@@ -375,6 +377,9 @@ export class AgentBomClient {
     search.set("offset", String(query.offset ?? 0));
     if (query.severity) {
       search.set("severity", query.severity);
+    }
+    if (query.includeControls) {
+      search.set("include", "controls");
     }
     return this.request<Record<string, JsonValue>>(
       "GET",

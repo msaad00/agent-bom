@@ -48,6 +48,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.exec_posture import issue_counts_payload, issue_severity_counts, tenant_exec_posture
+from agent_bom.api.finding_read_context import finding_read_snapshot
 from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
@@ -1161,22 +1162,9 @@ def _reconciled_exec_counts(estate: dict[str, Any], hub_severity: dict[str, int]
 
 def _current_open_scan_findings(jobs: list[Any]) -> list[dict[str, Any]]:
     """The same executed scan, time window and lifecycle basis as the drill."""
-    from agent_bom.api import time_window
-    from agent_bom.api.compliance_hub_store import status_matches
-    from agent_bom.api.findings_current import current_scan_findings, scan_only_findings
-    from agent_bom.api.routes.scan import _iter_scan_findings
+    from agent_bom.api.routes.scan import current_open_scan_findings
 
-    since = time_window.window_since_iso(time_window.normalize_window_days(None))
-    findings = current_scan_findings(
-        jobs,
-        since=since,
-        scan_id=None,
-        iter_findings=_iter_scan_findings,
-        require_authoritative_evidence=True,
-    )
-    tenant_id = str(getattr(jobs[0], "tenant_id", "default")) if jobs else "default"
-    findings = scan_only_findings(findings, tenant_id)
-    return [row for row in findings if status_matches(row, "open")]
+    return current_open_scan_findings(jobs)
 
 
 def _current_scan_severity(jobs: list[Any]) -> dict[str, int]:
@@ -1451,6 +1439,7 @@ def _capture_hub_overview_snapshot(
     )
 
 
+@finding_read_snapshot
 def _build_overview(request: Request) -> dict[str, Any]:
     """Synchronous overview composition (runs in a worker thread, #3963).
 

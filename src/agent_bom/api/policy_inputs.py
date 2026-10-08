@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+from agent_bom.api.suppression_policy import expiry_window_error
 from agent_bom.core.timestamps import parse_identity_timestamp
 from agent_bom.runtime.policy_validation import validate_policy_rules
 
@@ -19,11 +20,13 @@ class PolicyRuleValidation(BaseModel):
 class ExceptionExpiryValidation(BaseModel):
     @field_validator("expires_at", check_fields=False)
     @classmethod
-    def validate_expiry(cls, value: str) -> str:
+    def validate_expiry(cls, value: str | None) -> str | None:
         # An omitted expiry can remain pending, but never authorizes suppression.
-        if value == "":
+        if not value:
             return value
         expiry = parse_identity_timestamp(value, require_timezone=True)
         if expiry is None or expiry <= datetime.now(timezone.utc):
             raise ValueError("expires_at must be a future timestamp with an explicit timezone")
+        if error := expiry_window_error(value):
+            raise ValueError(error)
         return value

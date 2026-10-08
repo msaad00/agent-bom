@@ -211,6 +211,12 @@ def push_findings_cmd(
 @click.option("--limit", default=500, show_default=True, type=click.IntRange(min=1, max=1000), help="Maximum rows to return.")
 @click.option("--offset", default=0, show_default=True, type=click.IntRange(min=0), help="Rows to skip.")
 @click.option("--cursor", help="Keyset cursor returned by the prior page.")
+@click.option(
+    "--include-controls",
+    is_flag=True,
+    default=False,
+    help="Return full per-finding compliance control mappings (rows otherwise carry controls_count).",
+)
 @click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", show_default=True)
 @_common_api_options
 def list_findings_cmd(
@@ -235,6 +241,7 @@ def list_findings_cmd(
     limit: int,
     offset: int,
     cursor: str | None,
+    include_controls: bool,
     output_format: str,
 ) -> None:
     """List findings with the same filters as the REST API."""
@@ -262,6 +269,8 @@ def list_findings_cmd(
         "cursor": cursor,
     }
     filters.update({key: value for key, value in optional_filters.items() if value is not None})
+    if include_controls:
+        filters["include_controls"] = True
     payload = _run_request(client, lambda api: api.list_findings(**filters))
     if output_format == "json":
         _emit_json(payload)

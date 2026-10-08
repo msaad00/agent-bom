@@ -666,6 +666,8 @@ def safe_finding_response_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     controls = _safe_control_projection(row.get("controls"))
     if controls:
         payload["controls"] = controls
+    if type(controls_count := row.get("controls_count")) is int and controls_count >= 0:
+        payload["controls_count"] = controls_count
 
     from agent_bom.graph.sla import SLA_DUE_SOURCES
 

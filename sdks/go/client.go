@@ -124,6 +124,8 @@ type FindingQuery struct {
 	Sort     string
 	Limit    *int
 	Offset   *int
+	// IncludeControls returns full per-finding control mappings; rows otherwise carry controls_count.
+	IncludeControls bool
 }
 
 // ListFindings lists normalized findings from scan jobs and bulk ingests.
@@ -140,6 +142,9 @@ func (c *Client) ListFindings(ctx context.Context, query FindingQuery) (JSON, er
 	}
 	if query.Offset != nil {
 		values.Set("offset", fmt.Sprint(*query.Offset))
+	}
+	if query.IncludeControls {
+		values.Set("include", "controls")
 	}
 	return c.request(ctx, http.MethodGet, "/v1/findings", values, nil)
 }

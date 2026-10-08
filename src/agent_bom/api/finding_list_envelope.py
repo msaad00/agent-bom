@@ -13,6 +13,8 @@ Keyset ``cursor``/``next_cursor`` is the forward-compatible pagination path
 stay for backward compatibility and for computed lists that have no keyset
 store to walk. ``total_approximate`` is appended only when the total is a
 lower-bound estimate rather than an exact ``COUNT(*)``.
+The scan findings list also echoes its requested row projection in ``include``;
+this optional metadata does not change the shared pagination envelope.
 """
 
 from __future__ import annotations

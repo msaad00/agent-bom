@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api import audit_log
+from agent_bom.api.suppression_policy import SelfApprovalError as SelfApprovalError
+from agent_bom.api.suppression_policy import expiry_window_error, require_distinct_approver
 from agent_bom.core.timestamps import parse_identity_timestamp
 
 if TYPE_CHECKING:
@@ -62,9 +64,10 @@ def activate_suppression(exc: "VulnException", *, actor: str) -> None:
     """Called only by separate authenticated admin approval surfaces."""
     if not actor.strip():
         raise ValueError("Authenticated approver identity is required")
-    error = approval_error(exc)
+    error = approval_error(exc) or expiry_window_error(exc.expires_at)
     if error:
         raise ValueError(error)
+    require_distinct_approver(exc.requested_by, actor, decided_by=exc.decided_by)
     if exc.status.value not in {"pending", "active", "approved"}:
         raise ValueError("Exception state cannot be approved")
     exc.status = type(exc.status).ACTIVE
@@ -73,8 +76,15 @@ def activate_suppression(exc: "VulnException", *, actor: str) -> None:
     exc.approval_version = APPROVAL_VERSION
 
 
-def reset_suppression_request(exc: "VulnException") -> None:
-    """Changed assertions require a new explicit approval, never inherited authority."""
+def reset_suppression_request(exc: "VulnException", *, decided_by: str) -> None:
+    """Changed assertions require a new explicit approval, never inherited authority.
+
+    The principal asserting the changed decision is recorded separately from the
+    original requester so four-eyes approval excludes both.
+    """
+    if not decided_by.strip():
+        raise ValueError("Authenticated decision author identity is required")
+    exc.decided_by = decided_by.strip()
     exc.status = type(exc.status).PENDING
     exc.approval_version = 0
     exc.approved_by = ""
@@ -100,6 +110,15 @@ def persist_approval(exc: "VulnException", store: "ExceptionStore", *, actor: st
         store.put(exc, tenant_id=tenant_id)
     except Exception as error:  # broad-except: backend failure must not bypass required approval evidence.
         raise ApprovalPersistenceError("Suppression approval persistence unavailable") from error
+
+
+def suppression_review_fields(exc: "VulnException") -> dict:
+    """Approval state plus the decision author a reviewer must differ from."""
+    return {
+        "decided_by": exc.decided_by,
+        "approval_status": exc.status.value,
+        "approval_required": suppression_requested(exc) and not suppression_active(exc),
+    }
 
 
 def exception_response(exc: "VulnException") -> dict:

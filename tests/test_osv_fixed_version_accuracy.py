@@ -324,3 +324,53 @@ async def test_enrich_skips_records_already_resolvable():
         request_with_retry_fn=_fake_request,
     )
     assert called == [], "records with resolvable affected data must not be re-fetched"
+
+
+# --- Distro fix versions are shipped packages, not upstream prereleases ------
+
+
+@pytest.mark.parametrize(
+    ("ecosystem", "fixed"),
+    [
+        ("deb", "2025b-0+deb11u2"),
+        ("Debian:11", "2025b-0+deb11u2"),
+        ("Ubuntu:22.04:LTS", "2025b-0ubuntu0.22.04"),
+        ("deb", "1.0rc1-1"),
+        ("apk", "2025b-r0"),
+        ("Alpine:v3.20", "1.2.3_rc1-r0"),
+        ("rpm", "1.0-0.rc1.el9"),
+    ],
+)
+def test_distro_fix_versions_are_never_upstream_prereleases(ecosystem: str, fixed: str) -> None:
+    from agent_bom.version_utils import is_prerelease_version
+
+    # A distro advisory's fixed version is a package already shipped to that
+    # release. PEP 440 reads ``2025b`` as a beta and would drop the fix.
+    assert is_prerelease_version(fixed, ecosystem) is False
+
+
+def test_letter_suffixed_debian_fix_is_reported_not_treated_as_unfixed() -> None:
+    advisory = {
+        "id": "DLA-4403-1",
+        "summary": "tzdata - new timezone database",
+        "affected": [
+            {
+                "package": {"name": "tzdata", "ecosystem": "Debian:11"},
+                "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "2025b-0+deb11u2"}]}],
+            }
+        ],
+    }
+    package = Package(name="tzdata", version="2025b-0+deb11u1", ecosystem="deb", distro_name="debian", distro_version="11")
+
+    [vuln] = build_vulnerabilities([advisory], package)
+
+    assert vuln.fixed_version == "2025b-0+deb11u2"
+    assert vuln.match_confidence_tier != "unfixed_distro"
+
+
+def test_language_ecosystem_prerelease_detection_is_unchanged() -> None:
+    from agent_bom.version_utils import is_prerelease_version
+
+    assert is_prerelease_version("2.0.0b1", "PyPI") is True
+    assert is_prerelease_version("2.0.0-rc.1", "npm") is True
+    assert is_prerelease_version("2.0.0", "PyPI") is False

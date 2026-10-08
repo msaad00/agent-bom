@@ -10,6 +10,7 @@ import logging
 from dataclasses import replace
 from typing import Any
 
+from agent_bom.api import foreground_activity
 from agent_bom.api.campaign_store import (
     CampaignWorkflow,
     InMemoryCampaignStore,
@@ -200,6 +201,7 @@ def _reconcile_campaigns(request: Any, source: dict[str, Any]) -> list[dict[str,
 
 
 def poll_campaign_reconciliation() -> None:
+    foreground_activity.defer_until_idle()
     try:
         reconcile_pending_campaigns()
     except Exception:  # broad-except: A queue read failure must not stop unrelated maintenance; the next poll retries.

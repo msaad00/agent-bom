@@ -7,17 +7,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
-
-### Removed
-
-- Remove the legacy Streamlit dashboard, the `agent-bom report dashboard` command and the `dashboard` install extra (which also left `agent-bom[all]`). Use `agent-bom serve` for the bundled dashboard.
+## [0.108.2] - 2026-10-08
 
 ### Changed
 
 - Move the PyPI and Docker Hub front doors to `docs/registry/`, the repository map to `docs/PROJECT_STRUCTURE.md`, the image exception register to `docs/security/image-exceptions.yaml`, the project-config template to `examples/agent-bom.yaml.example`, and the fuzz harnesses to `.clusterfuzzlite/fuzz/`.
 
-## [0.108.2] - 2026-10-08
+### Removed
+
+- Remove the legacy Streamlit dashboard, the `agent-bom report dashboard` command and the `dashboard` install extra (which also left `agent-bom[all]`). Use `agent-bom serve` for the bundled dashboard.
+
+### Performance
+
+- The first `/v1/posture` and `/v1/graph` after a restart no longer compete with background work. Campaign reconciliation and the demo story prewarm wait until no request is in flight and a quiet window has passed, and they run after at most 60 s even under steady traffic. Current-estate graph reads now run concurrently. Rebuilding or retiring a generation still waits for active readers, and the 409 retired-generation contract is unchanged.
 
 ### Fixed
 

@@ -62,6 +62,9 @@ async def _seed_then(after: Callable[[], Awaitable[None]] | None) -> None:
     except Exception:  # noqa: BLE001
         _logger.warning("demo estate bootstrap skipped", exc_info=False)
     if after is not None:
+        from agent_bom.api import foreground_activity
+
+        await asyncio.to_thread(foreground_activity.defer_until_idle)
         await after()
 
 

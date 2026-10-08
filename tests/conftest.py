@@ -337,6 +337,14 @@ def _reset_api_runtime_state() -> None:
     except Exception:
         pass
 
+    # Request activity from one test must not defer the next test's background work.
+    try:
+        from agent_bom.api import foreground_activity
+
+        foreground_activity.reset()
+    except Exception:
+        pass
+
     # The API key store and the "env keys already seeded" flag are
     # process-global. A test that seeds API keys (or configures auth) would
     # otherwise leave them set, so a later test on the same xdist worker that

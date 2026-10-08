@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from agent_bom.api.finding_read_context import read_once
 from agent_bom.api.storage.sql import Dialect, SqlSession, load_json
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
@@ -68,9 +69,22 @@ def put_job(session: SqlSession, dialect: Dialect, job: ScanJob, *, if_absent: b
     )
 
 
-def get_job(session: SqlSession, dialect: Dialect, job_id: str, tenant_id: str | None) -> ScanJob | None:
+def parse_job_payload(payload: Any) -> ScanJob:
+    """Parse one persisted job row.
+
+    Inside an aggregate read scope, identical payload text is parsed once and
+    the resulting object is shared by every read in that scope; any committed
+    change produces different text and therefore a fresh parse. Outside a
+    scope every call returns an independent object.
+    """
     from agent_bom.api.models import ScanJob
 
+    if not isinstance(payload, str):
+        return ScanJob.model_validate(load_json(payload))
+    return read_once(("scan_job_payload", payload), lambda: ScanJob.model_validate_json(payload))
+
+
+def get_job(session: SqlSession, dialect: Dialect, job_id: str, tenant_id: str | None) -> ScanJob | None:
     table, tenant = ("scan_jobs", "team_id") if dialect == "postgres" else ("jobs", "tenant_id")
     where = "job_id = ?" + (f" AND {tenant} = ?" if tenant_id is not None else "")
     params = (job_id, tenant_id) if tenant_id is not None else (job_id,)
@@ -80,4 +94,4 @@ def get_job(session: SqlSession, dialect: Dialect, job_id: str, tenant_id: str |
     ).fetchall()
     if len(rows) > 1:
         raise ValueError("Ambiguous job identity requires a tenant_id")
-    return ScanJob.model_validate(load_json(rows[0][0])) if rows else None
+    return parse_job_payload(rows[0][0]) if rows else None

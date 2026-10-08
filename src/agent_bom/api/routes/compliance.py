@@ -33,6 +33,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
+from agent_bom.api.finding_read_context import finding_read_snapshot
 from agent_bom.api.hub_ingest import read_compliance_ingest_body
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.posture_counts_cache import POSTURE_COUNTS_CACHE, cached_posture_block
@@ -2259,6 +2260,12 @@ async def get_posture_scorecard(request: Request) -> dict:
     breakdown covering vulnerability posture, credential hygiene, supply
     chain quality, compliance coverage, active exploitation, and configuration.
     """
+    return await anyio.to_thread.run_sync(_posture_scorecard_impl, request)
+
+
+@finding_read_snapshot
+def _posture_scorecard_impl(request: Request) -> dict:
+    """Select the latest scan and compose the exec posture over one parse of each job payload."""
     from agent_bom.api.findings_current import latest_current_scan_job
 
     latest_job = latest_current_scan_job(_tenant_jobs(request), require_authoritative_evidence=True)
@@ -2296,7 +2303,7 @@ async def get_posture_scorecard(request: Request) -> dict:
     if scorecard:
         from agent_bom.api.exec_posture import canonical_posture_payload
 
-        return await anyio.to_thread.run_sync(canonical_posture_payload, request, cast(dict, scorecard))
+        return canonical_posture_payload(request, cast(dict, scorecard))
 
     return {
         "grade": "N/A",

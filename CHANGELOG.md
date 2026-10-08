@@ -11,7 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Performance
 
-- Postgres job reads no longer transfer and decode every job payload on each call. A read sends the row versions this process already holds, and the database returns a payload only for rows that changed, so another replica's write is always seen. Payloads are cached as JSON text per tenant, with a byte limit (`AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB`, default 256). Every read still parses a fresh job.
+- Postgres job reads no longer transfer and decode every job payload on each call. A read sends the row versions this process already holds, and the database returns a payload only for rows that changed, so another replica's write is always seen. Payloads are cached as JSON text per tenant, with a byte limit (`AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB`, default 256). Reads outside one request's aggregate read still parse a fresh job.
+- A cold `/v1/posture` now parses each job payload once instead of three to four times. Latest-scan selection, the overview fold, the current-graph resolver and the finding spine share one parse of each exact payload within the request, on Postgres and SQLite. A changed row is new payload text and is parsed again, so another replica's write is still seen. Latest-scan selection also moved off the event loop. On the demo estate (one 43 MB job), the first `/v1/posture` after a restart drops from 2.6 s to 1.7 s on Postgres and from 2.4 s to 1.7 s on SQLite (median of 3 restarts); the first `/v1/overview` and `/v1/findings` also drop by 0.3-0.7 s.
 - Campaign reconciliation now reaches its checkpoint, so it stops re-walking and re-redacting every finding at each boot and every maintenance tick while evidence is unchanged. A campaign walk reuses one read context across its pages, and the background walk is no longer cut off by the 10 s request bound.
 
 ### Fixed

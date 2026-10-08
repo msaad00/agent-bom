@@ -10,6 +10,11 @@ import {
 } from "@/lib/large-graph-overview";
 
 describe("graph renderer switch", () => {
+  it("measures bounded neighborhoods before fitting all nodes", () => {
+    expect(shouldVirtualizeReactFlowNodes({ nodeCount: 8 })).toBe(false);
+    expect(shouldVirtualizeReactFlowNodes({ nodeCount: 80 })).toBe(false);
+    expect(shouldVirtualizeReactFlowNodes({ nodeCount: 81 })).toBe(true);
+  });
   it("renders bounded roll-up cards eagerly before the initial fitView", () => {
     expect(shouldVirtualizeReactFlowNodes({ rollupActive: true })).toBe(false);
     expect(shouldVirtualizeReactFlowNodes({ rollupActive: false })).toBe(true);

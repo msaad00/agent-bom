@@ -298,18 +298,98 @@ PR_EXCLUDED_POST_MERGE_JOBS = (
 )
 
 
-def test_pull_requests_require_full_correctness_before_merge() -> None:
-    """The merge result runs every correctness test, regardless of selection."""
+REQUIRED_CI_JOBS = ("security", "lint", "build", "test")
+SHARD_STEP = "Run full correctness shard"
+
+
+def _marker_filter(run: str) -> str:
+    return run.split(' -m "', 1)[1].split('"', 1)[0]
+
+
+def test_pull_requests_run_the_full_suite_sharded_instead_of_the_matrix() -> None:
+    """PRs prove the merge result with the sharded 3.13 suite; main runs the matrix."""
     jobs = _ci()["jobs"]
-    assert jobs["test-main"]["if"] == "${{ !cancelled() }}"
+    assert jobs["test-main"]["if"] == ("${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' }}")
+    assert jobs["test-shard"]["if"] == (
+        "${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}"
+    )
+    assert "test-queue-shard" not in jobs
     assert jobs["postgres-integration"]["if"] == "${{ !cancelled() }}"
-    checkout = jobs["test-main"]["steps"][0]
-    assert "ref" not in checkout.get("with", {})
+    assert jobs["test-smoke"]["if"] == "${{ !cancelled() }}"
     assert "test-pr-shard" not in jobs
     for name in PR_EXCLUDED_POST_MERGE_JOBS:
         condition = jobs[name]["if"]
         assert "github.event_name != 'pull_request'" in condition, name
         assert "!cancelled()" in condition, name
+
+
+def test_shards_run_the_whole_suite_on_the_merge_result() -> None:
+    jobs = _ci()["jobs"]
+    shard = jobs["test-shard"]
+    assert shard["name"] == "Full correctness shard (${{ matrix.shard }}, Python 3.13)"
+    assert "needs" not in shard
+    assert "ref" not in shard["steps"][0].get("with", {})
+    setup = next(step for step in shard["steps"] if step.get("uses") == "./.github/actions/setup-python")
+    assert setup["with"]["python-version"] == "3.13"
+    assert shard["strategy"]["fail-fast"] is False
+    indexes = shard["strategy"]["matrix"]["shard"]
+    assert indexes == list(range(len(indexes))) and len(indexes) >= 2
+    assert shard["timeout-minutes"] <= 20
+    assert "cancel-in-progress" not in shard.get("concurrency", {})
+
+    run = next(step["run"] for step in shard["steps"] if step.get("name") == SHARD_STEP)
+    assert f"--total {len(indexes)}" in run
+    assert '--index "${{ matrix.shard }}"' in run
+    assert "--durations=" in run
+    main_run = next(step["run"] for step in jobs["test-main"]["steps"] if step.get("name") == "Run full correctness suite")
+    main_filters = {_marker_filter(line) for line in main_run.splitlines() if "uv run pytest tests/" in line}
+    assert main_filters == {_marker_filter(run)}
+
+
+def test_shards_partition_every_test_module_exactly_once() -> None:
+    import subprocess
+    import sys
+
+    shard = _ci()["jobs"]["test-shard"]
+    total = len(shard["strategy"]["matrix"]["shard"])
+    selected: list[str] = []
+    for index in range(total):
+        result = subprocess.run(
+            [sys.executable, "scripts/pytest_ci_plan.py", "shard", "--index", str(index), "--total", str(total)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        lines = result.stdout.split()
+        assert lines, index
+        selected.extend(lines)
+    every = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").rglob("test_*.py") if path.is_file())
+    assert len(selected) == len(set(selected))
+    assert sorted(selected) == every
+
+
+def test_required_contexts_report_on_pull_request_and_merge_group() -> None:
+    """Required contexts report on every event that can gate a merge."""
+    workflow = _ci()
+    triggers = workflow.get(True, workflow.get("on", {}))
+    assert triggers["merge_group"] == {"types": ["checks_requested"]}
+    for name in REQUIRED_CI_JOBS:
+        assert workflow["jobs"][name]["if"] == "${{ !cancelled() }}", name
+    assert workflow["jobs"]["test"]["name"] == "Test (Python 3.13)"
+    for name in ("codeql.yml", "pr-security-gate.yml"):
+        other = yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
+        assert other.get(True, other.get("on", {}))["merge_group"] == {"types": ["checks_requested"]}, name
+
+
+def test_runbook_keeps_strict_protection_and_documents_pr_shards() -> None:
+    """No merge queue is available for this repository, so strict protection stays."""
+    runbook = " ".join((ROOT / "docs" / "operations" / "CI_RUNBOOK.md").read_text(encoding="utf-8").split())
+    total = len(_ci()["jobs"]["test-shard"]["strategy"]["matrix"]["shard"])
+    assert f"split into {total} parallel shards" in runbook
+    assert "-F strict=false" not in runbook
+    assert "rulesets" not in runbook
+    assert "| Merge queue |" not in runbook
 
 
 def test_main_push_aggregator_requires_the_full_suite() -> None:
@@ -321,11 +401,20 @@ def test_main_push_aggregator_requires_the_full_suite() -> None:
     """
     jobs = _ci()["jobs"]
     core = jobs["test-core"]
-    for lane in ("test-smoke", "test-main", "graph-performance", "output-scale-performance", "sdk-import-smoke", "postgres-integration"):
+    lanes = (
+        "test-smoke",
+        "test-main",
+        "test-shard",
+        "graph-performance",
+        "output-scale-performance",
+        "sdk-import-smoke",
+        "postgres-integration",
+    )
+    for lane in lanes:
         assert lane in core["needs"], lane
     run = next(step["run"] for step in core["steps"] if step.get("name") == "Require every applicable correctness lane")
     assert 'if [ "$EVENT_NAME" != "pull_request" ]' in run
-    for variable in ("MAIN_RESULT", "GRAPH_RESULT", "OUTPUT_SCALE_RESULT", "SDK_SMOKE_RESULT", "POSTGRES_RESULT"):
+    for variable in ("MAIN_RESULT", "SHARD_RESULT", "GRAPH_RESULT", "OUTPUT_SCALE_RESULT", "SDK_SMOKE_RESULT", "POSTGRES_RESULT"):
         assert f'"${variable}"' in run
     assert core["steps"][0]["env"]["EVENT_NAME"] == "${{ github.event_name }}"
 
@@ -363,26 +452,61 @@ def test_pull_request_classifiers_diff_from_the_merge_base() -> None:
     assert CI_WORKFLOW.read_text(encoding="utf-8").count(three_dot) == 2
 
 
-def test_pull_request_runs_cancel_superseded_but_main_runs_do_not() -> None:
+def test_only_pull_request_runs_cancel_superseded_runs() -> None:
     concurrency = _ci()["concurrency"]
     assert "github.event.pull_request.number" in concurrency["group"]
     assert "github.event_name" in concurrency["group"]
     assert "github.ref == 'refs/heads/main' && github.sha" in concurrency["group"]
-    assert concurrency["cancel-in-progress"] == "${{ github.ref != 'refs/heads/main' }}"
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+    for name in ("codeql.yml", "pr-security-gate.yml"):
+        other = yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
+        assert other["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}", name
 
 
-def test_pr_correctness_gate_rejects_failed_skipped_and_cancelled_full_suite() -> None:
+# Lanes each event must prove; every other lane must be skipped or succeed.
+# PRs (and merge groups, if a queue is ever enabled) prove the merge result
+# with the sharded 3.13 suite; main, nightly and manual runs prove the matrix.
+_EVENT_PROOF = {
+    "pull_request": ("SMOKE_RESULT", "POSTGRES_RESULT", "SHARD_RESULT"),
+    "merge_group": (
+        "SMOKE_RESULT",
+        "POSTGRES_RESULT",
+        "SHARD_RESULT",
+        "GRAPH_RESULT",
+        "OUTPUT_SCALE_RESULT",
+        "SDK_SMOKE_RESULT",
+    ),
+    "push": ("SMOKE_RESULT", "POSTGRES_RESULT", "MAIN_RESULT", "GRAPH_RESULT", "OUTPUT_SCALE_RESULT", "SDK_SMOKE_RESULT"),
+    "schedule": ("SMOKE_RESULT", "POSTGRES_RESULT", "MAIN_RESULT", "GRAPH_RESULT", "OUTPUT_SCALE_RESULT", "SDK_SMOKE_RESULT"),
+    "workflow_dispatch": ("SMOKE_RESULT", "POSTGRES_RESULT", "MAIN_RESULT", "GRAPH_RESULT", "OUTPUT_SCALE_RESULT", "SDK_SMOKE_RESULT"),
+}
+
+
+def _run_correctness_gate(event: str, results: dict[str, str]) -> bool:
     import os
     import subprocess
 
     step = _ci()["jobs"]["test-core"]["steps"][0]
-    for lane in ("MAIN_RESULT", "POSTGRES_RESULT"):
-        for outcome in ("success", "failure", "skipped", "cancelled"):
-            env = {**os.environ, **dict.fromkeys(step["env"], "skipped")}
-            env.update(EVENT_NAME="pull_request", SMOKE_RESULT="success", MAIN_RESULT="success", POSTGRES_RESULT="success")
-            env[lane] = outcome
-            result = subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True)
-            assert (result.returncode == 0) is (outcome == "success"), result.stdout + result.stderr
+    env = {**os.environ, **dict.fromkeys(step["env"], "skipped"), "EVENT_NAME": event, **results}
+    return subprocess.run(["bash", "-c", step["run"]], env=env, capture_output=True, text=True).returncode == 0
+
+
+def test_correctness_gate_requires_exactly_the_lanes_each_event_proves() -> None:
+    for event, proof in _EVENT_PROOF.items():
+        assert _run_correctness_gate(event, dict.fromkeys(proof, "success")), event
+        for lane in proof:
+            for outcome in ("failure", "skipped", "cancelled"):
+                results = {**dict.fromkeys(proof, "success"), lane: outcome}
+                assert not _run_correctness_gate(event, results), (event, lane, outcome)
+
+
+def test_correctness_gate_rejects_a_failed_lane_that_the_event_does_not_require() -> None:
+    for event, proof in _EVENT_PROOF.items():
+        for lane in ("MAIN_RESULT", "SHARD_RESULT", "GRAPH_RESULT"):
+            if lane in proof:
+                continue
+            results = {**dict.fromkeys(proof, "success"), lane: "failure"}
+            assert not _run_correctness_gate(event, results), (event, lane)
 
 
 def test_ui_pr_lane_is_fast_and_e2e_runs_after_merge() -> None:
@@ -711,3 +835,10 @@ def test_action_classifier_includes_the_cyclonedx_dogfood_fixture() -> None:
     for path in ("action.yml", "tests/fixtures/test-sbom.cdx.json", "tests/fixtures/test-policy.json"):
         assert re.search(pattern[1], path), path
     assert not re.search(pattern[1], "docs/readme.md")
+
+
+def test_every_main_push_runs_all_release_ui_lanes():
+    for name in ("ui", "ui-export", "ui-e2e"):
+        condition = _ci()["jobs"][name]["if"]
+        assert "github.event_name == 'push'" in condition
+        assert "github.ref == 'refs/heads/main'" in condition

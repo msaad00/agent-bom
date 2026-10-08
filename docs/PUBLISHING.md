@@ -307,7 +307,7 @@ Release operators should also review:
 
 - [`docs/IMAGE_SECURITY.md`](IMAGE_SECURITY.md)
 - [`docs/GOLDEN_IMAGE_PROGRAM.md`](GOLDEN_IMAGE_PROGRAM.md)
-- [`security/image-exceptions.yaml`](../security/image-exceptions.yaml)
+- [`docs/security/image-exceptions.yaml`](security/image-exceptions.yaml)
 
 For dependency-heavy or security-driven releases, also verify:
 

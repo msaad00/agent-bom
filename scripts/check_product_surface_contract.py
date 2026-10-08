@@ -197,7 +197,7 @@ def main() -> int:
     )
 
     _require_text(
-        "DOCKER_HUB_README.md",
+        "docs/registry/DOCKER_HUB_README.md",
         [
             "one product with two deployable container images",
             "agentbom/agent-bom",
@@ -213,7 +213,7 @@ def main() -> int:
         failures,
     )
     _require_text(
-        "DOCKER_HUB_UI_README.md",
+        "docs/registry/DOCKER_HUB_UI_README.md",
         [
             "not a separate product",
             "Control-Plane Contract",

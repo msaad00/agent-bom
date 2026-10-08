@@ -808,8 +808,19 @@ def test_refresh_latest_container_keeps_release_code_but_applies_runtime_securit
     assert "deploy/docker/runtime-security-requirements.txt \\" in workflow
     assert "deploy/docker/Dockerfile.collector \\" in workflow
     assert ".image-scan-ignore \\" in workflow
-    assert "security/image-exceptions.yaml" in workflow
+    assert "docs/security/image-exceptions.yaml" in workflow
     assert "The application code and version stay pinned to the latest release tag" in workflow
+    overlay = workflow.split("Apply current runtime security overlay", 1)[1].split("- name:", 1)[0]
+    _assert_registry_layout_bridge(overlay, needs_dockerignore=True)
+
+
+def _assert_registry_layout_bridge(step: str, *, needs_dockerignore: bool) -> None:
+    """Tags cut before docs/registry/ existed must still build with main's Dockerfiles."""
+    if needs_dockerignore:
+        assert ".dockerignore \\" in step
+    assert "if [ ! -f docs/registry/PYPI_README.md ]; then" in step
+    assert "cp PYPI_README.md DOCKER_HUB_README.md DOCKER_HUB_UI_README.md docs/registry/" in step
+    assert 'readme = "docs/registry/PYPI_README.md"' in step
 
 
 def test_refresh_latest_ui_applies_current_runtime_security_overlay():
@@ -822,7 +833,12 @@ def test_refresh_latest_ui_applies_current_runtime_security_overlay():
     assert 'git checkout "${{ steps.release.outputs.main_sha }}" -- \\' in ui_job
     assert "ui/Dockerfile \\" in ui_job
     assert ".image-scan-ignore \\" in ui_job
-    assert "security/image-exceptions.yaml" in ui_job
+    assert "docs/security/image-exceptions.yaml" in ui_job
+    ui_overlay = ui_job.split("Apply current UI runtime security overlay", 1)[1].split("- name:", 1)[0]
+    _assert_registry_layout_bridge(ui_overlay, needs_dockerignore=False)
+    collector_job = workflow.split("refresh-collector-latest:", 1)[1]
+    collector_overlay = collector_job.split("Apply current runtime security overlay", 1)[1].split("- name:", 1)[0]
+    _assert_registry_layout_bridge(collector_overlay, needs_dockerignore=True)
 
 
 def test_refresh_latest_container_has_publish_budget_and_buildkit_cache():
@@ -943,7 +959,8 @@ def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
     content = (ROOT / "Dockerfile").read_text()
     assert "ARG AGENT_BOM_EXTRAS=api,snowflake,postgres,aws,azure,gcp" in content
     assert "COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:" in content
-    assert "COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./" in content
+    assert "COPY pyproject.toml uv.lock README.md LICENSE ./" in content
+    assert "COPY docs/registry/PYPI_README.md ./docs/registry/" in content
     assert "uv sync --locked --no-dev --no-editable" in content
     assert "COPY --from=builder /app/.venv /app/.venv" in content
     assert 'pip install --no-cache-dir --prefix=/install ".[${AGENT_BOM_EXTRAS}]"' not in content
@@ -952,7 +969,8 @@ def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
 def test_runtime_dockerfile_builds_from_repo_source():
     """Runtime image should install agent-bom from the checked-out source tree, not PyPI."""
     content = (ROOT / "deploy" / "docker" / "Dockerfile.runtime").read_text()
-    assert "COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./" in content
+    assert "COPY pyproject.toml uv.lock README.md LICENSE ./" in content
+    assert "COPY docs/registry/PYPI_README.md ./docs/registry/" in content
     assert "COPY src/ ./src/" in content
     assert "uv sync --locked --no-dev --no-editable --extra runtime" in content
     assert "COPY --from=builder /app/.venv /app/.venv" in content
@@ -1168,3 +1186,27 @@ def test_smithery_recovery_guidance_requires_external_authorization() -> None:
     assert "does not issue tokens or grant client access" in guide
     assert "does not issue tokens or grant client access" in helper
     assert "a valid registered PKCE client is granted" not in helper
+
+
+def test_source_built_images_copy_the_declared_package_readme():
+    """Every image that installs from source must ship the readme pyproject declares.
+
+    setuptools refuses to build when ``project.readme`` is missing, so a Dockerfile
+    or .dockerignore that drifts from the declared path breaks every image build.
+    """
+    import tomllib
+
+    readme = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["readme"]
+    assert (ROOT / readme).is_file()
+    copy_line = f"COPY {readme} ./{Path(readme).parent.as_posix()}/"
+    dockerfiles = [
+        ROOT / "Dockerfile",
+        ROOT / "integrations" / "glama" / "Dockerfile",
+        *sorted((ROOT / "deploy" / "docker").glob("Dockerfile*")),
+    ]
+    source_built = [path for path in dockerfiles if "COPY pyproject.toml uv.lock" in path.read_text()]
+    assert len(source_built) >= 8
+    for path in source_built:
+        assert copy_line in path.read_text(), path
+    dockerignore = (ROOT / ".dockerignore").read_text().splitlines()
+    assert f"!{readme}" in dockerignore

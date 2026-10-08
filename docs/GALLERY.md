@@ -62,7 +62,7 @@ exposure only when the new evidence supports that decision. Retain the prior
 scan and receipts for the audit trail.
 
 [Run the complete lab](../examples/reference-evidence-lab/README.md) ·
-[Start a self-hosted control plane](../DOCKER_HUB_UI_README.md) ·
+[Start a self-hosted control plane](registry/DOCKER_HUB_UI_README.md) ·
 [Evidence and graph contract](graph/CONTRACT.md)
 
 Synthetic layout fixtures remain in the [capture protocol](CAPTURE.md) for UI

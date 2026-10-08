@@ -10,8 +10,8 @@ CLI/CI, REST API, MCP server, dashboard, and runtime proxy/gateway. The package
 is intentionally broad—this map groups the breadth into owned subsystems.
 
 For the layered architecture and data-flow diagrams, see
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For role-based entry paths, see
-[`docs/START_HERE.md`](docs/START_HERE.md).
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md). For role-based entry paths, see
+[`docs/START_HERE.md`](START_HERE.md).
 
 ---
 
@@ -24,16 +24,17 @@ For the layered architecture and data-flow diagrams, see
 | `docs/` | Operator- and contributor-facing reference docs (this tree). | **Yes** — canonical for engineering/reference docs. |
 | `site-docs/` | MkDocs source for the published docs site. | **Yes** — canonical for the *narrative/getting-started* site; see [Documentation map](#documentation-map). |
 | `ui/` | Next.js 16 + React 19 + Tailwind 4 dashboard (the human cockpit). | Yes — the active UI. |
-| `dashboard/` | Legacy standalone Streamlit compatibility surface. | Retained for compatibility; `ui/` is the active cockpit. |
 | `sdks/` | Client SDKs: `python`, `go`, `typescript`, `typescript-client`, `shared`. | Yes — typed control-plane clients (not scanner SDKs). |
 | `deploy/` | Helm chart, docker-compose pilot, EKS reference, deployment manifests. | Yes. |
 | `contracts/` | Cross-surface contract fixtures. | Yes. |
 | `docs/openapi/v1.json` | Committed OpenAPI spec — the canonical REST contract. | **Yes** — SDK + client contract checks read this. |
 | `scripts/` | Release, deploy, and consistency tooling (e.g. `check_release_consistency.py`). | Yes. |
 | `integrations/` | External tool integrations and examples. | Yes. |
-| `examples/`, `config/`, `security/`, `fuzz/` | Samples, config, security policy, fuzz harnesses. | Support material. |
+| `examples/`, `config/` | Samples (including `examples/agent-bom.yaml.example`, the project-config template) and config. | Support material. |
+| `.clusterfuzzlite/` | ClusterFuzzLite build config plus the Atheris fuzz harnesses in `.clusterfuzzlite/fuzz/`. | Support material. |
+| `docs/security/image-exceptions.yaml` | Human-reviewed register of container-image CVE exceptions; the scanner reads the flat `.image-scan-ignore` allowlist at the repo root. | Yes — the exception register. |
 | `AGENTS.md`, `CLAUDE.md` | Contributor/agent operating rules. Read `AGENTS.md` first. | Yes. |
-| `README.md`, `PYPI_README.md`, `DOCKER_HUB_README.md`, `DOCKER_HUB_UI_README.md` | Front doors per distribution channel; kept in sync by `scripts/check_release_consistency.py`. | Yes — each is canonical for its channel. |
+| `README.md`, `docs/registry/PYPI_README.md`, `docs/registry/DOCKER_HUB_README.md`, `docs/registry/DOCKER_HUB_UI_README.md` | Front doors per distribution channel; kept in sync by `scripts/check_release_consistency.py`. | Yes — each is canonical for its channel. |
 
 ---
 
@@ -87,7 +88,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 | Subsystem | Path | Responsibility |
 |---|---|---|
 | API | `api/` | FastAPI app and route modules; middleware handles HTTP auth/tenant/limits/audit. SQLite and Postgres are the primary stores, Neptune is optional graph persistence, ClickHouse is optional analytics, and Snowflake implements selected store/warehouse paths. |
-| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 78 tools, 6 resources, and 8 workflow prompts (mostly read-only; Shield write actions fail closed). |
+| MCP server | `mcp_server*.py`, `mcp_tools/` | FastMCP server advertising 88 tools, 7 resources, and 8 workflow prompts (mostly read-only; Shield write actions fail closed). |
 | Runtime enforcement | `proxy*.py`, `gateway*.py`, `firewall*.py`, `shield.py`, `runtime/`, `enforcement.py` | MCP traffic proxy, secure-by-default gateway, inline firewall, Shield enforcement. **Spread by design** — see [Runtime enforcement spread](#runtime-enforcement-spread). |
 | Auth / tenancy | `rbac.py`, `permissions.py`, `entitlements.py`, `mcp_tenant.py`, `api/auth.py`, `api/oidc.py` | RBAC roles, tenant scoping, API keys, OIDC/SAML/SCIM. |
 | Fleet | `fleet/`, `fleet_scan.py` | Endpoint/collector inventory pushed into one control plane. |
@@ -106,7 +107,7 @@ The self-hosted operator surface. Same evidence, multi-tenant, audited.
 
 | Subsystem | Path | Responsibility |
 |---|---|---|
-| CLI | `cli/` | Click entry point organized into seven help categories. See [`docs/CLI_MAP.md`](docs/CLI_MAP.md). |
+| CLI | `cli/` | Click entry point organized into seven help categories. See [`docs/CLI_MAP.md`](CLI_MAP.md). |
 
 ---
 
@@ -129,9 +130,9 @@ future:
 **Direction of travel:** add to `graph/`, treat `context_graph.py` as a bridge
 that will shrink over time. The graph contract (entity/edge coverage, accuracy
 guarantees, scaling tiers, known gaps) is in
-[`docs/graph/CONTRACT.md`](docs/graph/CONTRACT.md).
+[`docs/graph/CONTRACT.md`](graph/CONTRACT.md).
 
-See [`docs/GRAPH_MIGRATION.md`](docs/GRAPH_MIGRATION.md) for the full note.
+See [`docs/GRAPH_MIGRATION.md`](GRAPH_MIGRATION.md) for the full note.
 
 ---
 
@@ -165,9 +166,9 @@ which is the source of truth for what:
 | `docs/` | Engineering + operator reference (architecture, threat model, MCP server, deployment, graph contract, this structure map). | Markdown, read on GitHub. |
 | `site-docs/` | The **published docs site** ([msaad00.github.io/agent-bom](https://msaad00.github.io/agent-bom/)) — getting-started, tutorials, narrative walkthroughs. | MkDocs. |
 | `README.md` (root) | The repository front door. | Markdown. |
-| `PYPI_README.md` / `DOCKER_HUB*.md` | Per-channel front doors, kept consistent by the release-consistency gate. | Markdown. |
+| `docs/registry/` (`PYPI_README.md`, `DOCKER_HUB*.md`) | Per-channel front doors, kept consistent by the release-consistency gate. | Markdown. |
 
 When a topic exists in both `docs/` and `site-docs/`, `docs/` is canonical for
 the engineering reference and `site-docs/` is canonical for the
-narrative/onboarding version. See [`docs/README.md`](docs/README.md) for the
+narrative/onboarding version. See [`docs/README.md`](README.md) for the
 audience-grouped index.

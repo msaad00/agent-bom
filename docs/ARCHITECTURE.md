@@ -105,7 +105,7 @@ flowchart TB
 | Runtime enforcement | `agent-bom proxy ...` or `agent-bom mcp server` | audit JSONL, policy decisions, blocks | gateway/proxy sidecars and Shield SDK |
 
 For a repo-level map of where each layer lives in `src/agent_bom/`, see
-[`PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md). For role-based entry paths,
+[`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md). For role-based entry paths,
 see [`START_HERE.md`](START_HERE.md).
 
 ---

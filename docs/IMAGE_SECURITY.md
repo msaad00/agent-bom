@@ -50,7 +50,7 @@ Temporary exceptions are allowed only when all of the following are true:
 3. the exception is documented with owner, reason, review date, and expiry
 4. the exception is revisited on every base refresh and release
 
-Active image exceptions are tracked in [`security/image-exceptions.yaml`](../security/image-exceptions.yaml).
+Active image exceptions are tracked in [`docs/security/image-exceptions.yaml`](security/image-exceptions.yaml).
 
 The generated image ignore file remains the scanner input today, but the YAML registry is the human-reviewed source of truth for why an exception exists.
 
@@ -120,7 +120,7 @@ For each architecture we want:
 
 ## Near-term follow-ups
 
-- add a generated sync step from `security/image-exceptions.yaml` into the image scanner ignore file
+- add a generated sync step from `docs/security/image-exceptions.yaml` into the image scanner ignore file
 - sign and attest Docker images directly, not just Python artifacts and BuildKit attestations
 - add Docker Scout as an explicit release gate
 - add promoted golden base images per architecture

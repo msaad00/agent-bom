@@ -65,7 +65,7 @@ def test_dependency_routing_includes_lockfiles_packaging_and_install_tooling() -
         "uv.lock",
         "pyproject.toml",
         "setup.py",
-        "dashboard/requirements.txt",
+        ".clusterfuzzlite/requirements.txt",
         "requirements/test.in",
         "constraints-prod.txt",
         ".python-version",
@@ -81,3 +81,12 @@ def test_security_routing_fails_closed_on_unknown_or_ambiguous_paths() -> None:
     for paths in [[], ["../README.md"], ["README.md", ""], ["new-surface/unknown.data"]]:
         result = classify_paths(paths)
         assert result.python_dependencies is True
+
+
+def test_registry_front_doors_and_fuzz_harnesses_route_to_their_lanes() -> None:
+    registry = classify_paths(["docs/registry/PYPI_README.md", "docs/registry/DOCKER_HUB_README.md"])
+    assert registry.docs_only is True
+
+    fuzz = classify_paths([".clusterfuzzlite/fuzz/fuzz_policy.py"])
+    assert fuzz.docs_only is False
+    assert fuzz.python_dependencies is False

@@ -1,4 +1,4 @@
-"""Report command group — history, diff, analytics, and dashboard helpers.
+"""Report command group — history, diff, analytics, and pipeline-event helpers.
 
 Usage::
 
@@ -11,7 +11,6 @@ Usage::
     agent-bom report prune                # plan or apply bounded whole-run pruning
     agent-bom report analytics           # query vulnerability trends
     agent-bom serve                      # launch bundled API + Next.js dashboard
-    agent-bom report dashboard           # legacy Streamlit compatibility dashboard
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from agent_bom.cli._grouped_help import SuggestingGroup
 @click.group("report", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def report_group(ctx: click.Context) -> None:
-    """Reports — history, diff, analytics, and dashboard helpers.
+    """Reports — history, diff, analytics, and pipeline-event helpers.
 
     \b
     Subcommands:
@@ -41,7 +40,8 @@ def report_group(ctx: click.Context) -> None:
       storage     Inspect local scan mirror size, rows, and retention caps
       prune       Plan or apply whole-run pruning; optionally compact SQLite
       analytics   Query vulnerability trends (ClickHouse)
-      dashboard   Launch legacy Streamlit compatibility dashboard; use `agent-bom serve` for the bundled Next.js UI
+
+    For the dashboard, run `agent-bom serve` (API + bundled Next.js UI).
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

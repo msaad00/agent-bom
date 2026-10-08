@@ -225,7 +225,7 @@ to your repository's `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/msaad00/agent-bom
-    rev: v0.108.1
+    rev: v0.108.2
     hooks:
       - id: agent-bom-secrets
       - id: agent-bom-scan

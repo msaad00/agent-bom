@@ -3,7 +3,7 @@
 `agent-bom` exposes one evidence model through several surfaces. Pick the entry
 path for your role; each row is the shortest route to value.
 
-For the repo layout, see [`../PROJECT_STRUCTURE.md`](../PROJECT_STRUCTURE.md).
+For the repo layout, see [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
 For the architecture diagrams, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
@@ -51,7 +51,7 @@ docker compose -f deploy/docker-compose.pilot.yml up -d
 - Enterprise auth, tenancy, RBAC: [`ENTERPRISE_DEPLOYMENT.md`](ENTERPRISE_DEPLOYMENT.md),
   [`PERMISSIONS.md`](PERMISSIONS.md)
 - Runtime proxy/gateway enforcement: [`MCP_SERVER.md`](MCP_SERVER.md) and the
-  [runtime enforcement spread](../PROJECT_STRUCTURE.md#runtime-enforcement-spread)
+  [runtime enforcement spread](PROJECT_STRUCTURE.md#runtime-enforcement-spread)
 
 ## Cloud / GRC — connect a cloud read-only
 

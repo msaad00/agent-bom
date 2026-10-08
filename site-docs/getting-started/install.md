@@ -17,7 +17,6 @@ pip install "agent-bom[mcp-server]"   # Smithery hosted-registry adapter only; `
 pip install "agent-bom[postgres]"     # Postgres-backed control-plane state
 pip install "agent-bom[cloud]"        # AWS, Azure, GCP, Databricks, Snowflake, Nebius, HuggingFace, W&B, OpenAI
 pip install "agent-bom[visual]"       # OCR-backed visual-leak detection; also requires Tesseract on PATH
-pip install "agent-bom[dashboard]"    # Snowflake Streamlit compatibility dashboard
 pip install "agent-bom[lake]"         # Parquet + Apache Iceberg REST-catalog export
 pip install "agent-bom[dev-all]"      # Developer environment used by this repo
 ```

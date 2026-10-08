@@ -1,5 +1,5 @@
 # Scanner exception input.
-# Human-reviewed exception metadata lives in security/image-exceptions.yaml.
+# Human-reviewed exception metadata lives in docs/security/image-exceptions.yaml.
 # Keep this file aligned with the structured registry until the workflows read the
 # YAML registry directly.
 
@@ -23,7 +23,7 @@ CVE-2025-6141
 # No fixed Alpine package is available for the pinned image lineage as of
 # 2026-04-25. Runtime uses agent-bom as a non-root entrypoint and does not
 # expose busybox wget as an application feature.
-# Structured exception: security/image-exceptions.yaml#alpine-busybox-no-fix-2026-04
+# Structured exception: docs/security/image-exceptions.yaml#alpine-busybox-no-fix-2026-04
 CVE-2025-60876
 
 # pip inherited from the pinned Python base image.
@@ -31,5 +31,5 @@ CVE-2025-60876
 # Runtime does not use pip for untrusted package installation after image build;
 # build-time dependency installation is hash-pinned. Revisit when the Python
 # base image ships a fixed pip package or pip can be removed from runtime.
-# Structured exception: security/image-exceptions.yaml#base-python-pip-no-fix-2026-04
+# Structured exception: docs/security/image-exceptions.yaml#base-python-pip-no-fix-2026-04
 CVE-2026-3219

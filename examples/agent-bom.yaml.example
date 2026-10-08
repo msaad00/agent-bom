@@ -2,7 +2,7 @@
 # Copy to .agent-bom.yaml in your project root.
 # CLI flags always override these values.
 #
-# Documentation: https://github.com/msaad00/agent-bom/blob/main/docs/project-config.md
+# Supported keys: https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/project_config.py
 
 # ── Vulnerability filtering ────────────────────────────────────────────────
 

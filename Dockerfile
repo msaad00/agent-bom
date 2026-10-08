@@ -28,7 +28,8 @@ RUN apk add --no-cache build-base ca-certificates git libffi-dev linux-headers \
     && update-ca-certificates
 
 COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 /uv /uvx /bin/
-COPY pyproject.toml uv.lock README.md PYPI_README.md LICENSE ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY docs/registry/PYPI_README.md ./docs/registry/
 COPY src/ ./src/
 COPY deploy/supabase/postgres/ ./deploy/supabase/postgres/
 COPY deploy/docker/runtime-security-requirements.txt ./deploy/docker/runtime-security-requirements.txt

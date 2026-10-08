@@ -33,7 +33,7 @@ test:  ## Run unit tests
 # unnoticed — release gates, drift checks and the SVG generators all live there.
 # CI's Ruff step calls `lint-ruff` rather than repeating the paths, so the two
 # cannot disagree about what gets linted.
-LINT_PATHS := src/ tests/ scripts/ fuzz/
+LINT_PATHS := src/ tests/ scripts/ .clusterfuzzlite/fuzz/
 
 lint-ruff:  ## Ruff over every linted path
 	ruff check $(LINT_PATHS)

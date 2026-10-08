@@ -46,7 +46,7 @@ htmlcov/
 docs/
 *.md
 !README.md
-!PYPI_README.md
+!docs/registry/PYPI_README.md
 
 # CI/CD
 .github/

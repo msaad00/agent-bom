@@ -129,9 +129,9 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # a pre-release bump silently skipped this file, and the drift surfaced as a
     # `check_release_consistency` failure at tag time instead of being fixed by
     # the bump that was supposed to own it.
-    ("DOCKER_HUB_README.md", re.compile(r"(\| `)\d+\.\d+\.\d+(` \| Current stable version \(pinned\) \|)"), r"\g<1>{v}\g<2>"),
+    ("docs/registry/DOCKER_HUB_README.md", re.compile(r"(\| `)\d+\.\d+\.\d+(` \| Current stable version \(pinned\) \|)"), r"\g<1>{v}\g<2>"),
     (
-        "DOCKER_HUB_README.md",
+        "docs/registry/DOCKER_HUB_README.md",
         re.compile(r"(\| `)\d+\.\d+\.\d+(` \| Version used by the examples below; verify registry availability before pinning \|)"),
         r"\g<1>{v}\g<2>",
     ),

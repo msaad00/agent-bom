@@ -7,6 +7,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Performance
+
+- The first `/v1/posture` and `/v1/graph` after a restart no longer compete with background work. Campaign reconciliation and the demo story prewarm wait until no request is in flight and a quiet window has passed, and they run after at most 60 s even under steady traffic. Current-estate graph reads now run concurrently. Rebuilding or retiring a generation still waits for active readers, and the 409 retired-generation contract is unchanged.
+
 ## [0.108.2] - 2026-10-08
 
 ### Fixed

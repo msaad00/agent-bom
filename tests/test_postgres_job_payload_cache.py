@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from agent_bom.api.finding_read_context import finding_read_scope
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.storage.job_payload_cache import JobPayloadCache
 
@@ -142,3 +143,37 @@ def test_returned_jobs_are_independent_objects(replicas):
         a.put(_job(tenant, 1))
         a.list_all(tenant_id=tenant)[0].result["value"] = "mutated"
         assert a.list_all(tenant_id=tenant)[0].result == {"value": 1}
+
+
+@live
+def test_one_read_scope_parses_an_unchanged_payload_once_and_sees_replica_writes(replicas):
+    a, b = replicas
+    tenant = "payload-" + uuid4().hex
+    with tenant_scope(tenant):
+        a.put(_job(tenant, 1))
+        with finding_read_scope():
+            listed = a.list_all(tenant_id=tenant)[0]
+            assert a.get("shared-id", tenant_id=tenant) is listed
+            assert a.list_all(tenant_id=tenant)[0] is listed
+            b.put(_job(tenant, 2))
+            assert a.list_all(tenant_id=tenant)[0].result == {"value": 2}
+            assert a.get("shared-id", tenant_id=tenant).result == {"value": 2}
+        assert a.list_all(tenant_id=tenant)[0] is not a.list_all(tenant_id=tenant)[0]
+
+
+@live
+def test_one_read_scope_never_shares_jobs_across_tenants(replicas):
+    a, _ = replicas
+    first, second = ("payload-" + uuid4().hex for _ in range(2))
+    with tenant_scope(first):
+        a.put(_job(first, "same"))
+    with tenant_scope(second):
+        a.put(_job(second, "same"))
+    with finding_read_scope():
+        with tenant_scope(first):
+            mine = a.list_all(tenant_id=first)
+        with tenant_scope(second):
+            theirs = a.list_all(tenant_id=second)
+            assert a.get("shared-id", tenant_id=second).tenant_id == second
+    assert [job.tenant_id for job in mine] == [first]
+    assert [job.tenant_id for job in theirs] == [second]

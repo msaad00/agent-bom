@@ -2,8 +2,9 @@
 
 A job's ``data`` column can be tens of megabytes. Reads send the version tokens
 this process already holds, and the database returns the payload only for rows
-whose current version differs, so a stale payload can never be served. Callers
-always parse a fresh ``ScanJob``; only the immutable JSON text is shared.
+whose current version differs, so a stale payload can never be served. Only the
+immutable JSON text is shared across requests; a parsed ``ScanJob`` is shared
+at most within one aggregate read scope (see ``parse_job_payload``).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import threading
 from collections import OrderedDict
 from typing import Any
 
+from agent_bom.api.storage.jobs import parse_job_payload
 from agent_bom.config import _int
 
 DEFAULT_MAX_BYTES = _int("AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB", 256) * 1024 * 1024
@@ -63,8 +65,6 @@ class JobPayloadCache:
 
 def read_versioned_jobs(conn: Any, cache: JobPayloadCache, where: str, params: tuple, tenant_id: str | None, suffix: str) -> list[Any]:
     """Parse each ``scan_jobs`` row, transferring only payload versions the cache does not hold."""
-    from agent_bom.api.models import ScanJob
-
     rows = conn.execute(
         f"SELECT team_id, {_VERSION}, CASE WHEN {_VERSION} = ANY(%s::text[]) THEN NULL ELSE data::text END "  # nosec B608
         f"FROM scan_jobs{where} {suffix}",
@@ -81,5 +81,5 @@ def read_versioned_jobs(conn: Any, cache: JobPayloadCache, where: str, params: t
             if row is None:
                 continue
             payload = row[0]
-        jobs.append(ScanJob.model_validate_json(payload))
+        jobs.append(parse_job_payload(payload))
     return jobs

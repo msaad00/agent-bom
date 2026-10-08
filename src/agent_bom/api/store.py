@@ -10,7 +10,7 @@ from typing import Any, Protocol, cast
 
 from agent_bom.api.posture_counts_cache import announce_scan_evidence
 from agent_bom.api.storage.campaign_revisions import initialize_sqlite_campaign_evidence
-from agent_bom.api.storage.jobs import get_job, put_job, require_job_tenant
+from agent_bom.api.storage.jobs import get_job, parse_job_payload, put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, migrate_sqlite_job_key
 from agent_bom.api.storage.sql import connection_session
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -469,7 +469,7 @@ class SQLiteJobStore:
 
     @staticmethod
     def _deserialize(data: str) -> ScanJob:
-        return ScanJob.model_validate_json(data)
+        return parse_job_payload(data)
 
     def _put_on_connection(self, job: ScanJob, *, if_absent: bool = False) -> int:
         return put_job(connection_session(self._conn, "sqlite"), "sqlite", job, if_absent=if_absent)

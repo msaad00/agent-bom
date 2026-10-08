@@ -3,12 +3,17 @@
 The projection reuses finding replacement semantics and the existing immutable
 query engine in a private rebuildable cache. Its identifier describes a set of evidence revisions,
 never a new scan. Explicit historical scan reads and all writes pass through.
+
+For durable backing stores the cache lives in the state directory, so a
+restarted or sibling worker reuses a projection whose identity (and therefore
+every source generation it was built from) is unchanged instead of rebuilding.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import threading
 from functools import lru_cache, wraps
@@ -18,14 +23,17 @@ from typing import Any
 
 from starlette.exceptions import HTTPException
 
+from agent_bom import __version__
 from agent_bom.api.finding_read_context import read_once
 from agent_bom.api.findings_current import _finding_snapshot_jobs, scan_collection_incomplete_reasons, scan_evidence_authority_key
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import JobStatus
 from agent_bom.api.neptune_graph import NeptuneGraphStore
 from agent_bom.graph import UnifiedGraph
+from agent_bom.storage.state_home import state_dir
 
 CURRENT_PREFIX = "current-estate:"
+_PROJECTION_FORMAT = 1
 _READS = frozenset(
     {
         "load_graph",
@@ -56,14 +64,42 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest()
 
 
+def _durable_locator(graph_store: Any) -> str:
+    if isinstance(graph_store, SQLiteGraphStore):
+        return "sqlite:" + str(Path(graph_store._db_path).expanduser().resolve())
+    if type(graph_store).__module__ == "agent_bom.api.postgres_graph":
+        return "postgres:" + (os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_DB") or "").strip()
+    return ""
+
+
+def _durable_cache_path(graph_store: Any) -> Path | None:
+    """Return a private per-backing-store cache file, or None when it cannot persist."""
+    locator = _durable_locator(graph_store)
+    if not locator:
+        return None
+    directory = state_dir() / "current-estate-cache"
+    try:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(directory, 0o700)
+    except OSError:
+        return None
+    if not os.access(directory, os.W_OK | os.X_OK):
+        return None
+    return directory / f"{_digest(locator)[:24]}.db"
+
+
 class CurrentGraphStore:
     """Add default current scope to graph reads over any durable graph backend."""
 
     def __init__(self, graph_store: Any, job_store: Any) -> None:
         self._graph_store = graph_store
         self._job_store = job_store
-        self._cache_directory = TemporaryDirectory(prefix="agent-bom-current-")
-        self._cache_path = str(Path(self._cache_directory.name) / "projection.db")
+        durable = _durable_cache_path(graph_store)
+        self._cache_directory: TemporaryDirectory[str] | None = None
+        if durable is None:
+            self._cache_directory = TemporaryDirectory(prefix="agent-bom-current-")
+            durable = Path(self._cache_directory.name) / "projection.db"
+        self._cache_path = str(durable)
         self._projection_store = SQLiteGraphStore(self._cache_path)
         self._lock = threading.RLock()
         self._coverage: dict[str, dict[str, Any]] = {}
@@ -186,15 +222,14 @@ class CurrentGraphStore:
                 jobs = [self._job_store.get(row["job_id"], tenant_id=tenant) for row in summaries]
             jobs = [job for job in jobs if job is not None and job.tenant_id == tenant]
             selected, revisions, coverage_reasons = self._available_sources(tenant, jobs)
-            identity = CURRENT_PREFIX + _digest([tenant, fingerprint, revisions])[:32]
-            if not self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=identity)[1]:
+            identity = CURRENT_PREFIX + _digest([_PROJECTION_FORMAT, __version__, tenant, fingerprint, revisions])[:32]
+            if not self._reusable(tenant, identity):
                 self._materialize(tenant, identity, selected, revisions)
             if callable(revision_reader) and revision_reader(tenant) != evidence_revision:
                 self._projection_store.delete_snapshot(tenant_id=tenant, scan_id=identity)
                 raise HTTPException(409, "Current estate changed during the read; restart the query.")
-            if cached and cached[2] != identity:
-                self._projection_store.delete_snapshot(tenant_id=tenant, scan_id=cached[2])
-                self._coverage.pop(cached[2], None)
+            if not cached or cached[2] != identity:
+                self._retire_other_generations(tenant, identity)
             if tenant not in self._cache and len(self._cache) >= 128:
                 evicted_tenant = next(iter(self._cache))
                 _, _, evicted_id = self._cache.pop(evicted_tenant)
@@ -212,6 +247,23 @@ class CurrentGraphStore:
             }
             self._cache[tenant] = fingerprint, revisions, identity
             return identity
+
+    def _reusable(self, tenant: str, identity: str) -> bool:
+        """Trust a persisted projection only once its paging revision was stamped."""
+        _, revision = self._projection_store.snapshot_identity(tenant_id=tenant, scan_id=identity, for_paging=True)
+        if revision == identity.removeprefix(CURRENT_PREFIX):
+            return True
+        if revision:
+            self._projection_store.delete_snapshot(tenant_id=tenant, scan_id=identity)
+        return False
+
+    def _retire_other_generations(self, tenant: str, identity: str) -> None:
+        # Other workers sharing this cache may have left superseded generations.
+        for row in self._projection_store.list_snapshots(tenant_id=tenant, limit=1000):
+            scan_id = str(row.get("scan_id") or "")
+            if scan_id.startswith(CURRENT_PREFIX) and scan_id != identity:
+                self._projection_store.delete_snapshot(tenant_id=tenant, scan_id=scan_id)
+                self._coverage.pop(scan_id, None)
 
     def _materialize(self, tenant: str, identity: str, selected: Any, revisions: tuple[tuple[str, str], ...]) -> None:
         created_at = max((scan_evidence_authority_key(job)[0] for job in selected), default="")

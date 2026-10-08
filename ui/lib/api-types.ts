@@ -1571,7 +1571,9 @@ export interface UnifiedFinding {
   fixed_version?: string | null | undefined;
   remediation_guidance?: string | null | undefined;
   compliance_tags?: string[] | undefined;
+  /** Full mappings are returned only with `?include=controls`; list rows carry `controls_count`. */
   controls?: Array<Record<string, unknown>> | undefined;
+  controls_count?: number | undefined;
   evidence?: Record<string, unknown> | undefined;
   risk_score?: number | undefined;
   impact_category?: string | null | undefined;

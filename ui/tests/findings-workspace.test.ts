@@ -92,6 +92,18 @@ describe("findings persona summaries", () => {
     });
   });
 
+  it("counts compact list rows that carry only a control count as mapped", () => {
+    const metrics = buildComplianceMetrics(
+      [finding({ controls_count: 3 }), finding()],
+      new Map(),
+      null,
+    );
+    expect(metrics.find((metric) => metric.label === "Control mapping")).toMatchObject({
+      value: "1 mapped",
+      scope: "page",
+    });
+  });
+
   it("reads typed controls as well as framework tags", () => {
     expect(
       controlLabels(

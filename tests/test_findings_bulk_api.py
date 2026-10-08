@@ -329,7 +329,7 @@ def test_typed_external_push_preserves_file_evidence_without_fake_package():
     rows = load_push_findings(SARIF_BASIC, source="bandit-ci")
     response = client.post("/v1/findings/bulk", json={"source": "bandit-ci", "findings": rows})
     assert response.status_code == 201, response.text
-    findings = client.get("/v1/findings").json()["findings"]
+    findings = client.get("/v1/findings?include=controls").json()["findings"]
     assert len(findings) == 1
     finding = findings[0]
     assert finding["finding_type"] == "SAST"

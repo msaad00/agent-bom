@@ -48,7 +48,8 @@ def _client(tenant: str = "tenant-alpha", role: str = "admin") -> TestClient:
 
 def _assert_canonical_envelope(body: dict) -> None:
     # ``total_approximate``, the default-read-window echo ``window`` (#4009) and
-    # ``scope_completeness`` (only under a scope filter) are optional extras;
+    # ``scope_completeness`` (only under a scope filter), and the projection
+    # ``include`` echo (only on the scan findings list) are optional extras;
     # every other key is fixed.
     keys = set(body) - {
         "total_approximate",
@@ -57,8 +58,12 @@ def _assert_canonical_envelope(body: dict) -> None:
         "facets_approximate",
         "facet_metadata",
         "scope_completeness",
+        "include",
     }
     assert keys == set(FINDING_LIST_ENVELOPE_KEYS), sorted(keys ^ set(FINDING_LIST_ENVELOPE_KEYS))
+    if "include" in body:
+        assert isinstance(body["include"], list)
+        assert set(body["include"]) <= {"controls"}
     assert isinstance(body["findings"], list)
     assert body["count"] == len(body["findings"])
     assert body["has_more"] == bool(body["next_cursor"])

@@ -555,14 +555,13 @@ class AgentBomClient(EndpointClientMixin):
         kev: bool | None = None,
         window_days: int | None = None,
         cursor: str | None = None,
+        include_controls: bool = False,
     ) -> JsonObject:
         """List normalized findings from scan jobs and bulk ingests.
 
-        ``framework`` / ``control`` are the compliance drill-through filters
-        (epic #4790): a framework section id (e.g. ``soc2`` / ``nist-csf``) and,
-        optionally, a control code that narrows within it.
+        ``framework``/``control`` drill into a compliance section id (``soc2``) and optional control code;
+        ``include_controls`` returns full control mappings, otherwise rows carry ``controls_count``.
         """
-
         return self._request(
             "GET",
             "/v1/findings",
@@ -587,6 +586,7 @@ class AgentBomClient(EndpointClientMixin):
                     "kev": kev,
                     "window_days": window_days,
                     "cursor": cursor,
+                    "include": "controls" if include_controls else None,
                 }
             ),
         )

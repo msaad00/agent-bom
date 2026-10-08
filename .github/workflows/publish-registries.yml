@@ -48,6 +48,7 @@ jobs:
       release_ref: ${{ steps.release.outputs.release_ref }}
       release_sha: ${{ steps.release.outputs.release_sha }}
       tool_count: ${{ steps.release.outputs.tool_count }}
+      published_at: ${{ steps.release.outputs.published_at }}
       publish_current: ${{ steps.release.outputs.publish_current }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +132,13 @@ jobs:
             echo "::error::Published release metrics do not declare a positive MCP tool count"
             exit 1
           fi
+          PUBLISHED_AT=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.published_at // empty')
+          if ! echo "$PUBLISHED_AT" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'; then
+            echo "::error::Published release has no valid publish time"
+            exit 1
+          fi
           {
+            echo "published_at=$PUBLISHED_AT"
             echo "publish_current=true"
             echo "version=$VERSION"
             echo "release_ref=refs/tags/${RELEASE_TAG}"
@@ -143,7 +150,7 @@ jobs:
     name: Publish to Smithery
     needs: release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Best-effort: see the Smithery/OAuth note at the top of this file. This
     # job's own verification stays fail-closed; it just doesn't gate the
     # release or trigger main-failure-alert while agent-bom has no per-user
@@ -475,7 +482,9 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           set -euo pipefail
-          for ATTEMPT in $(seq 1 12); do
+          # A fresh deployment reaches Smithery's catalog API before its public
+          # server page; schema evidence is trusted only once both agree.
+          for ATTEMPT in $(seq 1 30); do
             if curl -fsS --connect-timeout 10 --max-time 30 \
                 "https://api.smithery.ai/servers/agentbom/agent-bom" \
                 -o /tmp/smithery-catalog.json && \
@@ -496,10 +505,10 @@ jobs:
               echo "Smithery catalog exposes the released tool, schema, and listing contract for v${VERSION} (${ACTUAL} tools)"
               exit 0
             fi
-            echo "Smithery catalog attempt ${ATTEMPT}/12 does not match the released ${EXPECTED_TOOL_COUNT}-tool name set (actual=${ACTUAL})"
-            sleep 10
+            echo "Smithery catalog attempt ${ATTEMPT}/30 does not match the released ${EXPECTED_TOOL_COUNT}-tool name set (actual=${ACTUAL})"
+            sleep 20
           done
-          echo "::error::Smithery catalog did not converge to the released ${EXPECTED_TOOL_COUNT}-tool name set"
+          echo "::error::Smithery catalog did not converge to the released ${EXPECTED_TOOL_COUNT}-tool name set within 10 minutes of the deployment"
           exit 1
 
   glama:
@@ -545,18 +554,31 @@ jobs:
           GLAMA_DIAGNOSTICS_DIR: ${{ runner.temp }}/glama-response
           EXPECTED_VERSION: ${{ needs.release.outputs.version }}
           EXPECTED_TOOL_COUNT: ${{ needs.release.outputs.tool_count }}
+          RELEASE_PUBLISHED_AT: ${{ needs.release.outputs.published_at }}
+          # Glama rebuilds from the linked repository on its own schedule. A
+          # stale or unreachable listing inside this window after the release is
+          # provider sync lag (warning); after it, a real failure that pages.
+          GLAMA_SYNC_GRACE_HOURS: "72"
         run: |
           set -euo pipefail
-          if python scripts/check_glama_listing.py \
-              --expected "$EXPECTED_VERSION" \
-              --expected-tool-count "$EXPECTED_TOOL_COUNT" \
-              --expected-tool-names-file /tmp/glama-expected-tool-names.json \
-              --expected-tool-contract-file /tmp/glama-expected-tool-contract.json \
-              --retries 6 \
-              --delay-seconds 30; then
+          STATUS=0
+          python scripts/check_glama_listing.py \
+            --expected "$EXPECTED_VERSION" \
+            --expected-tool-count "$EXPECTED_TOOL_COUNT" \
+            --expected-tool-names-file /tmp/glama-expected-tool-names.json \
+            --expected-tool-contract-file /tmp/glama-expected-tool-contract.json \
+            --release-published-at "$RELEASE_PUBLISHED_AT" \
+            --provider-sync-grace-hours "$GLAMA_SYNC_GRACE_HOURS" \
+            --retries 6 \
+            --delay-seconds 30 || STATUS=$?
+          if [ "$STATUS" -eq 0 ]; then
             exit 0
           fi
-          echo "::error::Glama has not synchronized the exact released catalog yet. Glama syncs linked GitHub repositories automatically at least daily; this workflow retries every six hours. For an immediate provider-side refresh, use Sync Server in the Glama admin interface, then rerun this verification."
+          if [ "$STATUS" -eq 3 ]; then
+            echo "::warning::Glama has not synchronized v${EXPECTED_VERSION} yet (provider-side, within the ${GLAMA_SYNC_GRACE_HOURS}h grace after release). This workflow retries every six hours. For an immediate refresh, use Sync Server in the Glama admin interface."
+            exit 0
+          fi
+          echo "::error::Glama has not synchronized the exact released catalog ${GLAMA_SYNC_GRACE_HOURS}h after release. Glama syncs linked GitHub repositories automatically at least daily, so this is no longer routine lag: use Sync Server in the Glama admin interface, check the Glama build log for integrations/glama/Dockerfile, then rerun this verification."
           exit 1
 
       - name: Retain failed public Glama responses

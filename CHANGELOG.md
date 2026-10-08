@@ -7,7 +7,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.108.2] - 2026-10-06
+## [0.108.2] - 2026-10-08
 
 ### Fixed
 
@@ -25,6 +25,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Update the pinned Python Alpine image and dashboard icon, accessibility and table dependencies.
 - Record OSV response-cache use and the default unfixed OS-advisory suppression count in scan JSON.
 - Require executed, successful dashboard validation, export and browser jobs on the exact main release commit; run those UI lanes on every main push.
+- Verify campaigns on default single-node deployments where jobs and hub findings are in memory and campaign workflows use SQLite.
+- Keep SPDX 2 and SPDX 3 packages marked APPLICATION in scan inventory instead of omitting them.
+- Keep letter-suffixed Debian, Alpine and RPM fix versions such as tzdata `2025b-0+deb11u2`; they were misread as prereleases and their advisories hidden as unfixed.
+- Return compact `/v1/findings` list rows with `controls_count`; request full control mappings with `?include=controls` (CLI `--include-controls`, SDK `include_controls`). Reuse scan rows within posture reads to cut cold posture and remediation latency.
+- Treat Glama listing lag within 72 hours of a release as pending provider sync, and report the underlying Smithery catalog error with a longer convergence window.
+- Build the graph scale-evidence server image from the current source tree.
 
 ### Security
 
@@ -33,6 +39,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Reject malformed compliance ingestion bodies before writes and require an explicit JSON boolean for absent-finding reconciliation.
 - Sign the exact audit response bytes and reject malformed, past or timezone-less explicit exception expiries without changing separate approval requirements.
 - Pin webhook socket connections to validated DNS answers, block cloud metadata destinations, and require both tenant and operator opt-in for private subscription destinations. Disable automatic redirects and ambient proxies for inline delivery.
+- Keep `GET /v1/agents` read-only and scope demo agents to the showcase tenant; live host discovery stays behind the operator binding.
+- Return 503 from `POST /v1/auth/saml/relay-state` when SAML is not configured instead of recording a nonce.
+- Bound suppression expiry (`AGENT_BOM_EXCEPTION_MAX_EXPIRY_DAYS`, default 365) and reject approval by the requester or by the author of the suppressing triage or VEX decision unless `AGENT_BOM_EXCEPTION_ALLOW_SELF_APPROVAL` is set. Postgres deployments need migration `20261007_03`.
 
 ## [0.108.1] - 2026-10-06
 

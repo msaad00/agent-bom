@@ -9,14 +9,16 @@ names only, never values.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from agent_bom.api.fleet_store import FleetAgent
-from agent_bom.api.mcp_observation_store import MCPObservation
 from agent_bom.canonical_ids import CANONICAL_ID_SCHEMA_VERSION
 from agent_bom.models import Agent, MCPServer, MCPTool
 from agent_bom.platform_invariants import now_utc_iso
 from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
+
+if TYPE_CHECKING:
+    from agent_bom.api.fleet_store import FleetAgent
+    from agent_bom.api.mcp_observation_store import MCPObservation
 
 AGENT_BOM_MANIFEST_SCHEMA_VERSION = "agent-bom.manifest/v1"
 AGENT_BOM_GRAPH_RELATIONSHIPS = ("owns", "part_of", "uses", "provides_tool", "exposes_cred")
@@ -24,15 +26,11 @@ _RISKY_CREDENTIAL_NAME_TOKENS = ("admin", "root", "prod", "token", "key", "secre
 
 
 def _value(value: object) -> str:
-    if hasattr(value, "value"):
-        return str(getattr(value, "value"))
-    return str(value)
+    return str(getattr(value, "value")) if hasattr(value, "value") else str(value)
 
 
 def _safe_path(value: object) -> str | None:
-    if not value:
-        return None
-    return sanitize_text(str(value), max_len=300)
+    return sanitize_text(str(value), max_len=300) if value else None
 
 
 def _credential_refs(names: Iterable[str]) -> list[dict[str, str]]:

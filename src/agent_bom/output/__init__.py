@@ -2,88 +2,187 @@
 
 from __future__ import annotations
 
-from agent_bom.models import AIBOMReport
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
 
-# ─── Delegated format modules ────────────────────────────────────────────────
-# Each format lives in its own module; re-exported here for backward compat.
-from agent_bom.output.badge import (  # noqa: E402
-    export_badge,  # noqa: F401
-    to_badge,  # noqa: F401
-    to_rsp_badge,  # noqa: F401
-)
-from agent_bom.output.compliance_export import (  # noqa: E402
-    export_compliance_bundle,  # noqa: F401
-)
-from agent_bom.output.console_render import (
-    SEVERITY_BADGES,
-    SEVERITY_TEXT,
-    _sev_badge,
-    build_remediation_plan,
-    console,
-    print_agent_tree,
-    print_attack_flow_tree,
-    print_blast_radius,
-    print_diff,
-    print_export_hint,
-    print_policy_results,
-    print_posture_summary,
-    print_remediation_plan,
-    print_scan_performance_summary,
-    print_severity_chart,
-    print_summary,
-    print_threat_frameworks,
-)
-from agent_bom.output.csv_fmt import (  # noqa: E402
-    export_csv,  # noqa: F401
-    to_csv,  # noqa: F401
-)
-from agent_bom.output.cyclonedx_fmt import (  # noqa: E402
-    export_cyclonedx,  # noqa: F401
-    to_cyclonedx,  # noqa: F401
-)
-from agent_bom.output.iceberg_catalog import (  # noqa: E402
-    IcebergCatalogConfig,  # noqa: F401
-    maybe_register_iceberg,  # noqa: F401
-)
-from agent_bom.output.iceberg_catalog import (
-    register_findings as register_iceberg_findings,  # noqa: F401
-)
-from agent_bom.output.json_fmt import (  # noqa: E402
-    _build_framework_summary,  # noqa: F401
-    _build_remediation_json,  # noqa: F401
-    _risk_narrative,  # noqa: F401
-    export_json,  # noqa: F401
-    redact_json_payload,  # noqa: F401
-    to_json,  # noqa: F401
-    to_redacted_json,  # noqa: F401
-)
-from agent_bom.output.junit import (  # noqa: E402
-    export_junit,  # noqa: F401
-    to_junit,  # noqa: F401
-)
-from agent_bom.output.markdown import (  # noqa: E402
-    export_markdown,  # noqa: F401
-    to_markdown,  # noqa: F401
-)
-from agent_bom.output.parquet_fmt import (  # noqa: E402
-    export_parquet,  # noqa: F401
-    to_arrow_table,  # noqa: F401
-    to_parquet_bytes,  # noqa: F401
-)
-from agent_bom.output.sarif import (  # noqa: E402
-    export_sarif,  # noqa: F401
-    to_sarif,  # noqa: F401
-)
-from agent_bom.output.spdx2_fmt import (  # noqa: E402
-    export_spdx2,  # noqa: F401
-    export_spdx2_tagvalue,  # noqa: F401
-    to_spdx2,  # noqa: F401
-    to_spdx2_tagvalue,  # noqa: F401
-)
-from agent_bom.output.spdx_fmt import (  # noqa: E402
-    export_spdx,  # noqa: F401
-    to_spdx,  # noqa: F401
-)
+if TYPE_CHECKING:
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output.badge import (
+        export_badge,
+        to_badge,
+        to_rsp_badge,
+    )
+    from agent_bom.output.compact import (
+        _compact_detail,
+        _coverage_bar,
+        _iter_cis_bundles,
+        _pct,
+        _posture_grade_badge,
+        print_compact_agents,
+        print_compact_blast_radius,
+        print_compact_cis_posture,
+        print_compact_compliance_status,
+        print_compact_export_hint,
+        print_compact_graph_findings,
+        print_compact_remediation,
+        print_compact_summary,
+    )
+    from agent_bom.output.compliance_export import (
+        export_compliance_bundle,
+    )
+    from agent_bom.output.console_render import (
+        SEVERITY_BADGES,
+        SEVERITY_TEXT,
+        _sev_badge,
+        build_remediation_plan,
+        console,
+        print_agent_tree,
+        print_attack_flow_tree,
+        print_blast_radius,
+        print_diff,
+        print_export_hint,
+        print_policy_results,
+        print_posture_summary,
+        print_remediation_plan,
+        print_scan_performance_summary,
+        print_severity_chart,
+        print_summary,
+        print_threat_frameworks,
+    )
+    from agent_bom.output.csv_fmt import (
+        export_csv,
+        to_csv,
+    )
+    from agent_bom.output.cyclonedx_fmt import (
+        export_cyclonedx,
+        to_cyclonedx,
+    )
+    from agent_bom.output.iceberg_catalog import (
+        IcebergCatalogConfig,
+        maybe_register_iceberg,
+    )
+    from agent_bom.output.iceberg_catalog import (
+        register_findings as register_iceberg_findings,
+    )
+    from agent_bom.output.json_fmt import (
+        _build_framework_summary,
+        _build_remediation_json,
+        _risk_narrative,
+        export_json,
+        redact_json_payload,
+        to_json,
+        to_redacted_json,
+    )
+    from agent_bom.output.junit import (
+        export_junit,
+        to_junit,
+    )
+    from agent_bom.output.markdown import (
+        export_markdown,
+        to_markdown,
+    )
+    from agent_bom.output.parquet_fmt import (
+        export_parquet,
+        to_arrow_table,
+        to_parquet_bytes,
+    )
+    from agent_bom.output.sarif import (
+        export_sarif,
+        to_sarif,
+    )
+    from agent_bom.output.spdx2_fmt import (
+        export_spdx2,
+        export_spdx2_tagvalue,
+        to_spdx2,
+        to_spdx2_tagvalue,
+    )
+    from agent_bom.output.spdx_fmt import (
+        export_spdx,
+        to_spdx,
+    )
+
+# Each format lives in its own module and is re-exported here for backward
+# compatibility. The formatters pull in compliance, SBOM, and HTTP stacks, so
+# they resolve on first access (PEP 562) instead of on every CLI start.
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "export_badge": ("agent_bom.output.badge", "export_badge"),
+    "to_badge": ("agent_bom.output.badge", "to_badge"),
+    "to_rsp_badge": ("agent_bom.output.badge", "to_rsp_badge"),
+    "export_compliance_bundle": ("agent_bom.output.compliance_export", "export_compliance_bundle"),
+    "SEVERITY_BADGES": ("agent_bom.output.console_render", "SEVERITY_BADGES"),
+    "SEVERITY_TEXT": ("agent_bom.output.console_render", "SEVERITY_TEXT"),
+    "_sev_badge": ("agent_bom.output.console_render", "_sev_badge"),
+    "build_remediation_plan": ("agent_bom.output.console_render", "build_remediation_plan"),
+    "console": ("agent_bom.output.console_render", "console"),
+    "print_agent_tree": ("agent_bom.output.console_render", "print_agent_tree"),
+    "print_attack_flow_tree": ("agent_bom.output.console_render", "print_attack_flow_tree"),
+    "print_blast_radius": ("agent_bom.output.console_render", "print_blast_radius"),
+    "print_diff": ("agent_bom.output.console_render", "print_diff"),
+    "print_export_hint": ("agent_bom.output.console_render", "print_export_hint"),
+    "print_policy_results": ("agent_bom.output.console_render", "print_policy_results"),
+    "print_posture_summary": ("agent_bom.output.console_render", "print_posture_summary"),
+    "print_remediation_plan": ("agent_bom.output.console_render", "print_remediation_plan"),
+    "print_scan_performance_summary": ("agent_bom.output.console_render", "print_scan_performance_summary"),
+    "print_severity_chart": ("agent_bom.output.console_render", "print_severity_chart"),
+    "print_summary": ("agent_bom.output.console_render", "print_summary"),
+    "print_threat_frameworks": ("agent_bom.output.console_render", "print_threat_frameworks"),
+    "export_csv": ("agent_bom.output.csv_fmt", "export_csv"),
+    "to_csv": ("agent_bom.output.csv_fmt", "to_csv"),
+    "export_cyclonedx": ("agent_bom.output.cyclonedx_fmt", "export_cyclonedx"),
+    "to_cyclonedx": ("agent_bom.output.cyclonedx_fmt", "to_cyclonedx"),
+    "IcebergCatalogConfig": ("agent_bom.output.iceberg_catalog", "IcebergCatalogConfig"),
+    "maybe_register_iceberg": ("agent_bom.output.iceberg_catalog", "maybe_register_iceberg"),
+    "register_iceberg_findings": ("agent_bom.output.iceberg_catalog", "register_findings"),
+    "_build_framework_summary": ("agent_bom.output.json_fmt", "_build_framework_summary"),
+    "_build_remediation_json": ("agent_bom.output.json_fmt", "_build_remediation_json"),
+    "_risk_narrative": ("agent_bom.output.json_fmt", "_risk_narrative"),
+    "export_json": ("agent_bom.output.json_fmt", "export_json"),
+    "redact_json_payload": ("agent_bom.output.json_fmt", "redact_json_payload"),
+    "to_json": ("agent_bom.output.json_fmt", "to_json"),
+    "to_redacted_json": ("agent_bom.output.json_fmt", "to_redacted_json"),
+    "export_junit": ("agent_bom.output.junit", "export_junit"),
+    "to_junit": ("agent_bom.output.junit", "to_junit"),
+    "export_markdown": ("agent_bom.output.markdown", "export_markdown"),
+    "to_markdown": ("agent_bom.output.markdown", "to_markdown"),
+    "export_parquet": ("agent_bom.output.parquet_fmt", "export_parquet"),
+    "to_arrow_table": ("agent_bom.output.parquet_fmt", "to_arrow_table"),
+    "to_parquet_bytes": ("agent_bom.output.parquet_fmt", "to_parquet_bytes"),
+    "export_sarif": ("agent_bom.output.sarif", "export_sarif"),
+    "to_sarif": ("agent_bom.output.sarif", "to_sarif"),
+    "export_spdx2": ("agent_bom.output.spdx2_fmt", "export_spdx2"),
+    "export_spdx2_tagvalue": ("agent_bom.output.spdx2_fmt", "export_spdx2_tagvalue"),
+    "to_spdx2": ("agent_bom.output.spdx2_fmt", "to_spdx2"),
+    "to_spdx2_tagvalue": ("agent_bom.output.spdx2_fmt", "to_spdx2_tagvalue"),
+    "export_spdx": ("agent_bom.output.spdx_fmt", "export_spdx"),
+    "to_spdx": ("agent_bom.output.spdx_fmt", "to_spdx"),
+    "_compact_detail": ("agent_bom.output.compact", "_compact_detail"),
+    "_coverage_bar": ("agent_bom.output.compact", "_coverage_bar"),
+    "_iter_cis_bundles": ("agent_bom.output.compact", "_iter_cis_bundles"),
+    "_pct": ("agent_bom.output.compact", "_pct"),
+    "_posture_grade_badge": ("agent_bom.output.compact", "_posture_grade_badge"),
+    "print_compact_agents": ("agent_bom.output.compact", "print_compact_agents"),
+    "print_compact_blast_radius": ("agent_bom.output.compact", "print_compact_blast_radius"),
+    "print_compact_cis_posture": ("agent_bom.output.compact", "print_compact_cis_posture"),
+    "print_compact_compliance_status": ("agent_bom.output.compact", "print_compact_compliance_status"),
+    "print_compact_export_hint": ("agent_bom.output.compact", "print_compact_export_hint"),
+    "print_compact_graph_findings": ("agent_bom.output.compact", "print_compact_graph_findings"),
+    "print_compact_remediation": ("agent_bom.output.compact", "print_compact_remediation"),
+    "print_compact_summary": ("agent_bom.output.compact", "print_compact_summary"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module 'agent_bom.output' has no attribute {name!r}")
+    value = getattr(import_module(target[0]), target[1])
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))
+
 
 # ─── HTML Output (delegated to html.py) ──────────────────────────────────────
 
@@ -161,24 +260,3 @@ def push_otlp(
     from agent_bom.output.prometheus import push_otlp as _push_otlp
 
     _push_otlp(endpoint, report, blast_radii)
-
-
-# ─── Compact family — re-exported from .compact (see #1522 Phase 1a) ─────────
-# Kept at the bottom so .compact can back-import `console`, `_sev_badge`, and
-# `build_remediation_plan` lazily without a circular import.
-
-from agent_bom.output.compact import (  # noqa: E402 — intentional bottom import
-    _compact_detail,
-    _coverage_bar,
-    _iter_cis_bundles,
-    _pct,
-    _posture_grade_badge,
-    print_compact_agents,
-    print_compact_blast_radius,
-    print_compact_cis_posture,
-    print_compact_compliance_status,
-    print_compact_export_hint,
-    print_compact_graph_findings,
-    print_compact_remediation,
-    print_compact_summary,
-)

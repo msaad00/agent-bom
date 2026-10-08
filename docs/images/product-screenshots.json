@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.2",
-  "captured_at": "2026-10-08T15:54:24.616Z",
-  "source_commit": "49f14dce99005d486a42b1b0ea96deec4771a40e",
+  "captured_at": "2026-10-08T19:00:50.255Z",
+  "source_commit": "a7544a16a1562a029153ace2c089d79020be1553",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:30b501fa0adf560b1c9a751ddacfb48b10e42272ac86d82753db8884ef8cf157",
+  "capture_inputs_sha256": "sha256:1a0357cbe6a8b717939faed66a539c1339f01326888106d7d165777171f74cdf",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -188,7 +188,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.2",
-      "sha256": "sha256:a729a452160276e2107b709b99db29cef46fb9edd7369d1825c99f51364bb21b"
+      "sha256": "sha256:eb508680fbdc318904242eaea4a0a096df8a2b43a2b6e3d36af816932821f4bb"
     },
     {
       "presentation": "dark desktop",
@@ -199,7 +199,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.2",
-      "sha256": "sha256:460094a58946bd7799f213fd84df2285a00ab6cf970a5a8b2a858f1da07a0379"
+      "sha256": "sha256:b5e4efd13be170c3f1d208928aeb4036926a2922a6527365216a7860adbac87f"
     },
     {
       "presentation": "dark desktop",
@@ -273,7 +273,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path in the light theme",
       "visible_version": "0.108.2",
-      "sha256": "sha256:622f37bbe385558c02f1ba53528ba03de5fd4062620740c8ef0c8a99b13bcadd"
+      "sha256": "sha256:6708e79c5b96dae6b10fa7e63bdd8e521a907b2e198c355f14388324da111623"
     },
     {
       "presentation": "dark mobile",
@@ -281,7 +281,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.108.2",
-      "sha256": "sha256:4731d4cb24ec42cc2a7d7c5774772fd24c4d257c886992fe7ae88302a58db302"
+      "sha256": "sha256:1ad80445a0523640826e30e863f960be289a3e435a5c7c462fc5d7abb30a7242"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -324,20 +324,20 @@
       "sha256": "sha256:aef6abed13d58e7d0a708206c0c34e864ccb5118e31f3e749c240552d52c6ac7"
     },
     {
-      "presentation": "dark desktop 1440x900",
+      "presentation": "dark responsive 1000x900",
       "path": "context-map-horizontal-dark-live.png",
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.2",
-      "sha256": "sha256:7d145ac12408611d7cffe768fe3abffd8221707467621951bcb5b0ea4cd29695"
+      "sha256": "sha256:10511c405e736be9065ae62586c27378a67ed81e30b443bddc37c48c704e52ca"
     },
     {
-      "presentation": "light desktop 1440x900",
+      "presentation": "light responsive 1000x900",
       "path": "context-map-horizontal-light-live.png",
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.2",
-      "sha256": "sha256:b373bb6bb37e699f33aff5f8e4a10979bf940be1a5b364fa6aaff08ca459f6a0"
+      "sha256": "sha256:82eaadfe1ee7544423eeec359fabdf83b9e1cfedf330584cafe6a47496a1d3e7"
     },
     {
       "presentation": "dark desktop",

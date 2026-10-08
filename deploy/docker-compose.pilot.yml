@@ -21,7 +21,7 @@
 
 services:
   api:
-    image: agentbom/agent-bom:${AGENT_BOM_IMAGE_TAG:-0.108.2}
+    image: agentbom/agent-bom:${AGENT_BOM_IMAGE_TAG:-0.108.3}
     container_name: agent-bom-pilot-api
     restart: unless-stopped
     command: >
@@ -70,7 +70,7 @@ services:
       start_period: 10s
 
   ui:
-    image: agentbom/agent-bom-ui:${AGENT_BOM_IMAGE_TAG:-0.108.2}
+    image: agentbom/agent-bom-ui:${AGENT_BOM_IMAGE_TAG:-0.108.3}
     container_name: agent-bom-pilot-ui
     restart: unless-stopped
     environment:

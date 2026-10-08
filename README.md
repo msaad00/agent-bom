@@ -37,8 +37,8 @@ Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted
 **Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
 
 ```bash
-git clone --depth 1 --branch v0.108.2 https://github.com/msaad00/agent-bom.git && cd agent-bom
-AGENT_BOM_IMAGE_TAG=0.108.2 docker compose up -d
+git clone --depth 1 --branch v0.108.3 https://github.com/msaad00/agent-bom.git && cd agent-bom
+AGENT_BOM_IMAGE_TAG=0.108.3 docker compose up -d
 ```
 
 Open **http://localhost:3000**, then **Connections** or **New Scan**. For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
@@ -108,7 +108,7 @@ The sample deliberately triggers a security gate (exit `1`). Save CI evidence wi
 </details>
 
 **Give assistants the same evidence:** `agent-bom mcp server` (MCP support is included by default).
-Source version: **v0.108.3** · Latest release: **v0.108.2**. Start with eight focused tools, then select a graph, cloud, runtime or audit
+Source version: **v0.108.3** · Latest release: **v0.108.3**. Start with eight focused tools, then select a graph, cloud, runtime or audit
 profile. The full catalog has 88 MCP tools, 7 resources, and 8 workflow prompts.
 [MCP workflows](docs/MCP_WORKFLOWS.md)
 

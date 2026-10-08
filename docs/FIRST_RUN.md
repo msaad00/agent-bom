@@ -341,7 +341,7 @@ In GitHub Actions the composite action propagates the same code plus parsed
 counts:
 
 ```yaml
-- uses: msaad00/agent-bom@v0.108.2
+- uses: msaad00/agent-bom@v0.108.3
   with:
     format: sarif
     severity-threshold: high

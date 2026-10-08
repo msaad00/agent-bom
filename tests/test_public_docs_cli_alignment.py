@@ -78,7 +78,7 @@ def test_readme_first_run_explains_blast_radius_and_mcp_evidence() -> None:
 
 
 def test_primary_docker_scan_persists_vulnerability_state() -> None:
-    docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
+    docker_hub = (ROOT / "docs" / "registry" / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
 
     assert docker_hub.count("-v agentbom-state:/home/abom/.agent-bom") >= 3
     assert "reuses vulnerability and scan state" in docker_hub
@@ -139,7 +139,7 @@ def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
 
 def test_release_prep_does_not_call_unpublished_version_current() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    docker_hub = (ROOT / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
+    docker_hub = (ROOT / "docs" / "registry" / "DOCKER_HUB_README.md").read_text(encoding="utf-8")
     assert "0.98.1` | Current stable" not in docker_hub
     assert "[published release checkout](https://github.com/msaad00/agent-bom/releases)" in readme
     assert "verify registry availability before pinning" in docker_hub
@@ -293,8 +293,8 @@ def test_public_docs_make_no_unverifiable_adoption_claim() -> None:
     root = Path(__file__).resolve().parents[1]
     surfaces = [
         root / "README.md",
-        root / "PYPI_README.md",
-        root / "DOCKER_HUB_README.md",
+        root / "docs" / "registry" / "PYPI_README.md",
+        root / "docs" / "registry" / "DOCKER_HUB_README.md",
         root / "CONTRIBUTING.md",
         *sorted((root / "docs").rglob("*.md")),
         *sorted((root / "site-docs").rglob("*.md")),

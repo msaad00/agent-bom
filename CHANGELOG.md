@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Removed
+
+- Remove the legacy Streamlit dashboard, the `agent-bom report dashboard` command and the `dashboard` install extra (which also left `agent-bom[all]`). Use `agent-bom serve` for the bundled dashboard.
+
+### Changed
+
+- Move the PyPI and Docker Hub front doors to `docs/registry/`, the repository map to `docs/PROJECT_STRUCTURE.md`, the image exception register to `docs/security/image-exceptions.yaml`, the project-config template to `examples/agent-bom.yaml.example`, and the fuzz harnesses to `.clusterfuzzlite/fuzz/`.
+
 ## [0.108.2] - 2026-10-08
 
 ### Fixed

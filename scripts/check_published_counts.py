@@ -45,8 +45,7 @@ SERVER_METADATA = ROOT / "src" / "agent_bom" / "mcp_server_metadata.py"
 # Published surfaces. Anything a user, client, or marketplace can read.
 SEARCH_ROOTS: tuple[Path, ...] = (
     ROOT / "README.md",
-    ROOT / "PYPI_README.md",
-    ROOT / "DOCKER_HUB_README.md",
+    # docs/ covers the registry front doors under docs/registry/.
     ROOT / "docs",
     ROOT / "site-docs",
     ROOT / "integrations",

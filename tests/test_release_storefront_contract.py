@@ -224,6 +224,8 @@ def test_floating_refresh_preserves_published_storefront_status() -> None:
     assert 'AGENT_BOM_DOCKER_README_PATH="$PUBLISHED_README"' in workflow
     assert 'DESCRIPTION=$(jq -Rs . < "$PUBLISHED_README")' in workflow
     assert "DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)" not in workflow
+    assert "--input docs/registry/DOCKER_HUB_README.md" in workflow
+    assert "DESCRIPTION=$(jq -Rs . < docs/registry/DOCKER_HUB_UI_README.md)" in workflow
 
 
 # ---------------------------------------------------------------------------

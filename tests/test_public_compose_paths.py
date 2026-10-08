@@ -15,9 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DOCS = (
     ROOT / "README.md",
-    ROOT / "PYPI_README.md",
-    ROOT / "DOCKER_HUB_README.md",
-    ROOT / "DOCKER_HUB_UI_README.md",
+    ROOT / "docs" / "registry" / "PYPI_README.md",
+    ROOT / "docs" / "registry" / "DOCKER_HUB_README.md",
+    ROOT / "docs" / "registry" / "DOCKER_HUB_UI_README.md",
     ROOT / "docs",
     ROOT / "site-docs",
     ROOT / "deploy",

@@ -282,7 +282,6 @@ main.add_command(audit_drain_dlq_cmd, "audit-drain-dlq")
 
 from agent_bom.cli._analysis import (  # noqa: E402
     analytics_cmd,
-    dashboard_cmd,
     graph_cmd,
     graph_evidence_cmd,
     introspect_cmd,
@@ -304,7 +303,7 @@ main.add_command(graph_paths_cmd, "graph-paths")
 main.add_command(graph_correlate_cmd, "graph-correlate")
 
 # ---------------------------------------------------------------------------
-# Report command group — `agent-bom report [history|diff|rescan|query|analytics|dashboard]`
+# Report command group — `agent-bom report [history|diff|rescan|query|analytics|...]`
 # ---------------------------------------------------------------------------
 from agent_bom.cli._report_group import (  # noqa: E402
     local_prune_cmd,
@@ -323,7 +322,6 @@ report_group.add_command(local_query_cmd, "query")
 report_group.add_command(local_storage_cmd, "storage")
 report_group.add_command(local_prune_cmd, "prune")
 report_group.add_command(analytics_cmd, "analytics")
-report_group.add_command(dashboard_cmd, "dashboard")
 main.add_command(report_group)
 
 # ---------------------------------------------------------------------------

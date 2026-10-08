@@ -56,13 +56,13 @@ class TestAgentBom:
         assert "OpenSSF Scorecard" in r.output
         assert "--page" in r.output
 
-    def test_report_dashboard_help_points_to_serve_for_next_ui(self):
+    def test_report_help_points_to_serve_for_next_ui(self):
         from agent_bom.cli import main
 
         r = CliRunner().invoke(main, ["report", "--help"])
         assert r.exit_code == 0
         assert "agent-bom serve" in r.output
-        assert "legacy Streamlit compatibility" in r.output
+        assert "Streamlit" not in r.output
 
     def test_scan_backward_compat(self):
         from agent_bom.cli import main

@@ -94,10 +94,10 @@ story.
 High-risk ingestion surfaces are fuzzed because they process untrusted external
 data:
 
-- `fuzz/fuzz_policy.py`
-- `fuzz/fuzz_sbom.py`
-- `fuzz/fuzz_skill_parser.py`
-- `fuzz/fuzz_external_scanners.py`
+- `.clusterfuzzlite/fuzz/fuzz_policy.py`
+- `.clusterfuzzlite/fuzz/fuzz_sbom.py`
+- `.clusterfuzzlite/fuzz/fuzz_skill_parser.py`
+- `.clusterfuzzlite/fuzz/fuzz_external_scanners.py`
 
 The external scanner fuzz target covers:
 

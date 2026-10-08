@@ -2,7 +2,8 @@
 
 Loads ``.agent-bom.yaml`` (or ``.agent-bom.yml`` / ``agent-bom.yaml``) from
 the current working directory or any ancestor directory, providing per-project
-defaults for CLI flags.
+defaults for CLI flags. A commented template lives at
+``examples/agent-bom.yaml.example``.
 
 Inspired by common scanner configuration files — lets teams commit security
 configuration alongside their code without adding CLI flags everywhere.

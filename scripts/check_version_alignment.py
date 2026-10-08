@@ -46,8 +46,7 @@ PUBLISHED_VERSION_FILE = ROOT / "PUBLISHED_VERSION"
 SCAN_ROOTS: tuple[Path, ...] = (
     ROOT / "README.md",
     ROOT / ".pre-commit-hooks.yaml",
-    ROOT / "PYPI_README.md",
-    ROOT / "DOCKER_HUB_README.md",
+    # docs/ covers the registry front doors under docs/registry/.
     ROOT / "docs",
     ROOT / "site-docs",
     ROOT / "deploy",

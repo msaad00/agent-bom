@@ -349,22 +349,6 @@ class TestPyProjectStats:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard alignment
-# ---------------------------------------------------------------------------
-
-
-class TestDashboardStats:
-    """Verify dashboard strings reflect actual counts."""
-
-    def test_dashboard_client_count(self):
-        path = ROOT / "dashboard" / "app.py"
-        if not path.exists():
-            pytest.skip("dashboard/app.py not found")
-        text = path.read_text()
-        assert "20 MCP client" not in text, "dashboard/app.py has stale '20 MCP client'"
-
-
-# ---------------------------------------------------------------------------
 # Print actual counts for debugging
 # ---------------------------------------------------------------------------
 

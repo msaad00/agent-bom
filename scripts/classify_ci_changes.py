@@ -22,7 +22,6 @@ _ROOT_DOCUMENTS = {
     "LICENSE.md",
     "NOTICE",
     "NOTICE.md",
-    "PYPI_README.md",
     "README.md",
     "SECURITY.md",
     "mkdocs.yml",
@@ -69,8 +68,7 @@ _KNOWN_PRODUCT_PREFIXES = (
     "integrations/",
     "examples/",
     "contracts/",
-    "fuzz/",
-    "dashboard/",
+    ".clusterfuzzlite/fuzz/",
 )
 _PYTHON_DEPENDENCY_FILES = {
     "pyproject.toml",

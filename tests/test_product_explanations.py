@@ -12,7 +12,7 @@ def test_product_entrypoints_share_a_graph_definition() -> None:
         "The shared security graph connects packages, workloads, agents, tools, identities, "
         "and data assets through typed relationships with source evidence and explicit completeness."
     )
-    for name in ("DOCKER_HUB_README.md", "site-docs/index.md"):
+    for name in ("docs/registry/DOCKER_HUB_README.md", "site-docs/index.md"):
         assert definition in " ".join((ROOT / name).read_text().split())
     readme = (ROOT / "README.md").read_text()
     assert "[Evidence workflow](docs/HOW_IT_WORKS.md)" in readme

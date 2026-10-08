@@ -42,7 +42,7 @@ BUILD_INPUTS = (
     "pyproject.toml",
     "uv.lock",
     "README.md",
-    "PYPI_README.md",
+    "docs/registry/PYPI_README.md",
     "LICENSE",
     "deploy/supabase/postgres",
     "deploy/docker/runtime-security-requirements.txt",

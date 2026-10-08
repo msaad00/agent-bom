@@ -76,19 +76,20 @@ def test_no_streamlit_import():
     assert not serve_app.exists(), "serve_app.py should be deleted"
 
 
-def test_pyproject_streamlit_in_dashboard_only():
-    """pyproject.toml should only have streamlit in [dashboard] extras, not [ui]."""
+def test_pyproject_ships_no_legacy_streamlit_dashboard_extra():
+    """The legacy Streamlit dashboard is retired; no extra may pull in its stack."""
+    import tomllib
     from pathlib import Path
 
-    toml_text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
-    # [ui] extra should not contain streamlit
-    import re
-
-    ui_match = re.search(r"ui = \[([^\]]*)\]", toml_text, re.DOTALL)
-    if ui_match:
-        assert "streamlit" not in ui_match.group(1).lower()
-    # Dashboard extra should have streamlit
-    assert 'dashboard = ["streamlit' in toml_text
+    root = Path(__file__).resolve().parent.parent
+    pyproject = tomllib.loads((root / "pyproject.toml").read_text())
+    extras = pyproject["project"]["optional-dependencies"]
+    assert "dashboard" not in extras
+    for name, deps in extras.items():
+        for dep in deps:
+            assert not dep.lower().startswith(("streamlit", "plotly", "pandas")), (name, dep)
+            assert dep != "agent-bom[dashboard]", name
+    assert not (root / "dashboard").exists()
 
 
 def test_serve_help_mentions_built_dashboard():

@@ -18,7 +18,7 @@ import check_version_alignment as cva  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
-PYPI_README = ROOT / "PYPI_README.md"
+PYPI_README = ROOT / "docs" / "registry" / "PYPI_README.md"
 CHANGELOG = ROOT / "CHANGELOG.md"
 DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
@@ -48,7 +48,7 @@ PRODUCT_SCREENSHOT_INPUTS = (
 # but a future one must not silently start counting toward the digest.
 _PRODUCT_SCREENSHOT_TEST_FILE = re.compile(r"(?:^|/)(?:tests|e2e)/|\.(?:test|spec)\.[jt]sx?$")
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
-DOCKER_README = ROOT / "DOCKER_HUB_README.md"
+DOCKER_README = ROOT / "docs" / "registry" / "DOCKER_HUB_README.md"
 SITE_INDEX = ROOT / "site-docs" / "index.md"
 TOP_DOCKERFILE = ROOT / "Dockerfile"
 PYPROJECT = ROOT / "pyproject.toml"
@@ -547,7 +547,6 @@ def main() -> int:
     ]
     release_path_roots = [
         ROOT / "README.md",
-        ROOT / "PYPI_README.md",
         ROOT / "docs",
         ROOT / "site-docs",
         ROOT / "integrations",
@@ -570,7 +569,7 @@ def main() -> int:
     ]
     public_surface_roots = [
         ROOT / "README.md",
-        ROOT / "PYPI_README.md",
+        ROOT / "docs" / "registry" / "PYPI_README.md",
         ROOT / "site-docs",
         ROOT / "docs" / "PRODUCT_BRIEF.md",
         ROOT / "docs" / "MCP_SECURITY_MODEL.md",
@@ -609,7 +608,7 @@ def main() -> int:
         r"/Users/[A-Za-z0-9._-]+",
         r"[A-Za-z]:\\Users\\[^\\\s]+",
     ]
-    scan_roots = [ROOT / "README.md", ROOT / "PYPI_README.md", ROOT / "docs"]
+    scan_roots = [ROOT / "README.md", ROOT / "docs"]
     for path in scan_roots:
         files = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
         for file in files:

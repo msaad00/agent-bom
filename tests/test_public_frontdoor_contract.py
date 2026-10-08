@@ -177,7 +177,7 @@ def test_scenarios_separate_reproducible_proof_from_synthetic_layout_fixtures() 
 
 
 def test_docker_ui_first_run_has_a_result_and_preserves_local_auth_boundary() -> None:
-    guide = (ROOT / "DOCKER_HUB_UI_README.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs" / "registry" / "DOCKER_HUB_UI_README.md").read_text(encoding="utf-8")
     assert "docker compose -f docker-compose.pilot.yml up -d" in guide
     assert "**New Scan**" in guide
     assert "**Connections**" in guide
@@ -209,7 +209,7 @@ def test_persona_routes_start_with_their_actual_work() -> None:
 
 def test_public_first_run_surfaces_share_one_primary_command() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    pypi = (ROOT / "PYPI_README.md").read_text(encoding="utf-8")
+    pypi = (ROOT / "docs" / "registry" / "PYPI_README.md").read_text(encoding="utf-8")
     guide = (ROOT / "docs" / "FIRST_RUN.md").read_text(encoding="utf-8")
 
     assert "pip install agent-bom\nagent-bom scan ." in readme
@@ -220,7 +220,7 @@ def test_public_first_run_surfaces_share_one_primary_command() -> None:
 
 def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() -> None:
     for filename, heading in (
-        ("PYPI_README.md", "## Recommended starting points"),
+        ("docs/registry/PYPI_README.md", "## Recommended starting points"),
         ("docs/START_HERE.md", "## Platform / SRE"),
         ("docs/FIRST_RUN.md", "## 3. Open the Dashboard"),
     ):

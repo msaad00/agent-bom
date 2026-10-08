@@ -9,7 +9,6 @@ from click.testing import CliRunner
 
 from agent_bom.cli._analysis import (
     analytics_cmd,
-    dashboard_cmd,
     graph_cmd,
     graph_evidence_cmd,
     introspect_cmd,
@@ -406,24 +405,22 @@ def test_mesh_cmd_project_scope_empty_message():
 
 
 # ---------------------------------------------------------------------------
-# dashboard_cmd
+# report dashboard (retired legacy Streamlit surface)
 # ---------------------------------------------------------------------------
 
 
-def test_dashboard_no_streamlit():
+def test_report_group_no_longer_offers_legacy_streamlit_dashboard():
+    from agent_bom.cli import main
+
     runner = CliRunner()
-    with patch("shutil.which", return_value=None):
-        result = runner.invoke(dashboard_cmd, [])
-        assert result.exit_code == 1
+    help_result = runner.invoke(main, ["report", "--help"])
+    assert help_result.exit_code == 0
+    assert "Streamlit" not in help_result.output
+    assert "dashboard   " not in help_result.output
 
-
-def test_dashboard_invalid_port_is_usage_error():
-    runner = CliRunner()
-    result = runner.invoke(dashboard_cmd, ["--port", "99999"])
-
+    result = runner.invoke(main, ["report", "dashboard"])
     assert result.exit_code == 2
-    assert "Invalid value for '--port'" in result.output
-    assert "1<=x<=65535" in result.output
+    assert "No such command" in result.output
 
 
 # ---------------------------------------------------------------------------

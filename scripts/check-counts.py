@@ -142,8 +142,8 @@ print()
 
 SURFACES = [
     "README.md",
-    "PYPI_README.md",
-    "DOCKER_HUB_README.md",
+    "docs/registry/PYPI_README.md",
+    "docs/registry/DOCKER_HUB_README.md",
     "docs/ARCHITECTURE.md",
     "docs/CLAUDE_INTEGRATION.md",
     "docs/PRODUCT_BRIEF.md",

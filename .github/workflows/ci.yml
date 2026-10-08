@@ -355,8 +355,6 @@ jobs:
           osv_gate uv.lock /tmp/osv-uv.json
           osv_gate ui/package-lock.json /tmp/osv-ui.json
           osv_gate sdks/typescript/package-lock.json /tmp/osv-sdk.json
-          # Scan dashboard deps — no unfixable-CVE carve-out, any finding fails.
-          osv-scanner scan --config osv-scanner.toml --lockfile=dashboard/requirements.txt
 
       - name: Filesystem vulnerability scan (agent-bom — dogfood)
         if: needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true'

@@ -149,7 +149,17 @@ class MockConnection:
                 ordered = ordered[: int(limit)]
             cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[6], r[7], r[8]) for r in ordered]
         elif sql_lower.startswith("select"):
-            if "select distinct on (team_id) team_id, hmac_signature" in sql_lower:
+            if "from scan_jobs" in sql_lower and "concat_ws(chr(31)" in sql_lower:
+                # Versioned payload read: (team_id, version token, payload or NULL).
+                held, *filters = params
+                rows = list(self._store.get("scan_jobs", {}).values())
+                if "job_id = %s" in sql_lower:
+                    rows = [row for row in rows if row[0] == filters.pop(0)]
+                if filters:
+                    rows = [row for row in rows if row[1] == filters[0]]
+                tokens = [f"{row[1]}\x1f{row[0]}\x1f1\x1f{len(row[-1])}" for row in rows]
+                cursor.rows = [(row[1], token, None if token in held else row[-1]) for row, token in zip(rows, tokens)]
+            elif "select distinct on (team_id) team_id, hmac_signature" in sql_lower:
                 rows = list(self._store.get("audit_log", {}).values())
                 latest_by_tenant: dict[str, tuple] = {}
                 for row in rows:

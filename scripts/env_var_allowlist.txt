@@ -588,3 +588,4 @@ AGENT_BOM_DEPLOYMENT_BEARER_TOKEN
 
 AGENT_BOM_GATEWAY_TRUSTED_CONTEXT_PROXY_CIDRS  # opt-in transport peers authorized to assert gateway conditional-access headers
 AGENT_BOM_POSTURE_PRECOMPUTE  # kill switch for posture precompute on evidence writes; read per call so tests and operators can toggle it live
+AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB  # per-process byte budget (MiB) for reusing unchanged Postgres job payload text; 0 disables

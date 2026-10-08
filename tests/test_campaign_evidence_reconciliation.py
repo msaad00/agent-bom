@@ -52,10 +52,12 @@ def test_worker_reconciles_without_a_get_and_retires_on_empty_evidence(monkeypat
     store = InMemoryCampaignStore()
     set_campaign_store(store)
     findings = [{"id": "finding", "package": "acme", "fixed_version": "2", "severity": "high"}]
+    walks = []
     monkeypatch.setattr(
         campaigns,
         "_load_findings",
-        lambda request: {
+        lambda request, **kwargs: {
+            "_deadline": walks.append(kwargs.get("deadline_seconds")),
             "findings": findings,
             "total": len(findings),
             "has_more": False,
@@ -74,6 +76,9 @@ def test_worker_reconciles_without_a_get_and_retires_on_empty_evidence(monkeypat
         assert reconcile_pending_campaigns() == 1
         assert store.list("alpha")[0].active is False
         assert store.evidence_state.checkpoints["alpha"] == 2
+        # Unchanged evidence is not walked again; the background walk is not request-bounded.
+        assert reconcile_pending_campaigns() == 0
+        assert len(walks) == 2 and all(bound > 10.0 for bound in walks)
     finally:
         set_campaign_store(None)
 
@@ -86,7 +91,9 @@ def test_worker_incomplete_source_keeps_prior_membership_and_pending_checkpoint(
     set_campaign_store(store)
     before = store.reconcile_memberships("alpha", {"campaign": ("v1", ("finding",))})[0]
     store.evidence_state.changed("alpha")
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: {"findings": [], "total": 1, "has_more": True})
+    monkeypatch.setattr(
+        "agent_bom.api.routes.campaigns._load_findings", lambda request, **_: {"findings": [], "total": 1, "has_more": True}
+    )
     monkeypatch.setattr("agent_bom.api.campaign_reconciliation._cursor", "")
     try:
         assert reconcile_pending_campaigns() == 0
@@ -251,3 +258,117 @@ def test_startup_requires_campaign_checkpoint_migration(monkeypatch):
     with pytest.raises(RuntimeError, match="campaign migration missing"):
         registry_stores.validate_postgres_registries()
     assert "campaign_evidence_state" in checked
+
+
+def _paged_source(monkeypatch, pages):
+    from types import SimpleNamespace
+
+    from agent_bom.api.campaign_store import InMemoryCampaignStore, set_campaign_store
+    from agent_bom.api.routes import campaigns, scan
+
+    store = InMemoryCampaignStore()
+    set_campaign_store(store)
+    monkeypatch.setattr(campaigns, "_campaign_source_revision", lambda request: ("jobs", 1))
+    by_cursor = {None: pages[0], **{f"c{i}": page for i, page in enumerate(pages[1:], start=1)}}
+    monkeypatch.setattr(scan, "_list_findings_impl", lambda request, **kwargs: by_cursor[kwargs["cursor"]])
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="alpha", api_key_name="worker"))
+    try:
+        return campaigns._load_findings(request)
+    finally:
+        set_campaign_store(None)
+
+
+def _rows(*ids):
+    return [{"id": value, "canonical_id": value, "severity": "high"} for value in ids]
+
+
+def test_merged_resume_pages_without_a_recount_still_complete(monkeypatch):
+    from agent_bom.api.routes.campaigns import _source_incomplete
+
+    source = _paged_source(
+        monkeypatch,
+        [
+            {"findings": _rows("a", "b"), "total": 3, "total_approximate": False, "has_more": True, "next_cursor": "c1"},
+            {"findings": _rows("c"), "total": None, "total_approximate": True, "has_more": False, "next_cursor": None},
+        ],
+    )
+    assert [row["id"] for row in source["findings"]] == ["a", "b", "c"]
+    assert not _source_incomplete(source)
+    assert source["_evidence_revision"] == 0
+
+
+def test_one_campaign_walk_reuses_retained_scan_work_across_pages(monkeypatch):
+    from agent_bom.api.finding_read_context import read_once
+    from agent_bom.api.routes import campaigns, scan
+
+    loads = []
+    pages = {
+        None: {"findings": _rows("a"), "total": 2, "total_approximate": False, "has_more": True, "next_cursor": "c1"},
+        "c1": {"findings": _rows("b"), "total": None, "total_approximate": True, "has_more": False, "next_cursor": None},
+    }
+
+    def page(request, **kwargs):
+        read_once(("rows", "job"), lambda: loads.append(1))
+        return pages[kwargs["cursor"]]
+
+    _paged_source(monkeypatch, [pages[None], pages["c1"]])
+    monkeypatch.setattr(scan, "_list_findings_impl", page)
+    from types import SimpleNamespace
+
+    from agent_bom.api.campaign_store import InMemoryCampaignStore, set_campaign_store
+
+    set_campaign_store(InMemoryCampaignStore())
+    try:
+        campaigns._load_findings(SimpleNamespace(state=SimpleNamespace(tenant_id="alpha", api_key_name="worker")))
+    finally:
+        set_campaign_store(None)
+    assert loads == [1]
+
+
+def test_resume_page_contradicting_the_first_total_stays_incomplete(monkeypatch):
+    from agent_bom.api.routes.campaigns import _source_incomplete
+
+    source = _paged_source(
+        monkeypatch,
+        [
+            {"findings": _rows("a", "b"), "total": 3, "total_approximate": False, "has_more": True, "next_cursor": "c1"},
+            {"findings": _rows("c"), "total": 4, "total_approximate": False, "has_more": False, "next_cursor": None},
+        ],
+    )
+    assert _source_incomplete(source)
+
+
+def test_walk_shorter_than_the_exact_first_total_stays_incomplete(monkeypatch):
+    from agent_bom.api.routes.campaigns import _source_incomplete
+
+    source = _paged_source(
+        monkeypatch,
+        [
+            {"findings": _rows("a", "b"), "total": 4, "total_approximate": False, "has_more": True, "next_cursor": "c1"},
+            {"findings": _rows("c"), "total": None, "total_approximate": True, "has_more": False, "next_cursor": None},
+        ],
+    )
+    assert _source_incomplete(source)
+
+
+def test_approximate_first_page_total_never_completes(monkeypatch):
+    from agent_bom.api.routes.campaigns import _source_incomplete
+
+    source = _paged_source(
+        monkeypatch,
+        [
+            {"findings": _rows("a"), "total": 2, "total_approximate": True, "has_more": True, "next_cursor": "c1"},
+            {"findings": _rows("b"), "total": None, "total_approximate": True, "has_more": False, "next_cursor": None},
+        ],
+    )
+    assert _source_incomplete(source)
+
+
+def test_identity_less_row_keeps_the_collection_incomplete(monkeypatch):
+    from agent_bom.api.routes.campaigns import _source_incomplete
+
+    rows = _rows("a") + [{"id": "CVE-2026-1", "vulnerability_id": "CVE-2026-1", "severity": "high"}]
+    source = _paged_source(
+        monkeypatch, [{"findings": rows, "total": 2, "total_approximate": False, "has_more": False, "next_cursor": None}]
+    )
+    assert _source_incomplete(source)

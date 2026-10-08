@@ -261,7 +261,7 @@ def test_incomplete_api_snapshot_never_reconciles_or_reactivates(monkeypatch) ->
     store = InMemoryCampaignStore()
     set_campaign_store(store)
     full = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: full)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
@@ -293,7 +293,7 @@ def test_provisional_campaign_does_not_inherit_changed_or_inactive_workflow(monk
     store = InMemoryCampaignStore()
     set_campaign_store(store)
     full = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: full)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -306,7 +306,7 @@ def test_provisional_campaign_does_not_inherit_changed_or_inactive_workflow(monk
     store.verify("tenant-alpha", campaign["id"], expected_version=updated.version, remaining_ids=())
 
     partial = {"findings": [full[0]], "total": 2, "has_more": True, "total_approximate": False}
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: partial)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: partial)
     _reconcile_loaded_evidence()  # evidence update, before the read
     changed = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
     assert changed["id"] == campaign["id"]
@@ -552,7 +552,7 @@ def test_postgres_campaign_reconcile_locks_tenant_before_read(monkeypatch) -> No
 def test_campaign_api_requires_auth_and_rejects_viewer_writes(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
 
     assert client.get("/v1/campaigns").status_code == 401
@@ -640,7 +640,7 @@ def test_campaign_api_labels_bounded_source_as_truncated(monkeypatch) -> None:
 def test_campaign_api_persists_workflow_without_cross_tenant_leak(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     first = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
 
@@ -666,7 +666,7 @@ def test_campaign_api_persists_workflow_without_cross_tenant_leak(monkeypatch) -
 def test_campaign_patch_preserves_omitted_workflow_fields(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
     campaign_id = campaign["id"]
@@ -688,7 +688,7 @@ def test_campaign_patch_preserves_omitted_workflow_fields(monkeypatch) -> None:
 def test_campaign_patch_cannot_set_server_owned_verification(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
     response = client.patch(
@@ -702,7 +702,7 @@ def test_campaign_patch_cannot_set_server_owned_verification(monkeypatch) -> Non
 def test_campaign_verify_fails_with_remaining_members_and_is_cas_safe(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -718,7 +718,7 @@ def test_campaign_verify_fails_with_remaining_members_and_is_cas_safe(monkeypatc
 def test_campaign_verify_returns_honest_outcome_and_replays_idempotently(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -736,7 +736,7 @@ def test_campaign_verify_returns_honest_outcome_and_replays_idempotently(monkeyp
 def test_campaign_verify_reports_unavailable_evidence_without_mutating(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
@@ -758,13 +758,13 @@ def test_campaign_verify_does_not_equate_disappeared_campaign_with_a_verified_fi
 
     path = str(tmp_path / "verify-restart.db")
     set_campaign_store(SQLiteCampaignStore(path))
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
     set_campaign_store(SQLiteCampaignStore(path))
     current = [_findings()[2]]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: current)
     _reconcile_loaded_evidence()  # evidence update, before the read
     client.get("/v1/campaigns", headers=_headers())
     retired = get_campaign_store().get("tenant-alpha", campaign["id"])
@@ -785,12 +785,12 @@ def test_verification_queue_rediscovers_retired_campaign_after_reload(monkeypatc
     path = str(tmp_path / "verification-queue.db")
     set_campaign_store(SQLiteCampaignStore(path))
     findings = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: findings)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
     set_campaign_store(SQLiteCampaignStore(path))
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: [findings[2]])
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: [findings[2]])
     _reconcile_loaded_evidence()  # evidence update, before the read
     client.get("/v1/campaigns", headers=_headers())
 
@@ -862,7 +862,7 @@ def test_campaign_verify_fails_for_same_target_replacement_membership(monkeypatc
         path = str(tmp_path / "replacement.db")
         set_campaign_store(SQLiteCampaignStore(path))
     original = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: original)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -877,7 +877,7 @@ def test_campaign_verify_fails_for_same_target_replacement_membership(monkeypatc
             "risk_score": 7.0,
         }
     ]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: replacement)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: replacement)
     response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert response.status_code == 200
     assert response.json()["verification_status"] == "failed"
@@ -896,7 +896,7 @@ def test_campaign_verify_does_not_lose_original_members_when_remediation_group_c
     if persistent:
         set_campaign_store(SQLiteCampaignStore(path))
     original = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: original)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -910,7 +910,7 @@ def test_campaign_verify_does_not_lose_original_members_when_remediation_group_c
     else:
         retained.pop("fixed_version")
     current = [retained, original[2]]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: current)
     # Evidence reconciliation may retire the old group; its original IDs must still be checked.
     _reconcile_loaded_evidence()  # evidence update, before the read
     client.get("/v1/campaigns", headers=_headers())
@@ -940,7 +940,7 @@ def test_campaign_verify_rejects_incomplete_evidence(monkeypatch, source) -> Non
     store = InMemoryCampaignStore()
     store.reconcile_memberships("tenant-alpha", {"campaign-1": ("fingerprint", ("finding-a",))})
     set_campaign_store(store)
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: source)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: source)
     response = TestClient(app).post("/v1/campaigns/campaign-1/verify", json={"version": 1}, headers=_headers())
     assert response.status_code == 409
 
@@ -949,7 +949,7 @@ def test_campaign_verify_is_tenant_scoped_and_requires_stored_evidence(monkeypat
     from agent_bom.api.server import app
 
     source = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: source)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: source)
     client = TestClient(app)
     assert client.post("/v1/campaigns/missing/verify", json={"version": 1}, headers=_headers()).status_code == 404
     store = get_campaign_store()
@@ -961,7 +961,7 @@ def test_campaign_verify_is_tenant_scoped_and_requires_stored_evidence(monkeypat
 def test_campaign_patch_rejects_invalid_sla_timestamp(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
     campaign_id = campaign["id"]
@@ -977,7 +977,7 @@ def test_campaign_patch_rejects_invalid_sla_timestamp(monkeypatch) -> None:
 def test_campaign_ticket_action_forbids_credentials_and_reports_partial_result(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
 
     async def _create(**kwargs):
         if kwargs["finding_id"] == "finding-b":
@@ -1029,7 +1029,7 @@ def test_campaign_ticket_action_forbids_credentials_and_reports_partial_result(m
 def test_campaign_ticket_create_preserves_only_public_service_codes(monkeypatch, service_code: str, expected_code: str) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
 
     async def _create(**kwargs):
         raise TicketingError("secret connection detail", code=service_code)
@@ -1048,7 +1048,7 @@ def test_ticket_action_is_bounded_and_resumable_before_side_effects(monkeypatch)
     from agent_bom.api.server import app
 
     findings = [{"id": f"f-{i}", "purl": "pkg:npm/shared", "fixed_version": "2", "severity": "high"} for i in range(30)]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: findings)
     called: list[str] = []
 
     async def _create(**kwargs):
@@ -1072,7 +1072,7 @@ def test_action_cursor_binds_action_membership_items_and_connection(monkeypatch)
     from agent_bom.api.server import app
 
     findings = [{"id": f"f-{i}", "purl": "pkg:npm/shared@1", "fixed_version": "2", "severity": "high"} for i in range(30)]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: findings)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: findings)
     called: list[str] = []
 
     async def _create(**kwargs):
@@ -1111,7 +1111,7 @@ def test_malformed_cursor_has_zero_workflow_audit_or_transport_side_effects(monk
 
     store = InMemoryCampaignStore()
     set_campaign_store(store)
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     audits: list[str] = []
     calls: list[str] = []
     monkeypatch.setattr("agent_bom.api.routes.campaigns._audit", lambda action, *args, **kwargs: audits.append(action))
@@ -1142,7 +1142,7 @@ def test_provisional_campaign_actions_fail_before_ticket_audit_or_transport_side
     from agent_bom.api.server import app
 
     source = {"findings": _findings(), **source_overrides}
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: source)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: source)
     audits: list[str] = []
     transport: list[str] = []
     ticket_store_reads: list[str] = []
@@ -1179,7 +1179,7 @@ def test_provisional_campaign_patch_has_zero_workflow_or_audit_side_effects(monk
     store = InMemoryCampaignStore()
     set_campaign_store(store)
     full = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: full)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: full)
     client = TestClient(app)
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
     before = store.get("tenant-alpha", campaign["id"])
@@ -1210,7 +1210,7 @@ def test_campaign_audit_failure_does_not_log_raw_exception() -> None:
 def test_campaign_ticket_sync_is_tenant_and_finding_scoped(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     store = get_ticketing_store()
     for ticket_id, tenant, dedupe in (
         ("ticket-a", "tenant-alpha", "finding-a"),
@@ -1248,7 +1248,7 @@ def test_campaign_ticket_sync_is_tenant_and_finding_scoped(monkeypatch) -> None:
 def test_campaign_ticket_sync_returns_207_and_sanitizes_partial_failure(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     store = get_ticketing_store()
     for ticket_id, dedupe in (("ticket-a", "finding-a"), ("ticket-b", "finding-b")):
         store.claim_ticket_link(
@@ -1287,7 +1287,7 @@ def test_campaign_ticket_sync_returns_207_and_sanitizes_partial_failure(monkeypa
 def test_campaign_ticket_sync_preserves_transport_code_without_exception_detail(monkeypatch) -> None:
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     store = get_ticketing_store()
     store.claim_ticket_link(
         TicketLink(
@@ -1322,7 +1322,7 @@ def test_campaign_verification_does_not_replay_unsupported_cached_success(monkey
     from agent_bom.api.idempotency_store import idempotency_request_fingerprint
     from agent_bom.api.server import app
 
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: _findings())
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: _findings())
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = client.get("/v1/campaigns", headers=_headers()).json()["campaigns"][0]
@@ -1336,7 +1336,7 @@ def test_campaign_verification_does_not_replay_unsupported_cached_success(monkey
         {"outcome": "verified_fixed", "verification_status": "verified"},
         request_hash=idempotency_request_fingerprint({"campaign_id": campaign["id"], "version": campaign["version"]}),
     )
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: [])
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: [])
     before = get_campaign_store().get("tenant-alpha", campaign["id"])
     result = client.post(
         f"/v1/campaigns/{campaign['id']}/verify",
@@ -1352,7 +1352,7 @@ def test_campaign_remaining_count_unions_replacement_and_regrouped_members(monke
     from agent_bom.api.server import app
 
     original = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: original)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -1361,7 +1361,7 @@ def test_campaign_remaining_count_unions_replacement_and_regrouped_members(monke
         original[1],
         {**original[1], "id": "finding-replacement"},
     ]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: current)
     result = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers()).json()
     assert result["outcome"] == "still_affected"
     assert result["remaining_finding_ids"] == ["finding-a", "finding-b", "finding-replacement"]
@@ -1374,7 +1374,7 @@ def test_campaign_verify_rejects_unreconfirmed_original_members_before_cached_ou
     from agent_bom.api.server import app
 
     rows = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: rows)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -1398,7 +1398,7 @@ def test_unrelated_unreconfirmed_finding_does_not_block_observed_campaign(monkey
 
     rows = _findings()
     rows[2]["observation_status"] = "unreconfirmed"
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: rows)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -1416,7 +1416,7 @@ def test_campaign_verify_rejects_unreconfirmed_replacement_members(monkeypatch, 
     if persistent:
         set_campaign_store(SQLiteCampaignStore(path))
     original = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: original)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -1438,7 +1438,7 @@ def test_campaign_verify_rejects_unreconfirmed_replacement_members(monkeypatch, 
     ]
     if original_still_observed:
         current.append({**original[0], "fixed_version": "moved-group", "observation_status": "observed"})
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: current)
     response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=headers)
     assert response.status_code == 409
     assert response.json()["detail"]["outcome"] == "unavailable_evidence"
@@ -1451,7 +1451,7 @@ def test_observed_replacement_remains_verifiable_with_unrelated_unreconfirmed_gr
     from agent_bom.api.server import app
 
     original = _findings()
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: original)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: original)
     client = TestClient(app)
     _reconcile_loaded_evidence()  # evidence update, before the read
     campaign = next(item for item in client.get("/v1/campaigns", headers=_headers()).json()["campaigns"] if item["finding_count"] == 2)
@@ -1459,7 +1459,7 @@ def test_observed_replacement_remains_verifiable_with_unrelated_unreconfirmed_gr
         {**original[1], "id": "finding-replacement", "observation_status": "observed"},
         {**original[1], "id": "unrelated-replacement", "fixed_version": "different-group", "observation_status": "unreconfirmed"},
     ]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: current)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: current)
     response = client.post(f"/v1/campaigns/{campaign['id']}/verify", json={"version": campaign["version"]}, headers=_headers())
     assert response.status_code == 200
     assert response.json()["outcome"] == "still_affected"
@@ -1602,7 +1602,7 @@ def test_campaign_list_is_read_only_even_when_membership_changes(monkeypatch: py
     from agent_bom.api.server import app
 
     audit_events: list[object] = []
-    monkeypatch.setattr(routes, "_load_findings", lambda request: _findings())
+    monkeypatch.setattr(routes, "_load_findings", lambda request, **_: _findings())
     monkeypatch.setattr(routes, "log_action", lambda *args, **kwargs: audit_events.append(args))
     with TestClient(app, raise_server_exceptions=True) as client:
         response = client.get("/v1/campaigns", headers=_headers("viewer"))
@@ -1617,7 +1617,7 @@ def test_campaign_get_projects_changed_membership_without_resetting_persisted_wo
     from agent_bom.api.server import app
 
     findings = _findings()
-    monkeypatch.setattr(campaigns, "_load_findings", lambda request: findings)
+    monkeypatch.setattr(campaigns, "_load_findings", lambda request, **_: findings)
     _reconcile_loaded_evidence()
     before = get_campaign_store().list("tenant-alpha")
     audit = []
@@ -1634,7 +1634,7 @@ def test_campaign_list_pages_bound_response_and_reject_stale_or_cross_tenant_cur
     from agent_bom.api.server import app
 
     rows = [{"id": f"unique-{i}", "severity": "high"} for i in range(10000)]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: rows)
     client = TestClient(app)
     first = client.get("/v1/campaigns", headers=_headers())
     assert first.status_code == 200
@@ -1656,7 +1656,7 @@ def test_campaign_list_bounds_member_ids_without_truncating_action_membership(mo
     from agent_bom.api.server import app
 
     rows = [dict(_findings()[0], id=f"member-{i}") for i in range(200)]
-    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request: rows)
+    monkeypatch.setattr("agent_bom.api.routes.campaigns._load_findings", lambda request, **_: rows)
     body = TestClient(app).get("/v1/campaigns", headers=_headers()).json()
     campaign = body["campaigns"][0]
     assert campaign["finding_count"] == 200

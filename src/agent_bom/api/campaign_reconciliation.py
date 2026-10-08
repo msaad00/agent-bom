@@ -24,6 +24,8 @@ from agent_bom.api.tenant_worker import run_tenant_bound
 
 _logger = logging.getLogger(__name__)
 _cursor = ""
+# Off the request path, a complete walk matters more than latency; requests keep their own bound.
+RECONCILIATION_WALK_SECONDS = 120.0
 
 
 def notify_campaign_evidence(tenant_id: str, *, source_is_memory: bool = False) -> None:
@@ -60,7 +62,7 @@ def reconcile_pending_campaigns(limit: int = 20) -> int:
         request.state.api_key_name = "evidence-reconciler"
 
         def collect_and_reconcile() -> bool:
-            source = _load_findings(request)
+            source = _load_findings(request, deadline_seconds=RECONCILIATION_WALK_SECONDS)
             if _source_incomplete(source):
                 return False
             _reconcile_campaigns(request, source)

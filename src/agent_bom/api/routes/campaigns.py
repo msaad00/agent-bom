@@ -19,6 +19,7 @@ from agent_bom.api.audit_log import log_action
 from agent_bom.api.campaign_pagination import campaign_page
 from agent_bom.api.campaign_reconciliation import _assert_source_fresh, _campaigns, _reconcile_campaigns, verification_membership
 from agent_bom.api.campaign_store import get_campaign_store
+from agent_bom.api.finding_read_context import finding_read_snapshot
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.risk_campaigns import CAMPAIGN_FINDING_LIMIT, derive_campaigns
 from agent_bom.api.storage.campaign_revisions import CampaignEvidenceChangedError
@@ -310,8 +311,9 @@ def _campaign_source_revision(request: Request) -> tuple[str, int]:
     return jobs_revision, get_compliance_hub_store().overview_evidence_revision(tenant_id)
 
 
-def _load_findings(request: Request) -> dict[str, Any]:
-    """Walk the canonical cursor without treating a bounded or unstable walk as complete."""
+@finding_read_snapshot
+def _load_findings(request: Request, *, deadline_seconds: float = 10.0) -> dict[str, Any]:
+    """Walk one read context's cursor; never treat a bounded, unstable or fenced-out walk as complete."""
     from agent_bom.api.routes.scan import _list_findings_impl
 
     source_revision = _campaign_source_revision(request)
@@ -321,7 +323,7 @@ def _load_findings(request: Request) -> dict[str, Any]:
     seen_cursors: set[str] = set()
     cursor: str | None = None
     source: dict[str, Any] = {}
-    deadline = time.monotonic() + 10.0
+    deadline = time.monotonic() + deadline_seconds
     for _ in range(50):
         page = _list_findings_impl(
             request,
@@ -346,9 +348,13 @@ def _load_findings(request: Request) -> dict[str, Any]:
                 continue
             identities.add(identity)
             rows.append(row)
-        total = page.get("total")
+        total = source.get("total")
         next_cursor = str(page.get("next_cursor") or "")
-        unstable = invalid or page.get("total_approximate") or total != source.get("total")
+        # Resumed merged pages skip the recount; the first page's exact total binds the walk.
+        recounted = cursor is None or page.get("total") is not None
+        unstable = (
+            invalid or source.get("total_approximate") or (recounted and (page.get("total_approximate") or page.get("total") != total))
+        )
         complete = (
             not unstable
             and not page.get("has_more")

@@ -18,8 +18,9 @@ from agent_bom.api.postgres_common import (
     reset_current_tenant,
     set_current_tenant,
 )
+from agent_bom.api.storage.job_payload_cache import JobPayloadCache, read_versioned_jobs
 from agent_bom.api.storage.job_revisions import POSTGRES_JOB_REVISIONS_V1, read_postgres_job_revision
-from agent_bom.api.storage.jobs import get_job, put_job, require_job_tenant
+from agent_bom.api.storage.jobs import put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, POSTGRES_TENANT_KEYS
 from agent_bom.api.storage.sql import connection_session
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
@@ -43,6 +44,7 @@ class PostgresJobStore:
     def __init__(self, pool: ConnectionPool | None = None, maintenance_pool: ConnectionPool | None = None) -> None:
         self._pool = pool or _get_pool()
         self._maintenance_pool = maintenance_pool
+        self._payloads = JobPayloadCache()
         self._init_tables()
 
     @contextmanager
@@ -293,8 +295,14 @@ class PostgresJobStore:
 
     def get(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> ScanJob | None:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.get()")
+        where, params = (
+            (" WHERE job_id = %s", (job_id,)) if tenant_id is None else (" WHERE job_id = %s AND team_id = %s", (job_id, tenant_id))
+        )
         with self._scope_connection(all_tenants=all_tenants) as conn:
-            return get_job(connection_session(conn, "postgres"), "postgres", job_id, tenant_id)
+            jobs = read_versioned_jobs(conn, self._payloads, where, params, tenant_id, "LIMIT 2")
+        if len(jobs) > 1:
+            raise ValueError("Ambiguous job identity requires a tenant_id")
+        return jobs[0] if jobs else None
 
     def delete(self, job_id: str, tenant_id: str | None = None, *, all_tenants: bool = False) -> bool:
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.delete()")
@@ -309,22 +317,14 @@ class PostgresJobStore:
             conn.commit()
             if tenant_id is not None:
                 job_status_count_cache.invalidate_tenant(tenant_id)
+                self._payloads.forget(tenant_id, job_id)
             return int(cursor.rowcount) > 0
 
     def list_all(self, tenant_id: str | None = None, *, all_tenants: bool = False) -> list:
-        from .server import ScanJob
-
         _require_tenant_scope(tenant_id, all_tenants, "PostgresJobStore.list_all()")
-
+        where, params = ("", ()) if tenant_id is None else (" WHERE team_id = %s", (tenant_id,))
         with self._scope_connection(all_tenants=all_tenants) as conn:
-            if tenant_id is None:
-                rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT data FROM scan_jobs WHERE team_id = %s ORDER BY created_at DESC",
-                    (tenant_id,),
-                ).fetchall()
-            return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+            return read_versioned_jobs(conn, self._payloads, where, params, tenant_id, "ORDER BY created_at DESC")
 
     def list_summary(
         self,

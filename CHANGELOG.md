@@ -7,6 +7,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Performance
+
+- Postgres job reads no longer transfer and decode every job payload on each call. A read sends the row versions this process already holds, and the database returns a payload only for rows that changed, so another replica's write is always seen. Payloads are cached as JSON text per tenant, with a byte limit (`AGENT_BOM_POSTGRES_JOB_PAYLOAD_CACHE_MB`, default 256). Every read still parses a fresh job.
+- Campaign reconciliation now reaches its checkpoint, so it stops re-walking and re-redacting every finding at each boot and every maintenance tick while evidence is unchanged. A campaign walk reuses one read context across its pages, and the background walk is no longer cut off by the 10 s request bound.
+
+### Fixed
+
+- A nested package-vulnerability row now folds onto the finding on its own MCP server when other assets share the same package version, instead of surfacing as a duplicate row with no finding identity. The demo estate reports 2,711 findings, not 2,719. A nested row that still matches no finding gets a deterministic `canonical_id`. Campaigns still treat a row without an identity as an incomplete collection.
+- Campaign collections no longer stay incomplete on Postgres. Resumed cursor pages intentionally omit the total, so only the first page's exact total binds the walk, and any later page reporting a different total still fails the walk.
+
 ## [0.108.2] - 2026-10-08
 
 ### Changed

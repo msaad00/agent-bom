@@ -21,6 +21,7 @@ from agent_bom.api.scan_queue import (
     distributed_scans_enabled,
     store_supports_dispatch,
 )
+from agent_bom.api.storage.job_payload_cache import JobPayloadCache
 
 
 def _job(job_id: str, tenant: str = "acme", created_at: str = "2026-06-15T00:00:00Z") -> ScanJob:
@@ -80,9 +81,10 @@ class _FakeJobConn:
             return _Cur(rowcount=n)
         if "count(*) from scan_dispatch_queue" in s:
             return _Cur([(sum(1 for r in rows.values() if r["status"] == "pending"),)])
-        if "select data from scan_jobs where job_id" in s:
-            job = jobs.get(p[0])
-            return _Cur([(job.model_dump_json(),)] if job else [])
+        if "from scan_jobs where job_id" in s and "concat_ws" in s:
+            # Versioned payload read: (team_id, version token, payload); every read is a new version.
+            job = jobs.get(p[1])
+            return _Cur([(job.tenant_id, f"{job.tenant_id}\x1f{job.job_id}\x1f{uuid4().hex}\x1f0", job.model_dump_json())] if job else [])
         return _Cur([])
 
     def commit(self):
@@ -119,6 +121,7 @@ def _make_store(state):
     store = object.__new__(PostgresJobStore)  # skip _init_tables (DDL)
     store._pool = _FakeJobPool(state)
     store._maintenance_pool = _FakeJobPool(state)
+    store._payloads = JobPayloadCache()
     return store
 
 

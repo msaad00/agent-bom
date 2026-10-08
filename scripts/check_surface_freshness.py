@@ -631,7 +631,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("Smithery catalog identity or remote metadata is invalid")
             observed = _smithery_public_contract(args.smithery_server, data.get("tools"), **kw)
         except (OSError, RuntimeError, ValueError, RecursionError) as exc:
-            raise SystemExit("complete Smithery schema evidence is unavailable or inconsistent") from exc
+            reason = " ".join(f"{type(exc).__name__}: {exc}".split())[:200]
+            raise SystemExit(f"complete Smithery schema evidence is unavailable or inconsistent ({reason})") from exc
         args.write_smithery_tool_contract.write_text(
             json.dumps(observed, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )

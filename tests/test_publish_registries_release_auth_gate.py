@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "publish-registries.yml"
 
 
-@pytest.mark.parametrize("schema_failures,expected_attempts,expected_status", [(1, 2, 0), (12, 12, 1)])
+@pytest.mark.parametrize("schema_failures,expected_attempts,expected_status", [(1, 2, 0), (30, 30, 1)])
 def test_smithery_catalog_retries_schema_fetch_and_fails_closed(tmp_path, schema_failures, expected_attempts, expected_status):
     workflow = yaml.safe_load(WORKFLOW.read_text())
     step = next(step for step in workflow["jobs"]["smithery"]["steps"] if step.get("name") == "Verify Smithery catalog inventory")

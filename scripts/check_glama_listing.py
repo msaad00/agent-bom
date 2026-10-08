@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,6 +26,29 @@ DEFAULT_URL = "https://glama.ai/mcp/servers/msaad00/agent-bom"
 DEFAULT_API_URL = "https://glama.ai/api/mcp/v1/servers/msaad00/agent-bom"
 DEFAULT_SCHEMA_URL = f"{DEFAULT_URL}/schema"
 _MAX_TOOL_NAMES_BYTES = 2 * 1024 * 1024
+# Distinct from failure: Glama has not yet rebuilt from a release that is still
+# inside the bounded provider-sync grace window.
+EXIT_PROVIDER_SYNC_PENDING = 3
+_RELEASE_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+PROVIDER_SYNC_ACTION = (
+    "Glama syncs linked GitHub repositories automatically; for an immediate provider-side "
+    "refresh, use Sync Server in the Glama admin interface, then rerun this verification."
+)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _hours_since_release(published_at: str) -> float:
+    """Return elapsed hours since a GitHub release ``published_at`` timestamp."""
+    if not _RELEASE_TIMESTAMP.fullmatch(published_at):
+        raise SystemExit("--release-published-at must be a UTC timestamp like 2026-10-06T17:40:00Z")
+    published = datetime.strptime(published_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    elapsed = (_utcnow() - published).total_seconds() / 3600
+    if elapsed < 0:
+        raise SystemExit("--release-published-at is in the future")
+    return elapsed
 
 
 def _env_or(name: str, default: str) -> str:
@@ -509,7 +533,25 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Write the exact static MCP tool-name list parsed from --git-ref, then exit.",
     )
+    parser.add_argument(
+        "--release-published-at",
+        default=None,
+        help="GitHub release publish time (UTC, e.g. 2026-10-06T17:40:00Z) used for the provider-sync grace.",
+    )
+    parser.add_argument(
+        "--provider-sync-grace-hours",
+        type=float,
+        default=0,
+        help=(
+            "Within this many hours of --release-published-at, a stale or unreachable listing exits "
+            f"{EXIT_PROVIDER_SYNC_PENDING} (pending provider sync) instead of 1. 0 disables the grace."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.provider_sync_grace_hours < 0:
+        raise SystemExit("--provider-sync-grace-hours must not be negative")
+    if args.release_published_at:
+        _hours_since_release(args.release_published_at)
 
     if args.write_tool_names:
         names = _release_tool_names(args.git_ref)
@@ -702,12 +744,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Glama listing freshness check failed on attempt {attempt}/{args.retries}: {last_error}")
             time.sleep(args.delay_seconds)
 
+    hours_since_release: float | None = None
+    if args.release_published_at:
+        hours_since_release = _hours_since_release(args.release_published_at)
+    sync_pending = hours_since_release is not None and hours_since_release < args.provider_sync_grace_hours
+    if sync_pending:
+        status = "pending_provider_sync"
+    else:
+        status = "unreachable" if last_probe_unreachable else "stale"
     if args.json:
         print(
             json.dumps(
                 {
                     "surface": "Glama",
-                    "status": "unreachable" if last_probe_unreachable else "stale",
+                    "status": status,
                     "expected": version,
                     "listing_version": listing_version,
                     "profile_version": profile_version,
@@ -719,10 +769,20 @@ def main(argv: list[str] | None = None) -> int:
                     "exact_input_schemas": exact_input_schemas,
                     "degraded_reason": degraded_reason,
                     "error": last_error,
+                    "hours_since_release": None if hours_since_release is None else round(hours_since_release, 1),
+                    "provider_sync_grace_hours": args.provider_sync_grace_hours,
                 },
                 separators=(",", ":"),
             )
         )
+    if sync_pending:
+        print(
+            f"Glama listing for agent-bom v{version} is pending provider sync: release published "
+            f"{hours_since_release:.1f}h ago, inside the {args.provider_sync_grace_hours:g}h grace.\n"
+            f"{last_error}\n{PROVIDER_SYNC_ACTION}",
+            file=sys.stderr,
+        )
+        return EXIT_PROVIDER_SYNC_PENDING
     print(f"ERROR: Glama listing is stale or unreachable:\n{last_error}", file=sys.stderr)
     return 1
 

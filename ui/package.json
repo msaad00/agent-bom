@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
-    "@tanstack/react-table": "9.2.5",
+    "@tanstack/react-table": "9.2.6",
     "@tanstack/react-virtual": "^3.14.13",
     "@xyflow/react": "^12.12.0",
     "graphology": "^0.26.0",

@@ -63,6 +63,9 @@ Cloud connectors and fleet sync collect inventory; proxy and gateway deployments
 
 ## Quick start
 
+<details>
+<summary>Scan a repository, try the sample estate, or connect your assistant</summary>
+
 **Scan a repository and keep the evidence:**
 
 ```bash
@@ -121,6 +124,8 @@ add the ecosystems you need before running `agent-bom scan . --offline`.
 The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
 A non-zero exit can mean a security gate or incomplete assessment: inspect the
 report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
+
+</details>
 
 </details>
 

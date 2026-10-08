@@ -438,4 +438,6 @@ def test_readme_application_captures_use_standard_viewports() -> None:
         data = path.read_bytes()
         assert data[:8] == b"\x89PNG\r\n\x1a\n", name
         expected = (390, 844) if "-mobile-" in name else (1440, 900)
+        if name.startswith("context-map-horizontal-"):
+            expected = (1000, 900)
         assert struct.unpack(">II", data[16:24]) == expected, name

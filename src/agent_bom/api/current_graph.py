@@ -29,6 +29,7 @@ from agent_bom.api.findings_current import _finding_snapshot_jobs, scan_collecti
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import JobStatus
 from agent_bom.api.neptune_graph import NeptuneGraphStore
+from agent_bom.core.settings import env_raw
 from agent_bom.graph import UnifiedGraph
 from agent_bom.storage.state_home import state_dir
 
@@ -68,7 +69,7 @@ def _durable_locator(graph_store: Any) -> str:
     if isinstance(graph_store, SQLiteGraphStore):
         return "sqlite:" + str(Path(graph_store._db_path).expanduser().resolve())
     if type(graph_store).__module__ == "agent_bom.api.postgres_graph":
-        return "postgres:" + (os.environ.get("AGENT_BOM_POSTGRES_URL") or os.environ.get("AGENT_BOM_DB") or "").strip()
+        return "postgres:" + (env_raw("AGENT_BOM_POSTGRES_URL") or env_raw("AGENT_BOM_DB") or "").strip()
     return ""
 
 
@@ -78,14 +79,15 @@ def _durable_cache_path(graph_store: Any) -> Path | None:
     if not locator:
         return None
     directory = state_dir() / "current-estate-cache"
+    path = directory / f"{_digest(locator)[:24]}.db"
     try:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(directory, 0o700)
+        os.close(os.open(path, os.O_CREAT | os.O_RDWR, 0o600))
+        os.chmod(path, 0o600)
     except OSError:
         return None
-    if not os.access(directory, os.W_OK | os.X_OK):
-        return None
-    return directory / f"{_digest(locator)[:24]}.db"
+    return path
 
 
 class CurrentGraphStore:

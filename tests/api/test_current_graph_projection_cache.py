@@ -93,6 +93,7 @@ def test_projection_cache_is_private_to_the_backing_store(estate, tmp_path):
     store.load_graph(tenant_id=TENANT)
     cache_dir = os.path.dirname(store._cache_path)
     assert stat.S_IMODE(os.stat(cache_dir).st_mode) == 0o700
+    assert stat.S_IMODE(os.stat(store._cache_path).st_mode) == 0o600
 
     other = CurrentGraphStore(SQLiteGraphStore(str(tmp_path / "other-graph.db")), estate[0])
     assert other._cache_path != store._cache_path

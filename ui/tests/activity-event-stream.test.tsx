@@ -72,7 +72,8 @@ describe("ActivityEventStream", () => {
     );
     expect(screen.getByText("review-agent → repository.read")).toBeInTheDocument();
     expect(screen.getByText("Live transport")).toBeInTheDocument();
-    expect(screen.getAllByText("Producer unknown").length).toBeGreaterThan(0);
+    // Unknown producer is stated once for the stream, not repeated on every row.
+    expect(screen.getAllByText("Producer unknown")).toHaveLength(1);
 
     fireEvent.click(screen.getByText("build-agent → filesystem.write_file"));
 

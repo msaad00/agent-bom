@@ -56,6 +56,7 @@ function ActivityPage() {
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [streamEventCount, setStreamEventCount] = useState<number | null>(null);
   const requestedDays = activityWindowFromParams(searchParams);
   const [days, setDays] = useState(requestedDays);
   const [search, setSearch] = useState("");
@@ -175,7 +176,10 @@ function ActivityPage() {
             Agent Activity Timeline
           </h1>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            {(timeline.event_count ?? events.length).toLocaleString()} events across the last {timeline.window_days} days
+            {streamEventCount != null
+              ? `${streamEventCount.toLocaleString()} recent stream events · `
+              : ""}
+            {(timeline.event_count ?? events.length).toLocaleString()} runtime events in the last {timeline.window_days} days
             {timeline.truncated ? " (showing the most recent 500)" : ""}
           </p>
         </div>
@@ -192,7 +196,10 @@ function ActivityPage() {
         </select>
       </div>
 
-      <ActivityEventStream observabilityEvents={warehouse?.observability_events ?? []} />
+      <ActivityEventStream
+        observabilityEvents={warehouse?.observability_events ?? []}
+        onEventCountChange={setStreamEventCount}
+      />
 
       {/* Which sources are feeding this page, and which are not. An operator
           who cannot tell "quiet" from "unconfigured" cannot act on either. */}

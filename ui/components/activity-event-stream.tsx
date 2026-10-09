@@ -31,6 +31,7 @@ interface ActivityEvent {
   traceId: string | null;
   provenance: string | null;
   producerEvidence: string | null;
+  producerKnown: boolean;
   detail: string | null;
   blocked: boolean;
 }
@@ -62,6 +63,7 @@ function normalizeGatewayEvent(event: GatewayFeedEvent, index: number): Activity
     traceId: event.trace_id?.trim() || null,
     provenance: event.source?.trim() || null,
     producerEvidence: producerEvidenceLabel(event.producer_assurance),
+    producerKnown: event.producer_assurance === "caller_asserted",
     detail: event.detail?.trim() || null,
     blocked: event.action_type === "tool_call_blocked",
   };
@@ -88,6 +90,7 @@ function normalizeObservabilityEvent(event: ObservabilityEvent): ActivityEvent {
     traceId: event.trace_id?.trim() || null,
     provenance: event.trace_id?.trim() ? "Trace telemetry" : null,
     producerEvidence: null,
+    producerKnown: false,
     detail: null,
     blocked: event.status === "FAILED" || event.status === "DENIED",
   };
@@ -119,10 +122,13 @@ function display(value: string | number | null): string {
 
 export interface ActivityEventStreamProps {
   observabilityEvents: ObservabilityEvent[];
+  /** Reports how many events the stream holds (before search) so headers agree with it. */
+  onEventCountChange?: ((count: number) => void) | undefined;
 }
 
 export function ActivityEventStream({
   observabilityEvents,
+  onEventCountChange,
 }: ActivityEventStreamProps) {
   const [gatewayEvents, setGatewayEvents] = useState<GatewayFeedEvent[]>([]);
   const [gatewayHealth, setGatewayHealth] = useState<GatewayFeedHealth | null>(null);
@@ -157,11 +163,21 @@ export function ActivityEventStream({
     };
   }, []);
 
+  const allEvents = useMemo(
+    () =>
+      [
+        ...gatewayEvents.map(normalizeGatewayEvent),
+        ...observabilityEvents.map(normalizeObservabilityEvent),
+      ].sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp)),
+    [gatewayEvents, observabilityEvents],
+  );
+
+  useEffect(() => {
+    if (!gatewayLoading) onEventCountChange?.(allEvents.length);
+  }, [allEvents.length, gatewayLoading, onEventCountChange]);
+
   const events = useMemo(() => {
-    const normalized = [
-      ...gatewayEvents.map(normalizeGatewayEvent),
-      ...observabilityEvents.map(normalizeObservabilityEvent),
-    ].sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp));
+    const normalized = allEvents;
     const query = search.trim().toLowerCase();
     if (!query) return normalized;
     return normalized.filter((event) =>
@@ -175,7 +191,7 @@ export function ActivityEventStream({
         event.traceId,
       ].some((value) => value?.toLowerCase().includes(query)),
     );
-  }, [gatewayEvents, observabilityEvents, search]);
+  }, [allEvents, search]);
 
   const liveGateway = gatewayHealth?.state === "live" && gatewayHealth.live === true;
 
@@ -248,7 +264,7 @@ export function ActivityEventStream({
                   </span>
                   <span className="mt-0.5 block truncate text-xs text-[var(--text-tertiary)]">
                     {event.source} · {event.kind} · {display(event.decision)}
-                    {event.producerEvidence ? <> · <span title={PRODUCER_EVIDENCE_HINT}>{event.producerEvidence}</span></> : null}
+                    {event.producerKnown && event.producerEvidence ? <> · <span title={PRODUCER_EVIDENCE_HINT}>{event.producerEvidence}</span></> : null}
                   </span>
                 </span>
                 <time className="whitespace-nowrap text-[10px] tabular-nums text-[var(--text-tertiary)]">

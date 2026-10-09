@@ -1,22 +1,21 @@
-"""EU AI Act risk classification — map findings to relevant articles.
+"""EU AI Act — map technical findings to the articles whose requirements they concern.
 
-Maps agent-bom blast radius findings to key articles of the EU Artificial
-Intelligence Act (Regulation (EU) 2024/1689).  Every finding triggers at
-minimum ART-9 (risk management) and ART-15 (cybersecurity), since any CVE
-in an AI agent dependency tree requires both.
+Maps agent-bom blast radius findings to articles of the EU Artificial
+Intelligence Act (Regulation (EU) 2024/1689). A tag means "this technical
+evidence is relevant to the requirement in Article N"; it is never a legal
+classification of the system. Whether a system is prohibited (Art. 5) or
+high-risk (Art. 6) depends on its intended purpose and context of use, which
+cannot be inferred from dependencies or tools, so those articles are never
+tagged.
 
-Reference: https://artificialintelligenceact.eu/
+Reference: https://eur-lex.europa.eu/eli/reg/2024/1689/oj
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
-from agent_bom.constants import critical_severities
 from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
-
-_CRITICAL = critical_severities()
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -24,12 +23,13 @@ if TYPE_CHECKING:
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
+# Article titles as published in Regulation (EU) 2024/1689.
 EU_AI_ACT: dict[str, str] = {
-    "ART-5": "Prohibited AI Practices",
-    "ART-6": "High-Risk AI System Classification",
     "ART-9": "Risk Management System",
-    "ART-10": "Data & Data Governance",
-    "ART-15": "Accuracy, Robustness & Cybersecurity",
+    "ART-10": "Data and Data Governance",
+    "ART-12": "Record-Keeping",
+    "ART-14": "Human Oversight",
+    "ART-15": "Accuracy, Robustness and Cybersecurity",
     "ART-17": "Quality Management System",
 }
 
@@ -38,53 +38,41 @@ EU_AI_ACT: dict[str, str] = {
 
 
 def tag_blast_radius(br: BlastRadius) -> list[str]:
-    """Return sorted EU AI Act article codes applicable to this blast radius.
+    """Return sorted EU AI Act article codes this blast radius is evidence for.
 
     Rules:
-    - ART-5:  Credentials + EXECUTE + CRITICAL severity (autonomous harm potential).
-    - ART-6:  AI framework package present (high-risk system classification).
-    - ART-9:  Always — any CVE triggers risk management requirement.
-    - ART-10: READ-capable tools + credentials (data governance concern).
-    - ART-15: Always — any cybersecurity finding.
-    - ART-17: Fixable vulnerability exists (quality management remediation needed).
+    - ART-9:  Always — an identified risk feeds the risk management system.
+    - ART-15: Always — a vulnerable dependency or exposed credential is a
+              cybersecurity/robustness weakness.
+    - ART-14: A reachable tool can EXECUTE, so the agent can act without a
+              human in the loop.
+    - ART-12: The weakness undermines event logging (log injection,
+              insufficient logging CWEs).
+    - ART-17: A fixed version exists (remediation through the QMS).
+
+    ART-10 is evidenced only by dataset findings (``parsers.compliance_tags``),
+    never by a package CVE.
     """
-    tags: set[str] = {
-        "ART-9",  # always — risk management
-        "ART-15",  # always — cybersecurity
-    }
+    tags: set[str] = {"ART-9", "ART-15"}
 
-    has_exec = False
-    has_read = False
     for tool in br.exposed_tools:
-        caps = classify_mcp_tool(tool)
-        if ToolCapability.EXECUTE in caps:
-            has_exec = True
-        if ToolCapability.READ in caps:
-            has_read = True
+        if ToolCapability.EXECUTE in classify_mcp_tool(tool):
+            tags.add("ART-14")
+            break
 
-    is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
-
-    # ART-5 — prohibited practices: credentials + exec + critical (autonomous harm)
-    if br.exposed_credentials and has_exec and br.vulnerability.severity in _CRITICAL:
-        tags.add("ART-5")
-
-    # ART-6 — high-risk classification: AI framework package
-    if is_ai_pkg:
-        tags.add("ART-6")
-
-    # ART-10 — data governance: read tools + credentials
-    if has_read and br.exposed_credentials:
-        tags.add("ART-10")
-
-    # ART-17 — quality management: fixable vulnerability
     if br.vulnerability.fixed_version:
         tags.add("ART-17")
+
+    if br.vulnerability.cwe_ids:
+        from agent_bom.framework_mapping import controls_for_cwes
+
+        tags.update(controls_for_cwes(br.vulnerability.cwe_ids, "eu_ai_act"))
 
     return sorted(tags)
 
 
 def eu_ai_act_label(code: str) -> str:
-    """Return human-readable label, e.g. 'ART-15 Accuracy, Robustness & Cybersecurity'."""
+    """Return human-readable label, e.g. 'ART-15 Accuracy, Robustness and Cybersecurity'."""
     name = EU_AI_ACT.get(code, "Unknown")
     return f"{code} {name}"
 

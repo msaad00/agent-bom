@@ -95,7 +95,7 @@ def test_vuln_compliance_cwe_tagging_for_pypi():
 
     # CWE-89 should map to owasp_llm tags (via CWE_COMPLIANCE_MAP)
     assert "owasp_llm" in tags
-    assert "LLM02" in tags["owasp_llm"]
+    assert "LLM05" in tags["owasp_llm"]
 
 
 def test_vuln_compliance_no_cwe_no_extra_tags():
@@ -115,9 +115,9 @@ def test_vuln_compliance_no_cwe_no_extra_tags():
     # Should still have base tags (nist_csf, cis, iso_27001 etc.) but
     # no CWE-derived extras
     assert "nist_csf" in tags
-    # LLM02 is a CWE-derived tag — should NOT appear without CWE data
+    # LLM05 is a CWE-derived tag — should NOT appear without CWE data
     for framework_tags in tags.values():
-        assert "LLM02" not in framework_tags
+        assert "LLM05" not in framework_tags
 
 
 def test_blast_radius_cwe_tagging_owasp():
@@ -143,7 +143,7 @@ def test_blast_radius_cwe_tagging_owasp():
     )
 
     tags = tag_blast_radius(br)
-    assert "LLM02" in tags
+    assert "LLM05" in tags
 
 
 def test_blast_radius_cwe_tagging_nist_csf():

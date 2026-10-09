@@ -23,16 +23,16 @@ if TYPE_CHECKING:
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
 OWASP_AGENTIC_TOP10: dict[str, str] = {
-    "ASI01": "Excessive Agency & Autonomy",
+    "ASI01": "Agent Goal Hijack",
     "ASI02": "Tool Misuse & Exploitation",
     "ASI03": "Identity & Privilege Abuse",
     "ASI04": "Agentic Supply Chain Vulnerabilities",
     "ASI05": "Unexpected Code Execution",
     "ASI06": "Memory & Context Poisoning",
     "ASI07": "Insecure Inter-Agent Communication",
-    "ASI08": "Cascading Hallucination Failures",
+    "ASI08": "Cascading Failures",
     "ASI09": "Human-Agent Trust Exploitation",
-    "ASI10": "Rogue Agent Persistence",
+    "ASI10": "Rogue Agents",
 }
 
 _HIGH_RISK = high_risk_severities()
@@ -45,7 +45,6 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return sorted OWASP Agentic Top 10 codes applicable to this blast radius.
 
     Rules:
-    - ASI01: Always — any agent CVE implies autonomy risk.
     - ASI02: Exposed tools + HIGH+ severity (tool misuse via exploit).
     - ASI03: Credentials exposed + elevated permissions.
     - ASI04: Always — supply chain is core domain.
@@ -53,19 +52,14 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - ASI06: READ-capable tools + AI framework package.
     - ASI07: >1 affected agent (cross-agent blast radius).
     - ASI08: AI framework + HIGH+ severity + >3 tools (cascading risk).
-    - ASI09: Always — any vuln in agent stack = trust exploitation risk.
-    - ASI10: Credentials + EXECUTE capability + HIGH+ (persistent rogue).
+    - ASI10: Credentials + EXECUTE capability + HIGH+ (rogue agent potential).
     """
     # Agentic tags only apply when there are actual agents in the blast radius.
     # A container image scan with no agent context should NOT get Agentic tags.
     if not br.affected_agents:
         return []
 
-    tags: set[str] = {
-        "ASI01",  # autonomy risk (within agentic context)
-        "ASI04",  # supply chain (within agentic context)
-        "ASI09",  # trust exploitation (within agentic context)
-    }
+    tags: set[str] = {"ASI04"}  # supply chain (within agentic context)
 
     has_exec = False
     has_read = False
@@ -107,7 +101,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if is_ai_pkg and is_high and len(br.exposed_tools) > 3:
         tags.add("ASI08")
 
-    # ASI10 — rogue agent persistence: creds + exec + high severity
+    # ASI10 — rogue agents: creds + exec + high severity
     if br.exposed_credentials and has_exec and is_high:
         tags.add("ASI10")
 

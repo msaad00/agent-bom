@@ -372,7 +372,7 @@ def print_compact_agents(report: AIBOMReport) -> None:
     table.add_column("Vulns", justify="right")
 
     for a in configured:
-        n_servers = len(a.mcp_servers)
+        n_servers = a.total_mcp_servers
         n_pkgs = sum(len(s.packages) for s in a.mcp_servers)
         n_creds = sum(len(s.credential_names) for s in a.mcp_servers)
         n_vulns = sum(s.total_vulnerabilities for s in a.mcp_servers)

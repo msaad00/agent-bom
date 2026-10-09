@@ -282,7 +282,7 @@ dev-all = [
 ]
 
 [project.scripts]
-agent-bom = "agent_bom.cli:cli_main"
+agent-bom = "agent_bom.__main__:cli_main"
 agent-shield = "agent_bom.cli.shield:shield_main"
 agent-cloud = "agent_bom.cli.cloud:cloud_main"
 agent-iac = "agent_bom.cli.iac:iac_main"

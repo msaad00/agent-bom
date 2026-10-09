@@ -6,6 +6,7 @@ from agent_bom.constants import (
     AI_PACKAGES,
     SENSITIVE_PATTERNS,
     TRAINING_DATA_PACKAGES,
+    VECTOR_STORE_PACKAGES,
     critical_severities,
     high_risk_severities,
     is_credential_key,
@@ -151,10 +152,14 @@ class TestSensitivePatterns:
 
 
 class TestCrossModuleConsistency:
-    def test_owasp_uses_shared_ai_packages(self):
-        from agent_bom.owasp import _AI_PACKAGES
+    def test_owasp_uses_shared_package_catalogs(self):
+        from agent_bom.owasp import _TRAINING_DATA_PACKAGES, _VECTOR_STORE_PACKAGES
 
-        assert _AI_PACKAGES is AI_PACKAGES
+        assert _TRAINING_DATA_PACKAGES is TRAINING_DATA_PACKAGES
+        assert _VECTOR_STORE_PACKAGES is VECTOR_STORE_PACKAGES
+
+    def test_vector_stores_are_ai_packages(self):
+        assert VECTOR_STORE_PACKAGES <= AI_PACKAGES
 
     def test_atlas_uses_shared_ai_packages(self):
         from agent_bom.atlas import _AI_PACKAGES
@@ -166,17 +171,7 @@ class TestCrossModuleConsistency:
 
         assert _AI_PACKAGES is AI_PACKAGES
 
-    def test_eu_ai_act_uses_shared_ai_packages(self):
-        from agent_bom.eu_ai_act import _AI_PACKAGES
-
-        assert _AI_PACKAGES is AI_PACKAGES
-
     def test_owasp_agentic_uses_shared_ai_packages(self):
         from agent_bom.owasp_agentic import _AI_PACKAGES
 
         assert _AI_PACKAGES is AI_PACKAGES
-
-    def test_eu_ai_act_uses_critical_severities(self):
-        from agent_bom.eu_ai_act import _CRITICAL
-
-        assert _CRITICAL == critical_severities()

@@ -34,7 +34,7 @@ def test_hardcoded_credential_maps_to_identity_and_credential_controls() -> None
     assert "PR.AA-01" in finding.nist_csf_tags
     assert "CC6.1" in finding.soc2_tags
     assert "IA-5" in finding.nist_800_53_tags
-    assert "LLM06" in finding.owasp_tags
+    assert "LLM02" in finding.owasp_tags  # Sensitive Information Disclosure (2025)
     # ISO comes through NIST's published IA-5 crosswalk, never a vendor catch-all.
     assert "A.5.17" in finding.iso_27001_tags
     # A secret in an application settings file is not MCP token mismanagement.
@@ -54,7 +54,7 @@ def test_personal_data_maps_to_data_protection_not_credential_controls() -> None
     finding = _secret(type="US SSN", category="pii", severity="medium")
     assert "PR.DS-01" in finding.nist_csf_tags
     assert "SC-28" in finding.nist_800_53_tags
-    assert "LLM06" in finding.owasp_tags
+    assert "LLM02" in finding.owasp_tags  # Sensitive Information Disclosure (2025)
     # Personal data is not a credential: no identity-management or rotation claim.
     assert "PR.AA-01" not in finding.nist_csf_tags
     assert "IA-5" not in finding.nist_800_53_tags
@@ -79,7 +79,7 @@ def test_first_party_code_flaw_maps_to_secure_development_controls() -> None:
     assert "CIS-16.1" in finding.cis_tags
     # CWE-78 row: input validation + malicious-code controls.
     assert {"SI-10", "SI-3"} <= set(finding.nist_800_53_tags)
-    assert "LLM02" in finding.owasp_tags
+    assert "LLM05" in finding.owasp_tags  # Improper Output Handling (2025)
 
 
 def test_code_flaw_without_a_cwe_still_maps_to_secure_development() -> None:

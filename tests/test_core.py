@@ -2805,39 +2805,39 @@ def test_grype_scan_mock(monkeypatch, tmp_path):
     assert vuln.fixed_version == "2.31.0"
 
 
-def test_owasp_lm05_every_vulnerable_package(sample_report):
-    """LLM05 ("Supply Chain Vulnerabilities") applies to every vulnerable package.
+def test_owasp_llm03_every_vulnerable_package(sample_report):
+    """LLM03 ("Supply Chain", 2025) applies to every vulnerable package.
 
     The earlier narrow allow-list missed generic transport / HTTP / template
     packages (starlette, requests, jinja2, form-data, etc.) that are reachable
     from an agent via an MCP server and therefore ARE supply-chain risk by
-    OWASP's own definition. Every BlastRadius now carries LLM05.
+    OWASP's own definition. Every BlastRadius now carries LLM03.
     """
     from agent_bom.owasp import tag_blast_radius
 
     br = sample_report.blast_radii[0]
     # sample_report uses "test-pkg" (generic) — still a supply-chain finding
     br.owasp_tags = tag_blast_radius(br)
-    assert "LLM05" in br.owasp_tags
+    assert "LLM03" in br.owasp_tags
 
-    # AI framework package — also LLM05 (supply chain) plus AI-specific tags
+    # AI framework package — also LLM03 (supply chain)
     br.package = Package(name="langchain", version="0.1.0", ecosystem="pypi")
     br.owasp_tags = tag_blast_radius(br)
-    assert "LLM05" in br.owasp_tags
+    assert "LLM03" in br.owasp_tags
 
 
-def test_owasp_lm06_credential_exposure(sample_report):
-    """Credential exposure triggers LLM06 tagging."""
+def test_owasp_llm02_credential_exposure(sample_report):
+    """Credential exposure triggers LLM02 (Sensitive Information Disclosure)."""
     from agent_bom.owasp import tag_blast_radius
 
     br = sample_report.blast_radii[0]
     br.exposed_credentials = ["OPENAI_API_KEY"]
     br.owasp_tags = tag_blast_radius(br)
-    assert "LLM06" in br.owasp_tags
+    assert "LLM02" in br.owasp_tags
 
 
-def test_owasp_lm08_excessive_agency(sample_report):
-    """More than 5 exposed tools + HIGH/CRITICAL severity triggers LLM08."""
+def test_owasp_llm06_excessive_agency(sample_report):
+    """More than 5 exposed tools + HIGH/CRITICAL severity triggers LLM06 (Excessive Agency)."""
     from agent_bom.models import MCPTool, Severity
     from agent_bom.owasp import tag_blast_radius
 
@@ -2845,7 +2845,7 @@ def test_owasp_lm08_excessive_agency(sample_report):
     br.vulnerability.severity = Severity.CRITICAL
     br.exposed_tools = [MCPTool(name=f"tool_{i}", description="") for i in range(6)]
     br.owasp_tags = tag_blast_radius(br)
-    assert "LLM08" in br.owasp_tags
+    assert "LLM06" in br.owasp_tags
 
 
 def test_owasp_tags_in_json_output(sample_report):
@@ -3369,9 +3369,9 @@ def test_scenario_enterprise_multi_agent():
     assert br2.risk_score > br1.risk_score  # CRITICAL > HIGH
 
     # OWASP: supply-chain + credential + file-tool signals all fire
-    assert "LLM05" in br1.owasp_tags  # every vulnerable package is supply-chain
-    assert "LLM06" in br1.owasp_tags  # credentials exposed
-    assert "LLM07" in br1.owasp_tags  # read_file tool
+    assert "LLM03" in br1.owasp_tags  # every vulnerable package is supply-chain
+    assert "LLM02" in br1.owasp_tags  # credentials exposed / read_file tool
+    assert "LLM07" not in br1.owasp_tags  # read tools are not system prompt leakage
 
     # ATLAS: supply chain + credentials + prompt extraction
     assert "AML.T0010" in br1.atlas_tags
@@ -3521,12 +3521,11 @@ def test_scenario_high_privilege_mcp_server():
     assert br.risk_score >= 9.0
 
     # OWASP: every relevant tag should fire
-    assert "LLM05" in br.owasp_tags  # supply chain
-    assert "LLM06" in br.owasp_tags  # credential exposure
-    assert "LLM02" in br.owasp_tags  # shell exec
-    assert "LLM07" in br.owasp_tags  # file/prompt read
-    assert "LLM08" in br.owasp_tags  # excessive agency (>5 tools + CRITICAL)
-    assert "LLM04" in br.owasp_tags  # AI framework + CRITICAL
+    assert "LLM03" in br.owasp_tags  # supply chain
+    assert "LLM02" in br.owasp_tags  # credential exposure / file read
+    assert "LLM05" in br.owasp_tags  # shell exec (improper output handling)
+    assert "LLM06" in br.owasp_tags  # excessive agency (>5 tools + CRITICAL)
+    assert "LLM04" not in br.owasp_tags  # langchain is not a training-data package
 
     # ATLAS: maximum threat surface
     assert "AML.T0010" in br.atlas_tags  # supply chain (always)
@@ -3686,12 +3685,12 @@ def test_json_framework_summary_structure(sample_report):
         assert "triggered" in entry
 
 
-def test_json_framework_lm05_triggers_for_every_vulnerable_package(sample_report):
-    """LLM05 ("Supply Chain Vulnerabilities") triggers for every vulnerable package.
+def test_json_framework_llm03_triggers_for_every_vulnerable_package(sample_report):
+    """LLM03 ("Supply Chain", 2025) triggers for every vulnerable package.
 
     Generic transport / HTTP / template packages that an agent depends on are
     supply-chain risk by OWASP's own definition, so their blast-radius rows
-    trigger LLM05 in the JSON threat-framework summary.
+    trigger LLM03 in the JSON threat-framework summary.
     """
     from agent_bom.owasp import tag_blast_radius as tag_owasp
 
@@ -3702,10 +3701,9 @@ def test_json_framework_lm05_triggers_for_every_vulnerable_package(sample_report
 
     data = to_json(sample_report)
     owasp_entries = {e["code"]: e for e in data["threat_framework_summary"]["owasp_llm_top10"]}
-    assert owasp_entries["LLM05"]["triggered"] is True
+    assert owasp_entries["LLM03"]["triggered"] is True
 
-    # AI package also triggers LLM05 (supply chain) — and will also fire
-    # AI-specific signals like LLM03 / LLM04 in richer scenarios
+    # AI package also triggers LLM03 (supply chain)
     ai_br = BlastRadius(
         vulnerability=Vulnerability(id="CVE-2024-AI", summary="AI vuln", severity=Severity.HIGH),
         package=Package(name="langchain", version="0.1.0", ecosystem="pypi"),
@@ -3716,11 +3714,11 @@ def test_json_framework_lm05_triggers_for_every_vulnerable_package(sample_report
     )
     ai_br.calculate_risk_score()
     ai_br.owasp_tags = tag_owasp(ai_br)
-    assert "LLM05" in ai_br.owasp_tags
+    assert "LLM03" in ai_br.owasp_tags
 
 
-def test_json_framework_lm06_with_credentials(sample_report):
-    """LLM06 (Sensitive Information Disclosure) triggers when credentials are exposed."""
+def test_json_framework_llm02_with_credentials(sample_report):
+    """LLM02 (Sensitive Information Disclosure) triggers when credentials are exposed."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
 
     # sample_report has exposed_credentials=["API_KEY"]
@@ -3730,7 +3728,7 @@ def test_json_framework_lm06_with_credentials(sample_report):
 
     data = to_json(sample_report)
     owasp_entries = {e["code"]: e for e in data["threat_framework_summary"]["owasp_llm_top10"]}
-    assert owasp_entries["LLM06"]["triggered"] is True
+    assert owasp_entries["LLM02"]["triggered"] is True
 
 
 def test_json_framework_atlas_t0010_for_confirmed_agent_path(sample_report):
@@ -4480,8 +4478,8 @@ def test_make_console_default_has_color():
     assert con.no_color is False
 
 
-def test_owasp_llm03_training_data_poisoning():
-    """LLM03 is tagged when a training-data package has any CVE."""
+def test_owasp_llm04_data_and_model_poisoning():
+    """LLM04 (Data and Model Poisoning) is tagged when a training-data package has any CVE."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
 
     br = BlastRadius(
@@ -4493,12 +4491,12 @@ def test_owasp_llm03_training_data_poisoning():
         exposed_tools=[],
     )
     tags = tag_owasp(br)
-    assert "LLM03" in tags
-    assert "LLM05" in tags  # always present
+    assert "LLM04" in tags
+    assert "LLM03" in tags  # supply chain, always present
 
 
-def test_owasp_llm03_for_transformers():
-    """LLM03 is tagged for transformers (training framework)."""
+def test_owasp_llm04_for_transformers():
+    """LLM04 is tagged for transformers (training framework)."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
 
     br = BlastRadius(
@@ -4510,13 +4508,13 @@ def test_owasp_llm03_for_transformers():
         exposed_tools=[],
     )
     tags = tag_owasp(br)
+    assert "LLM04" in tags
     assert "LLM03" in tags
-    assert "LLM04" in tags  # also HIGH+ AI framework
-    assert "LLM05" in tags
+    assert tags.count("LLM04") == 1
 
 
-def test_owasp_llm03_not_for_non_training_package():
-    """LLM03 is NOT tagged for non-training packages like openai client."""
+def test_owasp_llm04_not_for_non_training_package():
+    """LLM04 is NOT tagged for non-training packages like the openai client."""
     from agent_bom.owasp import tag_blast_radius as tag_owasp
 
     br = BlastRadius(
@@ -4528,8 +4526,8 @@ def test_owasp_llm03_not_for_non_training_package():
         exposed_tools=[],
     )
     tags = tag_owasp(br)
-    assert "LLM03" not in tags
-    assert "LLM04" in tags  # still gets LLM04 (AI framework + HIGH)
+    assert "LLM04" not in tags  # a CVE in an AI client is not poisoning
+    assert "LLM03" in tags
 
 
 def test_rag_vector_stores_in_ai_packages():

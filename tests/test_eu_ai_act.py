@@ -48,33 +48,28 @@ def test_catalog_has_six_articles():
     assert len(EU_AI_ACT) == 6
 
 
-def test_art5_prohibited_practices_needs_creds_exec_critical():
+def test_never_tags_prohibited_or_high_risk_classification():
     tags = tag_blast_radius(
         _br(
             severity=Severity.CRITICAL,
+            pkg_name="langchain",
             creds=["SECRET"],
             tools=[MCPTool(name="exec", description="execute shell command")],
         )
     )
-    assert "ART-5" in tags
-    # high severity should not trigger ART-5
-    tags_high = tag_blast_radius(_br(severity=Severity.HIGH, creds=["SECRET"], tools=[MCPTool(name="exec", description="execute shell")]))
-    assert "ART-5" not in tags_high
+    assert "ART-5" not in tags
+    assert "ART-6" not in tags
 
 
-def test_art6_high_risk_for_ai_packages():
-    tags = tag_blast_radius(_br(pkg_name="langchain"))
-    assert "ART-6" in tags
-    tags_normal = tag_blast_radius(_br(pkg_name="flask"))
-    assert "ART-6" not in tags_normal
+def test_exec_tools_are_human_oversight():
+    tags = tag_blast_radius(_br(tools=[MCPTool(name="exec", description="execute shell command")]))
+    assert "ART-14" in tags
+    assert "ART-14" not in tag_blast_radius(_br())
 
 
-def test_art10_data_governance_needs_read_and_creds():
+def test_read_tools_and_creds_are_not_data_governance():
     tags = tag_blast_radius(_br(creds=["DB_TOKEN"], tools=[MCPTool(name="read_file", description="read a file from disk")]))
-    assert "ART-10" in tags
-    # no creds: no ART-10
-    tags_no_creds = tag_blast_radius(_br(tools=[MCPTool(name="read_file", description="read a file")]))
-    assert "ART-10" not in tags_no_creds
+    assert "ART-10" not in tags
 
 
 def test_art17_quality_management_needs_fix():
@@ -85,7 +80,7 @@ def test_art17_quality_management_needs_fix():
 
 
 def test_label_functions():
-    assert eu_ai_act_label("ART-15") == "ART-15 Accuracy, Robustness & Cybersecurity"
+    assert eu_ai_act_label("ART-15") == "ART-15 Accuracy, Robustness and Cybersecurity"
     labels = eu_ai_act_labels(["ART-9", "ART-15"])
     assert len(labels) == 2
 

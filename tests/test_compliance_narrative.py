@@ -485,7 +485,8 @@ def test_multi_framework_tags_affect_multiple_frameworks():
     assert status_by_slug["nist"] != "evidence_current"
     assert status_by_slug["cmmc"] != "evidence_current"
     # Untagged framework has no mapped findings → not-evaluated, never a silent pass
-    assert status_by_slug["soc2"] == "not_evaluated"
+    # (SOC 2 has a detective criterion, CC7.1, that scan evidence satisfies.)
+    assert status_by_slug["iso-27001"] == "not_evaluated"
 
 
 def test_all_framework_slugs_covered():

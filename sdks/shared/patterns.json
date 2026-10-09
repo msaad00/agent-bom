@@ -8,7 +8,7 @@
     },
     {
       "name": "AWS Access Key",
-      "pattern": "AKIA[0-9A-Z]{16}",
+      "pattern": "AKIA(?<![A-Za-z0-9][\\s\\S]{4})[0-9A-Z]{16}(?![A-Za-z0-9])",
       "flags": ""
     },
     {
@@ -18,32 +18,32 @@
     },
     {
       "name": "GitHub Token",
-      "pattern": "gh[pousr]_[A-Za-z0-9_]{36,}",
+      "pattern": "gh[pousr]_(?<![A-Za-z0-9_-][\\s\\S]{4})[A-Za-z0-9_]{36,}",
       "flags": ""
     },
     {
       "name": "GitLab Token",
-      "pattern": "glpat-[A-Za-z0-9\\-_]{20,}",
+      "pattern": "glpat-(?<![A-Za-z0-9_-][\\s\\S]{6})[A-Za-z0-9\\-_]{20,}",
       "flags": ""
     },
     {
       "name": "OpenAI API Key",
-      "pattern": "sk-(?:proj-)?[A-Za-z0-9\\-_]{20,}",
+      "pattern": "sk-(?<![A-Za-z0-9_-][\\s\\S]{3})(?!ant-)(?:proj-)?(?=[A-Za-z0-9_-]*[0-9])(?![a-z0-9]+(?:-[a-z0-9]+)+(?![A-Za-z0-9_-]))[A-Za-z0-9\\-_]{20,}",
       "flags": ""
     },
     {
       "name": "Anthropic API Key",
-      "pattern": "sk-ant-[A-Za-z0-9\\-_]{20,}",
+      "pattern": "sk-ant-(?<![A-Za-z0-9_-][\\s\\S]{7})[A-Za-z0-9\\-_]{20,}",
       "flags": ""
     },
     {
       "name": "Slack Token",
-      "pattern": "xox[bporas]-[A-Za-z0-9\\-]{10,}",
+      "pattern": "xox[bporas]-(?<![A-Za-z0-9_-][\\s\\S]{5})[A-Za-z0-9\\-]{10,}",
       "flags": ""
     },
     {
       "name": "Stripe Key",
-      "pattern": "[sr]k_(live|test)_[A-Za-z0-9]{20,}",
+      "pattern": "[sr]k_(?<![A-Za-z0-9_-][\\s\\S]{3})(live|test)_[A-Za-z0-9]{20,}",
       "flags": ""
     },
     {
@@ -63,42 +63,42 @@
     },
     {
       "name": "Connection String",
-      "pattern": "\\b(?:postgres(?:ql)?|mongodb(?:\\+srv)?|mysql|mariadb|rediss?|amqps?|mssql|sqlserver|oracle|clickhouse|cockroachdb)://[^:\\s/@'\\\"]+:(?!\\$\\{|<|\\{\\{)[^@\\s/'\\\"]+@[^\\s'\\\"]+",
+      "pattern": "\\b(?:postgres(?:ql)?|mongodb(?:\\+srv)?|mysql|mariadb|rediss?|amqps?|mssql|sqlserver|oracle|clickhouse|cockroachdb)://(?:\\$\\{[^}\\s]*\\}|(?!\\$\\{)[^:\\s/@'\\\"]+):(?!\\$\\{|<|\\{\\{)[^@\\s/'\\\"]+@[^\\s'\\\"]+",
       "flags": "i"
     },
     {
       "name": "Google API Key",
-      "pattern": "AIza[0-9A-Za-z\\-_]{35}",
+      "pattern": "AIza(?<![A-Za-z0-9_-][\\s\\S]{4})[0-9A-Za-z\\-_]{35}",
       "flags": ""
     },
     {
       "name": "Google OAuth Token",
-      "pattern": "ya29\\.[0-9A-Za-z\\-_]+",
+      "pattern": "ya29\\.(?<![A-Za-z0-9_-][\\s\\S]{5})[0-9A-Za-z\\-_]+",
       "flags": ""
     },
     {
       "name": "Twilio API Key",
-      "pattern": "SK[0-9a-fA-F]{32}",
+      "pattern": "SK(?<![A-Za-z0-9][\\s\\S]{2})[0-9a-fA-F]{32}(?![A-Za-z0-9])",
       "flags": ""
     },
     {
       "name": "SendGrid API Key",
-      "pattern": "SG\\.[A-Za-z0-9\\-_]{22}\\.[A-Za-z0-9\\-_]{43}",
+      "pattern": "SG\\.(?<![A-Za-z0-9_-][\\s\\S]{3})[A-Za-z0-9\\-_]{22}\\.[A-Za-z0-9\\-_]{43}",
       "flags": ""
     },
     {
       "name": "Mailgun API Key",
-      "pattern": "key-[0-9a-zA-Z]{32}",
+      "pattern": "key-(?<![A-Za-z0-9_-][\\s\\S]{4})[0-9a-zA-Z]{32}",
       "flags": ""
     },
     {
       "name": "Square Access Token",
-      "pattern": "sq0atp-[0-9A-Za-z\\-_]{22}",
+      "pattern": "sq0atp-(?<![A-Za-z0-9_-][\\s\\S]{7})[0-9A-Za-z\\-_]{22}",
       "flags": ""
     },
     {
       "name": "Square OAuth Secret",
-      "pattern": "sq0csp-[0-9A-Za-z\\-_]{43}",
+      "pattern": "sq0csp-(?<![A-Za-z0-9_-][\\s\\S]{7})[0-9A-Za-z\\-_]{43}",
       "flags": ""
     },
     {
@@ -108,22 +108,22 @@
     },
     {
       "name": "npm Token",
-      "pattern": "npm_[A-Za-z0-9]{36}",
+      "pattern": "npm_(?<![A-Za-z0-9_-][\\s\\S]{4})[A-Za-z0-9]{36}",
       "flags": ""
     },
     {
       "name": "PyPI Token",
-      "pattern": "pypi-[A-Za-z0-9\\-_]{100,}",
+      "pattern": "pypi-(?<![A-Za-z0-9_-][\\s\\S]{5})[A-Za-z0-9\\-_]{100,}",
       "flags": ""
     },
     {
       "name": "Discord Bot Token",
-      "pattern": "[MN][A-Za-z\\d]{23,}\\.[\\w-]{6}\\.[\\w-]{27,}",
+      "pattern": "[MN](?<![A-Za-z0-9_-][\\s\\S]{1})[A-Za-z\\d]{23,}\\.[\\w-]{6}\\.[\\w-]{27,}",
       "flags": ""
     },
     {
       "name": "Telegram Bot Token",
-      "pattern": "\\d{8,10}:[A-Za-z0-9_-]{35}",
+      "pattern": "\\d(?<![A-Za-z0-9][\\s\\S]{1})\\d{7,9}:[A-Za-z0-9_-]{35}",
       "flags": ""
     },
     {
@@ -138,22 +138,22 @@
     },
     {
       "name": "Supabase Key",
-      "pattern": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+",
+      "pattern": "eyJ(?<![A-Za-z0-9_-][\\s\\S]{3})hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\\.[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+",
       "flags": ""
     },
     {
       "name": "JWT Token",
-      "pattern": "eyJ[A-Za-z0-9\\-_]+\\.eyJ[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+",
+      "pattern": "eyJ(?<![A-Za-z0-9_-][\\s\\S]{3})[A-Za-z0-9\\-_]+\\.eyJ[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+",
       "flags": ""
     },
     {
       "name": "Shopify Access Token",
-      "pattern": "shpat_[A-Fa-f0-9]{32}",
+      "pattern": "shpat_(?<![A-Za-z0-9_-][\\s\\S]{6})[A-Fa-f0-9]{32}",
       "flags": ""
     },
     {
       "name": "Databricks Token",
-      "pattern": "dapi[a-f0-9]{32}",
+      "pattern": "dapi(?<![A-Za-z0-9_-][\\s\\S]{4})[a-f0-9]{32}",
       "flags": ""
     },
     {

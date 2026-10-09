@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from agent_bom.advisory_ids import finding_advisory_metadata, vulnerability_enrichment_metadata
+from agent_bom.advisory_ids import derive_cve_from_advisory_id, finding_advisory_metadata, vulnerability_enrichment_metadata
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
 from agent_bom.core.packages import synthesize_purl
 
@@ -755,7 +755,7 @@ class Finding:
             "cve_id": self.cve_id,
             "vulnerability_id": self.vulnerability_id,
             "advisory_ids": self.advisory_ids,
-            "cve_ids": self.evidence.get("cve_ids") or ([self.cve_id] if self.cve_id else []),
+            "cve_ids": self.evidence.get("cve_ids") or ([cve] if (cve := derive_cve_from_advisory_id(self.cve_id or "")) else []),
             "match_confidence_tier": self.evidence.get("match_confidence_tier"),
             "cwe_ids": self.cwe_ids,
             "cvss_score": self.cvss_score,

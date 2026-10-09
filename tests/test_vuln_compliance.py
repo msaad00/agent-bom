@@ -81,7 +81,8 @@ class TestAlwaysOnTags:
 
     def test_soc2_base_tags(self):
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
-        assert "CC7.1" in tags["soc2"]
+        # CC7.1 is detective: the scan evidences it, a finding never fails it.
+        assert "CC7.1" not in tags["soc2"]
         assert "CC9.1" in tags["soc2"]
         assert "CC9.2" in tags["soc2"]
 
@@ -97,8 +98,8 @@ class TestAlwaysOnTags:
 
     def test_nist_rmf_base_tags(self):
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
-        assert "GOVERN-1.7" in tags["nist_ai_rmf"]
-        assert "MAP-3.5" in tags["nist_ai_rmf"]
+        assert "GOVERN-6.1" in tags["nist_ai_rmf"]
+        assert "MAP-4.1" in tags["nist_ai_rmf"]
 
     def test_eu_ai_act_base_tags(self):
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
@@ -110,8 +111,8 @@ class TestAlwaysOnTags:
         assert "MCP04" in tags["owasp_mcp"]
 
     def test_owasp_agentic_base_tags(self):
-        # Agentic tags are now context-sensitive: ASI04 (Supply Chain) always present,
-        # ASI01 only for AI packages, ASI09 only for KEV
+        # ASI04 (Supply Chain) is always present; a dependency CVE alone is
+        # never ASI01 (Agent Goal Hijack) or ASI09 (Human-Agent Trust Exploitation).
         tags = tag_vulnerability(_vuln(severity=Severity.LOW, fixed_version=None), _pkg())
         assert "ASI04" in tags["owasp_agentic"]
         assert "ASI01" not in tags["owasp_agentic"]  # lodash is not AI
@@ -129,7 +130,8 @@ class TestSeverityTags:
         assert "ID.RA-05" in tags["nist_csf"]
         assert "CIS-02.3" in tags["cis"]
         assert "A.5.20" in tags["iso_27001"]
-        assert "CC6.8" in tags["soc2"]
+        # CC6.8 (malicious software) needs a malicious package, not a severity.
+        assert "CC6.8" not in tags["soc2"]
 
     def test_high_triggers_severity_tags(self):
         tags = tag_vulnerability(_vuln(severity=Severity.HIGH, fixed_version=None), _pkg())
@@ -157,7 +159,7 @@ class TestSeverityTags:
 class TestKevTags:
     def test_kev_triggers_response_tags(self):
         tags = tag_vulnerability(_vuln(is_kev=True, fixed_version=None), _pkg())
-        assert "RS.MI-02" in tags["nist_csf"]
+        assert "RS.MI-01" in tags["nist_csf"]
         # ID.RA-02 ("threat intelligence is received") is DETECTIVE — the KEV/EPSS
         # enrichment on this very finding is the evidence it operates.
         assert "ID.RA-02" not in tags["nist_csf"]
@@ -168,7 +170,7 @@ class TestKevTags:
 
     def test_non_kev_does_not_trigger(self):
         tags = tag_vulnerability(_vuln(is_kev=False, fixed_version=None), _pkg())
-        assert "RS.MI-02" not in tags["nist_csf"]
+        assert "RS.MI-01" not in tags["nist_csf"]
         assert "CIS-16.12" not in tags["cis"]
         assert "A.5.28" not in tags["iso_27001"]
         assert "CC7.4" not in tags["soc2"]
@@ -192,7 +194,7 @@ class TestFixAvailableTags:
         assert "A.8.28" in tags["iso_27001"]
         assert "CC8.1" in tags["soc2"]
         assert "ART-17" in tags["eu_ai_act"]
-        assert "MEASURE-2.9" in tags["nist_ai_rmf"]
+        assert "MANAGE-1.3" in tags["nist_ai_rmf"]
 
     def test_no_fix_skips_remediation_tags(self):
         tags = tag_vulnerability(_vuln(fixed_version=None), _pkg())
@@ -214,25 +216,24 @@ class TestAiPackageTags:
             _vuln(severity=Severity.HIGH, fixed_version=None),
             _pkg(name="transformers"),
         )
-        assert "LLM05" in tags.get("owasp_llm", [])
-        assert "LLM03" in tags.get("owasp_llm", [])  # training package
-        assert "LLM04" in tags.get("owasp_llm", [])  # AI + HIGH
+        assert "LLM03" in tags.get("owasp_llm", [])  # Supply Chain (AI package)
+        assert "LLM04" in tags.get("owasp_llm", [])  # Data and Model Poisoning (training package)
         assert "ID.AM-05" in tags["nist_csf"]
-        assert "CIS-02.7" in tags["cis"]
+        assert "CIS-02.6" in tags["cis"]
         assert "A.5.23" in tags["iso_27001"]
-        assert "CC7.2" in tags["soc2"]
-        assert "ART-6" in tags["eu_ai_act"]
+        assert "CC7.2" not in tags["soc2"]  # anomaly monitoring needs runtime evidence
+        assert "ART-6" not in tags["eu_ai_act"]  # never inferred from dependencies
         assert "AML.T0020" in tags["atlas"]
-        assert "MEASURE-2.5" in tags["nist_ai_rmf"]
+        assert "MEASURE-2.7" in tags["nist_ai_rmf"]
 
     def test_non_ai_package_skips_ai_tags(self):
         tags = tag_vulnerability(
             _vuln(severity=Severity.HIGH, fixed_version=None),
             _pkg(name="lodash"),
         )
-        assert "owasp_llm" not in tags or "LLM05" not in tags.get("owasp_llm", [])
+        assert "owasp_llm" not in tags or "LLM03" not in tags.get("owasp_llm", [])
         assert "ID.AM-05" not in tags["nist_csf"]
-        assert "CIS-02.7" not in tags["cis"]
+        assert "CIS-02.6" not in tags["cis"]
         assert "ART-6" not in tags["eu_ai_act"]
 
     def test_ai_package_low_severity_no_high_tags(self):
@@ -241,8 +242,10 @@ class TestAiPackageTags:
             _pkg(name="torch"),
         )
         # Should have AI-specific tags but not severity-dependent ones
-        assert "LLM05" in tags.get("owasp_llm", [])
-        assert "LLM04" not in tags.get("owasp_llm", [])  # LLM04 needs HIGH
+        assert "LLM03" in tags.get("owasp_llm", [])
+        # Poisoning follows the package's role (torch handles training data),
+        # not the CVE's severity.
+        assert "LLM04" in tags.get("owasp_llm", [])
         # AML.T0020 (Poison Training Data) fires for training packages
         # regardless of severity — the risk is about the package role
         assert "AML.T0020" in tags.get("atlas", [])
@@ -261,7 +264,7 @@ class TestCweMappingTags:
             _vuln(cwe_ids=["CWE-79"], fixed_version=None),
             _pkg(name="app", ecosystem="sast"),
         )
-        assert "LLM02" in tags.get("owasp_llm", [])
+        assert "LLM05" in tags.get("owasp_llm", [])
         # NIST's OLIR crosswalk does not map SI-10 to an ISO control. Do not
         # resurrect the conflicting vendor CWE -> ISO catch-all.
         assert "A.8.28" not in tags["iso_27001"]
@@ -273,7 +276,7 @@ class TestCweMappingTags:
             _vuln(cwe_ids=["CWE-798"], fixed_version=None),
             _pkg(name="app", ecosystem="sast"),
         )
-        assert "LLM06" in tags.get("owasp_llm", [])
+        assert "LLM02" in tags.get("owasp_llm", [])
         assert {"A.5.10", "A.5.16", "A.5.17", "A.5.33"} <= set(tags["iso_27001"])
         assert "A.8.9" not in tags["iso_27001"]
         assert "PR.AA-01" in tags["nist_csf"]
@@ -285,14 +288,14 @@ class TestCweMappingTags:
             _pkg(name="lodash", ecosystem="npm"),
         )
         # CWE mapping applies to ALL ecosystems (not just SAST)
-        assert "LLM02" in tags.get("owasp_llm", [])
+        assert "LLM05" in tags.get("owasp_llm", [])
 
     def test_multiple_cwes(self):
         tags = tag_vulnerability(
             _vuln(cwe_ids=["CWE-78", "CWE-89"], fixed_version=None),
             _pkg(name="app", ecosystem="sast"),
         )
-        assert "LLM02" in tags.get("owasp_llm", [])
+        assert "LLM05" in tags.get("owasp_llm", [])
         assert "CIS-16.1" in tags["cis"]
 
 
@@ -348,12 +351,12 @@ class TestAllFrameworks:
             _vuln(severity=Severity.CRITICAL, is_kev=True, fixed_version="2.0"),
             _pkg(name="transformers"),
         )
-        # OWASP LLM: LLM03 (training), LLM04 (AI+HIGH), LLM05 (AI)
+        # OWASP LLM 2025: LLM03 Supply Chain (AI), LLM04 Poisoning (training)
         assert "LLM03" in tags["owasp_llm"]
         assert "LLM04" in tags["owasp_llm"]
-        assert "LLM05" in tags["owasp_llm"]
+        assert "LLM05" not in tags["owasp_llm"]
         # KEV tags
-        assert "RS.MI-02" in tags["nist_csf"]
+        assert "RS.MI-01" in tags["nist_csf"]
         assert "CIS-16.12" in tags["cis"]
         # Fix tags
         assert "RS.AN-03" in tags["nist_csf"]

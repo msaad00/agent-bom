@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import errno
 import importlib
 import json
 import logging
+import os
+import shutil
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -137,8 +143,6 @@ def _detect_install_method() -> tuple[str, str]:
     must only *execute* the command when ``method == "pip"`` — for every other
     method the string is what the operator should run themselves.
     """
-    import os
-    import sys
 
     truthy = {"1", "true", "yes", "on"}
 
@@ -182,7 +186,6 @@ def _update_check_cache_file() -> Path:
     tiny CloudShell home) when the operator redirects state; otherwise uses the
     per-user XDG cache dir.
     """
-    import os
 
     state_dir = os.environ.get("AGENT_BOM_STATE_DIR")
     base = Path(state_dir) if state_dir else Path.home() / ".cache" / "agent-bom"
@@ -190,8 +193,6 @@ def _update_check_cache_file() -> Path:
 
 
 def _should_skip_update_check() -> bool:
-    import os
-    import sys
 
     truthy = {"1", "true", "yes", "on"}
     if os.environ.get("AGENT_BOM_SKIP_UPDATE_CHECK", "").strip().lower() in truthy:
@@ -209,7 +210,6 @@ def _should_skip_update_check() -> bool:
 def _check_for_update_bg() -> None:
     """Background thread: compare __version__ against PyPI latest. Non-blocking."""
     global _update_check_result  # noqa: PLW0603
-    import errno
 
     if _should_skip_update_check():
         _update_check_result = None
@@ -221,7 +221,6 @@ def _check_for_update_bg() -> None:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Only hit PyPI once per 24 hours
-        import time
 
         if cache_file.exists() and (time.time() - cache_file.stat().st_mtime) < 86400:
             _update_check_result = cache_file.read_text().strip() or None
@@ -269,8 +268,6 @@ def _print_update_notice(console: Console) -> None:
 
 def _check_optional_dep(name: str) -> str:
     """Return 'found (vX.Y.Z)' or 'not installed' for an optional binary dep."""
-    import shutil
-    import subprocess
 
     path = shutil.which(name)
     if not path:

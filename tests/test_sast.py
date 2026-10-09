@@ -629,7 +629,7 @@ def test_iso_27001_sast_cwe_tagging():
 
 
 def test_owasp_llm_sast_cwe_tagging():
-    """OWASP LLM tagger adds LLM02 for SAST findings with CWE-78."""
+    """OWASP LLM tagger adds LLM05 for SAST findings with CWE-78."""
     from agent_bom.models import BlastRadius, Package, Vulnerability
     from agent_bom.owasp import tag_blast_radius
 
@@ -648,7 +648,7 @@ def test_owasp_llm_sast_cwe_tagging():
     )
 
     tags = tag_blast_radius(br)
-    assert "LLM02" in tags  # CWE-78 → LLM02 (insecure output handling)
+    assert "LLM05" in tags  # CWE-78 → LLM05 (improper output handling, 2025)
 
 
 # ── CLI integration ────────────────────────────────────────────────────────

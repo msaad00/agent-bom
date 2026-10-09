@@ -28404,7 +28404,7 @@ paths:
         \ Flow-compatible nodes/edges showing the CVE -> package ->\nserver -> agent\
         \ attack chain with credential and tool branches.\n\nQuery params for filtering:\n\
         \  ?cve=CVE-2025-xxx     - show only this CVE's blast radius\n  ?severity=critical\
-        \     - filter by severity level\n  ?framework=LLM05       - filter by OWASP/ATLAS/NIST\
+        \     - filter by severity level\n  ?framework=LLM03       - filter by OWASP/ATLAS/NIST\
         \ tag\n  ?agent=claude-desktop  - filter to a specific agent"
       operationId: get_attack_flow_v1_scan__job_id__attack_flow_get
       parameters:

@@ -1395,3 +1395,38 @@ def test_code_command_json_includes_ai_component_inventory(tmp_path: Path):
     payload = json.loads(result.output)
     assert "ai_components" in payload
     assert payload["ai_components"]["stats"]["by_language"]["javascript"] >= 1
+
+
+def test_source_selection_walks_the_tree_once_and_groups_by_language(tmp_path: Path, monkeypatch):
+    import agent_bom.ast_analyzer as ast_analyzer
+    from agent_bom.ast_analyzer import ASTAnalysisResult, _select_source_files
+
+    sources = ("app.py", "web/index.ts", "web/view.jsx", "svc/main.go", "lib.rs", "App.java", "Prog.cs", "x.rb", "y.php", "z.swift", "k.kt")
+    for rel in sources:
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("// source\n", encoding="utf-8")
+    calls: list[Path] = []
+    original = ast_analyzer.iter_discovery_files
+
+    def counting(root, **kwargs):
+        calls.append(Path(root))
+        return original(root, **kwargs)
+
+    monkeypatch.setattr(ast_analyzer, "iter_discovery_files", counting)
+
+    groups = _select_source_files(tmp_path, ASTAnalysisResult())
+
+    assert len(calls) == 1
+    assert [[path.relative_to(tmp_path).as_posix() for path in group] for group in groups] == [
+        ["app.py"],
+        ["web/index.ts", "web/view.jsx"],
+        ["svc/main.go"],
+        ["lib.rs"],
+        ["App.java"],
+        ["Prog.cs"],
+        ["x.rb"],
+        ["y.php"],
+        ["z.swift"],
+        ["k.kt"],
+    ]

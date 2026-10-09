@@ -77,10 +77,10 @@ The blast radius shows:
 
 Check which OWASP LLM + MITRE ATLAS categories apply:
 
-- **LLM05 + AML.T0010** — Supply chain vulnerability on a confirmed agent/MCP path or in a known AI framework
-- **LLM06 + AML.T0062** — If credentials are exposed alongside the CVE
-- **LLM08 + AML.T0061** — If >5 tools reachable through the compromised path
-- **LLM02 + AML.T0043** — If shell/exec tools are in the blast radius
+- **LLM03 + AML.T0010** — Supply chain vulnerability on a confirmed agent/MCP path or in a known AI framework
+- **LLM02 + AML.T0062** — If credentials are exposed alongside the CVE
+- **LLM06 + AML.T0061** — If >5 tools reachable through the compromised path
+- **LLM05 + AML.T0043** — If shell/exec tools are in the blast radius
 
 ### 5. Prioritize by Risk
 

@@ -61,7 +61,7 @@ function matrixData(): ComplianceResponse {
       control("AML.T0011", "User Execution", "not_applicable"),
     ],
     nist_ai_rmf: [control("MEASURE-2.9", "Model Explanation", "not_evaluated")],
-    eu_ai_act: [control("ART-15", "Accuracy and Robustness", "fail")],
+    eu_ai_act: [control("ART-15", "Accuracy, Robustness and Cybersecurity", "fail")],
   } as unknown as ComplianceResponse;
 }
 

@@ -86,7 +86,7 @@ const REMEDIATION_PLAN = [{
       credentials_pct: 0,
       reachable_tools: ["create_pull_request"],
       tools_pct: 100,
-      owasp_tags: ["LLM05"],
+      owasp_tags: ["LLM03"],
       atlas_tags: [],
       references: [],
       risk_narrative: "Patch the package, then regenerate evidence.",
@@ -269,7 +269,7 @@ async function routeCompliance(page: Page) {
     },
     owasp_llm_top10: [
       control("LLM01", "Prompt Injection", "fail", 4),
-      control("LLM02", "Insecure Output Handling", "pass", 0),
+      control("LLM02", "Sensitive Information Disclosure", "pass", 0),
     ],
     owasp_mcp_top10: [control("MCP01", "Tool Poisoning", "warning", 1)],
     mitre_atlas: [], nist_ai_rmf: [], owasp_agentic_top10: [], eu_ai_act: [], nist_csf: [],
@@ -292,7 +292,7 @@ test("compliance view, filter, search, and evidence-pack actions are wired", asy
 
   await page.getByRole("button", { name: "Fail", exact: true }).click();
   await expect(page.getByText("Prompt Injection", { exact: true })).toBeVisible();
-  await expect(page.getByText("Insecure Output Handling", { exact: true })).toBeHidden();
+  await expect(page.getByText("Sensitive Information Disclosure", { exact: true })).toBeHidden();
   await page.getByPlaceholder("Search control, package, agent").fill("Prompt");
   await expect(page.getByText("Prompt Injection", { exact: true })).toBeVisible();
 

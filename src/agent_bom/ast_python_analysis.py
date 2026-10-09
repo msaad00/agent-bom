@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from agent_bom.ast.source_reader import parse_python_source, read_source_for_analysis
+from agent_bom.ast.sql_safety import FunctionSqlScope, ModuleSqlFacts
+from agent_bom.ast.sql_safety import expr_uses_dynamic_string as _expr_uses_dynamic_string
 from agent_bom.ast_models import (
     ApplicationEntrypoint,
     CallEdge,
@@ -1053,18 +1055,6 @@ def _is_sanitizer_call_name(call_name: str) -> bool:
     return any(hint in lower_name for hint in _VALIDATION_HINTS)
 
 
-def _expr_uses_dynamic_string(expr: ast.AST | None) -> bool:
-    if expr is None:
-        return False
-    if isinstance(expr, ast.JoinedStr):
-        return True
-    if isinstance(expr, ast.BinOp) and isinstance(expr.op, (ast.Add, ast.Mod)):
-        return True
-    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "format":
-        return True
-    return False
-
-
 @dataclass(frozen=True)
 class _PythonFileContext:
     """Per-file facts every function in a Python file is analyzed against."""
@@ -1076,6 +1066,7 @@ class _PythonFileContext:
     imported_functions: dict[str, tuple[str, str]]
     registrations_by_handler: dict[str, _PythonToolRegistration]
     low_level_tools: list[tuple[str, int]]
+    sql: ModuleSqlFacts
 
 
 def _import_frameworks_and_guardrails(tree: ast.Module, rel_path: str) -> tuple[list[str], list[DetectedGuardrail]]:
@@ -1268,6 +1259,7 @@ def _function_call_findings(
 ) -> list[FlowFinding]:
     """Record every call in the function and the local sink findings each one raises."""
     dynamic_string_names = _dynamic_string_names(node)
+    sql_scope = ctx.sql.for_function(node)
     entrypoint = func_info.entrypoint_name
     findings: list[FlowFinding] = []
     for inner in ast.walk(node):
@@ -1278,7 +1270,7 @@ def _function_call_findings(
         if call_name:
             func_info.called_names.append((call_name, line_number))
         matches = _tool_call_matches(inner, call_name, line_number, func_info, ctx)
-        matches.extend(_string_construction_matches(inner, call_name, ctx.rel_path, dynamic_string_names))
+        matches.extend(_string_construction_matches(inner, call_name, ctx.rel_path, dynamic_string_names, sql_scope))
         findings.extend(
             FlowFinding(
                 category=category,
@@ -1326,6 +1318,7 @@ def _string_construction_matches(
     call_name: str,
     rel_path: str,
     dynamic_string_names: set[str],
+    sql_scope: FunctionSqlScope,
 ) -> list[tuple[str, str]]:
     """Unsafe deserialization and string-built command, URL and SQL sinks in any function."""
     matches: list[tuple[str, str]] = []
@@ -1343,17 +1336,10 @@ def _string_construction_matches(
         if _expr_is_dynamic_or_tracked(url_expr, dynamic_string_names):
             detail = f"{built} an outbound URL dynamically before calling `{call_name}`, which is a common SSRF pattern."
             matches.append(("ssrf_url_construction", detail))
-    if _is_sql_call_name(call_name) and _sql_query_is_dynamic(inner, dynamic_string_names):
+    if _is_sql_call_name(call_name) and sql_scope.query_is_unsafe(inner):
         detail = f"{built} a SQL query dynamically before calling `{call_name}`, which is a common SQL injection pattern."
         matches.append(("sql_string_construction", detail))
     return matches
-
-
-def _sql_query_is_dynamic(call: ast.Call, dynamic_string_names: set[str]) -> bool:
-    query_expr = call.args[0] if call.args else None
-    if _expr_uses_dynamic_string(query_expr):
-        return True
-    return isinstance(query_expr, ast.Name) and query_expr.id in dynamic_string_names
 
 
 def _regex_guardrails(source: str, rel_path: str, guardrails: list[DetectedGuardrail]) -> list[DetectedGuardrail]:
@@ -1415,6 +1401,7 @@ def _analyze_file(
         imported_functions=imported_functions,
         registrations_by_handler={registration.handler_name: registration for registration in registrations},
         low_level_tools=low_level_tools,
+        sql=ModuleSqlFacts.from_source(tree, source),
     )
 
     function_analyses: list[_FunctionAnalysis] = []

@@ -1,9 +1,10 @@
 """NIST AI Risk Management Framework (AI RMF 1.0) — map findings to subcategories.
 
 Maps agent-bom blast radius findings to the NIST AI RMF four-function model
-(Govern, Map, Measure, Manage). Every finding gets at minimum MAP-3.5 (supply
-chain risk) and GOVERN-1.7 (third-party component risk) since any package CVE
-in an AI agent dependency tree triggers both subcategories.
+(Govern, Map, Measure, Manage). A finding in an AI-relevant context gets
+GOVERN-6.1 (third-party risk policies) and MAP-4.1 (risks of components,
+including third-party software). Subcategory IDs follow the AI RMF 1.0 core
+(NIST AI 100-1, Tables 1-4).
 
 Reference: https://www.nist.gov/artificial-intelligence/ai-risk-management-framework
 """
@@ -24,22 +25,18 @@ if TYPE_CHECKING:
 
 NIST_AI_RMF: dict[str, str] = {
     # GOVERN — Governance structures for managing AI risk
-    "GOVERN-1.5": "Ongoing monitoring mechanisms for AI risk",
-    "GOVERN-1.7": "Third-party AI component risk processes",
-    "GOVERN-6.1": "Assessment policies for third-party AI entities",
-    "GOVERN-6.2": "Contingency plans for third-party AI failures",
+    "GOVERN-1.5": "Ongoing monitoring and periodic review of AI risk management",
+    "GOVERN-6.1": "Policies address AI risks from third-party entities",
+    "GOVERN-6.2": "Contingency processes for third-party data or AI system failures",
     # MAP — Context and risk identification
-    "MAP-1.6": "System dependencies and external interfaces mapped",
-    "MAP-3.5": "AI supply chain risks assessed",
-    "MAP-5.2": "AI deployment impact practices identified",
+    "MAP-3.5": "Human oversight processes defined and documented",
+    "MAP-4.1": "Technology and legal risks of AI components, including third-party software, mapped",
+    "MAP-5.1": "Likelihood and magnitude of identified impacts documented",
     # MEASURE — Risk assessment and analysis
-    "MEASURE-2.5": "AI system security testing conducted",
-    "MEASURE-2.6": "AI system results validated",
-    "MEASURE-2.9": "Effectiveness of risk mitigations assessed",
+    "MEASURE-2.6": "AI system evaluated regularly for safety risks",
+    "MEASURE-2.7": "AI system security and resilience evaluated and documented",
     # MANAGE — Risk treatment and response
-    "MANAGE-1.3": "Responses to identified AI risks documented",
-    "MANAGE-2.2": "Anomalous event detection and response",
-    "MANAGE-2.4": "Risk treatments including remediation applied",
+    "MANAGE-1.3": "Responses to high-priority AI risks developed, planned, and documented",
     "MANAGE-4.1": "Post-deployment monitoring plans implemented",
 }
 
@@ -53,36 +50,27 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return sorted NIST AI RMF subcategory IDs applicable to this blast radius.
 
     Rules:
-    - GOVERN-1.7: Always — any CVE in an AI agent triggers third-party risk processes.
-    - MAP-3.5:    Always — any CVE is a supply chain risk.
-    - GOVERN-6.1: Shell/exec tools reachable → third-party entity assessment needed.
-    - GOVERN-6.2: AI framework + credentials + HIGH+ → contingency planning.
-    - MAP-1.6:    >3 tools reachable → system interfaces need mapping.
-    - MAP-5.2:    Data/file access tools reachable → deployment impact assessment.
-    - MEASURE-2.5: AI framework package with HIGH+ CVE → security testing needed.
-    - MEASURE-2.9: Vulnerability has a fix → mitigation effectiveness assessment.
-    - MANAGE-1.3:  KEV finding → documented risk response required.
-    - MANAGE-2.2:  Credentials exposed → anomalous event detection needed.
-    - MANAGE-2.4:  AI framework + credentials + HIGH+ → remediation required.
+    - GOVERN-6.1 / MAP-4.1: AI framework, agent context, or HIGH+ — a
+      third-party component risk to govern and map.
+    - MAP-3.5:     EXECUTE-capable tools reachable → human oversight needed.
+    - MAP-5.1:     Data/file READ tools reachable → impact must be assessed.
+    - MEASURE-2.7: AI framework package with HIGH+ CVE → security evaluation.
+    - MANAGE-1.3:  KEV finding or available fix → documented risk response.
     - MANAGE-4.1:  Credentials exposed + tools → post-deployment monitoring.
+    - GOVERN-6.2:  AI framework + credentials + HIGH+ → contingency planning.
     """
     tags: set[str] = set()
 
-    # GOVERN-1.7 and MAP-3.5 only apply when the vulnerability is in an
-    # AI-relevant context: the package is an AI framework, the server has
-    # credentials/tools (agent infrastructure), or the vulnerability is HIGH+.
-    # Previously these were applied to EVERY finding, drowning signal in noise.
     is_ai_pkg = br.package.name.lower() in _AI_PACKAGES
     has_agent_context = bool(br.exposed_credentials) or bool(br.exposed_tools)
     is_high = br.vulnerability.severity in _HIGH_RISK
 
     if is_ai_pkg or has_agent_context or is_high:
-        tags.add("GOVERN-1.7")  # third-party AI component risk
-        tags.add("MAP-3.5")  # supply chain risk assessed
+        tags.add("GOVERN-6.1")
+        tags.add("MAP-4.1")
 
     has_exec = False
     has_read = False
-
     for tool in br.exposed_tools:
         caps = classify_mcp_tool(tool)
         if ToolCapability.EXECUTE in caps:
@@ -90,51 +78,29 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         if ToolCapability.READ in caps:
             has_read = True
 
-    # GOVERN-6.1 — third-party entity assessment (exec tools)
     if has_exec:
-        tags.add("GOVERN-6.1")
+        tags.add("MAP-3.5")
 
-    # MAP-1.6 — system dependencies and interfaces mapped (broad tool surface)
-    if len(br.exposed_tools) > 3:
-        tags.add("MAP-1.6")
-
-    # MAP-5.2 — deployment impact practices (read/data access tools)
     if has_read:
-        tags.add("MAP-5.2")
+        tags.add("MAP-5.1")
 
-    # MANAGE-2.2 — anomalous event detection (credentials exposed)
-    if br.exposed_credentials:
-        tags.add("MANAGE-2.2")
-
-    # MANAGE-4.1 — post-deployment monitoring (credentials + tools)
     if br.exposed_credentials and br.exposed_tools:
         tags.add("MANAGE-4.1")
 
-    # MEASURE-2.5 — security testing (AI framework + HIGH+ CVE)
     if is_ai_pkg and is_high:
-        tags.add("MEASURE-2.5")
+        tags.add("MEASURE-2.7")
 
-    # MEASURE-2.9 — mitigation effectiveness (fix available)
-    if br.vulnerability.fixed_version:
-        tags.add("MEASURE-2.9")
+    if br.vulnerability.fixed_version or br.vulnerability.is_kev:
+        tags.add("MANAGE-1.3")
 
-    # GOVERN-6.2 — contingency plans (AI + creds + HIGH+)
     if is_ai_pkg and br.exposed_credentials and is_high:
         tags.add("GOVERN-6.2")
-
-    # MANAGE-2.4 — risk treatment and remediation (AI + creds + HIGH+)
-    if is_ai_pkg and br.exposed_credentials and is_high:
-        tags.add("MANAGE-2.4")
-
-    # MANAGE-1.3 — documented risk response (KEV)
-    if br.vulnerability.is_kev:
-        tags.add("MANAGE-1.3")
 
     return sorted(tags)
 
 
 def nist_label(subcategory_id: str) -> str:
-    """Return human-readable label, e.g. 'MAP-3.5 AI supply chain risks assessed'."""
+    """Return human-readable label, e.g. 'MAP-4.1 Technology and legal risks of AI components ...'."""
     name = NIST_AI_RMF.get(subcategory_id, "Unknown")
     return f"{subcategory_id} {name}"
 

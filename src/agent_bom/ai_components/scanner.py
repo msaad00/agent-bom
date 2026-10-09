@@ -32,6 +32,7 @@ from agent_bom.ai_components.patterns import (
     MODEL_PATTERNS,
     SDK_PATTERNS_BY_LANGUAGE,
 )
+from agent_bom.core import regex_prefilter
 from agent_bom.traversal import is_nested_worktree_root
 
 logger = logging.getLogger(__name__)
@@ -172,9 +173,9 @@ def _scan_file(
     rel_path = str(filepath.relative_to(root)) if filepath.is_relative_to(root) else str(filepath)
 
     # 1. SDK import detection
-    sdk_patterns = SDK_PATTERNS_BY_LANGUAGE.get(language, [])
+    sdk_patterns, view = SDK_PATTERNS_BY_LANGUAGE.get(language, []), regex_prefilter.ContentView(content)
     for pattern in sdk_patterns:
-        for match in pattern.regex.finditer(content):
+        for match in regex_prefilter.finditer(pattern.regex, view):
             # Line number: count newlines before the actual content (not the leading \n in the regex)
             match_text = match.group(0)
             offset = match.start() + len(match_text) - len(match_text.lstrip("\n"))
@@ -202,7 +203,7 @@ def _scan_file(
 
     # 2. Model string references (all languages)
     for model_pat in MODEL_PATTERNS:
-        for match in model_pat.regex.finditer(content):
+        for match in regex_prefilter.finditer(model_pat.regex, view):
             model_name = match.group(0)
             line_num = content[: match.start()].count("\n") + 1
             dedup_key = f"{rel_path}:{line_num}:model:{model_name}"
@@ -224,7 +225,7 @@ def _scan_file(
 
     # 3. Deprecated model detection (all languages)
     for dep_pat in DEPRECATED_MODEL_PATTERNS:
-        for match in dep_pat.regex.finditer(content):
+        for match in regex_prefilter.finditer(dep_pat.regex, view):
             model_name = match.group(0)
             line_num = content[: match.start()].count("\n") + 1
             dedup_key = f"{rel_path}:{line_num}:deprecated:{model_name}"
@@ -248,7 +249,7 @@ def _scan_file(
 
     # 4. API key detection (all languages)
     for key_pat in API_KEY_PATTERNS:
-        for match in key_pat.regex.finditer(content):
+        for match in regex_prefilter.finditer(key_pat.regex, view):
             key_value = match.group(1)
             line_num = content[: match.start()].count("\n") + 1
             # Mask the key for safe display
@@ -272,7 +273,7 @@ def _scan_file(
 
     # 5. Invisible Unicode detection (GlassWorm / supply-chain attack vectors)
     for unicode_pat in INVISIBLE_UNICODE_PATTERNS:
-        for match in unicode_pat.regex.finditer(content):
+        for match in regex_prefilter.finditer(unicode_pat.regex, view):
             line_num = content[: match.start()].count("\n") + 1
             dedup_key = f"{rel_path}:{line_num}:unicode:{unicode_pat.name}"
             if dedup_key in seen_keys:

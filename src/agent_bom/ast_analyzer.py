@@ -20,7 +20,7 @@ Cargo/Maven/NuGet/RubyGems/Composer/SPM CVE joins.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
-- OWASP LLM02 (Insecure Output) — guardrail detection validates defenses
+- OWASP LLM05 (Improper Output Handling) — guardrail detection validates defenses
 - NIST AI RMF MAP-3.5 — inventories AI components at code level
 - EU AI Act ART-15 — transparency of AI system instructions
 """
@@ -225,20 +225,19 @@ class _LanguageLane:
     application_registrations: list[Any] = field(default_factory=list)
 
 
-def _collect_sources(project: Path, pattern: str, suffixes: frozenset[str] | None) -> list[Path]:
-    files = []
+def _collect_sources(project: Path) -> list[list[Path]]:
+    """Walk *project* once and bucket candidate sources per ``_SOURCE_GLOBS`` entry."""
+    groups: list[list[Path]] = [[] for _ in _SOURCE_GLOBS]
     for f in sorted(iter_discovery_files(project, extra_skip_dirs=_SKIP_DIRS, ignore=RepositoryIgnore.for_root(project))):
-        if not f.match(pattern):
-            continue
-        if suffixes is not None and f.suffix.lower() not in suffixes:
-            continue
         if any(part in _SKIP_DIRS for part in f.relative_to(project).parts):
             continue
         # Skip test/fixture/pattern files to avoid false positives
         if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
             continue
-        files.append(f)
-    return files
+        for group, (pattern, suffixes) in zip(groups, _SOURCE_GLOBS):
+            if f.match(pattern) and (suffixes is None or f.suffix.lower() in suffixes):
+                group.append(f)
+    return groups
 
 
 def _record_file_budget(result: ASTAnalysisResult, selected_count: int, eligible_count: int) -> None:
@@ -261,7 +260,7 @@ def _record_file_budget(result: ASTAnalysisResult, selected_count: int, eligible
 
 def _select_source_files(project: Path, result: ASTAnalysisResult) -> list[list[Path]]:
     """Collect every language's sources, then keep the highest-priority budget."""
-    file_groups = [_collect_sources(project, pattern, suffixes) for pattern, suffixes in _SOURCE_GLOBS]
+    file_groups = _collect_sources(project)
     eligible_count = sum(len(group) for group in file_groups)
     selected = set(
         sorted((path for group in file_groups for path in group), key=lambda path: _analysis_priority(project, path))[:_MAX_FILES]

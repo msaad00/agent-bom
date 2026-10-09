@@ -13,7 +13,13 @@ import re
 # Used by compliance taggers (owasp, atlas, nist_ai_rmf, eu_ai_act,
 # owasp_agentic) to determine if a vulnerability affects an AI/ML component.
 
-AI_PACKAGES: frozenset[str] = frozenset(
+# Vector stores / RAG backends. CVEs here are OWASP LLM08 (2025) Vector and
+# Embedding Weaknesses.
+VECTOR_STORE_PACKAGES: frozenset[str] = frozenset(
+    "chromadb pinecone-client weaviate-client qdrant-client faiss-cpu faiss-gpu pymilvus milvus pgvector lancedb".split()
+)
+
+AI_PACKAGES: frozenset[str] = VECTOR_STORE_PACKAGES | frozenset(
     {
         # LLM orchestration
         "langchain",
@@ -57,17 +63,6 @@ AI_PACKAGES: frozenset[str] = frozenset(
         "sentence-transformers",
         "optimum",
         "tokenizers",
-        # Vector stores / RAG backends
-        "chromadb",
-        "pinecone-client",
-        "weaviate-client",
-        "qdrant-client",
-        "faiss-cpu",
-        "faiss-gpu",
-        "pymilvus",
-        "milvus",
-        "pgvector",
-        "lancedb",
         # MCP and agent infrastructure
         "mcp",
         "fastmcp",
@@ -134,7 +129,7 @@ AI_PACKAGES: frozenset[str] = frozenset(
 )
 
 # Packages directly involved in training data handling and fine-tuning.
-# CVEs here risk training data poisoning (OWASP LLM03).
+# CVEs here risk data and model poisoning (OWASP LLM04, 2025).
 TRAINING_DATA_PACKAGES: frozenset[str] = frozenset(
     {
         "datasets",
@@ -170,8 +165,7 @@ def high_risk_severities() -> frozenset:
 def critical_severities() -> frozenset:
     """Return CRITICAL-only severity set.
 
-    Use for controls that should only trigger on the most severe findings
-    (e.g., EU AI Act ART-5 Prohibited Practices).
+    Use for controls that should only trigger on the most severe findings.
     """
     from agent_bom.models import Severity
 
@@ -393,19 +387,19 @@ def is_credential_key(name: str) -> bool:
 
 CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-78": {  # OS Command Injection
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-79": {  # Cross-Site Scripting (XSS)
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-89": {  # SQL Injection
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
@@ -423,12 +417,12 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["SC-12", "SC-13"],
     },
     "CWE-502": {  # Deserialization of Untrusted Data
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-798": {  # Hardcoded Credentials
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9", "A.8.24"],
         "nist_csf": ["PR.AA-01"],
         "soc2": ["CC6.1"],
@@ -446,7 +440,7 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-94": {  # Code Injection
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
@@ -454,33 +448,33 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     },
     # ── Input validation & injection variants ────────────────────────────────
     "CWE-20": {  # Improper Input Validation
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.12"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-77": {  # Command Injection (generic)
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.12"],
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-80": {  # Script Injection (Basic XSS)
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-90": {  # LDAP Injection
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-91": {  # XML Injection (XPath)
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "nist_800_53": ["SI-10"],
@@ -490,42 +484,46 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["SI-10", "AU-2"],
+        "eu_ai_act": ["ART-12"],
+    },
+    "CWE-778": {  # Insufficient Logging
+        "nist_800_53": ["AU-2"],
+        "eu_ai_act": ["ART-12"],
     },
     "CWE-352": {  # Cross-Site Request Forgery (CSRF)
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "soc2": ["CC6.1"],
         "nist_800_53": ["SI-10", "AC-3"],
     },
     "CWE-434": {  # Unrestricted Upload of Dangerous File Type
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-444": {  # HTTP Request Smuggling
-        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.12"],
         "nist_800_53": ["SI-10", "SC-8"],
     },
     "CWE-601": {  # Open Redirect
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-643": {  # XPath Injection
-        "owasp_llm": ["LLM02"],
+        "owasp_llm": ["LLM05"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "nist_800_53": ["SI-10"],
     },
     # ── Authentication & authorization ───────────────────────────────────────
     "CWE-269": {  # Improper Privilege Management
-        "owasp_llm": ["LLM08"],
+        "owasp_llm": ["LLM06"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.AA-01", "PR.AA-03"],
         "soc2": ["CC6.1"],
@@ -540,7 +538,6 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["AC-3", "AC-6"],
     },
     "CWE-287": {  # Improper Authentication
-        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.AA-01"],
         "soc2": ["CC6.1"],
@@ -555,7 +552,6 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["AC-3", "IA-5"],
     },
     "CWE-639": {  # Authorization Bypass via User-Controlled Key (IDOR)
-        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.AA-01"],
         "cis": ["CIS-16.1"],
@@ -575,27 +571,27 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     },
     # ── Sensitive data exposure ──────────────────────────────────────────────
     "CWE-200": {  # Exposure of Sensitive Information
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9"],
         "nist_csf": ["PR.AA-01"],
         "soc2": ["CC6.1"],
         "nist_800_53": ["AC-3", "SC-28"],
     },
     "CWE-209": {  # Error Message Information Leak
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9"],
         "nist_csf": ["PR.AA-01"],
         "nist_800_53": ["SI-10"],
     },
     "CWE-215": {  # Information Exposure Through Debug Information
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9"],
         "nist_csf": ["PR.AA-01"],
         "soc2": ["CC6.1"],
         "nist_800_53": ["CM-7"],
     },
     "CWE-312": {  # Cleartext Storage of Sensitive Information
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9", "A.8.24"],
         "nist_csf": ["PR.DS-01"],
         "soc2": ["CC6.1"],
@@ -603,21 +599,21 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["SC-28"],
     },
     "CWE-319": {  # Cleartext Transmission of Sensitive Information
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.24"],
         "nist_csf": ["PR.DS-02"],
         "soc2": ["CC6.1"],
         "nist_800_53": ["SC-8"],
     },
     "CWE-497": {  # Exposure of Sensitive System Information
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9"],
         "nist_csf": ["PR.AA-01"],
         "soc2": ["CC6.1"],
         "nist_800_53": ["AC-3", "SC-28"],
     },
     "CWE-538": {  # Sensitive Information in Log Files
-        "owasp_llm": ["LLM06"],
+        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.9"],
         "nist_csf": ["PR.AA-01"],
         "soc2": ["CC6.1"],
@@ -698,14 +694,14 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     },
     # ── Supply chain & trust boundaries ──────────────────────────────────────
     "CWE-426": {  # Untrusted Search Path
-        "owasp_llm": ["LLM05"],
+        "owasp_llm": ["LLM03"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
         "nist_800_53": ["CM-7", "SI-7"],
     },
     "CWE-427": {  # Uncontrolled Search Path Element
-        "owasp_llm": ["LLM05"],
+        "owasp_llm": ["LLM03"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "cis": ["CIS-16.1"],
@@ -714,7 +710,7 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
     "CWE-501": {  # Trust Boundary Violation
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
-        "cis": ["CIS-16.11"],
+        "cis": ["CIS-16.7"],
         "nist_800_53": ["AC-3", "SI-10"],
     },
     "CWE-776": {  # XML Bomb (Billion Laughs)
@@ -724,14 +720,13 @@ CWE_COMPLIANCE_MAP: dict[str, dict[str, list[str]]] = {
         "nist_800_53": ["SI-10", "SI-3"],
     },
     "CWE-829": {  # Inclusion of Functionality from Untrusted Control Sphere
-        "owasp_llm": ["LLM05"],
+        "owasp_llm": ["LLM03"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
-        "cis": ["CIS-02.7"],
+        "cis": ["CIS-02.6"],
         "nist_800_53": ["CM-7", "SR-3", "SI-7"],
     },
     "CWE-942": {  # Permissive Cross-domain Policy
-        "owasp_llm": ["LLM02"],
         "iso_27001": ["A.8.28"],
         "nist_csf": ["PR.DS-01"],
         "nist_800_53": ["AC-3", "SC-8"],

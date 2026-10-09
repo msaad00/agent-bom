@@ -330,7 +330,7 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "dataset_card_scan",
-        "description": "Scan dataset cards (HuggingFace, DVC) for licensing, provenance, and compliance tags (LLM03, ART-10)",
+        "description": "Scan dataset cards (HuggingFace, DVC) for licensing, provenance, and compliance tags (LLM04, ART-10)",
         "annotations": {"readOnlyHint": True},
     },
     {

@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_bom.iac import is_iac_file
 from agent_bom.traversal import iter_discovery_files
 
 _SKIP_DIRS = frozenset(
@@ -153,31 +154,51 @@ class ProjectScanTargets:
     auto_enabled: list[str] = field(default_factory=list)
 
 
-def _walk_limited(root: Path, *, max_files: int = 4000) -> list[Path]:
-    files: list[Path] = []
-    if not root.is_dir():
-        return files
-    # Prune vendored/generated dirs and nested VCS worktrees during the walk so
-    # detection does not descend into duplicated checkouts (e.g. agent
-    # worktrees under ``.claude/worktrees``) or scan millions of vendored paths.
-    for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=max_files):
-        files.append(path)
-        if len(files) >= max_files:
+_TREE_SURFACES = frozenset({"jupyter", "sast", "terraform", "iac", "python_source"})
+
+
+def _tree_surface_hits(path: Path, root: Path, wanted: frozenset[str]) -> set[str]:
+    suffix = path.suffix.lower()
+    hits: set[str] = set()
+    if "jupyter" in wanted and suffix == ".ipynb":
+        hits.add("jupyter")
+    if "sast" in wanted and suffix in _SAST_EXTENSIONS:
+        hits.add("sast")
+    if "terraform" in wanted and suffix in {".tf", ".tfvars"}:
+        hits.add("terraform")
+    if "python_source" in wanted and suffix == ".py" and path.name != "__init__.py":
+        hits.add("python_source")
+    if "iac" in wanted and is_iac_file(path, root):
+        hits.add("iac")
+    return hits
+
+
+def detect_tree_surfaces(root: Path, wanted: frozenset[str] = _TREE_SURFACES) -> frozenset[str]:
+    """Return which of *wanted* tree-content surfaces exist under *root*, in one walk.
+
+    Detection walks the whole (pruned) tree under the shared traversal bound and
+    stops as soon as every wanted surface is found. A per-probe file budget
+    would both miss surfaces deep in a normal-sized repository and report the
+    probe itself as a coverage gap, marking an otherwise complete scan partial.
+    """
+    found: set[str] = set()
+    if not wanted or not root.is_dir():
+        return frozenset()
+    # Vendored/generated dirs and nested VCS worktrees (e.g. ``.claude/worktrees``)
+    # are pruned during the walk, so detection never descends duplicated checkouts.
+    for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS):
+        found |= _tree_surface_hits(path, root, wanted - found)
+        if found >= wanted:
             break
-    return files
+    return frozenset(found)
 
 
 def project_has_notebooks(root: Path) -> bool:
-    if not root.is_dir():
-        return False
-    return any(path.suffix.lower() == ".ipynb" for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=4000))
+    return "jupyter" in detect_tree_surfaces(root, frozenset({"jupyter"}))
 
 
 def project_has_sast_targets(root: Path) -> bool:
-    for path in _walk_limited(root, max_files=500):
-        if path.suffix.lower() in _SAST_EXTENSIONS:
-            return True
-    return False
+    return "sast" in detect_tree_surfaces(root, frozenset({"sast"}))
 
 
 def project_has_prompt_templates(root: Path) -> bool:
@@ -187,9 +208,7 @@ def project_has_prompt_templates(root: Path) -> bool:
 
 
 def project_has_terraform(root: Path) -> bool:
-    if not root.is_dir():
-        return False
-    return any(path.suffix.lower() in {".tf", ".tfvars"} for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=4000))
+    return "terraform" in detect_tree_surfaces(root, frozenset({"terraform"}))
 
 
 def project_has_iac(root: Path) -> bool:
@@ -200,11 +219,7 @@ def project_has_iac(root: Path) -> bool:
     recursively — IaC normally lives under ``infra/``, ``deploy/`` or
     ``charts/``, not at the repo root.
     """
-    if not root.is_dir():
-        return False
-    from agent_bom.iac import is_iac_file
-
-    return any(is_iac_file(path, root) for path in iter_discovery_files(root, extra_skip_dirs=_SKIP_DIRS, max_files=4000))
+    return "iac" in detect_tree_surfaces(root, frozenset({"iac"}))
 
 
 def project_has_github_actions(root: Path) -> bool:
@@ -214,16 +229,12 @@ def project_has_github_actions(root: Path) -> bool:
     return any(workflows.glob("*.yml")) or any(workflows.glob("*.yaml"))
 
 
+def _has_python_manifest(root: Path) -> bool:
+    return root.is_dir() and any((root / name).exists() for name in _PYTHON_MANIFESTS)
+
+
 def project_has_python_agent_surface(root: Path) -> bool:
-    if not root.is_dir():
-        return False
-    for name in _PYTHON_MANIFESTS:
-        if (root / name).exists():
-            return True
-    for path in _walk_limited(root, max_files=800):
-        if path.suffix.lower() == ".py" and path.name != "__init__.py":
-            return True
-    return False
+    return _has_python_manifest(root) or "python_source" in detect_tree_surfaces(root, frozenset({"python_source"}))
 
 
 def semgrep_available() -> bool:
@@ -247,8 +258,6 @@ def expand_project_scan_targets(
     """Fill empty scan targets from project tree content."""
     root = Path(project).resolve()
     auto: list[str] = []
-    out_jupyter = jupyter_dirs
-    out_code = code_paths
     out_prompts = scan_prompts
     out_tf = tf_dirs
     out_gha = gha_path
@@ -256,26 +265,31 @@ def expand_project_scan_targets(
     out_ai_inventory = ai_inventory_paths
     out_iac = iac_paths
 
-    if not jupyter_dirs and project_has_notebooks(root):
-        out_jupyter = (str(root),)
-        auto.append("jupyter")
-
-    if not code_paths and semgrep_available() and project_has_sast_targets(root):
-        out_code = (str(root),)
-        auto.append("sast")
+    wanted = {
+        "jupyter": not jupyter_dirs,
+        "sast": not code_paths and semgrep_available(),
+        "terraform": not tf_dirs,
+        "iac": not iac_paths,
+        "python_source": bool(not agent_projects or not ai_inventory_paths) and not _has_python_manifest(root),
+    }
+    found = detect_tree_surfaces(root, frozenset(name for name, needed in wanted.items() if needed))
+    has_python_surface = _has_python_manifest(root) or "python_source" in found
+    out_jupyter = (str(root),) if "jupyter" in found else jupyter_dirs
+    out_code = (str(root),) if "sast" in found else code_paths
+    auto.extend(name for name in ("jupyter", "sast") if name in found)
 
     if not scan_prompts and project_has_prompt_templates(root):
         out_prompts = True
         auto.append("prompts")
 
-    if not tf_dirs and project_has_terraform(root):
+    if "terraform" in found:
         out_tf = (str(root),)
         auto.append("terraform")
 
     # The IaC security rules run on the whole tree, exactly as the API repo-tree
     # scan does. Without this the CLI reported ``terraform`` as a scan source
     # while every misconfiguration rule stayed unexecuted.
-    if not iac_paths and project_has_iac(root):
+    if "iac" in found:
         out_iac = (str(root),)
         auto.append("iac")
 
@@ -283,13 +297,13 @@ def expand_project_scan_targets(
         out_gha = str(root)
         auto.append("github_actions")
 
-    if not agent_projects and project_has_python_agent_surface(root):
+    if not agent_projects and has_python_surface:
         out_agents = (str(root),)
         auto.append("python_agents")
 
     # Same surface as python agents: SDK/obs imports (LangChain, Langfuse, …)
     # become first-class AI BOM framework nodes when inventory is enabled.
-    if not ai_inventory_paths and project_has_python_agent_surface(root):
+    if not ai_inventory_paths and has_python_surface:
         out_ai_inventory = (str(root),)
         auto.append("ai_inventory")
 

@@ -78,8 +78,8 @@ function passRateOnly(benchmark: unknown): number | null {
   if (!isRecord(benchmark)) return null;
   const raw = asNumber(benchmark.pass_rate);
   if (raw == null) return null;
-  // Backends emit either 0–1 or 0–100; normalize to a percentage.
-  return raw <= 1 ? raw * 100 : raw;
+  // The CIS serializers emit percentages, including values below one percent.
+  return raw >= 0 && raw <= 100 ? raw : null;
 }
 
 /**
@@ -95,9 +95,10 @@ export function cisSummaryFromResult(result: ScanResult | null | undefined): Cis
     result.gcp_cis_benchmark,
     result.snowflake_cis_benchmark,
     result.databricks_cis_benchmark,
-  ];
-  const counts = benches.map(cisCounts).filter((count) => count != null);
-  if (counts.length > 0) {
+  ].filter(isRecord);
+  const reported = benches.map(cisCounts);
+  const counts = reported.map((count) => count ?? { passed: null, failed: null, total: null });
+  if (reported.some((count) => count != null)) {
     const sumKnown = (key: "passed" | "failed" | "total"): number | null =>
       counts.every((count) => count[key] != null) ? counts.reduce((sum, count) => sum + count[key]!, 0) : null;
     const passed = sumKnown("passed");
@@ -106,13 +107,10 @@ export function cisSummaryFromResult(result: ScanResult | null | undefined): Cis
     const evaluated = passed != null && failed != null ? passed + failed : null;
     return { passed, failed, total, passRate: passed != null && evaluated != null && evaluated > 0 ? (passed / evaluated) * 100 : null };
   }
-  const passRate =
-    passRateOnly(result.cis_benchmark) ??
-    passRateOnly(result.azure_cis_benchmark) ??
-    passRateOnly(result.gcp_cis_benchmark) ??
-    passRateOnly(result.snowflake_cis_benchmark) ??
-    passRateOnly(result.databricks_cis_benchmark);
-  if (passRate != null) return { passed: null, failed: null, total: null, passRate };
+  const rates = benches.map(passRateOnly);
+  if (rates.some((rate) => rate != null)) {
+    return { passed: null, failed: null, total: null, passRate: rates.length === 1 ? rates[0] : null };
+  }
   return null;
 }
 

@@ -46,6 +46,18 @@ it("keeps discovery-time secret evidence visible when CVE scanning was skipped",
 
 
 describe("CIS benchmark evidence", () => {
+  it("keeps a reported one percent pass rate at one percent", () => {
+    expect(cisSummaryFromResult({ cis_benchmark: { pass_rate: 1 } } as ScanResult)?.passRate).toBe(1);
+  });
+  it("does not omit a benchmark with unknown counts from aggregate results", () => {
+    const scan = { cis_benchmark: { passed: 10, failed: 0, total: 10 }, azure_cis_benchmark: { pass_rate: 20 } } as ScanResult;
+    expect(cisSummaryFromResult(scan)?.failed).toBeNull();
+    expect(cisSummaryFromResult(scan)?.passRate).toBeNull();
+  });
+  it("does not use one provider's rate as a multi-provider aggregate", () => {
+    const scan = { cis_benchmark: { pass_rate: 20 }, azure_cis_benchmark: { pass_rate: 80 } } as ScanResult;
+    expect(cisSummaryFromResult(scan)?.passRate).toBeNull();
+  });
   it("keeps errors and inapplicable checks out of the failed count", () => {
     const scan = { cis_benchmark: { passed: 2, failed: 1, errored: 3, not_applicable: 4, total: 10 } } as ScanResult;
     expect(cisSummaryFromResult(scan)?.failed).toBe(1);

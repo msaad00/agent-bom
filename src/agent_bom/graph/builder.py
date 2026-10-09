@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from collections import defaultdict
 from collections.abc import Mapping
 from typing import Any
 
@@ -18,7 +17,6 @@ from agent_bom.api.tracing import get_tracer
 from agent_bom.canonical_ids import canonical_graph_node_id
 from agent_bom.cloud.normalization import coerce_bool_or_none, coerce_truthy
 from agent_bom.core.cloud_identity import cloud_resource_node_id
-from agent_bom.core.severity import SEVERITY_RANK
 from agent_bom.graph.agent_projection import project_agents
 from agent_bom.graph.authorization_evidence import apply_authorization_evidence, has_authoritative_authorization_evidence
 from agent_bom.graph.benchmark_projection import benchmark_inputs, project_benchmarks
@@ -26,6 +24,183 @@ from agent_bom.graph.blast_projection import enrich_blast_radius, project_blast_
 from agent_bom.graph.build_analysis import GraphAnalysisPorts, apply_build_analysis
 from agent_bom.graph.build_indexes import BuildIndexes
 from agent_bom.graph.build_input import GraphBuildInput
+from agent_bom.graph.builder_cloud_inventory import (
+    _add_management_group_hierarchy as _add_management_group_hierarchy,
+)
+from agent_bom.graph.builder_cloud_inventory import (
+    _wire_instance_profile_roles as _wire_instance_profile_roles,
+)
+from agent_bom.graph.builder_cloud_principals import (
+    _add_access_advisor_grants as _add_access_advisor_grants,
+)
+from agent_bom.graph.builder_cloud_principals import (
+    _role_last_used_at as _role_last_used_at,
+)
+from agent_bom.graph.builder_frameworks import (
+    _add_cross_env_correlation as _add_cross_env_correlation,
+)
+from agent_bom.graph.builder_frameworks import (
+    _project_host_agent_id as _project_host_agent_id,
+)
+from agent_bom.graph.builder_network_edges import (
+    _GCP_LB_COLLECTION as _GCP_LB_COLLECTION,
+)
+from agent_bom.graph.builder_network_edges import (
+    _NETWORK_EDGE_COLLECTIONS as _NETWORK_EDGE_COLLECTIONS,
+)
+from agent_bom.graph.builder_network_exposure import (
+    _add_exposure_path_edge as _add_exposure_path_edge,
+)
+from agent_bom.graph.builder_network_exposure import (
+    _apply_gcp_firewall_exposure as _apply_gcp_firewall_exposure,
+)
+from agent_bom.graph.builder_network_exposure import (
+    _gcp_firewall_applies as _gcp_firewall_applies,
+)
+from agent_bom.graph.builder_network_exposure import (
+    _instance_internet_reachable as _instance_internet_reachable,
+)
+from agent_bom.graph.builder_network_exposure import (
+    _link_internet_facing_load_balancers as _link_internet_facing_load_balancers,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_agent_reach_risk as _apply_agent_reach_risk,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_aspm_overlay as _apply_aspm_overlay,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_ci_graph_overlay as _apply_ci_graph_overlay,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_code_graph_overlay as _apply_code_graph_overlay,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_cost_overlay as _apply_cost_overlay,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_repo_structure_overlay as _apply_repo_structure_overlay,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_repo_trust_overlay as _apply_repo_trust_overlay,
+)
+from agent_bom.graph.builder_overlays import (
+    _apply_runtime_evidence_overlay as _apply_runtime_evidence_overlay,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _EXFIL_STAGE_SERVICE as _EXFIL_STAGE_SERVICE,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _SF_EXTERNAL_BUCKET_SERVICE as _SF_EXTERNAL_BUCKET_SERVICE,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_exfil as _add_snowflake_exfil,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_external_data as _add_snowflake_external_data,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_external_stages as _add_snowflake_external_stages,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_external_tables as _add_snowflake_external_tables,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_iceberg_tables as _add_snowflake_iceberg_tables,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_outbound_shares as _add_snowflake_outbound_shares,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_sensitive_objects as _add_snowflake_sensitive_objects,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _add_snowflake_stage_bucket as _add_snowflake_stage_bucket,
+)
+from agent_bom.graph.builder_snowflake_data_movement import (
+    _link_iceberg_bucket as _link_iceberg_bucket,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _add_cortex_agent_nodes as _add_cortex_agent_nodes,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _add_snowflake_access_edges as _add_snowflake_access_edges,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _add_snowflake_activity as _add_snowflake_activity,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _add_snowflake_governance as _add_snowflake_governance,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _aggregate_cortex_agent_usage as _aggregate_cortex_agent_usage,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _collect_snowflake_access as _collect_snowflake_access,
+)
+from agent_bom.graph.builder_snowflake_governance import (
+    _snowflake_access_receipt as _snowflake_access_receipt,
+)
+from agent_bom.graph.builder_snowflake_lane import (
+    _snowflake_data_store as _snowflake_data_store,
+)
+from agent_bom.graph.builder_snowflake_lane import (
+    _snowflake_thin_node as _snowflake_thin_node,
+)
+from agent_bom.graph.builder_snowflake_lane import (
+    _SnowflakeLane as _SnowflakeLane,
+)
+from agent_bom.graph.builder_snowflake_objects import (
+    _add_snowflake_auth_posture as _add_snowflake_auth_posture,
+)
+from agent_bom.graph.builder_snowflake_objects import (
+    _add_snowflake_identity as _add_snowflake_identity,
+)
+from agent_bom.graph.builder_snowflake_objects import (
+    _add_snowflake_login_threats as _add_snowflake_login_threats,
+)
+from agent_bom.graph.builder_snowflake_objects import (
+    _add_snowflake_object_graph as _add_snowflake_object_graph,
+)
+from agent_bom.graph.builder_snowflake_objects import (
+    _enrich_snowflake_user as _enrich_snowflake_user,
+)
+from agent_bom.graph.builder_snowflake_objects import (
+    _SnowflakeObjectGraph as _SnowflakeObjectGraph,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_databases as _add_snowflake_databases,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_integrations as _add_snowflake_integrations,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_organization as _add_snowflake_organization,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_pipeline as _add_snowflake_pipeline,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_pipes as _add_snowflake_pipes,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_schemas as _add_snowflake_schemas,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_services as _add_snowflake_services,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_streams as _add_snowflake_streams,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_tasks as _add_snowflake_tasks,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _add_snowflake_warehouses as _add_snowflake_warehouses,
+)
+from agent_bom.graph.builder_snowflake_platform import (
+    _link_snowflake_objects_to_schemas as _link_snowflake_objects_to_schemas,
+)
 from agent_bom.graph.cloud_compute_projection import project_instances, project_security_groups
 from agent_bom.graph.cloud_context import (
     _add_account_resource_hierarchy as _add_account_resource_hierarchy,
@@ -80,7 +255,7 @@ from agent_bom.graph.cloud_rbac import add_cloud_role_assignments as _add_cloud_
 from agent_bom.graph.cloud_service_projection import project_aws_services, project_gcp_services
 from agent_bom.graph.cloud_storage_projection import project_buckets, project_databases, project_side_scan_targets
 from agent_bom.graph.container import UnifiedGraph
-from agent_bom.graph.edge import UnifiedEdge, merge_edge_evidence
+from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.finding_projection import _resolve_skill_audit_target_ids as _resolve_skill_audit_target_ids
 from agent_bom.graph.finding_projection import (
     project_iac,
@@ -344,117 +519,6 @@ def _analysis_ports() -> GraphAnalysisPorts:
     )
 
 
-def _apply_cost_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Fuse LLM cost into the graph from cost records carried on the report.
-
-    Reads the optional ``llm_cost_records`` block (a list of priced cost-record
-    dicts the caller loaded from the cost store — never fetched here) and hands
-    it to :func:`agent_bom.graph.cost_overlay.apply_cost_overlay`. Gated to a
-    clean no-op when the block is absent or empty, so an ordinary scan (no cost
-    data) leaves the graph byte-identical. Mirrors how ``cnapp_overlay`` /
-    ``governance_overlay`` are invoked above.
-    """
-    raw = report_json.get("llm_cost_records")
-    if not isinstance(raw, list) or not raw:
-        return
-    records = [r for r in raw if isinstance(r, dict)]
-    if not records:
-        return
-    from datetime import datetime, timezone
-
-    from agent_bom.graph.cost_overlay import apply_cost_overlay
-
-    apply_cost_overlay(graph, records, datetime.now(timezone.utc))
-
-
-def _apply_agent_reach_risk(graph: UnifiedGraph) -> None:
-    """Score each agent by the worst vulnerability in its dependency closure.
-
-    Agents reaching no vulnerability stay unassessed rather than being claimed
-    risk-free, because the closure only covers vulnerability evidence.
-
-    Walks the inverse of the dependency-reach edges once, worst vulnerability
-    first: a node already reached by a worse vulnerability bounds all of its
-    ancestors, so every node is visited at most once.
-    """
-    from collections import deque
-
-    from agent_bom.graph.dependency_reach import _REACH_EDGE_TYPES, _vulnerability_packages
-
-    agent_ids = {node.id for node in graph.iter_nodes_by_type(EntityType.AGENT)}
-    if not agent_ids:
-        return
-    vulns = sorted(
-        (
-            (node.risk_score, SEVERITY_RANK.get(node.severity.lower(), 0), node.id, node.severity, node.severity_id)
-            for node in graph.iter_nodes_by_type(EntityType.VULNERABILITY)
-            if node.risk_score > 0 or node.severity
-        ),
-        reverse=True,
-    )
-    visited: set[str] = set()
-    for risk_score, _rank, vuln_id, severity, severity_id in vulns:
-        queue = deque(pkg for pkg in _vulnerability_packages(graph, vuln_id) if pkg not in visited)
-        visited.update(queue)
-        while queue:
-            current = queue.popleft()
-            if current in agent_ids:
-                agent = graph.get_node(current)
-                if agent is not None and agent.risk_score <= risk_score:
-                    agent.risk_score = risk_score
-                    agent.severity = severity
-                    agent.severity_id = severity_id
-                    agent.mark_risk_assessed(basis="max_reachable_vulnerability_risk", scope="agent_dependency_closure_vulnerabilities")
-            for edge in graph.reverse_adjacency.get(current, []):
-                if edge.relationship in _REACH_EDGE_TYPES and edge.source not in visited:
-                    visited.add(edge.source)
-                    queue.append(edge.source)
-
-
-def _apply_aspm_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Correlate AppSec findings around applications from the report's findings.
-
-    Reads the optional unified ``findings`` block (a list of ``Finding.to_dict()``
-    dicts the report already carries) and hands it to
-    :func:`agent_bom.graph.aspm_overlay.apply_aspm_overlay`, which derives
-    APPLICATION roots, attaches each finding via ``BELONGS_TO``, rolls up per-app
-    risk, dedupes duplicate CVE/rule across sources, and flags reachability from
-    existing attack-path data. Gated to a clean no-op when the block is absent or
-    empty, so a scan with no findings leaves the graph byte-identical. Mirrors how
-    ``_apply_cost_overlay`` is invoked above.
-    """
-    raw = report_json.get("findings")
-    if not isinstance(raw, list) or not raw:
-        return
-    from datetime import datetime, timezone
-
-    from agent_bom.graph.aspm_overlay import apply_aspm_overlay
-
-    apply_aspm_overlay(graph, dict(report_json), datetime.now(timezone.utc))
-
-
-def _apply_runtime_evidence_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    from agent_bom.graph.evidence_overlay import apply_runtime_evidence_overlay
-
-    apply_runtime_evidence_overlay(graph, report_json)
-
-
-def _apply_repo_structure_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Attach repository directories, manifests, packages and finding files.
-
-    The owning overlay supplies file-to-package and finding-to-file edges.
-    Reports with neither project inventory nor file findings are a no-op.
-    """
-    has_inventory = isinstance(report_json.get("project_inventory"), Mapping)
-    if not has_inventory and not any(node.entity_type == EntityType.MISCONFIGURATION for node in graph.nodes.values()):
-        return
-    from datetime import datetime, timezone
-
-    from agent_bom.graph.repo_structure_overlay import apply_repo_structure_overlay
-
-    apply_repo_structure_overlay(graph, dict(report_json), datetime.now(timezone.utc))
-
-
 def _apply_ast_tool_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
     """Materialise source-defined tool and application entrypoints."""
     inventory = report_json.get("ai_inventory")
@@ -596,45 +660,6 @@ def _apply_ast_tool_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any])
                 },
             )
         )
-
-
-def _apply_code_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Emit CODE_MODULE nodes from SOURCE_FILE evidence already on the graph."""
-    if not any(node.entity_type == EntityType.SOURCE_FILE for node in graph.nodes.values()):
-        return
-    from datetime import datetime, timezone
-
-    from agent_bom.graph.code_graph_overlay import apply_code_graph_overlay
-
-    apply_code_graph_overlay(graph, dict(report_json), datetime.now(timezone.utc))
-
-
-def _apply_repo_trust_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Stamp ``repo_trust`` metadata onto APPLICATION (+ root DIRECTORY when present)."""
-    has_trust = isinstance(report_json.get("repo_trust"), Mapping) and bool(report_json.get("repo_trust"))
-    inventory = report_json.get("project_inventory")
-    has_nested = isinstance(inventory, Mapping) and isinstance(inventory.get("repo_trust"), Mapping) and bool(inventory.get("repo_trust"))
-    if not has_trust and not has_nested:
-        return
-    from datetime import datetime, timezone
-
-    from agent_bom.graph.repo_trust_overlay import apply_repo_trust_overlay
-
-    apply_repo_trust_overlay(graph, dict(report_json), datetime.now(timezone.utc))
-
-
-def _apply_ci_graph_overlay(graph: UnifiedGraph, report_json: Mapping[str, Any]) -> None:
-    """Emit CI_JOB topology from github-actions agents in the report."""
-    agents = report_json.get("agents")
-    if not isinstance(agents, list):
-        return
-    if not any(isinstance(agent, dict) and agent.get("source") == "github-actions" for agent in agents):
-        return
-    from datetime import datetime, timezone
-
-    from agent_bom.graph.ci_graph_overlay import apply_ci_graph_overlay
-
-    apply_ci_graph_overlay(graph, dict(report_json), datetime.now(timezone.utc))
 
 
 def _add_agent_cloud_lineage(
@@ -1037,1243 +1062,6 @@ def _project_snowflake_lanes(graph: UnifiedGraph, report_json: dict[str, Any], d
     _add_snowflake_activity(graph, report_json.get("snowflake_activity"), data_source)
 
 
-def _add_snowflake_object_graph(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake tables/views + their lineage into the graph.
-
-    Each table/view becomes a ``DATA_STORE`` node owned by the Snowflake
-    account; ``OBJECT_DEPENDENCIES`` become ``DEPENDS_ON`` edges (the referencing
-    object depends on the referenced one — e.g. a view on its base table). This
-    is the data-lineage layer: blast-radius and exfil analysis can walk from a
-    table to everything derived from it. Never raises; a missing/empty payload
-    is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-objects")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-objects",
-        )
-
-    def _obj_node_id(fqn: str) -> str:
-        return f"data_store:snowflake:{fqn}"
-
-    seen: set[str] = set()
-
-    def _ensure_object(fqn: str, *, object_type: str = "object", attributes: dict[str, Any] | None = None) -> str:
-        node_id = _obj_node_id(fqn)
-        if node_id in seen:
-            return node_id
-        seen.add(node_id)
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.DATA_STORE,
-                label=f"{object_type}: {fqn}",
-                attributes={
-                    "fqn": fqn,
-                    "object_type": object_type,
-                    "cloud_provider": "snowflake",
-                    "is_data_store": True,
-                    **(attributes or {}),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node_id,
-                evidence={"source": "snowflake-objects"},
-            )
-        return node_id
-
-    for obj in payload.get("objects", []) or []:
-        if not isinstance(obj, dict):
-            continue
-        fqn = _clean_graph_part(obj.get("fqn"))
-        if not fqn:
-            continue
-        _ensure_object(
-            fqn,
-            object_type=str(obj.get("object_type") or "object"),
-            attributes={
-                "database": obj.get("database"),
-                "schema": obj.get("schema"),
-                "row_count": obj.get("row_count"),
-                "bytes": obj.get("bytes"),
-            },
-        )
-
-    for dep in payload.get("dependencies", []) or []:
-        if not isinstance(dep, dict):
-            continue
-        referencing = _clean_graph_part(dep.get("referencing_fqn"))
-        referenced = _clean_graph_part(dep.get("referenced_fqn"))
-        if not referencing or not referenced:
-            continue
-        # Dependency endpoints may not be in the objects list (e.g. SNOWFLAKE
-        # system objects) — create thin nodes so the lineage edge still lands.
-        src = _ensure_object(referencing, object_type=str(dep.get("referencing_domain") or "object").lower())
-        tgt = _ensure_object(referenced, object_type=str(dep.get("referenced_domain") or "object").lower())
-        _add_rel_edge(
-            graph,
-            src,
-            tgt,
-            RelationshipType.DEPENDS_ON,
-            {"source": "snowflake-objects", "dependency_type": dep.get("dependency_type", "")},
-        )
-
-    # ── Roles + users (CIEM access layer) ──────────────────────────────
-    seen_roles: set[str] = set()
-
-    def _ensure_role(name: str) -> str:
-        node_id = f"role:snowflake:{name}"
-        if node_id not in seen_roles:
-            seen_roles.add(node_id)
-            _add_identity_node(
-                graph,
-                EntityType.ROLE,
-                name,
-                "snowflake",
-                data_sources,
-                label=f"role: {name}",
-                role_name=name,
-                cloud_provider="snowflake",
-                source="snowflake-objects",
-            )
-        return node_id
-
-    # Object-level grants: role HAS_PERMISSION on the object (data store).
-    for grant in payload.get("grants", []) or []:
-        if not isinstance(grant, dict):
-            continue
-        role = _clean_graph_part(grant.get("role"))
-        object_fqn = _clean_graph_part(grant.get("object_fqn"))
-        if not role or not object_fqn:
-            continue
-        _add_rel_edge(
-            graph,
-            _ensure_role(role),
-            _ensure_object(object_fqn, object_type=str(grant.get("object_type") or "object").lower()),
-            RelationshipType.HAS_PERMISSION,
-            {
-                "source": "snowflake-objects",
-                "privilege": grant.get("privilege", ""),
-                "grant_receipts": [
-                    {
-                        "source": "snowflake-objects",
-                        "account": account or None,
-                        "role": role,
-                        "privilege": grant.get("privilege", ""),
-                        "object_fqn": object_fqn,
-                        "object_type": str(grant["object_type"]).lower() if grant.get("object_type") else None,
-                    }
-                ],
-            },
-        )
-
-    # Users. ``role_memberships`` carry user→role grants; the live SHOW overlay
-    # also emits role→role memberships ({role, parent}) and a top-level
-    # ``users`` list (freshly-created users that have no membership yet).
-    seen_users: set[str] = set()
-
-    def _ensure_user(user_name: str, **extra: Any) -> str:
-        node_id = f"user:snowflake:{user_name}"
-        if node_id not in seen_users:
-            seen_users.add(node_id)
-            _add_identity_node(
-                graph,
-                EntityType.USER,
-                user_name,
-                "snowflake",
-                data_sources,
-                label=f"user: {user_name}",
-                user_name=user_name,
-                cloud_provider="snowflake",
-                source="snowflake-objects",
-                **{k: v for k, v in extra.items() if v not in (None, "")},
-            )
-        return node_id
-
-    # Standalone users (no membership row yet) so new accounts graph instantly.
-    for usr in payload.get("users", []) or []:
-        if not isinstance(usr, dict):
-            continue
-        user_name = _clean_graph_part(usr.get("name"))
-        if not user_name:
-            continue
-        _ensure_user(
-            user_name,
-            default_role=_clean_graph_part(usr.get("default_role")) or None,
-            disabled=usr.get("disabled"),
-        )
-
-    for membership in payload.get("role_memberships", []) or []:
-        if not isinstance(membership, dict):
-            continue
-        role = _clean_graph_part(membership.get("role"))
-        if not role:
-            continue
-        parent = _clean_graph_part(membership.get("parent"))
-        is_role_member = str(membership.get("member_type") or "").lower() == "role" or bool(parent)
-        if is_role_member:
-            # Role → role: the child role is a MEMBER_OF the parent and inherits
-            # (ASSUMES) its privileges, so privilege chains traverse end-to-end.
-            if not parent:
-                continue
-            child_id = _ensure_role(role)
-            parent_id = _ensure_role(parent)
-            _add_rel_edge(graph, child_id, parent_id, RelationshipType.MEMBER_OF, {"source": "snowflake-objects"})
-            _add_rel_edge(graph, child_id, parent_id, RelationshipType.ASSUMES, {"source": "snowflake-objects"})
-            continue
-        # User → role: the user is a MEMBER_OF and ASSUMES the role's privileges.
-        user_name = _clean_graph_part(membership.get("user"))
-        if not user_name:
-            continue
-        user_node_id = _ensure_user(user_name)
-        role_id = _ensure_role(role)
-        _add_rel_edge(graph, user_node_id, role_id, RelationshipType.MEMBER_OF, {"source": "snowflake-objects"})
-        _add_rel_edge(graph, user_node_id, role_id, RelationshipType.ASSUMES, {"source": "snowflake-objects"})
-
-
-_EXFIL_STAGE_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
-
-
-def _add_snowflake_services(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake compute + the database/schema containment tree into the graph.
-
-    Completes the object catalog beyond tables/views:
-
-    * **Warehouses** → ``CLOUD_RESOURCE`` (compute) owned by the account.
-    * **Databases** → ``DATA_STORE`` container owned by the account.
-    * **Schemas** → ``DATA_STORE`` container; the database ``CONTAINS`` the schema.
-    * Existing table/view nodes (``data_store:snowflake:DB.SCHEMA.OBJ`` from the
-      object graph) are linked under their schema via ``CONTAINS``, so the graph
-      renders a navigable DB → schema → table tree instead of a flat owned-by-account list.
-
-    Never raises; missing/empty/non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-services")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-services",
-        )
-
-    def _own(node: UnifiedNode) -> str:
-        graph.add_node(node)
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node.id,
-                evidence={"source": "snowflake-services"},
-            )
-        return node.id
-
-    for wh in payload.get("warehouses", []) or []:
-        if not isinstance(wh, dict):
-            continue
-        name = _clean_graph_part(wh.get("name"))
-        if not name:
-            continue
-        _own(
-            UnifiedNode(
-                id=f"cloud_resource:snowflake:warehouse:{name}",
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"warehouse: {name}",
-                attributes={
-                    "resource_name": name,
-                    "resource_type": "warehouse",
-                    "resource_kind": "snowflake-warehouse",
-                    "cloud_provider": "snowflake",
-                    "size": wh.get("size"),
-                    "state": wh.get("state"),
-                    "auto_suspend": wh.get("auto_suspend"),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="compute"),
-            )
-        )
-
-    # Database + schema containers, keyed by fqn so table nodes can attach.
-    schema_node_by_fqn: dict[str, str] = {}
-    db_node_by_name: dict[str, str] = {}
-    for db in payload.get("databases", []) or []:
-        if not isinstance(db, dict):
-            continue
-        name = _clean_graph_part(db.get("name"))
-        if not name:
-            continue
-        db_id = _own(
-            UnifiedNode(
-                id=f"data_store:snowflake:db:{name}",
-                entity_type=EntityType.DATA_STORE,
-                label=f"database: {name}",
-                attributes={
-                    "database_name": name,
-                    "object_type": "database",
-                    "cloud_provider": "snowflake",
-                    "is_data_store": True,
-                    "is_container": True,
-                    "retention_time": db.get("retention_time"),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        db_node_by_name[name] = db_id
-
-    for sch in payload.get("schemas", []) or []:
-        if not isinstance(sch, dict):
-            continue
-        fqn = _clean_graph_part(sch.get("fqn"))
-        db_name = _clean_graph_part(sch.get("database_name"))
-        if not fqn or not db_name:
-            continue
-        sch_id = f"data_store:snowflake:schema:{fqn}"
-        graph.add_node(
-            UnifiedNode(
-                id=sch_id,
-                entity_type=EntityType.DATA_STORE,
-                label=f"schema: {fqn}",
-                attributes={
-                    "fqn": fqn,
-                    "object_type": "schema",
-                    "database": db_name,
-                    "cloud_provider": "snowflake",
-                    "is_data_store": True,
-                    "is_container": True,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        schema_node_by_fqn[fqn] = sch_id
-        # database CONTAINS schema
-        parent_db_id = db_node_by_name.get(db_name)
-        if parent_db_id:
-            _add_rel_edge(graph, parent_db_id, sch_id, RelationshipType.CONTAINS, {"source": "snowflake-services"})
-
-    # Link existing object-graph table/view nodes under their schema (schema CONTAINS object).
-    if schema_node_by_fqn:
-        for node in list(graph.nodes.values()):
-            if node.entity_type != EntityType.DATA_STORE:
-                continue
-            obj_fqn = str(node.attributes.get("fqn") or "")
-            # Only DB.SCHEMA.OBJECT (3-part) table/view nodes, not the containers themselves.
-            if node.attributes.get("is_container") or obj_fqn.count(".") != 2:
-                continue
-            parent_schema = obj_fqn.rsplit(".", 1)[0]
-            parent_sch_id = schema_node_by_fqn.get(parent_schema)
-            if parent_sch_id:
-                _add_rel_edge(graph, parent_sch_id, node.id, RelationshipType.CONTAINS, {"source": "snowflake-services"})
-
-
-def _add_snowflake_organization(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote the Snowflake Organization → Accounts roll-up into the graph.
-
-    The Snowflake analogue of :func:`_add_aws_organization` and
-    :func:`_add_gcp_organization`: multiple Snowflake accounts roll up under a
-    parent ``ORG`` node via ``CONTAINS`` so the estate is traversable top-down.
-
-    The account nodes reuse the same ``account:snowflake:<locator>`` id that
-    :func:`_add_snowflake_services` (and the rest of the Snowflake graph) emits, so
-    the org backbone stitches onto any already-inventoried account graph rather
-    than creating a parallel island. When org data is absent or non-ok the call is
-    a no-op and the account stays the root — single-account behavior is unchanged.
-
-    Never raises; a non-ok / non-dict payload is a no-op.
-    """
-    if not isinstance(payload, dict) or payload.get("status") != "ok":
-        return
-    accounts = payload.get("accounts") or []
-    if not accounts:
-        return
-    data_sources = sorted({data_source, "snowflake-organizations"} - {""})
-    org_name = _clean_graph_part(payload.get("org_name")) or "organization"
-    org_node_id = f"org:snowflake:{org_name}"
-    graph.add_node(
-        UnifiedNode(
-            id=org_node_id,
-            entity_type=EntityType.ORG,
-            label=f"Snowflake org: {org_name}",
-            attributes={
-                "org_name": org_name,
-                "cloud_provider": "snowflake",
-                "account_count": len([a for a in accounts if isinstance(a, dict)]),
-            },
-            data_sources=data_sources,
-            dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-        )
-    )
-
-    for member in accounts:
-        if not isinstance(member, dict):
-            continue
-        locator = _clean_graph_part(member.get("locator"))
-        if not locator:
-            continue
-        account_node = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            locator,
-            "snowflake",
-            data_sources,
-            label=_clean_graph_part(member.get("name")) or locator,
-            account_id=locator,
-            cloud_provider="snowflake",
-            account_name=_clean_graph_part(member.get("name")),
-            region=_clean_graph_part(member.get("region")),
-            edition=_clean_graph_part(member.get("edition")),
-            source="snowflake-organizations",
-        )
-        _add_rel_edge(graph, org_node_id, account_node, RelationshipType.CONTAINS, {"source": "snowflake-organizations"})
-
-
-_SF_EXTERNAL_BUCKET_SERVICE = {"aws": "s3", "azure": "blob", "gcp": "gcs"}
-
-
-def _add_snowflake_external_data(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake open-table-format + external data into the graph.
-
-    * **Iceberg tables** → ``DATA_STORE``; when the base location is a cloud
-      bucket, ``EXPOSED_TO`` that bucket node (same id a cloud scan emits — the
-      cross-cloud stitch), so off-account Iceberg data is traversable.
-    * **External tables** → ``DATA_STORE``; ``DEPENDS_ON`` the stage they read
-      from (which the exfil layer links onward to the bucket).
-
-    Never raises; a non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-external-data")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-external-data",
-        )
-
-    def _own_data_store(node_id: str, label: str, attrs: dict[str, Any]) -> str:
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.DATA_STORE,
-                label=label,
-                attributes={"cloud_provider": "snowflake", "is_data_store": True, **attrs},
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node_id,
-                evidence={"source": "snowflake-external-data"},
-            )
-        return node_id
-
-    for tbl in payload.get("iceberg_tables", []) or []:
-        if not isinstance(tbl, dict):
-            continue
-        fqn = _clean_graph_part(tbl.get("fqn")) or _clean_graph_part(tbl.get("name"))
-        if not fqn:
-            continue
-        node_id = _own_data_store(
-            f"data_store:snowflake:iceberg:{fqn}",
-            f"iceberg table: {fqn}",
-            {
-                "fqn": fqn,
-                "object_type": "iceberg_table",
-                "table_format": "iceberg",
-                "catalog": tbl.get("catalog"),
-                "catalog_source": tbl.get("catalog_source"),
-                "base_location": tbl.get("base_location"),
-            },
-        )
-        cloud = _clean_graph_part(tbl.get("cloud_provider"))
-        bucket = _clean_graph_part(tbl.get("bucket"))
-        if cloud and bucket:
-            service = _SF_EXTERNAL_BUCKET_SERVICE.get(cloud, "storage")
-            bucket_id = f"cloud_resource:{cloud}:{service}:bucket:{bucket}"
-            if bucket_id not in graph.nodes:
-                graph.add_node(
-                    UnifiedNode(
-                        id=bucket_id,
-                        entity_type=EntityType.CLOUD_RESOURCE,
-                        label=f"bucket: {bucket}",
-                        attributes={
-                            "resource_name": bucket,
-                            "resource_type": "bucket",
-                            "resource_kind": f"{service}-bucket",
-                            "cloud_provider": cloud,
-                            "cloud_service": service,
-                        },
-                        data_sources=data_sources,
-                        dimensions=NodeDimensions(cloud_provider=cloud, surface=service),
-                    )
-                )
-            _add_rel_edge(
-                graph,
-                node_id,
-                bucket_id,
-                RelationshipType.EXPOSED_TO,
-                {"source": "snowflake-external-data", "channel": "iceberg-base-location"},
-            )
-
-    for tbl in payload.get("external_tables", []) or []:
-        if not isinstance(tbl, dict):
-            continue
-        fqn = _clean_graph_part(tbl.get("fqn")) or _clean_graph_part(tbl.get("name"))
-        if not fqn:
-            continue
-        node_id = _own_data_store(
-            f"data_store:snowflake:external_table:{fqn}",
-            f"external table: {fqn}",
-            {"fqn": fqn, "object_type": "external_table", "location": tbl.get("location")},
-        )
-        stage = _clean_graph_part(tbl.get("stage"))
-        if stage:
-            stage_name = stage.split(".")[-1]
-            stage_id = f"cloud_resource:snowflake:stage:{stage_name}"
-            if stage_id not in graph.nodes:
-                graph.add_node(
-                    UnifiedNode(
-                        id=stage_id,
-                        entity_type=EntityType.CLOUD_RESOURCE,
-                        label=f"external stage: {stage_name}",
-                        attributes={"cloud_provider": "snowflake", "resource_type": "external-stage"},
-                        data_sources=data_sources,
-                        dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-                    )
-                )
-            _add_rel_edge(
-                graph,
-                node_id,
-                stage_id,
-                RelationshipType.DEPENDS_ON,
-                {"source": "snowflake-external-data", "via": "external-table-stage"},
-            )
-
-
-def _add_snowflake_integrations(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake account integrations into the graph (external-trust layer).
-
-    Account-owned nodes retain category and enabled configuration for outbound
-    connections and federation. SHOW INTEGRATIONS does not establish inbound
-    internet reachability, effective authorization or successful data transfer.
-    A non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-integrations")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-integrations",
-        )
-
-    egress_categories = {"STORAGE", "API", "EXTERNAL_ACCESS", "NOTIFICATION", "CATALOG"}
-    for integ in payload.get("integrations", []) or []:
-        if not isinstance(integ, dict):
-            continue
-        name = _clean_graph_part(integ.get("name"))
-        if not name:
-            continue
-        category = str(integ.get("category", "") or "").strip().upper().replace(" ", "_")
-        enabled = coerce_bool_or_none(integ.get("enabled"))
-        node_id = f"cloud_resource:snowflake:integration:{name}"
-        graph.add_node(
-            UnifiedNode(
-                id=node_id,
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"integration: {name}",
-                attributes={
-                    "resource_name": name,
-                    "resource_type": "integration",
-                    "resource_kind": "snowflake-integration",
-                    "cloud_provider": "snowflake",
-                    "integration_type": integ.get("type"),
-                    "integration_category": category,
-                    "enabled": enabled,
-                    "internet_exposed": None,
-                    "outbound_access_configured": enabled if category in egress_categories else None,
-                    "integration_evidence": {
-                        "source": "snowflake-integrations",
-                        "basis": "recorded_configuration",
-                        "network_direction": "outbound" if category in egress_categories else "not_assessed",
-                        "access_outcome": "not_observed",
-                        "inputs": sanitize_sensitive_payload({key: integ[key] for key in ("category", "type", "enabled") if key in integ}),
-                        **(
-                            {"enabled_observation": sanitize_sensitive_payload(integ["enabled_evidence"])}
-                            if isinstance(integ.get("enabled_evidence"), dict)
-                            else {}
-                        ),
-                    },
-                    "external_access": category == "EXTERNAL_ACCESS",
-                    "identity_federation": category == "SECURITY",
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="network"),
-            )
-        )
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node_id,
-                evidence={"source": "snowflake-integrations"},
-            )
-
-
-def _add_snowflake_pipeline(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake data-pipeline + automation objects into the graph.
-
-    * **Tasks** → ``CLOUD_RESOURCE`` (automation); ``DEPENDS_ON`` the warehouse
-      it runs on, ``ASSUMES`` the owner role (privilege surface).
-    * **Streams** → ``DATA_STORE``; ``DEPENDS_ON`` the source table it tracks.
-    * **Pipes** → ``CLOUD_RESOURCE`` (ingestion); ``DEPENDS_ON`` the stage it
-      reads from — which the exfil layer links onward to the actual cloud bucket,
-      so the ingress path is traversable end to end.
-
-    Endpoints (warehouse/table/stage) may already exist from other layers; a thin
-    node is created only when absent. Never raises; non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-pipeline")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-pipeline",
-        )
-
-    def _own(node: UnifiedNode) -> str:
-        graph.add_node(node)
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node.id,
-                evidence={"source": "snowflake-pipeline"},
-            )
-        return node.id
-
-    def _thin(node_id: str, entity_type: EntityType, label: str, surface: str) -> None:
-        if node_id not in graph.nodes:
-            graph.add_node(
-                UnifiedNode(
-                    id=node_id,
-                    entity_type=entity_type,
-                    label=label,
-                    attributes={"cloud_provider": "snowflake"},
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider="snowflake", surface=surface),
-                )
-            )
-
-    for task in payload.get("tasks", []) or []:
-        if not isinstance(task, dict):
-            continue
-        fqn = _clean_graph_part(task.get("fqn")) or _clean_graph_part(task.get("name"))
-        if not fqn:
-            continue
-        task_id = _own(
-            UnifiedNode(
-                id=f"cloud_resource:snowflake:task:{fqn}",
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"task: {fqn}",
-                attributes={
-                    "resource_name": fqn,
-                    "resource_type": "task",
-                    "resource_kind": "snowflake-task",
-                    "cloud_provider": "snowflake",
-                    "schedule": task.get("schedule"),
-                    "state": task.get("state"),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="compute"),
-            )
-        )
-        warehouse = _clean_graph_part(task.get("warehouse"))
-        if warehouse:
-            wh_id = f"cloud_resource:snowflake:warehouse:{warehouse}"
-            _thin(wh_id, EntityType.CLOUD_RESOURCE, f"warehouse: {warehouse}", "compute")
-            _add_rel_edge(graph, task_id, wh_id, RelationshipType.DEPENDS_ON, {"source": "snowflake-pipeline", "via": "warehouse"})
-        owner = _clean_graph_part(task.get("owner"))
-        if owner:
-            role_id = f"role:snowflake:{owner}"
-            _thin(role_id, EntityType.ROLE, f"role: {owner}", "identity")
-            _add_rel_edge(graph, task_id, role_id, RelationshipType.ASSUMES, {"source": "snowflake-pipeline", "runs_as": owner})
-
-    for stream in payload.get("streams", []) or []:
-        if not isinstance(stream, dict):
-            continue
-        fqn = _clean_graph_part(stream.get("fqn")) or _clean_graph_part(stream.get("name"))
-        if not fqn:
-            continue
-        stream_id = _own(
-            UnifiedNode(
-                id=f"data_store:snowflake:stream:{fqn}",
-                entity_type=EntityType.DATA_STORE,
-                label=f"stream: {fqn}",
-                attributes={
-                    "fqn": fqn,
-                    "object_type": "stream",
-                    "cloud_provider": "snowflake",
-                    "is_data_store": True,
-                    "stale": bool(stream.get("stale")),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        source = _clean_graph_part(stream.get("source_fqn"))
-        if source:
-            src_id = f"data_store:snowflake:{source}"
-            _thin(src_id, EntityType.DATA_STORE, f"object: {source}", "data")
-            _add_rel_edge(graph, stream_id, src_id, RelationshipType.DEPENDS_ON, {"source": "snowflake-pipeline", "via": "cdc-source"})
-
-    for pipe in payload.get("pipes", []) or []:
-        if not isinstance(pipe, dict):
-            continue
-        fqn = _clean_graph_part(pipe.get("fqn")) or _clean_graph_part(pipe.get("name"))
-        if not fqn:
-            continue
-        pipe_id = _own(
-            UnifiedNode(
-                id=f"cloud_resource:snowflake:pipe:{fqn}",
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"pipe: {fqn}",
-                attributes={
-                    "resource_name": fqn,
-                    "resource_type": "pipe",
-                    "resource_kind": "snowflake-pipe",
-                    "cloud_provider": "snowflake",
-                    "auto_ingest": bool(pipe.get("auto_ingest")),
-                    "integration": pipe.get("integration"),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        stage = _clean_graph_part(pipe.get("stage"))
-        if stage:
-            stage_name = stage.split(".")[-1]
-            stage_id = f"cloud_resource:snowflake:stage:{stage_name}"
-            _thin(stage_id, EntityType.CLOUD_RESOURCE, f"external stage: {stage_name}", "data")
-            _add_rel_edge(graph, pipe_id, stage_id, RelationshipType.DEPENDS_ON, {"source": "snowflake-pipeline", "via": "ingest-stage"})
-
-
-def _add_snowflake_identity(graph: UnifiedGraph, login_payload: Any, auth_payload: Any, data_source: str) -> None:
-    """Enrich Snowflake user nodes with identity-threat + auth-posture signal.
-
-    Closes the gap where login-anomaly detection and auth-posture inventory
-    reached JSON but never the graph, so a flagged/weak identity was invisible
-    to the visual and blast-radius. For each affected user this merges threat +
-    posture attributes onto the existing ``user:snowflake:<name>`` node (a thin
-    node is created when the user appears only in the threat feed), tags the
-    relevant **MITRE ATT&CK** technique, and raises node severity. Never raises;
-    missing/empty/non-ok payloads are a no-op.
-
-    Technique mapping:
-      * impossible travel / high distinct-IP → ``T1078`` (Valid Accounts)
-      * failed-login burst → ``T1110`` (Brute Force)
-      * password user without MFA → ``T1078`` (Valid Accounts)
-    """
-    login_ok = isinstance(login_payload, dict) and login_payload.get("status") == "ok"
-    auth_ok = isinstance(auth_payload, dict) and auth_payload.get("status") == "ok"
-    if not login_ok and not auth_ok:
-        return
-
-    data_sources = sorted({data_source, "snowflake-identity"} - {""})
-
-    def _user_node_id(name: str) -> str:
-        return f"user:snowflake:{name}"
-
-    def _enrich(name: str, attrs: dict[str, Any], *, severity: str | None, mitre: list[str]) -> None:
-        name = _clean_graph_part(name)
-        if not name:
-            return
-        node = UnifiedNode(
-            id=_user_node_id(name),
-            entity_type=EntityType.USER,
-            label=f"user: {name}",
-            severity=severity or "",
-            attributes={"user_name": name, "cloud_provider": "snowflake", **attrs},
-            data_sources=data_sources,
-            dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            compliance_tags=sorted(set(mitre)),
-        )
-        graph.add_node(node)  # merges onto an existing user node (attrs/tags/severity union)
-
-    if login_ok:
-        rapid_by_user = {
-            _clean_graph_part(it.get("user")): int(it.get("rapid_switches", 0) or 0)
-            for it in login_payload.get("impossible_travel", []) or []
-            if isinstance(it, dict)
-        }
-        failed_by_user = {
-            _clean_graph_part(b.get("user")): int(b.get("failed", 0) or 0)
-            for b in login_payload.get("failed_bursts", []) or []
-            if isinstance(b, dict)
-        }
-        for u in login_payload.get("per_user", []) or []:
-            if not isinstance(u, dict):
-                continue
-            name = _clean_graph_part(u.get("user"))
-            if not name:
-                continue
-            impossible = name in rapid_by_user
-            failed = failed_by_user.get(name, int(u.get("failed", 0) or 0))
-            distinct_ips = int(u.get("distinct_ips", 0) or 0)
-            mitre: list[str] = []
-            sev = None
-            if impossible:
-                mitre.append("T1078")  # Valid Accounts
-                sev = "high"
-            if failed_by_user.get(name):
-                mitre.append("T1110")  # Brute Force
-                sev = sev or "medium"
-            _enrich(
-                name,
-                {
-                    "impossible_travel": impossible,
-                    "rapid_ip_switches": rapid_by_user.get(name, 0),
-                    "distinct_login_ips": distinct_ips,
-                    "failed_logins": failed,
-                    "identity_threat": bool(mitre),
-                },
-                severity=sev,
-                mitre=mitre,
-            )
-
-    if auth_ok:
-        account_np = bool(auth_payload.get("account_network_policy"))
-        for u in auth_payload.get("users", []) or []:
-            if not isinstance(u, dict):
-                continue
-            name = _clean_graph_part(u.get("name"))
-            if not name:
-                continue
-            auth_methods = list(u.get("auth_methods") or [])
-            has_mfa = bool(u.get("has_mfa"))
-            disabled = bool(u.get("disabled"))
-            user_type = str(u.get("user_type", "") or "").upper()
-            weak = not disabled and "password" in auth_methods and not has_mfa and user_type in ("PERSON", "UNKNOWN", "")
-            _enrich(
-                name,
-                {
-                    "auth_methods": auth_methods,
-                    "has_mfa": has_mfa,
-                    "disabled": disabled,
-                    "user_type": user_type or "unknown",
-                    "account_network_policy": account_np,
-                    "weak_auth": weak,
-                },
-                severity="high" if weak else None,
-                mitre=["T1078"] if weak else [],  # Valid Accounts (weak credential control)
-            )
-
-
-def _add_snowflake_exfil(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake egress surfaces into the graph (exfil layer).
-
-    Three node/edge families that model how data leaves the account:
-
-    - **Outbound shares** → ``DATA_STORE`` for the shared database, ``EXPOSED_TO``
-      each consumer ``ACCOUNT`` (a Marketplace listing reaches an open consumer
-      set, modeled as a single internet-reachable consumer).
-    - **External stages** → ``CLOUD_RESOURCE`` stage node, ``EXPOSED_TO`` the
-      destination bucket. The bucket id matches the scheme an AWS/Azure/GCP scan
-      emits (``cloud_resource:{cloud}:{service}:bucket:{name}``), so when both a
-      cloud scan and this Snowflake scan run, the edge **stitches the two clouds'
-      graphs together** rather than landing on a thin node.
-    - **Sensitive objects** → ``DATA_STORE`` carrying a ``sensitivity`` attribute
-      and ``is_protected`` (masking/row-access coverage).
-
-    Never raises; a missing/empty/non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-exfil")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-exfil",
-        )
-
-    def _owned(node: UnifiedNode) -> str:
-        graph.add_node(node)
-        if account_node_id:
-            _add_account_resource_hierarchy(
-                graph,
-                account_node_id,
-                node.id,
-                evidence={"source": "snowflake-exfil"},
-            )
-        return node.id
-
-    # ── Outbound shares → consumer accounts ────────────────────────────
-    for share in payload.get("outbound_shares", []) or []:
-        if not isinstance(share, dict):
-            continue
-        share_name = _clean_graph_part(share.get("share_name"))
-        if not share_name:
-            continue
-        db = _clean_graph_part(share.get("database_name"))
-        is_marketplace = bool(share.get("is_marketplace"))
-        share_id = _owned(
-            UnifiedNode(
-                id=f"data_store:snowflake:share:{share_name}",
-                entity_type=EntityType.DATA_STORE,
-                label=f"outbound share: {share_name}",
-                attributes={
-                    "share_name": share_name,
-                    "database": db,
-                    "cloud_provider": "snowflake",
-                    "is_data_store": True,
-                    "is_outbound_share": True,
-                    "is_marketplace": is_marketplace,
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        consumers = list(share.get("consumers") or [])
-        if is_marketplace and not consumers:
-            consumers = ["public-marketplace"]
-        for consumer in consumers:
-            consumer = _clean_graph_part(consumer)
-            if not consumer:
-                continue
-            consumer_id = _add_identity_node(
-                graph,
-                EntityType.ACCOUNT,
-                consumer,
-                "snowflake",
-                data_sources,
-                label=f"consumer account: {consumer}",
-                account_id=consumer,
-                cloud_provider="snowflake",
-                is_external_consumer=True,
-                internet_exposed=consumer == "public-marketplace",
-            )
-            _add_rel_edge(
-                graph,
-                share_id,
-                consumer_id,
-                RelationshipType.EXPOSED_TO,
-                {"source": "snowflake-exfil", "channel": "data-share", "marketplace": is_marketplace},
-            )
-
-    # ── External stages → destination buckets (cross-cloud stitch) ─────
-    for stage in payload.get("external_stages", []) or []:
-        if not isinstance(stage, dict):
-            continue
-        stage_name = _clean_graph_part(stage.get("stage_name"))
-        bucket = _clean_graph_part(stage.get("bucket"))
-        cloud = _clean_graph_part(stage.get("cloud_provider"))
-        if not stage_name or not bucket or not cloud:
-            continue
-        stage_id = _owned(
-            UnifiedNode(
-                id=f"cloud_resource:snowflake:stage:{stage_name}",
-                entity_type=EntityType.CLOUD_RESOURCE,
-                label=f"external stage: {stage_name}",
-                attributes={
-                    "resource_name": stage_name,
-                    "resource_type": "external-stage",
-                    "resource_kind": "snowflake-external-stage",
-                    "cloud_provider": "snowflake",
-                    "destination_cloud": cloud,
-                    "destination_bucket": bucket,
-                    "url": _clean_graph_part(stage.get("url")),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-        service = _EXFIL_STAGE_SERVICE.get(cloud, "storage")
-        bucket_node_id = f"cloud_resource:{cloud}:{service}:bucket:{bucket}"
-        if bucket_node_id not in graph.nodes:
-            # Thin destination node — a cloud scan, if also run, owns the rich one.
-            graph.add_node(
-                UnifiedNode(
-                    id=bucket_node_id,
-                    entity_type=EntityType.CLOUD_RESOURCE,
-                    label=f"bucket: {bucket}",
-                    attributes={
-                        "resource_name": bucket,
-                        "resource_type": "bucket",
-                        "resource_kind": f"{service}-bucket",
-                        "cloud_provider": cloud,
-                        "cloud_service": service,
-                    },
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider=cloud, surface=service),
-                )
-            )
-        _add_rel_edge(
-            graph,
-            stage_id,
-            bucket_node_id,
-            RelationshipType.EXPOSED_TO,
-            {"source": "snowflake-exfil", "channel": "external-stage", "destination_cloud": cloud},
-        )
-
-    # ── Sensitive objects → DATA_STORE with sensitivity ────────────────
-    for obj in payload.get("sensitive_objects", []) or []:
-        if not isinstance(obj, dict):
-            continue
-        fqn = _clean_graph_part(obj.get("fqn"))
-        if not fqn:
-            continue
-        _owned(
-            UnifiedNode(
-                id=f"data_store:snowflake:{fqn}",
-                entity_type=EntityType.DATA_STORE,
-                label=f"sensitive: {fqn}",
-                attributes={
-                    "fqn": fqn,
-                    "cloud_provider": "snowflake",
-                    "is_data_store": True,
-                    "sensitivity": _clean_graph_part(obj.get("sensitivity")) or "sensitive",
-                    "tagged_columns": obj.get("tagged_columns"),
-                    "is_protected": bool(obj.get("is_protected")),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-            )
-        )
-
-
-def _add_snowflake_governance(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Promote Snowflake governance telemetry into the graph (CIEM read-access layer).
-
-    De-duplicated against ``_add_snowflake_object_graph`` (grants + role
-    memberships) and ``_add_snowflake_exfil`` (sensitivity tags): only the
-    non-redundant value is wired here.
-
-    - **ACCESS_HISTORY** → for each ``(user, object)`` pair, a ``USER`` node
-      ``ACCESSED`` the object's ``DATA_STORE`` node. The data-store id matches the
-      scheme the object/exfil layers emit (``data_store:snowflake:{fqn}``), so the
-      edge lands on the existing object node rather than a duplicate. Records are
-      collapsed per ``(user, object)`` with distinct query/action/role receipts.
-      Historical observations do not establish current permission or row impact.
-    - **CORTEX_AGENT_USAGE_HISTORY** → one ``AGENT`` node per distinct agent name,
-      ``OWNS``-attached to the account, carrying aggregate telemetry (calls, tokens,
-      credits) as attributes — not one node per call.
-    - **Derived findings** are converged into the unified findings stream by
-      ``GraphIndices.to_findings`` (``_snowflake_governance_findings``), not into
-      nodes, so ``--fail-on-severity`` sees them.
-
-    Never raises; a missing/empty/non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-governance")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-
-    account_node_id = ""
-    if account:
-        account_node_id = _add_identity_node(
-            graph,
-            EntityType.ACCOUNT,
-            account,
-            "snowflake",
-            data_sources,
-            label=account or "snowflake",
-            account_id=account,
-            cloud_provider="snowflake",
-            source="snowflake-governance",
-        )
-
-    # ── ACCESS_HISTORY: user ACCESSED data store (collapsed per user+object) ──
-    seen_users: set[str] = set()
-    access_records_by_pair: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-
-    def _ensure_user(name: str) -> str:
-        node_id = f"user:snowflake:{name}"
-        if node_id not in seen_users:
-            seen_users.add(node_id)
-            _add_identity_node(
-                graph,
-                EntityType.USER,
-                name,
-                "snowflake",
-                data_sources,
-                label=f"user: {name}",
-                user_name=name,
-                cloud_provider="snowflake",
-                source="snowflake-governance",
-            )
-        return node_id
-
-    for rec in payload.get("access_records", []) or []:
-        if not isinstance(rec, dict):
-            continue
-        user_name = _clean_graph_part(rec.get("user_name"))
-        object_name = _clean_graph_part(rec.get("object_name"))
-        if not user_name or not object_name:
-            continue
-        receipt: dict[str, Any] = {"source": "snowflake-governance", "account": account}
-        for field_name in ("query_id", "user_name", "role_name", "query_start", "object_name", "object_type", "operation", "source_field"):
-            receipt[field_name] = _clean_graph_part(rec.get(field_name))
-        receipt["is_write"] = rec.get("is_write") if isinstance(rec.get("is_write"), bool) else None
-        for field_name in ("columns", "base_objects"):
-            values = rec.get(field_name)
-            receipt[field_name] = sorted({value for value in values if isinstance(value, str)}) if isinstance(values, list) else []
-        access_records_by_pair[(user_name, object_name)].append(receipt)
-        object_node_id = f"data_store:snowflake:{object_name}"
-        if object_node_id not in graph.nodes:
-            # Thin object node — the object/exfil layers, if also run, own the
-            # rich one (same id → merges, no duplicate).
-            graph.add_node(
-                UnifiedNode(
-                    id=object_node_id,
-                    entity_type=EntityType.DATA_STORE,
-                    label=f"{_clean_graph_part(rec.get('object_type')) or 'object'}: {object_name}",
-                    attributes={
-                        "fqn": object_name,
-                        "object_type": _clean_graph_part(rec.get("object_type")) or "object",
-                        "cloud_provider": "snowflake",
-                        "is_data_store": True,
-                    },
-                    data_sources=data_sources,
-                    dimensions=NodeDimensions(cloud_provider="snowflake", surface="data"),
-                )
-            )
-            if account_node_id:
-                _add_account_resource_hierarchy(
-                    graph,
-                    account_node_id,
-                    object_node_id,
-                    evidence={"source": "snowflake-governance"},
-                )
-    for (user_name, object_name), receipts in access_records_by_pair.items():
-        evidence: dict[str, Any] = {
-            "source": "snowflake-governance",
-            "evidence_kind": "historical_access",
-            "authorization_state": "not_evaluated",
-            "data_impact_state": "unknown",
-        }
-        # Aggregate once per edge rather than repeatedly merging its growing
-        # history. Keep whole records so different queries/roles cannot combine.
-        merge_edge_evidence(evidence, {"access_receipts": receipts})
-        _add_rel_edge(graph, _ensure_user(user_name), f"data_store:snowflake:{object_name}", RelationshipType.ACCESSED, evidence)
-
-    # ── CORTEX_AGENT_USAGE_HISTORY: one AGENT node per name, aggregated ──────
-    agent_aggregate: dict[str, dict[str, Any]] = {}
-    for rec in payload.get("agent_usage", []) or []:
-        if not isinstance(rec, dict):
-            continue
-        agent_name = _clean_graph_part(rec.get("agent_name"))
-        if not agent_name:
-            continue
-        agg = agent_aggregate.setdefault(
-            agent_name,
-            {"calls": 0, "total_tokens": 0, "credits_used": 0.0, "tool_calls": 0, "models": set(), "users": set()},
-        )
-        agg["calls"] += 1
-        agg["total_tokens"] += int(rec.get("total_tokens") or 0)
-        agg["credits_used"] += float(rec.get("credits_used") or 0.0)
-        agg["tool_calls"] += int(rec.get("tool_calls") or 0)
-        model = _clean_graph_part(rec.get("model_name"))
-        if model:
-            agg["models"].add(model)
-        user = _clean_graph_part(rec.get("user_name"))
-        if user:
-            agg["users"].add(user)
-
-    for agent_name, agg in agent_aggregate.items():
-        agent_node_id = f"agent:snowflake:{agent_name}"
-        graph.add_node(
-            UnifiedNode(
-                id=agent_node_id,
-                entity_type=EntityType.AGENT,
-                label=f"cortex agent: {agent_name}",
-                attributes={
-                    "agent_name": agent_name,
-                    "cloud_provider": "snowflake",
-                    "source": "cortex-agent-usage",
-                    "call_count": agg["calls"],
-                    "total_tokens": agg["total_tokens"],
-                    "credits_used": round(agg["credits_used"], 4),
-                    "tool_calls": agg["tool_calls"],
-                    "models": sorted(agg["models"]),
-                    "distinct_users": len(agg["users"]),
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider="snowflake", surface="identity"),
-            )
-        )
-        if account_node_id:
-            _add_rel_edge(graph, account_node_id, agent_node_id, RelationshipType.OWNS, {"source": "snowflake-governance"})
-
-
 def _add_cloud_audit_behavioral(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
     """Promote cloud audit-trail behavioral signal into observed-reach edges.
 
@@ -2394,70 +1182,6 @@ def _add_cloud_audit_behavioral(graph: UnifiedGraph, payload: Any, data_source: 
                 "is_sensitive_resource": bool(rec.get("is_sensitive_resource")),
             },
         )
-
-
-def _add_snowflake_activity(graph: UnifiedGraph, payload: Any, data_source: str) -> None:
-    """Summarize the Snowflake activity timeline onto the account node.
-
-    QUERY_HISTORY can carry a year of rows; exploding them into per-query nodes
-    would bury the graph (the data-store-scale lesson). Instead this attaches a
-    compact ``activity_summary`` to the account node — total/agent query counts,
-    distinct users, and a capped sample of notable agent-pattern statements — and
-    creates **no per-query nodes**. Never raises; non-ok payload is a no-op.
-    """
-    prepared = _prepare_cloud_payload(payload, data_source, "snowflake-activity")
-    if prepared is None:
-        return
-    account, data_sources = prepared
-    if not account:
-        return
-
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    query_history = payload.get("query_history") or []
-
-    distinct_users: set[str] = set()
-    notable: list[dict[str, str]] = []
-    notable_cap = 25
-    for q in query_history:
-        if not isinstance(q, dict):
-            continue
-        user = _clean_graph_part(q.get("user_name"))
-        if user:
-            distinct_users.add(user)
-        if q.get("is_agent_query") and len(notable) < notable_cap:
-            notable.append(
-                {
-                    "query_id": _clean_graph_part(q.get("query_id")),
-                    "user_name": user,
-                    "agent_pattern": _clean_graph_part(q.get("agent_pattern")),
-                    "query_type": _clean_graph_part(q.get("query_type")),
-                    "start_time": _clean_graph_part(q.get("start_time")),
-                }
-            )
-
-    activity_summary = {
-        "total_queries": int(summary.get("total_queries") or 0),
-        "agent_queries": int(summary.get("agent_queries") or 0),
-        "observability_events": int(summary.get("observability_events") or 0),
-        "unique_agents": int(summary.get("unique_agents") or 0),
-        "tool_calls": int(summary.get("tool_calls") or 0),
-        "distinct_users": len(distinct_users),
-        "notable_agent_statements": notable,
-    }
-
-    # Merge onto the account node (add_node unions attributes by id).
-    _add_identity_node(
-        graph,
-        EntityType.ACCOUNT,
-        account,
-        "snowflake",
-        data_sources,
-        label=account or "snowflake",
-        account_id=account,
-        cloud_provider="snowflake",
-        source="snowflake-activity",
-        activity_summary=activity_summary,
-    )
 
 
 def _add_cloud_org_architecture_findings(graph: UnifiedGraph, report_json: Mapping[str, Any], data_source: str) -> None:
@@ -2828,76 +1552,6 @@ def _add_gcp_organization(
             _add_rel_edge(graph, policy_node, scope_node, RelationshipType.GOVERNS, {"source": "gcp-organizations"})
 
 
-def _gcp_firewall_applies(firewall_attrs: dict[str, Any], instance: dict[str, Any]) -> bool:
-    """Return whether a permissive GCP firewall rule reaches *instance*.
-
-    A rule applies when it is on the instance's network AND its target scope
-    covers the instance. The target scope is: target tags (instance must carry
-    one) OR target service accounts (instance must run as one). An EMPTY target
-    set means the rule applies to ALL instances on its network — the GCP default.
-    A blank firewall network also matches (the rule scope is the whole project).
-    """
-    fw_network = _clean_graph_part(firewall_attrs.get("fw_network"))
-    inst_network = _clean_graph_part(instance.get("network"))
-    if fw_network and inst_network and fw_network != inst_network:
-        return False
-
-    target_tags = {str(t).strip() for t in (firewall_attrs.get("fw_target_tags") or []) if str(t).strip()}
-    target_sas = {str(s).strip() for s in (firewall_attrs.get("fw_target_service_accounts") or []) if str(s).strip()}
-    if not target_tags and not target_sas:
-        # No targets → the rule applies to every instance on the network.
-        return True
-    instance_tags = {str(t).strip() for t in (instance.get("network_tags") or []) if str(t).strip()}
-    if target_tags and instance_tags & target_tags:
-        return True
-    instance_sas = {str(s).strip() for s in (instance.get("service_accounts") or []) if str(s).strip()}
-    if target_sas and instance_sas & target_sas:
-        return True
-    return False
-
-
-def _apply_gcp_firewall_exposure(
-    graph: UnifiedGraph,
-    sg_node_by_id: dict[str, str],
-    instance_nodes: list[tuple[str, dict[str, Any]]],
-) -> None:
-    """Mark GCP instances internet-exposed when a permissive firewall reaches them.
-
-    For each instance with an external IP, find every internet-facing
-    (``internet_exposed``) firewall node that applies to it (network + target
-    tags/SA match). Set ``internet_exposed=True`` on the instance node — which the
-    CNAPP overlay preserves — and add an ``EXPOSED_TO`` edge from the firewall to
-    the instance, mirroring how an AWS security group exposes an EC2 instance.
-    """
-    firewall_nodes = [(graph.nodes.get(node_id), node_id) for node_id in sg_node_by_id.values()]
-    permissive = [
-        (node, node_id) for node, node_id in firewall_nodes if node is not None and coerce_truthy(node.attributes.get("internet_exposed"))
-    ]
-    if not permissive:
-        return
-    for inst_node_id, instance in instance_nodes:
-        inst_node = graph.nodes.get(inst_node_id)
-        if inst_node is None:
-            continue
-        # Only an instance with an external/public IP can be reached from the
-        # internet; a permissive rule on a no-public-IP instance is not exposure.
-        if not _clean_graph_part(instance.get("public_ip")):
-            continue
-        for fw_node, fw_node_id in permissive:
-            if not _gcp_firewall_applies(fw_node.attributes, instance):
-                continue
-            inst_node.attributes["internet_exposed"] = True
-            graph.add_edge(
-                UnifiedEdge(
-                    source=fw_node_id,
-                    target=inst_node_id,
-                    relationship=RelationshipType.EXPOSED_TO,
-                    weight=6.0,
-                    evidence={"source": "cloud-inventory", "reason": "permissive_firewall_external_ip"},
-                )
-            )
-
-
 def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) -> None:
     """Promote estate-wide cloud inventory into first-class graph nodes.
 
@@ -3113,117 +1767,6 @@ def _add_cloud_inventory(graph: UnifiedGraph, inventory: Any, data_source: str) 
             )
 
 
-def _wire_instance_profile_roles(
-    graph: UnifiedGraph,
-    inventory: dict[str, Any],
-    *,
-    provider: str,
-    instance_node_by_id: dict[str, str],
-) -> None:
-    """Link EC2 instance profiles to IAM roles and mark lateral roles exposed."""
-    role_by_name = {
-        _clean_graph_part(role.get("name")): role
-        for role in inventory.get("roles", []) or []
-        if isinstance(role, dict) and _clean_graph_part(role.get("name"))
-    }
-    for instance in inventory.get("instances", []) or []:
-        if not isinstance(instance, dict):
-            continue
-        inst_id = _clean_graph_part(instance.get("instance_id"))
-        inst_node = instance_node_by_id.get(inst_id)
-        if not inst_node:
-            continue
-        profile = _clean_graph_part(instance.get("iam_instance_profile"))
-        if not profile:
-            continue
-        role_name = ""
-        if ":role/" in profile:
-            role_name = profile.rsplit(":role/", 1)[-1].split("/")[0]
-        elif profile in role_by_name:
-            role_name = profile
-        role = role_by_name.get(role_name)
-        if role is None:
-            continue
-        role_arn = _clean_graph_part(role.get("arn")) or role_name
-        role_node_id = _identity_node_id(EntityType.ROLE, provider, role_arn)
-        if role_node_id not in graph.nodes:
-            continue
-        graph.add_edge(
-            UnifiedEdge(
-                source=inst_node,
-                target=role_node_id,
-                relationship=RelationshipType.ASSUMES,
-                evidence={"source": "cloud-inventory", "reason": "ec2_instance_profile"},
-            )
-        )
-        if _instance_internet_reachable(graph, inst_node, instance):
-            graph.nodes[role_node_id].attributes["internet_exposed"] = True
-
-
-def _add_management_group_hierarchy(graph: UnifiedGraph, inventory: dict[str, Any], *, provider: str, data_sources: list[str]) -> None:
-    """Build the management-group → subscription hierarchy as ORG nodes + CONTAINS edges.
-
-    Management groups are the tenant tier above subscriptions. Each becomes an
-    ``ORG`` node; its children (nested management groups and subscriptions) are
-    linked with ``CONTAINS``, so the graph carries the multi-subscription
-    hierarchy and blast-radius can reason across the whole tenant. Subscription
-    account nodes are created here if a per-subscription scan hasn't already.
-    """
-    for mg in inventory.get("management_groups", []) or []:
-        if not isinstance(mg, dict):
-            continue
-        name = _clean_graph_part(mg.get("name"))
-        if not name:
-            continue
-        org_node_id = _identity_node_id(EntityType.ORG, provider, name)
-        graph.add_node(
-            UnifiedNode(
-                id=org_node_id,
-                entity_type=EntityType.ORG,
-                label=_clean_graph_part(mg.get("display_name")) or name,
-                attributes={
-                    "management_group_id": _clean_graph_part(mg.get("id")),
-                    "cloud_provider": provider,
-                    "source": "cloud-inventory",
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-            )
-        )
-        for child in mg.get("children", []) or []:
-            if not isinstance(child, dict):
-                continue
-            child_name = _clean_graph_part(child.get("name"))
-            if not child_name:
-                continue
-            child_type = str(child.get("type") or "").lower()
-            if "managementgroups" in child_type:
-                # The child ORG node is created when its own entry is processed.
-                child_node_id = _identity_node_id(EntityType.ORG, provider, child_name)
-            elif "subscriptions" in child_type:
-                child_node_id = _identity_node_id(EntityType.ACCOUNT, provider, child_name)
-                graph.add_node(
-                    UnifiedNode(
-                        id=child_node_id,
-                        entity_type=EntityType.ACCOUNT,
-                        label=_clean_graph_part(child.get("display_name")) or child_name,
-                        attributes={"account_id": child_name, "cloud_provider": provider, "source": "cloud-inventory"},
-                        data_sources=data_sources,
-                        dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-                    )
-                )
-            else:
-                continue
-            graph.add_edge(
-                UnifiedEdge(
-                    source=org_node_id,
-                    target=child_node_id,
-                    relationship=RelationshipType.CONTAINS,
-                    evidence={"source": "cloud-inventory"},
-                )
-            )
-
-
 def _add_normalized_cloud_resources(
     graph: UnifiedGraph,
     inventory: dict[str, Any],
@@ -3332,85 +1875,6 @@ def _add_normalized_cloud_resources(
                         weight=6.0,
                         evidence={"source": "cloud-inventory", "reason": "public_ip_frontend"},
                     )
-                )
-
-
-# Generic network-edge collections promoted as CLOUD_RESOURCE inventory nodes.
-# (payload key, cloud service, resource_type, resource_kind, label, id field)
-# Load balancers are intentionally NOT here: AWS uses ``elb_load_balancers`` and
-# Azure routes them through the normalized-resource path; only GCP's new
-# ``load_balancers`` key is ingested here, gated to GCP below.
-_NETWORK_EDGE_COLLECTIONS: tuple[tuple[str, str, str, str, str, str], ...] = (
-    ("nat_gateways", "network", "nat_gateway", "nat-gateway", "nat gateway", "id"),
-    ("internet_gateways", "network", "internet_gateway", "internet-gateway", "internet gateway", "id"),
-    ("vpc_endpoints", "network", "vpc_endpoint", "vpc-endpoint", "vpc endpoint", "id"),
-    ("route_tables", "network", "route_table", "route-table", "route table", "id"),
-    ("network_acls", "network", "network_acl", "network-acl", "network acl", "id"),
-)
-_GCP_LB_COLLECTION: tuple[str, str, str, str, str, str] = (
-    "load_balancers",
-    "network",
-    "load_balancer",
-    "load-balancer",
-    "load balancer",
-    "id",
-)
-
-
-def _add_exposure_path_edge(
-    graph: UnifiedGraph,
-    *,
-    source: str,
-    target: str,
-    reason: str,
-    weight: float = 6.0,
-) -> None:
-    """Emit a provenance-tagged EXPOSED_TO edge when both endpoints exist."""
-    if source not in graph.nodes or target not in graph.nodes or source == target:
-        return
-    for edge in graph.edges:
-        if edge.source == source and edge.target == target and edge.relationship == RelationshipType.EXPOSED_TO:
-            return
-    graph.add_edge(
-        UnifiedEdge(
-            source=source,
-            target=target,
-            relationship=RelationshipType.EXPOSED_TO,
-            weight=weight,
-            evidence={"source": "cloud-inventory", "reason": reason},
-        )
-    )
-
-
-def _instance_internet_reachable(graph: UnifiedGraph, inst_node_id: str, instance: dict[str, Any]) -> bool:
-    node = graph.nodes.get(inst_node_id)
-    if node is None:
-        return False
-    if coerce_truthy(node.attributes.get("internet_exposed")) or _clean_graph_part(instance.get("public_ip")):
-        return True
-    return any(e.relationship == RelationshipType.EXPOSED_TO and e.target == inst_node_id for e in graph.edges)
-
-
-def _link_internet_facing_load_balancers(
-    graph: UnifiedGraph,
-    load_balancers: list[tuple[str, str]],
-    instance_nodes: list[tuple[str, dict[str, Any]]],
-) -> None:
-    """Link internet-facing LBs to reachable instances in the same VPC."""
-    for lb_node_id, lb_vpc_id in load_balancers:
-        lb_node = graph.nodes.get(lb_node_id)
-        if lb_node is None or not coerce_truthy(lb_node.attributes.get("internet_exposed")):
-            continue
-        for inst_node_id, instance in instance_nodes:
-            inst_vpc = _clean_graph_part(instance.get("vpc_id"))
-            if lb_vpc_id and inst_vpc and inst_vpc != lb_vpc_id:
-                continue
-            if _instance_internet_reachable(graph, inst_node_id, instance):
-                _add_exposure_path_edge(
-                    graph,
-                    source=lb_node_id,
-                    target=inst_node_id,
-                    reason="internet_facing_load_balancer",
                 )
 
 
@@ -3865,33 +2329,6 @@ def _wire_network_entry_exposure_paths(
                     )
 
 
-def _role_last_used_at(usage_evidence: Any) -> str | None:
-    """Newest real last-accessed timestamp across role usage-evidence records.
-
-    Threads bounded AWS Access Advisor / RoleLastUsed telemetry
-    (:mod:`agent_bom.cloud.aws_iam_evidence`) onto the identity node so NHI
-    governance dormancy uses a real last-used signal. Returns ``None`` when no
-    record carries a timestamp — absent telemetry must never be turned into a
-    false "never used" (fail-closed); the role then stays not-evaluated for
-    dormancy rather than being fabricated as dormant.
-    """
-    if not isinstance(usage_evidence, Mapping):
-        return None
-    records = usage_evidence.get("records")
-    if not isinstance(records, list):
-        return None
-    newest: str | None = None
-    for record in records:
-        if not isinstance(record, Mapping):
-            continue
-        raw = record.get("last_accessed_at")
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        if newest is None or raw > newest:
-            newest = raw
-    return newest
-
-
 def _add_inventory_principal(
     graph: UnifiedGraph,
     principal: dict[str, Any],
@@ -4047,67 +2484,6 @@ def _add_inventory_principal(
             )
 
 
-def _add_access_advisor_grants(
-    graph: UnifiedGraph,
-    principal: dict[str, Any],
-    *,
-    principal_node_id: str,
-    provider: str,
-    data_sources: list[str],
-) -> None:
-    """Bridge AWS Access-Advisor usage evidence into per-service grant edges.
-
-    Emits one ``HAS_PERMISSION`` edge per granted service, carrying the service's
-    Access-Advisor ``last_used_at`` (``None`` = never used) so the CIEM
-    over-privilege emitter can right-size. Only emitted when Access Advisor
-    returned complete evidence (``state == "available"``) — denied/pending/
-    unavailable evidence yields no edges, so absence is never read as unused.
-    """
-    evidence = principal.get("usage_evidence")
-    if not isinstance(evidence, dict) or str(evidence.get("state") or "") != "available":
-        return
-    records = evidence.get("records")
-    if not isinstance(records, list):
-        return
-    for record in records:
-        if not isinstance(record, dict) or str(record.get("state") or "") != "available":
-            continue
-        service = _clean_graph_part(record.get("service_namespace"))
-        if not service:
-            continue
-        last_accessed = record.get("last_accessed_at")
-        last_used = last_accessed if isinstance(last_accessed, str) and last_accessed.strip() else None
-        service_node_id = _identity_node_id(EntityType.RESOURCE, provider, f"{principal_node_id}:{service}")
-        graph.add_node(
-            UnifiedNode(
-                id=service_node_id,
-                entity_type=EntityType.RESOURCE,
-                label=service,
-                attributes={
-                    "cloud_provider": provider,
-                    "cloud_service": service,
-                    "kind": "iam_service_permission",
-                    "source": "access-advisor",
-                },
-                data_sources=data_sources,
-                dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
-            )
-        )
-        graph.add_edge(
-            UnifiedEdge(
-                source=principal_node_id,
-                target=service_node_id,
-                relationship=RelationshipType.HAS_PERMISSION,
-                evidence={
-                    "source": "access-advisor",
-                    "access_advisor": True,
-                    "service_namespace": service,
-                    "last_used_at": last_used,
-                },
-            )
-        )
-
-
 def _add_inventory_group(
     graph: UnifiedGraph,
     group: dict[str, Any],
@@ -4215,96 +2591,6 @@ def _add_inventory_group(
         _add_rel_edge(
             graph, member_node_id, group_node_id, RelationshipType.MEMBER_OF, {"source": "cloud-inventory", "membership": "group"}
         )
-
-
-def _add_cross_env_correlation(
-    graph: UnifiedGraph,
-    agents_data: Any,
-    data_source: str,
-) -> None:
-    """Emit local↔cloud correlation edges across all configured providers.
-
-    The strict-bar matcher in :mod:`agent_bom.cross_env_correlation` decides
-    whether each candidate qualifies for ``CORRELATES_WITH`` (HIGH-confidence
-    triplet match) or only ``POSSIBLY_CORRELATES_WITH`` (single-signal). Both
-    relationships carry the matched signals and rationale so reviewers can see
-    why the platform drew the line.
-    """
-    from agent_bom.cross_env_correlation import (
-        CorrelationConfidence,
-        correlate_cross_environment,
-    )
-
-    if not isinstance(agents_data, list):
-        return
-    result = correlate_cross_environment(agents_data)
-    if not result.matches:
-        return
-
-    for match in result.matches:
-        local_id = f"agent:{match.local_agent_name}"
-        cloud_id = f"agent:{match.cloud_agent_name}"
-        # Only wire edges between agents we already added as nodes — the
-        # matcher operates over the report payload but the graph may have
-        # filtered some agents out earlier.
-        if not graph.get_node(local_id) or not graph.get_node(cloud_id):
-            continue
-        relationship = (
-            RelationshipType.CORRELATES_WITH
-            if match.confidence is CorrelationConfidence.HIGH
-            else RelationshipType.POSSIBLY_CORRELATES_WITH
-        )
-        graph.add_edge(
-            UnifiedEdge(
-                source=local_id,
-                target=cloud_id,
-                relationship=relationship,
-                # Cross-env correlation is semantically symmetric ("local
-                # agent X corresponds to cloud agent Y" reads the same in
-                # either direction), so the edge must be traversable both
-                # ways. Without `bidirectional`, a query "for this cloud
-                # Bedrock/Azure/Vertex agent, which local agent talks to
-                # it?" misses the edge on the forward adjacency index and
-                # only finds it via reverse_adjacency — silently
-                # inconsistent with how the graph treats peer relations
-                # like SHARES_SERVER and SHARES_CRED.
-                direction="bidirectional",
-                evidence={
-                    "data_source": data_source,
-                    "confidence": match.confidence.value,
-                    "matched_signals": list(match.matched_signals),
-                    "cloud_provider": match.cloud_provider,
-                    "cloud_service": match.cloud_service,
-                    "cloud_account_id": match.cloud_account_id or "",
-                    "cloud_region": match.cloud_region or "",
-                    "cloud_model_id": match.cloud_model_id or "",
-                    "rationale": match.rationale,
-                },
-            )
-        )
-
-
-def _project_host_agent_id(graph: UnifiedGraph, agents_data: Any) -> str | None:
-    """The single project agent that owns this report's source-code inventory.
-
-    Code-level framework constructs are evidence about that project agent, not
-    additional agents. With zero or several project roots there is no single
-    owner, so the constructs keep their own nodes.
-    """
-    if not isinstance(agents_data, list):
-        return None
-    hosts: list[str] = []
-    for agent in agents_data:
-        if not isinstance(agent, dict):
-            continue
-        metadata = agent.get("metadata")
-        if not (isinstance(metadata, dict) and metadata.get("project_root")):
-            continue
-        node_id = _agent_node_id(agent.get("name"), _agent_identity_scope(agent))
-        node = graph.nodes.get(node_id)
-        if node is not None and node.entity_type == EntityType.AGENT:
-            hosts.append(node_id)
-    return hosts[0] if len(hosts) == 1 else None
 
 
 def _add_framework_topology(

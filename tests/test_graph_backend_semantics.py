@@ -217,18 +217,45 @@ class TestSeverityFloorKeepsTopologyOnEveryBackend:
         assert any(e.source == "pkg:express" and e.target == "vuln:crit" for e in graph.edges)
 
 
+def _method_and_helper_source(cls: type, name: str) -> str:
+    """A method's source plus the module-level helpers in its own module that it calls.
+
+    Store methods delegate SQL assembly to private helpers next to them, so a
+    contract on "what the method runs" has to follow those calls.
+    """
+    import ast
+    import inspect
+    import sys
+    import textwrap
+
+    method = getattr(cls, name)
+    module = sys.modules[method.__module__]
+    parts = [inspect.getsource(method)]
+    queue = list(parts)
+    seen: set[str] = set()
+    while queue:
+        for node in ast.walk(ast.parse(textwrap.dedent(queue.pop()))):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)) or node.func.id in seen:
+                continue
+            seen.add(node.func.id)
+            helper = getattr(module, node.func.id, None)
+            if inspect.isfunction(helper) and helper.__module__ == module.__name__:
+                parts.append(inspect.getsource(helper))
+                queue.append(parts[-1])
+    return "\n".join(parts)
+
+
 def test_postgres_does_not_hand_roll_its_own_severity_floor() -> None:
     """Enforced on every runner, database or not.
 
     Postgres compared ``severity_id >= %s`` against every node in four separate
     places. The shared fragment is the only permitted spelling.
     """
-    import inspect
 
     from agent_bom.api.postgres_graph import PostgresGraphStore
 
     for method in ("load_graph", "snapshot_stats", "page_nodes", "search_nodes"):
-        source = inspect.getsource(getattr(PostgresGraphStore, method))
+        source = _method_and_helper_source(PostgresGraphStore, method)
         assert "severity_id >= " not in source, (
             f"PostgresGraphStore.{method} still compares severity_id directly, which drops every "
             "context node the finding hangs off; use severity_floor_sql"
@@ -237,11 +264,10 @@ def test_postgres_does_not_hand_roll_its_own_severity_floor() -> None:
 
 
 def test_postgres_inventory_is_native_sql_not_python_paging() -> None:
-    import inspect
 
     from agent_bom.api.postgres_graph import PostgresGraphStore
 
-    source = inspect.getsource(PostgresGraphStore.query_inventory)
+    source = _method_and_helper_source(PostgresGraphStore, "query_inventory")
     assert "page_nodes" not in source and "search_nodes" not in source
     assert "COUNT(*)" in source
     assert "jsonb_array_elements_text" in source

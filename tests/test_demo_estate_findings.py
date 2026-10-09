@@ -366,8 +366,12 @@ def test_every_demo_check_still_exists_in_the_shipped_benchmark_scanner():
     import agent_bom.cloud as cloud_pkg
     from agent_bom.demo_estate.enterprise_findings import _CATALOG
 
+    cloud_root = Path(cloud_pkg.__file__).parent
     sources = {
-        provider: (Path(cloud_pkg.__file__).parent / f"{provider}_cis_benchmark.py").read_text(encoding="utf-8")
+        provider: "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in [cloud_root / f"{provider}_cis_benchmark.py", *sorted((cloud_root / f"{provider}_cis").glob("*.py"))]
+        )
         for provider in {check.provider for check in _CATALOG}
     }
     drifted = [

@@ -555,6 +555,14 @@ def _cloud_cis_benchmark_dir():
     return Path(cloud_pkg.__file__).parent
 
 
+def _cloud_cis_module_sources(module_name: str) -> list[str]:
+    """Source of a benchmark facade plus its split-out ``<provider>_cis`` check package, when present."""
+    facade = _cloud_cis_benchmark_dir() / module_name
+    package = facade.with_name(facade.stem.removesuffix("_benchmark"))
+    paths = [facade, *sorted(package.glob("*.py"))] if package.is_dir() else [facade]
+    return [path.read_text() for path in paths]
+
+
 def _cloud_cis_benchmark_title_literals() -> dict[str, list[str]]:
     """Return every ``title="..."`` string literal passed to a ``CISCheckResult``
     constructor across the four cloud CIS Foundations Benchmark modules.
@@ -567,13 +575,10 @@ def _cloud_cis_benchmark_title_literals() -> dict[str, list[str]]:
     """
     import ast
 
-    cloud_dir = _cloud_cis_benchmark_dir()
     out: dict[str, list[str]] = {}
     for name in _CLOUD_CIS_BENCHMARK_MODULES:
-        source = (cloud_dir / name).read_text()
-        tree = ast.parse(source)
         titles: list[str] = []
-        for node in ast.walk(tree):
+        for node in (node for source in _cloud_cis_module_sources(name) for node in ast.walk(ast.parse(source))):
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
@@ -635,8 +640,7 @@ def test_cloud_cis_benchmark_titles_are_own_descriptors_not_copyrighted():
     present = forbidden & set(all_titles)
     assert not present, f"Verbatim copyrighted CIS Foundations Benchmark titles emitted: {sorted(present)}"
 
-    cloud_dir = _cloud_cis_benchmark_dir()
-    joined_source = "\n".join((cloud_dir / name).read_text() for name in _CLOUD_CIS_BENCHMARK_MODULES)
+    joined_source = "\n".join(source for name in _CLOUD_CIS_BENCHMARK_MODULES for source in _cloud_cis_module_sources(name))
     # Plain substring scan (not just quoted literals) so verbatim titles hiding
     # in docstrings or comments are caught too — docstrings feed error-path
     # titles in some modules, so they are an emission surface, not just prose.
@@ -648,9 +652,8 @@ def _cis_check_docstring_descriptors(module_name: str) -> list[str]:
     """Return the post-em-dash descriptor of every ``_check_*`` docstring."""
     import ast
 
-    source = (_cloud_cis_benchmark_dir() / module_name).read_text()
     descriptors: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in (node for source in _cloud_cis_module_sources(module_name) for node in ast.walk(ast.parse(source))):
         if not isinstance(node, ast.FunctionDef) or not node.name.startswith("_check"):
             continue
         doc = ast.get_docstring(node) or ""
@@ -669,7 +672,7 @@ def test_cis_docstring_derived_titles_are_own_descriptors():
     # Self-updating scope guard: any module that starts deriving titles from
     # __doc__ must be added here (and get own-worded docstrings).
     for name in _CLOUD_CIS_BENCHMARK_MODULES:
-        source = (_cloud_cis_benchmark_dir() / name).read_text()
+        source = "\n".join(_cloud_cis_module_sources(name))
         if "__doc__" in source:
             assert name in docstring_title_modules, f"{name} derives titles from __doc__ but is not docstring-guarded"
 

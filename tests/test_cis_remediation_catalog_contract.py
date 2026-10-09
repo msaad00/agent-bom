@@ -31,12 +31,18 @@ def _literal_string(node: ast.expr | None, constants: dict[str, str]) -> str | N
     return None
 
 
+def _module_sources(path: Path) -> list[Path]:
+    """The benchmark facade plus its split-out ``<provider>_cis`` check package, when present."""
+    package = path.with_name(path.stem.removesuffix("_benchmark"))
+    return [path, *sorted(package.glob("*.py"))] if package.is_dir() else [path]
+
+
 def _catalog_identities(cloud: str, path: Path) -> list[CISControlIdentity]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    trees = [ast.parse(source.read_text(encoding="utf-8"), filename=str(source)) for source in _module_sources(path)]
     constants: dict[str, str] = {}
     benchmark_version = ""
 
-    for node in tree.body:
+    for node in (node for tree in trees for node in tree.body):
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             value = _literal_string(node.value, constants)
             if value is not None:
@@ -47,7 +53,7 @@ def _catalog_identities(cloud: str, path: Path) -> list[CISControlIdentity]:
                     benchmark_version = _literal_string(child.value, constants) or ""
 
     identities: list[CISControlIdentity] = []
-    for node in ast.walk(tree):
+    for node in (node for tree in trees for node in ast.walk(tree)):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "CISCheckResult"):
             continue
         keywords = {keyword.arg: keyword.value for keyword in node.keywords if keyword.arg}

@@ -85,7 +85,7 @@ class BenchmarkProvenance:
 # provider -> (registry file, registry variable names, human registry label)
 REGISTRY_SPECS: Final[dict[str, tuple[str, tuple[str, ...], str]]] = {
     "aws": ("aws_cis_benchmark.py", ("_CHECKS", "_SPECIAL_CHECKS"), "agent_bom.cloud.aws_cis_benchmark:_CHECKS+_SPECIAL_CHECKS"),
-    "gcp": ("gcp_cis_benchmark.py", ("all_checks",), "agent_bom.cloud.gcp_cis_benchmark:run_benchmark.all_checks"),
+    "gcp": ("gcp_cis/runner.py", ("CHECK_REGISTRY",), "agent_bom.cloud.gcp_cis.runner:CHECK_REGISTRY"),
     "azure": ("azure_cis_benchmark.py", ("all_checks",), "agent_bom.cloud.azure_cis_benchmark:run_benchmark.all_checks"),
     "snowflake": ("snowflake_cis_benchmark.py", ("all_checks",), "agent_bom.cloud.snowflake_cis_benchmark:run_benchmark.all_checks"),
     "databricks": ("databricks_security.py", ("_ALL_CHECKS",), "agent_bom.cloud.databricks_security:_ALL_CHECKS"),
@@ -241,9 +241,12 @@ class ControlInventory:
 # ── Inventory generation ────────────────────────────────────────────────────
 
 
+_ID_KEYED_REGISTRIES: Final = frozenset({"all_checks", "CHECK_REGISTRY"})
+
+
 def _registry_ids(filename: str, *variables: str) -> tuple[str, ...]:
     """Read the explicit check-function registries into stable control IDs."""
-    tree = ast.parse((Path(__file__).with_name(filename)).read_text())
+    tree = ast.parse((Path(__file__).parent / filename).read_text())
     ids: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
@@ -260,7 +263,8 @@ def _registry_ids(filename: str, *variables: str) -> tuple[str, ...]:
             continue
         if not isinstance(value, (ast.List, ast.Tuple)):
             continue
-        is_all_checks = any(isinstance(target, ast.Name) and target.id == "all_checks" for target in targets)
+        # ``(control_id, check)`` registries keyed by the literal id first.
+        is_all_checks = any(isinstance(target, ast.Name) and target.id in _ID_KEYED_REGISTRIES for target in targets)
         for item in value.elts:
             if isinstance(item, ast.Tuple) and is_all_checks:
                 check_id = item.elts[0]

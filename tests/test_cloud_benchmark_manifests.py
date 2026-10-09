@@ -65,7 +65,7 @@ def test_active_operator_surfaces_do_not_describe_databricks_as_cis():
 def test_implemented_counts_match_code_registries():
     counts = {
         "aws": _registry_count("aws_cis_benchmark.py", "_CHECKS") + _registry_count("aws_cis_benchmark.py", "_SPECIAL_CHECKS"),
-        "gcp": _registry_count("gcp_cis_benchmark.py", "all_checks"),
+        "gcp": _registry_count("gcp_cis/runner.py", "CHECK_REGISTRY"),
         "azure": _registry_count("azure_cis_benchmark.py", "all_checks"),
         "snowflake": _registry_count("snowflake_cis_benchmark.py", "all_checks"),
         "databricks": _registry_count("databricks_security.py", "_ALL_CHECKS"),

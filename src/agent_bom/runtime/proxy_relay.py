@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 if TYPE_CHECKING:
-    from agent_bom.proxy_session import ProxySession
+    from agent_bom.runtime.proxy_session import ProxySession
 
 CLIENT_READ_TIMEOUT_SECONDS = 120.0
 

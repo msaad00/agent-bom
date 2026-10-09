@@ -31,8 +31,6 @@ from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
-from agent_bom import proxy_relay as _proxy_relay
-from agent_bom import proxy_session as _proxy_session
 from agent_bom.agent_identity import check_identity
 from agent_bom.api.tracing import (
     build_traceparent,
@@ -47,6 +45,8 @@ from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_li
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_jsonrpc_response, scan_tool_call
+from agent_bom.runtime import proxy_relay as _proxy_relay
+from agent_bom.runtime import proxy_session as _proxy_session
 from agent_bom.runtime.trace_metadata import inject_jsonrpc_trace_meta as _inject_jsonrpc_trace_meta
 from agent_bom.security import (
     redact_secret_url,

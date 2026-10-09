@@ -1,7 +1,7 @@
 """Shared state and control-plane plumbing for one stdio proxy session.
 
 ``run_proxy`` composes a :class:`ProxySession` once and hands it to the relay
-stages in :mod:`agent_bom.proxy_relay`. Names that live on
+stages in :mod:`agent_bom.runtime.proxy_relay`. Names that live on
 :mod:`agent_bom.proxy` are resolved through that module at call time so that
 its public helpers (and the test seams patched on it) stay authoritative.
 """

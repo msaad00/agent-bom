@@ -4668,13 +4668,6 @@
     "proxy_policy.py::evaluate_conditions": {
       "complexity": 17
     },
-    "proxy_relay.py": {
-      "deferred_imports": 3
-    },
-    "proxy_session.py": {
-      "broad_except": 2,
-      "deferred_imports": 4
-    },
     "push.py": {
       "deferred_imports": 8
     },
@@ -4874,6 +4867,13 @@
     },
     "runtime/protection.py::ProtectionEngine.process_tool_call": {
       "function_lines": 90
+    },
+    "runtime/proxy_relay.py": {
+      "deferred_imports": 3
+    },
+    "runtime/proxy_session.py": {
+      "broad_except": 2,
+      "deferred_imports": 4
     },
     "runtime/server.py": {
       "raw_env_reads": 2

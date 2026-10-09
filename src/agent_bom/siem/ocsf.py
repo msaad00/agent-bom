@@ -21,9 +21,9 @@ from typing import Any
 from uuid import uuid4
 
 from agent_bom.core.settings import env_str
-from agent_bom.graph import OCSF_SEVERITY_NAMES as _SEVERITY_NAMES
-from agent_bom.graph import OCSF_TO_SYSLOG
-from agent_bom.graph import SEVERITY_TO_OCSF as _SEVERITY_MAP
+from agent_bom.core.severity import OCSF_SEVERITY_NAMES as _SEVERITY_NAMES
+from agent_bom.core.severity import OCSF_TO_SYSLOG
+from agent_bom.core.severity import SEVERITY_TO_OCSF as _SEVERITY_MAP
 
 logger = logging.getLogger(__name__)
 

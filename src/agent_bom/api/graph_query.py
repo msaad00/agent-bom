@@ -4,9 +4,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_bom.graph import GraphFilterOptions, RelationshipType, UnifiedGraph, UnifiedNode
 from agent_bom.graph.completeness import bounded_walk_reason, graph_completeness
+from agent_bom.graph.container import GraphFilterOptions, UnifiedGraph
+from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.severity_floor import node_passes_severity_floor
+from agent_bom.graph.types import RelationshipType
 
 
 class GraphQueryRequest(BaseModel):

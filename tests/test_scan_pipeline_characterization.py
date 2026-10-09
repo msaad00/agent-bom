@@ -127,7 +127,7 @@ def _normalize(value: Any, root: str) -> Any:
     if isinstance(value, list):
         return [_normalize(item, root) for item in value]
     if isinstance(value, str):
-        text = value.replace(root, "<ROOT>")
+        text = value.replace(root, "<ROOT>").replace(str(Path(__file__).resolve().parents[1]), "<REPO>")
         text = _TIMESTAMP.sub("<TS>", text)
         return _UUID.sub("<UUID>", text)
     if isinstance(value, float):

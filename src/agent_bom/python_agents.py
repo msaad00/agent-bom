@@ -521,7 +521,7 @@ def _scan_python_files(project: Path) -> list[_PythonAgentDef]:
 def _prompt_inventory_by_file(project: Path) -> dict[str, list[dict[str, Any]]]:
     """Return bounded prompt inventory keyed by relative path and basename."""
     try:
-        from agent_bom.ast_analyzer import analyze_project
+        from agent_bom.ast.project_scope import analyze_project_once as analyze_project
     except Exception:
         return {}
 

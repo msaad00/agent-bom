@@ -389,7 +389,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -2588,7 +2588,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -5127,7 +5127,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -7059,7 +7059,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -8802,7 +8802,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -11275,7 +11275,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -13680,7 +13680,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -15521,7 +15521,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -17837,7 +17837,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "<REPO>/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {

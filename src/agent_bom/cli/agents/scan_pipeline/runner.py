@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
+from agent_bom.ast.project_scope import project_analysis_scope
 from agent_bom.cli._common import logger
 from agent_bom.cli.agents.scan_pipeline import (
     discovery,
@@ -51,6 +52,7 @@ def _record_stage_time(st: ScanState, name: str, elapsed: float) -> None:
     logger.debug("scan stage %s took %.3fs", name, elapsed)
 
 
+@project_analysis_scope()
 def run_scan(opts: ScanOptions, stages: tuple[tuple[str, Stage], ...] = STAGES) -> None:
     """Execute ``stages`` for one invocation; a stage may end the run early with :class:`StopScan`."""
     st = ScanState()

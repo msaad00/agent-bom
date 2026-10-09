@@ -254,7 +254,11 @@ def _run_scenario(name: str, spec: dict[str, Any], tmp_path: Path, monkeypatch: 
             rules=[{"id": "r1", "action": "block", "block_tools": ["read_file"]}],
         )
     ]
-    monkeypatch.setattr(proxy_mod, "_fetch_enabled_gateway_policies", AsyncMock(return_value=(policies, "etag-1")))
+    fetch = AsyncMock(return_value=(policies, "etag-1"))
+    if spec.get("cached_policy_fallback"):
+        fetch.side_effect = OSError("control plane unavailable")
+        monkeypatch.setattr(proxy_mod, "_load_cached_gateway_policies", lambda *_: (policies, "etag-1"))
+    monkeypatch.setattr(proxy_mod, "_fetch_enabled_gateway_policies", fetch)
     monkeypatch.setattr(proxy_mod, "_push_proxy_audit_batch", fake_push)
 
     kwargs = dict(spec["kwargs"])
@@ -294,3 +298,13 @@ def test_run_proxy_characterization(name: str, tmp_path: Path, monkeypatch: pyte
         golden_path.write_text(rendered, encoding="utf-8")
     assert golden_path.exists(), f"missing golden {golden_path.name}; run with AGENT_BOM_UPDATE_PROXY_GOLDENS=1"
     assert json.loads(rendered) == json.loads(golden_path.read_text(encoding="utf-8"))
+
+
+def test_cached_policy_fallback_keeps_relay_enforcement(tmp_path, monkeypatch):
+    spec = _scenarios()["control_plane_gateway_policy"]
+    spec["cached_policy_fallback"] = True
+    observed = _run_scenario("cached-policy", spec, tmp_path, monkeypatch)
+    golden = json.loads((FIXTURES / "control_plane_gateway_policy.json").read_text())
+    assert observed["exit_code"] == 0
+    assert observed["server_frames"] == golden["server_frames"]
+    assert observed["client_frames"] == golden["client_frames"]

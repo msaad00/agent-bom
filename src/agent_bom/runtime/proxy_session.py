@@ -168,6 +168,8 @@ class ProxySession:
                 self.host.logger.warning("Gateway policy refresh failed: %s", sanitize_text(exc))
                 return
             self._fall_back_to_cached_policies(exc)
+            self._apply_control_plane_rate_limit()
+            return
         if policies is not None:
             control.policies = policies
             self.host._persist_gateway_policies_cache(control.cache_path, policies, next_etag)

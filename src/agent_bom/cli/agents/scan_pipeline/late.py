@@ -253,7 +253,7 @@ def _analyze_source(opts: ScanOptions, st: ScanState) -> None:
         from pathlib import Path as _APath
 
         _aproj = _APath(opts.project)
-        from agent_bom.ast_analyzer import analyze_project as _ast_analyze
+        from agent_bom.ast.project_scope import analyze_project_once as _ast_analyze
         from agent_bom.ast_analyzer import project_has_analyzable_sources as _has_ast_sources
 
         if _has_ast_sources(_aproj):

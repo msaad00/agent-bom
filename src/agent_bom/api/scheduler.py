@@ -161,14 +161,14 @@ async def scheduler_loop(
         while True:
             try:
                 if needs_leader_lock and leader_conn is None:
-                    leader_conn = _try_acquire_postgres_leader_lock()
+                    leader_conn = await asyncio.to_thread(_try_acquire_postgres_leader_lock)
                     if leader_conn is None:
                         await asyncio.sleep(interval_seconds)
                         continue
 
                 now = datetime.now(timezone.utc)
                 now_iso = now.isoformat()
-                due = schedule_store.list_due(now_iso)
+                due = await asyncio.to_thread(schedule_store.list_due, now_iso)
 
                 for schedule in due:
                     if not schedule.enabled:

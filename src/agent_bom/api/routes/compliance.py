@@ -466,7 +466,12 @@ async def get_compliance(
     Returns scored control posture plus applicability-only risk/technique
     catalogs and an overall score derived only from the scored frameworks.
     """
-    return await anyio.to_thread.run_sync(lambda: _build_compliance(_tenant_jobs(request), scan_id=scan_id))
+    return await anyio.to_thread.run_sync(_compliance_for_request, request, scan_id)
+
+
+@finding_read_snapshot
+def _compliance_for_request(request: Request, scan_id: str | None) -> dict[str, Any]:
+    return _build_compliance(_tenant_jobs(request), scan_id=scan_id)
 
 
 def _build_compliance(tenant_jobs: list[Any], *, scan_id: str | None = None) -> dict[str, Any]:
@@ -2394,6 +2399,7 @@ def _cached_estate_agent_count(request: Request, tenant_jobs: list[Any]) -> dict
     return _cached_posture_block(request, tenant_jobs, "agents", lambda: estate_agent_count(tenant_id))
 
 
+@finding_read_snapshot
 def _get_posture_counts_impl(request: Request) -> dict:
     """Synchronous posture-count composition, executed in a worker thread."""
     from agent_bom.api.exec_posture import posture_evidence_blocks

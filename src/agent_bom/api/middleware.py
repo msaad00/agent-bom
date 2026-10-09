@@ -886,6 +886,20 @@ class PostgresRateLimitStore:
         return int(row[0]) if row and row[0] is not None else 0
 
 
+def _is_hashed_build_asset(method: str, path: str, status_code: int) -> bool:
+    return method in {"GET", "HEAD"} and status_code in {200, 304} and path.startswith("/_next/static/") and ".." not in path
+
+
+def _cache_control(method: str, path: str, status_code: int, is_event_stream: bool) -> str:
+    if is_event_stream:
+        return "no-store, no-transform"
+    if _is_hashed_build_asset(method, path, status_code):
+        # Public, content-hashed build output: a new build changes the URL, so
+        # browsers may keep it instead of refetching every chunk on every page.
+        return "public, max-age=31536000, immutable"
+    return "no-store"
+
+
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
     """Add trust + standard security headers to every response."""
 
@@ -1004,7 +1018,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         # SSE must reach clients before connection renewal. Keep the security
         # no-store policy while disabling intermediary compression/buffering.
         is_event_stream = response.headers.get("content-type", "").split(";", 1)[0].strip().lower() == "text/event-stream"
-        response.headers["Cache-Control"] = "no-store, no-transform" if is_event_stream else "no-store"
+        response.headers["Cache-Control"] = _cache_control(request.method, request.url.path, response.status_code, is_event_stream)
         response.headers["Content-Security-Policy"] = _content_security_policy(
             request.url.path,
             response.headers.get("content-type", ""),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from agent_bom.api.finding_read_context import read_once
+from agent_bom.api.finding_read_context import read_once_shared
 from agent_bom.api.storage.sql import Dialect, SqlSession, load_json
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
@@ -73,15 +73,18 @@ def parse_job_payload(payload: Any) -> ScanJob:
     """Parse one persisted job row.
 
     Inside an aggregate read scope, identical payload text is parsed once and
-    the resulting object is shared by every read in that scope; any committed
-    change produces different text and therefore a fresh parse. Outside a
-    scope every call returns an independent object.
+    the resulting object is shared by every read in that scope, and by any
+    concurrent scope reading the same text: a dashboard page fires several
+    aggregate reads at once, and each re-parsing a multi-megabyte payload held
+    the GIL for the whole parse. Any committed change produces different text
+    and therefore a fresh parse; the shared object is read-only by contract.
+    Outside a scope every call returns an independent object.
     """
     from agent_bom.api.models import ScanJob
 
     if not isinstance(payload, str):
         return ScanJob.model_validate(load_json(payload))
-    return read_once(("scan_job_payload", payload), lambda: ScanJob.model_validate_json(payload))
+    return read_once_shared(("scan_job_payload", payload), lambda: ScanJob.model_validate_json(payload))
 
 
 def get_job(session: SqlSession, dialect: Dialect, job_id: str, tenant_id: str | None) -> ScanJob | None:

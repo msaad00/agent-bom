@@ -1739,12 +1739,12 @@ def _mount_dashboard(application: FastAPI) -> None:
         return
 
     from starlette.responses import FileResponse
-    from starlette.staticfiles import StaticFiles
 
-    # Hashed JS/CSS assets
     next_static = ui_dist / "_next"
-    if next_static.is_dir():
-        application.mount("/_next", StaticFiles(directory=str(next_static)), name="next-static")
+    if next_static.is_dir():  # hashed JS/CSS build assets
+        from agent_bom.api.dashboard_assets import InMemoryBuildAssets
+
+        application.mount("/_next", InMemoryBuildAssets(directory=str(next_static)), name="next-static")
 
     # Pre-build a bounded static file map at startup so request paths are
     # resolved only as lookup keys.

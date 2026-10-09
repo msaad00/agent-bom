@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Performance
+
+- Dashboard page loads no longer freeze the API. Page reads already ran on worker threads, but about ten CPU-bound aggregate reads at once (overview, findings, compliance, posture counts, graph) left the event-loop thread waiting on the GIL. `/health` and `/_next/static` chunks queued behind them for tens of seconds. Those reads now compute two at a time (`AGENT_BOM_HEAVY_READ_CONCURRENCY`, default 2). Waiters beyond the worker-thread ceiling get 429 instead of an unbounded queue. Concurrent reads of the same job payload share one parse instead of each parsing it. Hashed `/_next/static` assets are served from memory without worker-thread hops and marked `immutable`, and the schedule poll moved off the event loop. On `serve --demo-estate` with SQLite, after seeding settles, firing ten page reads at once with static and `/health` probes running alongside: max event-loop stall drops from 31.7 s to 2.6 s, max static-asset latency from 38.0 s to 4.6 s and max `/health` latency from 37.9 s to 2.9 s. Cold page reads drop from 35-96 s to 7-17 s, and warm ones from 19-35 s to 4-12 s. Measured on a 10-core dev host at load average ~35, so absolute numbers are high.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

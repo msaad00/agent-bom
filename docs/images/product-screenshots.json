@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.3",
-  "captured_at": "2026-10-08T20:50:01.327Z",
-  "source_commit": "eeef1c715c75ab73df0a7a71dba02a1b3ae1ee51",
+  "captured_at": "2026-10-09T03:01:41.049Z",
+  "source_commit": "057ac12074d2502bff48f16ccdc250cba84896ac",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:5dd845f37b18b05e4cb23d9fbb419e771d2fbcd3de9b877140b836c0c4d01ab1",
+  "capture_inputs_sha256": "sha256:8f6a5546a3a5c986fdd9fac4e625bf25fbe5723ecae993a473d06509cabda246",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -243,7 +243,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:7e868c65909446498e9281fd7ba3d0e307a47b0c5127a46d3c63ce73bee64981"
+      "sha256": "sha256:2d005b765b1c7f919da07d8081aeb86232e87de87297ef8f10917cd3f67c4387"
     },
     {
       "presentation": "dark mobile",
@@ -265,7 +265,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:98fd5ed5b97a3241fee0a40fadcc40b35ab7e351ea4bdcd2a4a4e624d9dd47c9"
+      "sha256": "sha256:fe37753e4fa3bc0d48f7d99fc22a61ae8112ee06a15cc1b229dcf1b4d7b2ab57"
     },
     {
       "presentation": "light desktop",
@@ -297,7 +297,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.108.3",
-      "sha256": "sha256:5f4b3ca4325bbce222c78e036e0fe21a6e3f1f9ae04bde2c80db3429e594bc28"
+      "sha256": "sha256:4ff2c2c91cccc5b704b30a7e8ed0f1b85529a6791aaf949de6bbce30d8698152"
     },
     {
       "presentation": "dark desktop",
@@ -313,7 +313,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.108.3",
-      "sha256": "sha256:eae64b15ae229bf5d790b5de51b4cfaf23c757e2f66863f301ea8632243e5abc"
+      "sha256": "sha256:e1b4f41df760a082f1d447858edd90fe105626834c6e7097563d7e07fa5b8b8d"
     },
     {
       "presentation": "light desktop",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.3",
-      "sha256": "sha256:eff72e5499ffe0ad1f7a9c2347b229f3202fb445daa21b7784118503dadc877c"
+      "sha256": "sha256:e2452487c23af7f80ef61c86ace428fa817c6c0a5d068e4c61d48ba3a0bcc889"
     },
     {
       "presentation": "dark responsive 1000x900",
@@ -337,7 +337,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.3",
-      "sha256": "sha256:171b8df41990c09a51beb59106d4e01c517bbce7f3c20bf02b3415f9e29bc56b"
+      "sha256": "sha256:b3b8df74b7ed5a08a8f0708104821a7a3b04e6aea1b1a5d9b73575d8dc3fc628"
     },
     {
       "presentation": "dark desktop",
@@ -377,7 +377,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
       "visible_version": "0.108.3",
-      "sha256": "sha256:9a22c8d09a333dadd2d837805235452f38b12747f6894589db5cc9fa8e3f7e49"
+      "sha256": "sha256:06cf767e87ee8c86ada602f41cd4b7141c5fc7eb483e980694dc6f71787d018c"
     },
     {
       "presentation": "light desktop",
@@ -385,7 +385,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow in the light theme",
       "visible_version": "0.108.3",
-      "sha256": "sha256:ccbcc39c7a1f81764dc28cae52dd37c220db540612a6458309a95fcb42c9114c"
+      "sha256": "sha256:e55184dc752ad42326efbdafd8ce0f6260a6ad6e5b3a955f2a211d59504ddd90"
     },
     {
       "presentation": "dark mobile",
@@ -393,7 +393,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow at a 390 by 844 viewport",
       "visible_version": "0.108.3",
-      "sha256": "sha256:9b4f3df95195af5fdc2774fb123e93e97977a48c830ddbfb1ced01bf7dfc57fd"
+      "sha256": "sha256:3a3b5ae5b8f3167d9ab10936b69fe17a57dcc1e38d8518dd3d199ea105903867"
     }
   ]
 }

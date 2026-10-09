@@ -340,6 +340,7 @@ class SQLiteJobStore:
     are duplicated as columns for efficient queries.
     """
 
+    has_usable_demo_job = sqlite_demo_exists
     retains_job_objects_in_memory = False
 
     def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
@@ -442,8 +443,6 @@ class SQLiteJobStore:
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()
-
-    has_usable_demo_job = sqlite_demo_exists
 
     def overview_evidence_revision(self, tenant_id: str) -> str:
         """Opaque database/tenant mutation token without reading job JSON.

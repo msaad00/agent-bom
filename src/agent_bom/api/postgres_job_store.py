@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 class PostgresJobStore:
     """PostgreSQL-backed scan job persistence."""
 
+    has_usable_demo_job = postgres_demo_exists
     retains_job_objects_in_memory = False
 
     def __init__(self, pool: ConnectionPool | None = None, maintenance_pool: ConnectionPool | None = None) -> None:
@@ -195,8 +196,6 @@ class PostgresJobStore:
             _ensure_tenant_rls(conn, "scan_dispatch_queue", "tenant_id")
             conn.execute(POSTGRES_JOB_REVISIONS_V1)
             conn.commit()
-
-    has_usable_demo_job = postgres_demo_exists
 
     def overview_evidence_revision(self, tenant_id: str) -> str:
         return read_postgres_job_revision(self._pool, tenant_id)

@@ -65,17 +65,23 @@ def _expr_name(node: ast.AST) -> str:
     return ""
 
 
-def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationEntrypoint]:
-    try:
-        tree = parse_python_source(source, filename=str(path))
-    except (SyntaxError, ValueError):
-        return []
-    rel = path.relative_to(project).as_posix()
-    functions = {node.name: node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+_PythonSymbols = tuple[dict[str, ast.FunctionDef | ast.AsyncFunctionDef], set[str], dict[str, str], list[ast.Assign | ast.AnnAssign]]
+
+
+def _python_symbols(tree: ast.Module) -> _PythonSymbols:
+    """Functions, imports and call-valued assignments, gathered in one traversal.
+
+    Constructor resolution needs every import first, so assignments are
+    returned for the caller to resolve after the walk completes.
+    """
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     imports: set[str] = set()
     imported_names: dict[str, str] = {}
+    assignments: list[ast.Assign | ast.AnnAssign] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            functions[node.name] = node
+        elif isinstance(node, ast.Import):
             for alias in node.names:
                 bound = alias.asname or alias.name.split(".", 1)[0]
                 imports.add(bound)
@@ -85,12 +91,21 @@ def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationE
             for alias in node.names:
                 bound = alias.asname or alias.name
                 imported_names[bound] = f"{module}.{alias.name}" if module else alias.name
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and isinstance(node.value, ast.Call):
+            assignments.append(node)
+    return functions, imports, imported_names, assignments
 
+
+def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationEntrypoint]:
+    try:
+        tree = parse_python_source(source, filename=str(path))
+    except (SyntaxError, ValueError):
+        return []
+    rel = path.relative_to(project).as_posix()
+    functions, imports, imported_names, assignments = _python_symbols(tree)
     instances: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-            continue
-        value = node.value
+    for assignment in assignments:
+        value = assignment.value
         if not isinstance(value, ast.Call):
             continue
         constructor = _expr_name(value.func)
@@ -104,14 +119,14 @@ def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationE
             framework = "Typer"
         if not framework:
             continue
-        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
         for target in targets:
             if isinstance(target, ast.Name):
                 instances[target.id] = framework
 
     entries = django_entries(project, path, tree)
-    for node in functions.values():
-        for decorator in node.decorator_list:
+    for function in functions.values():
+        for decorator in function.decorator_list:
             name = _expr_name(decorator)
             if not name:
                 continue
@@ -128,13 +143,13 @@ def _python_entries(project: Path, path: Path, source: str) -> list[ApplicationE
             if kind:
                 entries.append(
                     ApplicationEntrypoint(
-                        name=node.name,
-                        handler=node.name,
+                        name=function.name,
+                        handler=function.name,
                         kind=kind,
                         framework=framework,
                         language="python",
                         file_path=rel,
-                        line_number=node.lineno,
+                        line_number=function.lineno,
                         provenance=f"decorator:{name}",
                     )
                 )

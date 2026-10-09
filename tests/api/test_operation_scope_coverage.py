@@ -52,6 +52,7 @@ def authenticate(client, mode, *, scopes, role=Role.ADMIN):
         client.cookies.set(SESSION_COOKIE_NAME, token)
         client.cookies.set(CSRF_COOKIE_NAME, csrf)
         client.headers[CSRF_HEADER_NAME] = csrf
+        client.headers["Origin"] = "http://testserver"
     return key
 
 

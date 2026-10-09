@@ -45,6 +45,7 @@ from agent_bom.api.error_envelope import (
 from agent_bom.api.error_envelope import (
     install_error_envelope as install_error_envelope,
 )
+from agent_bom.api.host_guard import browser_origin_trusted
 from agent_bom.api.route_policy import (
     PUBLIC_OPERATIONS,
     ROLE_RULES,
@@ -1691,6 +1692,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             effective_role = resolved_role or session_role
 
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            if not browser_origin_trusted(request.headers):
+                return JSONResponse(status_code=403, content={"detail": "Forbidden — untrusted request origin"})
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
             csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
             if not verify_csrf(payload, csrf_cookie, csrf_header):

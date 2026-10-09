@@ -13,8 +13,11 @@ release-note security language, see
 **Response SLA:**
 - Acknowledgement within **48 hours**
 - Triage and severity assessment within **5 business days**
-- Fix for critical issues within **7 days** of triage
-- Fix for high issues within **30 days** of triage
+- Target: fix for critical issues within **7 days** of triage
+- Target: fix for high issues within **30 days** of triage
+
+Fix timelines are targets, not guarantees; complex issues may take longer and
+are communicated through the advisory.
 
 ## Supported Versions
 
@@ -29,7 +32,28 @@ or customer-specific agreement exists.
 
 ## Security Design
 
-agent-bom is a **read-only scanner**. It does not modify agent configurations, execute MCP servers, write credentials, or alter any external system state.
+What agent-bom reads, stores, and changes depends on the mode you run:
+
+- **CLI scanner** (`agent-bom scan`, `fs`, `image`, cloud and SaaS scans) is
+  read-only by default. It reads configs, manifests, images, and cloud/SaaS
+  APIs and writes only its own reports and local state. It does not modify
+  agent configurations. The opt-in `--introspect` flag connects to the
+  discovered MCP servers, which starts stdio servers.
+- **Control plane** (`agent-bom serve` / `agent-bom api`) persists inventory,
+  findings, graphs, audit records, and policy state in its own database. It
+  stores webhook signing secrets (encrypted with the connection at-rest key
+  when one is configured) and ticketing tokens and connection secrets
+  (envelope-encrypted, fail closed without a key). With a ticketing
+  connection configured it creates and updates tickets in the external
+  tracker. Fleet containment routes (for example
+  `POST /v1/fleet/{agent_id}/quarantine`) change an agent's lifecycle state and
+  publish deny policies that the gateway enforces.
+- **Runtime proxy and gateway** sit inline on MCP tool calls and can block,
+  redact, or alert on them. `agent-bom proxy` launches the MCP server command
+  you give it as a subprocess.
+- **Agentless side-scans** (CWPP disk scanning) create temporary snapshots and
+  volumes in your cloud account and delete them when the scan finishes; if
+  cleanup fails, the scan reports the leftover resource IDs.
 
 ### What it reads
 - Local config files (`~/.config/`, `~/.claude/`, etc.) — for agent discovery
@@ -39,7 +63,8 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 - Kubernetes API — when `--k8s` flag is used
 
 ### Credential handling
-- Credentials are **never stored** by agent-bom
+- The CLI scanner does not store cloud credentials; it uses the credentials already configured in your environment
+- The control plane stores only the secrets you give it for integrations (webhook signing secrets, ticketing tokens, connection secrets), as described above, and never returns them after creation
 - Credential names/env var keys appear in output as `***REDACTED***`
 - Redaction is heuristic-based (regex patterns) and may miss obfuscated or non-standard key names
 - Cloud credentials must be pre-configured in the environment (AWS profile, GCP application default, etc.)
@@ -48,11 +73,13 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 - **Credential redaction is heuristic** — non-standard or obfuscated key names may not be flagged
 - **External scanner dependency** — container image scanning can rely on external binaries; their CVEs apply to those tools
 - **Network dependency** — OSV/NVD/EPSS enrichment requires outbound HTTPS; air-gapped environments see reduced coverage
-- **MCP server execution** — agent-bom does NOT execute MCP servers it discovers; it only reads their configs
+- **MCP server execution** — discovery reads MCP server configs and does not start the servers it finds. Opt-in `--introspect` connects to them, which starts stdio servers. The proxy launches the server command you wrap
 - **Runtime proxy enforcement** — the proxy intercepts MCP traffic using a trust-on-first-use model; pre-existing compromised servers must be identified via scanning before proxy deployment
 
 ### API security (when running `agent-bom api`)
 - Defaults to localhost-only binding (`127.0.0.1:8422`)
+- Host-header allowlist: a loopback bind answers only `localhost`, loopback IPs, and `[::1]` Host names, which blocks browser DNS-rebinding against a local control plane. Non-loopback binds accept the hostnames in `AGENT_BOM_API_ALLOWED_HOSTS` (comma-separated, `*.domain` for subdomains). When that variable is unset, they accept any Host and log a startup warning. Set it to the public hostname(s) your proxy or ingress serves, plus the internal service name a separately deployed UI proxies to (for example `api` in the Compose stacks). Liveness and readiness probes are exempt so orchestrators that probe by pod IP keep working
+- Cookie-authenticated writes require a trusted `Origin` (or `Sec-Fetch-Site: same-origin`) in addition to the CSRF token; API-key and bearer requests are unaffected
 - `/docs`, `/redoc`, and `/openapi.json` support local onboarding. Production Compose and Helm profiles set `AGENT_BOM_DISABLE_DOCS=1` to disable those handlers.
 - API key auth via `AGENT_BOM_API_KEY` env var; OIDC/JWT via `AGENT_BOM_OIDC_ISSUER`
 - WebSocket endpoints use the same configured auth posture as HTTP routes. Handshake attempts are limited per transport peer before credential verification or the browser first-message wait; clustered deployments use the required shared PostgreSQL limiter and reject connections if that limiter is unavailable.

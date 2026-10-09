@@ -69,7 +69,7 @@ def test_env_wildcard_cors_accepts_explicit_loopback_host(monkeypatch, host):
     try:
         configure_api_from_env()
         assert get_auth_posture().listener_host == host
-        response = TestClient(app).options(
+        response = TestClient(app, base_url="http://127.0.0.1:8422").options(
             "/v1/jobs", headers={"Origin": "https://local-ui.example", "Access-Control-Request-Method": "GET"}
         )
         assert response.headers["access-control-allow-origin"] == "*"
@@ -642,7 +642,7 @@ def test_trust_headers_present():
 def test_configure_api_refreshes_cors_policy():
     """configure_api() should update the live CORS middleware, not just a module variable."""
     configure_api(cors_allow_all=True, listener_host="127.0.0.1")
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8422")
     resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
     assert resp.status_code == 200
     assert resp.headers.get("access-control-allow-origin") == "*"
@@ -986,7 +986,7 @@ def test_api_key_middleware_accepts_signed_browser_session(monkeypatch):
     client.cookies.set(CSRF_COOKIE_NAME, csrf)
     resp = client.post(
         "/v1/scan",
-        headers={CSRF_HEADER_NAME: csrf},
+        headers={CSRF_HEADER_NAME: csrf, "Origin": "http://testserver"},
     )
     assert resp.status_code == 200
     assert resp.json() == {
@@ -1039,7 +1039,7 @@ def test_api_key_middleware_rejects_browser_session_without_csrf(monkeypatch):
     client = TestClient(test_app)
     client.cookies.set(SESSION_COOKIE_NAME, token)
     client.cookies.set(CSRF_COOKIE_NAME, csrf)
-    resp = client.post("/v1/scan")
+    resp = client.post("/v1/scan", headers={"Origin": "http://testserver"})
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Forbidden — missing or invalid CSRF token"
 
@@ -1077,9 +1077,10 @@ def test_api_key_middleware_rejects_csrf_from_another_session(monkeypatch):
     client.cookies.set(CSRF_COOKIE_NAME, csrf_b)
     resp = client.post(
         "/v1/scan",
-        headers={CSRF_HEADER_NAME: csrf_b},
+        headers={CSRF_HEADER_NAME: csrf_b, "Origin": "http://testserver"},
     )
     assert resp.status_code == 403
+    assert resp.json()["detail"] == "Forbidden — missing or invalid CSRF token"
 
 
 def test_api_key_middleware_rejects_revoked_browser_session(monkeypatch):
@@ -2303,7 +2304,7 @@ def test_dev_session_cookie_authenticates_dashboard(monkeypatch):
     set_dev_api_key(dev_key)
 
     response = Response()
-    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}))
+    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}, headers={"host": "127.0.0.1:8422"}))
     set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
     session_cookie = next((c for c in set_cookies if c.startswith(f"{SESSION_COOKIE_NAME}=")), None)
     assert session_cookie is not None, "dev session cookie should be issued when a dev key is active"
@@ -2372,7 +2373,7 @@ def test_no_dev_session_cookie_without_active_dev_key(monkeypatch):
     set_dev_api_key(None)
 
     response = Response()
-    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}))
+    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}, headers={"host": "127.0.0.1:8422"}))
     set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
     assert set_cookies == []
 
@@ -2398,7 +2399,9 @@ def test_dev_session_cookie_not_reissued_when_session_present(monkeypatch):
         max_age_seconds=3600,
     )
     response = Response()
-    _maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={SESSION_COOKIE_NAME: existing_token}))
+    _maybe_attach_dev_session_cookie(
+        response, SimpleNamespace(cookies={SESSION_COOKIE_NAME: existing_token}, headers={"host": "127.0.0.1:8422"})
+    )
     set_cookies = [v.decode() for k, v in response.raw_headers if k == b"set-cookie"]
     assert set_cookies == []
 
@@ -2424,7 +2427,7 @@ def test_explicit_loopback_role_is_shared_across_credentials(monkeypatch, role, 
         assert client.post("/v1/auth/dev-session", headers={"Origin": "http://localhost:3000"}).status_code == 204
     else:
         response = Response()
-        server._maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}))
+        server._maybe_attach_dev_session_cookie(response, SimpleNamespace(cookies={}, headers={"host": "127.0.0.1:8422"}))
         for name, value in response.raw_headers:
             if name == b"set-cookie":
                 cookie = value.decode().split(";", 1)[0]

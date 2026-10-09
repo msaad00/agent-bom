@@ -9,6 +9,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- The REST API now validates the `Host` header before routing or authentication.
+  A loopback `agent-bom serve` / `agent-bom api` answers only loopback host names,
+  so a web page can no longer reach a local control plane through DNS rebinding and
+  obtain the zero-config dashboard session. Non-loopback deployments can restrict
+  accepted host names with the new `AGENT_BOM_API_ALLOWED_HOSTS`. Without it they
+  keep accepting any Host and log a startup warning.
+- Cookie-authenticated state-changing requests now also require a trusted `Origin`
+  (or `Sec-Fetch-Site: same-origin`). API-key and bearer clients are unaffected.
+- Webhook signing secrets are encrypted at rest with the connection at-rest key
+  when one is configured. Existing plaintext rows stay readable and are encrypted
+  on their next write.
+- The Cloud Run demo deploy workflow passes the triggering run's branch name to
+  the shell through an environment variable and validates it as an image tag.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

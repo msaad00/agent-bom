@@ -219,8 +219,9 @@ def test_graph_edges_versioning_migration_exists():
 
 
 def _attack_paths_store_columns() -> set[str]:
-    """Columns postgres_graph.py reads/writes on attack_paths (parsed from source)."""
-    source = (Path(__file__).parent.parent / "src" / "agent_bom" / "api" / "postgres_graph.py").read_text()
+    """Columns the Postgres graph store modules read/write on attack_paths (parsed from source)."""
+    api_dir = Path(__file__).parent.parent / "src" / "agent_bom" / "api"
+    source = "\n".join(path.read_text() for path in sorted(api_dir.glob("postgres_graph*.py")))
     columns: set[str] = set()
     insert_match = re.search(r"INSERT INTO attack_paths\s*\(([^)]*)\)", source)
     assert insert_match, "attack_paths INSERT not found in postgres_graph.py"

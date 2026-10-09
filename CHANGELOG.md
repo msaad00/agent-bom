@@ -9,6 +9,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The spend forecast no longer turns minutes of history into a daily burn rate. On the demo estate, $6,851 recorded over about 50 minutes had shown $356,507.91/day and an $8,236,481.61 projected period. A burn rate now needs at least 6 hours of recorded calls, and `history_span_hours` reports how much history there is. AI Spend explains the gap, shows large amounts compactly ($8.24M) and no longer overflows its forecast cards.
+- The Scan Jobs pipeline no longer shows more critical findings than total findings ("30 findings · 103 critical"). Both counts now come from the unified finding summary. Older summaries show a critical count only when it is no larger than the total. Jobs without stage events hide the stage-timing rows and the zero wall clock instead of listing "Unavailable" for every stage.
+- On the demo estate, the sidebar no longer links Cloud Governance and Control Plane Security, because the backend does not serve them there. The UI now points to `agent-bom serve` (or `serve --no-ui` for the API only) instead of the retired `agent-bom api` command.
+- The Agent Activity header now counts the stream events listed below it, with the runtime events for the window counted separately. Before, it said "0 events across the last 30 days" above a populated stream. The stream header and event details still say when the producer is unknown, but rows no longer repeat it.
+- Inventory now shows an error with a Retry button when a request fails (including 429 rate limits), instead of staying on its loading skeleton.
+- The AI BOM counts packages, cloud assets and findings from the same inventory summary that Inventory uses, instead of showing "Not collected".
+- KPI strip labels and hints now wrap instead of being cut off, and finding rows show readable detection labels ("Cloud security", "CIS fail") instead of raw enums.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

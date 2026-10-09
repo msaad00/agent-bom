@@ -443,13 +443,13 @@ def is_framework_relevant(
 # objective the finding directly evidences, only IDs present in the shipped
 # catalogs, and ISO only through NIST's published 800-53 crosswalk.
 
-# Committed credentials are CWE-798; its curated row (LLM06, PR.AA-01, CC6.1,
+# Committed credentials are CWE-798; its curated row (LLM02, PR.AA-01, CC6.1,
 # CIS-16.1, IA-5, SC-28) is the one mapping source for them.
 _CREDENTIAL_CWES: tuple[str, ...] = ("CWE-798",)
 # Personal data in a file is data at rest that should not be there. It is not a
 # credential, so none of the identity-management controls apply.
 _PERSONAL_DATA_TAGS: dict[str, tuple[str, ...]] = {
-    "owasp_tags": ("LLM06",),
+    "owasp_tags": ("LLM02",),
     "nist_csf_tags": ("PR.DS-01",),
     "nist_800_53_tags": ("SC-28",),
 }

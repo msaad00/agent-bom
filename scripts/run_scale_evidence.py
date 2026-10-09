@@ -100,7 +100,7 @@ def _synth_report(n_agents: int) -> dict[str, Any]:
                     "fixed_version": "1.0.1",
                     "affected_agents": [agent_name],
                     "affected_servers": [{"name": server_name}],
-                    "owasp_tags": ["LLM05"],
+                    "owasp_tags": ["LLM03"],
                     "soc2_tags": ["CC6.1"],
                 }
             )

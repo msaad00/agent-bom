@@ -46,7 +46,7 @@ function matrixData(): ComplianceResponse {
     summary: {},
     owasp_llm_top10: [
       control("LLM01", "Prompt Injection", "fail", 3),
-      control("LLM02", "Insecure Output Handling", "pass"),
+      control("LLM02", "Sensitive Information Disclosure", "pass"),
     ],
     owasp_mcp_top10: [
       control("MCP01", "Tool Poisoning", "warning", 1),

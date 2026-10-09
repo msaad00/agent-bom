@@ -20,7 +20,7 @@ Cargo/Maven/NuGet/RubyGems/Composer/SPM CVE joins.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
-- OWASP LLM02 (Insecure Output) — guardrail detection validates defenses
+- OWASP LLM05 (Improper Output Handling) — guardrail detection validates defenses
 - NIST AI RMF MAP-3.5 — inventories AI components at code level
 - EU AI Act ART-15 — transparency of AI system instructions
 """

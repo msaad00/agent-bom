@@ -1077,7 +1077,7 @@ def test_compliance_no_agents(mock_pipeline):
     assert result["unscored_catalog_entries"] > 0
     assert len(result["owasp_llm_top10"]) == 10
     assert len(result["mitre_atlas"]) >= 50
-    assert len(result["nist_ai_rmf"]) == 14
+    assert len(result["nist_ai_rmf"]) == 10
     assert all(control["status"] == "not_applicable" for control in result["owasp_llm_top10"])
     assert all(control["status"] == "not_evaluated" for control in result["nist_ai_rmf"])
 

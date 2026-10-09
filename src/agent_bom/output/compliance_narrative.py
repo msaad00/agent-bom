@@ -138,7 +138,7 @@ class RemediationImpact:
     package: str
     current_version: str
     fix_version: str  # empty string when no fix is available
-    controls_fixed: list[str]  # control codes, e.g. ["LLM05", "MCP04"]
+    controls_fixed: list[str]  # control codes, e.g. ["LLM03", "MCP04"]
     frameworks_impacted: list[str]  # framework display names
     narrative: str  # "Upgrading X from Y to Z fixes controls A, B, C"
 

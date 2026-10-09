@@ -127,7 +127,7 @@ def builtin_scanner_registrations() -> list[ScannerRegistration]:
             failure_mode=ScannerFailureMode.WARN_AND_CONTINUE,
             skip_when=("no_filesystem_scope", "file_too_large", "excluded_directory"),
             telemetry_keys=("files_scanned", "findings_emitted", "warnings", "duration_ms"),
-            standards=("OWASP_LLM01", "CIS_16_4", "SOC2_CC6_1"),
+            standards=("OWASP_LLM02", "CIS_16_4", "SOC2_CC6_1"),
         ),
         _registration(
             "code-native",

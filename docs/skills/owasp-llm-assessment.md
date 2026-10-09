@@ -28,15 +28,16 @@ pip install 'agent-bom[cloud]'  # Core providers; install mlflow separately if n
 
 ### OWASP LLM Top 10
 
-| Code | Name | agent-bom triggers when |
+| Code | Name (2025 edition) | agent-bom triggers when |
 |------|------|------------------------|
 | **LLM01** | Prompt Injection | (manual review — agent-bom flags injection surfaces) |
-| **LLM02** | Insecure Output Handling | Tool with shell/exec semantics |
-| **LLM04** | Model Denial of Service | AI framework + HIGH+ CVE |
-| **LLM05** | Supply Chain Vulnerabilities | Any package CVE (always) |
-| **LLM06** | Sensitive Information Disclosure | Credential env var exposed alongside CVE |
-| **LLM07** | Insecure Plugin Design | Tool that reads files or prompts |
-| **LLM08** | Excessive Agency | Server with >5 tools + CRITICAL/HIGH CVE |
+| **LLM02** | Sensitive Information Disclosure | Credential env var exposed alongside CVE, or a tool that reads files/data |
+| **LLM03** | Supply Chain | Any package CVE (always) |
+| **LLM04** | Data and Model Poisoning | Training-data / fine-tuning package with a CVE |
+| **LLM05** | Improper Output Handling | Tool with shell/exec semantics |
+| **LLM06** | Excessive Agency | Server with >5 tools + CRITICAL/HIGH CVE |
+| **LLM08** | Vector and Embedding Weaknesses | Vector-store package with a CVE |
+| **LLM10** | Unbounded Consumption | Resource-exhaustion weakness (CWE-400) |
 
 ### MITRE ATLAS
 
@@ -98,7 +99,7 @@ print(f\"Triggered: {triggered}/{len(summary.get('mitre_atlas', []))}\")
 
 For each triggered category, drill into the specific findings:
 
-#### LLM05 — Supply Chain Vulnerabilities
+#### LLM03 — Supply Chain
 
 This is triggered by any CVE. Focus on:
 - Packages with CRITICAL/HIGH CVEs
@@ -110,7 +111,7 @@ This is triggered by any CVE. Focus on:
 agent-bom scan [your flags] --enrich --fail-on-severity high -q
 ```
 
-#### LLM06 — Sensitive Information Disclosure
+#### LLM02 — Sensitive Information Disclosure
 
 Triggered when credentials are exposed alongside CVEs:
 
@@ -120,7 +121,7 @@ import json
 report = json.load(open('owasp-assessment.json'))
 for v in report.get('vulnerabilities', []):
     tags = v.get('owasp_tags', [])
-    if 'LLM06' in [t.get('code') for t in tags]:
+    if 'LLM02' in [t.get('code') for t in tags]:
         print(f\"  {v['id']}: {v.get('summary', '')}\")
         br = v.get('blast_radius', {})
         for cred in br.get('credentials', []):
@@ -130,7 +131,7 @@ for v in report.get('vulnerabilities', []):
 
 **Remediation**: Rotate exposed credentials, patch vulnerable packages, minimize credential scope.
 
-#### LLM08 — Excessive Agency
+#### LLM06 — Excessive Agency
 
 Triggered for servers with >5 tools + CRITICAL/HIGH CVEs:
 
@@ -143,7 +144,7 @@ Review tool counts per server. Consider:
 {"id": "limit-tools", "min_tools": 6, "action": "warn"}
 ```
 
-#### LLM02 — Insecure Output Handling
+#### LLM05 — Improper Output Handling
 
 Triggered for shell/exec tools. These are the highest-risk tools:
 
@@ -163,9 +164,9 @@ agent-bom scan --aws --aws-region us-east-1 \
 ```
 
 AWS-specific risks:
-- Lambda functions with AI runtimes — LLM05 (dependency vulnerabilities)
-- Bedrock agents with broad IAM — LLM08 (excessive agency)
-- Step Functions orchestrating Lambda + Bedrock — LLM06 (credential chains)
+- Lambda functions with AI runtimes — LLM03 (dependency vulnerabilities)
+- Bedrock agents with broad IAM — LLM06 (excessive agency)
+- Step Functions orchestrating Lambda + Bedrock — LLM02 (credential chains)
 
 #### Snowflake
 
@@ -174,8 +175,8 @@ agent-bom scan --snowflake --enrich -f json -o owasp-snowflake.json
 ```
 
 Snowflake-specific risks:
-- `SYSTEM_EXECUTE_SQL` MCP tools — LLM02 (insecure output → SQL execution)
-- Cortex Agents with broad permissions — LLM08 (excessive agency)
+- `SYSTEM_EXECUTE_SQL` MCP tools — LLM05 (improper output handling → SQL execution)
+- Cortex Agents with broad permissions — LLM06 (excessive agency)
 - Query history reveals CREATE MCP SERVER — audit trail for shadow IT
 
 #### Azure / GCP / Databricks
@@ -201,11 +202,11 @@ The HTML dashboard includes:
 
 Based on threat framework analysis, prioritize:
 
-1. **LLM02 + AML.T0043** (shell tools) — highest individual risk
-2. **LLM06 + AML.T0062** (credential exposure) — enables lateral movement
-3. **LLM08 + AML.T0061** (excessive agency) — amplifies any other vulnerability
-4. **LLM05 + AML.T0010** (supply chain) — address by patching packages
-5. **LLM07 + AML.T0056** (file/prompt access) — data exfiltration risk
+1. **LLM05 + AML.T0043** (shell tools) — highest individual risk
+2. **LLM02 + AML.T0062** (credential exposure) — enables lateral movement
+3. **LLM06 + AML.T0061** (excessive agency) — amplifies any other vulnerability
+4. **LLM03 + AML.T0010** (supply chain) — address by patching packages
+5. **LLM02 + AML.T0056** (file/prompt access) — data exfiltration risk
 
 ### 7. Track Progress
 
@@ -231,10 +232,10 @@ Categories Triggered: X/10
 Total Findings: N
 
 Priority Remediations:
-1. [LLM02] Remove/sandbox shell tools on [server-name]
-2. [LLM06] Rotate [credential-name], patch [package] to [version]
-3. [LLM08] Split [server-name] (12 tools) into focused servers
-4. [LLM05] Upgrade [package] to clear N CVEs
+1. [LLM05] Remove/sandbox shell tools on [server-name]
+2. [LLM02] Rotate [credential-name], patch [package] to [version]
+3. [LLM06] Split [server-name] (12 tools) into focused servers
+4. [LLM03] Upgrade [package] to clear N CVEs
 
 MITRE ATLAS Techniques Triggered: Y/8
 Highest-risk technique: [technique-id] — [description]

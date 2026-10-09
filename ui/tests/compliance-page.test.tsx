@@ -106,8 +106,8 @@ const { compliance } = vi.hoisted(() => {
       },
       owasp_llm_top10: [
         control("LLM01", "Prompt Injection", "fail", 4),
-        control("LLM02", "Insecure Output Handling", "pass", 0),
-        control("LLM03", "Training Data Poisoning", "not_evaluated", 0, "no_completed_scan"),
+        control("LLM02", "Sensitive Information Disclosure", "pass", 0),
+        control("LLM04", "Data and Model Poisoning", "not_evaluated", 0, "no_completed_scan"),
       ],
       owasp_mcp_top10: [control("MCP01", "Tool Poisoning", "warning", 1)],
       mitre_atlas: [],
@@ -283,9 +283,9 @@ describe("CompliancePage (dense restyle)", () => {
   it("surfaces WHY a not-evaluated control was not scored in the dense list", async () => {
     render(<CompliancePage />);
     await screen.findByTestId("compliance-kpi-strip");
-    // LLM03 is not_evaluated with reason no_completed_scan → the row shows the
+    // LLM04 is not_evaluated with reason no_completed_scan → the row shows the
     // provenance, not a bare "Not evaluated".
-    await screen.findByText("Training Data Poisoning");
+    await screen.findByText("Data and Model Poisoning");
     const reasons = screen.getAllByTestId("control-evidence-reason");
     expect(reasons.some((el) => el.textContent === "No completed scan")).toBe(true);
   });
@@ -294,11 +294,11 @@ describe("CompliancePage (dense restyle)", () => {
     render(<CompliancePage />);
     await screen.findByTestId("compliance-kpi-strip");
 
-    const poisoning = await screen.findByText("Training Data Poisoning");
+    const poisoning = await screen.findByText("Data and Model Poisoning");
     fireEvent.click(poisoning);
 
     const drawer = await screen.findByRole("dialog", {
-      name: /Control details for LLM03/i,
+      name: /Control details for LLM04/i,
     });
     // Honest provenance line + an actionable "New Scan" link into /scan.
     expect(within(drawer).getByTestId("control-unscored-provenance")).toHaveTextContent(

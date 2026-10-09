@@ -9,6 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Compliance framework mappings were corrected, so **control tags differ from those in earlier reports**. Re-scan before comparing history, because stored findings keep the tags they were written with. Changes by framework:
+  - **OWASP LLM Top 10**: every ID now uses the 2025 numbering. Before, 2023 and 2025 IDs were mixed. Vulnerable packages are now LLM03 Supply Chain (was LLM05). Exposed credentials and readable data are LLM02 Sensitive Information Disclosure (was LLM06 or LLM07). Exec tools and injection CWEs are LLM05 Improper Output Handling (was LLM02). Excessive agency is LLM06 (was LLM08). Training-data packages are LLM04 Data and Model Poisoning (was LLM03 and LLM04). LLM08 Vector and Embedding Weaknesses now fires for vector-store packages. A CVE in an AI framework alone is no longer tagged poisoning. CWE-287, CWE-444, CWE-639 and CWE-942 no longer map to an OWASP LLM risk.
+  - **EU AI Act**: Articles 5 (prohibited practices) and 6 (high-risk classification) are no longer tagged and are removed from the catalog. Neither can be inferred from dependencies or tools. Article 10 is evidenced only by dataset findings. New tags are Article 14 (human oversight) for exec-capable tools and Article 12 (record-keeping) for logging weaknesses. Tags express technical relevance, not a legal classification.
+  - **SOC 2**: CC7.1 is now labeled as vulnerability and configuration-change detection. It is evidenced by a fresh scan instead of failing on every CVE. CC7.2 (anomaly monitoring) is no longer tagged from dependency CVEs. CC6.8 (malicious software) now requires a known-malicious package instead of any HIGH+ CVE.
+  - **NIST AI RMF**: subcategory IDs now match their AI RMF 1.0 meaning. Third-party and supply-chain risk is GOVERN 6.1 / MAP 4.1 (was GOVERN 1.7 / MAP 3.5). Human oversight is MAP 3.5. Impact is MAP 5.1. Security evaluation is MEASURE 2.7 (was MEASURE 2.5). Risk response is MANAGE 1.3 (was MEASURE 2.9). The MAP 1.6, MANAGE 2.2 and MANAGE 2.4 rules were dropped because no subcategory with that meaning fits them.
+  - **CIS Controls v8**: library allowlisting is CIS 2.6 (was 2.7) and hardening templates are CIS 16.7 (was 16.11).
+  - **NIST CSF 2.0**: containment is RS.MI-01 (was RS.MI-02), and the DE.CM-09 title now matches CSF 2.0.
+  - **OWASP Agentic Top 10**: ASI01, ASI08 and ASI10 now carry their 2026 titles. ASI01 (Agent Goal Hijack) and ASI09 (Human-Agent Trust Exploitation) are no longer applied to every dependency CVE.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

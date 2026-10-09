@@ -1,9 +1,9 @@
 """OWASP Top 10 for LLM Applications — tag blast radius findings.
 
 Maps agent-bom findings to the OWASP Top 10 for Large Language Model
-Applications (2025 edition). LLM05 (Supply Chain Vulnerabilities) is
-applied when the package is an AI/ML framework or shares an MCP server
-with one — not unconditionally.
+Applications, 2025 edition. Every identifier here and in the CWE table
+(``constants.CWE_COMPLIANCE_MAP``) uses 2025 numbering; the 2023 list
+assigned different meanings to LLM02-LLM10.
 
 Reference: https://owasp.org/www-project-top-10-for-large-language-model-applications/
 """
@@ -13,10 +13,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.constants import (
-    AI_PACKAGES as _AI_PACKAGES,
+    TRAINING_DATA_PACKAGES as _TRAINING_DATA_PACKAGES,
 )
 from agent_bom.constants import (
-    TRAINING_DATA_PACKAGES as _TRAINING_DATA_PACKAGES,
+    VECTOR_STORE_PACKAGES as _VECTOR_STORE_PACKAGES,
 )
 from agent_bom.constants import (
     high_risk_severities,
@@ -31,13 +31,13 @@ if TYPE_CHECKING:
 
 OWASP_LLM_TOP10: dict[str, str] = {
     "LLM01": "Prompt Injection",
-    "LLM02": "Insecure Output Handling",
-    "LLM03": "Training Data Poisoning",
+    "LLM02": "Sensitive Information Disclosure",
+    "LLM03": "Supply Chain",
     "LLM04": "Data and Model Poisoning",
-    "LLM05": "Supply Chain Vulnerabilities",
-    "LLM06": "Sensitive Information Disclosure",
+    "LLM05": "Improper Output Handling",
+    "LLM06": "Excessive Agency",
     "LLM07": "System Prompt Leakage",
-    "LLM08": "Excessive Agency",
+    "LLM08": "Vector and Embedding Weaknesses",
     "LLM09": "Misinformation",
     "LLM10": "Unbounded Consumption",
 }
@@ -49,50 +49,39 @@ _HIGH_RISK_SEVERITIES = high_risk_severities()
 
 
 def tag_blast_radius(br: BlastRadius) -> list[str]:
-    """Return sorted OWASP LLM Top 10 codes applicable to this blast radius.
+    """Return sorted OWASP LLM Top 10 (2025) codes applicable to this blast radius.
 
     Rules applied:
-    - LLM05: Package is an AI/ML framework or shares a server with one.
-    - LLM06: Credential env vars are exposed alongside a vulnerable package.
-    - LLM02: A reachable tool has EXECUTE capability (code injection risk).
-    - LLM07: A reachable tool has READ capability (context leakage risk).
-    - LLM08: Server has >5 tools AND severity is CRITICAL/HIGH (excessive agency).
-    - LLM04: Vulnerable package is a core AI/ML framework AND severity is HIGH+.
+    - LLM03 Supply Chain: always — the finding is a vulnerable third-party
+      package reachable from an agent.
+    - LLM02 Sensitive Information Disclosure: credential env vars are exposed,
+      or a reachable tool can READ data the model may then disclose.
+    - LLM05 Improper Output Handling: a reachable tool has EXECUTE capability,
+      so model output flows into a command/code sink.
+    - LLM06 Excessive Agency: server exposes >5 tools AND severity is HIGH+.
+    - LLM04 Data and Model Poisoning: the package handles training data.
+    - LLM08 Vector and Embedding Weaknesses: the package is a vector store.
     """
-    tags: set[str] = set()
+    tags: set[str] = {"LLM03"}
 
-    # LLM05 — "Supply Chain Vulnerabilities" per OWASP LLM Top 10.
-    # Every CVE in a third-party package an agent depends on is a supply-chain
-    # finding by OWASP's definition; the prior narrow allowlist (AI/training
-    # packages only) under-fired LLM05 on generic transport/HTTP/template
-    # packages (starlette, requests, jinja2, etc.) that ARE reachable from
-    # the agent via an MCP server and therefore ARE supply-chain risk.
-    # A vulnerable package is always at least LLM05.
-    tags.add("LLM05")
-
-    # LLM06 — sensitive information disclosure via credential exposure
     if br.exposed_credentials:
-        tags.add("LLM06")
+        tags.add("LLM02")
 
-    # LLM02 / LLM07 — tool-level risks via semantic capability analysis
     for tool in br.exposed_tools:
         caps = classify_mcp_tool(tool)
         if ToolCapability.EXECUTE in caps:
-            tags.add("LLM02")
+            tags.add("LLM05")
         if ToolCapability.READ in caps:
-            tags.add("LLM07")
+            tags.add("LLM02")
 
-    # LLM08 — excessive agency: many tools + high-severity CVE
     if len(br.exposed_tools) > 5 and br.vulnerability.severity in _HIGH_RISK_SEVERITIES:
-        tags.add("LLM08")
+        tags.add("LLM06")
 
-    # LLM03 — training data poisoning: training/dataset package with CVE
-    if br.package.name.lower() in _TRAINING_DATA_PACKAGES:
-        tags.add("LLM03")
-
-    # LLM04 — data/model poisoning: AI framework package with high CVE
-    if br.package.name.lower() in _AI_PACKAGES and br.vulnerability.severity in _HIGH_RISK_SEVERITIES:
+    package_name = br.package.name.lower()
+    if package_name in _TRAINING_DATA_PACKAGES:
         tags.add("LLM04")
+    if package_name in _VECTOR_STORE_PACKAGES:
+        tags.add("LLM08")
 
     # CWE-based compliance tagging (applies to all vulns with CWE data)
     if br.vulnerability.cwe_ids:
@@ -104,7 +93,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
 
 def owasp_label(code: str) -> str:
-    """Return human-readable label for an OWASP code, e.g. 'LLM05 Supply Chain'."""
+    """Return human-readable label for an OWASP code, e.g. 'LLM03 Supply Chain'."""
     name = OWASP_LLM_TOP10.get(code, "Unknown")
     return f"{code} {name}"
 

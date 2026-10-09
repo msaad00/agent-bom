@@ -1,21 +1,21 @@
 {
  "demo": {
-  "html": "07bed9613bed56583c8e08f211547d48b7a52483f5496ab994de63a46aafdb64",
-  "html_offline": "1e299538e4d1f1fa94b925f46ea14f1a123c9ff479f7a5d681c14ba193ed031e",
-  "sarif_exclude_unfixable": "bff9e1b615f95acb1154724e4b0e15119b5b52c44f89244aad12c2431ca16f18",
-  "sarif_file": "e7d93ba55c29e63fcf480be5c7689ee75e4830ac1eb9e869abd283e6590a09fa",
-  "sarif_stdout": "bff9e1b615f95acb1154724e4b0e15119b5b52c44f89244aad12c2431ca16f18"
+  "html": "36ed09eb616580857d8fd69ff482ecab6b4b456e6e3576df27ec39b179fe04a5",
+  "html_offline": "5076d3136fd577675d8fe6fd979454af5ab715a028e929f33085cf9f4a800eb8",
+  "sarif_exclude_unfixable": "3064586ccfcc454ec5c5ecd0aeae763cad7411622b9d53a2d21c302fcb3ebf57",
+  "sarif_file": "38c76240ebec2581f052ad64b53726fc1739395cb55ed7748fdf9c5dc8e7ee8c",
+  "sarif_stdout": "3064586ccfcc454ec5c5ecd0aeae763cad7411622b9d53a2d21c302fcb3ebf57"
  },
  "empty": {
-  "html": "9799476bd4085375cf1923ea3024bc31987c4d24b9fa8d49faadbdb2088aec14",
-  "html_offline": "c0c960f4a804123a3ce810d27395e4829c8af7aac2f54b20bb3619bb4dbf4560",
+  "html": "60835d3368acdc1e572bb230dd721618210668bec34086f6b2fb5a506c8ddd07",
+  "html_offline": "f88d7506c032bc31a5bc5f3ea4ac70739b73d15583b946042f60bf4ea8c614d4",
   "sarif_exclude_unfixable": "64384810204cefe6432d755dcc4335786e14050e744be2b44e3449abda3e077b",
   "sarif_file": "6014faedec90d95bc2b539307bca424d40b4af1f6756ac7c38d7211fe14c2637",
   "sarif_stdout": "64384810204cefe6432d755dcc4335786e14050e744be2b44e3449abda3e077b"
  },
  "rich": {
-  "html": "b783775d57386bbb41c85619427ac63b15ec9d8854977446b87c85798dc069e9",
-  "html_offline": "0fab09d24fac3861c823f2948027a7ffcac7fdb1a349fe2e4e15402b68320f3d",
+  "html": "93c90864d2fe34c2cd0f7f50c0de20bfb4781297bb459a7baa414b69cc7c0d8c",
+  "html_offline": "ef32d70c78f20d9e37c5fee9bc26c2ac8079fba58a33bab3d418416eecf8e9e3",
   "sarif_exclude_unfixable": "afa5eef47b05ee9a682c1c7b9eb8957d507e0bdb088b308ba625186c95cc2a4b",
   "sarif_file": "c97adb6ce2a57811360b49717a9546c70afd6d2f3838104612200fa1ebae52f6",
   "sarif_stdout": "c7f9402580bf726f95263acc62139a51c4aa2a7db485f7c76e1c8d11b527352a"

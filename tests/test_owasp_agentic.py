@@ -41,9 +41,10 @@ def _br(
 
 def test_always_applied_tags():
     tags = tag_blast_radius(_br())
-    assert "ASI01" in tags  # autonomy
     assert "ASI04" in tags  # supply chain
-    assert "ASI09" in tags  # trust exploitation
+    # A dependency CVE is not evidence of goal hijack or trust exploitation.
+    assert "ASI01" not in tags
+    assert "ASI09" not in tags
 
 
 def test_catalog_has_ten_entries():

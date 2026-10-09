@@ -64,13 +64,18 @@ DETECTIVE_CONTROLS: dict[str, frozenset[str]] = {
     # NIST CSF 2.0
     #   ID.RA-01 "Vulnerabilities in assets are identified"
     #   ID.RA-02 "Cyber threat intelligence received from information sharing forums"
-    #   DE.CM-09 "Computing hardware and software are monitored for vulnerabilities"
+    #   DE.CM-09 "Computing hardware, software, runtime environments, and their data
+    #            are monitored to find potentially adverse events"
     "nist_csf_tags": frozenset({"ID.RA-01", "ID.RA-02", "DE.CM-09"}),
     # CIS Controls v8 (agent-bom's own descriptors — see cis_controls.py)
     #   CIS-02.1 software asset inventory
     #   CIS-07.1 vulnerability-management program
     #   CIS-07.5 internal-asset vulnerability scanning
     "cis_tags": frozenset({"CIS-02.1", "CIS-07.1", "CIS-07.5"}),
+    # SOC 2 (agent-bom's own descriptors — see soc2.py)
+    #   CC7.1 detection procedures that identify newly discovered vulnerabilities
+    #   and configuration changes that introduce them
+    "soc2_tags": frozenset({"CC7.1"}),
 }
 
 

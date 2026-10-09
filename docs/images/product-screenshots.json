@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.3",
-  "captured_at": "2026-10-08T20:50:01.327Z",
-  "source_commit": "eeef1c715c75ab73df0a7a71dba02a1b3ae1ee51",
+  "captured_at": "2026-10-09T02:12:02.781Z",
+  "source_commit": "f5d24d6c7ec86c9dabe02df89f53e9ccfb911222",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:5dd845f37b18b05e4cb23d9fbb419e771d2fbcd3de9b877140b836c0c4d01ab1",
+  "capture_inputs_sha256": "sha256:0715bd4d25acd94c2715588d50e73be94107c89b9dd740f55263f8a9906fc5b5",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -124,7 +124,7 @@
       "page": "/?capture=1",
       "scope": "Expanded Overview assessment summary with four priority frameworks and risk mappings collapsed at 1440 by 900",
       "visible_version": "0.108.3",
-      "sha256": "sha256:96120a55b99fb71fc3d4895a3765f60e01eb4724fd8730aea9dbe8cdaab78c38"
+      "sha256": "sha256:07b8207b3988f5ebc684638b23a86c43512fe5c21874d021f01666dbc9a81614"
     },
     {
       "presentation": "dark desktop",
@@ -172,7 +172,7 @@
       "page": "/graph?lens=mesh&scan=scan-proof-ai-platform&agent=agent%3Adeveloper-copilot&capture=1",
       "scope": "Persisted agent neighborhood with recorded shared filesystem connections and both IDE + SRE agents in scope",
       "visible_version": "0.108.3",
-      "sha256": "sha256:266193c89dd968ab5a84e71e676f6cb39b574194e872222199c6dbf3390d56e4"
+      "sha256": "sha256:971b008b4a37ffa8a2abf0b70ee67628e5e0f13d3e05f0660f27156964a9d60c"
     },
     {
       "presentation": "dark desktop",
@@ -243,7 +243,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:7e868c65909446498e9281fd7ba3d0e307a47b0c5127a46d3c63ce73bee64981"
+      "sha256": "sha256:2d005b765b1c7f919da07d8081aeb86232e87de87297ef8f10917cd3f67c4387"
     },
     {
       "presentation": "dark mobile",
@@ -297,7 +297,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.108.3",
-      "sha256": "sha256:5f4b3ca4325bbce222c78e036e0fe21a6e3f1f9ae04bde2c80db3429e594bc28"
+      "sha256": "sha256:4ff2c2c91cccc5b704b30a7e8ed0f1b85529a6791aaf949de6bbce30d8698152"
     },
     {
       "presentation": "dark desktop",
@@ -329,7 +329,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.3",
-      "sha256": "sha256:d23bc452b063c0c5bee0adc6cb94149be276815ee97b659fa2cb8db41a31ed1e"
+      "sha256": "sha256:989dc1b0dcb57220fca12473a39324dcd186ea5b93d01089af227299e09ab9e6"
     },
     {
       "presentation": "light responsive 1000x900",

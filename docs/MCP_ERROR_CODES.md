@@ -122,8 +122,10 @@ matrix records what each surface exposes and why.
 
 ### Why the asymmetry is deliberate
 
-agent-bom's MCP server is a **read-only scanner surface** that an LLM can
-invoke on behalf of a user. The API is the **control plane** for the
+agent-bom's MCP server is a **scanner-first surface** that an LLM can
+invoke on behalf of a user. Its few state-changing tools are annotated as
+writes and stay gated as described in
+[SECURITY.md](../SECURITY.md#trust-model-and-permissions). The API is the **control plane** for the
 deployed product. The split is not "MCP is incomplete" — it's intentional
 defense-in-depth so an MCP host compromise cannot mutate enforcement
 state, rotate keys, or ingest false audit entries.

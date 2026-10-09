@@ -6,7 +6,7 @@ import { AssetInventoryView } from "@/components/inventory/asset-inventory-view"
 import { InventoryIndex } from "@/components/inventory/inventory-index";
 import { api } from "@/lib/api";
 import type { InventoryAssetsResponse, InventorySummaryResponse } from "@/lib/api";
-import { ApiRateLimitError } from "@/lib/api-errors";
+import { ApiNetworkError, ApiRateLimitError } from "@/lib/api-errors";
 import { InventoryProvider } from "@/lib/inventory-context";
 import { ASSET_KIND_BY_ID } from "@/lib/inventory";
 
@@ -107,3 +107,18 @@ describe("inventory non-2xx responses", () => {
     });
   }
 });
+
+for (const kind of [false, true]) {
+  it(`keeps transport failure distinct from HTTP errors (${kind ? "kind view" : "index"})`, async () => {
+    vi.mocked(api.getInventorySummary).mockResolvedValue(summary());
+    vi.mocked(api.getInventoryAssets).mockRejectedValue(new ApiNetworkError("Failed to fetch", {
+      url: "/v1/inventory/assets", method: "GET",
+    }));
+    render(<Harness kind={kind} />);
+    expect(await screen.findByRole("heading", { name: "Cannot connect to the agent-bom API" })).toBeVisible();
+    expect(screen.queryByText(/HTTP 0/)).not.toBeInTheDocument();
+    vi.mocked(api.getInventoryAssets).mockResolvedValue(page());
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Cannot connect to the agent-bom API" })).not.toBeInTheDocument());
+  });
+}

@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from agent_bom.core.reachability import ReachabilityVerdict as ReachabilityVerdict
+
 ReasonCode = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.:-]{0,63}$")]
 Identifier = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[^\s]+$")]
 ComponentName = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9_.:-]*$")]
@@ -59,13 +61,6 @@ class EvidenceStage(StrEnum):
     PERSISTENCE = "persistence"
     GRAPH_JOIN = "graph_join"
     ANALYSIS = "analysis"
-
-
-class ReachabilityVerdict(StrEnum):
-    CONFIRMED = "confirmed"
-    LIKELY = "likely"
-    UNKNOWN = "unknown"
-    UNLIKELY = "unlikely"
 
 
 class ExploitabilityVerdict(StrEnum):

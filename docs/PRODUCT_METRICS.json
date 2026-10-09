@@ -46,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 1260,
+      "value": 1284,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },
@@ -64,7 +64,7 @@
     },
     {
       "name": "Proxy inline detectors",
-      "value": 7,
+      "value": 0,
       "source": "src/agent_bom/proxy.py",
       "notes": "Inline detector chain used by the MCP proxy path."
     },

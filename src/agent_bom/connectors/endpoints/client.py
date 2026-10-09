@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 if TYPE_CHECKING:
-    from agent_bom.client import JsonObject, JsonValue, QueryValue
+    from agent_bom.core.json_types import JsonObject, JsonValue, QueryValue
 
 
 class EndpointClientMixin:

@@ -4,10 +4,35 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import TYPE_CHECKING, Callable
+import tarfile
+from typing import TYPE_CHECKING, Callable, Protocol
 
 if TYPE_CHECKING:
-    from agent_bom.oci_parser import _LayerScan
+    from agent_bom.models import Package
+
+
+class _LayerIdentity(Protocol):
+    @property
+    def layer_id(self) -> str: ...
+
+
+class _LayerScan(Protocol):
+    """The slice of ``oci_parser._LayerScan`` the runtime stage uses; avoids an import cycle."""
+
+    layer_tf: tarfile.TarFile
+    names: set[str]
+    packages_by_key: dict[tuple[str, str], Package]
+
+    @property
+    def layer(self) -> _LayerIdentity: ...
+
+    def is_deleted(self, path: str) -> bool: ...
+
+    def gap(self, path: str) -> None: ...
+
+    def add(
+        self, path: str, name: str, version: str, ecosystem: str, purl: str | None = None, *, source_package: str | None = None
+    ) -> None: ...
 
 
 def _python_metadata_kind(member_name: str) -> str | None:

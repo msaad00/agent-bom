@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Any, TypeAlias
+from typing import Any
 from urllib.parse import quote
 
 import httpx
 
 from agent_bom.connectors.endpoints.client import EndpointClientMixin
-
-JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
-JsonObject: TypeAlias = dict[str, JsonValue]
-QueryValue: TypeAlias = str | int | float | bool | None
+from agent_bom.core.json_types import JsonObject as JsonObject
+from agent_bom.core.json_types import JsonValue as JsonValue
+from agent_bom.core.json_types import QueryValue as QueryValue
 
 
 class AgentBomApiError(RuntimeError):

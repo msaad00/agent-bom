@@ -10,49 +10,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from agent_bom.reachability_cve import FUNCTION_REACHABLE, PACKAGE_REACHABLE, UNREACHABLE
-
-# Effective-reach composite deltas (0..100 scale). Chosen so a green-band
-# finding with AST ``unreachable`` drops below 30 and a borderline amber
-# ``function_reachable`` finding can cross into red when combined with
-# existing graph signals.
-_COMPOSITE_DELTA: dict[str, float] = {
-    FUNCTION_REACHABLE: 15.0,
-    PACKAGE_REACHABLE: 0.0,
-    UNREACHABLE: -30.0,
-}
-
-# Fused triage priority deltas (0..100 scale, separate formula).
-_TRIAGE_DELTA: dict[str, float] = {
-    FUNCTION_REACHABLE: 12.0,
-    PACKAGE_REACHABLE: 0.0,
-    UNREACHABLE: -12.0,
-}
-
-
-def _normalize_symbol_state(symbol_reachability: str | None) -> str | None:
-    if not symbol_reachability:
-        return None
-    state = str(symbol_reachability).strip().lower()
-    if state in _COMPOSITE_DELTA:
-        return state
-    return None
-
-
-def composite_delta(symbol_reachability: str | None) -> float:
-    """Return the additive delta for an effective-reach composite score."""
-    state = _normalize_symbol_state(symbol_reachability)
-    if state is None:
-        return 0.0
-    return _COMPOSITE_DELTA[state]
-
-
-def triage_delta(symbol_reachability: str | None) -> float:
-    """Return the additive delta for :func:`exploitability.fused_triage_priority`."""
-    state = _normalize_symbol_state(symbol_reachability)
-    if state is None:
-        return 0.0
-    return _TRIAGE_DELTA[state]
+from agent_bom.core.symbol_reach import FUNCTION_REACHABLE as FUNCTION_REACHABLE
+from agent_bom.core.symbol_reach import PACKAGE_REACHABLE as PACKAGE_REACHABLE
+from agent_bom.core.symbol_reach import UNREACHABLE as UNREACHABLE
+from agent_bom.core.symbol_reach import _normalize_symbol_state
+from agent_bom.core.symbol_reach import composite_delta as composite_delta
+from agent_bom.core.symbol_reach import triage_delta as triage_delta
 
 
 def band_from_composite(composite: float) -> Literal["green", "amber", "red", "pulsing-red"]:

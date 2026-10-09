@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING, Optional
 
 from agent_bom.advisory_ids import derive_cve_from_advisory_id, finding_advisory_metadata, vulnerability_enrichment_metadata
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
+from agent_bom.core.asset_types import entity_type_for_asset_type
+from agent_bom.core.exploitability import fused_triage_priority
 from agent_bom.core.packages import synthesize_purl
+from agent_bom.core.sla import finding_owner, finding_sla_fields
 
 if TYPE_CHECKING:
-    from agent_bom.remediation import Remediation
+    from agent_bom.domain.remediation_model import Remediation
 
 FINDING_SCHEMA_VERSION = "1"
 # Provenance label prefix for evidence imported from an external scanner report.
@@ -523,8 +526,6 @@ class Finding:
         # (asset_type feeds stable_id / finding id — must stay byte-stable).
         if not self.entity_type:
             try:
-                from agent_bom.graph.asset_entity import entity_type_for_asset_type
-
                 mapped = entity_type_for_asset_type(self.asset.asset_type)
                 if mapped is not None:
                     self.entity_type = mapped.value
@@ -705,8 +706,6 @@ class Finding:
 
     def to_dict(self) -> dict:
         """Return a JSON-serializable finding payload."""
-        from agent_bom.graph.sla import finding_owner, finding_sla_fields
-
         sla = finding_sla_fields(
             {
                 "severity": self.effective_severity(),
@@ -807,7 +806,7 @@ class Finding:
             "is_actionable": self.is_actionable,
             "impact_category": self.impact_category,
             # Ownership + remediation SLA (derived, single source of truth in
-            # agent_bom.graph.sla). ``owner`` is an explicit None when nobody is
+            # agent_bom.core.sla). ``owner`` is an explicit None when nobody is
             # assigned (an honest absence for the API/exports; the CLI/UI render
             # it as "Unassigned"); ``sla_due_at`` is None when no deadline can be
             # derived (unrated severity + no anchor/KEV date).
@@ -1693,8 +1692,6 @@ def blast_radius_to_finding(br: object) -> "Finding":
             evidence["reachability_advisory_cpe_ids"] = list(reach_ids.cpe_ids)
 
     sev = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
-    from agent_bom.exploitability import fused_triage_priority
-
     evidence["triage_priority"] = fused_triage_priority(
         severity=sev,
         is_kev=bool(vuln.is_kev),

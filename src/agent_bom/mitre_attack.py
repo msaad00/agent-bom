@@ -194,10 +194,9 @@ def tag_cis_check(check: object) -> list[str]:
         Sorted list of ATT&CK technique IDs (from live catalog).
         Empty list when check passed or errored.
     """
-    from agent_bom.cloud.aws_cis_benchmark import CheckStatus
-
+    # ``CheckStatus`` is a str enum, so its FAIL member compares equal to "fail".
     status = getattr(check, "status", None)
-    if status != CheckStatus.FAIL:
+    if status != "fail":
         return []
 
     tactic_phases: set[str] = set()

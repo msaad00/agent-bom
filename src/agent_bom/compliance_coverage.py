@@ -9,7 +9,6 @@ from typing import Any
 
 from agent_bom.atlas import ATLAS_TECHNIQUES
 from agent_bom.cis_controls import CIS_CONTROLS
-from agent_bom.cloud.aisvs_benchmark import AISVS_CHECK_IDS
 from agent_bom.cmmc import CMMC_PRACTICES
 from agent_bom.eu_ai_act import EU_AI_ACT
 from agent_bom.fedramp import FEDRAMP_MODERATE
@@ -404,6 +403,10 @@ def resolve_framework_filter(value: str) -> ComplianceFrameworkMetadata | None:
             return meta
     return None
 
+
+# Mirrors the checks registered in ``cloud.aisvs_benchmark``; kept as data here so
+# compliance metadata does not import the cloud scanners (pinned by a test).
+AISVS_CHECK_IDS: tuple[str, ...] = ("AI-4.1", "AI-4.2", "AI-4.3", "AI-5.2", "AI-6.1", "AI-6.2", "AI-7.1", "AI-7.2", "AI-8.1")
 
 AISVS_BENCHMARK = ComplianceBenchmarkMetadata(
     family="OWASP",

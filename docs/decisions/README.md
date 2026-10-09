@@ -16,6 +16,10 @@ Each ADR follows this structure:
 
 ## Index
 
+This is the single decision log. Records 010–014 were originally kept in a
+separate `docs/adr/` folder (numbered 002–006 there) and were renumbered when
+the two logs merged; the original OSV record was folded into 002.
+
 | # | Title | Status | Date |
 |---|-------|--------|------|
 | 001 | [Modular Parser Architecture](001-modular-parser-architecture.md) | Accepted | 2026-03-11 |
@@ -27,6 +31,11 @@ Each ADR follows this structure:
 | 007 | [MCP Package Version Provenance](007-mcp-package-version-provenance.md) | Accepted | 2026-05-01 |
 | 008 | [Pluggable Neptune Graph Backend](008-pluggable-neptune-graph-backend.md) | Proposed | 2026-05-13 |
 | 009 | [Python-Primary Runtime; Optional Go Sidecar Later](009-python-primary-go-sidecar-later.md) | Accepted | 2026-07-23 |
+| 010 | [Custom JSON Policy Engine over OPA](010-custom-policy-engine.md) | Accepted | 2025-08 |
+| 011 | [CycloneDX as Primary SBOM Format](011-cyclonedx-sbom-format.md) | Accepted | 2025-07 |
+| 012 | [Subprocess CLI over Vendor SDKs](012-subprocess-over-sdk.md) | Superseded in part (cloud SDK extras) | 2025-06 |
+| 013 | [API Auth without RBAC Framework](013-no-rbac-custom-auth.md) | Superseded (RBAC in `rbac.py`, see 014) | 2025-11 |
+| 014 | [UI Authentication Model](014-ui-auth-model.md) | Accepted | 2026-04-20 |
 
 ## Adding a New ADR
 

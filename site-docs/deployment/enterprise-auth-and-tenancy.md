@@ -396,6 +396,6 @@ For auth, tenancy, and control-plane actions, the most accurate short claim is:
 - RBAC:
   [`src/agent_bom/rbac.py`](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/rbac.py)
 - auth/tenant tests:
-  [`tests/test_api_oidc.py`](https://github.com/msaad00/agent-bom/blob/main/tests/test_api_oidc.py),
-  [`tests/test_api_hardening.py`](https://github.com/msaad00/agent-bom/blob/main/tests/test_api_hardening.py),
-  [`tests/test_api_cross_tenant_matrix.py`](https://github.com/msaad00/agent-bom/blob/main/tests/test_api_cross_tenant_matrix.py)
+  [`tests/api/test_api_oidc.py`](https://github.com/msaad00/agent-bom/blob/main/tests/api/test_api_oidc.py),
+  [`tests/api/test_api_hardening.py`](https://github.com/msaad00/agent-bom/blob/main/tests/api/test_api_hardening.py),
+  [`tests/api/test_api_cross_tenant_matrix.py`](https://github.com/msaad00/agent-bom/blob/main/tests/api/test_api_cross_tenant_matrix.py)

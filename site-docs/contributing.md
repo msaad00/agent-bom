@@ -52,18 +52,18 @@ uv run ruff format --check src tests
 
 ## Version Bump Checklist
 
-When preparing a release, update the version in all of these files:
+Release versions are managed by script, not by hand:
 
-1. `pyproject.toml` — `version = "X.Y.Z"`
-2. `src/agent_bom/__init__.py` — `__version__ = "X.Y.Z"`
-3. `Dockerfile` — version label
-4. `deploy/docker/Dockerfile.sse` — `ARG VERSION=X.Y.Z`
-5. `integrations/mcp-registry/server.json` — `version`
-6. `integrations/openclaw/*/SKILL.md` — version in frontmatter for the published ClawHub skills (scan, compliance, registry, runtime)
-7. `action.yml` — version in description + branding
-8. `README.md` — version references in examples
-9. `docs/PUBLISHING.md` — version references
-10. `tests/test_version.py` — expected version string
+```bash
+python scripts/bump-version.py X.Y.Z            # prepare the next source version
+python scripts/bump-version.py X.Y.Z --check    # CI drift gate
+python scripts/bump-version.py --published X.Y.Z  # only after X.Y.Z is published
+```
+
+The script updates the package, chart, Dockerfiles, manifests and docs.
+User-facing copy-paste commands track `PUBLISHED_VERSION` so they never point
+at a tag that does not exist yet. `make preflight` runs the same drift gates CI
+runs.
 
 ## Honesty Rule
 

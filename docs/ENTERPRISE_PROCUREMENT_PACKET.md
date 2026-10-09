@@ -21,7 +21,7 @@ controls are complete.
 |---|---|---|
 | Trust boundaries | documented for browser, API, stores, scanner, gateway, egress, and release artifacts | `docs/ENTERPRISE_SECURITY_POSTURE.md`, `docs/SECURITY_ARCHITECTURE.md`, `docs/THREAT_MODEL.md` |
 | Control mapping | mapped to SOC 2, ISO 27001, and CIS as an evidence index | `docs/CONTROL_MAPPING.md` |
-| Identity and access | API keys, OIDC, SAML metadata, trusted proxy auth, SCIM lifecycle, RBAC, tenant quotas | `docs/ENTERPRISE.md`, `docs/ENTERPRISE_DEPLOYMENT.md`, `tests/test_api_operator_policy.py`, `tests/test_api_scim_lifecycle.py` |
+| Identity and access | API keys, OIDC, SAML metadata, trusted proxy auth, SCIM lifecycle, RBAC, tenant quotas | `docs/ENTERPRISE.md`, `docs/ENTERPRISE_DEPLOYMENT.md`, `tests/api/test_api_operator_policy.py`, `tests/api/test_api_scim_lifecycle.py` |
 | Secrets lifecycle | non-secret posture and rotation planning; customer retains secret custody | `docs/ENTERPRISE_SECURITY_POSTURE.md`, `src/agent_bom/api/secret_lifecycle.py` |
 | Tenant isolation | tenant propagation, scoped stores, audit export, and cross-tenant tests | `docs/DATA_MODEL.md`, `tests/test_cross_tenant_leakage.py` |
 | Supply chain | lockfiles, dependency review, self-scan, SBOM, Sigstore, SLSA provenance | `docs/SUPPLY_CHAIN.md`, `docs/RELEASE_VERIFICATION.md`, `.github/workflows/release.yml` |

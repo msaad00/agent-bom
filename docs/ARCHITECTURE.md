@@ -1,82 +1,97 @@
 # Architecture
 
-One `agent-bom` product, multiple operational surfaces. The package exposes
-CLI entry points, API/UI, MCP server mode, runtime proxy/gateway, cloud posture,
-IaC scanning, fleet, graph, reporting, and compliance workflows over shared
-finding, inventory, graph, and audit contracts.
+agent-bom is one Python package (`src/agent_bom/`) with four entry points that
+share the same scanners, graph and stores, plus a separate Next.js UI (`ui/`)
+that talks to the REST API over HTTPS. The product story (intake → scan →
+evidence → control → artifacts) is in [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md);
+the repository map is in [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md).
 
-Report graph construction adapts serialized evidence once through
-`graph/build_input.py`, then composes named stages in `graph/builder.py`.
-`GraphBuildInput` carries only supported graph evidence sections; unrelated
-report output is excluded. Agent/server inventory, credential slots, blast-radius
-edges, cloud benchmarks, training assets and static findings have separate
-projection owners. `graph/build_indexes.py` holds indexes for one build, with no
-shared tenant state. `graph/build_analysis.py` preserves identity and topology
-ordering before final attack paths, technique mappings, application risk and cost.
-Optional overlay failures retain their existing isolation and analysis status.
+## System overview
 
-Package/advisory provenance belongs to `graph/package_projection.py`; runtime
-identity and incident observations belong to `graph/runtime_projection.py`.
-`graph/cloud_context.py` owns provider inventory normalization, recorded exposure,
-account ownership, environment labels and identity-policy inputs. These helpers
-retain unknown values and source evidence; they do not collect cloud data or
-establish effective authorization. The builder retains compatible helper exports.
-Shared helpers and resource aliases remain graph-owned without importing the
-builder or API adapters. Static package reachability and runtime observations
-keep distinct evidence fields and relationship types. Existing report callers
-retain `build_unified_graph_from_report`; callers with prepared graph evidence
-can use `build_unified_graph(GraphBuildInput(...))`. Both accept a caller-owned
-in-memory or store-backed container and run the same ordered stages.
+Arrows are Python imports or calls in the current source, except the dashed
+UI arrow, which is HTTPS.
 
-Graph application services consume the typed `graph/ports.py` persistence/query
-contract. SQLite and PostgreSQL adapters implement the same snapshot, paging,
-tenant and generation contract; the API retains its compatible type export.
+```mermaid
+flowchart TB
+    subgraph entry["Entry points"]
+        CLI["CLI · GitHub Action · Docker<br/>cli/"]
+        MCP["MCP server<br/>mcp_server*.py · mcp_tools/"]
+        API["REST API<br/>api/ (FastAPI)"]
+        GW["Gateway / proxy<br/>gateway_server.py · proxy.py · runtime/"]
+    end
+    UI["Next.js UI<br/>ui/"]
+    SCAN["Scan pipeline<br/>discovery/ · parsers/ · scanners/<br/>cloud/ · iac/ · enrichment.py"]
+    GRAPH["Graph builder<br/>graph/ · contract in graph/ports.py"]
+    STORES["Stores<br/>SQLite: db/graph_store.py, api/*_store.py<br/>Postgres + row-level security: api/postgres_*.py"]
+    OUT["Exports and compliance<br/>output/ (SARIF, CycloneDX, SPDX, HTML, OCSF)<br/>compliance_*.py framework mappings"]
+    CORE["core/<br/>tenancy · severity · CVSS · package identity · settings · errors"]
 
-> **Product overview lives in [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md)** — the
-> canonical five-stage flow (intake → scan → evidence → control → artifacts) and
-> the symbol-level CVE reachability differentiator. This document is the deeper
-> surface and module architecture: it leads with the product mental model, then
-> the implementation stack.
+    UI -. HTTPS .-> API
+    CLI --> SCAN
+    MCP --> SCAN
+    API --> SCAN
+    CLI --> GRAPH
+    MCP --> GRAPH
+    API --> GRAPH
+    CLI --> OUT
+    MCP --> OUT
+    API --> OUT
+    OUT --> GRAPH
+    MCP -->|control-plane services| API
+    GW -->|auth, policy and audit stores| API
+    API --> STORES
+    CLI -->|local SQLite| STORES
+    STORES -.->|implements graph/ports.py| GRAPH
+    SCAN --> CORE
+    GRAPH --> CORE
+    OUT --> CORE
+    API --> CORE
+```
+
+| Entry point | Start with | Auth and tenant boundary | Persistence |
+|---|---|---|---|
+| CLI / CI / Docker | `agent-bom scan .` | local process; provider credentials supplied by the operator | local artifacts; SQLite when enabled |
+| MCP server | `agent-bom mcp server` | MCP transport auth and strict tool arguments | local or control-plane stores, by mode |
+| REST API + UI | `agent-bom serve` or Helm | middleware: authentication (API key, OIDC, SAML, trusted proxy), RBAC (`rbac.py`), tenant scope, body and rate limits, audit | SQLite single node; Postgres with row-level security for shared deployments |
+| Gateway / proxy | `agent-bom proxy …` or `agent-bom gateway serve` | listener auth, policy, detectors, rate limits, audit | runtime audit stores; optional control-plane sink |
+
+## Layers and dependency rules
+
+The package is not yet strictly layered: the graph and gateway still import some
+API adapters (stores, auth). [`scripts/check_architecture.py`](../scripts/check_architecture.py)
+runs in `make preflight` and CI and enforces two kinds of rule.
+
+**Hard rules (always zero; CI fails on any violation):**
+
+- `core/` imports only `core/`, the standard library and third-party packages.
+- `api/` never imports the CLI (`cli/`).
+- Graph services and ports (`graph/ports.py`, `graph/correlation_service.py`)
+  import no storage adapters (`api/`, `db/`). Report projections
+  (`graph/*_projection.py`, `graph/build_*.py`) import neither the graph builder
+  nor `api/`.
+- Gateway and runtime services never import their composition root
+  (`gateway_server.py`); `runtime/gateway_relay.py` and
+  `runtime/gateway_policy_reload.py` import no API adapters.
+- `mcp_tools/operator/` registrations receive server bindings and never import
+  `mcp_server*.py`.
+- Tenant-dispatching workers (scheduler, connection scheduler, side-scan
+  scheduler, graph persistence, auto-correlation, job reconciliation) switch
+  tenants only through `api/tenant_worker.py`.
+- Shared decisions have one owner module: tenancy, severity, CVSS parsing,
+  package identity, version ordering, credential policy and gateway auth each
+  live in a named file (`OWNED_FUNCTIONS` in the checker).
+
+**Ratcheted debt (per-file counts in
+[`scripts/architecture-baseline.json`](../scripts/architecture-baseline.json)
+may only shrink; new files start at zero):** imports of `api/` from non-API
+modules (tracked separately for `graph/`), imports inside function bodies other
+than optional-extra SDKs, raw environment reads outside `config.py` and
+`core/settings.py`, broad `except` handlers, files over 600 lines, functions over
+80 lines and cyclomatic complexity over 15.
 
 ---
 
-## 1. System Overview — Product Surfaces
-
-Operator MCP registrations live in bounded `mcp_tools/operator/` modules for
-findings, scanning, graphs, benchmarks, runtime, identity and governance.
-`mcp_server_operator_tools.py` composes their public registration order with one
-immutable, server-local `OperatorToolBindings` object. Registrations receive
-authenticated dispatch and scan/output adapters; they cannot import the server
-composition root. Tool schemas, annotations and write-scope requirements remain
-owned by the public MCP contract and verified against the live server catalog.
-
-Gateway composition remains in `gateway_server.py`. Its HTTP authentication,
-bounded request context and shared rate-limit selection are owned by
-`api/gateway_auth.py`, `api/gateway_request.py` and `api/gateway_rate_limit.py`.
-Transport pooling, audit delivery and settings live under `runtime/gateway_*`.
-Tenant policy lookups and control-plane bundle evaluation live in
-`api/gateway_policy.py`. `runtime/gateway_policy_reload.py` owns typed policy
-state, reload locking and polling through injected loaders and configuration
-accessors. A method policy retains its last valid version after a reload error;
-a firewall reload error marks that lane unavailable for fail-closed enforcement.
-Initial file-load failure remains unavailable until a successful load. The
-gateway composition root owns task startup, cancellation and shutdown.
-`api/gateway_forward.py` owns authorized forwarding, durable tool admission,
-trace propagation and response scanning through a request-local typed context.
-Audit admission failure denies tool execution before upstream effects. Audit
-delivery failure after an upstream outcome preserves the outcome and adds
-`X-Agent-BOM-Audit-Delivery: degraded`; it does not synthesize a retryable 500.
-Visual scanning remains opt-in. Once enabled, a scan/redaction timeout or detector
-exception withholds the response as incomplete. The JSON-RPC error records that
-the upstream call completed and is not automatically retryable; HTTP remains 200.
-A redaction event is emitted only after replacement content is ready. Failure to
-deliver the post-execution audit still marks the withheld response degraded.
-Authentication-store failures deny traffic; a configured shared rate limiter
-never falls back to process-local state when initialization fails.
-
-```
-pip install agent-bom    → shared core engine plus focused CLI entry points
-```
+## Product surfaces
 
 Read the architecture as three cooperating paths: local scanning, a self-hosted
 control plane, and runtime enforcement. They reuse lower-level services and
@@ -110,7 +125,7 @@ see [`START_HERE.md`](START_HERE.md).
 
 ---
 
-## 1a. Execution Paths and Persistence
+## Execution paths and persistence
 
 The CLI invokes scanner libraries directly. Browser and SDK traffic crosses the
 HTTP middleware and FastAPI boundary. MCP server mode exposes shared services
@@ -172,7 +187,7 @@ not implement this atomic ownership contract; use SQLite or Postgres for pushes.
 
 ---
 
-## 1b. Implementation Stack
+## Implementation stack
 
 The scanner, CLI, API, MCP server, gateway/proxy, parsers, enrichment, graph,
 IaC, and CIS engines are Python 3.11+. The human cockpit is a separate
@@ -209,7 +224,7 @@ Forward-looking runtime note:
 
 ---
 
-## 1c. Data Flow - one scan request
+## Data flow: one scan request
 
 A single scan request walks discovery → extraction → scan → finding → graph →
 outputs. The same lower libraries serve the CLI and the API.
@@ -235,17 +250,7 @@ answerable · outputs land in the gate, ticket, or SIEM you already run.
 
 ---
 
-## 1d. Surface Boundaries
-
-| Surface | Calls | Auth / tenant boundary | Persistence behavior |
-|---|---|---|---|
-| CLI / CI / Docker | Python scan and output libraries directly | local process and provider credentials supplied by the operator | local artifacts; SQLite when persistence is enabled |
-| Next.js UI / SDK | FastAPI over HTTPS | API middleware: auth, RBAC, tenant scope, body/rate limits, audit | configured control-plane stores |
-| MCP server | shared Python services through MCP transports | MCP transport authentication and strict tool arguments | local or configured control-plane stores, depending on mode |
-| Gateway / proxy | upstream runtime traffic | listener auth, policy evaluation, detectors, rate limits, audit | runtime/audit stores and optional control-plane sink |
-
-The UI has no privileged data path, but that does not make HTTP middleware a
-universal seam for the CLI, MCP server, or runtime gateway.
+## Tenant-bound workers
 
 Tenant-bound worker calls validate an explicit tenant and suspend inherited
 PostgreSQL maintenance bypass for the duration of the call. Both the tenant and
@@ -264,7 +269,7 @@ rejects a graph with a different owner before opening its store. Existing explic
 
 ---
 
-## 1e. Auth & Connections
+## Auth and connections
 
 Brokered control-plane sources use **connect once, act through the stored
 connection reference**. Standalone CLI scans remain independent and use local
@@ -288,7 +293,7 @@ environment knobs are in [`ENTERPRISE.md`](ENTERPRISE.md).
 
 ---
 
-## 1f. Input / Output Formats
+## Input and output formats
 
 agent-bom is format-agnostic on both ends: ingest whatever evidence exists,
 emit whatever the next tool consumes.
@@ -331,7 +336,7 @@ flowchart LR
 
 ---
 
-## 2. Scan Pipeline
+## Scan pipeline
 
 Sequence of operations from invocation to report.
 
@@ -392,7 +397,7 @@ registry boundary rather than as edits to the scan path.
 
 ---
 
-## 3. Blast Radius Propagation
+## Blast radius propagation
 
 How one CVE propagates through the AI agent stack.
 
@@ -447,7 +452,7 @@ LLM spend onto nodes and rolls it up along `CONTAINS` into `subtree_cost_usd`.
 
 ---
 
-## 4. Compliance Tagging
+## Compliance tagging
 
 Every finding is tagged against curated compliance frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated **evidence helper** — a subset of each framework focused on AI/MCP/agent risk-relevant controls — not a certification claim, audit opinion, or complete catalog. See [Coverage per framework](#coverage-per-framework) below for the generated control counts.
 
@@ -517,7 +522,7 @@ The bundled list is editable: see `src/agent_bom/compliance_coverage.py` for the
 
 ---
 
-## 5. Integration
+## Integration
 
 How agent-bom fits into CI/CD, runtime, cloud, and enterprise tooling.
 
@@ -565,3 +570,82 @@ graph TB
 | Graph overlays | `src/agent_bom/graph/` | `rollup.py` (estate-scale `CONTAINS` roll-up + drill-down), `aspm_overlay.py` (application correlation), `cost_overlay.py` (LLM-spend fusion) |
 | Remediation | `src/agent_bom/remediation.py` | Advisory-only fixes with least-privilege-to-apply (`applied`/`auto_remediation` always false) |
 | Guard | `src/agent_bom/guard.py` | Pre-install CVE scan for pip/npm packages |
+
+---
+
+## Module notes
+
+Ownership and failure behavior for modules whose boundaries are enforced by
+`scripts/check_architecture.py`.
+
+### Graph construction
+
+- `graph/build_input.py` adapts serialized report evidence once into
+  `GraphBuildInput`, which carries only graph evidence sections; unrelated report
+  output is excluded. `graph/builder.py` composes named stages over it.
+- Each evidence type has one projection owner: agents and servers
+  (`agent_projection.py`), credential slots (`credential_projection.py`), blast
+  radius (`blast_projection.py`), cloud benchmarks (`benchmark_projection.py`),
+  training assets (`training_projection.py`), static findings
+  (`finding_projection.py`), package and advisory provenance
+  (`package_projection.py`), runtime identity and incidents
+  (`runtime_projection.py`).
+- `graph/build_indexes.py` holds indexes for one build with no shared tenant
+  state. `graph/build_analysis.py` orders identity and topology analysis before
+  attack paths, technique mappings, application risk and cost. An optional
+  overlay failure is isolated and recorded in the analysis status.
+- `graph/cloud_context.py` normalizes provider inventory, recorded exposure,
+  account ownership, environment labels and identity-policy inputs. It keeps
+  unknown values and source evidence; it does not collect cloud data or decide
+  effective authorization.
+- Static package reachability and runtime observations use distinct evidence
+  fields and relationship types.
+- Report callers use `build_unified_graph_from_report`; callers with prepared
+  evidence use `build_unified_graph(GraphBuildInput(...))`. Both run the same
+  ordered stages into an in-memory or store-backed container.
+
+### Graph persistence
+
+Graph services depend on the typed `graph/ports.py` contract
+(`GraphStoreProtocol`). The SQLite (`db/graph_store.py`) and Postgres
+(`api/postgres_graph.py`) adapters implement the same snapshot, paging, tenant
+and generation contract.
+
+### MCP operator tools
+
+Operator registrations live in `mcp_tools/operator/` (findings, scanning,
+graphs, benchmarks, runtime, identity, governance). `mcp_server_operator_tools.py`
+composes them in public registration order with one immutable
+`OperatorToolBindings` object (`mcp_tools/operator/bindings.py`) that supplies
+authenticated dispatch and scan/output adapters. Tool schemas, annotations and
+write-scope requirements belong to the public MCP contract and are checked
+against the live server catalog.
+
+### Gateway
+
+- `gateway_server.py` is the composition root and owns task startup,
+  cancellation and shutdown.
+- `api/gateway_auth.py` (HTTP authentication), `api/gateway_request.py`
+  (bounded request context), `api/gateway_rate_limit.py` (shared rate-limit
+  selection), `api/gateway_policy.py` (tenant policy and control-plane bundle
+  evaluation) and `api/gateway_forward.py` (authorized forwarding, durable tool
+  admission, trace propagation, response scanning).
+- `runtime/gateway_*` holds transport pooling, audit delivery and settings;
+  `runtime/gateway_policy_reload.py` owns policy state, reload locking and
+  polling through injected loaders.
+
+Failure behavior:
+
+- A method policy keeps its last valid version after a reload error. A firewall
+  reload error marks that lane unavailable, so enforcement fails closed. A
+  policy that never loaded stays unavailable until a load succeeds.
+- Audit admission failure denies the tool call before any upstream effect.
+  Audit delivery failure after an upstream outcome keeps the outcome and adds
+  `X-Agent-BOM-Audit-Delivery: degraded`; it does not return a retryable 500.
+- Visual scanning is opt-in. Once enabled, a scan or redaction timeout, or a
+  detector exception, withholds the response as incomplete: the JSON-RPC error
+  records that the upstream call completed and is not automatically retryable,
+  and HTTP stays 200. A redaction event is emitted only after replacement
+  content is ready.
+- Authentication-store failure denies traffic. A configured shared rate limiter
+  never falls back to process-local state when it fails to initialize.

@@ -50,14 +50,21 @@ sources layered on top:
 
 ## Consequences
 
-- **Positive:** Zero infrastructure cost. No database to maintain or distribute.
+- **Positive:** No API key is required for basic scanning, and batch queries keep
+  network round trips low.
+- **Positive:** Ecosystem-native identifiers (GHSA, PYSEC, distro IDs) avoid much
+  of the false-positive noise of CPE matching.
+- **Trade-off:** OSV coverage for C/C++ and some system packages is thinner than
+  NVD, so results can differ from other vulnerability scanners.
+- **Positive:** No hosted advisory service to operate; the optional local database is built from public feeds.
 - **Positive:** PURL-native queries match our package model directly.
 - **Positive:** Multi-source enrichment (NVD + EPSS + KEV) provides depth that
   single-source solutions lack.
-- **Trade-off:** Requires network access for scanning. Air-gapped environments
-  cannot scan without a future local DB feature.
+- **Trade-off:** Online scans need network access. Offline and air-gapped scans
+  use the local advisory database populated by `agent-bom db update`
+  (`agent-bom scan --offline`), which must be refreshed to stay current.
 - **Trade-off:** API rate limits affect scan speed for large dependency trees.
   Caching mitigates this but doesn't eliminate it.
-- **Future:** A local SQLite-backed cache of OSV/NVD/EPSS data is the planned
-  path to offline scanning and 10x faster lookups. This would complement, not
-  replace, the API-first approach.
+
+This record merges the earlier "OSV as primary vulnerability source" note
+(2025-06), which recorded the same decision.

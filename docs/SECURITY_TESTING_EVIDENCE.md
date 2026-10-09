@@ -40,7 +40,7 @@ Recommended release-review commands:
 ```bash
 gh pr checks <pr-number> --repo msaad00/agent-bom
 gh run view <run-id> --repo msaad00/agent-bom --log-failed
-uv run pytest tests/test_api_hardening.py tests/test_api_privacy.py tests/test_api_cross_tenant_matrix.py -q
+uv run pytest tests/api/test_api_hardening.py tests/api/test_api_privacy.py tests/api/test_api_cross_tenant_matrix.py -q
 uv run pytest tests/test_proxy_sandbox.py tests/test_proxy_scanner.py tests/test_runtime_detectors.py -q
 ```
 
@@ -48,14 +48,14 @@ uv run pytest tests/test_proxy_sandbox.py tests/test_proxy_scanner.py tests/test
 
 | Surface | Main controls | Regression evidence |
 |---|---|---|
-| API authentication | API-key hashing, browser-session signing, OIDC/SAML/trusted-proxy auth, CSRF checks | `tests/test_api_hardening.py`, `tests/test_api_operator_policy.py`, `tests/test_api_oidc.py`, `tests/test_api_saml.py` |
-| Authorization and scopes | route role rules, scope rules, tenant-aware request state | `tests/test_api_operator_policy.py`, `tests/test_gateway_auth_tenant_e2e.py` |
-| Tenant isolation | same-tenant enforcement, cross-tenant rejection, tenant-scoped exports | `tests/test_api_cross_tenant_matrix.py`, `tests/test_cross_tenant_leakage.py`, `tests/test_api_privacy.py` |
-| Audit integrity | HMAC chaining, restart hydration, signed audit export, tamper rejection | `tests/test_audit_chain.py`, `tests/test_api_enterprise_tenant.py`, `tests/test_compliance_report.py` |
-| Runtime proxy detection | prompt/tool-call detectors, Unicode-normalized payload handling, audit records | `tests/test_proxy_scanner.py`, `tests/test_runtime_detectors.py`, `tests/test_proxy_audit.py` |
+| API authentication | API-key hashing, browser-session signing, OIDC/SAML/trusted-proxy auth, CSRF checks | `tests/api/test_api_hardening.py`, `tests/api/test_api_operator_policy.py`, `tests/api/test_api_oidc.py`, `tests/api/test_api_saml.py` |
+| Authorization and scopes | route role rules, scope rules, tenant-aware request state | `tests/api/test_api_operator_policy.py`, `tests/test_gateway_auth_tenant_e2e.py` |
+| Tenant isolation | same-tenant enforcement, cross-tenant rejection, tenant-scoped exports | `tests/api/test_api_cross_tenant_matrix.py`, `tests/test_cross_tenant_leakage.py`, `tests/api/test_api_privacy.py` |
+| Audit integrity | HMAC chaining, restart hydration, signed audit export, tamper rejection | `tests/test_audit_chain.py`, `tests/api/test_api_enterprise_tenant.py`, `tests/test_compliance_report.py` |
+| Runtime proxy detection | prompt/tool-call detectors, Unicode-normalized payload handling, audit records | `tests/test_proxy_scanner.py`, `tests/test_runtime_detectors.py`, `tests/test_proxy.py` |
 | MCP sandbox | isolated Docker/Podman runtime, sensitive mount rejection, caps, egress posture, digest-aware images | `tests/test_proxy_sandbox.py`, `src/agent_bom/proxy_sandbox.py` |
 | SSRF and private egress | Connect-time DNS pinning, all-answer validation, metadata denial, operator-private provenance, redirects/proxy environment disabled | `tests/test_security.py`, `tests/test_gateway_egress_transport.py`, `tests/test_gateway_upstreams.py` |
-| Container and external scanner ingest | External scanner normalization, decompression, and argv guards | `tests/test_external_scanners.py`, `tests/test_image_scanner.py`, `tests/test_container_limits.py` |
+| Container and external scanner ingest | External scanner normalization, decompression, and argv guards | `tests/test_external_scanners.py`, `tests/test_oci_parser.py` |
 | Compliance evidence | tenant-filtered bundles, nonces, signatures, audit export links | `tests/test_compliance_report.py`, `docs/COMPLIANCE_SIGNING.md` |
 | Supply-chain policy | dependency freshness, transitive pins, action SHA pins, self-scan | `docs/SUPPLY_CHAIN.md`, `.github/workflows/pr-security-gate.yml`, `.github/workflows/release.yml` |
 

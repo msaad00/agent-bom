@@ -225,6 +225,7 @@ def connections_key(monkeypatch):
     from agent_bom.api import connection_crypto
 
     monkeypatch.setenv("AGENT_BOM_CONNECTIONS_KEY", Fernet.generate_key().decode())
+    monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_FILE", raising=False)
     monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_PROVIDER", raising=False)
     connection_crypto.reset_key_cache()
     yield

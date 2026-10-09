@@ -434,3 +434,12 @@ it("gives a fresh installation a scan or connection next step", async () => {
   expect(screen.getByRole("link", {name:"Run a scan"})).toHaveAttribute("href", "/scan");
   expect(screen.getByRole("link", {name:"Connect a source"})).toHaveAttribute("href", "/connections");
 });
+
+
+it("classifies typed transport failures as offline with a retry action", async () => {
+  const { ApiNetworkError } = await import("@/lib/api-errors");
+  vi.mocked(api.getInventoryAssets).mockRejectedValue(new ApiNetworkError("Connection unavailable", { url: "/v1/inventory/assets", method: "GET" }));
+  renderPackages(<AssetInventoryView kind="packages" />);
+  expect(await screen.findByRole("heading", { name: "Cannot connect to the agent-bom API" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+});

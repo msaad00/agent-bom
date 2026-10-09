@@ -58,6 +58,22 @@ def _put_in_job_tenant(store: Any, job: ScanJob) -> None:
     run_tenant_bound(job.tenant_id, store.put, job)
 
 
+def _active_jobs(store: Any) -> Any:
+    """Materialize only active candidates, through their own tenant scope."""
+    from agent_bom.api.tenant_worker import run_tenant_bound
+
+    summaries = getattr(store, "list_summary", None)
+    if not callable(summaries):
+        yield from store.list_all(all_tenants=True)
+        return
+    for status in ACTIVE_SCAN_JOB_STATUSES:
+        for row in summaries(all_tenants=True, status=status):
+            tenant = require_explicit_tenant_id(row["tenant_id"])
+            job = run_tenant_bound(tenant, store.get, row["job_id"], tenant_id=tenant)
+            if job is not None:
+                yield job
+
+
 def fail_stale_active_scan_jobs(
     store: Any,
     *,
@@ -68,7 +84,7 @@ def fail_stale_active_scan_jobs(
     """Mark active jobs older than timeout_seconds as failed."""
     current = now or datetime.now(timezone.utc)
     failed = 0
-    for job in store.list_all(all_tenants=True):
+    for job in _active_jobs(store):
         if not is_active_scan_job(job):
             continue
         created = _parse_created_at(job)
@@ -102,7 +118,7 @@ def fail_orphaned_active_scan_jobs(
         return 0
     now = datetime.now(timezone.utc)
     failed = 0
-    for job in store.list_all(all_tenants=True):
+    for job in _active_jobs(store):
         if not is_active_scan_job(job):
             continue
         require_explicit_tenant_id(job.tenant_id)

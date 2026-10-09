@@ -19,6 +19,7 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.storage.job_payload_cache import JobPayloadCache, read_versioned_jobs
+from agent_bom.api.storage.job_read_projections import postgres_demo_exists
 from agent_bom.api.storage.job_revisions import POSTGRES_JOB_REVISIONS_V1, read_postgres_job_revision
 from agent_bom.api.storage.jobs import put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, POSTGRES_TENANT_KEYS
@@ -194,6 +195,8 @@ class PostgresJobStore:
             _ensure_tenant_rls(conn, "scan_dispatch_queue", "tenant_id")
             conn.execute(POSTGRES_JOB_REVISIONS_V1)
             conn.commit()
+
+    has_usable_demo_job = postgres_demo_exists
 
     def overview_evidence_revision(self, tenant_id: str) -> str:
         return read_postgres_job_revision(self._pool, tenant_id)

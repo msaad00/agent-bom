@@ -1,19 +1,9 @@
-"""Typed response contracts for the dashboard's highest-traffic read endpoints.
+"""Typed OpenAPI contracts for the dashboard's read endpoints.
 
-These models document the live JSON bodies in the OpenAPI contract that the UI
-types are generated from. They are deliberately lenient at runtime:
-
-* ``extra="allow"`` keeps any key a handler adds that the model does not yet
-  name, so a response is never silently narrowed;
-* routes register them with ``response_model_exclude_unset=True`` so optional
-  keys are emitted only when the handler set them (no injected ``null``);
-* non-integer numbers are ``int | float`` so an integral float such as ``100``
-  is not re-rendered as ``100.0``;
-* a response that no longer matches its model is logged and returned as the
-  handler built it instead of failing the request with a 500.
-
-``tests/test_api_read_contracts.py`` validates real seeded bodies against these
-models with undeclared keys forbidden, so drift fails CI rather than production.
+Routes document these models without validating nested response bodies at
+runtime. Strict seeded contract tests detect drift; the UI generates its types
+from the same OpenAPI schemas. Direct model validation remains lenient unless
+strict contract context is supplied.
 """
 
 from __future__ import annotations

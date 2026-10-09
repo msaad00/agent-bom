@@ -17,7 +17,7 @@ import type {
   InventoryAssetsResponse,
   InventorySummaryResponse,
 } from "@/lib/api";
-import { ApiAuthError, ApiError, ApiForbiddenError, ApiRateLimitError } from "@/lib/api-errors";
+import { ApiAuthError, ApiError, ApiForbiddenError, ApiNetworkError, ApiRateLimitError } from "@/lib/api-errors";
 import {
   buildInventoryFromApi,
   type InventoryModel,
@@ -78,6 +78,7 @@ const InventoryContext = createContext<InventoryState | null>(null);
 function classifyError(err: unknown): { message: string; kind: InventoryErrorKind } {
   if (err instanceof ApiAuthError) return { message: "Sign in to view the asset inventory.", kind: "auth" };
   if (err instanceof ApiForbiddenError) return { message: "Your role cannot read the asset inventory.", kind: "forbidden" };
+  if (err instanceof ApiNetworkError) return { message: err.message, kind: "network" };
   if (err instanceof ApiError && err.status === 404) {
     return {
       message: "No graph snapshot yet. Run a scan or connect an account to populate the asset inventory.",

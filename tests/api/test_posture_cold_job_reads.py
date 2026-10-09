@@ -137,3 +137,59 @@ def test_scoped_reads_never_cross_tenants(sqlite_store) -> None:
         assert sqlite_store.get("cold-scan", tenant_id=other).tenant_id == other  # type: ignore[union-attr]
     assert [job.tenant_id for job in mine] == [TENANT]
     assert [job.tenant_id for job in theirs] == [other]
+
+
+def test_warm_posture_does_not_parse_jobs_and_write_invalidates(sqlite_store, parses):
+    sqlite_store.put(_job(TENANT))
+    _reset_read_caches()
+    client = TestClient(app)
+    headers = proxy_headers(role="analyst", tenant=TENANT)
+    first = client.get("/v1/posture", headers=headers)
+    assert first.status_code == 200
+    parses.clear()
+    assert client.get("/v1/posture", headers=headers).json() == first.json()
+    assert parses == []
+    changed = _job(TENANT)
+    changed.result["posture_scorecard"]["summary"] = "updated scan"
+    sqlite_store.put(changed)
+    response = client.get("/v1/posture", headers=headers)
+    assert response.json()["scan_scorecard"]["summary"] == "updated scan"
+    assert parses
+
+
+def test_posture_projection_is_detached_and_tenant_scoped(sqlite_store):
+    from agent_bom.api.posture_scan_snapshot import scan_posture_inputs
+
+    sqlite_store.put(_job(TENANT))
+
+    def load():
+        return sqlite_store.list_all(tenant_id=TENANT)
+
+    projection = scan_posture_inputs(sqlite_store, TENANT, load)
+    projection["summary"]["total_packages"] = -1
+    assert scan_posture_inputs(sqlite_store, TENANT, load)["summary"]["total_packages"] == 1
+    assert scan_posture_inputs(sqlite_store, TENANT + "-empty", lambda: []) is None
+
+
+def test_demo_probe_and_orphan_sweep_do_not_parse_done_jobs(sqlite_store, parses, monkeypatch):
+    from agent_bom.api.scan_job_reconciliation import fail_orphaned_active_scan_jobs
+    from agent_bom.demo_estate.bootstrap import _tenant_has_demo_jobs
+
+    monkeypatch.setenv("AGENT_BOM_DISTRIBUTED_SCANS", "false")
+    job = _job(TENANT)
+    job.triggered_by = "demo-estate-bootstrap"
+    sqlite_store.put(job)
+    parses.clear()
+    assert _tenant_has_demo_jobs(sqlite_store, TENANT)
+    assert not _tenant_has_demo_jobs(sqlite_store, TENANT + "-empty")
+    assert fail_orphaned_active_scan_jobs(sqlite_store) == 0
+    assert parses == []
+    job.result["findings"] = []
+    sqlite_store.put(job)
+    assert not _tenant_has_demo_jobs(sqlite_store, TENANT)
+    job.result["vulnerabilities"] = [{"id": "example"}]
+    sqlite_store.put(job)
+    assert _tenant_has_demo_jobs(sqlite_store, TENANT)
+    job.status = JobStatus.FAILED
+    sqlite_store.put(job)
+    assert not _tenant_has_demo_jobs(sqlite_store, TENANT)

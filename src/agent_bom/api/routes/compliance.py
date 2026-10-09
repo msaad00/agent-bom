@@ -2281,10 +2281,10 @@ async def get_posture_scorecard(request: Request) -> dict:
 @finding_read_snapshot
 def _posture_scorecard_impl(request: Request) -> dict:
     """Select the latest scan and compose the exec posture over one parse of each job payload."""
-    from agent_bom.api.findings_current import latest_current_scan_job
+    from agent_bom.api.posture_scan_snapshot import scan_posture_inputs
+    from agent_bom.api.tenancy import require_request_tenant_id
 
-    latest_job = latest_current_scan_job(_tenant_jobs(request), require_authoritative_evidence=True)
-    latest_result = latest_job.result if latest_job is not None else None
+    latest_result = scan_posture_inputs(_get_store(), require_request_tenant_id(request), lambda: _tenant_jobs(request))
 
     if latest_result is None:
         seeding = demo_estate_seeding()

@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 
 from agent_bom.api.posture_counts_cache import announce_scan_evidence
 from agent_bom.api.storage.campaign_revisions import initialize_sqlite_campaign_evidence
+from agent_bom.api.storage.job_read_projections import sqlite_demo_exists
 from agent_bom.api.storage.jobs import get_job, parse_job_payload, put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, migrate_sqlite_job_key
 from agent_bom.api.storage.sql import connection_session
@@ -441,6 +442,8 @@ class SQLiteJobStore:
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()
+
+    has_usable_demo_job = sqlite_demo_exists
 
     def overview_evidence_revision(self, tenant_id: str) -> str:
         """Opaque database/tenant mutation token without reading job JSON.

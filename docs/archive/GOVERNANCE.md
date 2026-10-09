@@ -41,7 +41,7 @@ issue or reach out to the project lead.
 
 ## Code of Conduct
 
-All participants must follow the [Code of Conduct](CODE_OF_CONDUCT.md)
+All participants must follow the [Code of Conduct](../../CODE_OF_CONDUCT.md)
 (Contributor Covenant 2.1).
 
 ## Amendments

@@ -187,7 +187,7 @@ deep where you need to.
 - `docs/PERMISSIONS.md`
 - `docs/SECURITY_ARCHITECTURE.md`
 - `docs/THREAT_MODEL.md`
-- `docs/adr/005-no-rbac-custom-auth.md`
+- `docs/decisions/` (architecture decision records)
 
 
 ### Suppression approval and upgrade behavior

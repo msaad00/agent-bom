@@ -1,8 +1,9 @@
-# ADR-004: Subprocess CLI over vendor SDKs for infrastructure discovery
+# ADR-012: Subprocess CLI over vendor SDKs for infrastructure discovery
 
-## Status
+**Status:** Superseded in part
+**Date:** 2025-06
 
-Accepted
+> Cloud inventory now uses vendor SDKs from optional extras (`aws` → `boto3`, `azure`, `gcp`), imported lazily so a base install stays SDK-free. Subprocess + JSON remains the pattern for local container and Kubernetes discovery (for example `cloud/gpu_infra.py`).
 
 ## Context
 

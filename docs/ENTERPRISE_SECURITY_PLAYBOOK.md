@@ -211,7 +211,7 @@ egress are rendered as warnings. Operators can render the same pack with
 - **HMAC-chained audit log** — [`api/audit_log.py`](../src/agent_bom/api/audit_log.py). Every entry signs the previous entry's signature; tampering with any row invalidates the chain from that point forward.
 - **Ed25519-signed evidence bundles** — [`api/compliance_signing.py`](../src/agent_bom/api/compliance_signing.py). Auditor fetches the public key from [`/v1/compliance/verification-key`](../src/agent_bom/api/routes/compliance.py) once, pins it, verifies every bundle offline. Cookbook: [COMPLIANCE_SIGNING.md](COMPLIANCE_SIGNING.md).
 - **Curated compliance mappings plus AISVS** — OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, MITRE ATT&CK Enterprise, NIST AI RMF, NIST CSF 2.0, NIST 800-53, FedRAMP, ISO 27001, SOC 2, CIS Controls v8, CMMC, EU AI Act, and PCI DSS are mapped to findings inline. OWASP AISVS is exposed as a benchmark result with per-check evidence.
-- **Tenant isolation on every export** — evidence bundle only carries scans + audit events from the authed tenant. Cross-tenant tests: [`tests/test_api_cross_tenant_matrix.py`](../tests/test_api_cross_tenant_matrix.py), [`tests/test_cross_tenant_leakage.py`](../tests/test_cross_tenant_leakage.py).
+- **Tenant isolation on every export** — evidence bundle only carries scans + audit events from the authed tenant. Cross-tenant tests: [`tests/api/test_api_cross_tenant_matrix.py`](../tests/api/test_api_cross_tenant_matrix.py), [`tests/test_cross_tenant_leakage.py`](../tests/test_cross_tenant_leakage.py).
 
 ### 2.8 Scale: "Will this hold up at 50k packages and a 5k-agent fleet?"
 
@@ -230,7 +230,7 @@ Horizontal scale via Helm HPA on both control plane and gateway. ClickHouse is t
 
 - Row level — every ClickHouse insert carries `tenant_id`; every query emits `tenant_id = '<scope>'`. Contract: [`tests/test_clickhouse_tenant_isolation.py`](../tests/test_clickhouse_tenant_isolation.py).
 - Concurrent-write race — [`tests/test_cross_tenant_leakage.py`](../tests/test_cross_tenant_leakage.py) (2 tenants, 100 rows each, no mixing).
-- API level — [`tests/test_api_cross_tenant_matrix.py`](../tests/test_api_cross_tenant_matrix.py) (TestClient, every RBAC-guarded endpoint, zero cross-visibility).
+- API level — [`tests/api/test_api_cross_tenant_matrix.py`](../tests/api/test_api_cross_tenant_matrix.py) (TestClient, every RBAC-guarded endpoint, zero cross-visibility).
 
 ### 2.10 Auth: "What identity surfaces work?"
 

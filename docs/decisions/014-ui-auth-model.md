@@ -1,8 +1,7 @@
-# ADR-006: UI Authentication Model
+# ADR-014: UI Authentication Model
 
-## Status
-
-Accepted
+**Status:** Accepted
+**Date:** 2026-04-20
 
 ## Context
 

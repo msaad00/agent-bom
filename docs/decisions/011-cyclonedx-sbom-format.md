@@ -1,8 +1,7 @@
-# ADR-003: CycloneDX as primary SBOM format
+# ADR-011: CycloneDX as primary SBOM format
 
-## Status
-
-Accepted
+**Status:** Accepted
+**Date:** 2025-07
 
 ## Context
 

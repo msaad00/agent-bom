@@ -17,21 +17,77 @@
 <p align="center"><b>Open security scanner and self-hosted control plane for AI, MCP, and cloud infrastructure.</b></p>
 
 <p align="center">
-  <a href="#self-host-in-your-environment"><b>Self-host</b></a> ·
-  <a href="#deployment-models"><b>Deployment models</b></a> ·
   <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#self-host-in-your-environment"><b>Self-host</b></a> ·
+  <a href="#deployment-models">Deployment models</a> ·
   <a href="#product-tour">Product tour</a> ·
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
+For security, AppSec and GRC teams, agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, container image or cloud account, checks the packages against vulnerability advisories, and traces each finding to the agents, tools and credentials it can reach.
+
+## Quick start
+
+```bash
+pip install agent-bom
+agent-bom scan .
+agent-bom scan --demo --offline
+```
+
+`agent-bom scan .` inventories the current project and checks its packages against advisories. `agent-bom scan --demo --offline` runs a bundled sample estate with no network access and exits `1` on purpose, because the sample trips the security gate.
+For CI, write SARIF with `agent-bom scan . -f sarif -o findings.sarif` and [upload it](docs/FIRST_RUN.md#5-gate-ci-on-the-result); check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md)
+To give an assistant the same evidence, run `agent-bom mcp server`. Start with eight focused tools, then select a graph, cloud, runtime or audit profile. The full catalog has 88 MCP tools, 7 resources, and 8 workflow prompts. [MCP workflows](docs/MCP_WORKFLOWS.md)
+
+<details>
+<summary>No project handy? Scan the bundled sample estate offline</summary>
+
+`agent-bom scan --demo --offline` lists sample agents, CVEs with recorded agent, MCP server and credential associations, and policy findings (excerpt from current source; installed-release output may differ):
+
+```text
+  Security posture:   CRIT  7   HIGH  10   MED   6 · all finding categories
+  5 agents · 10 servers · 23 packages
+DISCOVER | Agents
+  Agent                Type              Servers    Pkgs    Creds    Vulns
+  langchain-service    custom                  2       4        4        4
+  claude-desktop       claude-desktop          2       6        3        5
+ANALYZE | Critical Details
+  CVE-2023-36258 · langchain@0.0.150 · CRITICAL
+  Fix: upgrade to ≥ 0.0.247
+  Blast: langchain-service → llm-orchestrator-server → ANTHROPIC_API_KEY, OPENAI_API_KEY
+ANALYZE | Graph & Policy Findings (8 occurrences)
+   CRIT  COMBINATION AI agent can reach a credential or privileged tool: langchain-service
+   HIGH  PROMPT_SECURITY Agent calls MCP server without verified identity
+   MED   PROMPT_SECURITY Long-lived static credential on MCP server
+```
+
+For sample inventory with an exact graph link, run `agent-bom quickstart --run --offline` (it skips package-CVE lookup). [First-run guide](docs/FIRST_RUN.md#2-inspect-the-bundled-sample-project)
+
+<p align="center">
+  <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />
+</p>
+
+</details>
+
+<details>
+<summary>Developer gates and offline scans</summary>
+
+Use `uvx agent-bom scan .` without a global install, or
+`uvx agent-bom check requests@2.33.0 --ecosystem pypi` before adding a package.
+For automatic dependency and secret gates, see [pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
+
+`agent-bom db update --osv-ecosystem PyPI` covers only the selected ecosystem;
+add the ecosystems you need before running `agent-bom scan . --offline`.
+The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
+A non-zero exit can mean a security gate or incomplete assessment: inspect the
+report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
+
+</details>
+
 <p align="center"><a href="docs/images/context-map-horizontal-dark-live.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/images/context-map-horizontal-light-live.png"><img src="docs/images/context-map-horizontal-dark-live.png" alt="Recorded agent connections linking a role, agents, MCP servers, tool, credential reference, package and finding" width="960"></picture></a></p>
 
-agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, workstation or cloud account, matches packages against vulnerability advisories, and connects findings to recorded agent, tool and credential relationships.
-Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard. A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data.
-
-**Start where you work:** [scan a repository](#quick-start), [run the shared dashboard](#self-host-in-your-environment), or [connect your assistant](docs/MCP_WORKFLOWS.md). Apache-2.0; the control plane runs in your own environment.
-
-**Trace a vulnerable dependency to its impact:** connect the package to affected agents, inspect the supporting evidence, then carry the finding into remediation and control review. [Try the connected-BOM walkthrough](examples/connected-bom/README.md).
+Run it as a CLI, in CI, as an MCP server for your assistant, or as a self-hosted dashboard; Apache-2.0, and the control plane runs in your own environment.
+A recorded relationship is evidence to investigate; it does not prove execution or data access. The map above uses labeled sample data.
+To trace one vulnerable dependency to the affected agents and into remediation, [try the connected-BOM walkthrough](examples/connected-bom/README.md).
 
 ## Self-host in your environment
 **Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
@@ -58,74 +114,6 @@ Cloud connectors and fleet sync collect inventory; proxy and gateway deployments
 
 [Integration capability matrix](docs/INTEGRATIONS.md) · [MCP client setup](docs/MCP_CLIENT_GUIDES.md) ·
 [Proxy, gateway and fleet](site-docs/deployment/proxy-vs-gateway-vs-fleet.md) · [Smithery setup and manifest](site-docs/integrations/smithery.md)
-
-</details>
-
-## Quick start
-
-<details>
-<summary>Scan a repository, try the sample estate, or connect your assistant</summary>
-
-**Scan a repository and keep the evidence:**
-
-```bash
-pip install agent-bom
-agent-bom scan . -f json -o scan.json
-```
-
-Open `scan.json` for findings and assessment coverage. For pull requests, use `agent-bom scan . -f sarif -o findings.sarif` and [upload the artifact in CI](docs/FIRST_RUN.md#5-gate-ci-on-the-result).
-
-For sample inventory and an exact graph link, run `agent-bom quickstart --run --offline`. It skips package-CVE lookup; use the bundled demo for advisory-backed examples. [Follow the first-run handoff](docs/FIRST_RUN.md#2-inspect-the-bundled-sample-project).
-
-<details>
-<summary>No project handy? Scan the bundled sample estate offline</summary>
-
-`agent-bom scan --demo --offline` lists sample agents, CVEs with recorded agent, MCP server and credential associations, and policy findings (excerpt from current source; installed-release output may differ):
-
-```text
-  Security posture:   CRIT  7   HIGH  10   MED   6 · all finding categories
-  5 agents · 10 servers · 23 packages
-DISCOVER | Agents
-  Agent                Type              Servers    Pkgs    Creds    Vulns
-  langchain-service    custom                  2       4        4        4
-  claude-desktop       claude-desktop          2       6        3        5
-ANALYZE | Critical Details
-  CVE-2023-36258 · langchain@0.0.150 · CRITICAL
-  Fix: upgrade to ≥ 0.0.247
-  Blast: langchain-service → llm-orchestrator-server → ANTHROPIC_API_KEY, OPENAI_API_KEY
-ANALYZE | Graph & Policy Findings (8 occurrences)
-   CRIT  COMBINATION AI agent can reach a credential or privileged tool: langchain-service
-   HIGH  PROMPT_SECURITY Agent calls MCP server without verified identity
-   MED   PROMPT_SECURITY Long-lived static credential on MCP server
-```
-
-The sample deliberately triggers a security gate (exit `1`). Save CI evidence with `agent-bom scan . -f sarif -o findings.sarif`; check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md) · [GitHub Action](docs/FIRST_RUN.md#5-gate-ci-on-the-result)
-
-<p align="center">
-  <img src="docs/images/demo-latest.gif" alt="Recorded agent-bom CLI showing sample findings and remediation guidance" width="920" />
-</p>
-
-</details>
-
-**Give assistants the same evidence:** `agent-bom mcp server` (MCP support is included by default).
-Source version: **v0.108.3** · Latest release: **v0.108.2**. Start with eight focused tools, then select a graph, cloud, runtime or audit
-profile. The full catalog has 88 MCP tools, 7 resources, and 8 workflow prompts.
-[MCP workflows](docs/MCP_WORKFLOWS.md)
-
-<details>
-<summary>Developer gates and offline scans</summary>
-
-Use `uvx agent-bom scan .` without a global install, or
-`uvx agent-bom check requests@2.33.0 --ecosystem pypi` before adding a package.
-For automatic dependency and secret gates, see [pre-commit and CI setup](docs/DEPLOYMENT.md#pre-commit-hook).
-
-`agent-bom db update --osv-ecosystem PyPI` covers only the selected ecosystem;
-add the ecosystems you need before running `agent-bom scan . --offline`.
-The full `agent-bom db update --source osv` archive can exceed 1 GB; the command shows live progress.
-A non-zero exit can mean a security gate or incomplete assessment: inspect the
-report and coverage. [Exit codes](site-docs/reference/exit-codes.md)
-
-</details>
 
 </details>
 
@@ -207,3 +195,5 @@ acts on selected tool calls. Missing evidence stays unavailable or partial. Cont
 ## Contributing and support
 
 [Contributing](CONTRIBUTING.md) · [Support](SUPPORT.md) · [Open issues](https://github.com/msaad00/agent-bom/issues) · [Apache-2.0 license](LICENSE)
+
+Source version: **v0.108.3** · Latest release: **v0.108.2** · [Changelog](CHANGELOG.md)

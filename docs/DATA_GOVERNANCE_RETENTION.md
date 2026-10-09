@@ -168,15 +168,15 @@ Example final-delete response:
 
 | Control | Test evidence |
 |---|---|
-| Export is tenant-scoped and redacts source secrets | `tests/test_api_privacy.py::test_tenant_data_export_is_tenant_scoped_and_redacts_source_secrets` |
-| HTTP endpoint requires authenticated admin access | `tests/test_api_privacy.py::test_tenant_data_http_endpoint_requires_authenticated_admin` |
-| Cross-tenant export is rejected | `tests/test_api_privacy.py::test_tenant_data_export_rejects_cross_tenant_access` |
-| Delete defaults to dry-run | `tests/test_api_privacy.py::test_tenant_data_delete_defaults_to_dry_run` |
-| Final delete requires exact confirmation | `tests/test_api_privacy.py::test_tenant_data_delete_requires_exact_confirmation` |
-| Final delete removes only the authenticated tenant | `tests/test_api_privacy.py::test_tenant_data_delete_removes_only_authenticated_tenant` |
-| Graph tenant delete removes all graph row families | `tests/test_api_privacy.py::test_sqlite_graph_store_delete_tenant_removes_graph_rows` |
-| Middleware maps tenant-data routes to privacy scopes | `tests/test_api_operator_policy.py` |
-| Cross-tenant leakage guardrails | `tests/test_api_cross_tenant_matrix.py`, `tests/test_cross_tenant_leakage.py` |
+| Export is tenant-scoped and redacts source secrets | `tests/api/test_api_privacy.py::test_tenant_data_export_is_tenant_scoped_and_redacts_source_secrets` |
+| HTTP endpoint requires authenticated admin access | `tests/api/test_api_privacy.py::test_tenant_data_http_endpoint_requires_authenticated_admin` |
+| Cross-tenant export is rejected | `tests/api/test_api_privacy.py::test_tenant_data_export_rejects_cross_tenant_access` |
+| Delete defaults to dry-run | `tests/api/test_api_privacy.py::test_tenant_data_delete_defaults_to_dry_run` |
+| Final delete requires exact confirmation | `tests/api/test_api_privacy.py::test_tenant_data_delete_requires_exact_confirmation` |
+| Final delete removes only the authenticated tenant | `tests/api/test_api_privacy.py::test_tenant_data_delete_removes_only_authenticated_tenant` |
+| Graph tenant delete removes all graph row families | `tests/api/test_api_privacy.py::test_sqlite_graph_store_delete_tenant_removes_graph_rows` |
+| Middleware maps tenant-data routes to privacy scopes | `tests/api/test_api_operator_policy.py` |
+| Cross-tenant leakage guardrails | `tests/api/test_api_cross_tenant_matrix.py`, `tests/test_cross_tenant_leakage.py` |
 
 ## Operator Caveats
 

@@ -2,9 +2,10 @@
 
 agent-bom's scanner lane is **read-only by default**. This document is an
 explicit, auditable contract of what the local scan path accesses — and what it
-never touches. Control-plane, connector, export, proxy/gateway, and Shield
-surfaces have separate operator-approved destinations or write actions called
-out below.
+never touches. Every capability that goes beyond read-only (disk side-scan,
+live MCP introspection, proxy/gateway enforcement, proxy rollout, dependency
+remediation, ticket filing, outbound destinations) is opt-in and is scoped in
+[SECURITY.md — Trust model and permissions](../SECURITY.md#trust-model-and-permissions).
 
 ---
 
@@ -110,15 +111,22 @@ Credential values are **never** read, stored, logged, or transmitted. Only names
 
 ## What We Never Do
 
-- **Never write** to any config file, lock file, or project file
-- **Never execute** MCP servers or agent processes
+These hold for the default scan path. The opt-in capabilities listed in
+[SECURITY.md](../SECURITY.md#trust-model-and-permissions) are the only
+exceptions, and each needs an explicit flag or setting.
+
+- **Never write** to any config file, lock file, or project file (only
+  `runtime configure --apply`, `proxy-bootstrap --apply`, and
+  `remediate --apply` do, on request)
+- **Never execute** MCP servers or agent processes (only `--introspect` and
+  the runtime proxy do, on request)
 - **Never store** credential values — only env var _names_ appear in reports
 - **Never transmit** your file contents, project structure, or inventory to external services unless you explicitly enable a push, export, or integration destination; pushed payloads are sanitized before transmission
 - **Never cache** any personal data to disk (scan history is opt-in via `--save`)
 - **Never require** authentication tokens or API keys (NVD key is optional for rate limits only)
 - **Never access** arbitrary files outside the supported discovery surfaces you choose to scan
 - **Never perform** broad recursive filesystem crawls during auto-discovery
-- **Never run** background processes, daemons, cron jobs, or system services
+- **Never run** background processes, daemons, cron jobs, or system services as part of a scan
 
 ---
 
@@ -184,9 +192,11 @@ connector, webhook, metrics, trace, or AI-enrichment destinations.
 
 ## Credential Handling
 
-Environment variables in MCP server configs are **never read for their values**.
-Only the _key names_ (e.g. `OPENAI_API_KEY`, `DATABASE_URL`) are inspected to
-determine whether credentials are present. Values are always shown as `***REDACTED***`.
+Credential values from MCP server configs are **never stored or shown**. At
+parse time each environment variable is classified: a credential-like key name
+(e.g. `OPENAI_API_KEY`, `DATABASE_URL`) or a value matching a credential,
+base64 or high-entropy pattern is replaced with `***REDACTED***` before anything
+is kept. Non-sensitive values (e.g. `LOG_LEVEL=debug`) are kept as-is.
 
 When you explicitly scan project files for hardcoded secrets or PII, agent-bom
 must read the files inside the requested scan scope to classify the risk. The
@@ -254,17 +264,24 @@ X-Agent-Bom-Read-Only: true
 X-Agent-Bom-No-Credential-Storage: true
 ```
 
+These headers describe the scan surface. The API still writes its own
+tenant-scoped store, and admins can trigger the opt-in side-scan; see
+[SECURITY.md](../SECURITY.md#trust-model-and-permissions).
+
 The API server itself runs entirely in-process. It does not make third-party outbound
 connections unless a scan job explicitly requests enrichment (`"enrich": true` in the
-request body). Browser clients and local dashboards may still connect to the local
+request body) or an operator configures a connector, export, ticketing, webhook, or
+side-scan action. Browser clients and local dashboards may still connect to the local
 agent-bom API over HTTP/WebSocket for normal UI operation.
 
 ---
 
 ## Authentication Model — Zero-Credential, Zero-Trust
 
-agent-bom **never stores, logs, or transmits credentials**. All authentication
-follows the principle of least privilege with read-only scopes.
+agent-bom **never stores, logs, or transmits credentials**. Scanning
+authenticates with read-only scopes. The only cloud write path, the opt-in disk
+side-scan, uses a separate lifecycle role (see
+[SECURITY.md](../SECURITY.md#trust-model-and-permissions)).
 
 ### How auth works per provider
 
@@ -310,10 +327,11 @@ agent-bom agents --snowflake --snowflake-authenticator oauth
 
 ### What we never do
 
-- Never write to any cloud resource (pure read-only)
+- Never write to cloud resources during a scan; only the opt-in disk side-scan
+  creates and deletes its own tagged snapshot and temporary disk
 - Never cache credentials to disk
 - Never log credential values (sanitize_error removes them)
-- Never require admin/write permissions
+- Never require admin/write permissions for scanning
 - Never make third-party network calls beyond the explicitly listed data sources.
   Local UI-to-API traffic is expected when using the dashboard or browser client.
 

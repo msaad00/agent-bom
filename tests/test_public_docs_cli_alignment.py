@@ -245,6 +245,47 @@ def test_permissions_doc_keeps_network_boundary_scoped() -> None:
     assert "Explicit Push, Export, and Integration Destinations" in permissions
 
 
+def test_security_trust_model_scopes_every_write_path_against_code() -> None:
+    from agent_bom.cloud.side_scan import SIDESCAN_ENV_VAR
+    from agent_bom.rbac import _PERMISSIONS, Role
+
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    permissions = (ROOT / "docs" / "PERMISSIONS.md").read_text(encoding="utf-8")
+    trust = (ROOT / "docs" / "TRUST.md").read_text(encoding="utf-8")
+
+    assert "agent-bom is a **read-only scanner**" not in security
+    assert "Never write to any cloud resource (pure read-only)" not in permissions
+    assert "## Trust model and permissions" in security
+    assert "SECURITY.md#trust-model-and-permissions" in permissions
+    assert "SECURITY.md#trust-model-and-permissions" in trust
+
+    assert f"`{SIDESCAN_ENV_VAR}=1`" in security
+    assert _PERMISSIONS["cloud_ambient"] == {Role.ADMIN}
+    assert _PERMISSIONS["config"] == {Role.ADMIN}
+    assert _PERMISSIONS["policy_write"] == {Role.ADMIN}
+    for path in (
+        "deploy/terraform/connect-aws-sidescan",
+        "deploy/terraform/connect-azure-sidescan",
+        "deploy/terraform/connect-gcp-sidescan",
+        "scripts/provision/aws_readonly_policy.json",
+    ):
+        assert path in security
+        assert (ROOT / path).exists(), path
+
+    for command, flag in (
+        ("agents", "--introspect"),
+        ("remediate", "--open-pr"),
+        ("runtime configure", "--apply"),
+        ("proxy-bootstrap", "--apply"),
+        ("mcp introspect", "--all"),
+        ("gateway serve", "--allow-insecure-no-auth"),
+        ("trust", "--format"),
+    ):
+        result = CliRunner().invoke(main, [*command.split(), "--help"])
+        assert result.exit_code == 0 and flag in result.output, command
+        assert f"agent-bom {command}" in security or f"`{flag}`" in security, command
+
+
 def test_mcp_server_instructions_do_not_overclaim_read_only_surface() -> None:
     factory = (ROOT / "src" / "agent_bom" / "mcp_server_factory.py").read_text(encoding="utf-8")
 

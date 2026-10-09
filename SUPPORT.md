@@ -14,7 +14,7 @@ Most first-run confusion has an answer already written down:
 | What does the demo output mean? | [First-run guide](docs/FIRST_RUN.md) |
 | How do I deploy the control plane? | [Deployment overview](site-docs/deployment/overview.md) |
 | How do I connect a cloud account? | [Cloud connections](docs/CLOUD_CONNECT.md) |
-| What does agent-bom actually read? | [Security policy](SECURITY.md#security-design) |
+| What does agent-bom actually read? | [Trust model and permissions](SECURITY.md#trust-model-and-permissions) |
 
 ## Where to ask
 

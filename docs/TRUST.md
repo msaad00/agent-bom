@@ -14,6 +14,11 @@ own environment. For product lanes and hosted POC limits see
 | Runtime proxy / gateway | Customer network path | Optional enforcement lane; fail-closed by policy |
 | Vulnerability intel | OSV/GHSA/NVD when online; bundled demo DB offline | Network egress is operator-controlled |
 
+Scanning is read-only by default. The opt-in capabilities that change state
+(disk side-scan, proxy enforcement and rollout, remediation, ticketing, outbound
+destinations) and how each is scoped are listed in
+[SECURITY.md — Trust model and permissions](../SECURITY.md#trust-model-and-permissions).
+
 Managed multi-tenant SaaS is **not** shipped from this repository. Gated hosted
 POC environments exist only for limited evaluation and are labeled as demo
 estate data.
@@ -100,3 +105,4 @@ For step-by-step onboarding see [`FIRST_RUN.md`](FIRST_RUN.md).
 
 - [`TRUST.md`](TRUST.md) — tenant boundary, evidence derivation, verification hooks
 - [`PRODUCT_BOUNDARIES.md`](PRODUCT_BOUNDARIES.md) — OSS vs self-hosted vs hosted POC lanes
+- [`PERMISSIONS.md`](PERMISSIONS.md) — what the scan path reads and every outbound destination

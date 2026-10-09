@@ -23,9 +23,12 @@ from agent_bom.canonical_ids import (
     canonical_package_id,
     legacy_agent_id_v1,
 )
+from agent_bom.core.exploitability import parse_cvss_vector_signals
 from agent_bom.core.package_artifacts import normalize_artifact_version, package_lookup_names
 from agent_bom.core.packages import normalize_package_name as normalize_package_name
+from agent_bom.core.reachability import assess_reachability
 from agent_bom.core.severity import Severity as Severity
+from agent_bom.domain.codeowners import apply_codeowners
 from agent_bom.evidence.scan_run import ScanRun
 from agent_bom.package_utils import (
     host_matches_domain as _host_matches_domain,
@@ -163,8 +166,6 @@ class Vulnerability:
     def __post_init__(self) -> None:
         """Sanitize fixed_version — filter git SHAs and non-version strings."""
         self.advisory_sources = merge_advisory_sources(*self.advisory_sources)
-        from agent_bom.exploitability import parse_cvss_vector_signals
-
         signals = parse_cvss_vector_signals(self.cvss_vector)
         self.attack_vector = self.attack_vector or signals.attack_vector
         self.attack_complexity = self.attack_complexity or signals.attack_complexity
@@ -1061,7 +1062,6 @@ class BlastRadius:
             RISK_REACHABLE_BOOST,
             RISK_UNREACHABLE_PENALTY,
         )
-        from agent_bom.graph.reachability_truth import assess_reachability
 
         reach = assess_reachability(
             graph_reachable=self.graph_reachable,
@@ -1098,8 +1098,6 @@ class BlastRadius:
             "unlikely"   — graph/symbol/dependency evidence disproves reach
             "unknown"    — structural or exposure context without path proof
         """
-        from agent_bom.graph.reachability_truth import assess_reachability
-
         return assess_reachability(
             graph_reachable=self.graph_reachable,
             symbol_reachability=self.symbol_reachability,
@@ -1426,9 +1424,9 @@ class AIBOMReport:
         """
         if not self.toxic_combination_findings_data:
             return []
-        from agent_bom.graph.toxic_findings import toxic_combination_findings_from_data
+        from agent_bom.domain.finding_rehydrate import findings_from_dicts
 
-        return toxic_combination_findings_from_data(self.toxic_combination_findings_data)
+        return findings_from_dicts(self.toxic_combination_findings_data)
 
     def _nhi_governance_findings(self) -> "list[Finding]":
         """NHI/CIEM governance findings, surfaced from the graph-derived side block.
@@ -1482,9 +1480,9 @@ class AIBOMReport:
         """
         if not self.ciem_over_privilege_findings_data:
             return []
-        from agent_bom.graph.nhi_governance import ciem_over_privilege_findings_from_data
+        from agent_bom.domain.finding_rehydrate import findings_from_dicts
 
-        return ciem_over_privilege_findings_from_data(self.ciem_over_privilege_findings_data)
+        return findings_from_dicts(self.ciem_over_privilege_findings_data)
 
     def _enforcement_findings(self) -> "list[Finding]":
         """MCP description/enforcement findings promoted from the side block."""
@@ -1567,12 +1565,10 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_org_architecture_findings() if finding.id not in org_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._malicious_package_findings() if finding.id not in malicious_existing)
-        from agent_bom.parsers.external_import import merge_external_code_findings
+        from agent_bom.domain.finding_merge import merge_external_code_findings
 
         base = merge_external_code_findings(base)
         if self.codeowners:
-            from agent_bom.graph.codeowners import apply_codeowners
-
             apply_codeowners(base, self.codeowners)
         return base
 

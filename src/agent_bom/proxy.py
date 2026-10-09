@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import hmac
 import json
 import logging
 import os
@@ -25,9 +24,10 @@ import tempfile
 import time
 import uuid
 from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
@@ -45,6 +45,8 @@ from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_li
 from agent_bom.langfuse_otel import set_langfuse_runtime_attributes
 from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_jsonrpc_response, scan_tool_call
+from agent_bom.runtime import proxy_relay as _proxy_relay
+from agent_bom.runtime import proxy_session as _proxy_session
 from agent_bom.runtime.trace_metadata import inject_jsonrpc_trace_meta as _inject_jsonrpc_trace_meta
 from agent_bom.security import (
     redact_secret_url,
@@ -806,6 +808,255 @@ def _response_scan_alerts(findings, subject: str):
     ]
 
 
+def _write_client_error(request_id: int | str | None, reason: str) -> None:
+    """Answer a rejected request directly on the client's stdout."""
+    error_resp = make_error_response(request_id, -32600, reason)
+    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+    sys.stdout.buffer.flush()
+
+
+def _reject_tool_call(
+    log_file,  # noqa: ANN001
+    tool_name: str,
+    arguments: dict,
+    reason: str,
+    *,
+    payload_sha256: str,
+    message_id: int | str | None,
+    agent_id: str,
+    tenant_id: str,
+) -> None:
+    """Audit a blocked policy-gated call, then answer the client with an error."""
+    if log_file:
+        log_tool_call(
+            log_file,
+            tool_name,
+            arguments,
+            "blocked",
+            reason,
+            payload_sha256=payload_sha256,
+            message_id=message_id,
+            agent_id=agent_id,
+            tenant_id=tenant_id,
+        )
+    _write_client_error(message_id, reason)
+
+
+def _execution_posture(sandbox_evidence: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "mode": "container_isolated" if sandbox_evidence.get("enabled") else "observation_only",
+        "sandbox_evidence": sandbox_evidence,
+    }
+
+
+def _load_proxy_policy(policy_path: Optional[str]) -> dict:
+    """Load the local policy file (path-validated, 10 MB-capped JSON) or exit 1."""
+    if not policy_path:
+        return {}
+    try:
+        from agent_bom.security import SecurityError, validate_json_file
+
+        return validate_json_file(Path(policy_path))
+    except (json.JSONDecodeError, OSError, SecurityError) as exc:
+        logger.error("Failed to load policy from %s: %s", policy_path, sanitize_text(exc))
+        raise SystemExit(1) from exc
+
+
+@dataclass
+class _ProxyAuditDelivery:
+    max_buffer_bytes: int
+    max_spillover_bytes: int
+    spill_path: Path
+    dlq_path: Path
+    controller: AuditDeliveryController
+    spillover: AuditSpilloverStore
+    state: AuditDeliveryState
+
+
+def _build_audit_delivery(
+    control_plane_url: Optional[str],
+    tenant_id: str,
+    source_id: str,
+    audit_push_interval: int,
+) -> _ProxyAuditDelivery:
+    """Resolve bounded audit buffer/spillover/DLQ settings and delivery backoff."""
+    max_buffer_bytes = max(64 * 1024, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_BUFFER_MAX_BYTES", "1048576")))
+    max_spillover_bytes = max(
+        max_buffer_bytes,
+        int(os.environ.get("AGENT_BOM_PROXY_AUDIT_SPILLOVER_MAX_BYTES", str(max_buffer_bytes * 8))),
+    )
+    stable_paths = _proxy_audit_delivery_paths(control_plane_url or "local", tenant_id, source_id)
+    spill_path = Path(os.environ.get("AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH", str(stable_paths.spill_path)))
+    dlq_path = Path(os.environ.get("AGENT_BOM_PROXY_AUDIT_DLQ_PATH", str(stable_paths.dlq_path)))
+    base_interval = max(audit_push_interval, 5)
+    controller = AuditDeliveryController(
+        base_interval_seconds=base_interval,
+        max_backoff_seconds=max(
+            base_interval,
+            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_PUSH_BACKOFF_MAX_SECONDS", "300")),
+        ),
+        breaker_failure_threshold=max(
+            1,
+            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_BREAKER_THRESHOLD", "3")),
+        ),
+        breaker_cooldown_seconds=max(
+            base_interval,
+            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "60")),
+        ),
+    )
+    spillover = AuditSpilloverStore(spill_path=spill_path, dlq_path=dlq_path, max_spillover_bytes=max_spillover_bytes)
+    return _ProxyAuditDelivery(
+        max_buffer_bytes=max_buffer_bytes,
+        max_spillover_bytes=max_spillover_bytes,
+        spill_path=spill_path,
+        dlq_path=dlq_path,
+        controller=controller,
+        spillover=spillover,
+        state=AuditDeliveryState(controller=controller, store=spillover),
+    )
+
+
+def _build_firewall_client(
+    target_id: Optional[str],
+    gateway_url: Optional[str],
+    gateway_token: Optional[str],
+    local_policy_path: Optional[str],
+    cache_ttl_seconds: float,
+    fail_mode: str,
+):  # noqa: ANN201
+    """Create and register the inter-agent firewall client; None when not configured.
+
+    Active when a target id is set together with a gateway URL or a local
+    policy file. The client is cache-first; the gateway is consulted on cache
+    miss / TTL expiry.
+    """
+    if not (target_id and (gateway_url or local_policy_path)):
+        return None
+    from agent_bom.firewall import FirewallPolicyError, load_firewall_policy_file
+    from agent_bom.firewall_client import FirewallClient, FirewallFailMode
+
+    local_policy = None
+    if local_policy_path:
+        try:
+            local_policy = load_firewall_policy_file(Path(local_policy_path))
+        except FirewallPolicyError as exc:
+            logger.error("invalid firewall policy at %s: %s", local_policy_path, sanitize_text(exc))
+            raise SystemExit(1) from exc
+    try:
+        fw_fail_mode = FirewallFailMode(fail_mode)
+    except ValueError as exc:
+        raise SystemExit(f"invalid --firewall-fail-mode {fail_mode!r}") from exc
+    firewall_client = FirewallClient(
+        gateway_url=gateway_url,
+        bearer_token=gateway_token,
+        cache_ttl_seconds=max(0.0, cache_ttl_seconds),
+        fail_mode=fw_fail_mode,
+        local_policy=local_policy,
+    )
+
+    async def _firewall_evaluator_fn(source, target, source_roles, target_roles):
+        return await firewall_client.decision(
+            source_agent=source,
+            target_agent=target,
+            source_roles=source_roles,
+            target_roles=target_roles,
+        )
+
+    set_firewall_evaluator(_firewall_evaluator_fn, target_id=target_id)
+    return firewall_client
+
+
+def _prepare_server_command(
+    server_cmd: list[str],
+    sandbox_config: SandboxConfig | None,
+    log_file,  # noqa: ANN001
+) -> tuple[list[str], dict[str, object]]:
+    """Apply sandbox wrapping, launch-hygiene checks and the posture audit record."""
+    sandbox_evidence: dict[str, object] = {"enabled": False}
+    if sandbox_config and sandbox_config.enabled:
+        server_cmd, sandbox_evidence = build_sandboxed_command(server_cmd, sandbox_config)
+        logger.info(
+            "MCP server isolation enabled using %s (%s)",
+            sandbox_evidence.get("runtime"),
+            sandbox_evidence.get("mode"),
+        )
+    elif sandbox_config:
+        sandbox_evidence = sandbox_config.evidence()
+
+    if warning := sandbox_posture_warning(sandbox_evidence):
+        # Single emission via the logger: the default handler already writes
+        # to stderr, and the `mcp_execution_posture` audit event carries the
+        # same detail in machine-readable form.
+        logger.warning(warning)
+
+    # Launch-hygiene checks on the effective server command before spawning.
+    # These catch typos and shell-interpolation configs; they are NOT the
+    # isolation boundary — that is the container sandbox wired above.
+    require_recognized_launcher(_command_name_for_validation(server_cmd[0], sandbox_evidence))
+    if len(server_cmd) > 1:
+        validate_arguments(list(server_cmd[1:]))
+
+    if log_file:
+        write_audit_record(
+            log_file,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "type": "mcp_execution_posture",
+                "execution_posture": _execution_posture(sandbox_evidence),
+            },
+        )
+    return server_cmd, sandbox_evidence
+
+
+def _start_sandbox_timeout(
+    process: asyncio.subprocess.Process,
+    sandbox_config: SandboxConfig | None,
+    sandbox_evidence: dict[str, object],
+    log_file,  # noqa: ANN001
+) -> asyncio.Task | None:
+    """Terminate the sandboxed server once its configured timeout elapses."""
+    if not (sandbox_config and sandbox_config.enabled and sandbox_config.timeout_seconds):
+        return None
+    timeout_seconds = sandbox_config.timeout_seconds
+
+    async def _sandbox_timeout_watchdog() -> None:
+        await asyncio.sleep(timeout_seconds or 0)
+        if process.returncode is None:
+            logger.error("MCP sandbox timeout reached after %s seconds; terminating server", timeout_seconds)
+            if log_file:
+                write_audit_record(
+                    log_file,
+                    {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "type": "mcp_sandbox_timeout",
+                        "timeout_seconds": timeout_seconds,
+                        "execution_posture": {
+                            "mode": "container_isolated",
+                            "sandbox_evidence": sandbox_evidence,
+                        },
+                    },
+                )
+            process.terminate()
+
+    return asyncio.create_task(_sandbox_timeout_watchdog())
+
+
+def _record_relay_errors(results: list, metrics: ProxyMetrics, log_file) -> None:  # noqa: ANN001
+    """Count and audit unexpected relay-task failures (pipe teardown is expected)."""
+    for result in results:
+        if isinstance(result, Exception) and not isinstance(result, (BrokenPipeError, ConnectionResetError, asyncio.CancelledError)):
+            metrics.relay_errors += 1
+            logger.warning("Relay task exited with unexpected error: %s", sanitize_text(result))
+            if log_file:
+                err_entry = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "type": "relay_error",
+                    "error": str(result),
+                    "error_type": type(result).__name__,
+                }
+                write_audit_record(log_file, err_entry)
+
+
 async def _proxy_sse_server(
     url: str,
     policy_path: Optional[str] = None,
@@ -946,79 +1197,59 @@ async def _proxy_sse_server(
                 agent_id, identity_block_reason = check_identity(msg, policy)
 
                 if identity_block_reason:
-                    if log_file:
-                        log_tool_call(
-                            log_file,
-                            tool_name,
-                            arguments,
-                            "blocked",
-                            identity_block_reason,
-                            payload_sha256=p_hash,
-                            message_id=msg_id,
-                            agent_id=agent_id,
-                            tenant_id=control_plane_tenant_id,
-                        )
-                    error_resp = make_error_response(msg_id, -32600, identity_block_reason)
-                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                    sys.stdout.buffer.flush()
+                    _reject_tool_call(
+                        log_file,
+                        tool_name,
+                        arguments,
+                        identity_block_reason,
+                        payload_sha256=p_hash,
+                        message_id=msg_id,
+                        agent_id=agent_id,
+                        tenant_id=control_plane_tenant_id,
+                    )
                     continue
 
                 if replay_detector.check(msg):
                     reason = "Replayed payload detected"
-                    if log_file:
-                        log_tool_call(
+                    _reject_tool_call(
+                        log_file,
+                        tool_name,
+                        arguments,
+                        reason,
+                        payload_sha256=p_hash,
+                        message_id=msg_id,
+                        agent_id=agent_id,
+                        tenant_id=control_plane_tenant_id,
+                    )
+                    continue
+
+                undeclared_reason = undeclared_tool_block_reason(block_undeclared and is_tool_call, declared_tools, tool_name)
+                if undeclared_reason:
+                    _reject_tool_call(
+                        log_file,
+                        tool_name,
+                        arguments,
+                        undeclared_reason,
+                        payload_sha256=p_hash,
+                        message_id=msg_id,
+                        agent_id=agent_id,
+                        tenant_id=control_plane_tenant_id,
+                    )
+                    continue
+
+                if policy:
+                    allowed, reason = check_policy(policy, tool_name, arguments)
+                    if not allowed:
+                        _reject_tool_call(
                             log_file,
                             tool_name,
                             arguments,
-                            "blocked",
                             reason,
                             payload_sha256=p_hash,
                             message_id=msg_id,
                             agent_id=agent_id,
                             tenant_id=control_plane_tenant_id,
                         )
-                    error_resp = make_error_response(msg_id, -32600, reason)
-                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                    sys.stdout.buffer.flush()
-                    continue
-
-                undeclared_reason = undeclared_tool_block_reason(block_undeclared and is_tool_call, declared_tools, tool_name)
-                if undeclared_reason:
-                    if log_file:
-                        log_tool_call(
-                            log_file,
-                            tool_name,
-                            arguments,
-                            "blocked",
-                            undeclared_reason,
-                            payload_sha256=p_hash,
-                            message_id=msg_id,
-                            agent_id=agent_id,
-                            tenant_id=control_plane_tenant_id,
-                        )
-                    error_resp = make_error_response(msg_id, -32600, undeclared_reason)
-                    sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                    sys.stdout.buffer.flush()
-                    continue
-
-                if policy:
-                    allowed, reason = check_policy(policy, tool_name, arguments)
-                    if not allowed:
-                        if log_file:
-                            log_tool_call(
-                                log_file,
-                                tool_name,
-                                arguments,
-                                "blocked",
-                                reason,
-                                payload_sha256=p_hash,
-                                message_id=msg_id,
-                                agent_id=agent_id,
-                                tenant_id=control_plane_tenant_id,
-                            )
-                        error_resp = make_error_response(msg_id, -32600, reason)
-                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                        sys.stdout.buffer.flush()
                         continue
 
                 # Inter-agent firewall (#982 PR 3) — same hook as the stdio path.
@@ -1067,21 +1298,16 @@ async def _proxy_sse_server(
                     if scan_config.mode == "enforce" and any(sr.blocked for sr in s_results):
                         first = next(sr for sr in s_results if sr.blocked)
                         reason = f"Blocked by inline scanner: {first.scanner}/{first.rule_id}"
-                        if log_file:
-                            log_tool_call(
-                                log_file,
-                                tool_name,
-                                arguments,
-                                "blocked",
-                                reason,
-                                payload_sha256=p_hash,
-                                message_id=msg_id,
-                                agent_id=agent_id,
-                                tenant_id=control_plane_tenant_id,
-                            )
-                        error_resp = make_error_response(msg_id, -32600, reason)
-                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                        sys.stdout.buffer.flush()
+                        _reject_tool_call(
+                            log_file,
+                            tool_name,
+                            arguments,
+                            reason,
+                            payload_sha256=p_hash,
+                            message_id=msg_id,
+                            agent_id=agent_id,
+                            tenant_id=control_plane_tenant_id,
+                        )
                         continue
 
                 if log_file:
@@ -1249,385 +1475,109 @@ async def run_proxy(
 
     Returns the server process exit code.
     """
-    # Load policy if provided — use validate_json_file for path validation,
-    # 10 MB size cap (DoS prevention), and safe JSON parsing.
-    policy: dict = {}
-    if policy_path:
-        try:
-            from agent_bom.security import SecurityError, validate_json_file
-
-            policy = validate_json_file(Path(policy_path))
-        except (json.JSONDecodeError, OSError, SecurityError) as exc:
-            logger.error("Failed to load policy from %s: %s", policy_path, sanitize_text(exc))
-            raise SystemExit(1) from exc
-
-    # Open audit log with restricted permissions (0o600)
-    # Reject symlinks to prevent log injection attacks (attacker creates
-    # symlink to overwrite another file via the proxy's audit writes).
-    # RotatingAuditLog handles automatic rotation at 100 MB.
-    log_file = None
-    if log_path:
-        log_file = RotatingAuditLog(log_path)
-
-    # Metrics
-    metrics = ProxyMetrics()
-    from agent_bom.cli._runtime_status import proxy_metrics_status_callback
-
-    status_strip_active, status_update = proxy_metrics_status_callback(surface="proxy")
-    if status_strip_active:
-        metrics.set_update_callback(status_update)
-        status_update(metrics)
-
-    # Prometheus metrics server
+    policy: dict = _load_proxy_policy(policy_path)
+    log_file = RotatingAuditLog(log_path) if log_path else None  # 0o600, symlink-refusing, rotates at 100 MB
+    metrics, status_strip_active = _proxy_session.start_metrics(sys.modules[__name__])
     metrics_server = ProxyMetricsServer(metrics, port=metrics_port, token=metrics_token)
     await metrics_server.start()
-
-    # Runtime detectors
-    from agent_bom.runtime.detectors import (
-        ArgumentAnalyzer,
-        CredentialLeakDetector,
-        RateLimitTracker,
-        ResponseInspector,
-        SequenceAnalyzer,
-        ToolDriftDetector,
-        VectorDBInjectionDetector,
+    detectors = _proxy_session.build_detectors(
+        sys.modules[__name__],
+        policy,
+        detect_credentials=detect_credentials,
+        detect_visual_leaks=detect_visual_leaks,
+        rate_limit_threshold=rate_limit_threshold,
     )
+    options = _proxy_session.RelayOptions(
+        block_undeclared=block_undeclared,
+        log_only=log_only,
+        rate_limit_threshold=rate_limit_threshold,
+        alert_webhook=alert_webhook,
+        response_signing_key=response_signing_key,
+        policy_refresh_seconds=policy_refresh_seconds,
+    )
+    session = _compose_session(policy, log_file, metrics, detectors, options, control_plane_url, control_plane_token, audit_push_interval)
+    await session.connect_control_plane()
+    firewall_client = _build_firewall_client(
+        firewall_target_id,
+        firewall_gateway_url,
+        firewall_gateway_token,
+        firewall_local_policy_path,
+        firewall_cache_ttl_seconds,
+        firewall_fail_mode,
+    )
+    teardown = _SessionTeardown(status_strip_active, metrics_server, firewall_client)
+    return await _supervise_session(session, server_cmd, sandbox_config, teardown)
 
-    drift_detector = ToolDriftDetector()
-    arg_analyzer = ArgumentAnalyzer()
-    cred_detector = CredentialLeakDetector() if detect_credentials else None
-    visual_detector = None
-    if detect_visual_leaks:
-        from agent_bom.runtime.visual_leak_detector import VisualLeakDetector, require_visual_leak_runtime
 
-        require_visual_leak_runtime()
-        visual_detector = VisualLeakDetector()
-    local_policy_rate_limit = resolve_rate_limit_threshold(policy) if policy else None
-    effective_rate_limit_threshold = rate_limit_threshold or local_policy_rate_limit or 0
-    rate_tracker = RateLimitTracker(threshold=max(effective_rate_limit_threshold, 0))
-    seq_analyzer = SequenceAnalyzer()
-    response_inspector = ResponseInspector()
-    vector_detector = VectorDBInjectionDetector()
-    replay_detector = ReplayDetector()
+def _compose_session(
+    policy: dict,
+    log_file: RotatingAuditLog | None,
+    metrics: ProxyMetrics,
+    detectors: _proxy_session.RuntimeDetectors,
+    options: _proxy_session.RelayOptions,
+    control_plane_url: str | None,
+    control_plane_token: str | None,
+    audit_push_interval: int,
+) -> _proxy_session.ProxySession:
     scan_config = load_scan_config(policy) if policy else ScanConfig()
-    runtime_alerts: list[dict] = []
-    control_plane_source_id = _generate_proxy_source_id()
-    control_plane_session_id = str(uuid.uuid4())
-    control_plane_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
-    control_plane_policies: list["GatewayPolicy"] = []
-    control_plane_etag: str | None = None
-    control_plane_policy_cache_path = _gateway_policy_cache_path()
-    control_plane_policy_cache_max_age_seconds = max(
-        60,
-        int(os.environ.get("AGENT_BOM_PROXY_POLICY_CACHE_MAX_AGE_SECONDS", "3600")),
+    source_id = _generate_proxy_source_id()
+    session_id = str(uuid.uuid4())
+    tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
+    cache_path = _gateway_policy_cache_path()
+    cache_max_age_seconds = max(60, int(os.environ.get("AGENT_BOM_PROXY_POLICY_CACHE_MAX_AGE_SECONDS", "3600")))
+    audit = _build_audit_delivery(control_plane_url, tenant_id, source_id, audit_push_interval)
+    control = _proxy_session.ControlPlane(
+        url=control_plane_url,
+        token=control_plane_token,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        session_id=session_id,
+        cache_path=cache_path,
+        cache_max_age_seconds=cache_max_age_seconds,
     )
-    audit_buffer: list[dict] = []
-    audit_buffer_bytes = 0
-    audit_lock = asyncio.Lock()
-    max_audit_buffer_bytes = max(64 * 1024, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_BUFFER_MAX_BYTES", "1048576")))
-    max_audit_spillover_bytes = max(
-        max_audit_buffer_bytes,
-        int(os.environ.get("AGENT_BOM_PROXY_AUDIT_SPILLOVER_MAX_BYTES", str(max_audit_buffer_bytes * 8))),
+    return _proxy_session.ProxySession(
+        host=sys.modules[__name__],
+        policy=policy,
+        log_file=log_file,
+        metrics=metrics,
+        detectors=detectors,
+        scan_config=scan_config,
+        options=options,
+        control=control,
+        audit=audit,
     )
-    stable_audit_paths = _proxy_audit_delivery_paths(
-        control_plane_url or "local",
-        control_plane_tenant_id,
-        control_plane_source_id,
-    )
-    audit_spill_path = Path(
-        os.environ.get(
-            "AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH",
-            str(stable_audit_paths.spill_path),
-        )
-    )
-    audit_dlq_path = Path(
-        os.environ.get(
-            "AGENT_BOM_PROXY_AUDIT_DLQ_PATH",
-            str(stable_audit_paths.dlq_path),
-        )
-    )
-    audit_delivery = AuditDeliveryController(
-        base_interval_seconds=max(audit_push_interval, 5),
-        max_backoff_seconds=max(
-            max(audit_push_interval, 5),
-            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_PUSH_BACKOFF_MAX_SECONDS", "300")),
-        ),
-        breaker_failure_threshold=max(
-            1,
-            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_BREAKER_THRESHOLD", "3")),
-        ),
-        breaker_cooldown_seconds=max(
-            max(audit_push_interval, 5),
-            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "60")),
-        ),
-    )
-    audit_spillover = AuditSpilloverStore(
-        spill_path=audit_spill_path,
-        dlq_path=audit_dlq_path,
-        max_spillover_bytes=max_audit_spillover_bytes,
-    )
-    audit_delivery_state = AuditDeliveryState(controller=audit_delivery, store=audit_spillover)
 
-    def _event_size_bytes(payload: dict) -> int:
-        return len(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
 
-    def _sync_audit_metrics() -> None:
-        health = audit_delivery_state.health(buffer_bytes=audit_buffer_bytes)
-        metrics.set_audit_buffer_bytes(int(health["buffer_bytes"]))
-        metrics.set_audit_spillover_bytes(int(health["spillover_bytes"]))
-        metrics.set_audit_dlq_bytes(int(health["dlq_bytes"]))
-        metrics.set_audit_push_backoff_seconds(int(health["backoff_seconds"]))
-        metrics.set_audit_circuit_open(bool(health["circuit_open"]))
+@dataclass
+class _SessionTeardown:
+    status_strip_active: bool
+    metrics_server: ProxyMetricsServer
+    firewall_client: Any
+    tasks: tuple[asyncio.Task | None, ...] = ()
 
-    async def _queue_control_plane_alert(alert_payload: dict) -> None:
-        nonlocal audit_buffer_bytes
-        event_size = _event_size_bytes(alert_payload)
-        async with audit_lock:
-            if audit_buffer_bytes + event_size <= max_audit_buffer_bytes:
-                audit_buffer.append(alert_payload)
-                audit_buffer_bytes += event_size
-            else:
-                destination = audit_spillover.append_events([alert_payload])
-                if destination == "dlq":
-                    logger.error(
-                        "Proxy audit spillover exceeded %s bytes; diverting alert backlog to DLQ %s",
-                        max_audit_spillover_bytes,
-                        audit_dlq_path,
-                    )
-                elif destination == "dropped":
-                    logger.error(
-                        "Proxy audit spillover and DLQ are full; dropping one sanitized audit event",
-                    )
-                else:
-                    logger.warning(
-                        "Proxy audit buffer exceeded %s bytes; spilling alert backlog to %s",
-                        max_audit_buffer_bytes,
-                        audit_spill_path,
-                    )
-            _sync_audit_metrics()
 
-    async def _refresh_control_plane_policies(initial: bool = False) -> None:
-        nonlocal control_plane_policies, control_plane_etag
-        if not control_plane_url:
-            return
-        try:
-            policies, next_etag = await _fetch_enabled_gateway_policies(
-                control_plane_url,
-                control_plane_token,
-                control_plane_etag,
-            )
-        except Exception as exc:  # noqa: BLE001
-            metrics.record_policy_fetch_failure()
-            if initial:
-                cached_policies, cached_etag = _load_cached_gateway_policies(
-                    control_plane_policy_cache_path,
-                    control_plane_policy_cache_max_age_seconds,
-                )
-                if cached_policies is not None:
-                    control_plane_policies = cached_policies
-                    control_plane_etag = cached_etag
-                    logger.warning(
-                        "Gateway policy fetch failed from %s; using cached bundle from %s: %s",
-                        control_plane_url,
-                        control_plane_policy_cache_path,
-                        sanitize_text(exc),
-                    )
-                else:
-                    logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, sanitize_text(exc))
-                    raise SystemExit(1) from exc
-            else:
-                logger.warning("Gateway policy refresh failed: %s", sanitize_text(exc))
-                return
-        if policies is not None:
-            control_plane_policies = policies
-            _persist_gateway_policies_cache(control_plane_policy_cache_path, policies, next_etag)
-        if next_etag:
-            control_plane_etag = next_etag
-        if rate_limit_threshold <= 0:
-            control_plane_limit = _resolve_control_plane_rate_limit_threshold(control_plane_policies)
-            if control_plane_limit and control_plane_limit > 0:
-                rate_tracker._threshold = control_plane_limit
-            else:
-                rate_tracker._threshold = local_policy_rate_limit or 0
+@dataclass
+class _ShutdownRequest:
+    """SIGTERM cancels the owning task once so the relay unwinds through teardown."""
 
-    async def _flush_audit_buffer(summary: dict | None = None) -> bool:
-        nonlocal audit_buffer_bytes
-        if not control_plane_url:
-            return True
-        async with audit_lock:
-            alerts = list(audit_buffer)
-            spillover_claim = audit_spillover.claim_spillover()
-            audit_buffer.clear()
-            audit_buffer_bytes = 0
-            _sync_audit_metrics()
-        spillover_alerts = spillover_claim.events if spillover_claim else []
-        combined_alerts = spillover_alerts + alerts
-        if not combined_alerts and summary is None:
-            return True
-        try:
-            await _push_proxy_audit_batch(
-                control_plane_url,
-                control_plane_token,
-                control_plane_source_id,
-                control_plane_session_id,
-                combined_alerts,
-                summary,
-            )
-        except Exception as exc:  # noqa: BLE001
-            metrics.record_audit_push_failure()
-            logger.warning("Proxy audit push failed: %s", sanitize_text(exc))
-            async with audit_lock:
-                if spillover_claim is not None:
-                    destination = audit_spillover.restore_claim(spillover_claim, alerts)
-                else:
-                    destination = audit_spillover.append_events(alerts)
-                if destination == "dlq":
-                    logger.error("Proxy audit retry backlog exceeded the spill limit; persisted the batch to the bounded DLQ")
-                elif destination == "dropped":
-                    logger.error("Proxy audit spillover and DLQ are full; a failed delivery batch was dropped")
-                _sync_audit_metrics()
-            return False
-        else:
-            if spillover_claim is not None:
-                audit_spillover.acknowledge_claim(spillover_claim)
-            _sync_audit_metrics()
-            return True
+    owner_task: asyncio.Task | None
+    signal_number: int = 0
 
-    if control_plane_url:
-        await _refresh_control_plane_policies(initial=True)
+    def request(self) -> None:
+        if not self.signal_number and self.owner_task is not None:
+            self.signal_number = signal.SIGTERM
+            self.owner_task.cancel()
 
-        def _control_plane_gateway_evaluator(agent_id, tool_name, arguments):
-            from agent_bom.gateway import evaluate_gateway_policy_bundle
 
-            return evaluate_gateway_policy_bundle(control_plane_policies, agent_id, tool_name, arguments)
-
-        set_gateway_evaluator(_control_plane_gateway_evaluator)
-
-    # ── Inter-agent firewall (#982 PR 3) ───────────────────────────────────
-    # Activated when --firewall-target-id is set together with at least one of
-    # --firewall-gateway-url or --firewall-policy. The FirewallClient is
-    # cache-first; the gateway is consulted on cache miss / TTL expiry.
-    firewall_client = None
-    if firewall_target_id and (firewall_gateway_url or firewall_local_policy_path):
-        from agent_bom.firewall import FirewallPolicyError, load_firewall_policy_file
-        from agent_bom.firewall_client import FirewallClient, FirewallFailMode
-
-        firewall_local_policy = None
-        if firewall_local_policy_path:
-            try:
-                firewall_local_policy = load_firewall_policy_file(Path(firewall_local_policy_path))
-            except FirewallPolicyError as exc:
-                logger.error("invalid firewall policy at %s: %s", firewall_local_policy_path, sanitize_text(exc))
-                raise SystemExit(1) from exc
-        try:
-            fw_fail_mode = FirewallFailMode(firewall_fail_mode)
-        except ValueError as exc:
-            raise SystemExit(f"invalid --firewall-fail-mode {firewall_fail_mode!r}") from exc
-        firewall_client = FirewallClient(
-            gateway_url=firewall_gateway_url,
-            bearer_token=firewall_gateway_token,
-            cache_ttl_seconds=max(0.0, firewall_cache_ttl_seconds),
-            fail_mode=fw_fail_mode,
-            local_policy=firewall_local_policy,
-        )
-
-        async def _firewall_evaluator_fn(source, target, source_roles, target_roles):
-            return await firewall_client.decision(
-                source_agent=source,
-                target_agent=target,
-                source_roles=source_roles,
-                target_roles=target_roles,
-            )
-
-        set_firewall_evaluator(_firewall_evaluator_fn, target_id=firewall_target_id)
-
-    async def _policy_refresh_loop() -> None:
-        if not control_plane_url:
-            return
-        while True:
-            await asyncio.sleep(max(policy_refresh_seconds, 5))
-            await _refresh_control_plane_policies()
-
-    async def _audit_push_loop() -> None:
-        if not control_plane_url:
-            return
-        while True:
-            await asyncio.sleep(audit_delivery.current_backoff_seconds())
-            if audit_delivery.is_circuit_open():
-                _sync_audit_metrics()
-                continue
-            if await _flush_audit_buffer():
-                audit_delivery.record_success()
-            else:
-                audit_delivery.record_failure()
-            _sync_audit_metrics()
-
-    async def _handle_alerts(alerts, log_f=None):
-        """Log alerts and optionally record them + dispatch webhook."""
-        for alert in alerts:
-            alert_dict = alert.to_dict()
-            runtime_alerts.append(alert_dict)
-            logger.warning("Runtime alert: %s", sanitize_text(alert_dict.get("message", "runtime alert")))
-            if log_f:
-                write_audit_record(log_f, alert_dict)
-                log_f.flush()
-            if alert_webhook:
-                _fire_webhook(alert_webhook, alert_dict)
-            if control_plane_url:
-                enriched = dict(alert_dict)
-                enriched.setdefault("source_id", control_plane_source_id)
-                enriched.setdefault("session_id", control_plane_session_id)
-                await _queue_control_plane_alert(enriched)
-
-    # Track declared tools from tools/list responses
-    declared_tools: set[str] = set()
-    tools_list_request_ids: set[int | str] = set()
-    # Track in-flight tool calls for latency measurement (with TTL cleanup)
-    pending_calls: dict[int | str, tuple[str, float, dict[str, str]]] = {}  # id → (tool_name, start_time, trace_meta)
-    pending_call_ttl = 300.0  # 5 minutes — evict orphaned entries
-
-    sandbox_evidence: dict[str, object] = {"enabled": False}
-    if sandbox_config and sandbox_config.enabled:
-        server_cmd, sandbox_evidence = build_sandboxed_command(server_cmd, sandbox_config)
-        logger.info(
-            "MCP server isolation enabled using %s (%s)",
-            sandbox_evidence.get("runtime"),
-            sandbox_evidence.get("mode"),
-        )
-    elif sandbox_config:
-        sandbox_evidence = sandbox_config.evidence()
-
-    if warning := sandbox_posture_warning(sandbox_evidence):
-        # Single emission via the logger (#2197 audit P3). The previous code
-        # printed to both `sys.stderr` and `logger.warning(...)`, which
-        # duplicated the message in the operator's terminal because the
-        # default logging handler ALSO writes to stderr. The structured
-        # `mcp_execution_posture` audit event in the audit log already
-        # carries the same posture detail in machine-readable form.
-        logger.warning(warning)
-
-    # Launch-hygiene checks on the effective server command before spawning.
-    # These catch typos and shell-interpolation configs; they are NOT the
-    # isolation boundary — that is the container sandbox wired above
-    # (agent_bom.proxy_sandbox, --isolate).
-    require_recognized_launcher(_command_name_for_validation(server_cmd[0], sandbox_evidence))
-    if len(server_cmd) > 1:
-        validate_arguments(list(server_cmd[1:]))
-
-    if log_file:
-        write_audit_record(
-            log_file,
-            {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "type": "mcp_execution_posture",
-                "execution_posture": {
-                    "mode": "container_isolated" if sandbox_evidence.get("enabled") else "observation_only",
-                    "sandbox_evidence": sandbox_evidence,
-                },
-            },
-        )
-
-    # Spawn the actual MCP server
+async def _supervise_session(
+    session: _proxy_session.ProxySession,
+    server_cmd: list[str],
+    sandbox_config: SandboxConfig | None,
+    teardown: _SessionTeardown,
+) -> int:
+    """Spawn the server, run both relays until either side closes, then tear down."""
+    log_file = session.log_file
+    server_cmd, sandbox_evidence = _prepare_server_command(server_cmd, sandbox_config, log_file)
     process = await asyncio.create_subprocess_exec(
         *server_cmd,
         stdin=asyncio.subprocess.PIPE,
@@ -1635,554 +1585,32 @@ async def run_proxy(
         stderr=asyncio.subprocess.PIPE,
         limit=_MAX_MESSAGE_BYTES + 1,
     )
-    sandbox_timeout_task = None
-    if sandbox_config and sandbox_config.enabled and sandbox_config.timeout_seconds:
+    session.process = process
+    sandbox_timeout_task = _start_sandbox_timeout(process, sandbox_config, sandbox_evidence, log_file)
+    refresh_task = asyncio.create_task(session.policy_refresh_loop()) if session.control.url else None
+    audit_task = asyncio.create_task(session.audit_push_loop()) if session.control.url else None
+    teardown.tasks = (audit_task, refresh_task, sandbox_timeout_task)
 
-        async def _sandbox_timeout_watchdog() -> None:
-            await asyncio.sleep(sandbox_config.timeout_seconds or 0)
-            if process.returncode is None:
-                logger.error("MCP sandbox timeout reached after %s seconds; terminating server", sandbox_config.timeout_seconds)
-                if log_file:
-                    write_audit_record(
-                        log_file,
-                        {
-                            "ts": datetime.now(timezone.utc).isoformat(),
-                            "type": "mcp_sandbox_timeout",
-                            "timeout_seconds": sandbox_config.timeout_seconds,
-                            "execution_posture": {
-                                "mode": "container_isolated",
-                                "sandbox_evidence": sandbox_evidence,
-                            },
-                        },
-                    )
-                process.terminate()
-
-        sandbox_timeout_task = asyncio.create_task(_sandbox_timeout_watchdog())
-
-    async def relay_client_to_server():
-        """Read from our stdin, forward to server stdin."""
-        reader = await create_async_stdin_reader()
-
-        while True:
-            try:
-                line = await asyncio.wait_for(read_async_stdin_line(reader), timeout=120.0)
-            except asyncio.TimeoutError:
-                logger.debug("Client readline timed out — closing relay")
-                break
-            if not line:
-                break
-
-            if len(line) > _MAX_MESSAGE_BYTES:
-                logger.warning("Oversized message from client (%d bytes) — dropped", len(line))
-                continue
-
-            line_str = line.decode("utf-8", errors="replace")
-            msg = parse_jsonrpc(line_str)
-            request_trace_meta = _extract_jsonrpc_trace_meta(msg) if msg else {}
-
-            if msg:
-                metrics.total_messages_client_to_server += 1
-
-                # Track tools/list requests so we can identify responses
-                if msg.get("method") == "tools/list" and "id" in msg:
-                    tools_list_request_ids.add(msg["id"])
-
-                # Intercept policy-gated JSON-RPC requests.
-                policy_subject = policy_subject_from_message(msg)
-                if policy_subject:
-                    tool_name, arguments = policy_subject
-                    msg_id = msg.get("id")
-
-                    # Payload integrity: hash the full message
-                    p_hash = compute_payload_hash(msg)
-
-                    # Agent identity: extract + resolve from _meta.agent_identity
-                    agent_id, identity_block_reason = check_identity(msg, policy)
-                    if identity_block_reason:
-                        metrics.record_blocked("identity")
-                        if log_file:
-                            log_tool_call(
-                                log_file,
-                                tool_name,
-                                arguments,
-                                "blocked",
-                                identity_block_reason,
-                                payload_sha256=p_hash,
-                                message_id=msg_id,
-                                agent_id=agent_id,
-                                tenant_id=control_plane_tenant_id,
-                            )
-                        error_resp = make_error_response(msg_id, -32600, identity_block_reason)
-                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                        sys.stdout.buffer.flush()
-                        continue
-
-                    # Replay detection
-                    if replay_detector.check(msg):
-                        metrics.replay_rejections += 1
-                        reason = "Replayed payload detected"
-                        if not log_only:
-                            metrics.record_blocked("replay")
-                            if log_file:
-                                log_tool_call(
-                                    log_file,
-                                    tool_name,
-                                    arguments,
-                                    "blocked",
-                                    reason,
-                                    payload_sha256=p_hash,
-                                    message_id=msg_id,
-                                    agent_id=agent_id,
-                                    tenant_id=control_plane_tenant_id,
-                                )
-                            error_resp = make_error_response(msg_id, -32600, reason)
-                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                            sys.stdout.buffer.flush()
-                            continue
-                        # log_only: warn but don't block
-                        logger.warning("Replay detected (advisory): %s", tool_name)
-
-                    # Check if tool is declared. With --block-undeclared, missing
-                    # tools/list evidence is treated as deny rather than advisory.
-                    undeclared_reason = undeclared_tool_block_reason(block_undeclared, declared_tools, tool_name)
-                    if undeclared_reason:
-                        metrics.record_blocked("undeclared")
-                        if log_file:
-                            log_tool_call(
-                                log_file,
-                                tool_name,
-                                arguments,
-                                "blocked",
-                                undeclared_reason,
-                                payload_sha256=p_hash,
-                                message_id=msg_id,
-                                agent_id=agent_id,
-                                tenant_id=control_plane_tenant_id,
-                            )
-                        error_resp = make_error_response(msg_id, -32600, undeclared_reason)
-                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                        sys.stdout.buffer.flush()
-                        continue
-
-                    # Check policy
-                    if policy:
-                        allowed, reason = check_policy(policy, tool_name, arguments)
-                        if not allowed:
-                            metrics.record_blocked("policy")
-                            if log_file:
-                                log_tool_call(
-                                    log_file,
-                                    tool_name,
-                                    arguments,
-                                    "blocked",
-                                    reason,
-                                    payload_sha256=p_hash,
-                                    message_id=msg_id,
-                                    agent_id=agent_id,
-                                    tenant_id=control_plane_tenant_id,
-                                )
-                            error_resp = make_error_response(msg.get("id"), -32600, reason)
-                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                            sys.stdout.buffer.flush()
-                            continue
-
-                    # Gateway policy evaluation
-                    if _gateway_evaluator is not None:
-                        gw_allowed, gw_reason = _gateway_evaluator(agent_id, tool_name, arguments)
-                        if not gw_allowed:
-                            metrics.record_blocked("gateway_policy")
-                            if log_file:
-                                log_tool_call(
-                                    log_file,
-                                    tool_name,
-                                    arguments,
-                                    "blocked",
-                                    gw_reason,
-                                    payload_sha256=p_hash,
-                                    message_id=msg_id,
-                                    agent_id=agent_id,
-                                    tenant_id=control_plane_tenant_id,
-                                )
-                            error_resp = make_error_response(msg.get("id"), -32600, gw_reason)
-                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                            sys.stdout.buffer.flush()
-                            continue
-
-                    # Inter-agent firewall (#982 PR 3) — gateway is authoritative,
-                    # FirewallClient handles cache + fail-mode + local-policy fallback.
-                    fw_target_id = _firewall_target_for_proxy()
-                    if _firewall_evaluator is not None and fw_target_id:
-                        fw_outcome = await _maybe_block_on_firewall(
-                            source_agent=agent_id or "unknown",
-                            target_agent=fw_target_id,
-                            tool_name=tool_name,
-                            arguments=arguments,
-                            log_file=log_file,
-                            payload_sha256=p_hash,
-                            message_id=msg_id,
-                            tenant_id=control_plane_tenant_id,
-                            metrics=metrics,
-                        )
-                        if fw_outcome is not None:
-                            error_resp = make_error_response(msg.get("id"), -32600, fw_outcome)
-                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                            sys.stdout.buffer.flush()
-                            continue
-
-                    # Runtime detectors: argument analysis
-                    arg_alerts = arg_analyzer.check(tool_name, arguments)
-                    await _handle_alerts(arg_alerts, log_file)
-
-                    # Runtime detectors: rate limiting
-                    effective_rule_rate_limit = 0
-                    if _gateway_evaluator is not None and control_plane_policies:
-                        effective_rule_rate_limit = _resolve_control_plane_rate_limit_threshold(control_plane_policies, agent_id) or 0
-                    if effective_rule_rate_limit <= 0 and local_policy_rate_limit:
-                        effective_rule_rate_limit = local_policy_rate_limit
-                    if rate_limit_threshold > 0:
-                        effective_rule_rate_limit = rate_limit_threshold
-                    if rate_tracker and effective_rule_rate_limit > 0:
-                        rate_alerts = rate_tracker.record(
-                            tool_name,
-                            threshold=effective_rule_rate_limit,
-                            source_agent=agent_id or "anonymous",
-                        )
-                        await _handle_alerts(rate_alerts, log_file)
-                        if rate_alerts and not log_only:
-                            rl_reason = rate_alerts[0].message
-                            metrics.record_blocked("rate_limit")
-                            if log_file:
-                                log_tool_call(
-                                    log_file,
-                                    tool_name,
-                                    arguments,
-                                    "blocked",
-                                    rl_reason,
-                                    payload_sha256=p_hash,
-                                    message_id=msg_id,
-                                    agent_id=agent_id,
-                                    tenant_id=control_plane_tenant_id,
-                                )
-                            error_resp = make_error_response(msg_id, -32600, rl_reason)
-                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                            sys.stdout.buffer.flush()
-                            continue
-
-                    # Runtime detectors: sequence analysis
-                    seq_alerts = seq_analyzer.record(tool_name)
-                    await _handle_alerts(seq_alerts, log_file)
-
-                    # Inline content scanning (prompt injection, PII, secrets, payload vuln)
-                    if scan_config.enabled:
-                        from agent_bom.runtime.detectors import Alert, AlertSeverity
-
-                        s_results = scan_tool_call(tool_name, arguments, scan_config)
-                        for sr in s_results:
-                            alert = Alert(
-                                detector=f"scanner:{sr.scanner}",
-                                severity=AlertSeverity.CRITICAL
-                                if sr.severity == "critical"
-                                else (AlertSeverity.HIGH if sr.severity == "high" else AlertSeverity.MEDIUM),
-                                message=f"Inline scan: {sr.scanner}/{sr.rule_id} in tool '{tool_name}'",
-                                details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
-                            )
-                            await _handle_alerts([alert], log_file)
-                        if scan_config.mode == "enforce" and any(sr.blocked for sr in s_results):
-                            first = next(sr for sr in s_results if sr.blocked)
-                            reason = f"Blocked by inline scanner: {first.scanner}/{first.rule_id}"
-                            metrics.record_blocked(f"scanner:{first.scanner}")
-                            if log_file:
-                                log_tool_call(
-                                    log_file,
-                                    tool_name,
-                                    arguments,
-                                    "blocked",
-                                    reason,
-                                    payload_sha256=p_hash,
-                                    message_id=msg_id,
-                                    agent_id=agent_id,
-                                    tenant_id=control_plane_tenant_id,
-                                )
-                            error_resp = make_error_response(msg_id, -32600, reason)
-                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
-                            sys.stdout.buffer.flush()
-                            continue
-
-                    # Record allowed call + start latency timer
-                    metrics.record_call(tool_name)
-                    if "id" in msg:
-                        pending_calls[msg["id"]] = (tool_name, time.monotonic(), request_trace_meta)
-
-                    # Log allowed call with integrity fields
-                    if log_file:
-                        log_tool_call(
-                            log_file,
-                            tool_name,
-                            arguments,
-                            "allowed",
-                            payload_sha256=p_hash,
-                            message_id=msg_id,
-                            agent_id=agent_id,
-                            tenant_id=control_plane_tenant_id,
-                        )
-
-            span_cm = _PROXY_TRACER.start_as_current_span("proxy.relay_client_to_server") if (msg and _PROXY_TRACER) else nullcontext()
-            with span_cm as span:
-                if span is not None and msg is not None:
-                    span.set_attribute("agent_bom.proxy.message_kind", msg.get("method", "unknown"))
-                    if is_tools_call(msg):
-                        tool_name = extract_tool_name(msg) or "unknown"
-                        span.set_attribute("agent_bom.proxy.tool_name", tool_name)
-                        set_langfuse_runtime_attributes(
-                            span,
-                            surface="proxy",
-                            tenant_id=control_plane_tenant_id,
-                            method=str(msg.get("method", "unknown")),
-                            tool_name=tool_name,
-                            decision="allowed",
-                            agent_id=agent_id,
-                            trace_id=str(request_trace_meta.get("trace_id") or ""),
-                            arguments=extract_tool_arguments(msg),
-                        )
-                # Forward to server
-                if process.stdin:
-                    if msg is not None:
-                        forwarded_message = _inject_jsonrpc_trace_meta(
-                            msg,
-                            traceparent=request_trace_meta.get("traceparent"),
-                            tracestate=request_trace_meta.get("tracestate"),
-                            baggage=request_trace_meta.get("baggage"),
-                        )
-                        line = (json.dumps(forwarded_message) + "\n").encode()
-                    process.stdin.write(line)
-                    await process.stdin.drain()
-
-    async def relay_server_to_client():
-        """Read from server stdout, forward to our stdout."""
-        while True:
-            if not process.stdout:
-                break
-            line = await _read_bounded_line(process.stdout)
-            if line is None:
-                logger.warning("Oversized message from server exceeded %d bytes; dropped", _MAX_MESSAGE_BYTES)
-                continue
-            if not line:
-                break
-
-            line_str = line.decode("utf-8", errors="replace")
-            msg = parse_jsonrpc(line_str)
-
-            if msg is None and scan_config.enabled:
-                # A server's debug/malformed stdout is still an outbound data
-                # channel. Scan for audit visibility; enforce mode never relays
-                # non-protocol bytes that could bypass response inspection.
-                _, findings = scan_jsonrpc_response({"result": line_str}, scan_config)
-                await _handle_alerts(_response_scan_alerts(findings, "upstream stdout"), log_file)
-                if scan_config.mode == "enforce":
-                    logger.warning("Dropped non-JSON-RPC upstream stdout")
-                    continue
-
-            if msg:
-                metrics.total_messages_server_to_client += 1
-
-                # Capture tools/list responses to track declared tools
-                if is_tools_list_response(msg):
-                    new_tools = extract_declared_tools(msg)
-                    declared_tools.update(new_tools)
-                    logger.debug("Declared tools updated: %s", declared_tools)
-
-                    # Runtime detector: tool drift
-                    drift_alerts = drift_detector.check(new_tools)
-                    await _handle_alerts(drift_alerts, log_file)
-
-                # Runtime detector: credential leak in responses AND errors
-                # Error fields can contain exception messages that include secrets.
-                if cred_detector and ("result" in msg or "error" in msg):
-                    resp_content = msg.get("result") if "result" in msg else msg.get("error", "")
-                    result_text = json.dumps(resp_content)
-                    resp_id = msg.get("id")
-                    tool_for_resp = ""
-                    if resp_id is not None and resp_id in pending_calls:
-                        tool_for_resp = pending_calls[resp_id][0]
-                    cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
-                    await _handle_alerts(cred_alerts, log_file)
-                    if cred_alerts and not log_only:
-                        from agent_bom.runtime.detectors import CredentialLeakDetector
-
-                        redacted_text = CredentialLeakDetector.redact(result_text)
-                        if "result" in msg:
-                            try:
-                                msg["result"] = json.loads(redacted_text)
-                            except json.JSONDecodeError:
-                                msg["result"] = redacted_text
-                        else:
-                            try:
-                                msg["error"] = json.loads(redacted_text)
-                            except json.JSONDecodeError:
-                                msg["error"] = redacted_text
-
-                # Runtime detector: response content inspection (cloaking, SVG, invisible chars,
-                # prompt injection). For confirmed vector DB / RAG retrieval tools, also run
-                # VectorDBInjectionDetector which upgrades injection alerts to CRITICAL and tags
-                # them cache_poison_*. Non-vector tools only run ResponseInspector to avoid
-                # duplicate injection alerts.
-                if "result" in msg:
-                    ri_text = json.dumps(msg.get("result", ""))
-                    ri_id = msg.get("id")
-                    ri_tool = ""
-                    if ri_id is not None and ri_id in pending_calls:
-                        ri_tool = pending_calls[ri_id][0]
-                    ri_alerts = response_inspector.check(ri_tool or "unknown", ri_text)
-                    await _handle_alerts(ri_alerts, log_file)
-                    # Vector DB / RAG tools get specialized cache-poison detection on top
-                    if vector_detector.is_vector_tool(ri_tool or ""):
-                        vec_alerts = vector_detector.check(ri_tool or "unknown", ri_text)
-                        await _handle_alerts(vec_alerts, log_file)
-
-                # Response signing — compute HMAC on ORIGINAL response before
-                # inline scanning may modify msg (tamper detection must sign
-                # the server's actual response, not a scanner-modified version).
-                if response_signing_key and log_file:
-                    # The proxy persists a sha256 of the canonical response
-                    # alongside an HMAC-of-hash so an offline verifier (the
-                    # `agent-bom audit --verify-hmac --sign-key` flow) can
-                    # recompute the HMAC without needing the original wire
-                    # response body. Any byte-level tamper of the response
-                    # changes the hash and therefore the HMAC.
-                    response_hash = compute_payload_hash(msg)
-                    sig = hmac.new(
-                        response_signing_key.encode("utf-8"),
-                        response_hash.encode("utf-8"),
-                        hashlib.sha256,
-                    ).hexdigest()
-                    sig_entry = {
-                        "ts": datetime.now(timezone.utc).isoformat(),
-                        "type": "response_hmac",
-                        "id": msg.get("id"),
-                        "response_sha256": response_hash,
-                        "hmac_sha256": sig,
-                    }
-                    write_audit_record(
-                        log_file,
-                        sig_entry,
-                    )
-
-                # Visual leak detection — OCR-scan image blocks in the result
-                # and either log (log_only) or paint redactions over the
-                # matched regions, then re-encode the line so the client
-                # never sees the raw pixels. Runs after HMAC so the signature
-                # still pins the server's actual response.
-                if visual_detector is not None and visual_detector.enabled and "result" in msg:
-                    vis_result = msg.get("result")
-                    vis_content = vis_result.get("content") if isinstance(vis_result, dict) else None
-                    if isinstance(vis_content, list) and vis_content:
-                        from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
-
-                        vis_id = msg.get("id")
-                        vis_tool = ""
-                        if vis_id is not None and vis_id in pending_calls:
-                            vis_tool = pending_calls[vis_id][0]
-                        safe_vis_tool = _sanitize_for_log(vis_tool or "unknown")
-                        try:
-                            vis_alerts = await run_visual_leak_check(visual_detector, vis_tool or "unknown", vis_content)
-                        except asyncio.TimeoutError:
-                            logger.warning("Visual leak scan timed out for tool=%s", safe_vis_tool)
-                            vis_alerts = []
-                        if vis_alerts:
-                            await _handle_alerts(vis_alerts, log_file)
-                            if not log_only:
-                                try:
-                                    redacted = await run_visual_leak_redact(visual_detector, vis_content)
-                                except asyncio.TimeoutError:
-                                    logger.warning("Visual leak redaction timed out for tool=%s", safe_vis_tool)
-                                else:
-                                    msg["result"]["content"] = redacted
-                                    line = (json.dumps(msg) + "\n").encode()
-
-                # Inline response scanning (PII, secrets, payload vuln)
-                if scan_config.enabled:
-                    resp_id_scan = msg.get("id")
-                    tool_for_scan = ""
-                    if resp_id_scan is not None and resp_id_scan in pending_calls:
-                        tool_for_scan = pending_calls[resp_id_scan][0]
-                    msg, resp_results = scan_jsonrpc_response(msg, scan_config)
-                    await _handle_alerts(_response_scan_alerts(resp_results, tool_for_scan or "unknown"), log_file)
-
-                # Complete latency tracking for tool call responses
-                resp_id = msg.get("id")
-                fallback_trace_meta: dict[str, str] | None = None
-                if resp_id is not None and resp_id in pending_calls:
-                    _tool_name, start, fallback_trace_meta = pending_calls.pop(resp_id)
-                    metrics.record_latency((time.monotonic() - start) * 1000)
-                msg = _stitch_jsonrpc_trace_meta(msg, fallback_trace_meta)
-                line = (json.dumps(msg) + "\n").encode()
-
-                # Evict orphaned pending_calls older than TTL
-                now_mono = time.monotonic()
-                stale = [k for k, (_tool, t, _trace) in pending_calls.items() if now_mono - t > pending_call_ttl]
-                for k in stale:
-                    pending_calls.pop(k, None)
-
-            # Forward to client
-            sys.stdout.buffer.write(line)
-            sys.stdout.buffer.flush()
-
-    async def forward_stderr():
-        """Forward server stderr to our stderr."""
-        while True:
-            if not process.stderr:
-                break
-            line = await process.stderr.readline()
-            if not line:
-                break
-            sys.stderr.buffer.write(line)
-            sys.stderr.buffer.flush()
-
-    refresh_task = asyncio.create_task(_policy_refresh_loop()) if control_plane_url else None
-    audit_task = asyncio.create_task(_audit_push_loop()) if control_plane_url else None
-
-    termination_signal = 0
     loop = asyncio.get_running_loop()
-    owner_task = asyncio.current_task()
+    shutdown = _ShutdownRequest(asyncio.current_task())
     previous_sigterm = signal.getsignal(signal.SIGTERM)
     signal_installed = False
-
-    def request_shutdown() -> None:
-        nonlocal termination_signal
-        if not termination_signal and owner_task is not None:
-            termination_signal = signal.SIGTERM
-            owner_task.cancel()
-
     try:
-        loop.add_signal_handler(signal.SIGTERM, request_shutdown)
+        loop.add_signal_handler(signal.SIGTERM, shutdown.request)
         signal_installed = True
     except (NotImplementedError, RuntimeError, ValueError):
         pass  # Non-POSIX platforms and embedded non-main-thread event loops.
 
     try:
         results = await asyncio.gather(
-            relay_client_to_server(),
-            relay_server_to_client(),
-            forward_stderr(),
+            _proxy_relay.relay_client_to_server(session),
+            _proxy_relay.relay_server_to_client(session),
+            _proxy_relay.forward_stderr(session),
             return_exceptions=True,
         )
-        for result in results:
-            if isinstance(result, Exception) and not isinstance(result, (BrokenPipeError, ConnectionResetError, asyncio.CancelledError)):
-                metrics.relay_errors += 1
-                logger.warning("Relay task exited with unexpected error: %s", sanitize_text(result))
-                if log_file:
-                    err_entry = {
-                        "ts": datetime.now(timezone.utc).isoformat(),
-                        "type": "relay_error",
-                        "error": str(result),
-                        "error_type": type(result).__name__,
-                    }
-                    write_audit_record(
-                        log_file,
-                        err_entry,
-                    )
+        _record_relay_errors(list(results), session.metrics, log_file)
     except asyncio.CancelledError:
-        if not termination_signal:
+        if not shutdown.signal_number:
             raise
     finally:
         # Reap first: slow audit delivery must not orphan an upstream on TERM.
@@ -2192,31 +1620,29 @@ async def run_proxy(
             if signal_installed:
                 loop.remove_signal_handler(signal.SIGTERM)
                 signal.signal(signal.SIGTERM, previous_sigterm)
-        if status_strip_active:
-            sys.stderr.write("\n")
-            sys.stderr.flush()
-        # Write metrics summary + runtime alerts to audit log before closing
-        summary = metrics.summary()
-        summary.update(summarize_runtime_alerts(runtime_alerts))
-        summary["execution_posture"] = {
-            "mode": "container_isolated" if sandbox_evidence.get("enabled") else "observation_only",
-            "sandbox_evidence": sandbox_evidence,
-        }
-        if audit_task:
-            audit_task.cancel()
-        if refresh_task:
-            refresh_task.cancel()
-        if sandbox_timeout_task:
-            sandbox_timeout_task.cancel()
-        if control_plane_url:
-            await _flush_audit_buffer(summary=summary)
-        if log_file:
-            write_audit_record(log_file, summary)
-            log_file.close()
-        await metrics_server.stop()
-        set_gateway_evaluator(None)
-        clear_firewall_evaluator()
-        if firewall_client is not None:
-            await firewall_client.aclose()
+        await _close_session(session, sandbox_evidence, teardown)
 
-    return 128 + termination_signal if termination_signal else process.returncode or 0
+    return 128 + shutdown.signal_number if shutdown.signal_number else process.returncode or 0
+
+
+async def _close_session(session: _proxy_session.ProxySession, sandbox_evidence: Mapping[str, object], teardown: _SessionTeardown) -> None:
+    """Write the run summary, drain audit delivery, and release every runtime hook."""
+    if teardown.status_strip_active:
+        sys.stderr.write("\n")
+        sys.stderr.flush()
+    summary = session.metrics.summary()
+    summary.update(summarize_runtime_alerts(session.runtime_alerts))
+    summary["execution_posture"] = _execution_posture(sandbox_evidence)
+    for task in teardown.tasks:
+        if task:
+            task.cancel()
+    if session.control.url:
+        await session.flush_audit_buffer(summary=summary)
+    if session.log_file:
+        write_audit_record(session.log_file, summary)
+        session.log_file.close()
+    await teardown.metrics_server.stop()
+    set_gateway_evaluator(None)
+    clear_firewall_evaluator()
+    if teardown.firewall_client is not None:
+        await teardown.firewall_client.aclose()

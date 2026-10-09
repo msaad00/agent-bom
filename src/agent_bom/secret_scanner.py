@@ -176,7 +176,7 @@ _PII_CONTEXT_RE = re.compile(
 # 10MB still holds one file in memory at a time, which is the cost of keeping
 # this simple — raise it further only alongside a line-streaming read.
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-_MAX_FILES = 1000
+_MAX_FILES = 10_000  # Scan one file at a time; report partial coverage if this budget is exhausted.
 
 # Additional patterns specific to file scanning (not in runtime patterns)
 _FILE_SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [

@@ -19,6 +19,7 @@ import threading
 import uuid
 from collections.abc import Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -39,6 +40,27 @@ from agent_bom.api.graph_persistence import (
     _record_graph_persistence as _record_graph_persistence,
 )
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
+from agent_bom.api.scan_analysis_stages import (
+    analyse_reachability_stage,
+    attach_repo_evidence,
+    attach_repo_metadata,
+    build_report_stage,
+    extract_packages_stage,
+    scan_vulnerabilities_stage,
+)
+from agent_bom.api.scan_context import ScanContext, ScanStage
+from agent_bom.api.scan_discovery_stages import (
+    discover_agents,
+    flag_blocklisted_servers,
+    prepare_request,
+    refresh_vulnerability_db,
+)
+from agent_bom.api.scan_report_support import _apply_tenant_workflow_metadata as _apply_tenant_workflow_metadata
+from agent_bom.api.scan_report_support import _ast_result_for_symbol_reach as _ast_result_for_symbol_reach
+from agent_bom.api.scan_report_support import _project_paths_for_symbol_reach as _project_paths_for_symbol_reach
+from agent_bom.api.scan_report_support import _promote_repo_dependency_inventory as _promote_repo_dependency_inventory
+from agent_bom.api.scan_report_support import _rendered_result_document as _rendered_result_document
+from agent_bom.api.scan_report_support import _surface_graph_derived_findings as _surface_graph_derived_findings
 from agent_bom.api.stores import (
     _compact_terminal_job_in_place,
     _get_analytics_store,
@@ -51,9 +73,6 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
 from agent_bom.core.tenancy import require_explicit_tenant_id
-from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
-from agent_bom.parsers.sbom_context import imported_cloud_inventory
-from agent_bom.scanners.supplied_findings import build_supplied_findings
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 _logger = logging.getLogger(__name__)
@@ -390,29 +409,6 @@ def pipeline_dag_events_jsonl(job: ScanJob) -> str:
     return "\n".join(json.dumps(record, sort_keys=True) for record in records)
 
 
-def _surface_graph_derived_findings(
-    report: Any,
-    *,
-    scan_id: str,
-    tenant_id: str,
-) -> None:
-    """Attach graph-derived findings (NHI-governance, toxic-combination) to the report.
-
-    The unified graph built here — with its node dict, edge list, and adjacency /
-    reverse-adjacency indexes — plus the interim JSON are locals of the shared
-    helper, so they are released when it returns. Scoping them keeps the surfacing
-    graph from outliving the call and overlapping the persist phase's own graph
-    rebuild, which would otherwise leave the full-scan path holding two full current
-    graphs at the persist peak (#4055/#4075).
-
-    Delegates to the single build+attach helper the CLI and MCP scan surfaces also
-    use, so all three emit the same graph-derived finding categories.
-    """
-    from agent_bom.graph.scan_findings import surface_graph_derived_findings
-
-    surface_graph_derived_findings(report, scan_id=scan_id, tenant_id=tenant_id)
-
-
 def _persist_graph_snapshot(
     job: ScanJob,
     report_json: dict[str, Any],
@@ -604,135 +600,8 @@ def _optional_str(value: object) -> str:
 # ─── Scan Pipeline Runner ───────────────────────────────────────────────────
 
 
-def _project_paths_for_symbol_reach(req: Any, *, extra_paths: Iterable[str] | None = None) -> list[str]:
-    """Collect scan-target paths that may contain Python source for symbol reach."""
-    paths: list[str] = []
-    seen: set[str] = set()
-    for raw in (
-        list(getattr(req, "agent_projects", []) or [])
-        + list(getattr(req, "filesystem_paths", []) or [])
-        + list(getattr(req, "jupyter_dirs", []) or [])
-        + ([req.gha_path] if getattr(req, "gha_path", None) else [])
-        + list(extra_paths or [])
-    ):
-        if raw and raw not in seen:
-            seen.add(raw)
-            paths.append(raw)
-    return paths
-
-
-def _ast_result_for_symbol_reach(paths: Iterable[str]) -> Any | None:
-    """Best-effort AST symbol-reach for API pipeline parity with CLI --project."""
-    from pathlib import Path
-
-    from agent_bom.ast_analyzer import analyze_project, project_has_analyzable_sources
-    from agent_bom.ast_models import ASTAnalysisResult
-
-    merged: ASTAnalysisResult | None = None
-    for raw in paths:
-        project = Path(raw)
-        try:
-            if not project_has_analyzable_sources(project):
-                continue
-        except OSError as path_exc:
-            _logger.debug("AST symbol-reach path skipped for %s: %s", raw, sanitize_text(sanitize_error(path_exc)))
-            continue
-        try:
-            result = analyze_project(project)
-        except Exception as ast_exc:  # noqa: BLE001
-            _logger.debug("AST symbol-reach analysis skipped for %s: %s", raw, sanitize_text(sanitize_error(ast_exc)))
-            continue
-        if merged is None:
-            merged = result
-        else:
-            if result.application_entrypoints:
-                merged.application_entrypoints.extend(result.application_entrypoints)
-            if result.dependency_symbol_reach:
-                merged.dependency_symbol_reach.extend(result.dependency_symbol_reach)
-            merged.files_analyzed += result.files_analyzed
-            merged.analysis_coverage.eligible_files += result.analysis_coverage.eligible_files
-            merged.analysis_coverage.analyzed_files += result.analysis_coverage.analyzed_files
-            if result.analysis_coverage.status == "partial":
-                merged.analysis_coverage.status = "partial"
-                merged.analysis_coverage.partial_files.extend(result.analysis_coverage.partial_files)
-            merged.warnings.extend(result.warnings)
-    return merged
-
-
-def _promote_repo_dependency_inventory(report: Any, ai_inventory: dict[str, Any]) -> None:
-    """Lift nested API dependency inventory to top-level for graph overlay parity with CLI."""
-    if getattr(report, "project_inventory_data", None):
-        return
-    nested = ai_inventory.get("dependency_inventory")
-    if isinstance(nested, dict) and nested:
-        report.project_inventory_data = nested
-
-
-def _apply_tenant_workflow_metadata(report: Any, *, tenant_id: str) -> None:
-    """Join tenant-scoped owner and current lifecycle metadata before export.
-
-    Scan documents are rendered from ``AIBOMReport`` objects, while control-plane
-    assignments live in the tenant exception store.  Joining once here keeps
-    JSON and every requested document format aligned on a rescan without making
-    the formatters aware of authentication or persistence.
-    """
-    from agent_bom.api.routes.enterprise import build_tenant_triage_owner_index, triage_owner_for
-
-    try:
-        owner_index = build_tenant_triage_owner_index(tenant_id)
-    except Exception as exc:  # noqa: BLE001 - workflow metadata must not fail the scan artifact
-        _logger.warning("Finding owner enrichment unavailable: %s", sanitize_text(sanitize_error(exc, generic=True)))
-        owner_index = {}
-    observed_at = getattr(report, "generated_at", None)
-    observed_text = observed_at.isoformat() if isinstance(observed_at, datetime) else str(observed_at or "")
-
-    for finding in getattr(report, "findings", ()) or ():
-        if getattr(finding, "first_seen", None) is None and observed_text:
-            finding.first_seen = observed_text
-        if getattr(finding, "lifecycle_status", None) is None:
-            finding.lifecycle_status = "suppressed" if bool(getattr(finding, "suppressed", False)) else "open"
-        if getattr(finding, "owner", None) or not owner_index:
-            continue
-        evidence = getattr(finding, "evidence", None)
-        evidence = evidence if isinstance(evidence, dict) else {}
-        affected_servers = getattr(finding, "affected_servers", None) or []
-        server_name = str(affected_servers[0]) if affected_servers else ""
-        package = str(evidence.get("package_name") or getattr(getattr(finding, "asset", None), "name", "") or "")
-        owner = triage_owner_for(
-            owner_index,
-            vuln_id=str(getattr(finding, "cve_id", None) or getattr(finding, "id", "")),
-            package=package,
-            server_name=server_name,
-        )
-        if owner:
-            finding.owner = owner
-
-
-def _rendered_result_document(job: ScanJob, report: Any, blast_radii: list | None = None) -> tuple[dict[str, Any] | str | None, str | None]:
-    """Render the finished report in the format the request asked for.
-
-    Returns ``(document, note)``. ``document`` is ``None`` for ``format=json``
-    (``job.result`` already carries the AI-BOM JSON) and on a render failure,
-    in which case ``note`` explains why — never a silent empty document that
-    would read as an audited result.
-    """
-    requested = str(getattr(job.request, "format", "json") or "json")
-    if requested == "json":
-        return None, None
-    try:
-        from agent_bom.output.scan_document import render_scan_document
-
-        return render_scan_document(report, requested, blast_radii=blast_radii), None
-    except Exception as exc:  # noqa: BLE001 — a formatting failure never fails the scan
-        _logger.warning("Rendering scan result as %s failed: %s", requested, sanitize_text(sanitize_error(exc, generic=True)))
-        return None, f"Requested {requested} output could not be rendered; result carries AI-BOM JSON only"
-
-
-def _run_scan_sync(job: ScanJob) -> None:
-    """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
-    from contextlib import ExitStack
-
-    lock = _job_lock(job.job_id)
+def _begin_job(job: ScanJob, lock: threading.Lock) -> bool:
+    """Mark the job running, or persist a cancellation that arrived before start."""
     with lock:
         if job.status is JobStatus.CANCELLED:
             job.completed_at = _now()
@@ -740,1039 +609,453 @@ def _run_scan_sync(job: ScanJob) -> None:
         else:
             job.status = JobStatus.RUNNING
             job.started_at = _now()
-    if job.status is JobStatus.CANCELLED:
-        try:
-            _get_store().put(job)
-        except Exception:  # noqa: BLE001
-            pass
-        _jobs_put(job.job_id, job, compact_terminal=True)
-        return
-    pipeline = ScanPipeline(job, lock)
-    repo_stack = ExitStack()
-
+    if job.status is not JobStatus.CANCELLED:
+        return True
     try:
-        # Cloud-connection scans share the same durable ScanJob queue and worker
-        # lifecycle as regular scans, but their evidence collector starts from a
-        # tenant-scoped encrypted connection rather than local path targets.
-        # Dispatch before the generic discovery pipeline so the API request never
-        # performs provider I/O inline and worker reclaims keep the same job id.
-        from agent_bom.api.routes.cloud_connections import (
-            execute_queued_connection_scan,
-            is_queued_connection_scan,
-        )
-
-        if is_queued_connection_scan(job):
-            from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
-
-            with lock:
-                job.progress.append("Starting queued cloud connection scan")
-            tenant_token = set_current_tenant(job.tenant_id or "default")
-            try:
-                execute_queued_connection_scan(job)
-            finally:
-                reset_current_tenant(tenant_token)
-            return
-
-        from agent_bom.discovery import discover_all
-        from agent_bom.output import to_json
-        from agent_bom.parsers import extract_packages
-        from agent_bom.scanners import reset_scan_warnings, scan_agents_sync
-        from agent_bom.security import validate_path
-
-        # Scan jobs reuse executor threads, and scanner warnings are thread-local.
-        # Establish a clean request boundary even when this job intentionally
-        # skips scan_agents_sync(), whose normal scan path performs its own reset.
-        reset_scan_warnings()
-
-        req = job.request
-        if req.discover_host:
-            from agent_bom.api.scan_boundary import require_host_discovery_for_tenant
-
-            require_host_discovery_for_tenant(job.tenant_id)
-        agents: list[Any] = []
-        warnings_all: list[str] = []
-        external_findings: list[Any] = []
-        repo_scan_issues: list[ScanIssue] = []
-        coverage_warning_messages: set[str] = set()
-        side_effects_enabled = not (req.dry_run or req.no_scan)
-        effective_agent_projects = list(req.agent_projects)
-        effective_tf_dirs = list(req.tf_dirs)
-        effective_gha_path = req.gha_path
-        extra_symbol_paths: list[str] = []
-
-        repo_url = (req.repo_url or "").strip()
-        skill_audit_data: dict | None = None
-        iac_findings_data: dict | None = None
-        repo_ai_inventory_data: dict | None = None
-        repo_sast_data: dict | None = None
-        repo_trust_data: dict | None = None
-        repo_codeowners: dict[str, str] = {}
-        if repo_url:
-            from agent_bom.repo_scan import RepoScanError, clone_repository, fetch_repo_trust
-
-            pipeline.start_step("discovery", f"Cloning repository: {repo_url}")
-            try:
-                cloned_dir = repo_stack.enter_context(clone_repository(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN"))
-            except RepoScanError as exc:
-                raise RuntimeError(sanitize_error(exc, generic=True)) from exc
-            cloned_path = str(cloned_dir)
-            effective_agent_projects = [cloned_path]
-            effective_tf_dirs = [cloned_path]
-            effective_gha_path = effective_gha_path or cloned_path
-            extra_symbol_paths.append(cloned_path)
-            pipeline.update_step("discovery", f"Repository cloned for static scan: {repo_url}")
-            repo_trust_data = fetch_repo_trust(repo_url, token_env="AGENT_BOM_REPO_SCAN_TOKEN")
-            from agent_bom.api.repo_tree_scan import scan_cloned_repo_tree
-
-            repo_tree_result = scan_cloned_repo_tree(
-                cloned_path,
-                agents=agents,
-                warnings=warnings_all,
-                update_progress=lambda message: pipeline.update_step("discovery", message),
-                offline=req.offline,
-            )
-            skill_audit_data = repo_tree_result.skill_audit_data
-            iac_findings_data = repo_tree_result.iac_findings_data
-            repo_ai_inventory_data = repo_tree_result.ai_inventory_data
-            repo_sast_data = repo_tree_result.sast_data
-            repo_codeowners = repo_tree_result.codeowners
-            repo_scan_issues = repo_tree_result.scan_issues
-        path_fields = (
-            ([req.inventory] if req.inventory else [])
-            + req.tf_dirs
-            + ([req.gha_path] if req.gha_path else [])
-            + req.agent_projects
-            + req.jupyter_dirs
-            + ([req.sbom] if req.sbom else [])
-            + req.filesystem_paths
-        )
-        if not repo_url:
-            for p in path_fields:
-                validate_path(p, must_exist=True)
-
-        if req.dry_run:
-            pipeline.start_step("discovery", "Dry run: validating scan request")
-            pipeline.complete_step("discovery", "Dry run request validated")
-            pipeline.skip_step("extraction", "Dry run")
-            pipeline.skip_step("scanning", "Dry run")
-            pipeline.skip_step("enrichment", "Dry run")
-            pipeline.skip_step("analysis", "Dry run")
-            pipeline.skip_step("output", "Dry run completed without side effects")
-            with lock:
-                job.result = {
-                    "dry_run": True,
-                    "scan_skipped": True,
-                    "offline": req.offline,
-                    "no_scan": req.no_scan,
-                    "side_effects": "skipped",
-                    "would_scan": {
-                        "repo_url": bool(repo_url),
-                        "inventory": bool(req.inventory),
-                        "images": list(req.images),
-                        "kubernetes": req.k8s,
-                        "terraform_dirs": list(req.tf_dirs),
-                        "github_actions": bool(req.gha_path),
-                        "agent_projects": list(req.agent_projects),
-                        "jupyter_dirs": list(req.jupyter_dirs),
-                        "sbom": bool(req.sbom),
-                        "connectors": list(req.connectors),
-                        "filesystem_paths": list(req.filesystem_paths),
-                        "dynamic_discovery": req.dynamic_discovery,
-                    },
-                    "warnings": [],
-                    "scan_run": {"outcome": "complete", "issues": [], "warning_count": 0},
-                }
-                job.status = JobStatus.DONE
-                job.completed_at = _now()
-            return
-
-        if req.auto_update_db and not req.offline and not req.no_scan:
-            try:
-                from agent_bom.db.schema import db_freshness_days
-                from agent_bom.db.sync import sync_db
-
-                source_list = [s.strip() for s in req.db_sources.split(",") if s.strip()] if req.db_sources else None
-                freshness = db_freshness_days()
-                if freshness is None or freshness >= 1 or source_list:
-                    sync_db(sources=source_list)
-            except Exception as db_exc:  # noqa: BLE001
-                _logger.warning("API auto DB refresh failed: %s", sanitize_text(sanitize_error(db_exc)))
-                warnings_all.append(f"Auto DB refresh skipped: {sanitize_error(db_exc)}")
-
-        # ── Discovery phase ──
-        if repo_url:
-            pipeline.start_step("discovery", "Discovering MCP configs in cloned repository...")
-            local_agents = discover_all(
-                project_dir=cloned_path,
-                dynamic=req.dynamic_discovery,
-                dynamic_max_depth=req.dynamic_max_depth,
-            )
-        else:
-            # Scope discovery to the request's own project paths — the server
-            # host is not the tenant's estate, so ambient host-wide discovery
-            # (discover_all with no project_dir) would fold the server's own AI
-            # clients into a tenant's scan. Host discovery is opt-in via
-            # `discover_host` for self-hosted single-tenant deployments.
-            local_agents = []
-            for proj in effective_agent_projects:
-                pipeline.update_step("discovery", f"Discovering MCP configs in {proj}...")
-                local_agents.extend(
-                    discover_all(
-                        project_dir=str(proj),
-                        dynamic=req.dynamic_discovery,
-                        dynamic_max_depth=req.dynamic_max_depth,
-                    )
-                )
-            if req.discover_host:
-                pipeline.update_step("discovery", "Discovering host ambient MCP configurations...")
-                local_agents.extend(
-                    discover_all(
-                        dynamic=req.dynamic_discovery,
-                        dynamic_max_depth=req.dynamic_max_depth,
-                    )
-                )
-            if not effective_agent_projects and not req.discover_host:
-                pipeline.update_step("discovery", "No local project scope; skipping ambient host discovery")
-        agents.extend(local_agents)
-
-        if req.inventory:
-            pipeline.update_step("discovery", f"Loading inventory: {req.inventory}")
-            from agent_bom.inventory import build_agents_from_inventory, load_inventory
-
-            try:
-                inv_data = load_inventory(req.inventory)
-            except (OSError, RuntimeError, ValueError) as parse_err:
-                raise RuntimeError(f"Failed to load inventory file: {parse_err}") from parse_err
-            agents.extend(build_agents_from_inventory(inv_data, req.inventory))
-
-        for image_ref in req.images:
-            pipeline.update_step("discovery", f"Scanning image: {image_ref}")
-            from agent_bom.image import scan_image
-            from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
-
-            try:
-                img_packages, _strategy = scan_image(image_ref)
-                agents.append(
-                    Agent(
-                        name=f"image:{image_ref}",
-                        agent_type=AgentType.CUSTOM,
-                        config_path=f"docker://{image_ref}",
-                        source="image",
-                        mcp_servers=[
-                            MCPServer(
-                                name=image_ref,
-                                command="docker",
-                                args=["run", image_ref],
-                                transport=TransportType.STDIO,
-                                packages=img_packages,
-                                surface=ServerSurface.CONTAINER_IMAGE,
-                            )
-                        ],
-                    )
-                )
-            except Exception as img_exc:  # noqa: BLE001
-                message = f"Image scan error for {image_ref}: {sanitize_error(img_exc)}"
-                warnings_all.append(message)
-                coverage_warning_messages.add(message)
-
-        if req.k8s:
-            pipeline.update_step("discovery", "Scanning Kubernetes pods...")
-            from agent_bom.k8s import discover_images
-
-            k8s_records = discover_images(namespace=req.k8s_namespace or "default")
-            for img, _pod, _ctr in k8s_records:
-                from agent_bom.image import scan_image
-                from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
-
-                try:
-                    img_packages, _strategy = scan_image(img)
-                    agents.append(
-                        Agent(
-                            name=f"image:{img}",
-                            agent_type=AgentType.CUSTOM,
-                            config_path=f"docker://{img}",
-                            source="kubernetes-image",
-                            mcp_servers=[
-                                MCPServer(
-                                    name=img,
-                                    command="docker",
-                                    args=["run", img],
-                                    transport=TransportType.STDIO,
-                                    packages=img_packages,
-                                    surface=ServerSurface.CONTAINER_IMAGE,
-                                )
-                            ],
-                        )
-                    )
-                except Exception as img_exc:  # noqa: BLE001
-                    message = f"Kubernetes image scan error for {img}: {sanitize_error(img_exc)}"
-                    warnings_all.append(message)
-                    coverage_warning_messages.add(message)
-
-        for tf_dir in effective_tf_dirs:
-            pipeline.update_step("discovery", f"Scanning Terraform: {tf_dir}")
-            from agent_bom.terraform import scan_terraform_dir
-
-            tf_agents, tf_warnings = scan_terraform_dir(tf_dir)
-            agents.extend(tf_agents)
-            warnings_all.extend(tf_warnings)
-
-        if effective_gha_path:
-            pipeline.update_step("discovery", f"Scanning GitHub Actions: {effective_gha_path}")
-            from agent_bom.github_actions import attach_github_action_packages, discover_github_action_packages, scan_github_actions
-
-            gha_agents, gha_warnings = scan_github_actions(effective_gha_path)
-            agents.extend(gha_agents)
-            attach_github_action_packages(agents, effective_gha_path, discover_github_action_packages(effective_gha_path))
-            warnings_all.extend(gha_warnings)
-
-        for ap in effective_agent_projects:
-            pipeline.update_step("discovery", f"Scanning Python agent project: {ap}")
-            from agent_bom.python_agents import scan_python_agents
-
-            py_agents, py_warnings = scan_python_agents(ap)
-            agents.extend(py_agents)
-            warnings_all.extend(py_warnings)
-
-        for jdir in req.jupyter_dirs:
-            pipeline.update_step("discovery", f"Scanning Jupyter notebooks: {jdir}")
-            from agent_bom.jupyter import scan_jupyter_notebooks
-
-            j_agents, j_warnings = scan_jupyter_notebooks(jdir)
-            agents.extend(j_agents)
-            warnings_all.extend(j_warnings)
-
-        if req.sbom:
-            pipeline.update_step("discovery", f"Ingesting SBOM: {req.sbom}")
-            from agent_bom.parsers.sbom_context import load_sbom_agents
-
-            sbom_agents, _fmt = load_sbom_agents(req.sbom)
-            agents.extend(sbom_agents)
-
-        if req.external_scan:
-            pipeline.update_step("discovery", f"Ingesting external scan: {req.external_scan}")
-            import json as _json
-            from pathlib import Path as _Path
-
-            from agent_bom.parsers.external_import import build_external_agent
-            from agent_bom.parsers.external_scanners import ingest_external_report
-
-            try:
-                with open(req.external_scan) as _ext_f:
-                    _ext_data = _json.load(_ext_f)
-                _ext_import = ingest_external_report(_ext_data)
-                agents.append(build_external_agent(_ext_import, str(_Path(req.external_scan))))
-                external_findings.extend(_ext_import.findings)
-                warnings_all.extend(_ext_import.notices)
-            except (OSError, ValueError, _json.JSONDecodeError) as ext_exc:
-                message = f"External scan error: {sanitize_error(ext_exc)}"
-                warnings_all.append(message)
-                coverage_warning_messages.add(message)
-
-        for connector_name in req.connectors:
-            pipeline.update_step("discovery", f"Discovering from connector: {connector_name}")
-            try:
-                from agent_bom.connectors import discover_from_connector
-
-                con_agents, con_warnings = discover_from_connector(connector_name)
-                agents.extend(con_agents)
-                warnings_all.extend(con_warnings)
-                coverage_warning_messages.update(str(warning) for warning in con_warnings)
-            except Exception as con_exc:  # noqa: BLE001
-                message = f"{connector_name} connector error: {sanitize_error(con_exc, generic=True)}"
-                warnings_all.append(message)
-                coverage_warning_messages.add(message)
-
-        for fs_path in req.filesystem_paths:
-            pipeline.update_step("discovery", f"Scanning filesystem: {fs_path}")
-            try:
-                from agent_bom.filesystem import scan_filesystem
-                from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface
-
-                fs_pkgs, fs_strat = scan_filesystem(fs_path)
-                if fs_pkgs:
-                    from pathlib import Path as _Path
-
-                    fs_server = MCPServer(name=f"fs:{fs_path}", surface=ServerSurface.FILESYSTEM)
-                    fs_server.packages = fs_pkgs
-                    fs_agent = Agent(
-                        name=f"filesystem:{_Path(fs_path).name}",
-                        agent_type=AgentType.CUSTOM,
-                        config_path=fs_path,
-                        source="filesystem",
-                        mcp_servers=[fs_server],
-                    )
-                    agents.append(fs_agent)
-            except Exception as fs_exc:  # noqa: BLE001
-                message = f"Filesystem scan error: {sanitize_error(fs_exc, generic=True)}"
-                warnings_all.append(message)
-                coverage_warning_messages.add(message)
-
-        if not repo_url:
-            from pathlib import Path as _SecretRootPath
-
-            secret_roots = [path for path in (*effective_agent_projects, *req.filesystem_paths) if path and _SecretRootPath(path).is_dir()]
-            if secret_roots:
-                pipeline.update_step("discovery", "Scanning for secrets, credentials, and PII")
-                from agent_bom.api.repo_tree_scan import scan_path_secrets, secret_scan_warning
-
-                secrets_block, secret_issues = scan_path_secrets(secret_roots, offline=req.offline)
-                repo_ai_inventory_data = repo_ai_inventory_data or {}
-                repo_ai_inventory_data["secrets"] = secrets_block
-                repo_scan_issues = [*repo_scan_issues, *secret_issues]
-                if secrets_block["total"] > 0:
-                    warnings_all.append(secret_scan_warning(secrets_block, location="project"))
-
-        from agent_bom.discovery.identity import consolidate_project_agents
-
-        agents = consolidate_project_agents(agents)
-        pipeline.complete_step("discovery", f"Found {len(agents)} agent(s)", {"agents": len(agents)})
-
-        # ── Scope filtering (pre-extraction) ──
-        if req.scope_agents or req.scope_servers or req.exclude_agents or req.exclude_servers:
-            import fnmatch
-
-            pre_filter = len(agents)
-            if req.scope_agents:
-                agents = [a for a in agents if any(fnmatch.fnmatch(a.name, pat) for pat in req.scope_agents)]
-            if req.exclude_agents:
-                agents = [a for a in agents if not any(fnmatch.fnmatch(a.name, pat) for pat in req.exclude_agents)]
-            if req.scope_servers or req.exclude_servers:
-                for agent in agents:
-                    if req.scope_servers:
-                        agent.mcp_servers = [s for s in agent.mcp_servers if any(fnmatch.fnmatch(s.name, pat) for pat in req.scope_servers)]
-                    if req.exclude_servers:
-                        agent.mcp_servers = [
-                            s for s in agent.mcp_servers if not any(fnmatch.fnmatch(s.name, pat) for pat in req.exclude_servers)
-                        ]
-            filtered_count = pre_filter - len(agents)
-            if filtered_count:
-                pipeline.update_step("discovery", f"Scope filter removed {filtered_count} agent(s)")
-
-        def _build_scan_run(*, has_usable_evidence: bool) -> ScanRun:
-            issues = [
-                ScanIssue(
-                    code="collector_failed" if warning in coverage_warning_messages else "scan_warning",
-                    stage="scanning" if "CVE scanning" in warning else "discovery",
-                    source="api",
-                    message=warning,
-                    severity="error" if warning in coverage_warning_messages else "warning",
-                    affects_coverage=warning in coverage_warning_messages,
-                )
-                for warning in warnings_all
-            ]
-            outcome = ScanOutcome.FAILED if coverage_warning_messages and not has_usable_evidence else ScanOutcome.COMPLETE
-            return ScanRun(outcome=outcome, issues=[*repo_scan_issues, *issues])
-
-        _ast_only_result = None
-        if not agents:
-            _ast_only_result = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req, extra_paths=extra_symbol_paths))
-            if (
-                skill_audit_data is not None
-                or iac_findings_data is not None
-                or repo_ai_inventory_data is not None
-                or repo_sast_data is not None
-                or _ast_only_result is not None
-            ):
-                pipeline.skip_step("extraction", "No agents to extract")
-                pipeline.skip_step("scanning", "No packages to scan")
-                pipeline.skip_step("enrichment", "Skipped")
-                pipeline.skip_step("analysis", "Skipped")
-                _raise_if_cancelled(job, lock)
-                pipeline.start_step("output", "Building report from repo static findings...")
-                from agent_bom.models import AIBOMReport
-                from agent_bom.output import to_json
-
-                report = AIBOMReport(
-                    agents=[],
-                    blast_radii=[],
-                    findings=[],
-                    scan_id=job.job_id,
-                    scan_run=_build_scan_run(has_usable_evidence=True),
-                )
-                if skill_audit_data is not None:
-                    report.skill_audit_data = skill_audit_data
-                    from agent_bom.parsers.skill_audit import replace_skill_findings
-
-                    replace_skill_findings(report, skill_audit_data)
-                if iac_findings_data is not None:
-                    report.iac_findings_data = iac_findings_data
-                if repo_ai_inventory_data is not None:
-                    report.ai_inventory_data = repo_ai_inventory_data
-                    _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
-                if _ast_only_result is not None:
-                    report.ai_inventory_data = report.ai_inventory_data or {}
-                    report.ai_inventory_data["ast_analysis"] = _ast_only_result.to_dict()
-                if repo_sast_data is not None:
-                    report.sast_data = repo_sast_data
-                if repo_trust_data is not None:
-                    report.repo_trust_data = repo_trust_data
-                report.codeowners = dict(repo_codeowners)
-                from agent_bom.scanners import consume_coverage_warnings
-
-                report.coverage_warnings = consume_coverage_warnings()
-                _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
-                report_json = to_json(report)
-                report_json["status"] = "findings_only"
-                result_document, document_note = _rendered_result_document(job, report)
-                with lock:
-                    job.result = report_json
-                    job.result_document = result_document
-                    if document_note:
-                        job.progress.append(document_note)
-                    job.status = JobStatus.DONE
-                    job.completed_at = _now()
-                if side_effects_enabled:
-                    try:
-                        pipeline.update_step("output", "Persisting unified graph...")
-                        _persist_graph_snapshot(job, report_json, lock=lock)
-                    except Exception as graph_exc:  # noqa: BLE001
-                        _logger.warning("Unified graph persistence failed: %s", sanitize_text(sanitize_error(graph_exc, generic=True)))
-                        _record_graph_persistence(job, status="failed", lock=lock)
-                        with lock:
-                            job.progress.append("Graph persistence failed; scan evidence remains available")
-                    from agent_bom.api.trend_comparison import scan_scope_id
-                    from agent_bom.api.trend_recording import record_scan_trend_best_effort
-
-                    if record_scan_trend_best_effort(
-                        report_json,
-                        tenant_id=job.tenant_id or "default",
-                        scan_id=job.job_id,
-                        scope_id=scan_scope_id(job.request),
-                        completed_at=job.completed_at,
-                    ):
-                        with lock:
-                            job.progress.append("Posture trend recorded")
-                pipeline.complete_step(
-                    "output",
-                    "Report ready",
-                    {"findings": len(report_json.get("findings") or report_json.get("blast_radius") or [])},
-                )
-                return
-
-            pipeline.skip_step("extraction", "No agents to extract")
-            pipeline.skip_step("scanning", "No packages to scan")
-            pipeline.skip_step("enrichment", "Skipped")
-            pipeline.skip_step("analysis", "Skipped")
-            pipeline.skip_step("output", "No results")
-            scan_run = _build_scan_run(has_usable_evidence=False)
-            job.result = {
-                "status": "no_agents_found",
-                "agents": [],
-                "vulnerabilities": [],
-                "blast_radius": [],
-                "blast_radii": [],
-                "warnings": scan_run.warnings,
-                "scan_run": scan_run.to_dict(),
-            }
-            # An empty estate still honours the requested format: the rendered
-            # document carries the same "nothing discovered" outcome rather than
-            # leaving the caller with a null they cannot distinguish from a bug.
-            from agent_bom.models import AIBOMReport as _EmptyReport
-
-            empty_document, empty_note = _rendered_result_document(
-                job,
-                _EmptyReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id, scan_run=scan_run),
-            )
-            job.result_document = empty_document
-            if empty_note:
-                job.progress.append(empty_note)
-            job.status = JobStatus.DONE
-            job.completed_at = _now()
-            return
-
-        from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
-
-        blocked_servers = flag_blocklisted_mcp_servers(agents)
-        if blocked_servers:
-            pipeline.update_step("discovery", f"MCP blocklist flagged {blocked_servers} server(s)")
-
-        # ── Extraction phase ──
-        _raise_if_cancelled(job, lock)
-        pipeline.start_step("extraction", f"Extracting packages from {len(agents)} agent(s)...")
-        total_pkgs = 0
-        for agent in agents:
-            for server in agent.mcp_servers:
-                if server.security_blocked:
-                    continue  # Don't extract packages from security-blocked servers
-                if not server.packages and server.command != "external-scan":
-                    server.packages = extract_packages(
-                        server,
-                        resolve_transitive=True,  # Match CLI behavior — resolve full dep tree
-                        max_depth=3,
-                    )
-        if req.external_scan:
-            from agent_bom.parsers.external_import import fold_external_packages
-
-            warnings_all.extend(fold_external_packages(agents, findings=external_findings))
-        total_pkgs = sum(len(server.packages) for agent in agents for server in agent.mcp_servers if not server.security_blocked)
-        all_packages = [package for agent in agents for server in agent.mcp_servers for package in server.packages]
-        pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
-
-        # ── Scanning phase ──
-        _raise_if_cancelled(job, lock)
-        blast_radii = build_supplied_findings(agents) if req.no_scan else []
-        effective_enrich = bool(req.enrich and not req.offline)
-        if req.no_scan:
-            pipeline.skip_step("scanning", "Vulnerability scanning skipped by request")
-            warnings_all.append("Vulnerability scanning skipped by request")
-        else:
-            if req.offline:
-                scan_message = f"Scanning {total_pkgs} packages against the local vulnerability DB only..."
-            else:
-                scan_message = (
-                    f"Scanning {total_pkgs} packages via OSV.dev with vulnerability enrichment..."
-                    if effective_enrich
-                    else f"Scanning {total_pkgs} packages via OSV.dev..."
-                )
-            pipeline.start_step("scanning", scan_message)
-            try:
-                blast_radii = scan_agents_sync(agents, enable_enrichment=effective_enrich, offline=req.offline, compliance_enabled=True)
-            except Exception as scan_exc:  # noqa: BLE001
-                safe_scan_error = sanitize_error(scan_exc)
-                if req.offline:
-                    _logger.warning("Offline scan phase error: %s", safe_scan_error)
-                    pipeline.update_step("scanning", f"Offline scan error: {safe_scan_error}")
-                    message = f"Offline CVE scanning failed: {safe_scan_error}"
-                    warnings_all.append(message)
-                    coverage_warning_messages.add(message)
-                    blast_radii = []
-                else:
-                    # Log but don't crash — return what we have with warning
-                    _logger.warning("Scan phase error (retrying without enrichment): %s", safe_scan_error)
-                    pipeline.update_step("scanning", f"Scan error: {safe_scan_error} — retrying without enrichment")
-                    try:
-                        blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False, compliance_enabled=True)
-                    except Exception as retry_exc:  # noqa: BLE001
-                        _logger.error("Scan retry also failed: %s", sanitize_text(sanitize_error(retry_exc)))
-                        from agent_bom.scanners.executor import ScannerDriverError, apply_registered_failure_mode
-
-                        # Registry marks sca-vulnerability FAIL_CLOSED; honor that after retries.
-                        try:
-                            soft = apply_registered_failure_mode("sca-vulnerability", retry_exc)
-                        except ScannerDriverError:
-                            raise
-                        blast_radii = []
-                        message = f"CVE scanning failed: {sanitize_error(retry_exc)}"
-                        warnings_all.append(message)
-                        coverage_warning_messages.add(message)
-                        if soft is not None and soft.telemetry.warnings:
-                            warnings_all.extend(soft.telemetry.warnings)
-            total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
-            pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
-
-        if req.no_scan:
-            total_vulns = len(blast_radii)
-        elif req.offline and req.enrich:
-            warnings_all.append("Enrichment skipped because offline mode was requested")
-
-        if req.no_scan:
-            pipeline.skip_step("enrichment", "Vulnerability scanning skipped")
-        elif effective_enrich:
-            # Enrichment is executed inside scan_agents_sync, alongside the
-            # vulnerability query. Emit a terminal event only so SSE timing does
-            # not claim a separate enrichment phase ran after scanning.
-            pipeline.complete_step(
-                "enrichment",
-                "Enrichment completed during scanning",
-                {"executed_in_step": "scanning"},
-            )
-        else:
-            pipeline.skip_step("enrichment", "Enrichment not requested")
-
-        # ── Severity filtering (post-scan) ──
-        if req.min_severity:
-            _sev_order = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-            _min = _sev_order.get(req.min_severity.lower(), 0)
-            blast_radii = [br for br in blast_radii if _sev_order.get(br.vulnerability.severity.value.lower(), 0) >= _min]
-
-        _ast_for_reach = None
-        try:
-            from agent_bom.api.stores import _get_exception_store
-            from agent_bom.suppression_rules import apply_tenant_suppression_rules
-
-            suppression = (
-                {"suppressed": 0}
-                if req.no_scan
-                else apply_tenant_suppression_rules(blast_radii, _get_exception_store(), tenant_id=job.tenant_id or "default")
-            )
-            if suppression["suppressed"]:
-                warnings_all.append(f"{suppression['suppressed']} finding(s) suppressed by tenant feedback/rules")
-        except Exception as exc:  # noqa: BLE001
-            _logger.warning("Tenant suppression-rule evaluation skipped: %s", sanitize_text(sanitize_error(exc)))
-            warnings_all.append("Tenant suppression-rule evaluation skipped")
-
-        # ── Analysis phase ──
-        _raise_if_cancelled(job, lock)
-        pipeline.start_step("analysis", "Computing blast radius...")
-        # Surface graph-walk reachability onto each blast-radius row before
-        # the report is built so the JSON payload (and risk_score) reflects
-        # whether each vulnerable package is actually reachable from an
-        # agent entrypoint, not just present in the dependency closure.
-        try:
-            from agent_bom.graph.blast_reach import (
-                apply_dependency_reachability_to_blast_radii,
-                apply_symbol_reachability_to_blast_radii,
-            )
-
-            stamped = apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
-            if stamped:
-                with lock:
-                    job.progress.append(f"Reachability: stamped {stamped} blast-radius row(s) with graph-walk evidence")
-            _ast_for_reach = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(req, extra_paths=extra_symbol_paths))
-            if _ast_for_reach is not None:
-                sym_stamped = apply_symbol_reachability_to_blast_radii(
-                    blast_radii,
-                    _ast_for_reach,
-                    packages=all_packages,
-                )
-                if sym_stamped:
-                    with lock:
-                        job.progress.append(f"Symbol reachability: stamped {sym_stamped} blast-radius row(s) with function-level evidence")
-        except Exception as reach_exc:  # noqa: BLE001
-            _logger.warning("Reachability surfacing skipped: %s", sanitize_text(sanitize_error(reach_exc)))
-        pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})
-
-        # ── Output phase ──
-        _raise_if_cancelled(job, lock)
-        pipeline.start_step("output", "Building report...")
-        from agent_bom.a2a_auth_posture import evaluate_a2a_auth_posture
-        from agent_bom.finding import blast_radius_to_finding
-        from agent_bom.mcp_auth_posture import evaluate_mcp_auth_posture
-        from agent_bom.mcp_blocklist import blocklist_findings_for_agents
-        from agent_bom.models import AIBOMReport
-
-        report_findings = [blast_radius_to_finding(br) for br in blast_radii]
-        report_findings.extend(external_findings)
-        report_findings.extend(blocklist_findings_for_agents(agents))
-        try:
-            report_findings.extend(evaluate_a2a_auth_posture(agents))
-        except Exception as a2a_exc:  # noqa: BLE001
-            _logger.warning("A2A auth posture evaluation skipped: %s", sanitize_text(sanitize_error(a2a_exc)))
-        try:
-            report_findings.extend(evaluate_mcp_auth_posture(agents))
-        except Exception as mcp_auth_exc:  # noqa: BLE001
-            _logger.warning("MCP auth posture evaluation skipped: %s", sanitize_text(sanitize_error(mcp_auth_exc)))
-        report = AIBOMReport(
-            agents=agents,
-            blast_radii=blast_radii,
-            findings=report_findings,
-            cloud_inventory_data=imported_cloud_inventory(agents),
-            scan_id=job.job_id,
-            scan_run=_build_scan_run(has_usable_evidence=True),
-        )
-        if _ast_for_reach is not None:
-            report.ai_inventory_data = report.ai_inventory_data or {}
-            report.ai_inventory_data["ast_analysis"] = _ast_for_reach.to_dict()
-        if skill_audit_data is not None:
-            report.skill_audit_data = skill_audit_data
-            from agent_bom.parsers.skill_audit import replace_skill_findings
-
-            replace_skill_findings(report, skill_audit_data)
-        if iac_findings_data is not None:
-            report.iac_findings_data = iac_findings_data
-        if repo_ai_inventory_data is not None:
-            report.ai_inventory_data = repo_ai_inventory_data
-            _promote_repo_dependency_inventory(report, repo_ai_inventory_data)
-        if repo_sast_data is not None:
-            report.sast_data = repo_sast_data
-        if repo_trust_data is not None:
-            report.repo_trust_data = repo_trust_data
-        report.codeowners = dict(repo_codeowners)
-        if req.vex:
-            from agent_bom.vex import apply_vex, load_vex
-            from agent_bom.vex import to_serializable as vex_to_serializable
-
-            try:
-                _vex_doc = load_vex(req.vex)
-            except ValueError as vex_exc:
-                raise RuntimeError(f"Failed to load VEX file: {vex_exc}") from vex_exc
-            _vex_count = apply_vex(report, _vex_doc)
-            report.vex_data = vex_to_serializable(_vex_doc)
-            # Preserve non-CVE policy findings while replacing stale CVE
-            # projections with the VEX-updated blast-radius representation.
-            non_cve_findings = [
-                finding
-                for finding in report.findings
-                if finding.finding_type.value != "CVE" or finding.evidence.get("package_resolution") == "unresolved"
-            ]
-            report.findings = [blast_radius_to_finding(br) for br in blast_radii] + non_cve_findings
-            with lock:
-                job.progress.append(str(sanitize_sensitive_payload(f"VEX applied: {_vex_count} vulnerabilities updated from {req.vex}")))
-        try:
-            from agent_bom.scanners import consume_coverage_warnings
-
-            _coverage_warnings = consume_coverage_warnings()
-            if _coverage_warnings:
-                report.coverage_warnings = _coverage_warnings
-        except Exception as cov_exc:  # noqa: BLE001
-            _logger.debug("coverage-warning attach skipped: %s", sanitize_text(sanitize_error(cov_exc)))
-
-        # Opt-in estate enrichment (cloud inventory + NHI discovery). Default
-        # OFF: no-op and no network I/O unless the per-provider env flags are
-        # set; the graph builder consumes the attached blocks. Never raises.
-        try:
-            from agent_bom.scan_enrichment import enrich_report_with_estate_discovery
-
-            enrich_report_with_estate_discovery(report)
-        except Exception as enrich_exc:  # noqa: BLE001
-            _logger.warning("Estate enrichment skipped: %s", sanitize_text(sanitize_error(enrich_exc)))
-
-        if req.ai_enrich:
-            try:
-                from agent_bom.ai_enrich import run_ai_enrichment_sync
-
-                run_ai_enrichment_sync(
-                    report,
-                    model=req.ai_model,
-                    deterministic=req.ai_deterministic,
-                )
-            except Exception as ai_exc:  # noqa: BLE001
-                _logger.warning("Advisory AI enrichment skipped: %s", sanitize_text(sanitize_error(ai_exc, generic=True)))
-                with lock:
-                    job.progress.append("Advisory AI enrichment skipped")
-
-        # Graph-derived findings: build the unified graph once (after every report
-        # side block is set) and surface NHI-governance + toxic-combination findings
-        # onto the report so the hosted scan reaches CLI parity — before to_json()
-        # serializes the unified stream. Best-effort: never fails the scan. MCP
-        # tool-rule findings derive from report tools inside to_findings(), so they
-        # need no graph and are already covered.
-        #
-        # The surfacing graph + its interim JSON are scoped to the helper so they
-        # are released before the persist phase rebuilds the graph — otherwise the
-        # full-scan path holds two full current graphs (each with its own node
-        # dict, edge list, and adjacency indexes) at the persist peak (#4055/#4075).
-        try:
-            _surface_graph_derived_findings(
-                report,
-                scan_id=job.job_id,
-                tenant_id=job.tenant_id or "",
-            )
-        except Exception as gderiv_exc:  # noqa: BLE001
-            _logger.warning("Graph-derived findings surfacing skipped: %s", sanitize_text(sanitize_error(gderiv_exc)))
-
-        _apply_tenant_workflow_metadata(report, tenant_id=job.tenant_id or "default")
-        report_json = to_json(report)
-        if req.no_scan and any(
-            result is not None for result in (skill_audit_data, iac_findings_data, repo_ai_inventory_data, repo_sast_data)
-        ):
-            # Adding inventory evidence must not erase the established status
-            # of a static-findings-only repository scan.
-            report_json["status"] = "findings_only"
-        result_document, document_note = _rendered_result_document(job, report)
-        with lock:
-            job.result = report_json
-            job.result_document = result_document
-            if document_note:
-                job.progress.append(document_note)
-            job.status = JobStatus.DONE
-
-        if side_effects_enabled:
-            from agent_bom.api.trend_comparison import scan_scope_id
-            from agent_bom.api.trend_recording import record_scan_trend_best_effort
-
-            if record_scan_trend_best_effort(
-                report_json,
-                tenant_id=job.tenant_id or "default",
-                scan_id=job.job_id,
-                scope_id=scan_scope_id(job.request),
-                completed_at=job.completed_at or report_json.get("generated_at"),
-            ):
-                with lock:
-                    job.progress.append("Posture trend recorded")
-            try:
-                pipeline.update_step("output", "Persisting unified graph...")
-                _persist_graph_snapshot(job, report_json, lock=lock)
-            except Exception as graph_exc:  # noqa: BLE001
-                _logger.warning("Unified graph persistence failed: %s", sanitize_text(sanitize_error(graph_exc, generic=True)))
-                _record_graph_persistence(job, status="failed", lock=lock)
-                with lock:
-                    job.progress.append("Graph persistence failed; scan evidence remains available")
-
-            try:
-                from agent_bom.asset_tracker import AssetTracker
-
-                with AssetTracker(tenant_id=str(getattr(job, "tenant_id", None) or "default")) as tracker:
-                    asset_diff = tracker.record_scan(report_json)
-                with lock:
-                    job.progress.append(
-                        "Asset tracker synced "
-                        f"(new={asset_diff['summary']['new_count']}, "
-                        f"resolved={asset_diff['summary']['resolved_count']}, "
-                        f"open={asset_diff['summary']['total_open']})"
-                    )
-            except Exception as asset_exc:  # noqa: BLE001
-                _logger.warning("Asset tracker persistence failed: %s", sanitize_text(asset_exc))
-                with lock:
-                    job.progress.append(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
-
-            try:
-                from agent_bom.db.local_analytics import record_scan_report_best_effort
-
-                recorded_scan_id = record_scan_report_best_effort(
-                    report_json,
-                    source="api",
-                    tenant_id=str(getattr(job, "tenant_id", None) or "default"),
-                )
-                if recorded_scan_id:
-                    with lock:
-                        job.progress.append(f"Local analytics synced scan {recorded_scan_id}")
-            except Exception as local_analytics_exc:  # noqa: BLE001
-                _logger.debug("Local analytics persistence skipped: %s", sanitize_text(local_analytics_exc))
-        else:
-            with lock:
-                job.progress.append("Result side-effect persistence skipped by request")
-
-        pipeline.complete_step(
-            "output",
-            "Report ready",
-            {"findings": len(report_json.get("findings") or report_json.get("blast_radius") or [])},
-        )
-
-        # Auto-sync discovered agents to fleet registry
-        if side_effects_enabled:
-            try:
-                _sync_scan_agents_to_fleet(agents, tenant_id=str(getattr(job, "tenant_id", None) or "default"))
-            except Exception as fleet_exc:  # noqa: BLE001
-                with lock:
-                    job.progress.append(f"Fleet sync skipped: {fleet_exc}")
-
-        if side_effects_enabled:
-            try:
-                from agent_bom.analytics_contract import build_scan_analytics_payload
-
-                analytics_store = _get_analytics_store()
-                analytics = build_scan_analytics_payload(report, report_json=report_json, scan_id=job.job_id, source="api")
-                # Plumb the job's tenant through to analytics so the shared
-                # ClickHouse cluster stays segregated per tenant at row level.
-                tenant_id = str(getattr(job, "tenant_id", None) or "default")
-                for agent_name, findings in analytics.agent_findings.items():
-                    analytics_store.record_scan(analytics.scan_id, agent_name, findings, tenant_id=tenant_id)
-                analytics_store.record_scan_metadata(analytics.scan_metadata, tenant_id=tenant_id)
-                for agent_name, snapshot in analytics.posture_snapshots.items():
-                    analytics_store.record_posture(agent_name, snapshot, tenant_id=tenant_id)
-                for fleet_snapshot in analytics.fleet_snapshots:
-                    # The analytics builder seeds tenant_id="default" so CLI scans
-                    # without a request context keep working. When a real job is
-                    # on the wire we override with the authed tenant so dashboards
-                    # see the finding in the right column.
-                    fleet_snapshot["tenant_id"] = tenant_id
-                    analytics_store.record_fleet_snapshot(fleet_snapshot)
-                for control in analytics.compliance_controls:
-                    analytics_store.record_compliance_control(control, tenant_id=tenant_id)
-                analytics_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=tenant_id)
-            except Exception as analytics_exc:  # noqa: BLE001
-                _logger.warning("API ClickHouse analytics persistence failed: %s", sanitize_text(analytics_exc))
-                with lock:
-                    job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
-
-    except ScanCancelledError:
-        with lock:
-            job.status = JobStatus.CANCELLED
-            job.error = None
-            job.progress.append("Scan cancelled")
-        for step_id in PIPELINE_STEPS:
-            if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
-                pipeline.skip_step(step_id, "Cancelled")
-                break
-    except Exception as exc:  # noqa: BLE001
-        safe_error = sanitize_error(exc)
-        with lock:
-            if job.status is JobStatus.CANCELLED:
-                job.progress.append("Scan cancelled during failure handling")
-            else:
-                job.status = JobStatus.FAILED
-                job.error = safe_error
-            if job.status is not JobStatus.CANCELLED:
-                job.result = {
-                    "scan_run": {
-                        "outcome": "failed",
-                        "issues": [
-                            {
-                                "code": "scan_failed",
-                                "stage": "pipeline",
-                                "source": "api",
-                                "message": safe_error,
-                                "severity": "error",
-                                "affects_coverage": True,
-                            }
-                        ],
-                        "warning_count": 1,
-                    },
-                    "warnings": [safe_error],
-                }
-        if job.status is JobStatus.CANCELLED:
-            pass
-        else:
-            # Mark whichever step was running as failed
-            for step_id in PIPELINE_STEPS:
-                if pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
-                    pipeline.fail_step(step_id, sanitize_error(exc))
-                    break
-            else:
-                with lock:
-                    job.progress.append(f"Error: {sanitize_error(exc)}")
+        _get_store().put(job)
+    except Exception:  # noqa: BLE001
+        pass
+    _jobs_put(job.job_id, job, compact_terminal=True)
+    return False
+
+
+def _dispatch_connection_scan(ctx: ScanContext) -> bool:
+    # Cloud-connection scans share the same durable ScanJob queue and worker
+    # lifecycle as regular scans, but their evidence collector starts from a
+    # tenant-scoped encrypted connection rather than local path targets.
+    # Dispatch before the generic discovery pipeline so the API request never
+    # performs provider I/O inline and worker reclaims keep the same job id.
+    from agent_bom.api.routes.cloud_connections import (
+        execute_queued_connection_scan,
+        is_queued_connection_scan,
+    )
+
+    if not is_queued_connection_scan(ctx.job):
+        return False
+    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+
+    ctx.progress("Starting queued cloud connection scan")
+    tenant_token = set_current_tenant(ctx.job.tenant_id or "default")
+    try:
+        execute_queued_connection_scan(ctx.job)
     finally:
-        repo_stack.close()
+        reset_current_tenant(tenant_token)
+    return True
+
+
+def _finish_dry_run(ctx: ScanContext) -> bool:
+    req = ctx.req
+    if not req.dry_run:
+        return False
+    pipeline = ctx.pipeline
+    pipeline.start_step("discovery", "Dry run: validating scan request")
+    pipeline.complete_step("discovery", "Dry run request validated")
+    for step_id in ("extraction", "scanning", "enrichment", "analysis"):
+        pipeline.skip_step(step_id, "Dry run")
+    pipeline.skip_step("output", "Dry run completed without side effects")
+    with ctx.lock:
+        ctx.job.result = {
+            "dry_run": True,
+            "scan_skipped": True,
+            "offline": req.offline,
+            "no_scan": req.no_scan,
+            "side_effects": "skipped",
+            "would_scan": {
+                "repo_url": bool(ctx.repo_url),
+                "inventory": bool(req.inventory),
+                "images": list(req.images),
+                "kubernetes": req.k8s,
+                "terraform_dirs": list(req.tf_dirs),
+                "github_actions": bool(req.gha_path),
+                "agent_projects": list(req.agent_projects),
+                "jupyter_dirs": list(req.jupyter_dirs),
+                "sbom": bool(req.sbom),
+                "connectors": list(req.connectors),
+                "filesystem_paths": list(req.filesystem_paths),
+                "dynamic_discovery": req.dynamic_discovery,
+            },
+            "warnings": [],
+            "scan_run": {"outcome": "complete", "issues": [], "warning_count": 0},
+        }
+        ctx.job.status = JobStatus.DONE
+        ctx.job.completed_at = _now()
+    return True
+
+
+def _persist_graph_best_effort(ctx: ScanContext, report_json: dict[str, Any]) -> None:
+    job, lock = ctx.job, ctx.lock
+    try:
+        ctx.pipeline.update_step("output", "Persisting unified graph...")
+        _persist_graph_snapshot(job, report_json, lock=lock)
+    except Exception as graph_exc:  # noqa: BLE001
+        _logger.warning("Unified graph persistence failed: %s", sanitize_text(sanitize_error(graph_exc, generic=True)))
+        _record_graph_persistence(job, status="failed", lock=lock)
+        ctx.progress("Graph persistence failed; scan evidence remains available")
+
+
+def _record_trend(ctx: ScanContext, report_json: dict[str, Any], *, completed_at: Any) -> None:
+    from agent_bom.api.trend_comparison import scan_scope_id
+    from agent_bom.api.trend_recording import record_scan_trend_best_effort
+
+    if record_scan_trend_best_effort(
+        report_json,
+        tenant_id=ctx.tenant_or_default,
+        scan_id=ctx.job.job_id,
+        scope_id=scan_scope_id(ctx.job.request),
+        completed_at=completed_at,
+    ):
+        ctx.progress("Posture trend recorded")
+
+
+def _complete_output(ctx: ScanContext) -> bool:
+    report_json = ctx.report_json
+    ctx.pipeline.complete_step(
+        "output",
+        "Report ready",
+        {"findings": len(report_json.get("findings") or report_json.get("blast_radius") or [])},
+    )
+    return False
+
+
+def _publish_static_findings(ctx: ScanContext, ast_only_result: Any | None) -> None:
+    """Report repository static findings for a scan that discovered no agents."""
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_json
+
+    job = ctx.job
+    report = AIBOMReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id, scan_run=ctx.build_scan_run(has_usable_evidence=True))
+    attach_repo_evidence(ctx, report)
+    if ast_only_result is not None:
+        report.ai_inventory_data = report.ai_inventory_data or {}
+        report.ai_inventory_data["ast_analysis"] = ast_only_result.to_dict()
+    attach_repo_metadata(ctx, report)
+    from agent_bom.scanners import consume_coverage_warnings
+
+    report.coverage_warnings = consume_coverage_warnings()
+    _apply_tenant_workflow_metadata(report, tenant_id=ctx.tenant_or_default)
+    report_json = to_json(report)
+    report_json["status"] = "findings_only"
+    result_document, document_note = _rendered_result_document(job, report)
+    with ctx.lock:
+        job.result = report_json
+        job.result_document = result_document
+        if document_note:
+            job.progress.append(document_note)
+        job.status = JobStatus.DONE
+        job.completed_at = _now()
+    if ctx.side_effects_enabled:
+        _persist_graph_best_effort(ctx, report_json)
+        _record_trend(ctx, report_json, completed_at=job.completed_at)
+    ctx.report_json = report_json
+    _complete_output(ctx)
+
+
+def _publish_no_agents(ctx: ScanContext) -> None:
+    job = ctx.job
+    scan_run = ctx.build_scan_run(has_usable_evidence=False)
+    job.result = {
+        "status": "no_agents_found",
+        "agents": [],
+        "vulnerabilities": [],
+        "blast_radius": [],
+        "blast_radii": [],
+        "warnings": scan_run.warnings,
+        "scan_run": scan_run.to_dict(),
+    }
+    # An empty estate still honours the requested format: the rendered
+    # document carries the same "nothing discovered" outcome rather than
+    # leaving the caller with a null they cannot distinguish from a bug.
+    from agent_bom.models import AIBOMReport as _EmptyReport
+
+    empty_document, empty_note = _rendered_result_document(
+        job,
+        _EmptyReport(agents=[], blast_radii=[], findings=[], scan_id=job.job_id, scan_run=scan_run),
+    )
+    job.result_document = empty_document
+    if empty_note:
+        job.progress.append(empty_note)
+    job.status = JobStatus.DONE
+    job.completed_at = _now()
+
+
+def _finish_empty_estate(ctx: ScanContext) -> bool:
+    if ctx.agents:
+        return False
+    pipeline = ctx.pipeline
+    ast_only_result = _ast_result_for_symbol_reach(_project_paths_for_symbol_reach(ctx.req, extra_paths=ctx.extra_symbol_paths))
+    pipeline.skip_step("extraction", "No agents to extract")
+    pipeline.skip_step("scanning", "No packages to scan")
+    pipeline.skip_step("enrichment", "Skipped")
+    pipeline.skip_step("analysis", "Skipped")
+    if ctx.has_static_repo_evidence() or ast_only_result is not None:
+        _raise_if_cancelled(ctx.job, ctx.lock)
+        pipeline.start_step("output", "Building report from repo static findings...")
+        _publish_static_findings(ctx, ast_only_result)
+    else:
+        pipeline.skip_step("output", "No results")
+        _publish_no_agents(ctx)
+    return True
+
+
+def _record_asset_tracker(ctx: ScanContext, report_json: dict[str, Any]) -> None:
+    try:
+        from agent_bom.asset_tracker import AssetTracker
+
+        with AssetTracker(tenant_id=str(getattr(ctx.job, "tenant_id", None) or "default")) as tracker:
+            asset_diff = tracker.record_scan(report_json)
+        ctx.progress(
+            "Asset tracker synced "
+            f"(new={asset_diff['summary']['new_count']}, "
+            f"resolved={asset_diff['summary']['resolved_count']}, "
+            f"open={asset_diff['summary']['total_open']})"
+        )
+    except Exception as asset_exc:  # noqa: BLE001
+        _logger.warning("Asset tracker persistence failed: %s", sanitize_text(asset_exc))
+        ctx.progress(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
+
+
+def _record_local_analytics(ctx: ScanContext, report_json: dict[str, Any]) -> None:
+    try:
+        from agent_bom.db.local_analytics import record_scan_report_best_effort
+
+        recorded_scan_id = record_scan_report_best_effort(
+            report_json,
+            source="api",
+            tenant_id=str(getattr(ctx.job, "tenant_id", None) or "default"),
+        )
+        if recorded_scan_id:
+            ctx.progress(f"Local analytics synced scan {recorded_scan_id}")
+    except Exception as local_analytics_exc:  # noqa: BLE001
+        _logger.debug("Local analytics persistence skipped: %s", sanitize_text(local_analytics_exc))
+
+
+def _persist_results(ctx: ScanContext) -> bool:
+    """Record trend, graph, asset and local-analytics evidence for a side-effecting scan."""
+    if not ctx.side_effects_enabled:
+        ctx.progress("Result side-effect persistence skipped by request")
+        return False
+    report_json = ctx.report_json
+    _record_trend(ctx, report_json, completed_at=ctx.job.completed_at or report_json.get("generated_at"))
+    _persist_graph_best_effort(ctx, report_json)
+    _record_asset_tracker(ctx, report_json)
+    _record_local_analytics(ctx, report_json)
+    return False
+
+
+def _sync_fleet(ctx: ScanContext) -> bool:
+    """Auto-sync discovered agents to the fleet registry."""
+    if not ctx.side_effects_enabled:
+        return False
+    try:
+        _sync_scan_agents_to_fleet(ctx.agents, tenant_id=str(getattr(ctx.job, "tenant_id", None) or "default"))
+    except Exception as fleet_exc:  # noqa: BLE001
+        ctx.progress(f"Fleet sync skipped: {fleet_exc}")
+    return False
+
+
+def _record_analytics(ctx: ScanContext) -> bool:
+    if not ctx.side_effects_enabled:
+        return False
+    try:
+        from agent_bom.analytics_contract import build_scan_analytics_payload
+
+        analytics_store = _get_analytics_store()
+        analytics = build_scan_analytics_payload(ctx.report, report_json=ctx.report_json, scan_id=ctx.job.job_id, source="api")
+        # Plumb the job's tenant through to analytics so the shared
+        # ClickHouse cluster stays segregated per tenant at row level.
+        tenant_id = str(getattr(ctx.job, "tenant_id", None) or "default")
+        for agent_name, findings in analytics.agent_findings.items():
+            analytics_store.record_scan(analytics.scan_id, agent_name, findings, tenant_id=tenant_id)
+        analytics_store.record_scan_metadata(analytics.scan_metadata, tenant_id=tenant_id)
+        for agent_name, snapshot in analytics.posture_snapshots.items():
+            analytics_store.record_posture(agent_name, snapshot, tenant_id=tenant_id)
+        for fleet_snapshot in analytics.fleet_snapshots:
+            # The analytics builder seeds tenant_id="default" so CLI scans
+            # without a request context keep working. When a real job is
+            # on the wire we override with the authed tenant so dashboards
+            # see the finding in the right column.
+            fleet_snapshot["tenant_id"] = tenant_id
+            analytics_store.record_fleet_snapshot(fleet_snapshot)
+        for control in analytics.compliance_controls:
+            analytics_store.record_compliance_control(control, tenant_id=tenant_id)
+        analytics_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=tenant_id)
+    except Exception as analytics_exc:  # noqa: BLE001
+        _logger.warning("API ClickHouse analytics persistence failed: %s", sanitize_text(analytics_exc))
+        ctx.progress(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
+    return False
+
+
+SCAN_STAGES: tuple[ScanStage, ...] = (
+    ScanStage("connection_scan", _dispatch_connection_scan),
+    ScanStage("prepare_request", prepare_request),
+    ScanStage("dry_run", _finish_dry_run),
+    ScanStage("refresh_vulnerability_db", refresh_vulnerability_db),
+    ScanStage("discover_agents", discover_agents),
+    ScanStage("empty_estate", _finish_empty_estate),
+    ScanStage("flag_blocklisted_servers", flag_blocklisted_servers),
+    ScanStage("extract_packages", extract_packages_stage, check_cancelled=True),
+    ScanStage("scan_vulnerabilities", scan_vulnerabilities_stage, check_cancelled=True),
+    ScanStage("analyse_reachability", analyse_reachability_stage, check_cancelled=True),
+    ScanStage("build_report", build_report_stage, check_cancelled=True),
+    ScanStage("persist_results", _persist_results),
+    ScanStage("complete_output", _complete_output),
+    ScanStage("sync_fleet", _sync_fleet),
+    ScanStage("record_analytics", _record_analytics),
+)
+"""The scan pipeline, in order. A stage returning ``True`` completes the job."""
+
+
+def _handle_cancelled(ctx: ScanContext) -> None:
+    with ctx.lock:
+        ctx.job.status = JobStatus.CANCELLED
+        ctx.job.error = None
+        ctx.job.progress.append("Scan cancelled")
+    for step_id in PIPELINE_STEPS:
+        if ctx.pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
+            ctx.pipeline.skip_step(step_id, "Cancelled")
+            break
+
+
+def _failed_scan_result(safe_error: str) -> dict[str, Any]:
+    return {
+        "scan_run": {
+            "outcome": "failed",
+            "issues": [
+                {
+                    "code": "scan_failed",
+                    "stage": "pipeline",
+                    "source": "api",
+                    "message": safe_error,
+                    "severity": "error",
+                    "affects_coverage": True,
+                }
+            ],
+            "warning_count": 1,
+        },
+        "warnings": [safe_error],
+    }
+
+
+def _handle_failure(ctx: ScanContext, exc: Exception) -> None:
+    job = ctx.job
+    safe_error = sanitize_error(exc)
+    with ctx.lock:
+        if job.status is JobStatus.CANCELLED:
+            job.progress.append("Scan cancelled during failure handling")
+        else:
+            job.status = JobStatus.FAILED
+            job.error = safe_error
+            job.result = _failed_scan_result(safe_error)
+    if job.status is JobStatus.CANCELLED:
+        return
+    # Mark whichever step was running as failed
+    for step_id in PIPELINE_STEPS:
+        if ctx.pipeline._steps[step_id]["status"] == StepStatus.RUNNING:
+            ctx.pipeline.fail_step(step_id, sanitize_error(exc))
+            break
+    else:
+        ctx.progress(f"Error: {sanitize_error(exc)}")
+
+
+def _persist_final_state(job: ScanJob, lock: threading.Lock) -> tuple[Any, JobStatus]:
+    with lock:
+        job.completed_at = _now()
+        terminal_status = job.status
+    # Persist final state
+    store = _get_store()
+    try:
+        store.put(job)
+    except Exception as persist_exc:  # noqa: BLE001
+        # Persistence is the durability boundary. If the store rejects the
+        # final write, this result only ever existed in this process's
+        # memory: it will not survive a restart and will never reach the
+        # compliance/graph reads that load from the store. Reporting it as a
+        # clean success would be a lie, so surface the failure on the job
+        # the caller polls rather than swallowing it in a finally block.
+        _logger.error("Scan result persistence failed job=%s: %s", job.job_id, sanitize_text(persist_exc))
         with lock:
-            job.completed_at = _now()
+            job.status = JobStatus.FAILED
+            job.error = f"result not persisted: {sanitize_error(persist_exc)}"
+            job.progress.append(f"Persistence failed: {sanitize_error(persist_exc)}")
             terminal_status = job.status
-        # Persist final state
-        store = _get_store()
-        try:
-            store.put(job)
-        except Exception as persist_exc:  # noqa: BLE001
-            # Persistence is the durability boundary. If the store rejects the
-            # final write, this result only ever existed in this process's
-            # memory: it will not survive a restart and will never reach the
-            # compliance/graph reads that load from the store. Reporting it as a
-            # clean success would be a lie, so surface the failure on the job
-            # the caller polls rather than swallowing it in a finally block.
-            _logger.error("Scan result persistence failed job=%s: %s", job.job_id, sanitize_text(persist_exc))
-            with lock:
-                job.status = JobStatus.FAILED
-                job.error = f"result not persisted: {sanitize_error(persist_exc)}"
-                job.progress.append(f"Persistence failed: {sanitize_error(persist_exc)}")
-                terminal_status = job.status
-        # Default to "retains in memory" so a store that does not declare the
-        # attribute (e.g. test mocks, third-party plugins) keeps a usable job
-        # result for the caller. Durable stores that fully serialize on put()
-        # opt in to in-place compaction by setting
-        # ``retains_job_objects_in_memory = False`` explicitly — see
-        # SQLiteJobStore, PostgresJobStore, SnowflakeJobStore.
-        if not bool(getattr(store, "retains_job_objects_in_memory", True)):
-            _compact_terminal_job_in_place(job)
-        _jobs_put(job.job_id, job, compact_terminal=True)
-        if job.parent_job_id:
-            try:
-                from agent_bom.api.scan_batches import refresh_batch_parent
+    # Default to "retains in memory" so a store that does not declare the
+    # attribute (e.g. test mocks, third-party plugins) keeps a usable job
+    # result for the caller. Durable stores that fully serialize on put()
+    # opt in to in-place compaction by setting
+    # ``retains_job_objects_in_memory = False`` explicitly — see
+    # SQLiteJobStore, PostgresJobStore, SnowflakeJobStore.
+    if not bool(getattr(store, "retains_job_objects_in_memory", True)):
+        _compact_terminal_job_in_place(job)
+    _jobs_put(job.job_id, job, compact_terminal=True)
+    return store, terminal_status
 
-                refresh_batch_parent(job.parent_job_id, tenant_id=job.tenant_id or "default")
-            except Exception:  # noqa: BLE001
-                _logger.error("Failed to refresh scan batch parent job=%s child=%s", job.parent_job_id, job.job_id)
-        _release_scan_memory()
-        # Update operator-visible scan metrics. The active gauge feeds
-        # the KEDA scaler in deploy/helm/agent-bom; the completion
-        # counter feeds dashboards + alerting on failure rate.
-        try:
-            from agent_bom.api import metrics as _api_metrics
-            from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 
-            reconcile_scan_jobs_active(store)
-            _api_metrics.record_scan_completion(str(terminal_status))
-        except Exception:  # noqa: BLE001
-            # Metrics must never break the scan path. Swallow all errors.
-            pass
-        if terminal_status in {JobStatus.DONE, JobStatus.FAILED}:
-            from agent_bom.db.adoption_events import record_scan_completion_best_effort
+def _refresh_batch_parent(job: ScanJob) -> None:
+    if not job.parent_job_id:
+        return
+    try:
+        from agent_bom.api.scan_batches import refresh_batch_parent
 
-            outcome = "failed" if terminal_status is JobStatus.FAILED else "complete"
-            scan_run_payload = job.result.get("scan_run", {}) if isinstance(job.result, dict) else {}
-            if terminal_status is JobStatus.DONE and isinstance(scan_run_payload, dict) and scan_run_payload.get("outcome") == "partial":
-                outcome = "partial"
-            record_scan_completion_best_effort(
-                channel="control_plane",
-                outcome=outcome,
-                artifact_type="json" if terminal_status is JobStatus.DONE else None,
-            )
+        refresh_batch_parent(job.parent_job_id, tenant_id=job.tenant_id or "default")
+    except Exception:  # noqa: BLE001
+        _logger.error("Failed to refresh scan batch parent job=%s child=%s", job.parent_job_id, job.job_id)
+
+
+def _record_completion_metrics(store: Any, terminal_status: JobStatus) -> None:
+    # Update operator-visible scan metrics. The active gauge feeds
+    # the KEDA scaler in deploy/helm/agent-bom; the completion
+    # counter feeds dashboards + alerting on failure rate.
+    try:
+        from agent_bom.api import metrics as _api_metrics
+        from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
+
+        reconcile_scan_jobs_active(store)
+        _api_metrics.record_scan_completion(str(terminal_status))
+    except Exception:  # noqa: BLE001
+        # Metrics must never break the scan path. Swallow all errors.
+        pass
+
+
+def _record_adoption(job: ScanJob, terminal_status: JobStatus) -> None:
+    if terminal_status not in {JobStatus.DONE, JobStatus.FAILED}:
+        return
+    from agent_bom.db.adoption_events import record_scan_completion_best_effort
+
+    outcome = "failed" if terminal_status is JobStatus.FAILED else "complete"
+    scan_run_payload = job.result.get("scan_run", {}) if isinstance(job.result, dict) else {}
+    if terminal_status is JobStatus.DONE and isinstance(scan_run_payload, dict) and scan_run_payload.get("outcome") == "partial":
+        outcome = "partial"
+    record_scan_completion_best_effort(
+        channel="control_plane",
+        outcome=outcome,
+        artifact_type="json" if terminal_status is JobStatus.DONE else None,
+    )
+
+
+def _finalize(ctx: ScanContext) -> None:
+    ctx.repo_stack.close()
+    store, terminal_status = _persist_final_state(ctx.job, ctx.lock)
+    _refresh_batch_parent(ctx.job)
+    _release_scan_memory()
+    _record_completion_metrics(store, terminal_status)
+    _record_adoption(ctx.job, terminal_status)
+
+
+def _run_scan_sync(job: ScanJob) -> None:
+    """Run the full scan pipeline in a thread (blocking). Updates job in-place."""
+    lock = _job_lock(job.job_id)
+    if not _begin_job(job, lock):
+        return
+    ctx = ScanContext(job=job, lock=lock, pipeline=ScanPipeline(job, lock), repo_stack=ExitStack())
+    try:
+        for stage in SCAN_STAGES:
+            if stage.check_cancelled:
+                _raise_if_cancelled(job, lock)
+            if stage.run(ctx):
+                return
+    except ScanCancelledError:
+        _handle_cancelled(ctx)
+    except Exception as exc:  # noqa: BLE001
+        _handle_failure(ctx, exc)
+    finally:
+        _finalize(ctx)

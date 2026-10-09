@@ -98,7 +98,25 @@ def test_git_and_fallback_agree_on_a_clean_checkout():
     assert via_git == via_glob
 
 
-def test_write_preserves_the_stamp_when_no_metric_changed() -> None:
+def _run_write_against_copy(tmp_path: Path, committed: dict[str, object]) -> dict[str, object]:
+    """Run ``--write`` against a private copy so the committed snapshot is never mutated.
+
+    Rewriting ``docs/PRODUCT_METRICS.json`` in place raced every concurrent
+    reader of that file under ``pytest -n --dist worksteal``.
+    """
+    json_out = tmp_path / "PRODUCT_METRICS.json"
+    markdown_out = tmp_path / "PRODUCT_METRICS.md"
+    json_out.write_text(json.dumps(committed, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    subprocess.run(  # noqa: S603
+        [sys.executable, str(SCRIPT), "--write", "--json-out", str(json_out), "--markdown-out", str(markdown_out)],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    return cast(dict[str, object], json.loads(json_out.read_text(encoding="utf-8")))
+
+
+def test_write_preserves_the_stamp_when_no_metric_changed(tmp_path: Path) -> None:
     """Re-running --write must not churn the committed artifact.
 
     The snapshot stamps ``generated_on``, but the drift gate compares only
@@ -109,53 +127,28 @@ def test_write_preserves_the_stamp_when_no_metric_changed() -> None:
     Simulated by ageing the committed stamp rather than by waiting a day, so
     the assertion is real on the day it is written.
     """
-    original_json = METRICS_JSON.read_text(encoding="utf-8")
-    original_md = METRICS_MARKDOWN.read_text(encoding="utf-8")
-    try:
-        aged = json.loads(original_json)
-        aged["generated_on"] = "2020-01-01"
-        METRICS_JSON.write_text(json.dumps(aged, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    aged = json.loads(METRICS_JSON.read_text(encoding="utf-8"))
+    aged["generated_on"] = "2020-01-01"
 
-        subprocess.run(  # noqa: S603
-            [sys.executable, str(SCRIPT), "--write"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-        )
+    rewritten = _run_write_against_copy(tmp_path, aged)
 
-        rewritten = json.loads(METRICS_JSON.read_text(encoding="utf-8"))
-        assert rewritten["generated_on"] == "2020-01-01", (
-            "--write re-stamped generated_on even though no metric changed; that is churn every branch has to carry"
-        )
-        assert rewritten["metrics"] == aged["metrics"], "metrics must be untouched when nothing moved"
-    finally:
-        METRICS_JSON.write_text(original_json, encoding="utf-8")
-        METRICS_MARKDOWN.write_text(original_md, encoding="utf-8")
+    assert rewritten["generated_on"] == "2020-01-01", (
+        "--write re-stamped generated_on even though no metric changed; that is churn every branch has to carry"
+    )
+    assert rewritten["metrics"] == aged["metrics"], "metrics must be untouched when nothing moved"
 
 
-def test_write_restamps_when_a_metric_actually_moved() -> None:
+def test_write_restamps_when_a_metric_actually_moved(tmp_path: Path) -> None:
     """The stamp must still advance when a metric genuinely changes."""
-    original_json = METRICS_JSON.read_text(encoding="utf-8")
-    original_md = METRICS_MARKDOWN.read_text(encoding="utf-8")
-    try:
-        stale = json.loads(original_json)
-        stale["generated_on"] = "2020-01-01"
-        stale["metrics"][0]["value"] = -1
-        METRICS_JSON.write_text(json.dumps(stale, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    stale = json.loads(METRICS_JSON.read_text(encoding="utf-8"))
+    stale["generated_on"] = "2020-01-01"
+    stale["metrics"][0]["value"] = -1
 
-        subprocess.run(  # noqa: S603
-            [sys.executable, str(SCRIPT), "--write"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-        )
+    rewritten = _run_write_against_copy(tmp_path, stale)
+    metrics = cast(list[dict[str, object]], rewritten["metrics"])
 
-        rewritten = json.loads(METRICS_JSON.read_text(encoding="utf-8"))
-        assert rewritten["generated_on"] != "2020-01-01", "a real metric change must refresh the stamp"
-        assert rewritten["metrics"][0]["value"] != -1, "the stale metric must be corrected"
-    finally:
-        METRICS_JSON.write_text(original_json, encoding="utf-8")
-        METRICS_MARKDOWN.write_text(original_md, encoding="utf-8")
+    assert rewritten["generated_on"] != "2020-01-01", "a real metric change must refresh the stamp"
+    assert metrics[0]["value"] != -1, "the stale metric must be corrected"
 
 
 def test_check_mode_reports_a_stale_snapshot(tmp_path: Path) -> None:

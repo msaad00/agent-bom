@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_bom.graph import UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge
 
 _EdgeLookup = dict[tuple[str, ...], UnifiedEdge]
 

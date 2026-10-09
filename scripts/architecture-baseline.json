@@ -495,13 +495,9 @@
       "raw_env_reads": 2
     },
     "api/pipeline.py": {
-      "broad_except": 36,
-      "deferred_imports": 79,
-      "file_lines": 1778
-    },
-    "api/pipeline.py::_run_scan_sync": {
-      "complexity": 134,
-      "function_lines": 1048
+      "broad_except": 17,
+      "deferred_imports": 19,
+      "file_lines": 1061
     },
     "api/postgres_access.py::PostgresKeyStore._init_tables": {
       "function_lines": 92
@@ -1032,12 +1028,20 @@
     "api/saml.py": {
       "raw_env_reads": 10
     },
+    "api/scan_analysis_stages.py": {
+      "broad_except": 10,
+      "deferred_imports": 21
+    },
     "api/scan_batches.py::refresh_batch_parent": {
       "complexity": 17,
       "function_lines": 105
     },
     "api/scan_boundary.py": {
       "raw_env_reads": 3
+    },
+    "api/scan_discovery_stages.py": {
+      "broad_except": 5,
+      "deferred_imports": 30
     },
     "api/scan_job_reconciliation.py": {
       "deferred_imports": 3
@@ -1046,6 +1050,10 @@
       "broad_except": 4,
       "deferred_imports": 2,
       "raw_env_reads": 2
+    },
+    "api/scan_report_support.py": {
+      "broad_except": 3,
+      "deferred_imports": 6
     },
     "api/scheduler.py": {
       "broad_except": 4,
@@ -1684,13 +1692,23 @@
       "function_lines": 230
     },
     "cli/agents/_discovery.py": {
-      "deferred_imports": 51,
-      "file_lines": 1280,
+      "deferred_imports": 6,
       "raw_env_reads": 2
     },
-    "cli/agents/_discovery.py::run_local_discovery": {
-      "complexity": 149,
-      "function_lines": 1206
+    "cli/agents/_discovery_ai.py": {
+      "deferred_imports": 1
+    },
+    "cli/agents/_discovery_project.py": {
+      "deferred_imports": 1
+    },
+    "cli/agents/_discovery_reports.py": {
+      "deferred_imports": 2
+    },
+    "cli/agents/_discovery_skills.py": {
+      "deferred_imports": 3
+    },
+    "cli/agents/_discovery_sources.py": {
+      "deferred_imports": 15
     },
     "cli/agents/_modes.py": {
       "deferred_imports": 1
@@ -4606,29 +4624,17 @@
     },
     "proxy.py": {
       "api_imports": 5,
-      "broad_except": 10,
-      "deferred_imports": 27,
-      "file_lines": 2222,
+      "broad_except": 8,
+      "deferred_imports": 20,
+      "file_lines": 1648,
       "raw_env_reads": 11
     },
     "proxy.py::_maybe_block_on_firewall": {
       "function_lines": 89
     },
     "proxy.py::_proxy_sse_server": {
-      "complexity": 40,
-      "function_lines": 365
-    },
-    "proxy.py::run_proxy": {
-      "complexity": 149,
-      "function_lines": 1019
-    },
-    "proxy.py::run_proxy.relay_client_to_server": {
-      "complexity": 39,
-      "function_lines": 297
-    },
-    "proxy.py::run_proxy.relay_server_to_client": {
-      "complexity": 31,
-      "function_lines": 169
+      "complexity": 35,
+      "function_lines": 340
     },
     "proxy_audit.py": {
       "api_imports": 2,
@@ -4861,6 +4867,13 @@
     },
     "runtime/protection.py::ProtectionEngine.process_tool_call": {
       "function_lines": 90
+    },
+    "runtime/proxy_relay.py": {
+      "deferred_imports": 3
+    },
+    "runtime/proxy_session.py": {
+      "broad_except": 2,
+      "deferred_imports": 4
     },
     "runtime/server.py": {
       "raw_env_reads": 2

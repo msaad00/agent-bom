@@ -12,11 +12,15 @@ Framework mappings:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from agent_bom.parsers.dataset_cards import DatasetInfo
-    from agent_bom.parsers.training_pipeline import TrainingRun
+
+class _FlaggedRecord(Protocol):
+    """Shape shared by ``DatasetInfo`` and ``TrainingRun``; both carry flags and receive tags."""
+
+    security_flags: list[dict]
+    compliance_tags: dict[str, list[str]]
+
 
 # ─── Flag → framework code mappings ────────────────────────────────────────
 
@@ -90,7 +94,7 @@ def _merge_tags(target: dict[str, list[str]], source: dict[str, list[str]]) -> N
                 target[framework].append(code)
 
 
-def tag_training_run(run: TrainingRun) -> None:
+def tag_training_run(run: _FlaggedRecord) -> None:
     """Apply compliance framework tags to a training run based on its security flags.
 
     Modifies ``run.compliance_tags`` in place. Always applies baseline tags
@@ -110,7 +114,7 @@ def tag_training_run(run: TrainingRun) -> None:
     run.compliance_tags = tags
 
 
-def tag_dataset(dataset: DatasetInfo) -> None:
+def tag_dataset(dataset: _FlaggedRecord) -> None:
     """Apply compliance framework tags to a dataset based on its security flags.
 
     Modifies ``dataset.compliance_tags`` in place. Always applies baseline tags

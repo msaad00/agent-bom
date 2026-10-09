@@ -5,9 +5,25 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from agent_bom.config import SCANNER_MAX_CONCURRENT as MAX_CONCURRENT_REQUESTS
 from agent_bom.core.errors import DegradedCoverage
+
+_coverage_capture: ContextVar[list[dict] | None] = ContextVar("coverage_capture", default=None)
+
+
+@contextmanager
+def capture_coverage_warnings() -> Iterator[list[dict]]:
+    recorded: list[dict] = []
+    token = _coverage_capture.set(recorded)
+    try:
+        yield recorded
+    finally:
+        _coverage_capture.reset(token)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -101,6 +117,9 @@ def consume_scan_warnings() -> list[str]:
 
 def record_coverage_warning(warning: dict) -> None:
     """Record a structured per-release coverage-gap warning (deduped by release)."""
+    captured = _coverage_capture.get()
+    if captured is not None:
+        captured.append(dict(warning))
     warnings = _coverage_warnings_state()
     release = warning.get("release")
     if any(existing.get("release") == release for existing in warnings):

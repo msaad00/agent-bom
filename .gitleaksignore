@@ -73,3 +73,6 @@ a08bc8ae15904134d15fc289fff0d84a4067e639:tests/test_campaign_default_backend.py:
 # authentication-method enum was mistaken for a credential. Arguments are now
 # on separate lines; this entry exempts only the original test call.
 cc3d86f9b6cca9ed3ee186f287ded454fd573207:tests/test_helm_replica_safety.py:generic-api-key:108
+# Historical non-functional detector input in the discovery characterization
+# fixture. The current fixture assembles the same input at runtime.
+458278cf05e2d297dfef9be50a278f701070cea4:tests/test_discovery_characterization.py:generic-api-key:110

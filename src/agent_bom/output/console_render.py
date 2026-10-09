@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from agent_bom.core.severity import SEVERITY_THRESHOLD_LABELS, severity_rank, severity_worst_first_rank
+from agent_bom.core.terminal import safe_emoji as safe_emoji
 from agent_bom.models import AgentStatus, AIBOMReport, Severity
 from agent_bom.output.cis_posture import (
     ERROR,
@@ -39,24 +40,6 @@ from agent_bom.output.finding_views import (
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 console = Console()
-
-
-def safe_emoji(emoji: str, fallback: str = "*") -> str:
-    """Return ``emoji`` only when the active stdout encoding can render it.
-
-    On terminals/locales whose encoding cannot encode the glyph (for example a
-    ``cp1252``/``ascii`` Windows console or a stripped CI locale) a raw emoji
-    prints as a mojibake box or raises ``UnicodeEncodeError`` mid-line. Fall
-    back to a plain ASCII marker so the line stays readable everywhere.
-    """
-    import sys
-
-    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-    try:
-        emoji.encode(encoding)
-    except (UnicodeEncodeError, LookupError):
-        return fallback
-    return emoji
 
 
 # ─── Centralized severity styling ────────────────────────────────────────────

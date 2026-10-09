@@ -294,7 +294,7 @@ _SKIP_FILE_PATTERNS = frozenset(
 )
 
 _MAX_FILE_SIZE = 512 * 1024  # 512KB
-_MAX_FILES = 500
+_MAX_FILES = 5_000  # Prioritize entrypoints; report a coverage warning when this budget is exhausted.
 _VALIDATION_HINTS = (
     "allow",
     "approve",

@@ -6,13 +6,13 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PROXY = ROOT / "src" / "agent_bom" / "proxy.py"
+PROXY = ROOT / "src" / "agent_bom" / "runtime" / "proxy_session.py"
 RUNTIME_PROXY_DOC = ROOT / "site-docs" / "features" / "runtime-proxy.md"
 
 
 def _inline_proxy_detector_names() -> list[str]:
     body = PROXY.read_text(encoding="utf-8")
-    match = re.search(r"# Runtime detectors\s+from agent_bom\.runtime\.detectors import \((.*?)\)", body, re.DOTALL)
+    match = re.search(r"from agent_bom\.runtime\.detectors import \((.*?)\)", body, re.DOTALL)
     assert match is not None
     return sorted(name.strip().rstrip(",") for name in match.group(1).splitlines() if name.strip() and not name.strip().startswith("#"))
 

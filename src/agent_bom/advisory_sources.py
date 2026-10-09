@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from agent_bom.models import Package, Vulnerability
+
+class _PackageWithVulnerabilities(Protocol):
+    """The slice of ``models.Package`` this module reads; avoids importing the model."""
+
+    @property
+    def vulnerabilities(self) -> Sequence[object]: ...
+
 
 PRIMARY_ADVISORY_SOURCES: tuple[str, ...] = ("osv", "ghsa", "nvidia_csaf", "amd_psirt", "intel_psirt")
 ENRICHMENT_ADVISORY_SOURCES: tuple[str, ...] = ("nvd", "epss", "cisa_kev")
@@ -58,7 +64,7 @@ def merge_advisory_sources(*sources: str | None) -> list[str]:
     return preferred + unknown
 
 
-def primary_advisory_source(vuln: "Vulnerability") -> str:
+def primary_advisory_source(vuln: object) -> str:
     """Return the highest-signal advisory source label for a vulnerability."""
     sources = getattr(vuln, "all_advisory_sources", []) or []
     for preferred in PRIMARY_ADVISORY_SOURCES:
@@ -67,7 +73,7 @@ def primary_advisory_source(vuln: "Vulnerability") -> str:
     return sources[0] if sources else "unknown"
 
 
-def summarize_advisory_coverage(packages: list["Package"]) -> dict:
+def summarize_advisory_coverage(packages: Sequence[_PackageWithVulnerabilities]) -> dict:
     """Aggregate advisory-source and enrichment depth across package findings."""
     primary_counts: Counter[str] = Counter()
     enrichment_counts: Counter[str] = Counter()

@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,8 +11,37 @@ from agent_bom.api.suppression_policy import SelfApprovalError as SelfApprovalEr
 from agent_bom.api.suppression_policy import expiry_window_error, require_distinct_approver
 from agent_bom.core.timestamps import parse_identity_timestamp
 
-if TYPE_CHECKING:
-    from agent_bom.api.exception_store import ExceptionStore, VulnException
+
+class VulnException(Protocol):
+    """Fields of a suppression record the activation contract reads and writes.
+
+    ``exception_store.VulnException`` satisfies it; typing against the shape
+    keeps this policy module from importing the store that calls it.
+    """
+
+    exception_id: str
+    vuln_id: str
+    package_name: str
+    reason: str
+    requested_by: str
+    approved_by: str
+    status: Any
+    expires_at: str
+    approved_at: str
+    revoked_at: str
+    approval_version: int
+    decided_by: str
+
+    def to_dict(self) -> dict[str, Any]: ...
+
+
+_Record = TypeVar("_Record", bound=VulnException)
+_Record_contra = TypeVar("_Record_contra", contravariant=True)
+
+
+class ExceptionStore(Protocol[_Record_contra]):
+    def put(self, exc: _Record_contra, *, tenant_id: str) -> None: ...
+
 
 APPROVAL_VERSION = 1
 
@@ -95,7 +124,7 @@ class ApprovalPersistenceError(RuntimeError):
     """Approval could not be durably recorded."""
 
 
-def persist_approval(exc: "VulnException", store: "ExceptionStore", *, actor: str, tenant_id: str) -> None:
+def persist_approval(exc: _Record, store: "ExceptionStore[_Record]", *, actor: str, tenant_id: str) -> None:
     activate_suppression(exc, actor=actor)
     try:
         # The receipt proves authorization to attempt activation, not a committed

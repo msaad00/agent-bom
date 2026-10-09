@@ -6,7 +6,8 @@ import json
 import sqlite3
 from typing import Any
 
-from agent_bom.graph import RelationshipType, UnifiedEdge
+from agent_bom.graph.edge import UnifiedEdge
+from agent_bom.graph.types import RelationshipType
 
 
 def edge_query(

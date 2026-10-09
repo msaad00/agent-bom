@@ -27,10 +27,19 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import Optional, Protocol, Sequence
 
-if TYPE_CHECKING:
-    from agent_bom.models import Package
+
+class Package(Protocol):
+    """Package coordinates this module reads; ``models.Package`` satisfies it."""
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def version(self) -> str: ...
+    @property
+    def ecosystem(self) -> str: ...
+
 
 _logger = logging.getLogger(__name__)
 

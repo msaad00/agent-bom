@@ -61,6 +61,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from agent_bom.core.symbol_reach import FUNCTION_REACHABLE as FUNCTION_REACHABLE
+from agent_bom.core.symbol_reach import PACKAGE_REACHABLE as PACKAGE_REACHABLE
+from agent_bom.core.symbol_reach import UNREACHABLE as UNREACHABLE
 from agent_bom.package_utils import (
     import_names_for_distribution,
     normalize_package_ecosystem,
@@ -71,10 +74,7 @@ if TYPE_CHECKING:
     from agent_bom.ast_models import ASTAnalysisResult, DependencySymbolReach
     from agent_bom.models import Package, Vulnerability
 
-# Three-state signal. Ordered most-specific (most reachable) first.
-FUNCTION_REACHABLE = "function_reachable"
-PACKAGE_REACHABLE = "package_reachable"
-UNREACHABLE = "unreachable"
+# Sentinel for "no reachability evidence", outside the three-state signal.
 UNKNOWN = "unknown"
 
 # Defensive bound: advisories occasionally carry pathological symbol lists.

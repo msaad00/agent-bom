@@ -21,6 +21,10 @@ worker loop) carries ``# broad-except: <reason>`` on its ``except`` line and is
 not counted; at most ``MAX_ANNOTATED_BROAD_EXCEPTS`` per file, and the reason
 must be a real sentence fragment, so the marker cannot become a blanket waiver.
 Upstream failures belong in ``agent_bom.core.errors`` types instead.
+
+The import-graph contract (domain modules never import upward, no module-level
+cycle, the largest runtime SCC only shrinks) lives in ``check_import_graph.py``
+and runs as part of this check.
 """
 
 from __future__ import annotations
@@ -33,6 +37,11 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+
+try:
+    from scripts.check_import_graph import check as check_import_graph
+except ModuleNotFoundError:  # run as ``python scripts/check_architecture.py``
+    from check_import_graph import check as check_import_graph
 
 LIMITS = {
     "file_lines": 600,
@@ -475,12 +484,17 @@ def main() -> int:
                 errors.extend(baseline_growth(baseline, previous["debt"], set(previous.get("limits", {}))))
     elif not args.write_baseline:
         errors.append("Architecture baseline missing; initialize with --write-baseline")
+    graph_errors, graph = check_import_graph(root, args.base_ref, args.write_baseline)
+    errors.extend(graph_errors)
     if errors:
         print("\n".join(errors))
         return 1
     if args.write_baseline:
         path.write_text(json.dumps({"limits": LIMITS, "debt": debt(metrics)}, indent=2, sort_keys=True) + "\n")
-    print(f"Architecture boundaries and ratchet passed ({len(debt(metrics))} existing debt entries)")
+    print(
+        f"Architecture boundaries and ratchet passed ({len(debt(metrics))} existing debt entries; "
+        f"largest import SCC {graph['max_scc']} of {graph['modules']} modules)"
+    )
     return 0
 
 

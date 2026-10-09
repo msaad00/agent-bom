@@ -192,9 +192,11 @@ connector, webhook, metrics, trace, or AI-enrichment destinations.
 
 ## Credential Handling
 
-Environment variables in MCP server configs are **never read for their values**.
-Only the _key names_ (e.g. `OPENAI_API_KEY`, `DATABASE_URL`) are inspected to
-determine whether credentials are present. Values are always shown as `***REDACTED***`.
+Credential values from MCP server configs are **never stored or shown**. At
+parse time each environment variable is classified: a credential-like key name
+(e.g. `OPENAI_API_KEY`, `DATABASE_URL`) or a value matching a credential,
+base64 or high-entropy pattern is replaced with `***REDACTED***` before anything
+is kept. Non-sensitive values (e.g. `LOG_LEVEL=debug`) are kept as-is.
 
 When you explicitly scan project files for hardcoded secrets or PII, agent-bom
 must read the files inside the requested scan scope to classify the risk. The

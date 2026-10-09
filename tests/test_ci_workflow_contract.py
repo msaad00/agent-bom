@@ -16,6 +16,25 @@ def _ci() -> dict[str, object]:
     return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_main_docker_pulls_authenticate_before_setup_and_build() -> None:
+    job = _ci()["jobs"]["docker"]
+    assert "github.event_name != 'pull_request'" in job["if"]
+    steps = job["steps"]
+    login = next(step for step in steps if step.get("uses", "").startswith("docker/login-action@"))
+    assert login["with"] == {
+        "registry": "docker.io",
+        "username": "${{ secrets.DOCKERHUB_USERNAME }}",
+        "password": "${{ secrets.DOCKERHUB_TOKEN }}",
+    }
+    assert "if" not in login
+    assert not login.get("continue-on-error", False)
+    for step in steps:
+        if step.get("uses", "").startswith(
+            ("docker/setup-qemu-action@", "docker/setup-buildx-action@")
+        ) or "docker buildx build" in step.get("run", ""):
+            assert steps.index(login) < steps.index(step)
+
+
 def test_dependency_updates_share_one_scheduled_owner() -> None:
     config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
     groups = config["multi-ecosystem-groups"]

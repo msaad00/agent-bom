@@ -990,7 +990,7 @@ def test_relay_policy_block_response_does_not_expose_internal_reason(monkeypatch
         audit_events.append(event)
 
     internal_reason = "Traceback: File '/Users/alice/prod/.env', line 7, in policy_loader"
-    monkeypatch.setattr("agent_bom.gateway_server.check_policy", lambda policy, tool, arguments: (False, internal_reason))
+    monkeypatch.setattr("agent_bom.api.gateway_relay_tool_policy.check_policy", lambda policy, tool, arguments: (False, internal_reason))
 
     settings = GatewaySettings(
         registry=_simple_registry(),

@@ -435,21 +435,30 @@ def test_overview_severity_cache_hit_bounded_and_exact():
     monkey_tenant = f"ovc-{uuid4().hex}"
     sevs = ["critical", "high", "medium", "low", "info"]
 
-    def chunk(base: int, n: int):
-        return [{"id": f"f-{base + i}", "severity": sevs[(base + i) % 5], "source": "connector"} for i in range(n)]
-
     tok = set_current_tenant(monkey_tenant)
     try:
-        loaded = 0
+        # This measures warm reads at 300k rows, not ingestion throughput.
+        # Seed in bounded tenant-scoped statements so Python-side redaction and
+        # per-batch existing-payload lookups do not dominate the CI budget.
+        # The separate storage contracts exercise the production write path.
         target = 300_000
-        while loaded < target:
-            step = min(50_000, target - loaded)
+        for base in range(0, target, 10_000):
             with _tenant_connection(store._pool) as conn:
-                store._write_ledger_batch(conn, monkey_tenant, chunk(loaded, step))
+                conn.execute(
+                    """INSERT INTO compliance_hub_findings
+                        (tenant_id, finding_id, ingested_at, source, payload, severity)
+                    SELECT %s, 'f-' || n, '2026-01-01T00:00:00Z', 'connector',
+                        jsonb_build_object('id', 'f-' || n, 'severity', severity, 'source', 'connector'), severity
+                    FROM (
+                        SELECT n, (%s::text[])[1 + mod(n, 5)] AS severity
+                        FROM generate_series(%s, %s - 1) AS n
+                    ) AS fixture""",
+                    (monkey_tenant, sevs, base, min(base + 10_000, target)),
+                )
                 conn.commit()
-            loaded += step
 
         truth = store.severity_breakdown(monkey_tenant)
+        assert truth == {**dict.fromkeys(sevs, target // len(sevs)), "unknown": 0}
 
         # Prime the cache (one O(n) scan), then a warm read must be O(1).
         hub_overview_cache.reset_hub_overview_cache()

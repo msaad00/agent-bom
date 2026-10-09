@@ -26,6 +26,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - The retained-findings fold computes each job's scope key once instead of three times per finding. A cold `/v1/posture` on the demo estate drops from 17.5M to 7.6M function calls (38.2 s to 25.7 s under cProfile on a loaded host).
 
+- Dashboard page loads no longer freeze the API. Page reads already ran on worker threads, but about ten CPU-bound aggregate reads at once (overview, findings, compliance, posture counts, graph) left the event-loop thread waiting on the GIL. `/health` and `/_next/static` chunks queued behind them for tens of seconds. Those reads now compute two at a time (`AGENT_BOM_HEAVY_READ_CONCURRENCY`, default 2). Waiters beyond the worker-thread ceiling get 429 instead of an unbounded queue. Concurrent reads of the same job payload share one parse instead of each parsing it. Hashed `/_next/static` assets are served from memory without worker-thread hops and marked `immutable`, and the schedule poll moved off the event loop. On `serve --demo-estate` with SQLite, after seeding settles, firing ten page reads at once with static and `/health` probes running alongside: max event-loop stall drops from 31.7 s to 2.6 s, max static-asset latency from 38.0 s to 4.6 s and max `/health` latency from 37.9 s to 2.9 s. Cold page reads drop from 35-96 s to 7-17 s, and warm ones from 19-35 s to 4-12 s. Measured on a 10-core dev host at load average ~35, so absolute numbers are high.
+
+### Changed
+
+- The gateway `/mcp/{server}` relay now runs as an ordered pipeline of named, typed stages (request admission, identity, runtime profile, edge/spend/fleet admission, layered tool policy, forward) that pass explicit request state instead of sharing one 1,464-line closure. Status codes, response bodies, headers, audit records and metrics are unchanged.
+
+### Security
+
+- The REST API now validates the `Host` header before routing or authentication.
+  A loopback `agent-bom serve` / `agent-bom api` answers only loopback host names,
+  so a web page can no longer reach a local control plane through DNS rebinding and
+  obtain the zero-config dashboard session. Non-loopback deployments can restrict
+  accepted host names with the new `AGENT_BOM_API_ALLOWED_HOSTS`. Without it they
+  keep accepting any Host and log a startup warning. Malformed configured host
+  entries fail startup instead of silently disabling the allowlist.
+- Cookie-authenticated state-changing requests now also require a trusted `Origin`
+  (or `Sec-Fetch-Site: same-origin`). API-key and bearer clients are unaffected.
+- Webhook signing secrets are encrypted at rest with the connection at-rest key
+  when one is configured. Existing plaintext rows stay readable and are encrypted
+  on their next write.
+- The Cloud Run demo deploy workflow passes the triggering run's branch name to
+  the shell through an environment variable and validates it as an image tag.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

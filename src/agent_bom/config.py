@@ -670,17 +670,15 @@ RATE_LIMIT_KEY_LAST_ROTATED = _str("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED", "")
 
 
 # ── Deployment / integration env aliases ───────────────────────────────────
-# Canonical AGENT_BOM_* keys below. Legacy unprefixed or alternate names are
-# still honored via the resolved_* helpers for back-compat:
-#   AGENT_BOM_ENV / ENVIRONMENT → DEPLOYMENT_ENV
-#   CORS_ORIGINS → CORS_ORIGINS (prefixed)
-#   SERVICENOW_INSTANCE → SERVICENOW_INSTANCE (prefixed)
-#   VAULT_ADDR → VAULT_ADDR (prefixed)
+# Canonical AGENT_BOM_* keys below. Legacy names stay honored via resolved_*
+# helpers: AGENT_BOM_ENV / ENVIRONMENT → DEPLOYMENT_ENV; unprefixed CORS_ORIGINS,
+# SERVICENOW_INSTANCE and VAULT_ADDR → their AGENT_BOM_* forms.
 
 DEPLOYMENT_ENV = _str("AGENT_BOM_DEPLOYMENT_ENV", "")
 CORS_ORIGINS = _str("AGENT_BOM_CORS_ORIGINS", "")
 SERVICENOW_INSTANCE = _str("AGENT_BOM_SERVICENOW_INSTANCE", "")
 VAULT_ADDR = _str("AGENT_BOM_VAULT_ADDR", "")
+API_ALLOWED_HOSTS = _str("AGENT_BOM_API_ALLOWED_HOSTS", "")  # REST API Host allowlist, comma-separated; *.domain = subdomains, * = any
 
 
 def _env_first_non_empty(*keys: str) -> str:

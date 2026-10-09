@@ -11,7 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Performance
 
-- `agent-bom scan -p .` on this repository uses about 40% less CPU (140 s to 86 s user CPU, peak RSS 395 MB to 307 MB) with identical findings (941) and packages. The AI component scanner skips any regex whose required literal text is absent from a file (66 to 20 CPU-seconds for that pass, same 601 components); AST source selection walks the project once instead of once per language; project auto-detect walks it once instead of once per surface; and Python entrypoint discovery walks each module once instead of three times.
+- `agent-bom scan -p .` on this repository uses 33-39% less CPU (140-141 s to 86-95 s user CPU over two runs each, peak RSS 335-395 MB to 307-325 MB) with identical findings (941) and packages. The AI component scanner skips any regex whose required literal text is absent from a file (66 to 20 CPU-seconds for that pass, same 601 components); AST source selection walks the project once instead of once per language; project auto-detect walks it once instead of once per surface; and Python entrypoint discovery walks each module once instead of three times.
 - `agent-bom --version` answers without loading the command tree: 1.2-1.7 s down to under 0.15 s. Every other command also imports less at startup (output formatters, the MITRE catalog fetcher, the warehouse graph builder and fleet API models now load on first use).
 
 ### Fixed

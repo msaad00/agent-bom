@@ -220,6 +220,40 @@ class TestClickHouseClient:
             expected = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS) + 1
             assert mock_req.call_count == expected
 
+    def test_ensure_tables_bootstraps_an_absent_database(self):
+        from agent_bom.cloud.clickhouse import ClickHouseClient
+
+        client = ClickHouseClient(url="http://localhost:8123", user="provisioner", access_token="test-token")
+        created = False
+
+        def server(_client, method, url, *, headers, content):
+            nonlocal created
+            assert headers["X-ClickHouse-User"] == "provisioner"
+            assert headers["X-ClickHouse-Key"] == "test-token"
+            if not created and headers.get("X-ClickHouse-Database") == "agent_bom":
+                return _mock_response("UNKNOWN_DATABASE", status_code=404)
+            if content.decode() == "CREATE DATABASE IF NOT EXISTS agent_bom":
+                created = True
+            else:
+                assert headers["X-ClickHouse-Database"] == "agent_bom"
+            return _mock_response("")
+
+        with patch("agent_bom.http_client.sync_request_with_retry", side_effect=server):
+            client.ensure_tables()
+            client.ensure_tables()
+            client.execute("SELECT count() FROM vulnerability_scans")
+        assert created
+
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_database_bootstrap_preserves_authorization_failure(self, status):
+        from agent_bom.cloud.clickhouse import ClickHouseClient, ClickHouseError
+
+        client = ClickHouseClient(url="http://localhost:8123")
+        with patch("agent_bom.http_client.sync_request_with_retry", return_value=_mock_response("denied", status_code=status)) as request:
+            with pytest.raises(ClickHouseError, match=f"HTTP {status}"):
+                client.ensure_tables()
+        assert request.call_count == 1
+
     def test_supabase_init_schema_matches_runtime_tables(self):
         """Supabase ClickHouse bootstrap must not lag runtime table DDL."""
         from agent_bom.cloud.clickhouse import _TABLE_DDL

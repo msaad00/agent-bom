@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- ClickHouse analytics now creates its database before selecting it for HTTP queries. Connecting to a fresh server no longer fails with `UNKNOWN_DATABASE`; bootstrap retains credentials and stops on authorization errors.
+
 - Corrected the ClickHouse benchmark example to use an HTTP endpoint and the registered `report analytics` command. Deployment guidance now explains optional ClickHouse analytics alongside PostgreSQL/SQLite and the bounded analytics queue's durability limits.
 
 - Helm API shared-state safeguards now account for autoscaler maxima and KEDA fallback replicas, including deployments starting at one replica. API/UI disruption budgets cover configured scale-out, and extra API environment entries cannot override the chart-derived replica safety setting. Deployment guidance distinguishes single-replica SQLite, shared-state PostgreSQL API scaling, and single-writer gateways. PostgreSQL table partitioning is not automatic database sharding; live load, failover, and HA need qualification in the target deployment.

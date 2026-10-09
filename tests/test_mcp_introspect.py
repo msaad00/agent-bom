@@ -783,7 +783,7 @@ def test_json_output_includes_nist_tags():
     data = to_json(report)
 
     assert "nist_ai_rmf_tags" in data["blast_radius"][0]
-    assert "MAP-3.5" in data["blast_radius"][0]["nist_ai_rmf_tags"]
+    assert set(data["blast_radius"][0]["nist_ai_rmf_tags"]) == {"MAP-4.1", "GOVERN-6.1"}
 
 
 def test_framework_summary_includes_nist():

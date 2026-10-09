@@ -135,7 +135,7 @@ agent-bom to orchestrate the pull and scan without a separate Trivy invocation.
 - CLI reference: [site-docs/reference/cli.md](../site-docs/reference/cli.md)
 - CLI map: [CLI_MAP.md](CLI_MAP.md)
 - FinOps lane: [COST_MODEL.md](COST_MODEL.md)
-- Quick wins roadmap: [ROADMAP_QUICK_WINS.md](ROADMAP_QUICK_WINS.md)
+- Quick wins roadmap: [ROADMAP_QUICK_WINS.md](archive/ROADMAP_QUICK_WINS.md) (archived)
 
 ## Page MCP scan results across workers
 

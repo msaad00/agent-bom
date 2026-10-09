@@ -1,8 +1,7 @@
-# ADR-002: Custom JSON policy engine over OPA
+# ADR-010: Custom JSON policy engine over OPA
 
-## Status
-
-Accepted
+**Status:** Accepted
+**Date:** 2025-08
 
 ## Context
 

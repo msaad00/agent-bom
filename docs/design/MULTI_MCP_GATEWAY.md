@@ -223,7 +223,7 @@ flowchart LR
 | Requirement | Existing code | Change |
 |---|---|---|
 | Policy evaluation | [`check_policy`](../../src/agent_bom/proxy.py) | Reuse unchanged — pure function |
-| Policy fetch from control plane | `control_plane_url` / `control_plane_token` path in [`run_proxy`](../../src/agent_bom/proxy.py:527) | Extract into a module both `run_proxy` and `gateway serve` call |
+| Policy fetch from control plane | `control_plane_url` / `control_plane_token` path in [`run_proxy`](../../src/agent_bom/proxy.py) | Extract into a module both `run_proxy` and `gateway serve` call |
 | Runtime detectors | [`agent_bom.runtime.detectors`](../../src/agent_bom/runtime/detectors.py) | Reuse unchanged |
 | Audit-push client | Proxy's current HTTPX POST to `/v1/proxy/audit` | Extract |
 | Response signing | `response_signing_key` path in `run_proxy` | Proxy-only; gateway audit events use the control-plane audit chain when configured |

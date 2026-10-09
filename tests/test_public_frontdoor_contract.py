@@ -107,7 +107,8 @@ def test_readme_shows_the_end_to_end_product_journey_and_links_the_gallery() -> 
     assert journey.count('width="1440"') == 3
     assert 'width="450"' not in journey
     front = readme.split("## Self-host", 1)[0]
-    assert re.findall(r'<img src="docs/images/([^"]+)"', front) == ["context-map-horizontal-dark-live.png"]
+    front_outside_details = re.sub(r"<details>.*?</details>", "", front, flags=re.S)
+    assert re.findall(r'<img src="docs/images/([^"]+)"', front_outside_details) == ["context-map-horizontal-dark-live.png"]
     assert front.index("img.shields.io") < front.index("context-map-horizontal-dark-live.png")
     assert "labeled sample data" in front
     assert "<summary>Explore graph navigation, permissions and evidence</summary>" in journey
@@ -142,7 +143,7 @@ def test_readme_leads_with_discover_scan_correlate_act_brand_header() -> None:
 
 def test_readme_frontdoor_is_short_and_integration_roles_are_explicit() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    integrations = readme.split("<summary>Work with your existing tools</summary>", 1)[1].split("## Quick start", 1)[0]
+    integrations = readme.split("<summary>Work with your existing tools</summary>", 1)[1].split("\n## ", 1)[0]
     for capability in ("CLI or GitHub Action", "REST API", "MCP", "SARIF", "CycloneDX", "SPDX", "fleet sync", "runtime evidence"):
         assert capability in integrations
     assert "[Integration capability matrix](docs/INTEGRATIONS.md)" in integrations
@@ -228,7 +229,7 @@ def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() ->
         section = text.split(heading, 1)[1].split("\n## ", 1)[0]
         assert DURABLE_LOCAL_CONTROL_PLANE in section
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    self_host = readme.split("## Self-host", 1)[1].split("## Quick start", 1)[0]
+    self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
     assert "docker compose up -d" in self_host
     assert "retains state in a Docker volume" in self_host
     assert "docs/DEPLOY_QUICKSTART.md" in self_host
@@ -236,7 +237,7 @@ def test_primary_local_control_plane_first_runs_use_one_durable_sqlite_path() ->
 
 def test_readme_primary_local_operator_first_runs_grant_scan_role_explicitly() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    self_host = readme.split("## Self-host", 1)[1].split("## Quick start", 1)[0]
+    self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
     assert "docker compose up -d" in self_host
     assert "loopback" in self_host
     assert "authenticated deployment" in self_host
@@ -251,7 +252,7 @@ def test_readme_primary_local_operator_first_runs_grant_scan_role_explicitly() -
 
 def test_readme_connection_first_run_requires_an_explicit_scan_after_verification() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    self_host = readme.split("## Self-host", 1)[1].split("## Quick start", 1)[0]
+    self_host = readme.split("## Self-host", 1)[1].split("\n## ", 1)[0]
     assert "read-only connection, verify access, then start a scan" in self_host
     assert "Connections default to auto-scan on creation" not in readme
 

@@ -24,7 +24,7 @@ customer environment.
 | Compliance report | `GET /v1/compliance/{framework}/report` | `src/agent_bom/api/routes/compliance.py` |
 | Evidence bundle signing posture | `GET /v1/compliance/signing/status` | `src/agent_bom/api/compliance_signing.py` |
 | Auth and secret posture | `GET /v1/auth/policy` | `src/agent_bom/api/routes/auth.py`, `src/agent_bom/api/audit_log.py` |
-| Security header posture | `GET /v1/auth/policy` | `src/agent_bom/api/middleware.py`, `tests/test_api_operator_policy.py` |
+| Security header posture | `GET /v1/auth/policy` | `src/agent_bom/api/middleware.py`, `tests/api/test_api_operator_policy.py` |
 | Release artifact verification | GitHub Release assets | `docs/RELEASE_VERIFICATION.md`, `.github/workflows/release.yml` |
 | Dependency and image audit | CI artifacts and release SBOM | `docs/SUPPLY_CHAIN.md`, `.github/workflows/pr-security-gate.yml`, `.github/workflows/extras-audit.yml` |
 | Backup restore proof | CI workflow and operator runbook | `.github/workflows/backup-restore.yml`, `deploy/ops/restore-postgres-backup.sh` |
@@ -34,7 +34,7 @@ customer environment.
 | Control family | How agent-bom supports it | Evidence |
 |---|---|---|
 | CC6.1 logical access | API keys, OIDC, SAML metadata, trusted proxy mode, route-level RBAC | `src/agent_bom/api/middleware.py`, `src/agent_bom/rbac.py`, `docs/ENTERPRISE.md` |
-| CC6.2 least privilege | Admin, analyst, and viewer capabilities are enforced by middleware before route handlers | `src/agent_bom/rbac.py`, `tests/test_api_operator_policy.py`, `tests/test_rbac.py` |
+| CC6.2 least privilege | Admin, analyst, and viewer capabilities are enforced by middleware before route handlers | `src/agent_bom/rbac.py`, `tests/api/test_api_operator_policy.py`, `tests/test_enterprise_gaps.py` |
 | CC6.3 access changes | API key creation, revocation, and rotation are explicit API operations with audit events | `src/agent_bom/api/auth.py`, `src/agent_bom/api/routes/auth.py` |
 | CC6.6 transmission boundaries | TLS terminates at customer ingress; gateway/proxy policy can fail closed for runtime traffic | `deploy/helm/agent-bom/templates/controlplane-ingress.yaml`, `src/agent_bom/gateway_server.py` |
 | CC6.7 data access restriction | Tenant propagation, Postgres RLS, ClickHouse tenant filters, and cross-tenant tests | `src/agent_bom/api/middleware.py`, `src/agent_bom/api/postgres_common.py`, `tests/test_cross_tenant_leakage.py` |

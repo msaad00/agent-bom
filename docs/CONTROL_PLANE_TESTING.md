@@ -19,7 +19,7 @@ isolated units:
 | Flow | Coverage | Main tests |
 |---|---|---|
 | Scan result -> persisted graph snapshot -> gateway discovery/policy/audit path | Control-plane contract coverage with real graph persistence and HTTP route exercise | `tests/test_control_plane_contracts.py` |
-| Multi-tenant boundaries across control-plane request paths | Tenant isolation and auth-scoped request coverage | `tests/test_gateway_auth_tenant_e2e.py`, `tests/test_api_cross_tenant_matrix.py`, `tests/test_cross_tenant_leakage.py` |
+| Multi-tenant boundaries across control-plane request paths | Tenant isolation and auth-scoped request coverage | `tests/test_gateway_auth_tenant_e2e.py`, `tests/api/test_api_cross_tenant_matrix.py`, `tests/test_cross_tenant_leakage.py` |
 | Store-backed graph API behavior | Route and backend parity for graph traversal, node detail, and compliance views | `tests/test_graph_api.py`, `tests/test_graph_backend.py` |
 | Snowflake warehouse-native supported slice | Health/storage contract plus supported schedules/exceptions route wiring | `tests/test_snowflake_backend_contract.py`, `tests/test_snowflake_stores.py` |
 

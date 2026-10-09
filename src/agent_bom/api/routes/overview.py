@@ -59,6 +59,7 @@ from agent_bom.core.severity import (
     UNRATED_SEVERITY_BUCKET,
     severity_display_bucket,
 )
+from agent_bom.demo_estate.boot_seed import demo_estate_seeding
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
@@ -1371,13 +1372,15 @@ async def get_overview(request: Request) -> dict[str, Any]:
     """
     try:
         async with adaptive_backpressure("overview"):
-            return cast(dict[str, Any], await anyio.to_thread.run_sync(_build_overview, request))
+            payload = cast(dict[str, Any], await anyio.to_thread.run_sync(_build_overview, request))
     except BackpressureRejectedError as exc:
         raise HTTPException(
             status_code=429,
             detail=exc.to_dict(),
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from exc
+    # Copy rather than mutate: the built payload may be a shared cache entry.
+    return {**payload, "demo_estate_seeding": demo_estate_seeding()}
 
 
 def _capture_hub_overview_snapshot(

@@ -40,7 +40,7 @@ import {
   summarizeAiBomEntities,
   type AiBomEvidenceSource,
 } from "@/lib/ai-bom-evidence";
-import { api, formatDate, type AgentBomManifestResponse } from "@/lib/api";
+import { api, formatDate, type AgentBomManifestResponse, type InventorySummaryResponse } from "@/lib/api";
 
 function downloadManifest(manifest: AgentBomManifestResponse) {
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
@@ -181,7 +181,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
         </Link>
       </div>
 
-      <div className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
+      <div tabIndex={0} role="region" aria-label="Graph nodes" className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
         {nodes.map((node) => (
           <div
             key={node.id}
@@ -200,7 +200,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
         ) : null}
       </div>
 
-      <div className="max-h-36 overflow-auto rounded-lg border border-[color:var(--border-subtle)]">
+      <div tabIndex={0} role="region" aria-label="Graph edges" className="max-h-36 overflow-auto rounded-lg border border-[color:var(--border-subtle)]">
         <table className="w-full text-left text-[11px]">
           <thead className="sticky top-0 bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]">
             <tr>
@@ -227,6 +227,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
 export default function AgentBomManifestPage() {
   const { counts } = useDeploymentContext();
   const [manifest, setManifest] = useState<AgentBomManifestResponse | null>(null);
+  const [inventory, setInventory] = useState<InventorySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ManifestFilters>(DEFAULT_MANIFEST_FILTERS);
@@ -239,6 +240,11 @@ export default function AgentBomManifestPage() {
       .then(setManifest)
       .catch((err) => setError(err instanceof Error ? err.message : "Manifest request failed"))
       .finally(() => setLoading(false));
+    // Optional: the roll-up falls back to manifest-only counts without a snapshot.
+    Promise.resolve()
+      .then(() => api.getInventorySummary())
+      .then(setInventory)
+      .catch(() => setInventory(null));
   };
 
   useEffect(() => {
@@ -250,7 +256,7 @@ export default function AgentBomManifestPage() {
   const options = useMemo(() => manifestFilterOptions(allRows), [allRows]);
   const hasActiveFilters = JSON.stringify(filters) !== JSON.stringify(DEFAULT_MANIFEST_FILTERS);
   const evidenceSources = useMemo(() => deriveAiBomEvidenceSources(counts, manifest), [counts, manifest]);
-  const entityRollup = useMemo(() => summarizeAiBomEntities(manifest), [manifest]);
+  const entityRollup = useMemo(() => summarizeAiBomEntities(manifest, inventory), [manifest, inventory]);
   const activeSources = countActiveEvidenceSources(evidenceSources);
   const scopeLabel = aiBomScopeLabel(counts, manifest);
 
@@ -263,8 +269,8 @@ export default function AgentBomManifestPage() {
     { label: "MCP servers", value: entityRollup.mcpServers, icon: Server },
     { label: "Models", value: entityRollup.models, icon: Sparkles },
     { label: "Frameworks", value: entityRollup.frameworks, icon: Blocks },
-    { label: "Packages", value: entityRollup.packages, icon: Box },
-    { label: "Cloud assets", value: entityRollup.cloudAssets, icon: Cloud, href: "/connections" },
+    { label: "Packages", value: entityRollup.packages, icon: Box, ...(inventory ? { href: "/inventory/packages" } : {}) },
+    { label: "Cloud assets", value: entityRollup.cloudAssets, icon: Cloud, href: inventory ? "/inventory/cloud" : "/connections" },
     { label: "Credential refs", value: entityRollup.credentials, icon: KeyRound },
     { label: "Findings", value: entityRollup.findings, icon: AlertTriangle, href: "/findings" },
     {
@@ -327,7 +333,7 @@ export default function AgentBomManifestPage() {
               <p className="text-[9px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">available</p>
             </div>
           </div>
-          <div className="max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
+          <div tabIndex={0} role="region" aria-label="Evidence sources" className="max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
             {evidenceSources.map((source) => (
               <EvidenceSourceRow key={source.id} source={source} />
             ))}
@@ -341,7 +347,9 @@ export default function AgentBomManifestPage() {
                 Inventory roll-up
               </p>
               <p className="mt-0.5 text-[11px] text-[color:var(--text-secondary)]">
-                Counts from the current manifest snapshot
+                {inventory
+                  ? "Agents, servers, and credentials from the manifest; packages, cloud assets, and findings from the asset inventory"
+                  : "Counts from the current manifest snapshot"}
               </p>
             </div>
             {manifest ? (
@@ -353,7 +361,7 @@ export default function AgentBomManifestPage() {
             ) : null}
           </div>
           {manifest ? (
-            <div className="grid max-h-52 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-4">
+            <div tabIndex={0} role="region" aria-label="Inventory metrics" className="grid max-h-52 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-4">
               {metrics.map((metric) => (
                 <MetricChip key={metric.label} {...metric} />
               ))}
@@ -378,7 +386,7 @@ export default function AgentBomManifestPage() {
         <details className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
           <summary className="cursor-pointer text-sm font-semibold">Inventory items needing review · {manifest!.blueprint_drift.signal_count}</summary>
           <p className="mt-2 text-xs">Ownership, registration, and server warnings from the current inventory. These checks do not establish a change against an approved baseline.</p>
-          <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-xs">
+          <ul tabIndex={0} aria-label="Inventory review items" className="mt-3 max-h-52 space-y-2 overflow-y-auto text-xs">
             {(manifest!.blueprint_drift.signals ?? []).map((signal, index) => <li key={`${signal.kind}:${signal.entity_id}:${index}`}>
               <span className="font-medium">{signal.kind.replaceAll("_", " ")}</span> · {signal.message}
             </li>)}
@@ -468,7 +476,7 @@ export default function AgentBomManifestPage() {
                   </div>
                 </div>
 
-                <div className="max-h-[28rem] overflow-auto">
+                <div tabIndex={0} role="region" aria-label="AI BOM components" className="max-h-[28rem] overflow-auto">
                   <table className="w-full min-w-[720px] text-left text-xs">
                     <thead className="sticky top-0 z-10 bg-[color:var(--surface-muted)] text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
                       <tr>

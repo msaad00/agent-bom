@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import { ApiOfflineState } from "@/components/api-offline-state";
+import { InventoryErrorState } from "@/components/inventory/inventory-error-state";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
 import { InventoryPagination } from "@/components/inventory/inventory-pagination";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
@@ -89,7 +89,7 @@ export function AssetInventoryView({
     return (
       <div className="space-y-5">
         {header}
-        <ApiOfflineState detail={error} kind={errorKind} />
+        <InventoryErrorState error={error} errorKind={errorKind} onRetry={reload} />
       </div>
     );
   }
@@ -196,7 +196,7 @@ export function AssetInventoryView({
         </>
       )}
 
-      {error && errorKind === "network" ? (
+      {error && (errorKind === "network" || errorKind === "request") ? (
         <button type="button" onClick={reload} className="self-start text-xs text-[color:var(--text-tertiary)] underline">
           Retry
         </button>

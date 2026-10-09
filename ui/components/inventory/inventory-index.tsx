@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 
-import { ApiOfflineState } from "@/components/api-offline-state";
+import { InventoryErrorState } from "@/components/inventory/inventory-error-state";
 import { InventoryPagination } from "@/components/inventory/inventory-pagination";
 import { InventoryFacetBar } from "@/components/inventory/inventory-facet-bar";
 import { DataTable, type DataTableColumn } from "@/components/data-table";
@@ -16,7 +16,7 @@ import { useInventory } from "@/lib/inventory-context";
 import { ASSET_KINDS, ASSET_KIND_BY_ID, type AssetRow } from "@/lib/inventory";
 
 export function InventoryIndex() {
-  const { model, summary, filters, loading, error, errorKind,
+  const { model, summary, filters, loading, error, errorKind, reload,
     details, detailLoadingId, detailError, loadAssetDetail } = useInventory();
   const rows = useMemo(() => Object.values(model?.rowsByKind ?? {}).flat(), [model]);
   const { selected, select } = useInventorySelection(rows, model?.scanId, loadAssetDetail);
@@ -70,7 +70,7 @@ export function InventoryIndex() {
     return (
       <div className="space-y-5">
         {header}
-        <ApiOfflineState detail={error} kind={errorKind} />
+        <InventoryErrorState error={error} errorKind={errorKind} onRetry={reload} />
       </div>
     );
   }

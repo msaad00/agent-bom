@@ -50,7 +50,7 @@ export function LocalReportImport({ onImport }: { onImport: (data: ScanResult) =
               agent-bom scan . -f json -o report.json
             </code>
             {importError ? (
-              <div className="mx-auto mt-4 max-w-xl rounded-xl border border-red-800/50 bg-red-950/30 px-3 py-2 text-left">
+              <div className="mx-auto mt-4 max-w-xl rounded-xl border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] px-3 py-2 text-left">
                 <p role="alert" className="break-words text-xs font-mono text-red-700 dark:text-red-300">{importError}</p>
               </div>
             ) : null}

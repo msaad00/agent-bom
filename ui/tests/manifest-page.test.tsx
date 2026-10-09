@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ManifestPage from "@/app/manifest/page";
-const { getManifest } = vi.hoisted(() => ({ getManifest: vi.fn() }));
+const { getManifest, getInventorySummary } = vi.hoisted(() => ({ getManifest: vi.fn(), getInventorySummary: vi.fn() }));
 vi.mock("@/hooks/use-deployment-context", () => ({ useDeploymentContext: () => ({counts: null}) }));
-vi.mock("@/lib/api", async () => ({...await vi.importActual("@/lib/api"), api: {getAgentBomManifest:getManifest}}));
+vi.mock("@/lib/api", async () => ({...await vi.importActual("@/lib/api"), api: {getAgentBomManifest:getManifest,getInventorySummary}}));
 const manifest = {
  schema_version:"agent-bom.manifest/v1",generated_at:"2026-09-06T12:00:00Z",source:"control-plane",tenant_id:"default",
  summary:{agents:0,mcp_servers:1,tools:0,credential_refs:0,runtime_observed_servers:0,gateway_registered_servers:0},
@@ -14,7 +14,7 @@ const manifest = {
  visibility:{owners:0,unowned_agents:0,shadow_runtime_servers:0,untracked_runtime_servers:0,servers_with_warnings:0,risky_credential_refs:0}
 };
 describe("AI BOM evidence scope",()=>{
- beforeEach(()=>{getManifest.mockReset();});
+ beforeEach(()=>{getManifest.mockReset();getInventorySummary.mockReset();getInventorySummary.mockRejectedValue(new Error("no snapshot"));});
  it("distinguishes registered agents and uncollected scan dimensions",async()=>{
  getManifest.mockResolvedValue(manifest); render(<ManifestPage/>);
  await screen.findByText("claude-desktop");
@@ -37,6 +37,28 @@ describe("AI BOM evidence scope",()=>{
  expect(screen.queryByText(/Observation-only drift review|blueprint needs review/)).not.toBeInTheDocument();
  fireEvent.click(toggle);
  expect(screen.getByText(/Agent has no owner metadata/)).toBeVisible();
+ });
+ it("rolls packages, cloud assets, and findings up from the asset inventory", async()=>{
+ getManifest.mockResolvedValue(manifest);
+ getInventorySummary.mockResolvedValue({scan_id:"current-estate:abc",total_assets:2660,by_type:{package:781,cloud_resource:1879},finding_count:412});
+ render(<ManifestPage/>);
+ await screen.findByText("claude-desktop");
+ const chip=(label:string)=>screen.getByText(label).parentElement as HTMLElement;
+ await waitFor(()=>expect(chip("Packages")).toHaveTextContent("781"));
+ expect(chip("Cloud assets")).toHaveTextContent("1,879");
+ expect(chip("Findings")).toHaveTextContent("412");
+ });
+
+ it("makes every scrollable region keyboard focusable and named", async()=>{
+ getManifest.mockResolvedValue(manifest);
+ const {container}=render(<ManifestPage/>);
+ await screen.findAllByText("claude-desktop");
+ const regions=[...container.querySelectorAll<HTMLElement>("[class*='overflow-auto'],[class*='overflow-y-auto']")];
+ expect(regions.length).toBeGreaterThan(0);
+ for (const region of regions) {
+  expect(region).toHaveAttribute("tabindex","0");
+  expect(region).toHaveAttribute("aria-label");
+ }
  });
 
 });

@@ -46,14 +46,14 @@ import { useChartTheme } from "@/lib/theme-colors";
 
 const MODE_COLORS: Record<PolicyMode, string> = {
   audit: "bg-blue-950 text-blue-300 border-blue-800",
-  enforce: "bg-red-950 text-red-300 border-red-800",
+  enforce: "bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)] border-[color:var(--severity-critical-border)]",
 };
 
 const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string> = {
   disabled: "bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
   advisory_only: "bg-blue-950 text-blue-300 border-blue-800",
-  mixed: "bg-amber-950 text-amber-300 border-amber-800",
-  default_deny: "bg-red-950 text-red-300 border-red-800",
+  mixed: "bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)] border-[color:var(--severity-medium-border)]",
+  default_deny: "bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)] border-[color:var(--severity-critical-border)]",
   blocking: "bg-emerald-950 text-emerald-300 border-emerald-800",
 };
 
@@ -414,7 +414,7 @@ export default function GatewayPage() {
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); void handleDelete(policy.policy_id); }}
-                          className="text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 bg-red-950 text-red-300 border-red-800 flex items-center gap-1"
+                          className="text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)] border-[color:var(--severity-critical-border)] flex items-center gap-1"
                         >
                           <Trash2 className="w-3 h-3" />
                           Delete
@@ -481,9 +481,9 @@ export default function GatewayPage() {
                   <div className="flex items-center gap-3">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                       entry.action_taken === "blocked"
-                        ? "bg-red-950 text-red-300 border-red-800"
+                        ? "bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)] border-[color:var(--severity-critical-border)]"
                         : entry.action_taken === "alerted"
-                        ? "bg-yellow-950 text-yellow-300 border-yellow-800"
+                        ? "bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)] border-[color:var(--severity-medium-border)]"
                         : "bg-emerald-950 text-emerald-300 border-emerald-800"
                     }`}>
                       {entry.action_taken}
@@ -543,7 +543,7 @@ export default function GatewayPage() {
             <div className={`rounded-lg border p-4 ${
               evalResult.allowed
                 ? "border-emerald-800 bg-emerald-950/50"
-                : "border-red-800 bg-red-950/50"
+                : "border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)]"
             }`}>
               <div className="flex items-center gap-2">
                 {evalResult.allowed ? (

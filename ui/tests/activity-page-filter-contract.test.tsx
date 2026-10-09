@@ -68,3 +68,22 @@ describe("Activity server filter contract", () => {
     await waitFor(() => expect(api.getActivity).toHaveBeenCalledWith(30));
   });
 });
+
+describe("Activity header count", () => {
+  it("counts the events the stream lists instead of reporting zero above them", async () => {
+    const feed = vi.spyOn(api, "getGatewayFeed").mockResolvedValue({
+      events: [
+        { event_id: "g-1", ts: "2026-10-08T12:00:00Z", agent: "claims-triage", action_type: "llm_call", target: "openai/gpt-5", tenant: "t", shadow: false, source: "gateway" },
+        { event_id: "g-2", ts: "2026-10-08T12:01:00Z", agent: "prior-auth", action_type: "llm_call", target: "anthropic/model", tenant: "t", shadow: false, source: "gateway" },
+      ],
+      health: { state: "sample", live: false },
+    } as never);
+    render(<ActivityPage />);
+
+    expect(
+      await screen.findByText("2 recent stream events · 0 runtime events in the last 90 days"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^0 events across/)).not.toBeInTheDocument();
+    feed.mockRestore();
+  });
+});

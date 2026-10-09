@@ -21,6 +21,8 @@ _seed_run_lock = threading.Lock()
 _boot_seed_done = threading.Event()
 _boot_seed_done.set()
 
+DEMO_SEEDING_SUMMARY = "Seeding the demo estate. Posture appears when the curated scan lands."
+
 
 def serialized_seed(fn: _F) -> _F:
     @functools.wraps(fn)
@@ -81,6 +83,7 @@ async def drain_demo_estate_boot_seed(task: asyncio.Task[None] | None, timeout: 
 
 
 __all__ = [
+    "DEMO_SEEDING_SUMMARY",
     "demo_estate_seeding",
     "drain_demo_estate_boot_seed",
     "serialized_seed",

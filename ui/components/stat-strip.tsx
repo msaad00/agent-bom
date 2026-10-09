@@ -93,15 +93,15 @@ function StatCell({ item }: { item: StatStripItem }) {
 
   const inner = (
     <>
-      <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[color:var(--text-tertiary)]">
-        {Icon ? <Icon className={ICON_SIZE.xs} aria-hidden="true" /> : null}
-        <span className="truncate">{label}</span>
+      <div className="flex items-start gap-1.5 text-[11px] font-medium uppercase leading-tight tracking-[0.1em] text-[color:var(--text-tertiary)]">
+        {Icon ? <Icon className={`${ICON_SIZE.xs} mt-px shrink-0`} aria-hidden="true" /> : null}
+        <span className="min-w-0 break-words">{label}</span>
       </div>
       <div className={`mt-1 font-mono text-2xl font-semibold tabular-figures ${valueClass}`}>
         {value}
       </div>
       {hint ? (
-        <div className="mt-0.5 truncate text-xs text-[color:var(--text-tertiary)]">{hint}</div>
+        <div className="mt-0.5 break-words text-xs leading-snug text-[color:var(--text-tertiary)]">{hint}</div>
       ) : null}
     </>
   );

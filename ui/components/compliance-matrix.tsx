@@ -147,9 +147,9 @@ const columns = [
       // an EMPTY pill with the literal string "undefined" in its class list.
       const styles: Record<string, string> = {
         pass: "bg-emerald-950 text-emerald-300 border-emerald-800",
-        warning: "bg-yellow-950 text-yellow-300 border-yellow-800",
-        fail: "bg-red-950 text-red-300 border-red-800",
-        error: "bg-yellow-950 text-yellow-300 border-yellow-800",
+        warning: "bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)] border-[color:var(--severity-medium-border)]",
+        fail: "bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)] border-[color:var(--severity-critical-border)]",
+        error: "bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)] border-[color:var(--severity-medium-border)]",
         applicable: "bg-cyan-950 text-cyan-300 border-cyan-800",
         not_applicable: "bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)] border-[color:var(--border-subtle)]",
         not_evaluated: "bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)] border-[color:var(--border-subtle)]",

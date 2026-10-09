@@ -61,9 +61,9 @@ const STATE_LABELS: Record<FleetLifecycleState, string> = {
 
 const STATE_COLORS: Record<FleetLifecycleState, string> = {
   discovered: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
-  pending_review: "bg-yellow-950 text-yellow-300 border-yellow-800",
+  pending_review: "bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)] border-[color:var(--severity-medium-border)]",
   approved: "bg-emerald-950 text-emerald-300 border-emerald-800",
-  quarantined: "bg-red-950 text-red-300 border-red-800",
+  quarantined: "bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)] border-[color:var(--severity-critical-border)]",
   decommissioned: "bg-[var(--surface)] text-[var(--text-tertiary)] border-[var(--border-subtle)]",
 };
 
@@ -399,14 +399,14 @@ export default function FleetPage() {
       )}
 
       {warning && !loading && !error && (
-        <div className="rounded-xl border border-yellow-900/40 bg-yellow-950/20 px-4 py-3">
+        <div className="rounded-xl border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] px-4 py-3">
           <p className="text-sm text-yellow-300">Fleet loaded with partial data</p>
           <p className="mt-1 text-xs text-yellow-100/70">{warning}</p>
         </div>
       )}
 
       {notice && (
-        <div className="flex items-start justify-between gap-3 rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3">
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] px-4 py-3">
           <p className="text-sm text-red-200">{notice}</p>
           <button
             onClick={() => setNotice(null)}

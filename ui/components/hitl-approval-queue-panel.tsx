@@ -139,7 +139,7 @@ export function HitlApprovalQueuePanel() {
                         ? "border-emerald-800 bg-emerald-950 text-emerald-300"
                         : item.status === "denied"
                           ? "border-rose-800 bg-rose-950 text-rose-300"
-                          : "border-amber-800 bg-amber-950 text-amber-300"
+                          : "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)]"
                     }`}
                   >
                     <ShieldAlert className="h-3 w-3" />

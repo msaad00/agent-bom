@@ -219,13 +219,13 @@ export function findingStatusLabel(status: string | undefined): string {
 export function findingStatusClass(status: string | undefined): string {
   const normalized = (status ?? "").trim().toLowerCase();
   if (normalized === "open") {
-    return "bg-amber-950 border-amber-800 text-amber-300";
+    return "bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)] text-[color:var(--severity-medium)]";
   }
   if (normalized === "resolved") {
-    return "bg-emerald-950 border-emerald-800 text-emerald-300";
+    return "bg-[color:var(--status-success-bg)] border-[color:var(--status-success-border)] text-[color:var(--status-success)]";
   }
   if (normalized === "reopened") {
-    return "bg-orange-950 border-orange-800 text-orange-300";
+    return "bg-[color:var(--severity-high-bg)] border-[color:var(--severity-high-border)] text-[color:var(--severity-high)]";
   }
   return "bg-[var(--surface)] border-[var(--border-subtle)] text-[var(--text-tertiary)]";
 }

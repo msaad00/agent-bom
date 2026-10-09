@@ -637,7 +637,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
             )}
 
             {error ? (
-              <p role="alert" className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-400">{error}</p>
+              <p role="alert" className="rounded-lg border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] px-3 py-2 text-sm text-[color:var(--severity-critical)]">{error}</p>
             ) : null}
 
             <div className="border-t border-[color:var(--border-subtle)] pt-5">

@@ -72,6 +72,30 @@ def test_health_answers_while_demo_estate_seed_is_in_flight(gated_demo_boot) -> 
     assert calls == [SHOWCASE_TENANT]
 
 
+def test_empty_posture_and_overview_say_the_demo_is_seeding(gated_demo_boot) -> None:
+    """An empty estate mid-seed must not read as a product with no scans."""
+    api_server, boot_seed, release, started, _calls = gated_demo_boot
+
+    with TestClient(api_server.app) as client:
+        assert started.wait(10)
+
+        posture = client.get("/v1/posture").json()
+        assert posture["no_data"] is True
+        assert posture["demo_estate_seeding"] is True
+        assert "seeding" in posture["summary"].lower()
+        overview = client.get("/v1/overview")
+        assert overview.status_code == 200
+        assert overview.json()["demo_estate_seeding"] is True
+
+        release.set()
+        assert boot_seed.wait_for_demo_estate_boot_seed(10) is True
+
+        settled = client.get("/v1/posture").json()
+        assert settled["demo_estate_seeding"] is False
+        assert settled["summary"] == "No completed scans available"
+        assert client.get("/v1/overview").json()["demo_estate_seeding"] is False
+
+
 def test_concurrent_bootstrap_callers_run_the_seed_once(monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.demo_estate import bootstrap
 

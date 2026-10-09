@@ -217,3 +217,26 @@ def test_costs_endpoint_embeds_forecast(client):
     body = resp.json()
     assert "forecast" in body
     assert body["forecast"]["schema_version"] == "observability.cost_forecast.v1"
+
+
+# ── short history → no extrapolation beyond what the data supports ─────────────
+
+
+def test_sub_hour_history_does_not_extrapolate_a_daily_burn():
+    # $6,851 recorded across ~50 minutes must not become a $200k/day burn or a
+    # multi-million projected period — under an hour of data supports neither.
+    records = [_rec(6851.0 / 50, hours_ago=m / 60.0, call_id=f"m-{m}") for m in range(1, 51)]
+    fc = forecast_spend(records, budget=None, now=_NOW)
+    assert fc["status"] == "insufficient_history"
+    assert fc["burn_rate_usd_per_day"] is None
+    assert fc["projected_period_spend_usd"] is None
+    assert fc["history_span_hours"] == pytest.approx(50 / 60.0, rel=0.01)
+
+
+def test_rate_never_exceeds_spend_extrapolated_from_minimum_span():
+    # Six hours of history is the minimum span a daily rate is derived from.
+    records = [_rec(1.0, hours_ago=h, call_id=f"six-{h}") for h in range(1, 7)]
+    fc = forecast_spend(records, budget=None, now=_NOW)
+    assert fc["status"] == "no_budget"
+    assert fc["burn_rate_usd_per_day"] == pytest.approx(24.0, rel=0.01)
+    assert fc["history_span_hours"] == pytest.approx(6.0)

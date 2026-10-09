@@ -873,6 +873,10 @@ class Agent:
         return sum(len(s.packages) for s in self.mcp_servers)
 
     @property
+    def total_mcp_servers(self) -> int:
+        return sum(1 for server in self.mcp_servers if server.is_mcp_surface)
+
+    @property
     def total_vulnerabilities(self) -> int:
         return sum(s.total_vulnerabilities for s in self.mcp_servers)
 
@@ -1350,7 +1354,7 @@ class AIBOMReport:
         # Package manifests, SBOMs, and container layers reuse MCPServer as a
         # dependency-bearing surface model. They are not MCP servers and must
         # not inflate the public MCP inventory count.
-        return sum(1 for agent in self.agents for server in agent.mcp_servers if server.is_mcp_surface)
+        return sum(agent.total_mcp_servers for agent in self.agents)
 
     @property
     def total_packages(self) -> int:

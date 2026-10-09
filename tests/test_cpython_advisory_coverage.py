@@ -239,3 +239,40 @@ async def test_identical_runtime_instances_each_retain_current_lookup_receipts(m
     for package in packages:
         assert any(item.get("assessment") == "upstream_release_lookup_complete" for item in package.version_evidence)
         assert not any(item.get("advisory_id") == "stale" for item in package.version_evidence)
+
+
+def _advisory_with_release_events(events):
+    advisory = json.loads(json.dumps(ADVISORY))
+    advisory["affected"][0]["ranges"][0]["database_specific"] = {"extracted_events": events, "source": ["AFFECTED_FIELD"]}
+    return advisory
+
+
+@pytest.mark.asyncio
+async def test_runtime_fix_comes_from_the_release_window_containing_the_install(monkeypatch):
+    # OSV's GIT range carries only commit SHAs; the release-numbered windows
+    # live in ``database_specific.extracted_events`` (CVE-2025-8194 shape).
+    events = [
+        {"introduced": "0"},
+        {"fixed": "3.9.24"},
+        {"introduced": "3.13.0"},
+        {"fixed": "3.13.6"},
+        {"introduced": "3.14.0a1"},
+        {"fixed": "3.14.9"},
+    ]
+    transport(monkeypatch, {"vulns": [_advisory_with_release_events(events)]})
+    package = runtime()
+
+    assert await scan_packages([package]) == 1
+
+    assert package.vulnerabilities[0].fixed_version == "3.14.9"
+
+
+@pytest.mark.asyncio
+async def test_runtime_fix_stays_unknown_when_no_release_window_contains_the_install(monkeypatch):
+    events = [{"introduced": "0"}, {"fixed": "3.9.24"}, {"introduced": "3.13.0"}, {"fixed": "3.13.6"}]
+    transport(monkeypatch, {"vulns": [_advisory_with_release_events(events)]})
+    package = runtime()
+
+    assert await scan_packages([package]) == 1
+
+    assert package.vulnerabilities[0].fixed_version is None

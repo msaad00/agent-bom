@@ -15,10 +15,11 @@ from typing import Any
 import httpx
 
 from agent_bom import http_client
-from agent_bom.models import Package
+from agent_bom.models import Package, Vulnerability
 from agent_bom.package_utils import canonical_package_key
 from agent_bom.scanners.state import record_coverage_warning
 from agent_bom.security import SecurityError
+from agent_bom.version_utils import compare_version_order
 from agent_bom.vuln_compliance import tag_vulnerability
 
 REPOSITORY = "https://github.com/python/cpython"
@@ -119,6 +120,48 @@ async def _lookup(package: Package) -> list[dict[str, Any]]:
     raise ValueError("Runtime advisory page limit reached")
 
 
+def _release_fix(advisory: dict[str, Any], version: str) -> str | None:
+    """Fixed release from the window that contains ``version``, if published.
+
+    The GIT range's ``fixed`` events are commit SHAs; OSV records the
+    release-numbered windows in ``database_specific.extracted_events``. Only a
+    window containing the installed release yields a fix, so no cross-branch
+    upgrade is advised.
+    """
+    for affected in advisory.get("affected") or []:
+        for rng in affected.get("ranges") or [] if isinstance(affected, dict) else []:
+            if not isinstance(rng, dict) or rng.get("type") != "GIT" or rng.get("repo") != REPOSITORY:
+                continue
+            events = (rng.get("database_specific") or {}).get("extracted_events")
+            introduced: str | None = None
+            for event in events if isinstance(events, list) else []:
+                if not isinstance(event, dict):
+                    continue
+                if isinstance(event.get("introduced"), str):
+                    introduced = event["introduced"]
+                    continue
+                fixed = event.get("fixed")
+                if introduced is None or not isinstance(fixed, str):
+                    continue
+                lower = compare_version_order(introduced, version, "pypi") if introduced != "0" else -1
+                upper = compare_version_order(version, fixed, "pypi")
+                if lower is not None and upper is not None and lower <= 0 and upper < 0:
+                    return fixed
+                introduced = None
+    return None
+
+
+def _attach_release_fixes(findings: list[Vulnerability], advisories: list[dict[str, Any]], version: str) -> None:
+    fixes: dict[str, str] = {}
+    for advisory in advisories:
+        fix = _release_fix(advisory, version)
+        if fix:
+            fixes.update({key: fix for key in [advisory.get("id"), *(advisory.get("aliases") or [])] if isinstance(key, str)})
+    for finding in findings:
+        if finding.fixed_version is None:
+            finding.fixed_version = next((fixes[key] for key in [finding.id, *finding.aliases] if key in fixes), None)
+
+
 async def scan_cpython_runtimes(packages: list[Package], *, offline: bool) -> int:
     """Attach version-scoped findings; failures remain explicit coverage gaps."""
     from agent_bom.scanners.package_scan import build_vulnerabilities, merge_scanner_vulnerabilities
@@ -133,6 +176,7 @@ async def scan_cpython_runtimes(packages: list[Package], *, offline: bool) -> in
                 raise ValueError("Runtime advisory lookup requires online evidence")
             advisories = await _lookup(package)
             findings = build_vulnerabilities(advisories, package)
+            _attach_release_fixes(findings, advisories, package.version)
         except (ValueError, TypeError, KeyError, AttributeError, httpx.HTTPError, http_client.OfflineModeError, SecurityError):
             record_coverage_warning(
                 {

@@ -553,7 +553,7 @@ def print_agent_tree(report: AIBOMReport) -> None:
         if agent.status == AgentStatus.INSTALLED_NOT_CONFIGURED:
             status_str = " [yellow][installed, not configured][/yellow]"
         # Compute summary stats
-        total_servers = len(agent.mcp_servers)
+        total_servers = agent.total_mcp_servers
         total_pkgs = sum(len(s.packages) for s in agent.mcp_servers)
         total_creds = sum(len(s.credential_names) for s in agent.mcp_servers)
         stats_parts = [f"{total_servers} server{'s' if total_servers != 1 else ''}"]

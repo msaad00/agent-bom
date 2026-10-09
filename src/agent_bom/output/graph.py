@@ -1170,7 +1170,7 @@ def export_graph_html(
     elements_json = _json_for_script(elements)
 
     total_agents = len(report.agents)
-    total_servers = sum(len(a.mcp_servers) for a in report.agents)
+    total_servers = report.total_servers
     total_pkgs = sum(a.total_packages for a in report.agents)
     total_vulns = len(findings)
     all_findings = findings + policy_findings

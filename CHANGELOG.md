@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Credential patterns no longer fire inside ordinary identifiers. The OpenAI key pattern matched the `sk-` in `task-`, `risk-` and `disk-`, so CSS class names and schema ids such as `risk-campaign-evidence-label` became CRITICAL "OpenAI API Key" findings. Vendor-prefixed patterns (OpenAI, Anthropic, AWS, GitHub, GitLab, Slack, Stripe, Google, Twilio, SendGrid, Mailgun, Square, npm, PyPI, Discord, Telegram, JWT, Shopify, Databricks) now require a token boundary before the prefix. An OpenAI key body must also contain a digit and must not be a lowercase hyphenated slug, and `sk-ant-` keys report as Anthropic only. A `postgresql://${USER:-default}@host` shell default is no longer read as a password. On this repository, `agent-bom secrets .` drops from 39 to 12 credential findings (OpenAI 26 to 1, connection strings 8 to 6). Real-format `sk-...` and `sk-proj-...` keys are still detected, and pattern cost on a 200 KB response is unchanged.
+- Distro fix advisories (Debian `DLA-`/`DSA-`, Ubuntu `USN-`, AlmaLinux `ALSA-`, Red Hat `RHSA-` and similar) no longer report `unknown` severity when their upstream CVEs are scored. Such an advisory takes the highest CVSS score, or else the worst label, of the CVEs it fixes. The scores come from records already in the scan and from the local vulnerability DB, with no extra network request. `severity_source` names the CVE (`upstream_cve:CVE-…`), and EPSS and KEV attach through the same CVEs. The advisory id is no longer projected into `cve_ids`. An advisory with no scored upstream CVE stays `unknown` and still fails the severity gate closed; the exit-code reference now documents this.
+- The "SQL query is built through string interpolation" rule honors `# nosec`, `# nosec B608` and `# noqa: S608` anywhere on the call or on the assignment that built the query. It no longer flags queries whose interpolated values are only bind placeholders (`?`, `%s`, a separator `join` of them) or module-level UPPER_CASE constants the function does not rebind. A `# nosec` naming another rule, or any interpolated parameter, is still reported. On this repository, `agent-bom scan -p .` drops from 202 to 29 such findings.
+- CPython runtime findings now carry `fixed_version` when OSV publishes release-numbered fix windows (for example `3.9.24`). Only the window that contains the installed release supplies a fix, so no cross-branch upgrade is suggested.
+- The console summary, Agents table, dependency tree, HTML agent cards and graph summary now count only real MCP servers. A plain repository scan no longer shows "0 servers" in the summary and "Servers 1" in the Agents table.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

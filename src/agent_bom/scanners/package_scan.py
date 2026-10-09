@@ -100,6 +100,7 @@ from agent_bom.scanners.state import (
     reset_scan_performance,
     reset_scan_warnings_only,
 )
+from agent_bom.scanners.upstream_severity import resolve_upstream_advisory_severity
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
 from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 
@@ -1755,6 +1756,7 @@ async def scan_packages(
             console.print(f"  [yellow]⚠[/yellow] GHSA advisory check skipped: {exc}")
             _emit_scan_warning("GHSA advisory enrichment skipped")
 
+    resolve_upstream_advisory_severity(scannable)
     # Typosquat detection for all scanned packages
     for pkg in scannable:
         if not pkg.is_malicious:

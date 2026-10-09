@@ -20,12 +20,12 @@ Keep counts out of public positioning copy and update this file from the repo in
 | Python modules | 1294 | `src/agent_bom` | Counts all Python files recursively. |
 | Supported package ecosystems | 15 | `src/agent_bom/ecosystems.py` | Counted from SUPPORTED_PACKAGE_ECOSYSTEMS. |
 | Compliance surfaces | 16 | `src/agent_bom/compliance_coverage.py` | 15 tag-mapped frameworks plus the OWASP AISVS benchmark surface. |
-| Proxy inline detectors | 0 | `src/agent_bom/proxy.py` | Inline detector chain used by the MCP proxy path. |
+| Proxy inline detectors | 7 | `src/agent_bom/runtime/proxy_session.py` | Inline detector chain used by the MCP proxy path. |
 | Runtime protection engine detectors | 11 | `src/agent_bom/runtime/protection.py` | Broader protection engine used outside the lighter proxy-only path. |
 
 ## Runtime wording
 
-- `agent-bom proxy` uses `0` inline detectors in the MCP JSON-RPC path.
+- `agent-bom proxy` uses `7` inline detectors in the MCP JSON-RPC path.
 - The broader runtime protection engine uses `11` detectors.
 
 ## Regenerate

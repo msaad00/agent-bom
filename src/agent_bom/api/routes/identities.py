@@ -37,6 +37,7 @@ from agent_bom.api.delegation_service import (
     verify_identity_delegation,
 )
 from agent_bom.api.delegation_token import DelegationTokenError
+from agent_bom.api.read_models import IdentitiesResponse, documented
 from agent_bom.api.request_contract import PageLimit1000, reject_unknown_fields, require_scalar_str
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.webhook_store import emit_governance_event
@@ -782,7 +783,7 @@ def discover_non_human_identities(request: Request, body: dict | None = None) ->
     }
 
 
-@router.get("/identities", dependencies=[_dep("read")])
+@router.get("/identities", **documented(IdentitiesResponse), dependencies=[_dep("read")])
 def list_agent_identities(request: Request, include_inactive: bool = False, limit: PageLimit1000 = 200) -> dict[str, object]:
     """List managed agent identities for the active tenant (metadata only)."""
     tenant_id = _tenant(request)
@@ -1001,8 +1002,7 @@ def export_access_review_evidence(request: Request, campaign_id: str) -> dict[st
     return bundle
 
 
-# Declared last so the ``access-reviews`` static routes above take precedence
-# over this single-identity catch-all.
+# Declared last so the ``access-reviews`` static routes above take precedence over this single-identity catch-all.
 @router.get("/identities/{identity_id}", dependencies=[_dep("read")])
 def get_agent_identity(request: Request, identity_id: str) -> dict[str, object]:
     """Return one agent identity's lifecycle status (metadata only)."""

@@ -12,22 +12,22 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import JSONResponse, Response
 
+from agent_bom.api.error_models import (
+    _ERROR_CODE_BY_STATUS,
+)
+from agent_bom.api.error_models import (
+    ERROR_RESPONSES as ERROR_RESPONSES,
+)
+from agent_bom.api.error_models import (
+    ErrorBody as ErrorBody,
+)
+from agent_bom.api.error_models import (
+    ErrorCode as ErrorCode,
+)
+from agent_bom.api.error_models import (
+    ErrorEnvelope as ErrorEnvelope,
+)
 from agent_bom.security import sanitize_error
-
-_ERROR_CODE_BY_STATUS = {
-    400: "BAD_REQUEST",
-    401: "AUTH_FAILED",
-    403: "FORBIDDEN",
-    404: "NOT_FOUND",
-    405: "METHOD_NOT_ALLOWED",
-    409: "CONFLICT",
-    413: "PAYLOAD_TOO_LARGE",
-    415: "UNSUPPORTED_MEDIA_TYPE",
-    422: "VALIDATION_ERROR",
-    429: "RATE_LIMITED",
-    500: "INTERNAL_ERROR",
-    503: "SERVICE_UNAVAILABLE",
-}
 
 
 def _error_code_for_status(status_code: int) -> str:
@@ -175,7 +175,7 @@ def install_error_envelope(application: object) -> None:
 
     async def http_exception_handler(request: StarletteRequest, exc: HTTPException) -> JSONResponse:
         if request.url.path.startswith("/scim/"):
-            from agent_bom.api.scim import scim_error_body
+            from agent_bom.api.scim_errors import scim_error_body
 
             correlation_id = _correlation_id(request)
             detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)

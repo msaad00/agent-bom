@@ -134,3 +134,55 @@ def test_runtime_bootstrap_includes_the_same_atomic_revision_schema():
 
     bootstrap = Path("deploy/supabase/postgres/runtime-schema.sql").read_text()
     assert POSTGRES_JOB_REVISIONS_V1 in bootstrap
+
+
+def test_demo_existence_projection_is_tenant_scoped_and_skips_payload_parsing(replicas, monkeypatch):
+    from agent_bom.api.models import JobStatus
+
+    a, b = replicas
+    first, second = ("demo-projection-" + uuid4().hex for _ in range(2))
+    monkeypatch.setattr(a, "list_all", lambda **kwargs: pytest.fail("existence read materialized reports"))
+    with tenant_scope(first):
+        scan = job(first)
+        scan.status = JobStatus.DONE
+        scan.triggered_by = "demo-estate-bootstrap"
+        scan.result = {"findings": [{"id": "example"}]}
+        a.put(scan)
+        assert b.has_usable_demo_job(first)
+        scan.result = {"findings": []}
+        a.put(scan)
+        assert not b.has_usable_demo_job(first)
+        scan.triggered_by = None
+        scan.result = {"scan_sources": ["enterprise-demo"], "vulnerabilities": [{"id": "example"}]}
+        a.put(scan)
+        assert b.has_usable_demo_job(first)
+    with tenant_scope(second):
+        assert not a.has_usable_demo_job(first)
+        assert not a.has_usable_demo_job(second)
+
+
+def test_posture_projection_refreshes_after_another_replica_writes(replicas, monkeypatch):
+    from agent_bom.api.findings_current import latest_current_scan_job
+    from agent_bom.api.models import JobStatus
+    from agent_bom.api.posture_scan_snapshot import scan_posture_inputs
+
+    a, b = replicas
+    tenant = "posture-projection-" + uuid4().hex
+    with tenant_scope(tenant):
+        scan = job(tenant)
+        scan.status = JobStatus.DONE
+        scan.result = {"summary": {"total_packages": 1}, "posture_scorecard": {"score": 75}}
+        a.put(scan)
+        reads = []
+
+        def load():
+            reads.append(1)
+            return latest_current_scan_job(a.list_all(tenant_id=tenant), require_authoritative_evidence=True)
+
+        assert scan_posture_inputs(a, tenant, load)["posture_scorecard"]["score"] == 75
+        assert scan_posture_inputs(a, tenant, load)["posture_scorecard"]["score"] == 75
+        assert len(reads) == 1
+        scan.result["posture_scorecard"]["score"] = 50
+        b.put(scan)
+        assert scan_posture_inputs(a, tenant, load)["posture_scorecard"]["score"] == 50
+        assert len(reads) == 2

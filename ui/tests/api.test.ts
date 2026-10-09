@@ -817,7 +817,7 @@ describe('api.getPosture', () => {
     expect(result.grade).toBe('B')
     expect(result.score).toBe(72)
     expect(result.dimensions).toHaveProperty('vuln')
-    expect(result.dimensions.vuln?.score).toBe(65)
+    expect(result.dimensions?.vuln?.score).toBe(65)
   })
 
   it('throws on error', async () => {

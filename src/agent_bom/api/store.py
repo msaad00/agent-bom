@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 
 from agent_bom.api.posture_counts_cache import announce_scan_evidence
 from agent_bom.api.storage.campaign_revisions import initialize_sqlite_campaign_evidence
+from agent_bom.api.storage.job_read_projections import sqlite_demo_exists, sqlite_job_revision
 from agent_bom.api.storage.jobs import get_job, parse_job_payload, put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, migrate_sqlite_job_key
 from agent_bom.api.storage.sql import connection_session
@@ -339,6 +340,7 @@ class SQLiteJobStore:
     are duplicated as columns for efficient queries.
     """
 
+    has_usable_demo_job = sqlite_demo_exists
     retains_job_objects_in_memory = False
 
     def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
@@ -450,18 +452,7 @@ class SQLiteJobStore:
         store replacement; triggers update revisions in the writer transaction.
         """
         _require_tenant_scope(tenant_id, False, "SQLiteJobStore.overview_evidence_revision()")
-        try:
-            row = self._conn.execute(
-                """SELECT identity, COALESCE((SELECT revision FROM job_overview_revisions
-                   WHERE tenant_id=?), 0) FROM job_overview_identity WHERE singleton=1""",
-                (tenant_id,),
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("Job evidence revision unavailable")
-            return f"{row[0]}:{row[1]}"
-        finally:
-            self._shrink_connection_memory()
-            self._close_thread_connection()
+        return sqlite_job_revision(self, tenant_id)
 
     @staticmethod
     def _serialize(job: ScanJob) -> str:

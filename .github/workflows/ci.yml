@@ -153,7 +153,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/helm/agent-bom/|scripts/validate_helm_profiles\.py$|\.github/workflows/ci\.yml$)'; then
             helm=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(ui/|docs/openapi/|action\.yml|contracts/|src/agent_bom/(api/(routes/|read_models/|error_envelope\.py|versioning\.py|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py)'; then
             ui=true
           fi
           classification="$(printf '%s\n' "$changed" | python3 scripts/classify_ci_changes.py)"
@@ -656,6 +656,20 @@ jobs:
             echo "::error::ui/lib/graph-schema.generated.ts is out of date relative to /v1/graph/schema."
             echo "Run \`cd ui && npm run codegen:graph-schema\` locally and commit the result."
             echo "Issue: https://github.com/msaad00/agent-bom/issues/2255"
+            exit 1
+          fi
+
+      - name: OpenAPI and UI API types drift gate
+        # docs/openapi/v1.json is exported from the FastAPI routes and
+        # ui/lib/api-schema.generated.ts is generated from it; both must be
+        # committed in step with the code. Regenerate locally with
+        # `python scripts/export_openapi.py && cd ui && npm run codegen:api-schema`.
+        run: |
+          set -euo pipefail
+          uv run python scripts/export_openapi.py --check
+          cd ui
+          if ! npm run codegen:api-schema:check; then
+            echo "::error::ui/lib/api-schema.generated.ts is out of date relative to docs/openapi/v1.json. Run \`cd ui && npm run codegen:api-schema\` and commit the result."
             exit 1
           fi
 

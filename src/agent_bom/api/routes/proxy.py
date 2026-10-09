@@ -34,6 +34,7 @@ from agent_bom.api.gateway_activity_store import (
 )
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.proxy_provenance import GatewaySubmissionProvenance, canonicalize_proxy_submission
+from agent_bom.api.read_models import ProxyAlertsResponse, ProxyStatusResponse, documented
 from agent_bom.api.shield_registry import _MAX_SHIELD_SESSIONS, _get_engine, _shield_engines, _shield_engines_lock, _shield_key
 from agent_bom.api.tenancy import require_request_tenant_id
 
@@ -43,10 +44,7 @@ if TYPE_CHECKING:
 from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
-from agent_bom.runtime.gateway_events import (
-    GATEWAY_CANONICAL_EVENT_TYPES,
-    GATEWAY_DENIED_EVENT_TYPES,
-)
+from agent_bom.runtime.gateway_events import GATEWAY_CANONICAL_EVENT_TYPES, GATEWAY_DENIED_EVENT_TYPES
 from agent_bom.security import sanitize_error, sanitize_sensitive_payload
 
 router = APIRouter(dependencies=[Depends(demo_daily_evidence_dependency)])
@@ -917,7 +915,7 @@ def _read_metrics_from_log(path: _Path, tenant_id: str = "default") -> dict | No
 # ── HTTP endpoints ───────────────────────────────────────────────────────────
 
 
-@router.get("/proxy/status", tags=["proxy"])
+@router.get("/proxy/status", **documented(ProxyStatusResponse), tags=["proxy"])
 def proxy_status(request: Request) -> dict:
     """Get runtime proxy metrics.
 
@@ -973,7 +971,7 @@ def runtime_production_index(request: Request) -> dict:
     return _build_runtime_production_index(tenant_id, metrics, alerts)
 
 
-@router.get("/proxy/alerts", tags=["proxy"])
+@router.get("/proxy/alerts", **documented(ProxyAlertsResponse), tags=["proxy"])
 def proxy_alerts(
     request: Request,
     severity: str | None = None,

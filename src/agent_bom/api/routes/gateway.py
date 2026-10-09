@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
+from agent_bom.api.read_models import GatewayPoliciesResponse, documented
 from agent_bom.api.stores import _get_firewall_decision_store, _get_policy_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.gateway_upstreams import is_gateway_compatible_upstream_transport
@@ -167,7 +168,7 @@ def _firewall_string_list(value: Any, field_name: str) -> set[str]:
     return {role for role in value if role}
 
 
-@router.get("/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
+@router.get("/gateway/policies", **documented(GatewayPoliciesResponse), tags=["gateway"], dependencies=[_dep("policy_read")])
 def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None) -> Response:
     """List all gateway policies."""
     tenant_id = require_request_tenant_id(request)
@@ -390,8 +391,7 @@ def evaluate_gateway(body: EvaluateRequest, request: Request) -> dict[str, Any]:
             )
         )
     except Exception as exc:  # noqa: BLE001
-        # Audit write failures must not break the evaluation response — they
-        # surface in server logs instead.
+        # Audit write failures must not break the evaluation response — they surface in server logs instead.
         logging.getLogger(__name__).warning("gateway audit write failed: %s", exc)
 
     return {

@@ -27,6 +27,7 @@ from agent_bom.api import host_guard as _host_guard
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
+from agent_bom.api.error_envelope import ERROR_RESPONSES, install_error_envelope
 from agent_bom.api.foreground_activity import ForegroundActivityMiddleware
 from agent_bom.api.middleware import (
     DEFAULT_SCAN_RATE_LIMIT_RPM,
@@ -37,7 +38,6 @@ from agent_bom.api.middleware import (
     RateLimitMiddleware,
     TrustHeadersMiddleware,
     global_ip_rate_limit_rpm,
-    install_error_envelope,
     register_dashboard_spa_routes,
 )
 
@@ -1656,7 +1656,7 @@ async def health() -> PublicHealthResponse:
     return _public_health()
 
 
-@app.get("/v1/system/health", response_model=HealthResponse, tags=["meta"])
+@app.get("/v1/system/health", response_model=HealthResponse, tags=["meta"], responses=ERROR_RESPONSES)
 async def system_health() -> HealthResponse:
     """Authenticated operator diagnostics for configured subsystems."""
     from agent_bom.api.connection_scheduler import connections_scheduler_enabled

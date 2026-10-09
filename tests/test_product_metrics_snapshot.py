@@ -27,6 +27,14 @@ def _load_metrics_script() -> ModuleType:
     return module
 
 
+def test_proxy_detector_metric_survives_session_extraction() -> None:
+    snapshot = _load_metrics_script().build_snapshot()
+    metric = next(item for item in snapshot["metrics"] if item["name"] == "Proxy inline detectors")
+
+    assert metric["value"] == 7
+    assert metric["source"] == "src/agent_bom/runtime/proxy_session.py"
+
+
 def test_compliance_metric_uses_the_canonical_framework_count() -> None:
     module = _load_metrics_script()
     snapshot = module.build_snapshot()

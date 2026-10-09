@@ -167,10 +167,16 @@ def test_startup_preserves_shared_jobs_only_when_distributed_dispatch_is_enabled
     ]
     writes = []
     monkeypatch.setattr(store, "list_all", lambda **kwargs: jobs)
+    monkeypatch.setattr(
+        store,
+        "list_summary",
+        lambda **kwargs: [{"job_id": job.job_id, "tenant_id": job.tenant_id} for job in jobs if job.status == kwargs["status"]],
+    )
+    monkeypatch.setattr(store, "get", lambda job_id, **kwargs: next(job for job in jobs if job.job_id == job_id))
     monkeypatch.setattr(store, "put", lambda job: writes.append(job.job_id))
     assert fail_orphaned_active_scan_jobs(store) == (0 if distributed else 2)
     assert [job.status for job in jobs[:2]] == ([JobStatus.PENDING, JobStatus.RUNNING] if distributed else [JobStatus.FAILED] * 2)
-    assert writes == ([] if distributed else ["queued", "other-worker"])
+    assert sorted(writes) == ([] if distributed else ["other-worker", "queued"])
     assert jobs[2].status == JobStatus.FAILED and jobs[2].error == "source failure"
     assert jobs[3].status == JobStatus.DONE
 
@@ -227,7 +233,7 @@ def test_cross_tenant_reconciliation_rebinds_each_job_before_write(cleanup) -> N
             "now": datetime(2026, 4, 28, 1, 0, tzinfo=timezone.utc),
         }
     assert cleanup(store, **kwargs) == 2
-    assert store.write_tenants == [
+    assert sorted(store.write_tenants) == [
         ("tenant-a-job", "tenant-a"),
         ("tenant-b-job", "tenant-b"),
     ]

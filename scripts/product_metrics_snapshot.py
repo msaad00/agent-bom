@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parent.parent
+PROXY_DETECTOR_SOURCE = "src/agent_bom/runtime/proxy_session.py"
 
 
 def _tracked_files(*pathspecs: str) -> list[Path]:
@@ -121,15 +122,10 @@ def _count_compliance_frameworks() -> int:
 
 
 def _count_proxy_inline_detectors() -> int:
-    content = (ROOT / "src" / "agent_bom" / "proxy.py").read_text()
-    detector_block = re.search(
-        r"# Runtime detectors\s+from agent_bom\.runtime\.detectors import \((.*?)\)\s+\s*drift_detector =",
-        content,
-        re.DOTALL,
+    tree = ast.parse((ROOT / PROXY_DETECTOR_SOURCE).read_text())
+    return sum(
+        len(node.names) for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module == "agent_bom.runtime.detectors"
     )
-    if not detector_block:
-        return 0
-    return len([line for line in detector_block.group(1).splitlines() if line.strip()])
 
 
 def _count_runtime_protection_detectors() -> int:
@@ -223,7 +219,7 @@ def build_snapshot() -> dict[str, object]:
             {
                 "name": "Proxy inline detectors",
                 "value": _count_proxy_inline_detectors(),
-                "source": "src/agent_bom/proxy.py",
+                "source": PROXY_DETECTOR_SOURCE,
                 "notes": "Inline detector chain used by the MCP proxy path.",
             },
             {

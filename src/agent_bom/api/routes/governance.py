@@ -25,6 +25,7 @@ from typing import Annotated, Any, Callable, TypeVar, cast
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from agent_bom.api.read_models import ActivityTimelineResponse, SiemFormatsResponse, documented
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.security import sanitize_error, sanitize_text
@@ -249,7 +250,7 @@ def _snowflake_activity_events(*, days: int, sources: list[dict[str, Any]]) -> l
     return events
 
 
-@router.get("/activity", tags=["governance"])
+@router.get("/activity", **documented(ActivityTimelineResponse), tags=["governance"])
 async def activity_timeline(request: Request, days: int = 30) -> dict[str, Any]:
     """Agent activity timeline across every configured runtime source.
 
@@ -421,7 +422,7 @@ async def cortex_health() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=sanitize_error(exc))
 
 
-@router.get("/siem/formats", tags=["siem"])
+@router.get("/siem/formats", **documented(SiemFormatsResponse), tags=["siem"])
 def siem_formats() -> dict[str, Any]:
     """List supported SIEM event formats."""
     from agent_bom.siem import list_formats

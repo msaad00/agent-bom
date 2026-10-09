@@ -37,6 +37,7 @@ import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from agent_bom.api.read_models import SkillsScanResponse, documented
 from agent_bom.api.skills_scan_store import SkillsPersistenceUnavailableError, SkillsScanStore, get_skills_scan_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
@@ -151,7 +152,7 @@ async def run_skills_scan(
     return payload
 
 
-@router.get("/skills/scan")
+@router.get("/skills/scan", **documented(SkillsScanResponse))
 async def latest_skills_scan(
     request: Request,
     _role: Any = _READ_DEP,

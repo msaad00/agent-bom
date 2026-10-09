@@ -24,6 +24,8 @@
     "capture:inputs-digest:check": "node scripts/refresh-capture-inputs-digest.mjs --check",
     "codegen:graph-schema": "node scripts/codegen-graph-schema.mjs",
     "codegen:graph-schema:check": "node scripts/codegen-graph-schema.mjs --check",
+    "codegen:api-schema": "openapi-typescript ../docs/openapi/v1.json -o lib/api-schema.generated.ts",
+    "codegen:api-schema:check": "openapi-typescript ../docs/openapi/v1.json -o lib/api-schema.generated.ts --check",
     "test": "vitest",
     "test:run": "vitest run",
     "storybook": "storybook dev -p 6006",
@@ -53,6 +55,9 @@
     "nanoid": "^3.3.17",
     "@next/eslint-plugin-next": {
       "fast-glob": "npm:tinyglobby@0.2.17"
+    },
+    "openapi-typescript": {
+      "typescript": "$typescript"
     }
   },
   "devDependencies": {
@@ -74,6 +79,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "jsdom": "^30.1.2",
     "lightningcss": "1.33.0",
+    "openapi-typescript": "7.13.0",
     "storybook": "^10.6.1",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from agent_bom.api.error_models import ERROR_RESPONSES
+
 API_V1_PREFIX = "/v1"
 
 
 def create_v1_api_router() -> APIRouter:
     """Return the parent router for all versioned public REST endpoints."""
-    return APIRouter(prefix=API_V1_PREFIX)
+    return APIRouter(prefix=API_V1_PREFIX, responses=ERROR_RESPONSES)

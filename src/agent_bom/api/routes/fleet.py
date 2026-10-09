@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from agent_bom.api.idempotency_store import IdempotencyConflictError, idempotency_request_fingerprint
 from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
+from agent_bom.api.read_models import FleetResponse, FleetStatsResponse, documented
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store, _get_policy_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
@@ -115,7 +116,7 @@ def _request_header(request: Request, key: str) -> str:
     return str(headers.get(key, "") or "")
 
 
-@router.get("/fleet", tags=["fleet"])
+@router.get("/fleet", **documented(FleetResponse), tags=["fleet"])
 @router.get("/fleet/agents", tags=["fleet"], include_in_schema=False)
 async def list_fleet(
     request: Request,
@@ -176,7 +177,7 @@ async def list_fleet(
     }
 
 
-@router.get("/fleet/stats", tags=["fleet"])
+@router.get("/fleet/stats", **documented(FleetStatsResponse), tags=["fleet"])
 async def fleet_stats(request: Request) -> dict[str, Any]:
     """Fleet-wide statistics."""
     tenant_id = require_request_tenant_id(request)
@@ -412,8 +413,7 @@ def sync_fleet(request: Request, body: PushPayload | None = None) -> dict[str, A
             raise HTTPException(status_code=409, detail="Ambiguous fleet identity requires explicit reconciliation")
         new_identities = incoming_keys - set(existing_by_identity)
 
-        # Hold the per-tenant quota guard across the (check + insert
-        # loop) pair so concurrent fleet-sync POSTs serialise per
+        # Hold the per-tenant quota guard across the (check + insert loop) pair so concurrent fleet-sync POSTs serialise per
         # tenant — without this, two replicas can both pass the
         # enforce_fleet_agents_quota check and overshoot the quota by
         # `num_replicas` (audit-5 P1 fleet race fix).

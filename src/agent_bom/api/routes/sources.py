@@ -13,10 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import ValidationError
 
 from agent_bom.api.audit_log import log_action
-from agent_bom.api.correlation_cohort_receipts import (
-    CorrelationCohortReceiptError,
-    issue_correlation_cohort_child_receipt,
-)
+from agent_bom.api.correlation_cohort_receipts import CorrelationCohortReceiptError, issue_correlation_cohort_child_receipt
 from agent_bom.api.idempotency_store import (
     IdempotencyConflictError,
     IdempotencyReservationHeartbeat,
@@ -37,6 +34,7 @@ from agent_bom.api.models import (
     SourceStatus,
     SourceUpdate,
 )
+from agent_bom.api.read_models import SourcesResponse, documented
 from agent_bom.api.routes.scan import (
     _sanitize_scan_request_paths,
     correlation_cohort_id,
@@ -293,7 +291,7 @@ def create_source(request: Request, body: SourceCreate) -> dict:
     return source.model_dump()
 
 
-@router.get("/sources", tags=["sources"])
+@router.get("/sources", **documented(SourcesResponse), tags=["sources"])
 def list_sources(
     request: Request,
     # cap pagination so hostile callers cannot probe an

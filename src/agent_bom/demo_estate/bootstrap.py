@@ -184,6 +184,9 @@ def _tenant_has_demo_jobs(store: Any, tenant_id: str) -> bool:
     whose findings were never persisted) must not block reseed — that is how
     the public demo can boot with graph/catalog populated but findings=[].
     """
+    exists = getattr(store, "has_usable_demo_job", None)
+    if callable(exists):
+        return bool(exists(tenant_id))
     list_fn = getattr(store, "list_all", None)
     if not callable(list_fn):
         return False

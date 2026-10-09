@@ -105,5 +105,9 @@ def test_scale_out_requires_a_shared_browser_signing_key(monkeypatch):
     monkeypatch.setattr(secret_source, "resolve_secret", lambda *args, **kwargs: "")
     with pytest.raises(browser_session.BrowserSessionError, match="required for clustered"):
         browser_session.create_browser_session_token(
-            subject="operator", role="viewer", tenant_id="test", auth_method="api_key", max_age_seconds=60
+            subject="operator",
+            role="viewer",
+            tenant_id="test",
+            auth_method="api_key",
+            max_age_seconds=60,
         )

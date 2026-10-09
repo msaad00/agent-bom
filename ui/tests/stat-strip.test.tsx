@@ -43,4 +43,18 @@ describe("StatStrip", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(onClick).toHaveBeenCalledTimes(1);
   });
+
+  it("wraps long labels and hints instead of ellipsizing them", () => {
+    render(
+      <StatStrip
+        items={[
+          { label: "Evidence sources", value: 9, hint: "2322 returned · 2275 cross-source" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Evidence sources")).not.toHaveClass("truncate");
+    const hint = screen.getByText("2322 returned · 2275 cross-source");
+    expect(hint).not.toHaveClass("truncate");
+    expect(hint).toHaveClass("break-words");
+  });
 });

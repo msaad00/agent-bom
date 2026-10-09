@@ -234,11 +234,17 @@ Track these metrics over time (export to ClickHouse, Snowflake, or any SIEM):
 | CloudTrail Coverage | Regions with active trails | 100% |
 
 ```bash
-# Export metrics to ClickHouse via agent-bom analytics
-export AGENT_BOM_CLICKHOUSE_URL="clickhouse://user:pass@host:8123/security"
+# Use the ClickHouse HTTP endpoint; inject its user and access token through your secret manager.
+export AGENT_BOM_CLICKHOUSE_URL="https://clickhouse.example.com:8443"
+export AGENT_BOM_TENANT_ID="your-tenant"
 agent-bom scan --aws --aws-cis-benchmark --enrich -f json -o cis-results.json
-agent-bom analytics-query --query "cis_trend" --days 90
+agent-bom report analytics compliance --days 90 --tenant "$AGENT_BOM_TENANT_ID"
 ```
+
+The JSON file contains this scan's benchmark evidence. The analytics command
+reads recorded compliance history; use the authenticated `/v1/cis/trends`
+endpoint for benchmark-specific time buckets. Keep PostgreSQL or SQLite as
+the control-plane store and ClickHouse as the optional analytics destination.
 
 ## Outputs
 

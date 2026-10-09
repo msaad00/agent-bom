@@ -9,6 +9,23 @@ from click.testing import CliRunner
 from agent_bom.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_clickhouse_skill_uses_http_endpoint_and_registered_analytics_command() -> None:
+    import re
+    import shlex
+    from urllib.parse import urlsplit
+
+    text = (ROOT / "docs/skills/cspm-aws-benchmark.md").read_text(encoding="utf-8")
+    endpoint = re.search(r'export AGENT_BOM_CLICKHOUSE_URL="([^"]+)"', text)
+    assert endpoint is not None
+    assert urlsplit(endpoint.group(1)).scheme in {"http", "https"}
+    assert urlsplit(endpoint.group(1)).username is None
+    command = next(line for line in text.splitlines() if line.startswith("agent-bom ") and "analytics" in line)
+    result = CliRunner().invoke(main, [*shlex.split(command)[1:], "--help"])
+    assert result.exit_code == 0, result.output
+
+
 PUBLIC_CLI_DOCS = [
     ROOT / "integrations" / "cortex-code" / "SKILL.md",
     ROOT / "integrations" / "openclaw" / "analyze" / "SKILL.md",

@@ -20,6 +20,7 @@ import {
 } from "@/lib/findings-view";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import { controlLabels, triageForFinding } from "@/lib/findings-workspace";
+import { humanizeEnum } from "@/lib/enum-labels";
 
 function ReachabilityBadge({
   reachable,
@@ -750,7 +751,7 @@ function ObservationDate({ label, value }: { label: string; value: string | null
   return <time dateTime={value} title={exact} aria-label={`${label}: ${exact}`} className="whitespace-nowrap">{label}: {date}</time>;
 }
 function DetectionEvidence({ vuln }: { vuln: EnrichedVuln }) {
-  return <span className="flex flex-col gap-1 break-words"><span>Source: {vuln.detection_source || "Unavailable"}</span><span>Type: {vuln.finding_type || "Unavailable"}</span></span>;
+  return <span className="flex flex-col gap-1 break-words"><span>Source: {vuln.detection_source ? humanizeEnum(vuln.detection_source) : "Unavailable"}</span><span>Type: {vuln.finding_type ? humanizeEnum(vuln.finding_type) : "Unavailable"}</span></span>;
 }
 function FindingColumnsChooser({ preferences, onChange, inline = false }: { preferences: FindingColumnPreferences; onChange: (next: FindingColumnPreferences) => void; inline?: boolean }) {
   const [open, setOpen] = useState(false);

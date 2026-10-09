@@ -1,7 +1,7 @@
 {
   "release_version": "0.108.3",
-  "captured_at": "2026-10-09T03:45:08.453Z",
-  "source_commit": "7c2c4e4c37b7a19f34d9944dcd2abc95effe71f4",
+  "captured_at": "2026-10-09T03:58:56.687Z",
+  "source_commit": "3af3c9431bbdf1e73d9c8616e802f588929ba928",
   "source_tree": "clean",
   "capture_inputs_sha256": "sha256:95d92aa218ffbd9ef93a7688f75967c0c3f0e6f86162ab72f0775d3653624e99",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
@@ -124,7 +124,7 @@
       "page": "/?capture=1",
       "scope": "Expanded Overview assessment summary with four priority frameworks and risk mappings collapsed at 1440 by 900",
       "visible_version": "0.108.3",
-      "sha256": "sha256:96120a55b99fb71fc3d4895a3765f60e01eb4724fd8730aea9dbe8cdaab78c38"
+      "sha256": "sha256:0358d0c6441f432879f18d78ac623c57094a1623d59a12c7b90db2e4b4370873"
     },
     {
       "presentation": "dark desktop",
@@ -188,7 +188,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path with graph evidence export and remediation handoff",
       "visible_version": "0.108.3",
-      "sha256": "sha256:ee476cf2841450969c9abf98c1c0ff929d3ec02bc6c6fddfc5742a83dc008e04"
+      "sha256": "sha256:145255127e5dc923e19fc6be109ab1b5384d9222fce29c756b53ebe282b763db"
     },
     {
       "presentation": "dark desktop",
@@ -243,7 +243,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:2d005b765b1c7f919da07d8081aeb86232e87de87297ef8f10917cd3f67c4387"
+      "sha256": "sha256:d2e64958ca301b6a2945b189f3f965be356fe14717e6737ead5f045b1e8827b2"
     },
     {
       "presentation": "dark mobile",
@@ -265,7 +265,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:fe37753e4fa3bc0d48f7d99fc22a61ae8112ee06a15cc1b229dcf1b4d7b2ab57"
+      "sha256": "sha256:98fd5ed5b97a3241fee0a40fadcc40b35ab7e351ea4bdcd2a4a4e624d9dd47c9"
     },
     {
       "presentation": "light desktop",
@@ -281,7 +281,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.108.3",
-      "sha256": "sha256:c76926d71bacf36de0e7d0db3e48055a91bf0acccde83ff490470d757aed2145"
+      "sha256": "sha256:b4f54151714b0bc6f8755c1a486957d38127ac8c8893d7b2dd167483505763dc"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -305,7 +305,7 @@
       "page": "/graph?capture=1&scan=scan-proof-ai-platform&path=top&layers=user,serviceAccount,role,agent,server,package,vulnerability",
       "scope": "Focused highest-risk directed path from identity source through agent, MCP, package, and finding",
       "visible_version": "0.108.3",
-      "sha256": "sha256:b7bbde122e4f625814cfecf919c0fe6864ec6d3e9edd5b87a6703045436765af"
+      "sha256": "sha256:99ad07a56fe0bde0bb0d65739e50eaa8b12893b22f9684926fb4848bca0f2c6e"
     },
     {
       "presentation": "dark desktop",
@@ -313,7 +313,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.108.3",
-      "sha256": "sha256:5df1e877f87cb6d65ef6a0826e7c6e7820ab310670b428e30649fb8ad1aaaa69"
+      "sha256": "sha256:6d06e0d05899117d2a1d494b4a2093ea590587a204982e188941ce306eb7f6d0"
     },
     {
       "presentation": "light desktop",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.3",
-      "sha256": "sha256:0a627ba514cc3d85dcbbe272e7c50cb8c4f76a2ec1b001abaae1e3997bc1c0a1"
+      "sha256": "sha256:ec478a951f5bea5babc1be1eb5f84b02267090cdc77afa965e094dc3e303ab85"
     },
     {
       "presentation": "dark responsive 1000x900",
@@ -329,7 +329,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.3",
-      "sha256": "sha256:64854df1cecc49e86db0e99f6f19806c599bc20be1cfb04fa59e6221b0f779ae"
+      "sha256": "sha256:d23bc452b063c0c5bee0adc6cb94149be276815ee97b659fa2cb8db41a31ed1e"
     },
     {
       "presentation": "light responsive 1000x900",
@@ -337,7 +337,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.3",
-      "sha256": "sha256:a922fc0257732fc32420658f757d087db06affc48187822fbb1e70524a0df894"
+      "sha256": "sha256:29641105d089c8a934c1bae3d722b6ccd378aa4b44e6ea4156b7cdc9cb0b5d58"
     },
     {
       "presentation": "dark desktop",
@@ -369,7 +369,7 @@
       "page": "/findings?capture=1",
       "scope": "Findings queue with seeded package and CVE evidence from the demo estate",
       "visible_version": "0.108.3",
-      "sha256": "sha256:a9f2442d9b17910f72e45714138ed3431f59668816b3492fea9f982b60adbc86"
+      "sha256": "sha256:eca90676ba92af08ae2da931f4afe87794279ee0afd12561c8b0a77266acb5fd"
     },
     {
       "presentation": "dark desktop",

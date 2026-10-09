@@ -439,6 +439,13 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                     ? "Run a registered evidence source"
                     : "Choose what the control plane can inspect"}
               </h2>
+              <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
+                {scanMode === "connected"
+                  ? "Runs inventory and implemented CIS checks for the selected connection and its configured scope. CIS benchmarks are one part of cloud security posture management."
+                  : scanMode === "scheduled"
+                    ? "Runs the selected source with its saved collection settings."
+                    : "The selected target and options determine what runs; a scan does not enable every capability. Review the collection plan before starting."}
+              </p>
             </div>
             {scanMode === "connected" && (
               <ConnectedAccountPanel

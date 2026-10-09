@@ -85,21 +85,21 @@ export const PIPELINE_GRAPH: readonly PipelineGraphNodeSpec[] = [
   },
   {
     id: "cis",
-    label: "CIS · CSPM",
+    label: "CIS benchmarks",
     kind: "scanner",
     domain: "cis",
     stepId: "scanning",
     dependsOn: ["extraction"],
-    description: "Benchmark cloud posture controls",
+    description: "Evaluate implemented CIS configuration checks; one part of cloud security posture",
   },
   {
     id: "cloud",
-    label: "Cloud posture",
+    label: "Cloud inventory",
     kind: "scanner",
     domain: "cloud",
     stepId: "scanning",
     dependsOn: ["extraction"],
-    description: "Inventory + exposure evidence",
+    description: "Collect cloud resources and identity context; inventory alone is not an exposure assessment",
   },
   {
     id: "enrichment",
@@ -156,23 +156,16 @@ export interface DomainLaneData {
 
 const EMPTY_LANE: DomainLaneData = { ran: false, findings: null };
 
-/** Failed CIS checks — the honest "findings" count behind a pass rate. */
+/** Count only reported failures; errors and unevaluated checks are not failures. */
 export function cisFailedCount(cis: CisSummary | null | undefined): number | null {
-  if (!cis) return null;
-  if (cis.failed != null && cis.failed >= 0) return cis.failed;
-  if (cis.total != null && cis.passed != null) return Math.max(0, cis.total - cis.passed);
-  if (cis.total != null && cis.passRate != null) {
-    const rate = cis.passRate <= 1 ? cis.passRate : cis.passRate / 100;
-    return Math.max(0, Math.round(cis.total * (1 - rate)));
-  }
-  return null;
+  return cis?.failed != null && cis.failed >= 0 ? cis.failed : null;
 }
 
 function cisDetail(cis: CisSummary): string | undefined {
   const failed = cisFailedCount(cis);
   if (cis.total != null && failed != null) return `${failed} fail · ${cis.total} checks`;
   if (failed != null) return `${failed} fail`;
-  return undefined;
+  return "Failure count unavailable";
 }
 
 export interface DeriveDomainLanesInput {
@@ -234,8 +227,7 @@ export interface ReconciledFindings {
 
 /**
  * Reconcile the headline finding count with the domain lanes: CIS failures
- * count as findings, so a "0 vulnerabilities / 32% CIS pass" run reports the
- * 68 failing controls instead of a contradictory "0 findings".
+ * count as findings only when reported; missing assessment data is not a failure.
  */
 export function reconcileFindings(
   lanes: Record<ScannerDomain, DomainLaneData>,

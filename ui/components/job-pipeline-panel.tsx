@@ -103,7 +103,7 @@ function deriveResultView(
     if (typeof unifiedCritical === "number" && unifiedCritical > 0 && unifiedCritical <= unifiedTotal) {
       stats.push({ key: "critical", label: "critical", value: String(unifiedCritical) });
     }
-  } else if (reconciled.domainsRun > 0) {
+  } else if (Object.values(reconciled.byDomain).some((count) => count != null)) {
     stats.push({ key: "findings", label: "findings", value: String(reconciled.total) });
     const legacyCritical = summary?.critical_findings ?? 0;
     if (legacyCritical > 0 && legacyCritical <= reconciled.total) {
@@ -130,7 +130,7 @@ function deriveResultView(
       stats.push({ key: "cis-fail", label: "CIS fail", value: String(failed) });
     }
     if (cis.passRate != null) {
-      stats.push({ key: "cis-pass", label: "CIS pass", value: `${cis.passRate.toFixed(0)}%` });
+      stats.push({ key: "cis-pass", label: "CIS evaluated pass", value: `${cis.passRate.toFixed(0)}%` });
     }
   }
 

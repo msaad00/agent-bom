@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ScanResult } from "@/lib/api";
-import { domainFindingsForScan } from "@/lib/scan-domain-findings";
+import { cisSummaryFromResult, domainFindingsForScan } from "@/lib/scan-domain-findings";
 
 function result(secrets?: Record<string, unknown>): ScanResult {
   return { ai_inventory: secrets ? { secrets } : {} } as ScanResult;
@@ -42,4 +42,32 @@ it("keeps discovery-time secret evidence visible when CVE scanning was skipped",
     steps: new Map([["scanning", { type: "step", step_id: "scanning", status: "skipped", message: "Skipped by request" }]]),
   });
   expect(graph.nodes.find((node) => node.id === "secrets")?.data.status).toBe("done");
+});
+
+
+describe("CIS benchmark evidence", () => {
+  it("keeps errors and inapplicable checks out of the failed count", () => {
+    const scan = { cis_benchmark: { passed: 2, failed: 1, errored: 3, not_applicable: 4, total: 10 } } as ScanResult;
+    expect(cisSummaryFromResult(scan)?.failed).toBe(1);
+    expect(cisSummaryFromResult(scan)?.passRate).toBeCloseTo(200 / 3);
+    expect(domainFindingsForScan({ result: scan }).lanes.cis.findings).toBe(1);
+  });
+  it("does not turn missing failure counts into zero or total minus passed", () => {
+    const summary = cisSummaryFromResult({ cis_benchmark: { passed: 2, total: 10 } } as ScanResult);
+    expect(summary?.failed).toBeNull();
+    expect(summary?.passRate).toBeNull();
+  });
+  it("treats a check error as unavailable assessment, not a failed control", () => {
+    const scan = { cis_benchmark: { checks: [{ status: "pass" }, { status: "error" }, { status: "not_applicable" }, { status: "fail" }] } } as ScanResult;
+    expect(cisSummaryFromResult(scan)?.failed).toBe(1);
+  });
+});
+
+it("shows recorded cloud inventory without claiming an exposure assessment", () => {
+  const scan = { cloud_inventory: { resource_count: 12, identity_count: 3 } } as ScanResult;
+  const view = domainFindingsForScan({ result: scan });
+  expect(view.lanes.cloud.ran).toBe(true);
+  expect(view.lanes.cloud.findings).toBeNull();
+  expect(view.lanes.cloud.detail).toBe("12 resources · 3 identities");
+  expect(view.reconciled.byDomain.cloud).toBeNull();
 });

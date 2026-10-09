@@ -306,10 +306,10 @@ for (const theme of ["light", "dark"] as const) {
       await testInfo.attach("control-colors", { body: JSON.stringify(colors), contentType: "application/json" });
       expect(colors.contrast).toBeGreaterThanOrEqual(3);
       if (theme === "dark") expect(colors.background).not.toBe("rgb(254, 254, 254)");
-      await panel.getByRole("navigation", { name: "Scan stages" }).getByRole("button", { name: "Cloud posture", exact: true }).click();
-      await expect(panel.getByRole("complementary", { name: "Stage details" })).toContainText("Cloud posture");
+      await panel.getByRole("navigation", { name: "Scan stages" }).getByRole("button", { name: "Cloud inventory", exact: true }).click();
+      await expect(panel.getByRole("complementary", { name: "Stage details" })).toContainText("Cloud inventory");
       await panel.locator(".react-flow").scrollIntoViewIfNeeded();
-      await expect(panel.getByRole("button", { name: "Inspect Cloud posture" })).toBeInViewport();
+      await expect(panel.getByRole("button", { name: "Inspect Cloud inventory" })).toBeInViewport();
       await panel.getByRole("button", { name: "Close stage detail" }).click();
       if (width >= 1024) {
         await expect(panel.getByRole("button", { name: "Readable view", exact: true })).toBeVisible();

@@ -69,6 +69,14 @@ describe("JobPipelinePanel result chips and stage telemetry", () => {
     expect(chip("critical")).toBeNull();
   });
 
+  it("does not call inventory-only evidence zero findings when no assessment count exists", async () => {
+    const job = seededJob({});
+    mocks.getScan.mockResolvedValue({ ...job, result: { ...job.result, cloud_inventory: { resource_count: 12, identity_count: 3 } } });
+    render(<JobPipelinePanel jobId="seeded-1" status="done" createdAt="2026-10-08T12:00:00Z" />);
+    await waitFor(() => expect(chip("resources")).toBe(12));
+    expect(chip("findings")).toBeNull();
+  });
+
   it("hides stage timing rows and wall clock when no stage telemetry exists", async () => {
     mocks.getScan.mockResolvedValue(seededJob({ total_packages: 23, total_vulnerabilities: 22 }));
     render(<JobPipelinePanel jobId="seeded-1" status="done" createdAt="2026-10-08T12:00:00Z" />);

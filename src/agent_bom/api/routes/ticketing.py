@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.connection_crypto import ConnectionSecretError, connections_key_configured, encrypt_secret
+from agent_bom.api.read_models import TicketingConnectionsResponse
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, validate_url
@@ -212,7 +213,7 @@ async def create_connection(request: Request, body: TicketingConnectionCreate, _
     return record.to_public_dict()
 
 
-@router.get("/ticketing/connections")
+@router.get("/ticketing/connections", response_model=TicketingConnectionsResponse, response_model_exclude_unset=True)
 async def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the tenant's ticketing connections (non-secret metadata only)."""
     tenant_id = _tenant(request)

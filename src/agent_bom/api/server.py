@@ -1149,6 +1149,7 @@ configure_api_from_env()
 
 
 # ─── Scan Pipeline (extracted to api/pipeline.py) ────────────────────────────
+from agent_bom.api.error_envelope import ERROR_RESPONSES  # noqa: E402
 from agent_bom.api.pipeline import (  # noqa: E402
     PIPELINE_DAG_EDGES,  # noqa: F401 — re-exported for tests/artifact consumers
     PIPELINE_DAG_EVENT_SCHEMA,  # noqa: F401 — re-exported for tests/artifact consumers
@@ -1656,7 +1657,7 @@ async def health() -> PublicHealthResponse:
     return _public_health()
 
 
-@app.get("/v1/system/health", response_model=HealthResponse, tags=["meta"])
+@app.get("/v1/system/health", response_model=HealthResponse, tags=["meta"], responses=ERROR_RESPONSES)
 async def system_health() -> HealthResponse:
     """Authenticated operator diagnostics for configured subsystems."""
     from agent_bom.api.connection_scheduler import connections_scheduler_enabled

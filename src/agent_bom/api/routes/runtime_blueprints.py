@@ -9,6 +9,7 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from agent_bom.api.drift_incident_store import get_drift_incident_store, record_drift_if_detected
+from agent_bom.api.read_models import DriftIncidentsResponse
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.runtime_blueprints import evaluate_runtime_blueprint_drift, runtime_role_blueprint, runtime_role_blueprints
@@ -90,7 +91,9 @@ def get_runtime_blueprint_drift(request: Request, blueprint_id: str) -> dict[str
     return result
 
 
-@router.get("/runtime/drift/incidents", dependencies=[_dep("read")])
+@router.get(
+    "/runtime/drift/incidents", response_model=DriftIncidentsResponse, response_model_exclude_unset=True, dependencies=[_dep("read")]
+)
 def list_drift_incidents(
     request: Request, include_resolved: bool = False, limit: Annotated[int, Query(ge=1, le=1000)] = 200
 ) -> dict[str, object]:

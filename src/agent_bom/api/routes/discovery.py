@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from agent_bom.api.agent_findings import current_agent_blast_rows, estate_reach_names
 from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
 from agent_bom.api.models import JobStatus
+from agent_bom.api.read_models import AgentsResponse, DiscoveryProvidersResponse
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
@@ -245,8 +246,7 @@ def _serialize_agent(
     payload = asdict(agent)
     payload["canonical_id"] = agent.canonical_id
     payload["stable_id"] = agent.stable_id
-    # Display-only class (AI client/host vs background/framework agent). Additive
-    # field; never renames agent_type or any existing key.
+    # Display-only class (AI client/host vs background/framework agent). Additive field; never renames agent_type or any existing key.
     from agent_bom.models import classify_agent_kind
 
     payload["agent_class"] = classify_agent_kind(agent)
@@ -535,7 +535,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/agents", tags=["discovery"])
+@router.get("/agents", response_model=AgentsResponse, response_model_exclude_unset=True, tags=["discovery"])
 async def list_agents(
     request: Request,
     refresh: bool = Query(False, description="Bypass the sidebar cache and perform live local discovery"),
@@ -565,7 +565,7 @@ async def list_agents(
         raise HTTPException(status_code=500, detail=sanitize_error(exc, generic=True)) from exc
 
 
-@router.get("/discovery/providers", tags=["discovery"])
+@router.get("/discovery/providers", response_model=DiscoveryProvidersResponse, response_model_exclude_unset=True, tags=["discovery"])
 def list_discovery_providers() -> dict:
     """Return registered discovery provider capability and trust contracts."""
 

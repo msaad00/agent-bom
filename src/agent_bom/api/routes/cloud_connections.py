@@ -61,6 +61,7 @@ from agent_bom.api.connection_store import (
     connection_org_fanout_enabled,
     get_connection_store,
 )
+from agent_bom.api.read_models import CloudConnectionsResponse
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_cloud_connection_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -112,8 +113,7 @@ class CloudConnectionCreate(BaseModel):
     regions: list[str] = Field(default_factory=list)
     scan_interval_minutes: int | None = None
     # Non-secret provider-specific params (Azure tenant/subscription, GCP
-    # project, Snowflake user/role/warehouse). Never a secret — the one secret
-    # is ``external_id``.
+    # project, Snowflake user/role/warehouse). Never a secret — the one secret is ``external_id``.
     auth_params: dict[str, str] = Field(default_factory=dict)
     # ``account`` (the default when omitted) = connected target only;
     # ``organization`` = fan-out across member accounts / subscriptions /
@@ -413,7 +413,7 @@ def create_connection(request: Request, body: CloudConnectionCreate, _role: Any 
     return record.to_public_dict()
 
 
-@router.get("/cloud/connections")
+@router.get("/cloud/connections", response_model=CloudConnectionsResponse, response_model_exclude_unset=True)
 def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
     from agent_bom.api.connection_scheduler import connections_scheduler_enabled

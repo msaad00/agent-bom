@@ -174,3 +174,41 @@ def test_expand_project_scan_targets_respects_explicit_ai_inventory(tmp_path: Pa
     assert targets.ai_inventory_paths == (str(custom),)
     assert "ai_inventory" not in targets.auto_enabled
     assert "python_agents" in targets.auto_enabled
+
+
+def test_expand_project_scan_targets_detects_surfaces_past_probe_budget(tmp_path: Path) -> None:
+    from agent_bom.scanners.state import consume_coverage_warnings, reset_scan_warnings
+
+    for index in range(4100):
+        (tmp_path / f"note_{index:05d}.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "zz_infra").mkdir()
+    (tmp_path / "zz_infra" / "main.tf").write_text('resource "aws_s3_bucket" "x" {}\n', encoding="utf-8")
+    (tmp_path / "zz_infra" / "analysis.ipynb").write_text("{}", encoding="utf-8")
+
+    reset_scan_warnings()
+    targets = expand_project_scan_targets(str(tmp_path))
+    warnings = consume_coverage_warnings()
+
+    assert {"jupyter", "terraform", "iac"} <= set(targets.auto_enabled)
+    assert not [warning for warning in warnings if warning.get("reason") == "discovery_file_limit"]
+
+
+def test_expand_project_scan_targets_walks_the_tree_once(tmp_path: Path, monkeypatch) -> None:
+    import agent_bom.repo_auto_detect as auto_detect
+
+    (tmp_path / "app.py").write_text("print(1)\n", encoding="utf-8")
+    (tmp_path / "main.tf").write_text('resource "aws_s3_bucket" "x" {}\n', encoding="utf-8")
+    calls: list[Path] = []
+    original = auto_detect.iter_discovery_files
+
+    def counting(root, **kwargs):
+        calls.append(Path(root))
+        return original(root, **kwargs)
+
+    monkeypatch.setattr(auto_detect, "iter_discovery_files", counting)
+    monkeypatch.setattr(auto_detect, "semgrep_available", lambda: True)
+
+    targets = expand_project_scan_targets(str(tmp_path))
+
+    assert {"sast", "terraform", "iac", "python_agents", "ai_inventory"} <= set(targets.auto_enabled)
+    assert len(calls) == 1

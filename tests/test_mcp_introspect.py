@@ -777,13 +777,13 @@ def test_json_output_includes_nist_tags():
         affected_agents=[],
         exposed_credentials=[],
         exposed_tools=[],
-        nist_ai_rmf_tags=["MAP-3.5", "GOVERN-1.7"],
+        nist_ai_rmf_tags=["MAP-4.1", "GOVERN-6.1"],
     )
     report = AIBOMReport(agents=[], blast_radii=[br])
     data = to_json(report)
 
     assert "nist_ai_rmf_tags" in data["blast_radius"][0]
-    assert "MAP-3.5" in data["blast_radius"][0]["nist_ai_rmf_tags"]
+    assert set(data["blast_radius"][0]["nist_ai_rmf_tags"]) == {"MAP-4.1", "GOVERN-6.1"}
 
 
 def test_framework_summary_includes_nist():
@@ -800,7 +800,7 @@ def test_framework_summary_includes_nist():
         affected_agents=[],
         exposed_credentials=[],
         exposed_tools=[],
-        nist_ai_rmf_tags=["MAP-3.5", "GOVERN-1.7"],
+        nist_ai_rmf_tags=["MAP-4.1", "GOVERN-6.1"],
     )
     summary = _build_framework_summary([br])
 
@@ -810,10 +810,10 @@ def test_framework_summary_includes_nist():
 
     # Check specific entries
     nist_entries = {e["subcategory_id"]: e for e in summary["nist_ai_rmf"]}
-    assert nist_entries["MAP-3.5"]["findings"] == 1
-    assert nist_entries["MAP-3.5"]["triggered"] is True
-    assert nist_entries["MEASURE-2.5"]["findings"] == 0
-    assert nist_entries["MEASURE-2.5"]["triggered"] is False
+    assert nist_entries["MAP-4.1"]["findings"] == 1
+    assert nist_entries["MAP-4.1"]["triggered"] is True
+    assert nist_entries["MEASURE-2.7"]["findings"] == 0
+    assert nist_entries["MEASURE-2.7"]["triggered"] is False
 
 
 # ─── CLI --introspect flag exists ────────────────────────────────────────────

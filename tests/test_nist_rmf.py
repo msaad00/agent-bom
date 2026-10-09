@@ -48,7 +48,7 @@ def _make_br(
 
 
 def test_always_tags():
-    """GOVERN-1.7 and MAP-3.5 apply when AI-relevant context is present.
+    """GOVERN-6.1 and MAP-4.1 apply when AI-relevant context is present.
 
     A MEDIUM vuln in a non-AI package with no credentials or tools
     should NOT get these tags (noise reduction). They apply when:
@@ -56,32 +56,27 @@ def test_always_tags():
     - Credentials or tools are exposed, OR
     - Severity is HIGH+
     """
-    # No creds, no tools, non-AI, MEDIUM → no baseline tags
     br = _make_br()
     tags = tag_blast_radius(br)
-    assert "GOVERN-1.7" not in tags
-    assert "MAP-3.5" not in tags
+    assert "GOVERN-6.1" not in tags
+    assert "MAP-4.1" not in tags
 
-    # HIGH severity → baseline tags apply
-    br_high = _make_br(severity=Severity.HIGH)
-    tags_high = tag_blast_radius(br_high)
-    assert "GOVERN-1.7" in tags_high
-    assert "MAP-3.5" in tags_high
+    tags_high = tag_blast_radius(_make_br(severity=Severity.HIGH))
+    assert "GOVERN-6.1" in tags_high
+    assert "MAP-4.1" in tags_high
 
-    # With credentials → baseline tags apply
-    br_creds = _make_br(creds=["API_KEY"])
-    tags_creds = tag_blast_radius(br_creds)
-    assert "GOVERN-1.7" in tags_creds
-    assert "MAP-3.5" in tags_creds
+    tags_creds = tag_blast_radius(_make_br(creds=["API_KEY"]))
+    assert "GOVERN-6.1" in tags_creds
+    assert "MAP-4.1" in tags_creds
 
 
-# ─── Credential exposure → MANAGE-2.2 + MANAGE-4.1 ──────────────────────────
+# ─── Credential exposure → MANAGE-4.1 ───────────────────────────────────────
 
 
-def test_credentials_trigger_manage_2_2():
-    br = _make_br(creds=["API_KEY"])
+def test_credentials_alone_do_not_claim_a_manage_subcategory():
+    br = _make_br(creds=["API_KEY"], fixed=None)
     tags = tag_blast_radius(br)
-    assert "MANAGE-2.2" in tags
+    assert not any(tag.startswith("MANAGE-") for tag in tags)
 
 
 def test_credentials_and_tools_trigger_manage_4_1():
@@ -91,110 +86,73 @@ def test_credentials_and_tools_trigger_manage_4_1():
     assert "MANAGE-4.1" in tags
 
 
-def test_no_creds_no_manage_2_2():
-    br = _make_br(creds=[])
-    tags = tag_blast_radius(br)
-    assert "MANAGE-2.2" not in tags
+# ─── Tool surface → MAP-3.5 (human oversight), MAP-5.1 (impact) ────────────
 
 
-# ─── Tool surface → MAP-1.6, MAP-5.2, GOVERN-6.1 ───────────────────────────
-
-
-def test_broad_tool_surface_triggers_map_1_6():
-    """More than 3 tools → MAP-1.6 (interfaces need mapping)."""
+def test_broad_tool_surface_alone_adds_no_map_subcategory():
+    """Tool count alone has no AI RMF subcategory; only GOVERN-6.1/MAP-4.1 apply."""
     tools = [MCPTool(name=f"tool_{i}", description="") for i in range(5)]
-    br = _make_br(tools=tools)
-    tags = tag_blast_radius(br)
-    assert "MAP-1.6" in tags
+    tags = tag_blast_radius(_make_br(tools=tools))
+    assert {t for t in tags if t.startswith("MAP-")} == {"MAP-4.1"}
 
 
-def test_few_tools_no_map_1_6():
-    tools = [MCPTool(name=f"tool_{i}", description="") for i in range(2)]
-    br = _make_br(tools=tools)
-    tags = tag_blast_radius(br)
-    assert "MAP-1.6" not in tags
-
-
-def test_exec_tools_trigger_govern_6_1():
+def test_exec_tools_trigger_human_oversight_map_3_5():
     tools = [MCPTool(name="run_command", description="Execute shell commands")]
-    br = _make_br(tools=tools)
-    tags = tag_blast_radius(br)
-    assert "GOVERN-6.1" in tags
+    tags = tag_blast_radius(_make_br(tools=tools))
+    assert "MAP-3.5" in tags
 
 
-def test_data_tools_trigger_map_5_2():
+def test_data_tools_trigger_map_5_1():
     tools = [MCPTool(name="read_file", description="Read a file from disk")]
-    br = _make_br(tools=tools)
-    tags = tag_blast_radius(br)
-    assert "MAP-5.2" in tags
+    tags = tag_blast_radius(_make_br(tools=tools))
+    assert "MAP-5.1" in tags
+    assert "MAP-3.5" not in tags
 
 
-# ─── AI framework + severity → MEASURE-2.5 ──────────────────────────────────
+# ─── AI framework + severity → MEASURE-2.7 ──────────────────────────────────
 
 
-def test_ai_framework_high_triggers_measure_2_5():
-    br = _make_br(pkg_name="langchain", severity=Severity.HIGH)
-    tags = tag_blast_radius(br)
-    assert "MEASURE-2.5" in tags
+def test_ai_framework_high_triggers_measure_2_7():
+    tags = tag_blast_radius(_make_br(pkg_name="langchain", severity=Severity.HIGH))
+    assert "MEASURE-2.7" in tags
 
 
-def test_ai_framework_medium_no_measure_2_5():
-    br = _make_br(pkg_name="langchain", severity=Severity.MEDIUM)
-    tags = tag_blast_radius(br)
-    assert "MEASURE-2.5" not in tags
+def test_ai_framework_medium_no_measure_2_7():
+    tags = tag_blast_radius(_make_br(pkg_name="langchain", severity=Severity.MEDIUM))
+    assert "MEASURE-2.7" not in tags
 
 
-def test_non_ai_package_no_measure_2_5():
-    br = _make_br(pkg_name="express", severity=Severity.CRITICAL)
-    tags = tag_blast_radius(br)
-    assert "MEASURE-2.5" not in tags
+def test_non_ai_package_no_measure_2_7():
+    tags = tag_blast_radius(_make_br(pkg_name="express", severity=Severity.CRITICAL))
+    assert "MEASURE-2.7" not in tags
 
 
-# ─── AI + creds + HIGH → GOVERN-6.2, MANAGE-2.4 ────────────────────────────
+# ─── AI + creds + HIGH → GOVERN-6.2 ─────────────────────────────────────────
 
 
 def test_ai_creds_high_triggers_govern_6_2():
     br = _make_br(pkg_name="openai", severity=Severity.CRITICAL, creds=["OPENAI_API_KEY"])
-    tags = tag_blast_radius(br)
-    assert "GOVERN-6.2" in tags
-    assert "MANAGE-2.4" in tags
+    assert "GOVERN-6.2" in tag_blast_radius(br)
 
 
 def test_ai_no_creds_no_govern_6_2():
     br = _make_br(pkg_name="openai", severity=Severity.CRITICAL)
-    tags = tag_blast_radius(br)
-    assert "GOVERN-6.2" not in tags
-    assert "MANAGE-2.4" not in tags
+    assert "GOVERN-6.2" not in tag_blast_radius(br)
 
 
-# ─── Fix available → MEASURE-2.9 ────────────────────────────────────────────
+# ─── Fix available or KEV → MANAGE-1.3 ──────────────────────────────────────
 
 
-def test_fix_available_triggers_measure_2_9():
-    br = _make_br(fixed="2.0.0")
-    tags = tag_blast_radius(br)
-    assert "MEASURE-2.9" in tags
-
-
-def test_no_fix_no_measure_2_9():
-    br = _make_br(fixed=None)
-    tags = tag_blast_radius(br)
-    assert "MEASURE-2.9" not in tags
-
-
-# ─── KEV → MANAGE-1.3 ───────────────────────────────────────────────────────
+def test_fix_available_triggers_manage_1_3():
+    assert "MANAGE-1.3" in tag_blast_radius(_make_br(fixed="2.0.0"))
 
 
 def test_kev_triggers_manage_1_3():
-    br = _make_br(is_kev=True)
-    tags = tag_blast_radius(br)
-    assert "MANAGE-1.3" in tags
+    assert "MANAGE-1.3" in tag_blast_radius(_make_br(is_kev=True, fixed=None))
 
 
-def test_no_kev_no_manage_1_3():
-    br = _make_br(is_kev=False)
-    tags = tag_blast_radius(br)
-    assert "MANAGE-1.3" not in tags
+def test_no_kev_no_fix_no_manage_1_3():
+    assert "MANAGE-1.3" not in tag_blast_radius(_make_br(is_kev=False, fixed=None))
 
 
 # ─── Tags are sorted ────────────────────────────────────────────────────────
@@ -212,7 +170,6 @@ def test_tags_are_sorted():
     )
     tags = tag_blast_radius(br)
     assert tags == sorted(tags)
-    # Should have many tags triggered
     assert len(tags) >= 6
 
 
@@ -220,7 +177,7 @@ def test_tags_are_sorted():
 
 
 def test_full_scenario_all_tags():
-    """Maximum-risk scenario should trigger most subcategories."""
+    """Maximum-risk scenario triggers every rule, and only catalog subcategories."""
     tools = [
         MCPTool(name="execute_command", description="Run shell commands"),
         MCPTool(name="read_database", description="Query SQL database"),
@@ -237,20 +194,17 @@ def test_full_scenario_all_tags():
         is_kev=True,
     )
     tags = tag_blast_radius(br)
-
-    # All expected tags
-    assert "GOVERN-1.7" in tags  # always
-    assert "MAP-3.5" in tags  # always
-    assert "GOVERN-6.1" in tags  # exec tools
-    assert "GOVERN-6.2" in tags  # AI + creds + HIGH
-    assert "MAP-1.6" in tags  # >3 tools
-    assert "MAP-5.2" in tags  # data tools
-    assert "MEASURE-2.5" in tags  # AI + HIGH
-    assert "MEASURE-2.9" in tags  # fix available
-    assert "MANAGE-1.3" in tags  # KEV
-    assert "MANAGE-2.2" in tags  # credentials
-    assert "MANAGE-2.4" in tags  # AI + creds + HIGH
-    assert "MANAGE-4.1" in tags  # creds + tools
+    assert set(tags) == {
+        "GOVERN-6.1",  # third-party component risk
+        "MAP-4.1",  # component / supply-chain risk mapped
+        "MAP-3.5",  # exec tools → human oversight
+        "MAP-5.1",  # data tools → impact
+        "MEASURE-2.7",  # AI + HIGH → security evaluation
+        "MANAGE-1.3",  # fix available / KEV → risk response
+        "MANAGE-4.1",  # creds + tools → post-deployment monitoring
+        "GOVERN-6.2",  # AI + creds + HIGH → contingency
+    }
+    assert set(tags) <= set(NIST_AI_RMF)
 
 
 # ─── Catalog + labels ───────────────────────────────────────────────────────
@@ -266,15 +220,15 @@ def test_catalog_has_all_functions():
 
 
 def test_nist_label():
-    label = nist_label("MAP-3.5")
-    assert label == "MAP-3.5 AI supply chain risks assessed"
+    label = nist_label("MAP-4.1")
+    assert label == "MAP-4.1 Technology and legal risks of AI components, including third-party software, mapped"
 
 
 def test_nist_labels():
-    labels = nist_labels(["MAP-3.5", "GOVERN-1.7"])
+    labels = nist_labels(["MAP-4.1", "GOVERN-6.1"])
     assert len(labels) == 2
-    assert "MAP-3.5" in labels[0]
-    assert "GOVERN-1.7" in labels[1]
+    assert "MAP-4.1" in labels[0]
+    assert "GOVERN-6.1" in labels[1]
 
 
 def test_nist_label_unknown():

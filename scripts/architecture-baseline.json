@@ -279,6 +279,29 @@
       "broad_except": 1,
       "raw_env_reads": 3
     },
+    "api/gateway_relay_admission.py": {
+      "broad_except": 3,
+      "deferred_imports": 4
+    },
+    "api/gateway_relay_context.py": {
+      "broad_except": 1,
+      "deferred_imports": 1
+    },
+    "api/gateway_relay_identity.py": {
+      "broad_except": 2,
+      "deferred_imports": 1
+    },
+    "api/gateway_relay_profile.py": {
+      "broad_except": 1,
+      "deferred_imports": 2
+    },
+    "api/gateway_relay_reachability.py": {
+      "broad_except": 1
+    },
+    "api/gateway_relay_tool_policy.py": {
+      "broad_except": 5,
+      "deferred_imports": 3
+    },
     "api/governance_audit_log.py": {
       "deferred_imports": 2
     },
@@ -2967,22 +2990,18 @@
       "api_imports": 1
     },
     "gateway_server.py": {
-      "api_imports": 56,
-      "broad_except": 16,
-      "deferred_imports": 16,
-      "file_lines": 2230,
+      "api_imports": 53,
+      "broad_except": 3,
+      "deferred_imports": 5,
+      "file_lines": 699,
       "raw_env_reads": 1
     },
     "gateway_server.py::create_gateway_app": {
-      "complexity": 190,
-      "function_lines": 1902
+      "complexity": 57,
+      "function_lines": 462
     },
     "gateway_server.py::create_gateway_app.firewall_check": {
       "function_lines": 116
-    },
-    "gateway_server.py::create_gateway_app.relay": {
-      "complexity": 134,
-      "function_lines": 1464
     },
     "gateway_upstreams.py": {
       "deferred_imports": 3,

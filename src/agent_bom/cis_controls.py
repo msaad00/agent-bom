@@ -44,7 +44,7 @@ CIS_CONTROLS: dict[str, str] = {
     # CIS 02 — Inventory and Control of Software Assets
     "CIS-02.1": "Software asset inventory",
     "CIS-02.3": "Unauthorized-software remediation",
-    "CIS-02.7": "Approved-library allowlisting",
+    "CIS-02.6": "Approved-library allowlisting",
     # CIS 07 — Continuous Vulnerability Management
     "CIS-07.1": "Vulnerability-management program",
     "CIS-07.4": "Automated patch remediation",
@@ -52,7 +52,7 @@ CIS_CONTROLS: dict[str, str] = {
     "CIS-07.6": "External-facing vulnerability scanning",
     # CIS 16 — Application Software Security
     "CIS-16.1": "Secure application-development lifecycle",
-    "CIS-16.11": "Hardened application configuration baselines",
+    "CIS-16.7": "Hardened application configuration baselines",
     "CIS-16.12": "Code-level security testing",
 }
 
@@ -65,11 +65,11 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     Rules:
     - CIS-02.3: HIGH+ severity (unauthorized/risky software).
-    - CIS-02.7: AI framework package (library allowlisting relevant).
+    - CIS-02.6: AI framework package (library allowlisting relevant).
     - CIS-07.4: Fixable vulnerability (patch management needed).
     - CIS-07.6: >1 affected agent (public-facing scan scope).
     - CIS-16.1: Credentials exposed (secure development process gap).
-    - CIS-16.11: EXECUTE-capable tools (hardening needed).
+    - CIS-16.7: EXECUTE-capable tools (hardening needed).
     - CIS-16.12: KEV vulnerability (code-level security check urgency).
     """
     tags: set[str] = set()
@@ -86,9 +86,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if is_high:
         tags.add("CIS-02.3")
 
-    # CIS-02.7 — library allowlisting: AI framework package
+    # CIS-02.6 — library allowlisting: AI framework package
     if br.package.name.lower() in _AI_PACKAGES:
-        tags.add("CIS-02.7")
+        tags.add("CIS-02.6")
 
     # CIS-07.4 — patch management: fixable vulnerability
     if br.vulnerability.fixed_version:
@@ -102,9 +102,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if br.exposed_credentials:
         tags.add("CIS-16.1")
 
-    # CIS-16.11 — hardening: EXECUTE-capable tools
+    # CIS-16.7 — hardening: EXECUTE-capable tools
     if has_exec:
-        tags.add("CIS-16.11")
+        tags.add("CIS-16.7")
 
     # CIS-16.12 — code security: KEV (active exploitation)
     if br.vulnerability.is_kev:

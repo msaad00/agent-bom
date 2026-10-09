@@ -88,8 +88,8 @@ class TestCredentialDedup:
         assert "DB_PASSWORD" in deduped
 
 
-class TestOwaspLLM05Tagging:
-    """LLM05 — OWASP LLM Top 10 "Supply Chain Vulnerabilities" — applies to
+class TestOwaspLLM03Tagging:
+    """LLM03 — OWASP LLM Top 10 (2025) "Supply Chain" — applies to
     every CVE in a third-party package an agent depends on. The earlier
     narrow-allowlist behavior (AI/ML packages only) under-fired on generic
     transport / HTTP / template packages (starlette, requests, jinja2, etc.)
@@ -97,7 +97,7 @@ class TestOwaspLLM05Tagging:
     supply-chain risk by OWASP's definition.
     """
 
-    def test_non_ai_package_gets_llm05(self):
+    def test_non_ai_package_gets_llm03(self):
         """Every vulnerable third-party package is supply-chain risk."""
         br = BlastRadius(
             vulnerability=_vuln(),
@@ -109,10 +109,10 @@ class TestOwaspLLM05Tagging:
         )
         br.calculate_risk_score()
         tags = tag_blast_radius(br)
-        assert "LLM05" in tags
+        assert "LLM03" in tags
 
-    def test_ai_package_gets_llm05(self):
-        """An AI framework package also gets LLM05 (supply chain)."""
+    def test_ai_package_gets_llm03(self):
+        """An AI framework package also gets LLM03 (supply chain)."""
         br = BlastRadius(
             vulnerability=_vuln(),
             package=_pkg("langchain", "0.1.0", "pypi"),
@@ -123,10 +123,10 @@ class TestOwaspLLM05Tagging:
         )
         br.calculate_risk_score()
         tags = tag_blast_radius(br)
-        assert "LLM05" in tags
+        assert "LLM03" in tags
 
-    def test_training_package_gets_llm05(self):
-        """A training data package should get LLM05."""
+    def test_training_package_gets_llm03_and_llm04(self):
+        """A training data package gets LLM03 and LLM04 (data and model poisoning)."""
         br = BlastRadius(
             vulnerability=_vuln(),
             package=_pkg("transformers", "4.30.0", "pypi"),
@@ -137,10 +137,11 @@ class TestOwaspLLM05Tagging:
         )
         br.calculate_risk_score()
         tags = tag_blast_radius(br)
-        assert "LLM05" in tags
+        assert "LLM03" in tags
+        assert "LLM04" in tags
 
-    def test_vector_store_gets_llm05(self):
-        """A vector store package should get LLM05."""
+    def test_vector_store_gets_llm03_and_llm08(self):
+        """A vector store package gets LLM03 and LLM08 (vector and embedding weaknesses)."""
         br = BlastRadius(
             vulnerability=_vuln(),
             package=_pkg("chromadb", "0.4.0", "pypi"),
@@ -151,10 +152,11 @@ class TestOwaspLLM05Tagging:
         )
         br.calculate_risk_score()
         tags = tag_blast_radius(br)
-        assert "LLM05" in tags
+        assert "LLM03" in tags
+        assert "LLM08" in tags
 
-    def test_cred_exposure_gets_llm06(self):
-        """Credential exposure should trigger LLM06 regardless of package type."""
+    def test_cred_exposure_gets_llm02(self):
+        """Credential exposure triggers LLM02 (sensitive information disclosure) regardless of package type."""
         br = BlastRadius(
             vulnerability=_vuln(),
             package=_pkg("express", "4.17.1", "npm"),
@@ -165,7 +167,7 @@ class TestOwaspLLM05Tagging:
         )
         br.calculate_risk_score()
         tags = tag_blast_radius(br)
-        assert "LLM06" in tags
+        assert "LLM02" in tags
 
 
 class TestRiskScoreNotInflated:

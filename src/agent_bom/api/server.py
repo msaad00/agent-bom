@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from agent_bom import __version__
 from agent_bom import config as _config
+from agent_bom.api import host_guard as _host_guard
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
@@ -475,6 +476,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     validate_configured_sqlite_path()
     _state_home.activate_demo_state_dir()
     _log_control_plane_auth_posture()
+    _host_guard.log_host_policy()
     warn_if_ephemeral_hmac_key()
     _apply_worker_thread_limit()
     configure_otel_tracing()
@@ -1111,19 +1113,17 @@ def configure_api(
         read_rpm=_rate_limit_rpm * 5,
         authenticated_read_rpm=_rate_limit_rpm * 10,
     )
-    # Authentication can be optional; authorization cannot.  Keep the
-    # principal resolver installed in pure no-auth mode so credential-less
-    # callers receive the configured NO_AUTH_ROLE and traverse the same route
-    # role matrix as authenticated principals.  Removing the middleware here
-    # used to let a no-auth viewer mutate sources, schedules, and scan jobs
-    # directly.  The anonymous resolver preserves local self-hosted operation,
-    # while DEMO_ESTATE still clamps the effective role to viewer.
+    # Authentication can be optional; authorization cannot. The principal
+    # resolver stays installed in no-auth mode so credential-less callers get
+    # NO_AUTH_ROLE and the same route role matrix (DEMO_ESTATE clamps to viewer).
 
     if _config.API_RESULT_PUSH_MAX_BYTES <= 0:
         raise ValueError("AGENT_BOM_API_RESULT_PUSH_MAX_BYTES must be positive")
     _replace_middleware(MaxBodySizeMiddleware, path_limits={"/v1/results/push": _config.API_RESULT_PUSH_MAX_BYTES})
     _replace_middleware(APIKeyMiddleware, api_key=api_key, allow_unauthenticated=allow_unauthenticated)
     _replace_middleware(GlobalRateLimitMiddleware, rpm=global_ip_rate_limit_rpm())
+    _host_guard.configure_host_policy(posture.listener_host, _cors_origins)
+    _replace_middleware(_host_guard.HostAllowlistMiddleware)  # Host check precedes limits, auth, routes, cookies.
     # Wrap admission denials with security/correlation headers without reading bodies.
     _replace_middleware(TrustHeadersMiddleware)
     if app.middleware_stack is not None:
@@ -1559,7 +1559,7 @@ def _maybe_attach_dev_session_cookie(response: Any, request: Request) -> None:
     lifetime without depending on key-store lookups, and is re-used across page
     loads instead of churning a fresh nonce each request.
     """
-    if _dev_api_key is None:
+    if _dev_api_key is None or not _host_guard.is_loopback_hostname(_host_guard.hostname_from_authority(request.headers.get("host", ""))):
         return
     from agent_bom.api.browser_session import (
         CSRF_COOKIE_NAME,
@@ -1739,12 +1739,12 @@ def _mount_dashboard(application: FastAPI) -> None:
         return
 
     from starlette.responses import FileResponse
-    from starlette.staticfiles import StaticFiles
 
-    # Hashed JS/CSS assets
     next_static = ui_dist / "_next"
-    if next_static.is_dir():
-        application.mount("/_next", StaticFiles(directory=str(next_static)), name="next-static")
+    if next_static.is_dir():  # hashed JS/CSS build assets
+        from agent_bom.api.dashboard_assets import InMemoryBuildAssets
+
+        application.mount("/_next", InMemoryBuildAssets(directory=str(next_static)), name="next-static")
 
     # Pre-build a bounded static file map at startup so request paths are
     # resolved only as lookup keys.

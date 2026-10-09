@@ -1010,7 +1010,7 @@ def test_auth_policy_uses_actual_configured_listener(monkeypatch, listener_host,
     if configured_environment is not None:
         monkeypatch.setenv("AGENT_BOM_API_HOST", configured_environment)
     _server_mod.configure_api(api_key="listener-policy-test-key", allow_unauthenticated=False, listener_host=listener_host)
-    response = TestClient(app).get("/v1/auth/policy", headers={"X-API-Key": "listener-policy-test-key"})
+    response = TestClient(app, base_url="http://127.0.0.1:8422").get("/v1/auth/policy", headers={"X-API-Key": "listener-policy-test-key"})
     assert response.status_code == 200
     direct = response.json()["proxy_control_plane_mtls"]["direct_listener"]
     assert direct["host"] == listener_host

@@ -12,6 +12,7 @@ import sys
 import click
 
 from agent_bom import __version__
+from agent_bom.__main__ import version_message
 from agent_bom.cli._agent_mode import AGENT_MODE_ENV_VAR
 from agent_bom.cli._common import (
     BANNER,  # noqa: F401 — re-export for backward compatibility
@@ -71,12 +72,7 @@ def _print_startup_banner() -> None:
 @click.version_option(
     version=__version__,
     prog_name="agent-bom",
-    message=(
-        f"agent-bom {__version__}\n"
-        "Open security scanner for AI infrastructure\n"
-        f"Python {sys.version.split()[0]} · {sys.platform}\n"
-        "Docs:  https://msaad00.github.io/agent-bom/"
-    ),
+    message=version_message(),
 )
 @click.pass_context
 def main(ctx: click.Context, profile: str | None, agent_mode: bool):

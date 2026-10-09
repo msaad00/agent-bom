@@ -1427,7 +1427,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
             f'<span style="display:flex;align-items:center;gap:8px">'
             f"{badges_html}"
             f'<span style="font-size:.72rem;color:#475569">'
-            f"{len(agent.mcp_servers)} server(s) &middot; {agent.total_packages} pkg(s)"
+            f"{agent.total_mcp_servers} server(s) &middot; {agent.total_packages} pkg(s)"
             f"</span>"
             f"</span>"
             f"</summary>"

@@ -344,7 +344,7 @@ def build_secret_findings(estate: EnterpriseEstate) -> tuple[Finding, ...]:
             # converter already does this internally.
             # The controls a committed credential genuinely evidences, from the
             # catalogs this repo ships. ``secret_dict_to_finding`` sets none.
-            finding.owasp_tags = ["LLM06"]
+            finding.owasp_tags = ["LLM02"]
             finding.owasp_mcp_tags = ["MCP01"]
             finding.nist_800_53_tags = ["IA-5"]
             _classify(finding)
@@ -691,7 +691,7 @@ _TOOL_RULES: tuple[_RuntimeRule, ...] = (
         setting="tool.arguments binding",
         observed="interpolated into the statement",
         expected="bound as a parameter",
-        owasp=("LLM01",),
+        owasp=("LLM05",),
         owasp_mcp=("MCP05",),
         owasp_agentic=("ASI02",),
         nist_800_53=("SI-10",),
@@ -707,7 +707,7 @@ _TOOL_RULES: tuple[_RuntimeRule, ...] = (
         setting="tool.descriptor hash",
         observed="differs from the approved descriptor",
         expected="matches the approved descriptor",
-        owasp=("LLM05",),
+        owasp=("LLM03",),
         owasp_mcp=("MCP03",),
         owasp_agentic=("ASI04",),
         nist_800_53=("CM-6",),
@@ -739,7 +739,7 @@ _TOOL_RULES: tuple[_RuntimeRule, ...] = (
         setting="gateway.response_classification",
         observed="off; PHI columns forwarded",
         expected="on, blocking regulated columns",
-        owasp=("LLM06",),
+        owasp=("LLM02",),
         owasp_mcp=("MCP10",),
         owasp_agentic=("ASI02",),
         nist_800_53=("AC-3",),
@@ -790,7 +790,7 @@ _AI_RULES: tuple[_RuntimeRule, ...] = (
         setting="artifact.attestation",
         observed="absent",
         expected="a verified build attestation",
-        owasp=("LLM05",),
+        owasp=("LLM03",),
         owasp_agentic=("ASI04",),
         nist_800_53=("SR-4", "SI-7"),
     ),

@@ -72,7 +72,7 @@ def test_detective_categories_are_never_tagged_onto_a_finding():
 
 def test_kev_triggers_containment():
     tags = tag_blast_radius(_br(is_kev=True))
-    assert "RS.MI-02" in tags
+    assert "RS.MI-01" in tags
 
 
 def test_high_severity_triggers_risk_assessment():

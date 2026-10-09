@@ -2164,7 +2164,7 @@ async def get_attack_flow(
     Query params for filtering:
       ?cve=CVE-2025-xxx     - show only this CVE's blast radius
       ?severity=critical     - filter by severity level
-      ?framework=LLM05       - filter by OWASP/ATLAS/NIST tag
+      ?framework=LLM03       - filter by OWASP/ATLAS/NIST tag
       ?agent=claude-desktop  - filter to a specific agent
     """
     job = await _load_job_for_request(request, job_id)

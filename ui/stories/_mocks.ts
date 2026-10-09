@@ -253,8 +253,8 @@ export function makeCompliance(overrides: Partial<ComplianceResponse> = {}): Com
     scan_sources: ["cli", "runtime"],
     owasp_llm_top10: [
       control("LLM01", "Prompt Injection", "fail", { critical: 1, high: 2 }),
-      control("LLM02", "Insecure Output Handling", "warning", { medium: 3 }),
-      control("LLM06", "Sensitive Information Disclosure", "pass"),
+      control("LLM02", "Sensitive Information Disclosure", "pass"),
+      control("LLM05", "Improper Output Handling", "warning", { medium: 3 }),
     ],
     owasp_mcp_top10: [
       control("MCP01", "Tool Poisoning", "fail", { critical: 1 }),
@@ -273,7 +273,7 @@ export function makeCompliance(overrides: Partial<ComplianceResponse> = {}): Com
       control("GOVERN-1.1", "Legal & Regulatory", "pass"),
     ],
     eu_ai_act: [
-      control("ART-15", "Accuracy, Robustness & Cybersecurity", "warning", { high: 1 }),
+      control("ART-15", "Accuracy, Robustness and Cybersecurity", "warning", { high: 1 }),
       control("ART-9", "Risk Management System", "pass"),
     ],
   };

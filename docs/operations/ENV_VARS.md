@@ -151,8 +151,9 @@ so they cannot regress silently, but they are not part of this reference.
 ## Deployment / integration env aliases
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_API_ALLOWED_HOSTS` | `str` | `''` | REST API Host allowlist, comma-separated; *.domain = subdomains, * = any |
 | `AGENT_BOM_CORS_ORIGINS` | `str` | `''` | — |
-| `AGENT_BOM_DEPLOYMENT_ENV` | `str` | `''` | Canonical AGENT_BOM_* keys below. Legacy unprefixed or alternate names are still honored via the resolved_* helpers for back-compat: AGENT_BOM_ENV / ENVIRONMENT → DEPLOYMENT_ENV CORS_ORIGINS → CORS_ORIGINS (prefixed) SERVICENOW_INSTANCE → S |
+| `AGENT_BOM_DEPLOYMENT_ENV` | `str` | `''` | Canonical AGENT_BOM_* keys below. Legacy names stay honored via resolved_* helpers: AGENT_BOM_ENV / ENVIRONMENT → DEPLOYMENT_ENV; unprefixed CORS_ORIGINS, SERVICENOW_INSTANCE and VAULT_ADDR → their AGENT_BOM_* forms. |
 | `AGENT_BOM_SERVICENOW_INSTANCE` | `str` | `''` | — |
 | `AGENT_BOM_VAULT_ADDR` | `str` | `''` | — |
 

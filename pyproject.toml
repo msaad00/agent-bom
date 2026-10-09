@@ -282,7 +282,7 @@ dev-all = [
 ]
 
 [project.scripts]
-agent-bom = "agent_bom.cli:cli_main"
+agent-bom = "agent_bom.__main__:cli_main"
 agent-shield = "agent_bom.cli.shield:shield_main"
 agent-cloud = "agent_bom.cli.cloud:cloud_main"
 agent-iac = "agent_bom.cli.iac:iac_main"
@@ -588,6 +588,13 @@ module = [
     "agent_bom.api.finding_list_envelope",
     "agent_bom.api.time_window",
     "agent_bom.api.cost_owner",
+    "agent_bom.api.gateway_relay_admission",
+    "agent_bom.api.gateway_relay_context",
+    "agent_bom.api.gateway_relay_identity",
+    "agent_bom.api.gateway_relay_pipeline",
+    "agent_bom.api.gateway_relay_profile",
+    "agent_bom.api.gateway_relay_reachability",
+    "agent_bom.api.gateway_relay_tool_policy",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

@@ -438,7 +438,10 @@ def test_cli_api_persist_selects_the_shared_database_like_serve(monkeypatch: pyt
 
 
 @pytest.mark.parametrize("command_name", ["serve", "api"])
-def test_cli_demo_estate_keeps_jobs_durable_with_the_graph(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command_name: str) -> None:
+@pytest.mark.parametrize("auto_connection_key", [True, False])
+def test_cli_demo_estate_keeps_jobs_durable_with_the_graph(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command_name: str, auto_connection_key: bool
+) -> None:
     """Without --persist the demo jobs lived in memory while the graph was on disk.
 
     A restart then served the persisted graph beside zero jobs and an empty
@@ -455,6 +458,7 @@ def test_cli_demo_estate_keeps_jobs_durable_with_the_graph(monkeypatch: pytest.M
     from agent_bom.demo_estate.bootstrap import _tenant_has_demo_jobs
 
     _cli_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTO_CONNECTIONS_KEY", "0" if auto_connection_key else "1")
     summaries: list[dict[str, str]] = []
     monkeypatch.setattr("agent_bom.cli._server._emit_runtime_summary", lambda title, rows: summaries.append(dict(rows)))
     command = serve_cmd if command_name == "serve" else api_cmd
@@ -485,12 +489,16 @@ def test_cli_demo_estate_keeps_jobs_durable_with_the_graph(monkeypatch: pytest.M
     assert not _tenant_has_demo_jobs(restarted, "other-tenant")
 
 
-def test_cli_demo_estate_respects_an_explicit_persist_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("auto_connection_key", [True, False])
+def test_cli_demo_estate_respects_an_explicit_persist_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, auto_connection_key: bool
+) -> None:
     from click.testing import CliRunner
 
     from agent_bom.cli._server import serve_cmd
 
     _cli_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("AGENT_BOM_NO_AUTO_CONNECTIONS_KEY", "0" if auto_connection_key else "1")
     monkeypatch.setattr("agent_bom.cli._server._emit_runtime_summary", lambda title, rows: None)
     explicit = tmp_path / "product" / "demo-estate" / "jobs.db"
     result = CliRunner().invoke(serve_cmd, ["--demo-estate", "--persist", str(explicit), "--api-key", "synthetic-test-only-key"])

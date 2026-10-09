@@ -4,7 +4,7 @@ Maps security flags from training runs and dataset cards to compliance
 framework codes so that every finding carries actionable regulatory context.
 
 Framework mappings:
-- OWASP LLM Top 10: LLM03 (Training Data Poisoning)
+- OWASP LLM Top 10 (2025): LLM04 (Data and Model Poisoning)
 - MITRE ATLAS: AML.T0020 (Poison Training Data), AML.T0019 (Publish Poisoned Datasets)
 - NIST AI RMF: MAP-3.5 (data provenance), GOVERN-1.7 (supply chain governance)
 - EU AI Act: ART-10 (Data Governance)
@@ -23,57 +23,57 @@ if TYPE_CHECKING:
 # Training run security flag types → compliance codes
 _TRAINING_FLAG_MAP: dict[str, dict[str, list[str]]] = {
     "UNSAFE_SERIALIZATION": {
-        "OWASP_LLM": ["LLM03 Training Data Poisoning"],
+        "OWASP_LLM": ["LLM04 Data and Model Poisoning"],
         "MITRE_ATLAS": ["AML.T0020 Poison Training Data"],
-        "NIST_AI_RMF": ["MAP-3.5"],
+        "NIST_AI_RMF": ["MAP-4.1"],
     },
     "MISSING_PROVENANCE": {
-        "OWASP_LLM": ["LLM03 Training Data Poisoning"],
+        "OWASP_LLM": ["LLM04 Data and Model Poisoning"],
         "MITRE_ATLAS": ["AML.T0020 Poison Training Data"],
-        "NIST_AI_RMF": ["MAP-3.5", "GOVERN-1.7"],
+        "NIST_AI_RMF": ["MAP-4.1", "GOVERN-6.1"],
     },
     "MISSING_REQUIREMENTS": {
-        "NIST_AI_RMF": ["MAP-3.5", "GOVERN-1.7"],
+        "NIST_AI_RMF": ["MAP-4.1", "GOVERN-6.1"],
     },
     "EXPOSED_CREDENTIALS": {
-        "OWASP_LLM": ["LLM03 Training Data Poisoning"],
-        "NIST_AI_RMF": ["GOVERN-1.7"],
+        "OWASP_LLM": ["LLM02 Sensitive Information Disclosure"],
+        "NIST_AI_RMF": ["GOVERN-6.1"],
     },
     "UNVERSIONED_MODEL": {
-        "NIST_AI_RMF": ["MAP-3.5", "GOVERN-1.7"],
+        "NIST_AI_RMF": ["MAP-4.1", "GOVERN-6.1"],
     },
 }
 
 # Dataset security flag types → compliance codes
 _DATASET_FLAG_MAP: dict[str, dict[str, list[str]]] = {
     "UNLICENSED_DATASET": {
-        "EU_AI_ACT": ["ART-10 Data Governance"],
-        "NIST_AI_RMF": ["MAP-3.5"],
-        "OWASP_LLM": ["LLM03 Training Data Poisoning"],
+        "EU_AI_ACT": ["ART-10 Data and Data Governance"],
+        "NIST_AI_RMF": ["MAP-4.1"],
+        "OWASP_LLM": ["LLM04 Data and Model Poisoning"],
     },
     "NO_DATASET_CARD": {
-        "EU_AI_ACT": ["ART-10 Data Governance"],
-        "NIST_AI_RMF": ["MAP-3.5"],
+        "EU_AI_ACT": ["ART-10 Data and Data Governance"],
+        "NIST_AI_RMF": ["MAP-4.1"],
     },
     "UNVERSIONED_DATA": {
-        "NIST_AI_RMF": ["MAP-3.5"],
+        "NIST_AI_RMF": ["MAP-4.1"],
         "MITRE_ATLAS": ["AML.T0020 Poison Training Data"],
     },
     "REMOTE_DATA_SOURCE": {
         "MITRE_ATLAS": ["AML.T0019 Publish Poisoned Datasets"],
-        "NIST_AI_RMF": ["MAP-3.5"],
+        "NIST_AI_RMF": ["MAP-4.1"],
     },
 }
 
 # Baseline tags applied to ALL training runs (supply chain governance)
 _TRAINING_BASELINE: dict[str, list[str]] = {
-    "NIST_AI_RMF": ["MAP-3.5", "GOVERN-1.7"],
+    "NIST_AI_RMF": ["MAP-4.1", "GOVERN-6.1"],
 }
 
 # Baseline tags applied to ALL datasets
 _DATASET_BASELINE: dict[str, list[str]] = {
-    "NIST_AI_RMF": ["MAP-3.5"],
-    "EU_AI_ACT": ["ART-10 Data Governance"],
+    "NIST_AI_RMF": ["MAP-4.1"],
+    "EU_AI_ACT": ["ART-10 Data and Data Governance"],
 }
 
 

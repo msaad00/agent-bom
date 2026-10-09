@@ -52,10 +52,10 @@ NIST_CSF: dict[str, str] = {
     "PR.PS-06": "Secure software development practices integrated and monitored throughout the lifecycle",
     # DETECT — Anomaly and event detection
     "DE.CM-01": "Networks and network services are monitored",
-    "DE.CM-09": "Computing hardware and software are monitored for vulnerabilities",
+    "DE.CM-09": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
     # RESPOND — Incident response
     "RS.AN-03": "Analysis is performed to determine what has taken place",
-    "RS.MI-02": "Incidents are contained and mitigated",
+    "RS.MI-01": "Incidents are contained",
 }
 
 
@@ -76,7 +76,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     - PR.DS-02: >3 affected agents (data-in-transit across agents).
     - DE.CM-01: >1 affected agent (network-level monitoring needed).
     - RS.AN-03: Fixable vulnerability (analysis for remediation).
-    - RS.MI-02: KEV vulnerability (active exploitation, containment needed).
+    - RS.MI-01: KEV vulnerability (active exploitation, containment needed).
     """
     tags: set[str] = {
         "GV.SC-05",  # always — supply chain risk
@@ -128,9 +128,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if br.vulnerability.fixed_version:
         tags.add("RS.AN-03")
 
-    # RS.MI-02 — containment for actively exploited vulns
+    # RS.MI-01 — containment for actively exploited vulns
     if br.vulnerability.is_kev:
-        tags.add("RS.MI-02")
+        tags.add("RS.MI-01")
 
     # CWE-based compliance tagging (applies to all vulns with CWE data)
     if br.vulnerability.cwe_ids:

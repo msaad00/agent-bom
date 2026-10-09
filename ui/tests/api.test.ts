@@ -605,7 +605,7 @@ describe('api.getScan', () => {
             credentials_pct: 0,
             reachable_tools: ['filesystem'],
             tools_pct: 100,
-            owasp_tags: ['LLM05'],
+            owasp_tags: ['LLM03'],
             atlas_tags: ['AML.T0010'],
             risk_narrative: 'Test narrative.',
           },

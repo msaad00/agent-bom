@@ -2116,13 +2116,13 @@ export const api = {
 /** OWASP LLM Top 10 (2025) — code → human-readable name */
 export const OWASP_LLM_TOP10: Record<string, string> = {
   LLM01: "Prompt Injection",
-  LLM02: "Insecure Output Handling",
-  LLM03: "Training Data Poisoning",
+  LLM02: "Sensitive Information Disclosure",
+  LLM03: "Supply Chain",
   LLM04: "Data and Model Poisoning",
-  LLM05: "Supply Chain Vulnerabilities",
-  LLM06: "Sensitive Information Disclosure",
+  LLM05: "Improper Output Handling",
+  LLM06: "Excessive Agency",
   LLM07: "System Prompt Leakage",
-  LLM08: "Excessive Agency",
+  LLM08: "Vector and Embedding Weaknesses",
   LLM09: "Misinformation",
   LLM10: "Unbounded Consumption",
 };
@@ -2160,43 +2160,39 @@ export const MITRE_ATLAS: Record<string, string> = {
 
 /** OWASP Agentic Top 10 (2026) — code → human-readable name */
 export const OWASP_AGENTIC_TOP10: Record<string, string> = {
-  ASI01: "Excessive Agency & Autonomy",
+  ASI01: "Agent Goal Hijack",
   ASI02: "Tool Misuse & Exploitation",
   ASI03: "Identity & Privilege Abuse",
   ASI04: "Agentic Supply Chain Vulnerabilities",
   ASI05: "Unexpected Code Execution",
   ASI06: "Memory & Context Poisoning",
   ASI07: "Insecure Inter-Agent Communication",
-  ASI08: "Cascading Hallucination Failures",
+  ASI08: "Cascading Failures",
   ASI09: "Human-Agent Trust Exploitation",
-  ASI10: "Rogue Agent Persistence",
+  ASI10: "Rogue Agents",
 };
 
-/** EU AI Act — article code → human-readable name */
+/** EU AI Act — article code → article title (technical evidence relevant to the article, not a legal classification) */
 export const EU_AI_ACT: Record<string, string> = {
-  "ART-5": "Prohibited AI Practices",
-  "ART-6": "High-Risk AI System Classification",
   "ART-9": "Risk Management System",
-  "ART-10": "Data & Data Governance",
-  "ART-15": "Accuracy, Robustness & Cybersecurity",
+  "ART-10": "Data and Data Governance",
+  "ART-12": "Record-Keeping",
+  "ART-14": "Human Oversight",
+  "ART-15": "Accuracy, Robustness and Cybersecurity",
   "ART-17": "Quality Management System",
 };
 
 /** NIST AI RMF 1.0 — subcategory ID → human-readable name */
 export const NIST_AI_RMF: Record<string, string> = {
-  "GOVERN-1.5": "Ongoing monitoring mechanisms for AI risk",
-  "GOVERN-1.7": "Third-party AI component risk processes",
-  "GOVERN-6.1": "Assessment policies for third-party AI entities",
-  "GOVERN-6.2": "Contingency plans for third-party AI failures",
-  "MAP-1.6": "System dependencies and external interfaces mapped",
-  "MAP-3.5": "AI supply chain risks assessed",
-  "MAP-5.2": "AI deployment impact practices identified",
-  "MEASURE-2.5": "AI system security testing conducted",
-  "MEASURE-2.6": "AI system results validated",
-  "MEASURE-2.9": "Effectiveness of risk mitigations assessed",
-  "MANAGE-1.3": "Responses to identified AI risks documented",
-  "MANAGE-2.2": "Anomalous event detection and response",
-  "MANAGE-2.4": "Risk treatments including remediation applied",
+  "GOVERN-1.5": "Ongoing monitoring and periodic review of AI risk management",
+  "GOVERN-6.1": "Policies address AI risks from third-party entities",
+  "GOVERN-6.2": "Contingency processes for third-party data or AI system failures",
+  "MAP-3.5": "Human oversight processes defined and documented",
+  "MAP-4.1": "Technology and legal risks of AI components, including third-party software, mapped",
+  "MAP-5.1": "Likelihood and magnitude of identified impacts documented",
+  "MEASURE-2.6": "AI system evaluated regularly for safety risks",
+  "MEASURE-2.7": "AI system security and resilience evaluated and documented",
+  "MANAGE-1.3": "Responses to high-priority AI risks developed, planned, and documented",
   "MANAGE-4.1": "Post-deployment monitoring plans implemented",
 };
 
@@ -2212,10 +2208,11 @@ export const NIST_CSF: Record<string, string> = {
   "PR.AA-03": "Users, services, and hardware are authenticated",
   "PR.DS-01": "Data-at-rest is protected",
   "PR.DS-02": "Data-in-transit is protected",
+  "PR.PS-06": "Secure software development practices integrated and monitored throughout the lifecycle",
   "DE.CM-01": "Networks and network services are monitored",
-  "DE.CM-09": "Computing hardware and software are monitored for vulnerabilities",
+  "DE.CM-09": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
   "RS.AN-03": "Analysis is performed to determine what has taken place",
-  "RS.MI-02": "Incidents are contained and mitigated",
+  "RS.MI-01": "Incidents are contained",
 };
 
 /** ISO/IEC 27001:2022 Annex A — control ID → human-readable name */
@@ -2233,28 +2230,28 @@ export const ISO_27001: Record<string, string> = {
 
 /** SOC 2 Trust Services Criteria — code → human-readable name */
 export const SOC2_TSC: Record<string, string> = {
-  "CC6.1": "Logical and physical access controls implemented",
-  "CC6.6": "Security boundaries and system access restricted",
-  "CC6.8": "Unauthorized or malicious software prevented or detected",
-  "CC7.1": "Detection and monitoring of anomalies and events",
-  "CC7.2": "Monitoring of system components for anomalies",
-  "CC7.4": "Incident response activities executed",
-  "CC8.1": "Change management processes authorized and implemented",
-  "CC9.1": "Risk mitigation activities identified and applied",
-  "CC9.2": "Vendor and business partner risk is managed",
+  "CC6.1": "Logical/physical access restriction",
+  "CC6.6": "External access-boundary protection",
+  "CC6.8": "Unauthorized/malicious software prevention and detection",
+  "CC7.1": "Vulnerability and configuration-change detection",
+  "CC7.2": "System-component anomaly monitoring",
+  "CC7.4": "Security-incident response",
+  "CC8.1": "Change authorization and control",
+  "CC9.1": "Risk-mitigation activities",
+  "CC9.2": "Vendor/third-party risk management",
 };
 
 /** CIS Controls v8 — safeguard ID → human-readable name */
 export const CIS_CONTROLS: Record<string, string> = {
   "CIS-02.1": "Establish and maintain a software inventory",
   "CIS-02.3": "Address unauthorized software",
-  "CIS-02.7": "Allowlist authorized libraries",
+  "CIS-02.6": "Allowlist authorized libraries",
   "CIS-07.1": "Establish and maintain a vulnerability management process",
   "CIS-07.4": "Perform automated patch management",
   "CIS-07.5": "Perform automated vulnerability scans of internal assets",
   "CIS-07.6": "Perform automated vulnerability scans of public-facing assets",
   "CIS-16.1": "Establish and maintain a secure application development process",
-  "CIS-16.11": "Use standard hardening configuration templates",
+  "CIS-16.7": "Use standard hardening configuration templates for application infrastructure",
   "CIS-16.12": "Implement code-level security checks",
 };
 

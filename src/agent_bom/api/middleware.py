@@ -45,6 +45,7 @@ from agent_bom.api.error_envelope import (
 from agent_bom.api.error_envelope import (
     install_error_envelope as install_error_envelope,
 )
+from agent_bom.api.host_guard import browser_origin_trusted
 from agent_bom.api.route_policy import (
     PUBLIC_OPERATIONS,
     ROLE_RULES,
@@ -886,6 +887,20 @@ class PostgresRateLimitStore:
         return int(row[0]) if row and row[0] is not None else 0
 
 
+def _is_hashed_build_asset(method: str, path: str, status_code: int) -> bool:
+    return method in {"GET", "HEAD"} and status_code in {200, 304} and path.startswith("/_next/static/") and ".." not in path
+
+
+def _cache_control(method: str, path: str, status_code: int, is_event_stream: bool) -> str:
+    if is_event_stream:
+        return "no-store, no-transform"
+    if _is_hashed_build_asset(method, path, status_code):
+        # Public, content-hashed build output: a new build changes the URL, so
+        # browsers may keep it instead of refetching every chunk on every page.
+        return "public, max-age=31536000, immutable"
+    return "no-store"
+
+
 class TrustHeadersMiddleware(BaseHTTPMiddleware):
     """Add trust + standard security headers to every response."""
 
@@ -1004,7 +1019,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         # SSE must reach clients before connection renewal. Keep the security
         # no-store policy while disabling intermediary compression/buffering.
         is_event_stream = response.headers.get("content-type", "").split(";", 1)[0].strip().lower() == "text/event-stream"
-        response.headers["Cache-Control"] = "no-store, no-transform" if is_event_stream else "no-store"
+        response.headers["Cache-Control"] = _cache_control(request.method, request.url.path, response.status_code, is_event_stream)
         response.headers["Content-Security-Policy"] = _content_security_policy(
             request.url.path,
             response.headers.get("content-type", ""),
@@ -1691,6 +1706,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             effective_role = resolved_role or session_role
 
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            if not browser_origin_trusted(request.headers):
+                return JSONResponse(status_code=403, content={"detail": "Forbidden — untrusted request origin"})
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
             csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
             if not verify_csrf(payload, csrf_cookie, csrf_header):

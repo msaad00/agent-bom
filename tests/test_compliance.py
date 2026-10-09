@@ -512,7 +512,7 @@ def test_newest_unified_finding_occurrence_wins_independent_of_backend_order(
         finding={
             "id": "same-occurrence",
             "severity": "critical",
-            "soc2_tags": ["CC7.1"],
+            "soc2_tags": ["CC8.1"],
         },
     )
     newest = _job(
@@ -533,8 +533,8 @@ def test_newest_unified_finding_occurrence_wins_independent_of_backend_order(
             for job in jobs:
                 store.put(job)
             data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
-            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
-            results.append((cc71["status"], cc71["findings"]))
+            cc81 = next(control for control in data["soc2"] if control["code"] == "CC8.1")
+            results.append((cc81["status"], cc81["findings"]))
     finally:
         _clear_jobs()
 
@@ -581,7 +581,7 @@ def test_newest_empty_scan_retires_absent_findings_only_in_same_scope(
         "scope-a-old",
         repo_url="https://example.test/acme/a.git",
         generated_at="2026-08-20T00:00:00Z",
-        findings=[{"id": "a-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+        findings=[{"id": "a-critical", "severity": "critical", "soc2_tags": ["CC8.1"]}],
     )
     new_scope_a = _job(
         "scope-a-new-empty",
@@ -593,7 +593,7 @@ def test_newest_empty_scan_retires_absent_findings_only_in_same_scope(
         "scope-b-current",
         repo_url="https://example.test/acme/b.git",
         generated_at="2026-08-20T12:00:00Z",
-        findings=[{"id": "b-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+        findings=[{"id": "b-critical", "severity": "critical", "soc2_tags": ["CC8.1"]}],
     )
     jobs = [new_scope_a, scope_b, old_scope_a] if reverse_put_order else [old_scope_a, scope_b, new_scope_a]
 
@@ -608,8 +608,8 @@ def test_newest_empty_scan_retires_absent_findings_only_in_same_scope(
             for job in jobs:
                 store.put(job)
             data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
-            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
-            results.append((cc71["status"], cc71["findings"]))
+            cc81 = next(control for control in data["soc2"] if control["code"] == "CC8.1")
+            results.append((cc81["status"], cc81["findings"]))
     finally:
         _clear_jobs()
 
@@ -644,7 +644,7 @@ def test_min_severity_change_does_not_split_target_scope(
         "scope-old-low",
         at="2026-08-20T00:00:00Z",
         min_severity="low",
-        findings=[{"id": "retired-critical", "severity": "critical", "soc2_tags": ["CC7.1"]}],
+        findings=[{"id": "retired-critical", "severity": "critical", "soc2_tags": ["CC8.1"]}],
     )
     newest = _job(
         "scope-new-high-empty",
@@ -665,8 +665,8 @@ def test_min_severity_change_does_not_split_target_scope(
             for job in jobs:
                 store.put(job)
             data = TestClient(app).get("/v1/compliance", headers=_AUTH_HEADERS).json()
-            cc71 = next(control for control in data["soc2"] if control["code"] == "CC7.1")
-            results.append((cc71["status"], cc71["findings"]))
+            cc81 = next(control for control in data["soc2"] if control["code"] == "CC8.1")
+            results.append((cc81["status"], cc81["findings"]))
     finally:
         _clear_jobs()
 
@@ -860,16 +860,16 @@ def test_compliance_includes_latest_aisvs_benchmark():
     # This scan produced only AISVS-benchmark results and no CVE findings, so
     # every CORRECTIVE control stays not_evaluated. Two things are still real
     # evidence and are scored:
-    #   * the 8 DETECTIVE controls — a completed, in-window scan IS the evidence
+    #   * the 9 DETECTIVE controls — a completed, in-window scan IS the evidence
     #     "we monitor / inventory" operates (pass);
     #   * the AISVS benchmark's directly-evaluated checks (1 pass / 1 fail).
-    # 9 pass over 10 evaluated = 90.0, and the failing AISVS check drives the
+    # 10 pass over 11 evaluated = 90.9, and the failing AISVS check drives the
     # top line to "fail" — a directly-evaluated failure can never read compliant.
-    assert data["overall_score"] == 90.0
+    assert data["overall_score"] == 90.9
     assert data["overall_status"] == "fail"
-    # The percentage always ships its denominator: 10 evaluated of a much larger
+    # The percentage always ships its denominator: 11 evaluated of a much larger
     # catalog, so 90% cannot be misread as "90% of the estate is compliant".
-    assert data["evaluated_controls"] == 10
+    assert data["evaluated_controls"] == 11
     assert data["total_controls"] > data["evaluated_controls"]
 
     _clear_jobs()
@@ -1024,7 +1024,7 @@ def test_compliance_severity_breakdown():
                 "affected_agents": ["cursor"],
                 "owasp_tags": ["LLM05", "LLM04"],
                 "atlas_tags": ["AML.T0010", "AML.T0020"],
-                "nist_ai_rmf_tags": ["GOVERN-1.7", "MAP-3.5"],
+                "nist_ai_rmf_tags": ["GOVERN-6.1", "MAP-4.1"],
             },
         ]
     )
@@ -1085,11 +1085,11 @@ def test_compliance_atlas_catalog_complete():
 
 
 def test_compliance_nist_catalog_complete():
-    """All 14 NIST AI RMF subcategories are present."""
+    """All 10 bundled NIST AI RMF subcategories are present."""
     _clear_jobs()
     client = TestClient(app)
     data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
-    assert len(data["nist_ai_rmf"]) == 14
+    assert len(data["nist_ai_rmf"]) == 10
     _clear_jobs()
 
 
@@ -1105,7 +1105,7 @@ def test_compliance_summary_counts():
                 "affected_agents": ["claude-desktop"],
                 "owasp_tags": ["LLM05"],
                 "atlas_tags": ["AML.T0010"],
-                "nist_ai_rmf_tags": ["MAP-3.5", "GOVERN-1.7"],
+                "nist_ai_rmf_tags": ["MAP-4.1", "GOVERN-6.1"],
             },
         ]
     )
@@ -1611,12 +1611,12 @@ def test_nist_catalog_line_is_independent_and_does_not_move_overall():
         "score": 25.0,
     }
     assert data["overall_status"] == "fail"
-    # CIS Foundations contributes pass=1 / fail=2 / error=1; the 8 DETECTIVE
+    # CIS Foundations contributes pass=1 / fail=2 / error=1; the 9 DETECTIVE
     # controls also pass because a completed in-window scan evidences them.
-    # 9 pass over 12 evaluated = 75.0. The NIST catalog line's own failures are
+    # 10 pass over 13 evaluated = 76.9. The NIST catalog line's own failures are
     # still NOT folded in — if they were, aggregate_fail would exceed 2 and the
-    # score would drop below 75.
-    assert data["overall_score"] == 75.0
+    # score would drop below 76.9.
+    assert data["overall_score"] == 76.9
 
     # The NIST catalog line still reports its own (independent) failing controls.
     nist_line = data["nist_800_53_catalog"]

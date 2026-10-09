@@ -111,6 +111,7 @@ jobs:
         if: steps.guard.outputs.configured == 'true'
         env:
           REQUESTED: ${{ inputs.image_ref }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
           if [ -n "${REQUESTED}" ]; then
@@ -119,11 +120,15 @@ jobs:
             # workflow_run carries the Release run's head branch; for a tag push
             # that is the tag itself. Fall back to `latest` so a manual run
             # without an explicit ref still resolves to something published.
-            TAG="${{ github.event.workflow_run.head_branch }}"
+            TAG="${RUN_HEAD_BRANCH}"
             TAG="${TAG:-latest}"
           fi
           # Container tags never carry a leading `v`; releases do.
           TAG="${TAG#v}"
+          if ! [[ "${TAG}" =~ ^[A-Za-z0-9._-]{1,128}$ ]]; then
+            echo "::error::Refusing to deploy an image tag with unexpected characters"
+            exit 1
+          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Deploying image tag: ${TAG}"
 

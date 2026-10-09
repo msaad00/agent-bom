@@ -742,3 +742,31 @@ class TestInvisibleUnicodeDetection:
         report = scan_source(str(tmp_path))
         unicode_comps = [c for c in report.components if c.component_type == AIComponentType.INVISIBLE_UNICODE]
         assert len(unicode_comps) == 0
+
+
+def _component_keys(report) -> list[tuple]:
+    return [(c.component_type, c.name, c.file_path, c.line_number, c.matched_text, c.is_shadow) for c in report.components]
+
+
+def test_regex_prefilter_skips_patterns_without_changing_components(monkeypatch):
+    import agent_bom.ai_components.scanner as ai_scanner
+    import agent_bom.core.regex_prefilter as prefilter
+
+    corpus = Path(__file__).resolve().parents[1] / "src" / "agent_bom" / "ai_components"
+    skipped: list[str] = []
+    real_may_match = prefilter.may_match
+
+    def recording(regex, view):
+        allowed = real_may_match(regex, view)
+        if not allowed:
+            skipped.append(regex.pattern)
+        return allowed
+
+    monkeypatch.setattr(prefilter, "may_match", recording)
+    filtered = scan_source(str(corpus))
+    monkeypatch.setattr(prefilter, "may_match", lambda regex, view: True)
+    unfiltered = scan_source(str(corpus))
+
+    assert skipped, f"{ai_scanner.__name__} never consulted the prefilter"
+    assert _component_keys(filtered) == _component_keys(unfiltered)
+    assert filtered.files_scanned == unfiltered.files_scanned

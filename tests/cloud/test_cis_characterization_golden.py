@@ -282,7 +282,24 @@ def _gcp_sdk(scenario: str) -> Iterator[None]:
     def _factory(*_args: Any, **_kwargs: Any) -> Any:
         return client
 
+    # Pin SDK presence so the snapshot does not depend on which optional extras
+    # happen to be installed in the environment running the test.
+    sdk_modules = {
+        name: _stub_module(name, _factory)
+        for name in (
+            "google",
+            "google.oauth2",
+            "google.oauth2.service_account",
+            "google.cloud",
+            "google.cloud.compute_v1",
+            "google.cloud.logging_v2",
+            "google.cloud.storage",
+            "googleapiclient",
+            "googleapiclient.discovery",
+        )
+    }
     with ExitStack() as stack:
+        stack.enter_context(patch.dict(sys.modules, sdk_modules))
         stack.enter_context(patch.object(mod, "_discovery_client", _factory))
         stack.enter_context(patch.object(mod, "_import_google_cloud_module", lambda name: _stub_module(f"google.cloud.{name}", _factory)))
         yield

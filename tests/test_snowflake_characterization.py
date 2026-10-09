@@ -785,8 +785,19 @@ def _build_cases(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixtu
     return cases
 
 
+_WALL_CLOCK_KEYS = frozenset({"discovered_at", "first_seen", "last_seen", "captured_at"})
+
+
+def _scrub_wall_clock(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: ("<now>" if k in _WALL_CLOCK_KEYS and v else _scrub_wall_clock(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_wall_clock(v) for v in value]
+    return value
+
+
 def test_snowflake_discovery_matches_golden(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-    actual = json.loads(json.dumps(_build_cases(monkeypatch, caplog), sort_keys=False, default=repr))
+    actual = _scrub_wall_clock(json.loads(json.dumps(_build_cases(monkeypatch, caplog), sort_keys=False, default=repr)))
     if UPDATE:
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_text(json.dumps(actual, indent=1, ensure_ascii=True) + "\n")

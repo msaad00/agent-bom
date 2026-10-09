@@ -53,14 +53,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.482527Z",
-     "last_seen": "2026-09-29T01:39:01.482527Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -100,7 +101,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -156,14 +157,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.483876Z",
-     "last_seen": "2026-09-29T01:39:01.483876Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -203,7 +205,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -292,14 +294,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex-agent",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.484435Z",
-     "last_seen": "2026-09-29T01:39:01.484435Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -339,7 +342,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -428,14 +431,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex-agent",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.485315Z",
-     "last_seen": "2026-09-29T01:39:01.485315Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -475,7 +479,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -564,14 +568,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex-agent",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.485401Z",
-     "last_seen": "2026-09-29T01:39:01.485401Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -611,7 +616,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -678,14 +683,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.490726Z",
-     "last_seen": "2026-09-29T01:39:01.490726Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -725,7 +731,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -758,14 +764,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.490847Z",
-     "last_seen": "2026-09-29T01:39:01.490847Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -805,7 +812,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -838,14 +845,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.491090Z",
-     "last_seen": "2026-09-29T01:39:01.491090Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -883,7 +891,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -916,14 +924,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-agent-audit",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.492192Z",
-     "last_seen": "2026-09-29T01:39:01.492192Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -961,7 +970,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -994,14 +1003,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp-audit",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.492270Z",
-     "last_seen": "2026-09-29T01:39:01.492270Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -1039,7 +1049,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -1072,14 +1082,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-streamlit",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.499162Z",
-     "last_seen": "2026-09-29T01:39:01.499162Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {},
      "automation_settings": [],
@@ -1101,7 +1112,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -1407,14 +1418,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-notebook",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.499474Z",
-     "last_seen": "2026-09-29T01:39:01.499474Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "database": "DB1",
@@ -1458,7 +1470,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -1491,14 +1503,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-notebook",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.499582Z",
-     "last_seen": "2026-09-29T01:39:01.499582Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "database": "DB1",
@@ -1542,7 +1555,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -1575,14 +1588,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-notebook",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.499668Z",
-     "last_seen": "2026-09-29T01:39:01.499668Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "database": "DB1",
@@ -1626,14 +1640,14 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.499750+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
     }
    ],
    [
-    "Could not describe MCP Server mcp_ok: while parsing a flow sequence\n  in \"<unicode string>\", line 1, column 8:\n    tools: [unclosed\n           ^\nexpected ',' or ']', but got '<stream end>'\n  in \"<unicode string>\", line 1, column 17:\n    t",
+    "Could not describe MCP Server mcp_ok: while parsing a flow sequence in \"<unicode string>\", line 1, column 8: tools: [unclosed ^ expected ',' or ']', but got '<stream end>' in \"<unicode string>\", line 1, column 17: tools: [unclosed ^",
     "Could not describe MCP Server bad name: Unsafe Snowflake identifier: 'bad name'",
     "Skipping Snowflake notebook with unsafe identifier: Unsafe Snowflake identifier: 'NB\\x01BAD'",
     "Could not describe Snowflake notebook 'NB_FAIL': describe failed for NB_FAIL"
@@ -1766,14 +1780,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502285Z",
-     "last_seen": "2026-09-29T01:39:01.502285Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -1813,7 +1828,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -1869,14 +1884,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502360Z",
-     "last_seen": "2026-09-29T01:39:01.502360Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -1916,7 +1932,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2005,14 +2021,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex-agent",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502417Z",
-     "last_seen": "2026-09-29T01:39:01.502417Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2050,7 +2067,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2139,14 +2156,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex-agent",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502461Z",
-     "last_seen": "2026-09-29T01:39:01.502461Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2184,7 +2202,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2273,14 +2291,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-cortex-agent",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502503Z",
-     "last_seen": "2026-09-29T01:39:01.502503Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2318,7 +2337,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2351,14 +2370,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502686Z",
-     "last_seen": "2026-09-29T01:39:01.502686Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2396,7 +2416,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2429,14 +2449,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502890Z",
-     "last_seen": "2026-09-29T01:39:01.502890Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2474,7 +2495,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2507,14 +2528,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.502991Z",
-     "last_seen": "2026-09-29T01:39:01.502991Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2552,7 +2574,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2585,14 +2607,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-agent-audit",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.503111Z",
-     "last_seen": "2026-09-29T01:39:01.503111Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2630,7 +2653,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2663,14 +2686,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-mcp-audit",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.503174Z",
-     "last_seen": "2026-09-29T01:39:01.503174Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "cloud_origin": {
@@ -2708,7 +2732,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2741,14 +2765,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-streamlit",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.503343Z",
-     "last_seen": "2026-09-29T01:39:01.503343Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {},
      "automation_settings": [],
@@ -2770,7 +2795,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2803,14 +2828,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-notebook",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.503440Z",
-     "last_seen": "2026-09-29T01:39:01.503440Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "database": "",
@@ -2852,7 +2878,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2885,14 +2911,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-notebook",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.503505Z",
-     "last_seen": "2026-09-29T01:39:01.503505Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "database": "",
@@ -2934,7 +2961,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -2967,14 +2994,15 @@
        "surface": "mcp-server",
        "discovery_sources": [],
        "discovery_provenance": null,
-       "identity_bindings": []
+       "identity_bindings": [],
+       "imported_canonical_id": null
       }
      ],
      "version": null,
      "source": "snowflake-notebook",
      "status": "configured",
-     "discovered_at": "2026-09-29T01:39:01.503560Z",
-     "last_seen": "2026-09-29T01:39:01.503560Z",
+     "discovered_at": "<now>",
+     "last_seen": "<now>",
      "parent_agent": null,
      "metadata": {
       "database": "",
@@ -3016,7 +3044,7 @@
        "INFORMATION_SCHEMA.NOTEBOOKS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.503575+00:00"
+      "captured_at": "<now>"
      },
      "source_id": null,
      "device_fingerprint": null
@@ -4009,7 +4037,7 @@
      }
     }
    ],
-   "discovered_at": "2026-09-29T01:39:01.507142+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4045,7 +4073,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.511341+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4314,7 +4342,7 @@
     }
    ],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.511522+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4350,7 +4378,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.511925+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not query ACCESS_HISTORY: SQL access control error: Insufficient privileges; permission denied for test-object",
     "Skipped GRANTS_TO_ROLES: role lacks SELECT on SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES \u2014 add it to the read-only policy to cover this resource type. (SQL access control error: Insufficient privileges; permission denied for test-object)",
@@ -4400,7 +4428,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.512434+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not query ACCESS_HISTORY: SQL compilation error: [SELECT ah.query_id, ah.user_name, qh.role_name, ah.query_start_time, ah.direct_objects_accessed, ah.base_objects_accessed, ah.objects_modified FROM SNOWFLAKE.AC] does not exist",
     "Could not list GRANTS_TO_ROLES: SQL compilation error: [SELECT grantee_name, privilege, granted_on, name, granted_by, grant_option FROM SNOWFLAKE.ACCOUNT_USAGE.GRANTS_TO_ROLES WHERE deleted_on IS NULL ORDER BY grante] does not exist",
@@ -4450,7 +4478,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.522279+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not query ACCESS_HISTORY: network timeout contacting test endpoint",
     "Could not list GRANTS_TO_ROLES: network timeout contacting test endpoint",
@@ -4500,7 +4528,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.544806+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "SNOWFLAKE_ACCOUNT not set."
    ]
@@ -4520,7 +4548,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.544885+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not connect to Snowflake: connect refused for test-acct"
    ]
@@ -4546,7 +4574,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.586447+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not connect to Snowflake: broker unavailable"
    ]
@@ -4584,7 +4612,7 @@
    "data_classifications": [],
    "agent_usage": [],
    "findings": [],
-   "discovered_at": "2026-09-29T01:39:01.609874+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4727,7 +4755,7 @@
      "details": {}
     }
    ],
-   "discovered_at": "2026-09-29T01:39:01.610064+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4758,7 +4786,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.643302+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4899,7 +4927,7 @@
      "details": {}
     }
    ],
-   "discovered_at": "2026-09-29T01:39:01.643507+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -4930,7 +4958,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.690999+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not query QUERY_HISTORY: SQL access control error: Insufficient privileges; permission denied for test-object",
     "Could not query AI_OBSERVABILITY_EVENTS: SQL access control error: Insufficient privileges; permission denied for test-object"
@@ -4964,7 +4992,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.724800+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not query QUERY_HISTORY: SQL compilation error: [SELECT query_id, query_text, user_name, role_name, start_time, end_time, execution_status, warehouse_name, database_name, schema_name, query_type, rows_produced] does not exist",
     "AI_OBSERVABILITY_EVENTS not available. Enable AI observability in Snowflake to capture agent traces."
@@ -4998,7 +5026,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.741484+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not query QUERY_HISTORY: network timeout contacting test endpoint",
     "Could not query AI_OBSERVABILITY_EVENTS: network timeout contacting test endpoint"
@@ -5032,7 +5060,7 @@
    "account": "",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.758770+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "SNOWFLAKE_ACCOUNT not set."
    ]
@@ -5049,7 +5077,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.758835+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not connect to Snowflake: connect refused for test-acct"
    ]
@@ -5072,7 +5100,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.758909+00:00",
+   "discovered_at": "<now>",
    "warnings": [
     "Could not connect to Snowflake: broker unavailable"
    ]
@@ -5107,7 +5135,7 @@
    "account": "test-acct",
    "query_history": [],
    "observability_events": [],
-   "discovered_at": "2026-09-29T01:39:01.759022+00:00",
+   "discovered_at": "<now>",
    "warnings": []
   },
   "connects": [
@@ -7681,7 +7709,7 @@
      "SNOWFLAKE.ORGANIZATION_USAGE.ACCOUNTS:SELECT"
     ],
     "redaction_status": "central_sanitizer_applied",
-    "captured_at": "2026-09-29T01:39:01.861306+00:00"
+    "captured_at": "<now>"
    }
   },
   "connects": [
@@ -9169,7 +9197,7 @@
      "SNOWFLAKE.ORGANIZATION_USAGE.ACCOUNTS:SELECT"
     ],
     "redaction_status": "central_sanitizer_applied",
-    "captured_at": "2026-09-29T01:39:01.929848+00:00"
+    "captured_at": "<now>"
    }
   },
   "connects": [
@@ -10688,7 +10716,7 @@
        "SNOWFLAKE.ORGANIZATION_USAGE.ACCOUNTS:SELECT"
       ],
       "redaction_status": "central_sanitizer_applied",
-      "captured_at": "2026-09-29T01:39:01.954159+00:00"
+      "captured_at": "<now>"
      }
     }
    }
@@ -14850,7 +14878,7 @@
         "SNOWFLAKE.ORGANIZATION_USAGE.ACCOUNTS:SELECT"
        ],
        "redaction_status": "central_sanitizer_applied",
-       "captured_at": "2026-09-29T01:39:02.170504+00:00"
+       "captured_at": "<now>"
       }
      }
     }

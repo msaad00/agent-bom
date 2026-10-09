@@ -2818,7 +2818,7 @@
      "account_id": "",
      "check_id": "1.15",
      "cis_section": "1 - Identity and Access Management",
-     "evidence": "Essential contacts configured but missing categories: TECHNICAL, SECURITY, BILLING",
+     "evidence": "Essential contacts configured but missing categories: BILLING, SECURITY, TECHNICAL",
      "network_exposure": [],
      "recommendation": "Configure Essential Contacts for SECURITY, TECHNICAL, and BILLING notification categories.",
      "remediation": {},
@@ -8885,7 +8885,7 @@
       ],
       "check_id": "1.15",
       "cis_section": "1 - Identity and Access Management",
-      "evidence": "Essential contacts configured but missing categories: TECHNICAL, SECURITY, BILLING",
+      "evidence": "Essential contacts configured but missing categories: BILLING, SECURITY, TECHNICAL",
       "project_id": "",
       "recommendation": "Configure Essential Contacts for SECURITY, TECHNICAL, and BILLING notification categories.",
       "remediation": {

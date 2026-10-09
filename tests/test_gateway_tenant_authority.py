@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from starlette.testclient import TestClient
 
+import agent_bom.api.gateway_relay_identity as relay_identity
 import agent_bom.gateway_server as gateway
 from agent_bom.api.auth import Role
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
@@ -53,8 +54,8 @@ def test_selected_tenant_reaches_routing_policy_and_audit(monkeypatch, tenant, a
         seen.append(resolved_tenant)
         return True, False, False
 
-    monkeypatch.setattr(gateway, "_agent_identity_revoked", evaluate)
-    monkeypatch.setattr(gateway, "check_caller_identity", lambda *_: ("agent-one", True, None))
+    monkeypatch.setattr(relay_identity, "_agent_identity_revoked", evaluate)
+    monkeypatch.setattr(relay_identity, "check_caller_identity", lambda *_: ("agent-one", True, None))
     upstream = AsyncMock(return_value={"jsonrpc": "2.0", "id": 1, "result": {}})
     audit = AsyncMock()
     settings = gateway.GatewaySettings(registry=registry, policy={}, upstream_caller=upstream, audit_sink=audit)

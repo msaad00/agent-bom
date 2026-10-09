@@ -74,7 +74,7 @@ set_graph_store(SQLiteGraphStore(root / "graph.db"))
 key = secrets.token_urlsafe(32)
 get_key_store().add(create_api_key_record(key, "proof-reader", Role.ANALYST, tenant_id="connected-bom-example"))
 configure_api(allow_unauthenticated=False, listener_host="127.0.0.1")
-client = TestClient(app)
+client = TestClient(app, base_url="http://127.0.0.1:8422")
 path = "/v1/inventory/assets/pkg:pypi:pillow@9.0.0"
 assert client.get(path, params={"scan_id":"connected-before"}).status_code == 401
 headers = {"Authorization": "Bearer " + key}

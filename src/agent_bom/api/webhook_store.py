@@ -6,8 +6,10 @@ identity lifecycle, JIT grants, conditional-access denials, and behavioral
 drift. Matching events are enqueued into the durable, HMAC-signed, retry-aware
 ``WebhookOutbox`` (``posture_streaming``). An operator-run worker must invoke
 ``deliver_due_webhooks`` to ship them; the API does not create hidden egress.
-Signing secrets are stored as-is (needed to sign at delivery) but never returned
-after creation. Destination URLs are SSRF-validated at registration.
+Signing secrets are needed in clear at delivery time, so they are sealed with the
+connection at-rest key (``connection_crypto``) when one is configured and never
+returned after creation; legacy plaintext rows stay readable and are re-sealed on
+their next write. Destination URLs are SSRF-validated at registration.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from agent_bom.api.connection_crypto import ConnectionSecretError, connections_key_configured, decrypt_secret, encrypt_secret
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.security import redact_secret_url
 from agent_bom.storage.base import BackendKind
@@ -83,6 +86,40 @@ class WebhookSubscription:
         d["url"] = redact_secret_url(self.url)
         d["secret_fingerprint"] = hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12] if secret else ""
         return d
+
+
+_SEALED_PREFIX = "enc:v1:"
+_plaintext_warning_emitted = False
+
+
+def seal_signing_secret(secret: str) -> str:
+    """Encrypt a signing secret for storage; plaintext only when no at-rest key is configured."""
+    global _plaintext_warning_emitted
+    if not secret or secret.startswith(_SEALED_PREFIX):
+        return secret
+    if not connections_key_configured():
+        if not _plaintext_warning_emitted:
+            _plaintext_warning_emitted = True
+            logger.warning("Webhook signing secrets are stored unencrypted; configure AGENT_BOM_CONNECTIONS_KEY to seal them at rest")
+        return secret
+    return _SEALED_PREFIX + encrypt_secret(secret)
+
+
+def storage_payload(subscription: WebhookSubscription) -> dict[str, Any]:
+    payload = asdict(subscription)
+    payload["signing_secret"] = seal_signing_secret(subscription.signing_secret)
+    return payload
+
+
+def unseal_subscription(subscription: WebhookSubscription) -> WebhookSubscription:
+    """Decrypt a stored signing secret in place; an undecryptable one is dropped, never surfaced."""
+    if subscription.signing_secret.startswith(_SEALED_PREFIX):
+        try:
+            subscription.signing_secret = decrypt_secret(subscription.signing_secret[len(_SEALED_PREFIX) :])
+        except ConnectionSecretError:
+            logger.warning("webhook subscription %s signing secret could not be decrypted", subscription.subscription_id)
+            subscription.signing_secret = ""
+    return subscription
 
 
 class WebhookSubscriptionStore(Protocol):
@@ -162,14 +199,14 @@ class SQLiteWebhookSubscriptionStore:
                 subscription.tenant_id,
                 subscription.status,
                 subscription.created_at,
-                json.dumps(asdict(subscription), sort_keys=True),
+                json.dumps(storage_payload(subscription), sort_keys=True),
             ),
         )
         self._conn.commit()
 
     def get(self, subscription_id: str) -> WebhookSubscription | None:
         row = self._conn.execute("SELECT data FROM webhook_subscriptions WHERE subscription_id = ?", (subscription_id,)).fetchone()
-        return WebhookSubscription(**json.loads(row[0])) if row else None
+        return unseal_subscription(WebhookSubscription(**json.loads(row[0]))) if row else None
 
     def list(self, tenant_id: str, *, include_disabled: bool = False, limit: int = 200) -> builtins.list[WebhookSubscription]:
         if include_disabled:
@@ -181,7 +218,7 @@ class SQLiteWebhookSubscriptionStore:
                 "SELECT data FROM webhook_subscriptions WHERE tenant_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT ?",
                 (tenant_id, limit),
             ).fetchall()
-        return [WebhookSubscription(**json.loads(r[0])) for r in rows]
+        return [unseal_subscription(WebhookSubscription(**json.loads(r[0]))) for r in rows]
 
     def delete(self, subscription_id: str) -> bool:
         cur = self._conn.execute("DELETE FROM webhook_subscriptions WHERE subscription_id = ?", (subscription_id,))

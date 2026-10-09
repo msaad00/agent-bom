@@ -12,7 +12,7 @@ from agent_bom.api.drift_incident_store import DriftIncident
 from agent_bom.api.evaluation_store import EvaluationRunRecord
 from agent_bom.api.storage.registry_schema import REGISTRY_TABLES, registry_table_ddl
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
-from agent_bom.api.webhook_store import WebhookSubscription
+from agent_bom.api.webhook_store import WebhookSubscription, storage_payload, unseal_subscription
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
 
@@ -106,17 +106,19 @@ class PostgresEvaluationRunStore(RegistryStore):
 
 
 class PostgresWebhookSubscriptionStore(RegistryStore):
-    put = RegistryStore._put_record
     table = "webhook_subscriptions"
     keys = ("subscription_id",)
     columns = ("subscription_id", "status", "created_at")
     record_type = WebhookSubscription
 
+    def put(self, subscription: WebhookSubscription) -> None:
+        self._put_payload(subscription, storage_payload(subscription))
+
     def get(self, subscription_id: str) -> WebhookSubscription | None:
         # Legacy interface omits tenant; RLS binds the authenticated request scope.
         with postgres_common._tenant_connection(self._pool) as conn:
             row = conn.execute("SELECT data FROM webhook_subscriptions WHERE subscription_id=%s", (subscription_id,)).fetchone()
-        return WebhookSubscription(**row[0]) if row else None
+        return unseal_subscription(WebhookSubscription(**row[0])) if row else None
 
     def delete(self, subscription_id: str) -> bool:
         with postgres_common._tenant_connection(self._pool) as conn:
@@ -125,7 +127,8 @@ class PostgresWebhookSubscriptionStore(RegistryStore):
         return count > 0
 
     def list(self, tenant_id: str, *, include_disabled: bool = False, limit: int = 200) -> list[WebhookSubscription]:
-        return self._list(tenant_id, "" if include_disabled else "AND status='active'", (), "created_at DESC, subscription_id", limit)
+        rows = self._list(tenant_id, "" if include_disabled else "AND status='active'", (), "created_at DESC, subscription_id", limit)
+        return [unseal_subscription(record) for record in rows]
 
     def matching(self, tenant_id: str, event_type: str) -> builtins.list[WebhookSubscription]:
         return [record for record in self.list(tenant_id, limit=500) if record.wants(event_type)]

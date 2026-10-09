@@ -13,8 +13,11 @@ release-note security language, see
 **Response SLA:**
 - Acknowledgement within **48 hours**
 - Triage and severity assessment within **5 business days**
-- Fix for critical issues within **7 days** of triage
-- Fix for high issues within **30 days** of triage
+- Target: fix for critical issues within **7 days** of triage
+- Target: fix for high issues within **30 days** of triage
+
+Fix timelines are targets, not guarantees; complex issues may take longer and
+are communicated through the advisory.
 
 ## Supported Versions
 
@@ -74,6 +77,9 @@ reports.
 
 ### Secure defaults
 
+- Host-header allowlist: a loopback bind answers only `localhost`, loopback IPs, and `[::1]` Host names, which blocks browser DNS-rebinding against a local control plane. Non-loopback binds accept the hostnames in `AGENT_BOM_API_ALLOWED_HOSTS` (comma-separated, `*.domain` for subdomains). When that variable is unset, they accept any Host and log a startup warning. Invalid configured entries fail startup rather than disabling the allowlist. Set it to the public hostname(s) your proxy or ingress serves, plus the internal service name a separately deployed UI proxies to (for example `api` in the Compose stacks). Liveness and readiness probes are exempt so orchestrators that probe by pod IP keep working
+- Cookie-authenticated writes require a trusted `Origin` (or `Sec-Fetch-Site: same-origin`) in addition to the CSRF token; API-key and bearer requests are unaffected
+
 - `agent-bom api` binds `127.0.0.1:8422`. With no API key, OIDC, SAML, SCIM, or
   trusted-proxy auth configured, requests fail closed with `401`. On loopback
   the CLI mints a local dev key that the bundled UI uses. Anonymous access needs
@@ -86,10 +92,11 @@ reports.
   plaintext. Exception: a local loopback or explicit no-auth first run seeds a
   key file under the state directory (`~/.agent-bom/connections.key`); set
   `AGENT_BOM_NO_AUTO_CONNECTIONS_KEY=1` to disable that.
-- **Caveat:** webhook signing secrets are stored as-is in the control-plane
-  database because delivery needs them to sign payloads. They are not encrypted
-  by `AGENT_BOM_CONNECTIONS_KEY` and are never returned after creation. Protect
-  the database (disk encryption, restricted access) accordingly.
+- Webhook signing secrets are encrypted at rest when the connection key
+  (`AGENT_BOM_CONNECTIONS_KEY`) is configured and are never returned after
+  creation. Without a key they remain plaintext with a warning; protect the
+  database accordingly. Legacy plaintext rows are sealed on their next write.
+  Encrypted secrets that cannot be decrypted are withheld from delivery.
 - Set `AGENT_BOM_AUDIT_HMAC_KEY` in production. Production or multi-replica
   control planes fail closed without it unless
   `AGENT_BOM_ALLOW_EPHEMERAL_AUDIT_HMAC=1` is set.

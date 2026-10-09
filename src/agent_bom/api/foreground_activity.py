@@ -73,8 +73,10 @@ class ForegroundActivityMiddleware:
         if scope["type"] != "http" or scope.get("path") in _PROBE_PATHS:
             await self.app(scope, receive, send)
             return
+        from agent_bom.api.heavy_read_gate import admit
+
         _enter()
         try:
-            await self.app(scope, receive, send)
+            await admit(self.app, scope, receive, send)
         finally:
             _leave()

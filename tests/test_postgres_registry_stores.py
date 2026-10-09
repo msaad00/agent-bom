@@ -321,3 +321,46 @@ def test_runtime_exception_factory_honors_postgres_alias(monkeypatch, variable):
     sentinel = object()
     monkeypatch.setattr("agent_bom.api.postgres_store.PostgresExceptionStore", lambda: sentinel)
     assert configured_exception_store() is sentinel
+
+
+def test_webhook_signing_secret_is_sealed_at_rest_on_postgres(monkeypatch):
+    import os
+    from uuid import uuid4
+
+    from cryptography.fernet import Fernet
+
+    from agent_bom.api import connection_crypto, postgres_common
+    from agent_bom.api.postgres_common import _new_application_pool
+    from agent_bom.api.storage import registry_stores as stores
+    from tests.test_postgres_job_evidence_revision import tenant_scope
+
+    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        pytest.skip("requires restricted-role Postgres")
+    monkeypatch.setenv("AGENT_BOM_CONNECTIONS_KEY", Fernet.generate_key().decode())
+    monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_PROVIDER", raising=False)
+    connection_crypto.reset_key_cache()
+    tenant = "registry-" + uuid4().hex
+    now = "2026-10-07T00:00:00Z"
+    sealed = stores.WebhookSubscription("hook-sealed", tenant, "https://example.com", "whsec_pg_plain", [], "active", "", now, now)
+    legacy = stores.WebhookSubscription("hook-legacy", tenant, "https://example.com", "whsec_pg_legacy", [], "active", "", now, now)
+    pool = _new_application_pool(min_size=1, max_size=2)
+    try:
+        store = stores.PostgresWebhookSubscriptionStore(pool=pool)
+        with tenant_scope(tenant):
+            store.put(sealed)
+            store._put_record(legacy)  # pre-encryption row shape
+            with postgres_common._tenant_connection(pool) as conn:
+                rows = conn.execute(
+                    "SELECT subscription_id, data->>'signing_secret' FROM webhook_subscriptions WHERE tenant_id=%s", (tenant,)
+                )
+                raw = dict(rows.fetchall())
+            assert raw["hook-sealed"].startswith("enc:v1:")
+            assert "whsec_pg_plain" not in raw["hook-sealed"]
+            assert raw["hook-legacy"] == "whsec_pg_legacy"
+            assert store.get("hook-sealed").signing_secret == "whsec_pg_plain"
+            assert store.get("hook-legacy").signing_secret == "whsec_pg_legacy"
+            listed = {s.subscription_id: s.signing_secret for s in store.list(tenant)}
+            assert listed == {"hook-sealed": "whsec_pg_plain", "hook-legacy": "whsec_pg_legacy"}
+    finally:
+        pool.close()
+        connection_crypto.reset_key_cache()

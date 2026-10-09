@@ -213,3 +213,103 @@ def test_webhook_explicit_private_approval_with_operator_opt_in(client, monkeypa
     response = client.post("/v1/webhooks", json={"url": "https://10.0.0.5/in", "allow_private_networks": True})
     assert response.status_code == 201
     assert client.post("/v1/webhooks", json={"url": "https://10.0.0.5/in"}).status_code == 400
+
+
+# ── signing secrets at rest ─────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def connections_key(monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from agent_bom.api import connection_crypto
+
+    monkeypatch.setenv("AGENT_BOM_CONNECTIONS_KEY", Fernet.generate_key().decode())
+    monkeypatch.delenv("AGENT_BOM_CONNECTIONS_KEY_PROVIDER", raising=False)
+    connection_crypto.reset_key_cache()
+    yield
+    connection_crypto.reset_key_cache()
+
+
+def _raw_sqlite_secret(path, subscription_id):
+    import json
+    import sqlite3
+
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT data FROM webhook_subscriptions WHERE subscription_id = ?", (subscription_id,)).fetchone()
+    return json.loads(row[0])["signing_secret"]
+
+
+def test_sqlite_store_encrypts_signing_secret_at_rest(tmp_path, connections_key):
+    from agent_bom.api.webhook_store import SQLiteWebhookSubscriptionStore
+
+    db = str(tmp_path / "hooks.db")
+    store = SQLiteWebhookSubscriptionStore(db)
+    sub = create_subscription(store, tenant_id="t1", url="https://hooks.example.com/x", signing_secret="whsec_plain_value")
+
+    raw = _raw_sqlite_secret(db, sub.subscription_id)
+    assert raw.startswith("enc:v1:")
+    assert "whsec_plain_value" not in raw
+    assert store.get(sub.subscription_id).signing_secret == "whsec_plain_value"
+    assert store.list("t1")[0].signing_secret == "whsec_plain_value"
+    assert store.matching("t1", "identity.revoked")[0].signing_secret == "whsec_plain_value"
+
+    # Re-saving a loaded record (status change) keeps it sealed, never double-wrapped.
+    set_subscription_status(store, sub.subscription_id, status="disabled")
+    assert _raw_sqlite_secret(db, sub.subscription_id).startswith("enc:v1:")
+    assert store.get(sub.subscription_id).signing_secret == "whsec_plain_value"
+
+
+def test_sqlite_store_reads_legacy_plaintext_rows(tmp_path, connections_key):
+    import json
+    import sqlite3
+    from dataclasses import asdict
+
+    from agent_bom.api.webhook_store import SQLiteWebhookSubscriptionStore
+
+    db = str(tmp_path / "hooks.db")
+    store = SQLiteWebhookSubscriptionStore(db)
+    legacy = WebhookSubscription(
+        "whsub_legacy", "t1", "https://hooks.example.com/x", "whsec_legacy", [], "active", "", "2026-01-01", "2026-01-01"
+    )
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO webhook_subscriptions (subscription_id, tenant_id, status, created_at, data) VALUES (?, ?, ?, ?, ?)",
+            (legacy.subscription_id, legacy.tenant_id, legacy.status, legacy.created_at, json.dumps(asdict(legacy))),
+        )
+    assert store.get("whsub_legacy").signing_secret == "whsec_legacy"
+
+    # The next write of a legacy row upgrades it to ciphertext.
+    set_subscription_status(store, "whsub_legacy", status="disabled")
+    assert _raw_sqlite_secret(db, "whsub_legacy").startswith("enc:v1:")
+    assert store.get("whsub_legacy").signing_secret == "whsec_legacy"
+
+
+def test_sqlite_store_without_key_keeps_working_in_plaintext(tmp_path, monkeypatch):
+    from agent_bom.api import connection_crypto
+    from agent_bom.api.webhook_store import SQLiteWebhookSubscriptionStore
+
+    for name in ("AGENT_BOM_CONNECTIONS_KEY", "AGENT_BOM_CONNECTIONS_KEY_FILE", "AGENT_BOM_CONNECTIONS_KEY_PROVIDER"):
+        monkeypatch.delenv(name, raising=False)
+    connection_crypto.reset_key_cache()
+    db = str(tmp_path / "hooks.db")
+    store = SQLiteWebhookSubscriptionStore(db)
+    sub = create_subscription(store, tenant_id="t1", url="https://hooks.example.com/x", signing_secret="whsec_nokey")
+    assert _raw_sqlite_secret(db, sub.subscription_id) == "whsec_nokey"
+    assert store.get(sub.subscription_id).signing_secret == "whsec_nokey"
+
+
+def test_undecryptable_secret_is_dropped_not_leaked(tmp_path, connections_key, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from agent_bom.api import connection_crypto
+    from agent_bom.api.webhook_store import SQLiteWebhookSubscriptionStore
+
+    db = str(tmp_path / "hooks.db")
+    store = SQLiteWebhookSubscriptionStore(db)
+    sub = create_subscription(store, tenant_id="t1", url="https://hooks.example.com/x", signing_secret="whsec_rotated")
+    monkeypatch.setenv("AGENT_BOM_CONNECTIONS_KEY", Fernet.generate_key().decode())
+    connection_crypto.reset_key_cache()
+    loaded = store.get(sub.subscription_id)
+    assert loaded.signing_secret == ""
+    assert loaded.to_public_dict()["secret_fingerprint"] == ""

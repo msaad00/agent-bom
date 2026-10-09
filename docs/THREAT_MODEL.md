@@ -116,6 +116,12 @@ agent-bom operates in six modes:
 | Network exposure | T1190 | Defaults to `127.0.0.1:8422` (localhost-only); non-loopback unauthenticated binds fail closed by default |
 | Cross-tenant data access | T1078 | Tenant-aware auth context, API-key tenant binding, OIDC/SAML/SCIM role mapping, and route-level authorization checks |
 | Unauthorized writes | T1078 | Viewer sessions are read-only; write, key, tenant, policy, Shield, and destructive routes require elevated roles |
+| Browser-to-localhost / DNS rebinding | T1189 | A Host-header allowlist runs before rate limiting, auth, routing, and cookie issuance. Loopback binds answer only `localhost`, `127.0.0.0/8`, and `[::1]` Host names (any port); other Host values get `400`. Non-loopback binds honor `AGENT_BOM_API_ALLOWED_HOSTS` (exact names or `*.domain`; loopback names and health probes stay allowed). The zero-config loopback dev session cookie is minted only for loopback Host names |
+| Non-loopback Host spoofing (no allowlist configured) | T1189 | Residual: a non-loopback bind without `AGENT_BOM_API_ALLOWED_HOSTS` accepts any Host for backward compatibility and logs a startup warning. Such binds already require real authentication, and no session is minted without credentials. Set the allowlist to the public hostname(s) behind your proxy/ingress |
+| Cross-site request forgery on cookie sessions | T1185 | Session and CSRF cookies are `SameSite=Strict`; unsafe methods need the double-submit `X-Agent-Bom-CSRF` header bound to the session nonce, and an `Origin` that is the request Host, a forwarded UI Host on an unrestricted listener, an allowed Host, or a configured CORS origin (`Sec-Fetch-Site: same-origin` when `Origin` is absent). API-key and bearer requests carry no ambient credentials and skip the origin check |
+| SSRF through webhook destinations | T1090 | At registration, webhook URLs must be HTTPS and literal private/loopback/link-local addresses and cloud-metadata names are rejected unless an operator-approved private opt-in is set. The inline delivery client (`agent_bom.delivery`) validates the address actually used by the socket, so a DNS change between preflight and connect is refused. Residual: the outbox worker (`deliver_due_webhooks`) sends through an operator-supplied sender, so its egress controls apply |
+| SSRF through ticketing endpoints | T1090 | Jira site URLs are validated with the same egress guard at connection time and again before each request. Residual: ticketing requests are not pinned to the validated address at connect time |
+| Stored outbound secrets | T1552 | Ticketing tokens are envelope-encrypted with the connection at-rest key (fail closed without a key). Webhook signing secrets are encrypted with the same key when one is configured; deployments without a key keep them in plaintext and log a warning. Secrets are never returned after creation |
 
 ### 4. MCP server (tool interface)
 
@@ -179,4 +185,4 @@ Current limitations:
 ## Review cadence
 
 This threat model is reviewed with each major release (x.0) and after any
-security advisory. Last reviewed: v0.90.0 (June 2026).
+security advisory. Last reviewed: v0.108.3 (October 2026).

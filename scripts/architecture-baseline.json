@@ -1624,13 +1624,8 @@
       "function_lines": 230
     },
     "cli/agents/_discovery.py": {
-      "deferred_imports": 52,
-      "file_lines": 1295,
+      "deferred_imports": 28,
       "raw_env_reads": 2
-    },
-    "cli/agents/_discovery.py::run_local_discovery": {
-      "complexity": 149,
-      "function_lines": 1221
     },
     "cli/agents/_modes.py": {
       "deferred_imports": 1

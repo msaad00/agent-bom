@@ -82,8 +82,8 @@ describe("scan-pipeline-graph lane status", () => {
 });
 
 describe("scan-pipeline-graph honesty reconciliation", () => {
-  it("counts CIS failures as findings (0 vulns / 32% pass is 68 findings, not 0)", () => {
-    const cis = { passed: 32, failed: null, total: 100, passRate: 0.32 };
+  it("counts explicitly reported CIS failures as findings", () => {
+    const cis = { passed: 32, failed: 68, total: 100, passRate: 0.32 };
     expect(cisFailedCount(cis)).toBe(68);
 
     const lanes = deriveDomainLanes({ vulnerabilities: 0, cis });
@@ -94,9 +94,10 @@ describe("scan-pipeline-graph honesty reconciliation", () => {
     expect(lanes.cis.detail).toBe("68 fail · 100 checks");
   });
 
-  it("derives CIS failures from an explicit failed count or a pass rate", () => {
+  it("requires a reported failure count instead of treating every non-pass as failure", () => {
     expect(cisFailedCount({ passed: null, failed: 12, total: 50, passRate: null })).toBe(12);
-    expect(cisFailedCount({ passed: null, failed: null, total: 200, passRate: 90 })).toBe(20);
+    expect(cisFailedCount({ passed: null, failed: null, total: 200, passRate: 90 })).toBeNull();
+    expect(cisFailedCount({ passed: 32, failed: null, total: 100, passRate: 32 })).toBeNull();
     expect(cisFailedCount(null)).toBeNull();
   });
 

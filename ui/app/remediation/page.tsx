@@ -169,7 +169,7 @@ function NarrativeRow({
             {item.severity}
           </span>
           {item.is_kev && (
-            <span className="ml-1.5 text-xs font-mono bg-red-950 border border-red-800 text-red-400 rounded px-1.5 py-0.5">
+            <span className="ml-1.5 text-xs font-mono bg-[color:var(--severity-critical-bg)] border border-[color:var(--severity-critical-border)] text-[color:var(--severity-critical)] rounded px-1.5 py-0.5">
               KEV
             </span>
           )}
@@ -178,7 +178,7 @@ function NarrativeRow({
         {/* Fix target */}
         <td className="px-4 py-3 text-xs">
           {item.fixed_version ? (
-            <span className="font-mono text-emerald-400">{item.fixed_version}</span>
+            <span className="font-mono text-[color:var(--status-success)]">{item.fixed_version}</span>
           ) : (
             <span className="text-ink-tertiary">N/A</span>
           )}

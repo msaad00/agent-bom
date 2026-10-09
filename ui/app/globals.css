@@ -151,8 +151,8 @@
   --elevation-2: 0 6px 16px -6px rgba(15, 23, 42, 0.12);
   --elevation-3: 0 18px 40px -12px rgba(15, 23, 42, 0.16);
 
-  --accent: #059669;
-  --accent-strong: #047857;
+  --accent: #047857;
+  --accent-strong: #065f46;
   --accent-soft: rgba(5, 150, 105, 0.1);
   --accent-soft-hover: rgba(5, 150, 105, 0.16);
   --accent-border: rgba(5, 150, 105, 0.4);
@@ -161,24 +161,24 @@
   --accent-mint: var(--accent);
   --focus-ring: var(--accent-ring);
 
-  --severity-critical: #dc2626;
+  --severity-critical: #991b1b;
   --severity-critical-bg: rgba(220, 38, 38, 0.1);
   --severity-critical-border: rgba(220, 38, 38, 0.38);
-  --severity-high: #ea580c;
+  --severity-high: #9a3412;
   --severity-high-bg: rgba(234, 88, 12, 0.1);
   --severity-high-border: rgba(234, 88, 12, 0.38);
-  --severity-medium: #ca8a04;
+  --severity-medium: #854d0e;
   --severity-medium-bg: rgba(202, 138, 4, 0.1);
   --severity-medium-border: rgba(202, 138, 4, 0.38);
-  --severity-low: #2563eb;
+  --severity-low: #1d4ed8;
   --severity-low-bg: rgba(37, 99, 235, 0.1);
   --severity-low-border: rgba(37, 99, 235, 0.38);
   --severity-none: #64748b;
 
-  --status-success: #059669;
+  --status-success: #047857;
   --status-success-bg: rgba(5, 150, 105, 0.1);
   --status-success-border: rgba(5, 150, 105, 0.38);
-  --status-warn: #d97706;
+  --status-warn: #b45309;
   --status-warn-bg: rgba(217, 119, 6, 0.1);
   --status-warn-border: rgba(217, 119, 6, 0.38);
   --status-danger: var(--severity-critical);
@@ -614,12 +614,12 @@ body {
 .attack-flow-node { @apply min-w-[140px] max-w-[220px] rounded-lg border-2 px-3 py-2 shadow-lg backdrop-blur; }
 .attack-flow-handle { @apply !h-2 !w-2 !border-[var(--border-strong)] !bg-[var(--text-tertiary)]; }
 .attack-flow-node-label { @apply truncate text-xs font-semibold text-[var(--foreground)]; }
-.attack-flow-kev { @apply rounded border border-red-700 bg-red-950 px-1 py-0.5 font-mono text-[10px] text-red-400; }
+.attack-flow-kev { @apply rounded border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] px-1 py-0.5 font-mono text-[10px] text-[color:var(--severity-critical)]; }
 .attack-flow-tag { @apply rounded border px-1 font-mono text-[9px]; }
 .attack-flow-tag-purple { @apply border-purple-800/50 bg-purple-950/60 text-purple-400; }
-.attack-flow-tag-amber { @apply border-amber-800/50 bg-amber-950/60 text-amber-400; }
+.attack-flow-tag-amber { @apply border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)]; }
 .attack-flow-tag-cyan { @apply border-cyan-800/50 bg-cyan-950/60 text-cyan-400; }
-.attack-flow-kev-banner { @apply flex items-center gap-1.5 rounded border border-red-800 bg-red-950 px-2 py-1.5 font-mono text-xs text-red-400; }
+.attack-flow-kev-banner { @apply flex items-center gap-1.5 rounded border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] px-2 py-1.5 font-mono text-xs text-[color:var(--severity-critical)]; }
 .attack-flow-export { @apply flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)]; }
 .attack-flow-select { @apply rounded-md border border-[var(--border-subtle)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text-secondary)] focus:border-emerald-600 focus:outline-none; }
 .attack-flow-header { @apply space-y-2 border-b border-[var(--border-subtle)] px-4 py-3; }
@@ -656,8 +656,8 @@ body {
 .graph-callout-amber { @apply mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200; }
 .graph-chip-neutral { @apply rounded-lg border border-[var(--border-subtle)] bg-[var(--surface)]/80 px-2.5 py-1 text-[var(--text-secondary)]; }
 .graph-chip-sky-soft { @apply flex items-center gap-1 rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-700 dark:text-sky-200; }
-.graph-chip-orange { @apply rounded-lg border border-orange-400/30 bg-orange-950/60 px-2.5 py-1 text-orange-100 transition hover:border-orange-300; }
-.graph-chip-orange-muted { @apply rounded-lg border border-orange-400/30 bg-orange-950/40 px-2.5 py-1 text-orange-100 transition hover:border-orange-300; }
+.graph-chip-orange { @apply rounded-lg border border-[color:var(--severity-high-border)] bg-[color:var(--severity-high-bg)] px-2.5 py-1 text-[color:var(--severity-high)] transition hover:border-[color:var(--severity-high)]; }
+.graph-chip-orange-muted { @apply rounded-lg border border-[color:var(--severity-high-border)] bg-[color:var(--severity-high-bg)] px-2.5 py-1 text-[color:var(--severity-high)] transition hover:border-[color:var(--severity-high)]; }
 .graph-chip-rose { @apply rounded-lg border border-rose-400/30 bg-rose-950/60 px-2.5 py-1 text-rose-100 transition hover:border-rose-300; }
 .graph-chip-violet { @apply rounded-lg border border-violet-400/30 bg-violet-950/60 px-2.5 py-1 text-violet-100 transition hover:border-violet-300; }
 .graph-chip-emerald { @apply rounded-lg border border-emerald-400/30 bg-emerald-950/60 px-2.5 py-1 text-emerald-100 transition hover:border-emerald-300; }

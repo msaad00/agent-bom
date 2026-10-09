@@ -64,6 +64,20 @@ const fmtUsd = (n: number) =>
     ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
     : `$${n.toFixed(4)}`;
 const fmtInt = (n: number) => n.toLocaleString();
+// Forecast cards are narrow; anything past five figures collapses to K/M/B so a
+// projection never overflows its tile.
+const fmtUsdCompact = (n: number) =>
+  Math.abs(n) >= 100_000
+    ? `$${new Intl.NumberFormat("en-US", {
+        notation: "compact",
+        maximumSignificantDigits: Math.abs(n) >= 1_000_000 ? 3 : 4,
+      }).format(n)}`
+    : fmtUsd(n);
+
+function fmtSpan(hours: number): string {
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  return `${hours.toFixed(1)} h`;
+}
 
 // ─── Budget (owner-scoped) ───────────────────────────────────────────────────
 
@@ -226,6 +240,8 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
             ? "The history limit excludes recorded calls. Projections are unavailable."
             : status === "budget_scope_mismatch"
             ? "The budget covers a broader scope than this usage history. Projections are unavailable."
+            : status === "insufficient_history" && forecast?.history_span_hours != null && forecast.history_span_hours < 6
+            ? `Recorded calls span ${fmtSpan(forecast.history_span_hours)}; a burn rate needs at least 6 hours of history.`
             : status === "insufficient_history"
             ? "Not enough timestamped spend yet to project a burn rate. A forecast appears once at least two priced LLM calls are recorded."
             : status === "no_budget"
@@ -242,7 +258,7 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
               label="Burn / day"
               value={
                 forecast?.burn_rate_usd_per_day != null
-                  ? fmtUsd(forecast.burn_rate_usd_per_day)
+                  ? fmtUsdCompact(forecast.burn_rate_usd_per_day)
                   : "—"
               }
               hint={forecast?.burn_rate_basis?.replace(/_/g, " ")}
@@ -269,12 +285,12 @@ function ForecastPanel({ forecast }: { forecast: CostForecast | null }) {
               label="Projected period"
               value={
                 forecast?.projected_period_spend_usd != null
-                  ? fmtUsd(forecast.projected_period_spend_usd)
+                  ? fmtUsdCompact(forecast.projected_period_spend_usd)
                   : "—"
               }
               hint={
                 forecast?.budget_limit_usd != null
-                  ? `of ${fmtUsd(forecast.budget_limit_usd)} cap`
+                  ? `of ${fmtUsdCompact(forecast.budget_limit_usd)} cap`
                   : undefined
               }
             />
@@ -303,12 +319,15 @@ function ForecastStat({
   valueClass?: string | undefined;
 }) {
   return (
-    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
+    <div className="min-w-0 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-3">
       <div className="mb-1 flex items-center gap-1.5">
-        <Icon className="h-3.5 w-3.5 text-[color:var(--text-tertiary)]" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-[color:var(--text-tertiary)]" />
         <span className="text-[11px] text-[color:var(--text-tertiary)]">{label}</span>
       </div>
-      <p className={`text-lg font-bold ${valueClass ?? "text-[color:var(--foreground)]"}`}>
+      <p
+        className={`truncate text-lg font-bold tabular-nums ${valueClass ?? "text-[color:var(--foreground)]"}`}
+        title={value}
+      >
         {value}
       </p>
       {hint ? <p className="mt-0.5 text-[11px] text-[color:var(--text-tertiary)]">{hint}</p> : null}

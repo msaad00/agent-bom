@@ -101,7 +101,7 @@ export function ApiOfflineState({
                 <code className="block rounded-xl border border-[var(--border-subtle)] bg-[var(--background)] px-4 py-3 font-mono text-sm leading-7 text-blue-800 dark:text-blue-300">
                   pip install &apos;agent-bom[api]&apos;
                   <br />
-                  agent-bom api
+                  agent-bom serve --no-ui
                 </code>
               </div>
             </div>

@@ -93,11 +93,22 @@ function deriveResultView(
   const { lanes, reconciled, cis } = domainFindingsForScan({ result, summary, summarized });
 
   const stats: ResultStat[] = [];
-  if (reconciled.domainsRun > 0) {
+  // `critical_findings` counts blast-radius rows (vuln x package x agent), a
+  // different unit from any findings total; prefer the unified finding summary
+  // where critical is a true subset of the total.
+  const unifiedTotal = summary?.total_findings;
+  const unifiedCritical = summary?.critical_unified_findings;
+  if (typeof unifiedTotal === "number") {
+    stats.push({ key: "findings", label: "findings", value: String(unifiedTotal) });
+    if (typeof unifiedCritical === "number" && unifiedCritical > 0 && unifiedCritical <= unifiedTotal) {
+      stats.push({ key: "critical", label: "critical", value: String(unifiedCritical) });
+    }
+  } else if (Object.values(reconciled.byDomain).some((count) => count != null)) {
     stats.push({ key: "findings", label: "findings", value: String(reconciled.total) });
-  }
-  if ((summary?.critical_findings ?? 0) > 0) {
-    stats.push({ key: "critical", label: "critical", value: String(summary!.critical_findings) });
+    const legacyCritical = summary?.critical_findings ?? 0;
+    if (legacyCritical > 0 && legacyCritical <= reconciled.total) {
+      stats.push({ key: "critical", label: "critical", value: String(legacyCritical) });
+    }
   }
   if ((summary?.total_packages ?? 0) > 0) {
     stats.push({ key: "packages", label: "packages", value: String(summary!.total_packages) });
@@ -119,7 +130,7 @@ function deriveResultView(
       stats.push({ key: "cis-fail", label: "CIS fail", value: String(failed) });
     }
     if (cis.passRate != null) {
-      stats.push({ key: "cis-pass", label: "CIS pass", value: `${cis.passRate.toFixed(0)}%` });
+      stats.push({ key: "cis-pass", label: "CIS evaluated pass", value: `${cis.passRate.toFixed(0)}%` });
     }
   }
 
@@ -388,15 +399,17 @@ export function JobPipelinePanel({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-tertiary)]">
-          <span>
-            Wall clock{" "}
-            <span className="font-mono text-[var(--text-secondary)]">
-              {describeWallClock(summary.wallClockMs, {
-                unavailable: telemetryState === "unavailable" && summary.wallClockMs == null,
-                running: status === "running" || status === "pending",
-              })}
+          {telemetryState === "unavailable" && (summary.wallClockMs == null || summary.wallClockMs <= 0) ? null : (
+            <span>
+              Wall clock{" "}
+              <span className="font-mono text-[var(--text-secondary)]">
+                {describeWallClock(summary.wallClockMs, {
+                  unavailable: false,
+                  running: status === "running" || status === "pending",
+                })}
+              </span>
             </span>
-          </span>
+          )}
           {!loadedJob && <Link
             href={`/scan?id=${encodeURIComponent(jobId)}`}
             className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
@@ -555,7 +568,8 @@ export function JobPipelinePanel({
         </button>
 
         {detailsOpen ? (
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <div className={`mt-3 grid gap-3 ${telemetryState === "unavailable" ? "" : "lg:grid-cols-2"}`}>
+            {telemetryState === "unavailable" ? null : (
             <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] p-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                 Stage timing
@@ -578,6 +592,7 @@ export function JobPipelinePanel({
                 })}
               </dl>
             </div>
+            )}
             <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-elevated)] p-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                 Recent activity

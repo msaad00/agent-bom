@@ -213,6 +213,45 @@ describe('Nav', () => {
     expect(screen.queryByText('Self-Audit')).not.toBeInTheDocument()
   })
 
+  it('hides operator surfaces the demo-estate backend does not serve', async () => {
+    const { api } = await import('@/lib/api')
+    const original = vi.mocked(api.getPostureCounts).getMockImplementation()
+    vi.mocked(api.getPostureCounts).mockResolvedValue({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 0,
+      kev: 0,
+      compound_issues: 0,
+      deployment_mode: 'fleet',
+      scan_sources: ['demo', 'demo-estate'],
+      scan_count: 1,
+    })
+    authStateMock.session = {
+      authenticated: true,
+      auth_required: true,
+      tenant_id: 'default',
+      subject: 'operator@example.test',
+      role: 'admin',
+      role_summary: { display_name: 'Admin', capabilities: ['policy.manage'] },
+    }
+    authStateMock.loading = false
+    authStateMock.hasCapability.mockImplementation((capability: string) => capability === 'policy.manage')
+
+    renderExpandedNav()
+    await waitFor(() => expect(api.getPostureCounts).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: /operations/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^governance/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: /control plane security/i })).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('link', { name: /^cloud governance$/i })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /^compliance$/i }).length).toBeGreaterThan(0)
+    if (original) vi.mocked(api.getPostureCounts).mockImplementation(original)
+  })
+
   it('does not expose control-plane administration to the effective viewer', () => {
     authStateMock.session = {
       authenticated: true,

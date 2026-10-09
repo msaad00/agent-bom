@@ -17,7 +17,7 @@ import type {
   InventoryAssetsResponse,
   InventorySummaryResponse,
 } from "@/lib/api";
-import { ApiAuthError, ApiError, ApiForbiddenError } from "@/lib/api-errors";
+import { ApiAuthError, ApiError, ApiForbiddenError, ApiRateLimitError } from "@/lib/api-errors";
 import {
   buildInventoryFromApi,
   type InventoryModel,
@@ -25,7 +25,7 @@ import {
 
 const INVENTORY_PAGE_SIZE = 100;
 
-export type InventoryErrorKind = "network" | "auth" | "forbidden" | "empty";
+export type InventoryErrorKind = "network" | "auth" | "forbidden" | "empty" | "request";
 export type InventoryFilterKey = "search" | "type" | "source" | "provider" | "environment" | "severity" | "minSeverity";
 
 export interface InventoryFilters {
@@ -83,6 +83,13 @@ function classifyError(err: unknown): { message: string; kind: InventoryErrorKin
       message: "No graph snapshot yet. Run a scan or connect an account to populate the asset inventory.",
       kind: "empty",
     };
+  }
+  if (err instanceof ApiRateLimitError) {
+    const wait = err.retryAfterSeconds ? ` Try again in ${err.retryAfterSeconds}s.` : " Try again shortly.";
+    return { message: `The API is rate limiting requests (HTTP 429).${wait}`, kind: "request" };
+  }
+  if (err instanceof ApiError) {
+    return { message: `The asset inventory request failed (HTTP ${err.status}). ${err.message}`.trim(), kind: "request" };
   }
   return {
     message: err instanceof Error ? err.message : "Unable to load the asset inventory.",
@@ -221,7 +228,12 @@ export function InventoryProvider({
 
   const snapshotId = summary?.scan_id;
   useEffect(() => {
-    if (!snapshotId || scopeConflict) return;
+    if (!snapshotId || scopeConflict) {
+      // A cancelled page request never reaches its finally; release the flag
+      // here or a failed snapshot refresh leaves the skeleton up forever.
+      setLoadingPage(false);
+      return;
+    }
     pageCursors.current.clear();
     pageGeneration.current += 1;
     setLoadingMore(false);

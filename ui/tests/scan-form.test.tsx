@@ -143,6 +143,7 @@ describe("ScanForm", () => {
     expect(screen.getByText("Scope now")).toBeInTheDocument();
     expect(screen.getByText("What this scan collects and produces")).toBeInTheDocument();
     expect(screen.getByText("Read-only boundary")).toBeInTheDocument();
+    expect(screen.getByText(/a scan does not enable every capability/)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText(/Mounted project discovery/)).toBeInTheDocument();
     });
@@ -151,6 +152,7 @@ describe("ScanForm", () => {
     await user.click(screen.getByRole("tab", { name: "Cloud account" }));
     await waitFor(() => {
       expect(screen.getByText("Read-only inventory + CIS")).toBeInTheDocument();
+      expect(screen.getByText(/CIS benchmarks are one part of cloud security posture management/)).toBeInTheDocument();
     });
   });
 

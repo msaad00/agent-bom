@@ -229,7 +229,7 @@ export function LineageDetailPanel({
             <div
               className={`text-xs px-2 py-1 rounded border font-mono ${
                 data.agentStatus === "installed-not-configured"
-                  ? "border-yellow-800 bg-yellow-950 text-yellow-400"
+                  ? "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)]"
                   : "border-emerald-800 bg-emerald-950 text-emerald-400"
               }`}
             >
@@ -1002,7 +1002,7 @@ function EvidenceTierBadge({
     }
   }
   return (
-    <div className="flex items-center gap-1.5 rounded border border-amber-800 bg-amber-950 px-2 py-1 text-[10px] font-mono text-amber-300">
+    <div className="flex items-center gap-1.5 rounded border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] px-2 py-1 text-[10px] font-mono text-[color:var(--severity-medium)]">
       <Hourglass className="w-3 h-3" />
       <span>
         {rotatesIn != null ? `Rotates in ${rotatesIn} days` : "Replay only"}

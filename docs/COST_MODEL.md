@@ -96,7 +96,8 @@ The burn rate is the higher of the trailing-24h and trailing-7d daily rates
   calendar-month billing period.
 - `days_remaining` / `projected_exhaustion_at` — runway to the configured cap.
 - `status` — `ok`, `no_budget`, `budget_exceeded` (runway `0`), `stale`, or
-  `insufficient_history` (all projections null on sparse/empty history).
+  `insufficient_history` (all projections null on sparse/empty history, or when
+  recent calls span under 6 hours; `history_span_hours` reports the span).
 
 A forecast is **reference only** — it never blocks a call. Enforcement stays in
 the relay (`mode: enforce`, above).

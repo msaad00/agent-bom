@@ -439,6 +439,13 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
                     ? "Run a registered evidence source"
                     : "Choose what the control plane can inspect"}
               </h2>
+              <p className="mt-2 text-xs text-[color:var(--text-secondary)]">
+                {scanMode === "connected"
+                  ? "Runs inventory and implemented CIS checks for the selected connection and its configured scope. CIS benchmarks are one part of cloud security posture management."
+                  : scanMode === "scheduled"
+                    ? "Runs the selected source with its saved collection settings."
+                    : "The selected target and options determine what runs; a scan does not enable every capability. Review the collection plan before starting."}
+              </p>
             </div>
             {scanMode === "connected" && (
               <ConnectedAccountPanel
@@ -637,7 +644,7 @@ export function ScanForm({ initialConnectionId, initialPreset }: ScanFormProps) 
             )}
 
             {error ? (
-              <p role="alert" className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-400">{error}</p>
+              <p role="alert" className="rounded-lg border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] px-3 py-2 text-sm text-[color:var(--severity-critical)]">{error}</p>
             ) : null}
 
             <div className="border-t border-[color:var(--border-subtle)] pt-5">

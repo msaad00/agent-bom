@@ -16,7 +16,7 @@ export function ExposurePathStrip({
   showTitle?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-subtle)] bg-red-950/15 px-3 py-1 text-xs">
+    <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--border-subtle)] bg-[color:var(--severity-critical-bg)] px-3 py-1 text-xs">
       <span className="shrink-0 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700 dark:text-red-200">
         {path.severity}
       </span>

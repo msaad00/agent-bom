@@ -152,3 +152,39 @@ it("omits an empty agent chart when totals have no agent attribution", async () 
   expect(screen.queryByText("Spend by agent (top 10)")).not.toBeInTheDocument();
   expect(screen.getByText("Agent attribution unavailable for this report.")).toBeInTheDocument();
 });
+
+
+it("formats large forecast money compactly so it fits its card", async () => {
+  vi.mocked(api.getCostForecast).mockResolvedValueOnce({
+    ...forecast,
+    status: "no_budget",
+    budget_limit_usd: null,
+    burn_rate_usd_per_day: 356507.91,
+    projected_period_spend_usd: 8236481.61,
+    days_remaining: null,
+  });
+  render(<CostPage />);
+  await screen.findByTestId("cost-kpi-strip");
+  expect(await screen.findByText("$356.5K")).toBeInTheDocument();
+  expect(screen.getByText("$8.24M")).toBeInTheDocument();
+  expect(screen.queryByText("$8,236,481.61")).not.toBeInTheDocument();
+});
+
+
+it("explains a too-short history span instead of extrapolating", async () => {
+  vi.mocked(api.getCostForecast).mockResolvedValueOnce({
+    ...forecast,
+    status: "insufficient_history",
+    burn_rate_usd_per_day: null,
+    projected_period_spend_usd: null,
+    days_remaining: null,
+    history_span_hours: 0.75,
+  });
+  render(<CostPage />);
+  await screen.findByTestId("cost-kpi-strip");
+  expect(
+    await screen.findByText(
+      "Recorded calls span 45 min; a burn rate needs at least 6 hours of history.",
+    ),
+  ).toBeInTheDocument();
+});

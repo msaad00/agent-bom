@@ -1903,6 +1903,9 @@ export interface Summary {
   high_findings: number;
   medium_findings: number;
   low_findings: number;
+  /** Unified finding model totals (every domain); critical is a subset of total. */
+  total_findings?: number | undefined;
+  critical_unified_findings?: number | undefined;
 }
 
 export interface ScorecardSummary {
@@ -3333,6 +3336,8 @@ export interface PostureResponse {
   grade: string;
   score: number;
   summary: string;
+  no_data?: boolean;
+  demo_estate_seeding?: boolean;
   dimensions: Record<
     string,
     { score: number; label: string; details?: string }
@@ -3489,6 +3494,8 @@ export interface ScoreConfigUpdate {
 }
 
 export interface OverviewResponse {
+  /** True while a demo-estate server is still seeding its first evidence. */
+  demo_estate_seeding?: boolean;
   /** Counts from the same evidence snapshot as posture and top_risks. */
   finding_counts?: Pick<PostureCountsResponse, "critical" | "high" | "medium" | "low" | "unrated" | "total" | "kev">;
   schema_version: string;
@@ -4268,6 +4275,7 @@ export interface CostForecast {
   period_end: string | null;
   days_remaining: number | null;
   projected_exhaustion_at: string | null;
+  history_span_hours?: number | null | undefined;
   tenant_id?: string | undefined;
 }
 

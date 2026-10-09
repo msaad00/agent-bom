@@ -56,6 +56,7 @@ function ActivityPage() {
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [streamEventCount, setStreamEventCount] = useState<number | null>(null);
   const requestedDays = activityWindowFromParams(searchParams);
   const [days, setDays] = useState(requestedDays);
   const [search, setSearch] = useState("");
@@ -175,7 +176,10 @@ function ActivityPage() {
             Agent Activity Timeline
           </h1>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            {(timeline.event_count ?? events.length).toLocaleString()} events across the last {timeline.window_days} days
+            {streamEventCount != null
+              ? `${streamEventCount.toLocaleString()} recent stream events · `
+              : ""}
+            {(timeline.event_count ?? events.length).toLocaleString()} runtime events in the last {timeline.window_days} days
             {timeline.truncated ? " (showing the most recent 500)" : ""}
           </p>
         </div>
@@ -192,7 +196,10 @@ function ActivityPage() {
         </select>
       </div>
 
-      <ActivityEventStream observabilityEvents={warehouse?.observability_events ?? []} />
+      <ActivityEventStream
+        observabilityEvents={warehouse?.observability_events ?? []}
+        onEventCountChange={setStreamEventCount}
+      />
 
       {/* Which sources are feeding this page, and which are not. An operator
           who cannot tell "quiet" from "unconfigured" cannot act on either. */}
@@ -234,7 +241,7 @@ function ActivityPage() {
 
       {/* Warnings */}
       {(warehouse?.warnings?.length ?? 0) > 0 && (
-        <div className="rounded-lg border border-yellow-800/50 bg-yellow-950/20 p-4">
+        <div className="rounded-lg border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] p-4">
           <p className="text-xs font-medium text-yellow-400 mb-2">Warnings</p>
           {warehouse?.warnings?.map((w, i) => (
             <p key={i} className="text-xs text-yellow-300/70">{w}</p>
@@ -419,8 +426,8 @@ function SourceStrip({ sources }: { sources: ActivitySource[] }) {
   const tone: Record<string, string> = {
     active: "text-emerald-400 bg-emerald-950/40 border-emerald-800",
     empty: "text-[var(--text-secondary)] bg-[var(--surface-elevated)] border-[var(--border-subtle)]",
-    not_configured: "text-amber-400 bg-amber-950/30 border-amber-800/60",
-    unavailable: "text-red-400 bg-red-950/30 border-red-800/60",
+    not_configured: "text-[color:var(--severity-medium)] bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)]",
+    unavailable: "text-[color:var(--severity-critical)] bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]",
   };
   const label: Record<string, string> = {
     active: "active",
@@ -473,7 +480,7 @@ function StatusBadge({ status }: { status: string }) {
     status === "SUCCESS"
       ? "text-emerald-400 bg-emerald-950 border-emerald-800"
       : status === "FAIL" || status === "FAILED"
-        ? "text-red-400 bg-red-950 border-red-800"
+        ? "text-[color:var(--severity-critical)] bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]"
         : "text-[var(--text-secondary)] bg-[var(--surface-elevated)] border-[var(--border-subtle)]";
 
   return (

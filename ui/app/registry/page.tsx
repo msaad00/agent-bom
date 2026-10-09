@@ -29,9 +29,9 @@ import { CatalogBanner, PageLaneHeader } from "@/components/page-lane";
 
 function riskColor(risk: string) {
   switch (risk) {
-    case "high": return "text-red-400 bg-red-950 border-red-800";
-    case "medium": return "text-yellow-400 bg-yellow-950 border-yellow-800";
-    case "low": return "text-emerald-400 bg-emerald-950 border-emerald-800";
+    case "high": return "text-[color:var(--severity-critical)] bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]";
+    case "medium": return "text-[color:var(--severity-medium)] bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)]";
+    case "low": return "text-[color:var(--status-success)] bg-[color:var(--status-success-bg)] border-[color:var(--status-success-border)]";
     default: return "text-[color:var(--text-secondary)] bg-[color:var(--surface-elevated)] border-[color:var(--border-subtle)]";
   }
 }
@@ -220,7 +220,7 @@ function RegistryDetail({ serverId }: { serverId: string }) {
           {creds.length > 0 ? (
             <div className="space-y-1.5">
               {creds?.map((cred) => (
-                <div key={cred} className="flex items-center gap-2 px-2 py-1.5 bg-amber-950/30 border border-amber-900/50 rounded">
+                <div key={cred} className="flex items-center gap-2 px-2 py-1.5 bg-[color:var(--severity-medium-bg)] border border-[color:var(--severity-medium-border)] rounded">
                   <KeyRound className="w-3 h-3 text-amber-500 shrink-0" />
                   <code className="text-xs font-mono text-amber-400">{cred}</code>
                 </div>

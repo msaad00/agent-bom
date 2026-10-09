@@ -193,7 +193,7 @@ export default function DemoEstatePage() {
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {graphScanId ? (
-                <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" href={securityGraphHref({ scan: graphScanId })}>
+                <Link className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800" href={securityGraphHref({ scan: graphScanId })}>
                   Open security graph <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
               ) : null}
@@ -293,7 +293,7 @@ export default function DemoEstatePage() {
               onClick={() => setStoryView(view)}
               className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                 selected
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-emerald-700 text-white"
                   : "text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)]"
               }`}
             >

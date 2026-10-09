@@ -74,7 +74,7 @@ export function LoginPanel({
   if (error && isApiReachabilityFailure(error)) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-6">
-        <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
+        <div className="w-full max-w-xl rounded-3xl border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] p-8 text-center shadow-2xl shadow-black/20">
           <div className="mx-auto mb-4 flex justify-center">
             <BrandLogo />
           </div>
@@ -223,9 +223,9 @@ export function LoginPanel({
               {authUnconfigured ? (
                 <>
                   No API key is configured on this server yet. Restart it with one:
-                  <code className="block font-mono">agent-bom api --api-key &lt;your-key&gt;</code>
+                  <code className="block font-mono">agent-bom serve --api-key &lt;your-key&gt;</code>
                   or, for local use only, without sign-in:
-                  <code className="block font-mono">agent-bom api --allow-insecure-no-auth</code>
+                  <code className="block font-mono">agent-bom serve --allow-insecure-no-auth</code>
                 </>
               ) : (
                 "Need access? Contact your administrator."

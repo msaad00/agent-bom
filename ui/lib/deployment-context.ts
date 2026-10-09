@@ -52,6 +52,14 @@ export function deploymentModeLabel(mode?: DeploymentMode): string {
   }
 }
 
+/**
+ * The seeded demo estate. Its backend refuses operator-only surfaces (cloud
+ * governance mining, control-plane self-posture), so the UI must not link them.
+ */
+export function isDemoEstate(counts: PostureCountsResponse | null): boolean {
+  return Boolean(counts?.scan_sources?.includes("demo-estate"));
+}
+
 export function hasDeploymentSignals(counts: PostureCountsResponse | null): boolean {
   if (!counts) return false;
   return Boolean(

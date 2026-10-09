@@ -262,6 +262,21 @@ describe("Overview canonical finding counts", () => {
     expect(screen.queryByRole("heading", { name: "Start with evidence" })).not.toBeInTheDocument();
   });
 
+  it("shows demo seeding progress instead of first-scan guidance while the estate seeds", async () => {
+    const empty = overviewFixture();
+    const seeding = {
+      ...empty,
+      demo_estate_seeding: true,
+      headline: { ...empty.headline, scans: 0, latest_scan_at: null },
+      finding_counts: { critical: 0, high: 0, medium: 0, low: 0, unrated: 0, total: 0, kev: 0 },
+    };
+    apiMock.listJobs.mockResolvedValue({ jobs: [] });
+    apiMock.getOverview.mockResolvedValue(seeding);
+    await act(async () => { render(<Dashboard />); });
+    expect(screen.getByRole("status", { name: "Demo estate seeding" })).toHaveTextContent(/Seeding the demo estate/);
+    expect(screen.queryByRole("heading", { name: "Start with evidence" })).not.toBeInTheDocument();
+  });
+
   it("distinguishes an initial overview failure from an empty result", async () => {
     apiMock.getOverview.mockRejectedValue(new Error("private upstream"));
     apiMock.listJobs.mockResolvedValue({ jobs: [] });

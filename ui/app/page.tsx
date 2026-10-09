@@ -152,6 +152,18 @@ export default function Dashboard() {
     };
   }, []);
 
+  const demoSeeding = Boolean(overview?.demo_estate_seeding);
+  useEffect(() => {
+    if (!demoSeeding) return;
+    // Every panel on this page loads once; reload when the seeded evidence lands.
+    const poll = window.setInterval(() => {
+      void api.getOverview().then((next) => {
+        if (!next.demo_estate_seeding) window.location.reload();
+      }, () => {});
+    }, 5_000);
+    return () => window.clearInterval(poll);
+  }, [demoSeeding]);
+
   // Historical comparisons are separately scoped and loaded on demand.
 
   useEffect(() => {
@@ -418,7 +430,12 @@ export default function Dashboard() {
 
       {importedReport && <button type="button" onClick={() => setImportedReport(null)} className="text-sm text-emerald-800 dark:text-emerald-300">Return to live overview</button>}
       {importedReport && <LocalReportEvidence report={importedReport} />}
-      {!importedReport && !jobsLoading && !postureOverviewLoading && !overviewUnavailable
+      {!importedReport && demoSeeding && (
+        <p role="status" aria-label="Demo estate seeding" className="rounded-lg border border-outline px-3 py-2 text-sm text-ink-secondary">
+          Seeding the demo estate. Findings and posture appear here when the curated scan lands, usually within a minute or two.
+        </p>
+      )}
+      {!importedReport && !demoSeeding && !jobsLoading && !postureOverviewLoading && !overviewUnavailable
         && effectiveRecentJobs.length === 0 && overview?.headline.scans === 0 && overview.finding_counts?.total === 0
         && !overview.coverage?.some((lane) => lane.count_exact === false || lane.evidence_status === "partial" || lane.evidence_status === "unavailable")
         && <FirstScanGuide onImport={setImportedReport} />}

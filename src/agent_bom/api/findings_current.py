@@ -320,7 +320,9 @@ def current_scan_findings(
     # Membership retains prior observations only across explicitly incomplete
     # attempts. History can supply dates only for those surviving identities.
     selected = [deduped[key] for key in sorted(deduped)]
-    wanted = {key for _, row, job in selected if (key := _retained_finding_key(job, row)) is not None}
+    # One scope per job, not per row: deriving it re-serializes the request.
+    scopes = {id(job): scan_scope_key(job) for _, _, job in selected}
+    wanted = {key for _, row, job in selected if (key := _retained_finding_key(job, row, scope=scopes[id(job)])) is not None}
     history = _retained_finding_history(retained_jobs, wanted, require_authoritative_evidence=require_authoritative_evidence)
     from agent_bom.graph.sla import merge_finding_sla
 
@@ -329,7 +331,7 @@ def current_scan_findings(
         row = dict(row)
         row.pop("reconfirmation", None)
         row["observation_status"] = FindingObservationStatus.OBSERVED.value
-        attempt, reasons = attempts[_tenant_scope(job)]
+        attempt, reasons = attempts[(str(getattr(job, "tenant_id", "default")), scopes[id(job)])]
         if attempt.job_id != job.job_id and reasons:
             row["observation_status"] = FindingObservationStatus.UNRECONFIRMED.value
             row["reconfirmation"] = {
@@ -337,7 +339,7 @@ def current_scan_findings(
                 "attempted_at": _normalized_evidence_timestamp(attempt.completed_at, attempt.created_at) or None,
                 "reason_codes": reasons,
             }
-        key = _retained_finding_key(job, row)
+        key = _retained_finding_key(job, row, scope=scopes[id(job)])
         previous = history.get(key) if key is not None else None
         if previous:
             dates = [value for value in (_normalized_evidence_timestamp(row.get("first_seen")), previous.get("first_seen")) if value]

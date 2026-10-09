@@ -15,6 +15,7 @@ from typing import Any, Optional
 import click
 
 from agent_bom.cli._common import LISTEN_PORT_RANGE
+from agent_bom.cli._demo_storage import demo_estate_default_persist as _demo_estate_default_persist
 from agent_bom.core.settings import env_flag, env_list, env_raw, env_str
 from agent_bom.storage import state_home
 
@@ -734,6 +735,7 @@ def serve_cmd(
     if persist_path:
         os.environ["AGENT_BOM_DB"] = persist_path
     demo_state_dir = _activate_demo_state_dir_or_fail()
+    persist_path = persist_path or _demo_estate_default_persist(demo_state_dir)
     if cors_allow_all:
         os.environ["AGENT_BOM_CORS_ALL"] = "1"
     # REST-only mode: signal the API app (imported below) to skip mounting the
@@ -1028,6 +1030,7 @@ def api_cmd(
         persist = str(Path(persist).expanduser().resolve())
         os.environ["AGENT_BOM_DB"] = persist
     demo_state_dir = _activate_demo_state_dir_or_fail()
+    persist = persist or _demo_estate_default_persist(demo_state_dir)
 
     try:
         import uvicorn

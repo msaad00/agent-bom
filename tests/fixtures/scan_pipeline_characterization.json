@@ -389,7 +389,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -531,7 +531,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -567,15 +567,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -583,31 +583,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -1068,44 +1068,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -1116,38 +1098,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -1161,7 +1137,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -1237,9 +1213,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -1247,7 +1223,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -1289,7 +1265,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -1301,7 +1277,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -1315,13 +1291,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -1333,13 +1309,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -1351,7 +1327,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -1445,19 +1421,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -1517,7 +1493,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -2612,7 +2588,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -2951,7 +2927,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -2987,15 +2963,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -3003,31 +2979,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -3488,44 +3464,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -3536,38 +3494,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -3581,7 +3533,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -3657,9 +3609,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -3667,7 +3619,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -3709,7 +3661,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -3721,7 +3673,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -3735,13 +3687,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -3753,13 +3705,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -3771,7 +3723,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -3865,19 +3817,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -4070,7 +4022,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -5175,7 +5127,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -5518,7 +5470,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -5554,15 +5506,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -5570,31 +5522,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -6055,44 +6007,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -6103,38 +6037,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -6148,7 +6076,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -6224,9 +6152,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -6234,7 +6162,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -6276,7 +6204,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -6288,7 +6216,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -6302,13 +6230,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -6320,13 +6248,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -6338,7 +6266,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -6432,19 +6360,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -7131,7 +7059,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -7402,7 +7330,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -7438,15 +7366,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -7454,31 +7382,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -7939,44 +7867,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -7987,38 +7897,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -8032,7 +7936,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -8108,9 +8012,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -8118,7 +8022,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -8160,7 +8064,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -8172,7 +8076,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -8186,13 +8090,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -8204,13 +8108,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -8222,7 +8126,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -8316,19 +8220,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -8389,7 +8293,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -8898,7 +8802,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -9176,7 +9080,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -9212,15 +9116,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -9228,31 +9132,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -9713,44 +9617,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -9761,38 +9647,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -9806,7 +9686,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -9882,9 +9762,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -9892,7 +9772,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -9934,7 +9814,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -9946,7 +9826,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -9960,13 +9840,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -9978,13 +9858,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -9996,7 +9876,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -10090,19 +9970,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -10302,7 +10182,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -11395,7 +11275,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -11725,7 +11605,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -11761,15 +11641,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -11777,31 +11657,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -12262,44 +12142,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -12310,38 +12172,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -12355,7 +12211,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -12431,9 +12287,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -12441,7 +12297,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -12483,7 +12339,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -12495,7 +12351,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -12509,13 +12365,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -12527,13 +12383,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -12545,7 +12401,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -12639,19 +12495,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -12718,7 +12574,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -13824,7 +13680,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -14154,7 +14010,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -14190,15 +14046,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -14206,31 +14062,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -14691,44 +14547,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -14739,38 +14577,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -14784,7 +14616,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -14860,9 +14692,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -14870,7 +14702,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -14912,7 +14744,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -14924,7 +14756,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -14938,13 +14770,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -14956,13 +14788,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -14974,7 +14806,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -15068,19 +14900,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -15139,7 +14971,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -15689,7 +15521,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -15950,7 +15782,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -15986,15 +15818,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -16002,31 +15834,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -16487,44 +16319,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -16535,38 +16349,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -16580,7 +16388,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -16656,9 +16464,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -16666,7 +16474,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -16708,7 +16516,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -16720,7 +16528,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -16734,13 +16542,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -16752,13 +16560,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -16770,7 +16578,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -16864,19 +16672,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {
@@ -16935,7 +16743,7 @@
    "analytics.record_scan_metadata",
    "analytics.record_posture",
    "analytics.record_fleet_snapshot",
-   "analytics.record_compliance_control x158",
+   "analytics.record_compliance_control x154",
    "analytics.record_cis_benchmark_checks",
    "store.put:done",
    "reconcile",
@@ -18029,7 +17837,7 @@
      "cwe_mapping_count": 109,
      "fetched_at": 1784387191.427879,
      "normalized_sha256": "f6fd9605fa833eb9887dcfff338c39deb392bd1fca04553cdbd607fe90ebc1b5",
-     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-a8b503304f1b95673/src/agent_bom/data/mitre_attack_catalog.json",
+     "path": "/Users/mohamedsaad/repos/Agent-Bom/.claude/worktrees/agent-aeb2fa2f90e14338d/src/agent_bom/data/mitre_attack_catalog.json",
      "schema_version": 1,
      "source": "bundled",
      "sources": {
@@ -18359,7 +18167,7 @@
       "triggered": false
      },
      {
-      "code": "CIS-02.7",
+      "code": "CIS-02.6",
       "findings": 0,
       "name": "Approved-library allowlisting",
       "triggered": false
@@ -18395,15 +18203,15 @@
       "triggered": false
      },
      {
-      "code": "CIS-16.11",
-      "findings": 0,
-      "name": "Hardened application configuration baselines",
-      "triggered": false
-     },
-     {
       "code": "CIS-16.12",
       "findings": 0,
       "name": "Code-level security testing",
+      "triggered": false
+     },
+     {
+      "code": "CIS-16.7",
+      "findings": 0,
+      "name": "Hardened application configuration baselines",
       "triggered": false
      }
     ],
@@ -18411,31 +18219,31 @@
      {
       "code": "ART-10",
       "findings": 0,
-      "name": "Data & Data Governance",
+      "name": "Data and Data Governance",
+      "triggered": false
+     },
+     {
+      "code": "ART-12",
+      "findings": 0,
+      "name": "Record-Keeping",
+      "triggered": false
+     },
+     {
+      "code": "ART-14",
+      "findings": 0,
+      "name": "Human Oversight",
       "triggered": false
      },
      {
       "code": "ART-15",
       "findings": 0,
-      "name": "Accuracy, Robustness & Cybersecurity",
+      "name": "Accuracy, Robustness and Cybersecurity",
       "triggered": false
      },
      {
       "code": "ART-17",
       "findings": 0,
       "name": "Quality Management System",
-      "triggered": false
-     },
-     {
-      "code": "ART-5",
-      "findings": 0,
-      "name": "Prohibited AI Practices",
-      "triggered": false
-     },
-     {
-      "code": "ART-6",
-      "findings": 0,
-      "name": "High-Risk AI System Classification",
       "triggered": false
      },
      {
@@ -18896,44 +18704,26 @@
     "nist_ai_rmf": [
      {
       "findings": 0,
-      "name": "Ongoing monitoring mechanisms for AI risk",
+      "name": "Ongoing monitoring and periodic review of AI risk management",
       "subcategory_id": "GOVERN-1.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Third-party AI component risk processes",
-      "subcategory_id": "GOVERN-1.7",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Assessment policies for third-party AI entities",
+      "name": "Policies address AI risks from third-party entities",
       "subcategory_id": "GOVERN-6.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Contingency plans for third-party AI failures",
+      "name": "Contingency processes for third-party data or AI system failures",
       "subcategory_id": "GOVERN-6.2",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Responses to identified AI risks documented",
+      "name": "Responses to high-priority AI risks developed, planned, and documented",
       "subcategory_id": "MANAGE-1.3",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Anomalous event detection and response",
-      "subcategory_id": "MANAGE-2.2",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "Risk treatments including remediation applied",
-      "subcategory_id": "MANAGE-2.4",
       "triggered": false
      },
      {
@@ -18944,38 +18734,32 @@
      },
      {
       "findings": 0,
-      "name": "System dependencies and external interfaces mapped",
-      "subcategory_id": "MAP-1.6",
-      "triggered": false
-     },
-     {
-      "findings": 0,
-      "name": "AI supply chain risks assessed",
+      "name": "Human oversight processes defined and documented",
       "subcategory_id": "MAP-3.5",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI deployment impact practices identified",
-      "subcategory_id": "MAP-5.2",
+      "name": "Technology and legal risks of AI components, including third-party software, mapped",
+      "subcategory_id": "MAP-4.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system security testing conducted",
-      "subcategory_id": "MEASURE-2.5",
+      "name": "Likelihood and magnitude of identified impacts documented",
+      "subcategory_id": "MAP-5.1",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "AI system results validated",
+      "name": "AI system evaluated regularly for safety risks",
       "subcategory_id": "MEASURE-2.6",
       "triggered": false
      },
      {
       "findings": 0,
-      "name": "Effectiveness of risk mitigations assessed",
-      "subcategory_id": "MEASURE-2.9",
+      "name": "AI system security and resilience evaluated and documented",
+      "subcategory_id": "MEASURE-2.7",
       "triggered": false
      }
     ],
@@ -18989,7 +18773,7 @@
      {
       "code": "DE.CM-09",
       "findings": 0,
-      "name": "Computing hardware and software are monitored for vulnerabilities",
+      "name": "Computing hardware, software, runtime environments, and their data are monitored to find potentially adverse events",
       "triggered": false
      },
      {
@@ -19065,9 +18849,9 @@
       "triggered": false
      },
      {
-      "code": "RS.MI-02",
+      "code": "RS.MI-01",
       "findings": 0,
-      "name": "Incidents are contained and mitigated",
+      "name": "Incidents are contained",
       "triggered": false
      }
     ],
@@ -19075,7 +18859,7 @@
      {
       "code": "ASI01",
       "findings": 0,
-      "name": "Excessive Agency & Autonomy",
+      "name": "Agent Goal Hijack",
       "triggered": false
      },
      {
@@ -19117,7 +18901,7 @@
      {
       "code": "ASI08",
       "findings": 0,
-      "name": "Cascading Hallucination Failures",
+      "name": "Cascading Failures",
       "triggered": false
      },
      {
@@ -19129,7 +18913,7 @@
      {
       "code": "ASI10",
       "findings": 0,
-      "name": "Rogue Agent Persistence",
+      "name": "Rogue Agents",
       "triggered": false
      }
     ],
@@ -19143,13 +18927,13 @@
      {
       "code": "LLM02",
       "findings": 0,
-      "name": "Insecure Output Handling",
+      "name": "Sensitive Information Disclosure",
       "triggered": false
      },
      {
       "code": "LLM03",
       "findings": 0,
-      "name": "Training Data Poisoning",
+      "name": "Supply Chain",
       "triggered": false
      },
      {
@@ -19161,13 +18945,13 @@
      {
       "code": "LLM05",
       "findings": 0,
-      "name": "Supply Chain Vulnerabilities",
+      "name": "Improper Output Handling",
       "triggered": false
      },
      {
       "code": "LLM06",
       "findings": 0,
-      "name": "Sensitive Information Disclosure",
+      "name": "Excessive Agency",
       "triggered": false
      },
      {
@@ -19179,7 +18963,7 @@
      {
       "code": "LLM08",
       "findings": 0,
-      "name": "Excessive Agency",
+      "name": "Vector and Embedding Weaknesses",
       "triggered": false
      },
      {
@@ -19273,19 +19057,19 @@
      {
       "code": "CC6.8",
       "findings": 0,
-      "name": "Malicious/unauthorized software controls",
+      "name": "Unauthorized/malicious software prevention and detection",
       "triggered": false
      },
      {
       "code": "CC7.1",
       "findings": 0,
-      "name": "Anomaly and event detection",
+      "name": "Vulnerability and configuration-change detection",
       "triggered": false
      },
      {
       "code": "CC7.2",
       "findings": 0,
-      "name": "Security-event monitoring",
+      "name": "System-component anomaly monitoring",
       "triggered": false
      },
      {

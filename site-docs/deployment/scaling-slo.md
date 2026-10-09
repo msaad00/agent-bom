@@ -6,11 +6,12 @@
 > sizing guidance use [Performance, Sizing, and
 > Benchmarks](performance-and-sizing.md).
 
-This page publishes the per-tier scaling SLOs agent-bom commits to under the
-documented EKS reference deployment, and explains the autoscaling primitives
-the chart ships with so you can validate them against your own load.
+This page proposes operating targets for the documented EKS reference
+deployment and describes the chart's autoscaling controls. Validate targets
+against the customer's workload and failure scenarios before making an SLO
+commitment; the chart does not establish an availability guarantee.
 
-## Published SLOs (control-plane API tier)
+## Operating targets (control-plane API tier)
 
 These targets apply to the `eks-production-values.yaml` + `eks-keda-values.yaml`
 combination on EKS 1.30+ with the KEDA operator installed and Prometheus
@@ -24,10 +25,9 @@ available at the configured `serverAddress`.
 | Min replica floor honored | 100% of windows | rolling 24 hours | `count(up{job=~".*agent-bom-api.*"} == 1)` ≥ `minReplicas` |
 | Scale-up headroom remaining | ≥ 25% (replicas below `maxReplicas`) | sustained ≥ 5 min | `kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=~".*agent-bom-api.*"} / kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler=~".*agent-bom-api.*"} ≤ 0.75` |
 
-These are operating SLOs, not benchmarks. They're the targets the chart's
-defaults are tuned to hit; they aren't a guarantee that any particular
-cluster will meet them under arbitrary load. See [Honest gaps](#honest-gaps)
-for what is *not* yet measured at clustered scale.
+These are proposed operator targets, not measured cluster results. Helm values
+alone cannot establish that a cluster meets them. See
+[Honest gaps](#honest-gaps) for the limits of the current evidence.
 
 ## Why KEDA, not just HPA
 
@@ -62,8 +62,10 @@ the API tier exposes through Prometheus today:
    signal of the three — the rate-limit and p99 triggers are leading
    indicators; this one is the actual queue.
 
-KEDA polls every 30s by default, so the worst-case scaling latency is one
-poll plus pod-startup. The published "< 90s" SLO is calibrated against that.
+KEDA polls every 30s by default. Actual scale-out also depends on metric
+availability, scheduling capacity, image pulls, application startup, and
+readiness. Measure the proposed 90-second target in the deployment; polling
+intervals alone do not bound recovery time.
 
 ## How to enable
 
@@ -146,17 +148,18 @@ controlPlane:
 
 ## Honest gaps
 
-The chart's autoscaling primitives are real and tested. The published SLOs
-above are honest about what the **defaults are tuned to hit**. The remaining
-gap, called out so a reviewer doesn't have to derive it:
+The chart's autoscaling resources are covered by rendering tests. Those tests
+do not prove live scaling latency, availability, or database failover. The
+operating targets above require deployment-specific evidence:
 
 **No published clustered Postgres scale benchmark.** Today's published
 evidence (`scripts/run_scale_evidence.py`) is in-process and tops out at
 1k–10k entities. A clustered Postgres run at 50k+ entities is the next
 piece needed before claiming "elastic at 1M edges." Until that lands, keep
-your `maxReplicas` calibrated to your Postgres connection-pool capacity
-(default chart sets pool size in
-`controlPlane.api.env.AGENT_BOM_POSTGRES_POOL_MAX`).
+your `maxReplicas` calibrated to your Postgres connection-pool capacity.
+Use `AGENT_BOM_POSTGRES_POOL_MAX_SIZE` in `controlPlane.api.env` and include
+the separate fencing and maintenance pools, process count, and rollout headroom.
+See [PostgreSQL connection budget](control-plane-helm.md#postgresql-connection-budget).
 
 Graph store-backed builds auto-enable for larger API snapshots, but the
 default producer still stages into a **private SQLite** workspace (shared

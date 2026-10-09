@@ -175,3 +175,21 @@ topologySpreadConstraints:
   {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Configured replica capacity for shared-state guards and disruption budgets.
+Include initial replicas and every enabled scaler path, even when its minimum
+is one. This is not the observed pod count or a rolling-update connection budget.
+*/}}
+{{- define "agent-bom.controlPlaneReplicaCapacity" -}}
+{{- $capacity := max 1 (int .replicas) -}}
+{{- if .autoscaling.enabled -}}
+{{- $capacity = max $capacity (int .autoscaling.minReplicas) (int .autoscaling.maxReplicas) -}}
+{{- $keda := .autoscaling.keda | default dict -}}
+{{- if $keda.enabled -}}
+{{- $fallback := $keda.fallback | default dict -}}
+{{- $capacity = max $capacity (int ($fallback.replicas | default .autoscaling.minReplicas)) -}}
+{{- end -}}
+{{- end -}}
+{{- $capacity -}}
+{{- end -}}

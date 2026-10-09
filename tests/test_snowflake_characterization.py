@@ -283,7 +283,22 @@ RICH_ROUTES: list[tuple[str, Any]] = [
             ],
             [
                 ("h1", "CREATE OR REPLACE AGENT a1", "ALICE", "R", "s", "e", "SUCCESS", "WH", "DB", "S", "CREATE", 0, 10, 5),
-                ("h2", "select snowflake.cortex.complete('x')", "BOB", "R", "s", "e", "SUCCESS", "WH", "DB", "S", "SELECT", None, None, None),
+                (
+                    "h2",
+                    "select snowflake.cortex.complete('x')",
+                    "BOB",
+                    "R",
+                    "s",
+                    "e",
+                    "SUCCESS",
+                    "WH",
+                    "DB",
+                    "S",
+                    "SELECT",
+                    None,
+                    None,
+                    None,
+                ),
                 ("h3", "select 'mcp server listing'", "BOB", "R", "s", "e", "FAIL", "WH", "DB", "S", "SELECT", 1, 1, 1),
                 ("h4", "CALL SYSTEM$EXECUTE_SQL('x')", "EVE", "R", "s", "e", "SUCCESS", "WH", "DB", "S", "CALL", 2, 2, 2),
             ],
@@ -417,7 +432,12 @@ RICH_ROUTES: list[tuple[str, Any]] = [
         "SHOW WAREHOUSES",
         (
             ["name", "size", "state", "auto_suspend", "type"],
-            [("WH_A", "XSMALL", "STARTED", 60, "STANDARD"), ("WH_B", None, None, 0, None), ("WH_C", "L", "S", None, ""), ("", "", "", 1, "")],
+            [
+                ("WH_A", "XSMALL", "STARTED", 60, "STANDARD"),
+                ("WH_B", None, None, 0, None),
+                ("WH_C", "L", "S", None, ""),
+                ("", "", "", 1, ""),
+            ],
         ),
     ),
     (
@@ -450,7 +470,11 @@ RICH_ROUTES: list[tuple[str, Any]] = [
         "SHOW TASKS IN ACCOUNT",
         (
             ["name", "database_name", "schema_name", "warehouse", "schedule", "state", "owner"],
-            [("T1", "DB", "S", "WH", "1 MINUTE", "suspended", "SYSADMIN"), ("T2", None, None, None, None, "started", None), ("", "", "", "", "", "", "")],
+            [
+                ("T1", "DB", "S", "WH", "1 MINUTE", "suspended", "SYSADMIN"),
+                ("T2", None, None, None, None, "started", None),
+                ("", "", "", "", "", "", ""),
+            ],
         ),
     ),
     (
@@ -501,7 +525,11 @@ RICH_ROUTES: list[tuple[str, Any]] = [
         "SHOW EXTERNAL TABLES IN ACCOUNT",
         (
             ["name", "database_name", "schema_name", "location", "file_format_name", "file_format_type"],
-            [("EXT1", "DB", "S", "@DB.S.LANDING/raw/", None, "PARQUET"), ("EXT2", "DB", "S", "s3://x/y", "FF", ""), ("", "", "", "", "", "")],
+            [
+                ("EXT1", "DB", "S", "@DB.S.LANDING/raw/", None, "PARQUET"),
+                ("EXT2", "DB", "S", "s3://x/y", "FF", ""),
+                ("", "", "", "", "", ""),
+            ],
         ),
     ),
 ]
@@ -705,7 +733,7 @@ def _helpers() -> dict[str, Any]:
         "merge_graph_not_dict": sf.merge_live_identity_into_object_graph(None, live),  # type: ignore[arg-type]
         "parse_create": [
             sf._parse_create_statement_name(q)
-            for q in ("CREATE AGENT a.b.c", "create or replace mcp server  if not exists \"X\"", "DROP AGENT z", "")
+            for q in ("CREATE AGENT a.b.c", 'create or replace mcp server  if not exists "X"', "DROP AGENT z", "")
         ],
         "classify": [sf._classify_agent_query(q) for q in ("ALTER AGENT x", "select snowflake.ml.forecast()", "select 1")],
         "days": [attempt(lambda d=d: sf._coerce_snowflake_days(d, max_days=30)) for d in (5, "40", 0, "x", None)],

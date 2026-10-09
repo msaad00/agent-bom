@@ -77,12 +77,38 @@ class _DeniedError(Exception):
         self.resp = types.SimpleNamespace(status=403)
 
 
+class ClientError(Exception):
+    """Shape-compatible stand-in for ``botocore.exceptions.ClientError``."""
+
+    def __init__(self, error_response: dict[str, Any], operation_name: str) -> None:
+        error = error_response.get("Error", {})
+        super().__init__(f"An error occurred ({error.get('Code')}) when calling the {operation_name} operation: {error.get('Message')}")
+        self.response = error_response
+        self.operation_name = operation_name
+
+
+class _StubConfig:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+
 def _aws_denied() -> Exception:
-    try:
-        from botocore.exceptions import ClientError
-    except ImportError:  # pragma: no cover - aws extra installed in CI
-        return _DeniedError()
     return ClientError({"Error": {"Code": "AccessDenied", "Message": "scenario denied"}}, "ScenarioOperation")
+
+
+@contextmanager
+def _aws_sdk() -> Iterator[None]:
+    """Pin boto3/botocore presence so the snapshot does not depend on installed extras."""
+    exceptions = types.ModuleType("botocore.exceptions")
+    exceptions.ClientError = ClientError  # type: ignore[attr-defined]
+    config = types.ModuleType("botocore.config")
+    config.Config = _StubConfig  # type: ignore[attr-defined]
+    botocore = types.ModuleType("botocore")
+    botocore.exceptions = exceptions  # type: ignore[attr-defined]
+    botocore.config = config  # type: ignore[attr-defined]
+    modules = {"boto3": types.ModuleType("boto3"), "botocore": botocore, "botocore.exceptions": exceptions, "botocore.config": config}
+    with patch.dict(sys.modules, modules):
+        yield
 
 
 class _Raising:
@@ -189,9 +215,16 @@ def _aws_session(scenario: str, *, sts_ok: bool) -> Any:
 def _aws_snapshot() -> dict[str, Any]:
     from agent_bom.cloud import aws_cis_benchmark as mod
 
+    with _aws_sdk():
+        return _aws_snapshot_pinned(mod)
+
+
+def _aws_snapshot_pinned(mod: Any) -> dict[str, Any]:
     ids = {"account_id": "123456789012"}
     direct = {
-        scenario: {name: _outcome(lambda n=name, s=scenario: _call(getattr(mod, n), _client(s, "aws"), ids)) for name in check_functions(mod)}
+        scenario: {
+            name: _outcome(lambda n=name, s=scenario: _call(getattr(mod, n), _client(s, "aws"), ids)) for name in check_functions(mod)
+        }
         for scenario in SCENARIOS
     }
     runs = {}
@@ -201,7 +234,9 @@ def _aws_snapshot() -> dict[str, Any]:
             runs[key] = _outcome(lambda s=scenario, ok=sts_ok: mod.run_benchmark(session=_aws_session(s, sts_ok=ok)).to_dict())
     for scenario in ("mock", "error"):
         runs[f"all_regions/{scenario}"] = _outcome(
-            lambda s=scenario: mod.run_benchmark_all_regions(regions=["us-east-1", "eu-west-1"], session=_aws_session(s, sts_ok=True)).to_dict()
+            lambda s=scenario: mod.run_benchmark_all_regions(
+                regions=["us-east-1", "eu-west-1"], session=_aws_session(s, sts_ok=True)
+            ).to_dict()
         )
     return {"check_functions": check_functions(mod), "direct": direct, "run_benchmark": runs}
 
@@ -312,7 +347,9 @@ def _gcp_snapshot() -> dict[str, Any]:
     direct = {}
     for scenario in SCENARIOS:
         with _gcp_sdk(scenario):
-            direct[scenario] = {name: _outcome(lambda n=name, s=scenario: _call(getattr(mod, n), _client(s, "gcp"), ids)) for name in check_functions(mod)}
+            direct[scenario] = {
+                name: _outcome(lambda n=name, s=scenario: _call(getattr(mod, n), _client(s, "gcp"), ids)) for name in check_functions(mod)
+            }
     runs = {}
     for scenario in SCENARIOS:
         with _gcp_sdk(scenario):

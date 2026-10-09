@@ -4626,7 +4626,7 @@
       "api_imports": 5,
       "broad_except": 8,
       "deferred_imports": 20,
-      "file_lines": 1644,
+      "file_lines": 1648,
       "raw_env_reads": 11
     },
     "proxy.py::_maybe_block_on_firewall": {

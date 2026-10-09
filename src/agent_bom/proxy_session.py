@@ -12,9 +12,9 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
-from agent_bom import proxy as _proxy
 from agent_bom.security import sanitize_text
 
 if TYPE_CHECKING:
@@ -63,14 +63,20 @@ class ControlPlane:
     session_id: str
     cache_path: Path
     cache_max_age_seconds: int
-    policies: list[_proxy.GatewayPolicy] = field(default_factory=list)
+    policies: list[Any] = field(default_factory=list)
     etag: str | None = None
 
 
 @dataclass
 class ProxySession:
-    """Everything one proxied stdio server session reads and mutates."""
+    """Everything one proxied stdio server session reads and mutates.
 
+    ``host`` is the :mod:`agent_bom.proxy` module that composed the session.
+    Proxy-owned helpers and evaluators are resolved through it at call time,
+    which keeps that module authoritative without an import cycle.
+    """
+
+    host: ModuleType
     policy: dict
     log_file: RotatingAuditLog | None
     metrics: ProxyMetrics
@@ -117,17 +123,17 @@ class ProxySession:
     def _spill_alert(self, alert_payload: dict) -> None:
         destination = self.audit.spillover.append_events([alert_payload])
         if destination == "dlq":
-            _proxy.logger.error(
+            self.host.logger.error(
                 "Proxy audit spillover exceeded %s bytes; diverting alert backlog to DLQ %s",
                 self.audit.max_spillover_bytes,
                 self.audit.dlq_path,
             )
         elif destination == "dropped":
-            _proxy.logger.error(
+            self.host.logger.error(
                 "Proxy audit spillover and DLQ are full; dropping one sanitized audit event",
             )
         else:
-            _proxy.logger.warning(
+            self.host.logger.warning(
                 "Proxy audit buffer exceeded %s bytes; spilling alert backlog to %s",
                 self.audit.max_buffer_bytes,
                 self.audit.spill_path,
@@ -138,12 +144,12 @@ class ProxySession:
         for alert in alerts:
             alert_dict = alert.to_dict()
             self.runtime_alerts.append(alert_dict)
-            _proxy.logger.warning("Runtime alert: %s", sanitize_text(alert_dict.get("message", "runtime alert")))
+            self.host.logger.warning("Runtime alert: %s", sanitize_text(alert_dict.get("message", "runtime alert")))
             if log_f:
-                _proxy.write_audit_record(log_f, alert_dict)
+                self.host.write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if self.options.alert_webhook:
-                _proxy._fire_webhook(self.options.alert_webhook, alert_dict)
+                self.host._fire_webhook(self.options.alert_webhook, alert_dict)
             if self.control.url:
                 enriched = dict(alert_dict)
                 enriched.setdefault("source_id", self.control.source_id)
@@ -155,29 +161,29 @@ class ProxySession:
         if not control.url:
             return
         try:
-            policies, next_etag = await _proxy._fetch_enabled_gateway_policies(control.url, control.token, control.etag)
+            policies, next_etag = await self.host._fetch_enabled_gateway_policies(control.url, control.token, control.etag)
         except Exception as exc:  # noqa: BLE001
             self.metrics.record_policy_fetch_failure()
             if not initial:
-                _proxy.logger.warning("Gateway policy refresh failed: %s", sanitize_text(exc))
+                self.host.logger.warning("Gateway policy refresh failed: %s", sanitize_text(exc))
                 return
             self._fall_back_to_cached_policies(exc)
         if policies is not None:
             control.policies = policies
-            _proxy._persist_gateway_policies_cache(control.cache_path, policies, next_etag)
+            self.host._persist_gateway_policies_cache(control.cache_path, policies, next_etag)
         if next_etag:
             control.etag = next_etag
         self._apply_control_plane_rate_limit()
 
     def _fall_back_to_cached_policies(self, exc: Exception) -> None:
         control = self.control
-        cached_policies, cached_etag = _proxy._load_cached_gateway_policies(control.cache_path, control.cache_max_age_seconds)
+        cached_policies, cached_etag = self.host._load_cached_gateway_policies(control.cache_path, control.cache_max_age_seconds)
         if cached_policies is None:
-            _proxy.logger.error("Failed to load enabled gateway policies from %s: %s", control.url, sanitize_text(exc))
+            self.host.logger.error("Failed to load enabled gateway policies from %s: %s", control.url, sanitize_text(exc))
             raise SystemExit(1) from exc
         control.policies = cached_policies
         control.etag = cached_etag
-        _proxy.logger.warning(
+        self.host.logger.warning(
             "Gateway policy fetch failed from %s; using cached bundle from %s: %s",
             control.url,
             control.cache_path,
@@ -187,7 +193,7 @@ class ProxySession:
     def _apply_control_plane_rate_limit(self) -> None:
         if self.options.rate_limit_threshold > 0:
             return
-        control_plane_limit = _proxy._resolve_control_plane_rate_limit_threshold(self.control.policies)
+        control_plane_limit = self.host._resolve_control_plane_rate_limit_threshold(self.control.policies)
         if control_plane_limit and control_plane_limit > 0:
             self.detectors.rate._threshold = control_plane_limit
         else:
@@ -207,7 +213,7 @@ class ProxySession:
         if not combined_alerts and summary is None:
             return True
         try:
-            await _proxy._push_proxy_audit_batch(
+            await self.host._push_proxy_audit_batch(
                 self.control.url,
                 self.control.token,
                 self.control.source_id,
@@ -217,7 +223,7 @@ class ProxySession:
             )
         except Exception as exc:  # noqa: BLE001
             self.metrics.record_audit_push_failure()
-            _proxy.logger.warning("Proxy audit push failed: %s", sanitize_text(exc))
+            self.host.logger.warning("Proxy audit push failed: %s", sanitize_text(exc))
             await self._restore_failed_batch(spillover_claim, alerts)
             return False
         if spillover_claim is not None:
@@ -232,9 +238,9 @@ class ProxySession:
             else:
                 destination = self.audit.spillover.append_events(alerts)
             if destination == "dlq":
-                _proxy.logger.error("Proxy audit retry backlog exceeded the spill limit; persisted the batch to the bounded DLQ")
+                self.host.logger.error("Proxy audit retry backlog exceeded the spill limit; persisted the batch to the bounded DLQ")
             elif destination == "dropped":
-                _proxy.logger.error("Proxy audit spillover and DLQ are full; a failed delivery batch was dropped")
+                self.host.logger.error("Proxy audit spillover and DLQ are full; a failed delivery batch was dropped")
             self.sync_audit_metrics()
 
     async def policy_refresh_loop(self) -> None:
@@ -271,14 +277,14 @@ class ProxySession:
 
             return evaluate_gateway_policy_bundle(control.policies, agent_id, tool_name, arguments)
 
-        _proxy.set_gateway_evaluator(_control_plane_gateway_evaluator)
+        self.host.set_gateway_evaluator(_control_plane_gateway_evaluator)
 
 
-def start_metrics() -> tuple[ProxyMetrics, bool]:
+def start_metrics(host: ModuleType) -> tuple[ProxyMetrics, bool]:
     """Create session metrics and attach the CLI status strip when it is active."""
     from agent_bom.cli._runtime_status import proxy_metrics_status_callback
 
-    metrics = _proxy.ProxyMetrics()
+    metrics = host.ProxyMetrics()
     status_strip_active, status_update = proxy_metrics_status_callback(surface="proxy")
     if status_strip_active:
         metrics.set_update_callback(status_update)
@@ -286,7 +292,9 @@ def start_metrics() -> tuple[ProxyMetrics, bool]:
     return metrics, status_strip_active
 
 
-def build_detectors(policy: dict, *, detect_credentials: bool, detect_visual_leaks: bool, rate_limit_threshold: int) -> RuntimeDetectors:
+def build_detectors(
+    host: ModuleType, policy: dict, *, detect_credentials: bool, detect_visual_leaks: bool, rate_limit_threshold: int
+) -> RuntimeDetectors:
     """Instantiate the runtime detectors; visual leak detection fails closed without OCR."""
     from agent_bom.runtime.detectors import (
         ArgumentAnalyzer,
@@ -307,7 +315,7 @@ def build_detectors(policy: dict, *, detect_credentials: bool, detect_visual_lea
 
         require_visual_leak_runtime()
         visual_detector = VisualLeakDetector()
-    local_policy_rate_limit = _proxy.resolve_rate_limit_threshold(policy) if policy else None
+    local_policy_rate_limit = host.resolve_rate_limit_threshold(policy) if policy else None
     effective_rate_limit_threshold = rate_limit_threshold or local_policy_rate_limit or 0
     return RuntimeDetectors(
         drift=drift_detector,
@@ -318,6 +326,6 @@ def build_detectors(policy: dict, *, detect_credentials: bool, detect_visual_lea
         sequence=SequenceAnalyzer(),
         response=ResponseInspector(),
         vector=VectorDBInjectionDetector(),
-        replay=_proxy.ReplayDetector(),
+        replay=host.ReplayDetector(),
         local_policy_rate_limit=local_policy_rate_limit,
     )

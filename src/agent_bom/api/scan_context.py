@@ -12,20 +12,33 @@ import threading
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from agent_bom.api.models import ScanJob, ScanRequest
 from agent_bom.evidence.scan_run import ScanIssue, ScanOutcome, ScanRun
 
-if TYPE_CHECKING:
-    from agent_bom.api.pipeline import ScanPipeline
+
+class StepTracker(Protocol):
+    """The step-event surface stages drive; implemented by ``pipeline.ScanPipeline``."""
+
+    _steps: dict[str, dict[str, Any]]
+
+    def start_step(self, step_id: str, message: str, sub_step: str | None = None) -> None: ...
+
+    def update_step(self, step_id: str, message: str, stats: dict[str, Any] | None = None, progress_pct: int | None = None) -> None: ...
+
+    def complete_step(self, step_id: str, message: str, stats: dict[str, Any] | None = None) -> None: ...
+
+    def fail_step(self, step_id: str, message: str) -> None: ...
+
+    def skip_step(self, step_id: str, message: str) -> None: ...
 
 
 @dataclass
 class ScanContext:
     job: ScanJob
     lock: threading.Lock
-    pipeline: ScanPipeline
+    pipeline: StepTracker
     repo_stack: ExitStack
     agents: list[Any] = field(default_factory=list)
     warnings_all: list[str] = field(default_factory=list)

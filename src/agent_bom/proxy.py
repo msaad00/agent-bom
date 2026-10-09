@@ -1476,13 +1476,16 @@ async def run_proxy(
     Returns the server process exit code.
     """
     policy: dict = _load_proxy_policy(policy_path)
-    # RotatingAuditLog refuses symlinks (log injection), writes 0o600 and rotates at 100 MB.
-    log_file = RotatingAuditLog(log_path) if log_path else None
-    metrics, status_strip_active = _proxy_session.start_metrics()
+    log_file = RotatingAuditLog(log_path) if log_path else None  # 0o600, symlink-refusing, rotates at 100 MB
+    metrics, status_strip_active = _proxy_session.start_metrics(sys.modules[__name__])
     metrics_server = ProxyMetricsServer(metrics, port=metrics_port, token=metrics_token)
     await metrics_server.start()
     detectors = _proxy_session.build_detectors(
-        policy, detect_credentials=detect_credentials, detect_visual_leaks=detect_visual_leaks, rate_limit_threshold=rate_limit_threshold
+        sys.modules[__name__],
+        policy,
+        detect_credentials=detect_credentials,
+        detect_visual_leaks=detect_visual_leaks,
+        rate_limit_threshold=rate_limit_threshold,
     )
     options = _proxy_session.RelayOptions(
         block_undeclared=block_undeclared,
@@ -1533,6 +1536,7 @@ def _compose_session(
         cache_max_age_seconds=cache_max_age_seconds,
     )
     return _proxy_session.ProxySession(
+        host=sys.modules[__name__],
         policy=policy,
         log_file=log_file,
         metrics=metrics,

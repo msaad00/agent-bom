@@ -109,7 +109,7 @@ export function cisSummaryFromResult(result: ScanResult | null | undefined): Cis
   }
   const rates = benches.map(passRateOnly);
   if (rates.some((rate) => rate != null)) {
-    return { passed: null, failed: null, total: null, passRate: rates.length === 1 ? rates[0] : null };
+    return { passed: null, failed: null, total: null, passRate: rates.length === 1 ? rates[0] ?? null : null };
   }
   return null;
 }

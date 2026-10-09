@@ -75,4 +75,4 @@ a08bc8ae15904134d15fc289fff0d84a4067e639:tests/test_campaign_default_backend.py:
 cc3d86f9b6cca9ed3ee186f287ded454fd573207:tests/test_helm_replica_safety.py:generic-api-key:108
 # Historical non-functional detector input in the discovery characterization
 # fixture. The current fixture assembles the same input at runtime.
-b0f82a58d9e6f6f091069af6f2dccfd059527b3b:tests/test_discovery_characterization.py:generic-api-key:110
+dc89cec6c912a937de047e05538044c0855faca7:tests/test_discovery_characterization.py:generic-api-key:110

@@ -91,7 +91,7 @@ export default function GovernancePage() {
         title="Governance integration is not configured"
         summary="This page mines access history, grants, data classifications, and agent usage from a cloud telemetry source. Core agent-bom scans do not depend on it. The current backend integration for this page uses Snowflake."
         requirement="Cloud governance integration on the API host"
-        command={"pip install 'agent-bom[cloud]'\nexport SNOWFLAKE_ACCOUNT=...\nagent-bom api"}
+        command={"pip install 'agent-bom[cloud]'\nexport SNOWFLAKE_ACCOUNT=...\nagent-bom serve"}
         capabilities={[
           "Access-history review across users, roles, and objects",
           "Privilege and classification findings with severity filters",

@@ -56,6 +56,7 @@ import { useSidebarLayout } from "@/components/sidebar-layout";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   deploymentModeLabel,
+  isDemoEstate,
   isNavLinkVisible,
   navLinkNeedsSetup,
 } from "@/lib/deployment-context";
@@ -73,6 +74,8 @@ interface NavLink {
   desc?: string;
   /** Deployment-wide operator surfaces are hidden unless the effective session has the capability. */
   operatorOnly?: boolean;
+  /** Not served by the demo-estate backend; hidden there instead of linking to a 404. */
+  hiddenInDemoEstate?: boolean;
 }
 
 interface NavGroup {
@@ -167,7 +170,7 @@ const NAV_GROUPS: NavGroup[] = [
     desc: "Compliance, policy, and audit",
     links: [
       { href: "/compliance", label: "Compliance", icon: FileCheck },
-      { href: "/governance", label: "Cloud Governance", icon: Eye, capability: "policy.manage" },
+      { href: "/governance", label: "Cloud Governance", icon: Eye, capability: "policy.manage", hiddenInDemoEstate: true },
       { href: "/drift", label: "Drift", icon: Radar, desc: "Config drift from approved baselines" },
       { href: "/audit", label: "Audit Log", icon: FileText },
     ],
@@ -211,6 +214,7 @@ const NAV_GROUPS: NavGroup[] = [
         icon: ShieldCheck,
         capability: "policy.manage",
         operatorOnly: true,
+        hiddenInDemoEstate: true,
         desc: "Operator checks for this deployment's authentication, isolation, audit, and secret controls",
       },
     ],
@@ -475,8 +479,12 @@ export function Nav() {
       })).filter((g) => g.links.length > 0 || (g.secondary?.length ?? 0) > 0)
     : NAV_GROUPS;
 
+  const demoEstate = isDemoEstate(counts);
   const roleAllowsLink = useCallback(
     (link: NavLink) => {
+      if (link.hiddenInDemoEstate && demoEstate) {
+        return false;
+      }
       if (link.operatorOnly) {
         return Boolean(session?.role_summary) && hasCapability(link.capability ?? "");
       }
@@ -488,7 +496,7 @@ export function Nav() {
       }
       return hasCapability(link.capability);
     },
-    [hasCapability, session]
+    [demoEstate, hasCapability, session]
   );
 
   const navGroups = filteredGroups

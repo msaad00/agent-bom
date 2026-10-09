@@ -223,9 +223,9 @@ export function LoginPanel({
               {authUnconfigured ? (
                 <>
                   No API key is configured on this server yet. Restart it with one:
-                  <code className="block font-mono">agent-bom api --api-key &lt;your-key&gt;</code>
+                  <code className="block font-mono">agent-bom serve --api-key &lt;your-key&gt;</code>
                   or, for local use only, without sign-in:
-                  <code className="block font-mono">agent-bom api --allow-insecure-no-auth</code>
+                  <code className="block font-mono">agent-bom serve --allow-insecure-no-auth</code>
                 </>
               ) : (
                 "Need access? Contact your administrator."

@@ -102,8 +102,8 @@ describe("LoginPage", () => {
 
     const hint = await screen.findByText(/no API key is configured/i);
     const container = hint.closest("div") as HTMLElement;
-    expect(container).toHaveTextContent("agent-bom api --api-key <your-key>");
-    expect(container).toHaveTextContent("agent-bom api --allow-insecure-no-auth");
+    expect(container).toHaveTextContent("agent-bom serve --api-key <your-key>");
+    expect(container).toHaveTextContent("agent-bom serve --allow-insecure-no-auth");
     expect(screen.queryByText(/contact your administrator/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/provided by your administrator/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ask your administrator/i)).not.toBeInTheDocument();

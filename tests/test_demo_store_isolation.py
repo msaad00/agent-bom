@@ -435,3 +435,76 @@ def test_cli_api_persist_selects_the_shared_database_like_serve(monkeypatch: pyt
     from agent_bom.db.graph_store import default_graph_db_path
 
     assert default_graph_db_path() == db.resolve()
+
+
+@pytest.mark.parametrize("command_name", ["serve", "api"])
+def test_cli_demo_estate_keeps_jobs_durable_with_the_graph(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command_name: str) -> None:
+    """Without --persist the demo jobs lived in memory while the graph was on disk.
+
+    A restart then served the persisted graph beside zero jobs and an empty
+    posture until the curated scan was recomputed. Jobs and graph must share
+    one durable database inside the demo directory.
+    """
+    from click.testing import CliRunner
+
+    from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.storage.job_backends import configured_job_store
+    from agent_bom.api.store import DEMO_ESTATE_TRIGGERED_BY, SQLiteJobStore
+    from agent_bom.cli._server import api_cmd, serve_cmd
+    from agent_bom.db.graph_store import default_graph_db_path
+    from agent_bom.demo_estate.bootstrap import _tenant_has_demo_jobs
+
+    _cli_env(monkeypatch, tmp_path)
+    summaries: list[dict[str, str]] = []
+    monkeypatch.setattr("agent_bom.cli._server._emit_runtime_summary", lambda title, rows: summaries.append(dict(rows)))
+    command = serve_cmd if command_name == "serve" else api_cmd
+    result = CliRunner().invoke(command, ["--demo-estate", "--api-key", "synthetic-test-only-key"])
+    assert result.exit_code == 0, result.output
+
+    demo_db = tmp_path / "product" / "demo-estate" / "control-plane.db"
+    assert os.environ["AGENT_BOM_DB"] == str(demo_db)
+    assert default_graph_db_path() == demo_db
+    assert summaries[0]["Storage"].startswith("SQLite")
+
+    first_process = configured_job_store()
+    assert isinstance(first_process, SQLiteJobStore)
+    job = ScanJob(
+        job_id="demo-restart-job",
+        tenant_id="default",
+        triggered_by=DEMO_ESTATE_TRIGGERED_BY,
+        created_at="2026-10-08T00:00:00Z",
+        request=ScanRequest(offline=True),
+    )
+    job.status = JobStatus.DONE
+    job.result = {"scan_sources": ["demo"], "findings": [{"id": "f-1"}]}
+    first_process.put(job)
+
+    restarted = configured_job_store()
+    assert [j.job_id for j in restarted.list_all(tenant_id="default")] == ["demo-restart-job"]
+    assert _tenant_has_demo_jobs(restarted, "default")
+    assert not _tenant_has_demo_jobs(restarted, "other-tenant")
+
+
+def test_cli_demo_estate_respects_an_explicit_persist_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    from agent_bom.cli._server import serve_cmd
+
+    _cli_env(monkeypatch, tmp_path)
+    monkeypatch.setattr("agent_bom.cli._server._emit_runtime_summary", lambda title, rows: None)
+    explicit = tmp_path / "product" / "demo-estate" / "jobs.db"
+    result = CliRunner().invoke(serve_cmd, ["--demo-estate", "--persist", str(explicit), "--api-key", "synthetic-test-only-key"])
+    assert result.exit_code == 0, result.output
+    assert os.environ["AGENT_BOM_DB"] == str(explicit.resolve())
+
+
+def test_cli_without_demo_estate_stays_ephemeral_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    from agent_bom.cli._server import serve_cmd
+
+    _cli_env(monkeypatch, tmp_path)
+    monkeypatch.setattr("agent_bom.cli._server._emit_runtime_summary", lambda title, rows: None)
+    result = CliRunner().invoke(serve_cmd, ["--api-key", "synthetic-test-only-key"])
+    assert result.exit_code == 0, result.output
+    assert not os.environ.get("AGENT_BOM_DB")

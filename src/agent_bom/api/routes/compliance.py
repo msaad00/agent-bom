@@ -54,6 +54,8 @@ from agent_bom.compliance_nist_catalog import (
 from agent_bom.compliance_nist_catalog import (
     evaluated_control_status as _evaluated_control_status,
 )
+from agent_bom.demo_estate.boot_seed import DEMO_SEEDING_SUMMARY as _DEMO_SEEDING_SUMMARY
+from agent_bom.demo_estate.boot_seed import demo_estate_seeding
 from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.evidence.control_modes import (
     DETECTIVE_CONTROLS,
@@ -2272,12 +2274,14 @@ def _posture_scorecard_impl(request: Request) -> dict:
     latest_result = latest_job.result if latest_job is not None else None
 
     if latest_result is None:
+        seeding = demo_estate_seeding()
         return {
             "grade": "N/A",
             "score": 0,
-            "summary": "No completed scans available",
+            "summary": _DEMO_SEEDING_SUMMARY if seeding else "No completed scans available",
             "dimensions": {},
             "no_data": True,
+            "demo_estate_seeding": seeding,
         }
 
     # Did-we-scan guard: a completed scan that examined ZERO gradable artifacts

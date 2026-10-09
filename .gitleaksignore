@@ -68,3 +68,8 @@ f7b9e1c3a766d322afa17733fc5a20e8b961709d:tests/test_scanner_operator_messages.py
 # The current test generates its throwaway authentication value at runtime.
 a08bc8ae15904134d15fc289fff0d84a4067e639:tests/test_campaign_default_backend.py:generic-api-key:22
 a08bc8ae15904134d15fc289fff0d84a4067e639:tests/test_campaign_default_backend.py:generic-api-key:43
+
+# History-only false positive: a session lifetime argument name following an
+# authentication-method enum was mistaken for a credential. Arguments are now
+# on separate lines; this entry exempts only the original test call.
+cc3d86f9b6cca9ed3ee186f287ded454fd573207:tests/test_helm_replica_safety.py:generic-api-key:108

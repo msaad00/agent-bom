@@ -4268,6 +4268,7 @@ export interface CostForecast {
   period_end: string | null;
   days_remaining: number | null;
   projected_exhaustion_at: string | null;
+  history_span_hours?: number | null | undefined;
   tenant_id?: string | undefined;
 }
 

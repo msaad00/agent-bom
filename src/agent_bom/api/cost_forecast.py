@@ -31,6 +31,10 @@ _WINDOW_7D = 24.0 * 7.0
 
 _HOURS_PER_DAY = 24.0
 _MIN_RECORDS = 2
+# A daily rate extrapolated from less than this much observed history is noise:
+# minutes of spend scaled to a day (and then to a month) overstates burn by
+# orders of magnitude, so shorter histories report no rate at all.
+_MIN_RATE_SPAN_HOURS = 6.0
 # A runway beyond this many days is reported as "ample" rather than a precise
 # figure — extrapolating a tiny burn rate years out is noise, not signal.
 _MAX_RUNWAY_DAYS = 3650.0
@@ -75,8 +79,8 @@ def _window_spend(timed: Sequence[tuple[datetime, float]], now: datetime, hours:
 
 
 def _daily_rate(spend: float, observed_hours: float) -> float | None:
-    """Spend-per-day from a window, or None when the span is too short to divide."""
-    if observed_hours <= 0.0 or spend <= 0.0:
+    """Spend-per-day from a window, or None when the span is too short to support one."""
+    if observed_hours < _MIN_RATE_SPAN_HOURS or spend <= 0.0:
         return None
     return spend / observed_hours * _HOURS_PER_DAY
 
@@ -114,8 +118,9 @@ def forecast_spend(
     are measured against, and an optional ``now`` for deterministic tests.
 
     The returned ``status`` is one of:
-      - ``"insufficient_history"`` — fewer than two timestamped records; every
-        projection field is null.
+      - ``"insufficient_history"`` — fewer than two timestamped records, or
+        recent records spanning under ``_MIN_RATE_SPAN_HOURS``; every projection
+        field is null. ``history_span_hours`` says how much history exists.
       - ``"budget_exceeded"`` — current spend is already at or over the cap;
         ``days_remaining`` is ``0.0`` and exhaustion is ``"now"``-dated.
       - ``"no_budget"`` — a burn rate exists but no cap is configured, so there
@@ -148,7 +153,12 @@ def forecast_spend(
         "period_end": None,
         "days_remaining": None,
         "projected_exhaustion_at": None,
+        "history_span_hours": None,
     }
+
+    if timed:
+        earliest = min(ts.timestamp() for ts, _ in timed)
+        base["history_span_hours"] = _round(max((now.timestamp() - earliest) / 3600.0, 0.0), 4)
 
     if len(timed) < _MIN_RECORDS:
         base["status"] = "insufficient_history"
@@ -178,8 +188,12 @@ def forecast_spend(
     base["burn_rate_basis"] = basis
 
     if rate is None:
-        # Records exist but all fall outside the trailing windows.
-        base["status"] = "stale"
+        recent_cutoff = now.timestamp() - _WINDOW_7D * 3600.0
+        if any(ts.timestamp() >= recent_cutoff for ts, _ in timed):
+            # Recent spend exists but spans too little time to extrapolate.
+            base["status"] = "insufficient_history"
+        else:
+            base["status"] = "stale"
         return base
 
     base["projected_period_spend_usd"] = _round(total_spend + rate * hours_remaining / _HOURS_PER_DAY)

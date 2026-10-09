@@ -348,8 +348,9 @@ def test_external_identity_scope_mapping_remains_enforced(monkeypatch, tmp_path,
     monkeypatch.setenv("AGENT_BOM_STATE_DIR", str(tmp_path))
     # Cryptographic external-IdP verification has its own OIDC/JWKS tests;
     # this contract exercises the relay after that trusted boundary resolves.
-    monkeypatch.setattr("agent_bom.gateway_server.check_caller_identity", lambda message, policy: ("external-agent", True, None))
-    monkeypatch.setattr("agent_bom.gateway_server.identity_token_scopes", lambda token: scopes)
+    relay_identity = "agent_bom.api.gateway_relay_identity"
+    monkeypatch.setattr(f"{relay_identity}.check_caller_identity", lambda message, policy: ("external-agent", True, None))
+    monkeypatch.setattr(f"{relay_identity}.identity_token_scopes", lambda token: scopes)
     caller, captured = _echo_caller()
     settings = GatewaySettings(
         registry=_registry(),

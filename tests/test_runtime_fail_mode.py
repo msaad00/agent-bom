@@ -14,8 +14,9 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from agent_bom import agent_identity, gateway_server
+from agent_bom import agent_identity
 from agent_bom.api import agent_identity_store
+from agent_bom.api import gateway_relay_tool_policy as relay_tool_policy
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.runtime.fail_mode import (
@@ -163,7 +164,7 @@ def _boom(*_args: Any, **_kwargs: Any) -> Any:
 def test_conditional_rules_eval_error_denies_even_under_fail_open(monkeypatch: pytest.MonkeyPatch) -> None:
     # docs/RUNTIME_FAIL_MODES.md: a conditional-access eval error ALWAYS denies
     # and is never softened by AGENT_BOM_GATEWAY_FAIL_MODE=open.
-    monkeypatch.setattr(gateway_server, "evaluate_conditional_rules", _boom)
+    monkeypatch.setattr(relay_tool_policy, "evaluate_conditional_rules", _boom)
     client = TestClient(create_gateway_app(_settings(fail_mode="open")))
     resp = client.post("/mcp/filesystem", json=_call())
     assert _blocked_source(resp) == "conditional_access", resp.text
@@ -172,7 +173,7 @@ def test_conditional_rules_eval_error_denies_even_under_fail_open(monkeypatch: p
 def test_plugin_eval_error_follows_fail_mode_knob(monkeypatch: pytest.MonkeyPatch) -> None:
     # Policy plugins DO follow the knob: fail-open forwards on a plugin engine
     # error, fail-closed denies. (Guards against over-tightening the split.)
-    monkeypatch.setattr(gateway_server, "evaluate_policy_plugins", _boom)
+    monkeypatch.setattr(relay_tool_policy, "evaluate_policy_plugins", _boom)
 
     open_client = TestClient(create_gateway_app(_settings(fail_mode="open")))
     open_resp = open_client.post("/mcp/filesystem", json=_call())

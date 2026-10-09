@@ -588,6 +588,13 @@ module = [
     "agent_bom.api.finding_list_envelope",
     "agent_bom.api.time_window",
     "agent_bom.api.cost_owner",
+    "agent_bom.api.gateway_relay_admission",
+    "agent_bom.api.gateway_relay_context",
+    "agent_bom.api.gateway_relay_identity",
+    "agent_bom.api.gateway_relay_pipeline",
+    "agent_bom.api.gateway_relay_profile",
+    "agent_bom.api.gateway_relay_reachability",
+    "agent_bom.api.gateway_relay_tool_policy",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

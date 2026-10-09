@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The gateway `/mcp/{server}` relay now runs as an ordered pipeline of named, typed stages (request admission, identity, runtime profile, edge/spend/fleet admission, layered tool policy, forward) that pass explicit request state instead of sharing one 1,464-line closure. Status codes, response bodies, headers, audit records and metrics are unchanged.
+
 ## [0.108.3] - 2026-10-08
 
 ### Performance

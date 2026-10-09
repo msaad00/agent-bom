@@ -873,7 +873,7 @@ def _check_1_15(project_id: str) -> CISCheckResult:
             missing = required - categories
             if missing:
                 result.status = CheckStatus.FAIL
-                result.evidence = f"Essential contacts configured but missing categories: {', '.join(missing)}"
+                result.evidence = f"Essential contacts configured but missing categories: {', '.join(sorted(missing))}"
             else:
                 result.status = CheckStatus.PASS
                 result.evidence = (
@@ -919,7 +919,7 @@ def _check_2_1(project_id: str) -> CISCheckResult:
             missing = {"DATA_READ", "DATA_WRITE"} - log_types
             if missing:
                 result.status = CheckStatus.FAIL
-                result.evidence = f"Audit log types not enabled for allServices: {', '.join(missing)}"
+                result.evidence = f"Audit log types not enabled for allServices: {', '.join(sorted(missing))}"
             else:
                 result.status = CheckStatus.PASS
                 result.evidence = "DATA_READ and DATA_WRITE audit logs enabled for allServices."

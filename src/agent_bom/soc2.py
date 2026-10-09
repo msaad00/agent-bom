@@ -2,8 +2,10 @@
 
 Maps agent-bom blast radius findings to the AICPA SOC 2 Trust Services
 Criteria relevant to software supply chain security.  Every finding
-triggers at minimum CC7.1 (anomaly detection) and CC9.1 (risk mitigation)
-since any CVE in an AI agent dependency tree requires both.
+triggers at minimum CC9.1 (risk mitigation) and CC9.2 (vendor risk).
+CC7.1 (detection of new vulnerabilities and configuration changes) is a
+detective criterion: the scan itself evidences it (see
+``evidence.control_modes``), so findings are never tagged onto it.
 
 Reference: https://www.aicpa.org/resources/landing/system-and-organization-controls-soc-suite-of-services
 """
@@ -12,14 +14,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
-from agent_bom.constants import high_risk_severities
+from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
 
-_HIGH_RISK = high_risk_severities()
 
 # ─── Catalog ──────────────────────────────────────────────────────────────────
 
@@ -33,10 +33,10 @@ SOC2_TSC: dict[str, str] = {
     # CC6 — Logical and physical access controls
     "CC6.1": "Logical/physical access restriction",
     "CC6.6": "External access-boundary protection",
-    "CC6.8": "Malicious/unauthorized software controls",
+    "CC6.8": "Unauthorized/malicious software prevention and detection",
     # CC7 — System operations
-    "CC7.1": "Anomaly and event detection",
-    "CC7.2": "Security-event monitoring",
+    "CC7.1": "Vulnerability and configuration-change detection",
+    "CC7.2": "System-component anomaly monitoring",
     "CC7.4": "Security-incident response",
     # CC8 — Change management
     "CC8.1": "Change authorization and control",
@@ -53,23 +53,21 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return sorted SOC 2 TSC codes applicable to this blast radius.
 
     Rules:
-    - CC7.1:  Always — anomaly detection triggered by vulnerability.
     - CC9.1:  Always — risk mitigation needed for any CVE.
     - CC9.2:  Always — vendor/partner risk management (third-party package).
     - CC6.1:  Credentials exposed (access control concern).
     - CC6.6:  EXECUTE-capable tools (boundary enforcement needed).
-    - CC6.8:  HIGH+ severity (malicious software risk).
-    - CC7.2:  AI framework package (system component monitoring).
+    - CC6.8:  Package is known malicious (unauthorized/malicious software).
     - CC7.4:  KEV vulnerability (incident response needed).
     - CC8.1:  Fixable vulnerability (change management for remediation).
+
+    CC7.1 is detective (evidenced by the scan) and CC7.2 needs runtime anomaly
+    evidence a dependency finding does not carry; neither is tagged here.
     """
     tags: set[str] = {
-        "CC7.1",  # always — anomaly detection
         "CC9.1",  # always — risk mitigation
         "CC9.2",  # always — vendor risk management
     }
-
-    is_high = br.vulnerability.severity in _HIGH_RISK
 
     has_exec = False
     for tool in br.exposed_tools:
@@ -85,13 +83,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if has_exec:
         tags.add("CC6.6")
 
-    # CC6.8 — malicious software: HIGH+ severity
-    if is_high:
+    # CC6.8 — unauthorized/malicious software: known-malicious package
+    if br.package.is_malicious:
         tags.add("CC6.8")
-
-    # CC7.2 — component monitoring: AI framework package
-    if br.package.name.lower() in _AI_PACKAGES:
-        tags.add("CC7.2")
 
     # CC7.4 — incident response: KEV (active exploitation)
     if br.vulnerability.is_kev:
@@ -107,11 +101,11 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
         tags.update(controls_for_cwes(br.vulnerability.cwe_ids, "soc2"))
 
-    return sorted(tags)
+    return sorted(finding_taggable_controls("soc2_tags", tags))
 
 
 def soc2_label(code: str) -> str:
-    """Return human-readable label, e.g. 'CC7.1 Detection and monitoring of anomalies and events'."""
+    """Return human-readable label, e.g. 'CC7.1 Vulnerability and configuration-change detection'."""
     name = SOC2_TSC.get(code, "Unknown")
     return f"{code} {name}"
 

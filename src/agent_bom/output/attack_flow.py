@@ -225,7 +225,7 @@ def build_attack_flow(
         agents: The agents list from to_json() output.
         cve: Filter to a specific CVE ID.
         severity: Filter by severity (critical/high/medium/low).
-        framework: Filter by framework tag (e.g. "LLM05", "AML.T0010").
+        framework: Filter by framework tag (e.g. "LLM03", "AML.T0010").
         agent_name: Filter to blast radii affecting a specific agent.
         context_graph_data: Optional context graph dict. When provided,
             lateral movement edges (orange dashed) are overlaid on the

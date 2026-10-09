@@ -20,8 +20,8 @@ def test_training_run_baseline_tags():
     run = TrainingRun(name="test", framework="mlflow")
     tag_training_run(run)
     assert "NIST_AI_RMF" in run.compliance_tags
-    assert "MAP-3.5" in run.compliance_tags["NIST_AI_RMF"]
-    assert "GOVERN-1.7" in run.compliance_tags["NIST_AI_RMF"]
+    assert "MAP-4.1" in run.compliance_tags["NIST_AI_RMF"]
+    assert "GOVERN-6.1" in run.compliance_tags["NIST_AI_RMF"]
 
 
 def test_training_run_unsafe_serialization_tags():
@@ -29,7 +29,7 @@ def test_training_run_unsafe_serialization_tags():
     run.security_flags.append({"type": "UNSAFE_SERIALIZATION", "severity": "HIGH"})
     tag_training_run(run)
     assert "OWASP_LLM" in run.compliance_tags
-    assert "LLM03 Training Data Poisoning" in run.compliance_tags["OWASP_LLM"]
+    assert "LLM04 Data and Model Poisoning" in run.compliance_tags["OWASP_LLM"]
     assert "MITRE_ATLAS" in run.compliance_tags
     assert "AML.T0020 Poison Training Data" in run.compliance_tags["MITRE_ATLAS"]
 
@@ -38,26 +38,26 @@ def test_training_run_missing_provenance_tags():
     run = TrainingRun(name="test", framework="wandb")
     run.security_flags.append({"type": "MISSING_PROVENANCE", "severity": "MEDIUM"})
     tag_training_run(run)
-    assert "LLM03 Training Data Poisoning" in run.compliance_tags["OWASP_LLM"]
+    assert "LLM04 Data and Model Poisoning" in run.compliance_tags["OWASP_LLM"]
     assert "AML.T0020 Poison Training Data" in run.compliance_tags["MITRE_ATLAS"]
-    assert "MAP-3.5" in run.compliance_tags["NIST_AI_RMF"]
-    assert "GOVERN-1.7" in run.compliance_tags["NIST_AI_RMF"]
+    assert "MAP-4.1" in run.compliance_tags["NIST_AI_RMF"]
+    assert "GOVERN-6.1" in run.compliance_tags["NIST_AI_RMF"]
 
 
 def test_training_run_exposed_credentials_tags():
     run = TrainingRun(name="test", framework="kubeflow")
     run.security_flags.append({"type": "EXPOSED_CREDENTIALS", "severity": "HIGH"})
     tag_training_run(run)
-    assert "LLM03 Training Data Poisoning" in run.compliance_tags["OWASP_LLM"]
-    assert "GOVERN-1.7" in run.compliance_tags["NIST_AI_RMF"]
+    assert "LLM02 Sensitive Information Disclosure" in run.compliance_tags["OWASP_LLM"]
+    assert "GOVERN-6.1" in run.compliance_tags["NIST_AI_RMF"]
 
 
 def test_training_run_missing_requirements_tags():
     run = TrainingRun(name="test", framework="mlflow")
     run.security_flags.append({"type": "MISSING_REQUIREMENTS", "severity": "MEDIUM"})
     tag_training_run(run)
-    assert "MAP-3.5" in run.compliance_tags["NIST_AI_RMF"]
-    assert "GOVERN-1.7" in run.compliance_tags["NIST_AI_RMF"]
+    assert "MAP-4.1" in run.compliance_tags["NIST_AI_RMF"]
+    assert "GOVERN-6.1" in run.compliance_tags["NIST_AI_RMF"]
 
 
 def test_training_run_multiple_flags_dedup():
@@ -67,15 +67,15 @@ def test_training_run_multiple_flags_dedup():
     run.security_flags.append({"type": "MISSING_PROVENANCE", "severity": "MEDIUM"})
     tag_training_run(run)
     # Both map to LLM03, should appear once
-    assert run.compliance_tags["OWASP_LLM"].count("LLM03 Training Data Poisoning") == 1
+    assert run.compliance_tags["OWASP_LLM"].count("LLM04 Data and Model Poisoning") == 1
     # Both map to MAP-3.5 (plus baseline), should appear once
-    assert run.compliance_tags["NIST_AI_RMF"].count("MAP-3.5") == 1
+    assert run.compliance_tags["NIST_AI_RMF"].count("MAP-4.1") == 1
 
 
 def test_training_run_no_flags_still_has_baseline():
     run = TrainingRun(name="clean-run", framework="mlflow")
     tag_training_run(run)
-    assert run.compliance_tags["NIST_AI_RMF"] == ["MAP-3.5", "GOVERN-1.7"]
+    assert run.compliance_tags["NIST_AI_RMF"] == ["MAP-4.1", "GOVERN-6.1"]
     assert "OWASP_LLM" not in run.compliance_tags
 
 
@@ -95,24 +95,24 @@ def test_dataset_baseline_tags():
     ds = DatasetInfo(name="test-ds")
     tag_dataset(ds)
     assert "EU_AI_ACT" in ds.compliance_tags
-    assert "ART-10 Data Governance" in ds.compliance_tags["EU_AI_ACT"]
-    assert "MAP-3.5" in ds.compliance_tags["NIST_AI_RMF"]
+    assert "ART-10 Data and Data Governance" in ds.compliance_tags["EU_AI_ACT"]
+    assert "MAP-4.1" in ds.compliance_tags["NIST_AI_RMF"]
 
 
 def test_dataset_unlicensed_tags():
     ds = DatasetInfo(name="unlicensed")
     ds.security_flags.append({"type": "UNLICENSED_DATASET", "severity": "MEDIUM"})
     tag_dataset(ds)
-    assert "LLM03 Training Data Poisoning" in ds.compliance_tags["OWASP_LLM"]
-    assert "ART-10 Data Governance" in ds.compliance_tags["EU_AI_ACT"]
+    assert "LLM04 Data and Model Poisoning" in ds.compliance_tags["OWASP_LLM"]
+    assert "ART-10 Data and Data Governance" in ds.compliance_tags["EU_AI_ACT"]
 
 
 def test_dataset_no_card_tags():
     ds = DatasetInfo(name="no-card")
     ds.security_flags.append({"type": "NO_DATASET_CARD", "severity": "LOW"})
     tag_dataset(ds)
-    assert "ART-10 Data Governance" in ds.compliance_tags["EU_AI_ACT"]
-    assert "MAP-3.5" in ds.compliance_tags["NIST_AI_RMF"]
+    assert "ART-10 Data and Data Governance" in ds.compliance_tags["EU_AI_ACT"]
+    assert "MAP-4.1" in ds.compliance_tags["NIST_AI_RMF"]
 
 
 def test_dataset_unversioned_data_tags():
@@ -120,7 +120,7 @@ def test_dataset_unversioned_data_tags():
     ds.security_flags.append({"type": "UNVERSIONED_DATA", "severity": "LOW"})
     tag_dataset(ds)
     assert "AML.T0020 Poison Training Data" in ds.compliance_tags["MITRE_ATLAS"]
-    assert "MAP-3.5" in ds.compliance_tags["NIST_AI_RMF"]
+    assert "MAP-4.1" in ds.compliance_tags["NIST_AI_RMF"]
 
 
 def test_dataset_remote_data_source_tags():
@@ -133,8 +133,8 @@ def test_dataset_remote_data_source_tags():
 def test_dataset_no_flags_still_has_baseline():
     ds = DatasetInfo(name="clean-ds")
     tag_dataset(ds)
-    assert ds.compliance_tags["EU_AI_ACT"] == ["ART-10 Data Governance"]
-    assert ds.compliance_tags["NIST_AI_RMF"] == ["MAP-3.5"]
+    assert ds.compliance_tags["EU_AI_ACT"] == ["ART-10 Data and Data Governance"]
+    assert ds.compliance_tags["NIST_AI_RMF"] == ["MAP-4.1"]
     assert "OWASP_LLM" not in ds.compliance_tags
 
 
@@ -181,7 +181,7 @@ def test_scan_training_pipelines_wandb_tags(tmp_path):
     result = scan_training_pipelines([path])
     run = result.training_runs[0]
     assert "OWASP_LLM" in run.compliance_tags
-    assert "LLM03 Training Data Poisoning" in run.compliance_tags["OWASP_LLM"]
+    assert "LLM04 Data and Model Poisoning" in run.compliance_tags["OWASP_LLM"]
 
 
 def test_scan_training_pipelines_kubeflow_tags(tmp_path):
@@ -227,8 +227,8 @@ def test_scan_datasets_unlicensed_tags(tmp_path):
     result = scan_datasets([path])
     ds = result.datasets[0]
     assert "OWASP_LLM" in ds.compliance_tags
-    assert "LLM03 Training Data Poisoning" in ds.compliance_tags["OWASP_LLM"]
-    assert "ART-10 Data Governance" in ds.compliance_tags["EU_AI_ACT"]
+    assert "LLM04 Data and Model Poisoning" in ds.compliance_tags["OWASP_LLM"]
+    assert "ART-10 Data and Data Governance" in ds.compliance_tags["EU_AI_ACT"]
 
 
 def test_scan_datasets_dvc_unversioned_tags(tmp_path):

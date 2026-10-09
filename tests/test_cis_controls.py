@@ -74,9 +74,9 @@ def test_high_severity_triggers_unauthorized_software():
 
 def test_ai_package_triggers_library_allowlist():
     tags = tag_blast_radius(_br(pkg_name="openai"))
-    assert "CIS-02.7" in tags
+    assert "CIS-02.6" in tags
     tags_normal = tag_blast_radius(_br(pkg_name="flask"))
-    assert "CIS-02.7" not in tags_normal
+    assert "CIS-02.6" not in tags_normal
 
 
 def test_fixable_triggers_patch_management():
@@ -102,7 +102,7 @@ def test_creds_trigger_secure_development():
 
 def test_exec_tools_trigger_hardening():
     tags = tag_blast_radius(_br(tools=[MCPTool(name="exec", description="execute shell command")]))
-    assert "CIS-16.11" in tags
+    assert "CIS-16.7" in tags
 
 
 def test_kev_triggers_code_security():

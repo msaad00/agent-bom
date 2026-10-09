@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import re
 
+from agent_bom.runtime.credential_tokens import OPENAI_KEY as _OPENAI_KEY
+from agent_bom.runtime.credential_tokens import token as _token
+
 # ─── Credential patterns in tool responses ───────────────────────────────────
 
 # Each pattern: (name, compiled regex)
 CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Agent-Bom API Key", re.compile(r"(?<![A-Za-z0-9_-])abom_[A-Za-z0-9_-]{43,}(?![A-Za-z0-9_-])")),
-    ("AWS Access Key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("AWS Access Key", re.compile(_token("AKIA", 4, "A-Za-z0-9") + r"[0-9A-Z]{16}(?![A-Za-z0-9])")),
     (
         "AWS Secret Key",
         re.compile(
@@ -22,12 +25,12 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
             re.IGNORECASE,
         ),
     ),
-    ("GitHub Token", re.compile(r"gh[pousr]_[A-Za-z0-9_]{36,}")),
-    ("GitLab Token", re.compile(r"glpat-[A-Za-z0-9\-_]{20,}")),
-    ("OpenAI API Key", re.compile(r"sk-(?:proj-)?[A-Za-z0-9\-_]{20,}")),
-    ("Anthropic API Key", re.compile(r"sk-ant-[A-Za-z0-9\-_]{20,}")),
-    ("Slack Token", re.compile(r"xox[bporas]-[A-Za-z0-9\-]{10,}")),
-    ("Stripe Key", re.compile(r"[sr]k_(live|test)_[A-Za-z0-9]{20,}")),
+    ("GitHub Token", re.compile(_token("gh[pousr]_", 4) + r"[A-Za-z0-9_]{36,}")),
+    ("GitLab Token", re.compile(_token("glpat-", 6) + r"[A-Za-z0-9\-_]{20,}")),
+    ("OpenAI API Key", _OPENAI_KEY),
+    ("Anthropic API Key", re.compile(_token("sk-ant-", 7) + r"[A-Za-z0-9\-_]{20,}")),
+    ("Slack Token", re.compile(_token("xox[bporas]-", 5) + r"[A-Za-z0-9\-]{10,}")),
+    ("Stripe Key", re.compile(_token("[sr]k_", 3) + r"(live|test)_[A-Za-z0-9]{20,}")),
     (
         "Generic Bearer Token",
         # An explicit bearer header is credential evidence at any length.
@@ -37,23 +40,24 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Private Key Block", re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----")),
     # A DSN is a credential only when its userinfo carries a password; a bare
     # `postgres://host/db` is a locator. `${VAR}`/`<...>`/`{{...}}` passwords are
-    # templated references, not literals.
+    # templated references, not literals. A `${USER:-default}` user is a shell
+    # default expansion whose `:` is not a userinfo password separator.
     (
         "Connection String",
         re.compile(
             r"\b(?:postgres(?:ql)?|mongodb(?:\+srv)?|mysql|mariadb|rediss?|amqps?|mssql|sqlserver|oracle|clickhouse|cockroachdb)"
-            r"://[^:\s/@'\"]+:(?!\$\{|<|\{\{)[^@\s/'\"]+@[^\s'\"]+",
+            r"://(?:\$\{[^}\s]*\}|(?!\$\{)[^:\s/@'\"]+):(?!\$\{|<|\{\{)[^@\s/'\"]+@[^\s'\"]+",
             re.IGNORECASE,
         ),
     ),
     # Additional credential patterns for parity
-    ("Google API Key", re.compile(r"AIza[0-9A-Za-z\-_]{35}")),
-    ("Google OAuth Token", re.compile(r"ya29\.[0-9A-Za-z\-_]+")),
-    ("Twilio API Key", re.compile(r"SK[0-9a-fA-F]{32}")),
-    ("SendGrid API Key", re.compile(r"SG\.[A-Za-z0-9\-_]{22}\.[A-Za-z0-9\-_]{43}")),
-    ("Mailgun API Key", re.compile(r"key-[0-9a-zA-Z]{32}")),
-    ("Square Access Token", re.compile(r"sq0atp-[0-9A-Za-z\-_]{22}")),
-    ("Square OAuth Secret", re.compile(r"sq0csp-[0-9A-Za-z\-_]{43}")),
+    ("Google API Key", re.compile(_token("AIza", 4) + r"[0-9A-Za-z\-_]{35}")),
+    ("Google OAuth Token", re.compile(_token(r"ya29\.", 5) + r"[0-9A-Za-z\-_]+")),
+    ("Twilio API Key", re.compile(_token("SK", 2, "A-Za-z0-9") + r"[0-9a-fA-F]{32}(?![A-Za-z0-9])")),
+    ("SendGrid API Key", re.compile(_token(r"SG\.", 3) + r"[A-Za-z0-9\-_]{22}\.[A-Za-z0-9\-_]{43}")),
+    ("Mailgun API Key", re.compile(_token("key-", 4) + r"[0-9a-zA-Z]{32}")),
+    ("Square Access Token", re.compile(_token("sq0atp-", 7) + r"[0-9A-Za-z\-_]{22}")),
+    ("Square OAuth Secret", re.compile(_token("sq0csp-", 7) + r"[0-9A-Za-z\-_]{43}")),
     (
         "Heroku API Key",
         re.compile(
@@ -61,16 +65,16 @@ CREDENTIAL_PATTERNS: list[tuple[str, re.Pattern]] = [
             re.IGNORECASE,
         ),
     ),
-    ("npm Token", re.compile(r"npm_[A-Za-z0-9]{36}")),
-    ("PyPI Token", re.compile(r"pypi-[A-Za-z0-9\-_]{100,}")),
-    ("Discord Bot Token", re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}")),
-    ("Telegram Bot Token", re.compile(r"\d{8,10}:[A-Za-z0-9_-]{35}")),
+    ("npm Token", re.compile(_token("npm_", 4) + r"[A-Za-z0-9]{36}")),
+    ("PyPI Token", re.compile(_token("pypi-", 5) + r"[A-Za-z0-9\-_]{100,}")),
+    ("Discord Bot Token", re.compile(_token("[MN]", 1) + r"[A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}")),
+    ("Telegram Bot Token", re.compile(_token(r"\d", 1, "A-Za-z0-9") + r"\d{7,9}:[A-Za-z0-9_-]{35}")),
     ("Azure Storage Key", re.compile(r"DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{88}")),
     ("Datadog API Key", re.compile(r"(?:DD_API_KEY|datadog[_-]?api[_-]?key)\s*[=:]\s*['\"]?[a-f0-9]{32}", re.IGNORECASE)),
-    ("Supabase Key", re.compile(r"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
-    ("JWT Token", re.compile(r"eyJ[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
-    ("Shopify Access Token", re.compile(r"shpat_[A-Fa-f0-9]{32}")),
-    ("Databricks Token", re.compile(r"dapi[a-f0-9]{32}")),
+    ("Supabase Key", re.compile(_token("eyJ", 3) + r"hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
+    ("JWT Token", re.compile(_token("eyJ", 3) + r"[A-Za-z0-9\-_]+\.eyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+")),
+    ("Shopify Access Token", re.compile(_token("shpat_", 6) + r"[A-Fa-f0-9]{32}")),
+    ("Databricks Token", re.compile(_token("dapi", 4) + r"[a-f0-9]{32}")),
     ("Snowflake JWT", re.compile(r"(?:snowflake_jwt|sf_token)\s*[=:]\s*['\"]?[A-Za-z0-9\-_.]{20,}", re.IGNORECASE)),
     ("HashiCorp Vault Token", re.compile(r"\bhv[sb]\.[A-Za-z0-9]{24,}")),
     ("AWS Session Token", re.compile(r"(?:aws_session_token|AWS_SESSION_TOKEN)\s*[=:]\s*['\"]?[A-Za-z0-9/+=]{100,}")),

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
-from agent_bom.proxy_audit import ProxyMetrics
+if TYPE_CHECKING:
+    from agent_bom.proxy_audit import ProxyMetrics
 
 _MAX_DECISION_CHARS = 56
 

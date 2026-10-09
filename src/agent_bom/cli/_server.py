@@ -243,7 +243,9 @@ def _enforce_writable_control_plane_state(command: str) -> None:
     """Fail once, before app import, when durable SQLite state is unwritable."""
     from agent_bom.api.durable_store import select_backend, sqlite_path
 
-    if select_backend() != "sqlite":
+    backend = select_backend()
+    # Jobs may still use SQLite when lifecycle stores are ephemeral.
+    if backend != "sqlite" and not (backend == "memory" and env_raw("AGENT_BOM_DB")):
         return
     raw_path = sqlite_path(create_parent=False)
     if raw_path == ":memory:":

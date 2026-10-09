@@ -504,13 +504,13 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 | OWASP | MCP Top 10 (2025) | 10 / 10 | 10 | Applicability overlay (not scored): risks evidenced by observed MCP findings |
 | OWASP | Agentic Top 10 (2026) | 10 / 10 | 10 | Applicability overlay (not scored): risks evidenced by observed agentic findings |
 | OWASP | AISVS v1.0 | 9 checks | ~50 verification reqs | Programmatically verifiable subset (AI-4/5/6/7/8 categories) |
-| NIST / FedRAMP | AI RMF 1.0 | 14 subcategories | ~70 | Govern / Map / Measure / Manage controls relevant to AI supply chain + MCP |
+| NIST / FedRAMP | AI RMF 1.0 | 10 subcategories | ~70 | Govern / Map / Measure / Manage controls relevant to AI supply chain + MCP |
 | NIST / FedRAMP | CSF 2.0 | 15 categories | ~108 | Supply-chain, identity, asset, monitoring categories |
 | NIST / FedRAMP | 800-53 Rev 5 | 29 controls | ~1,006 | Vulnerability-driven mapping (RA-5, SI-2, etc.); not a complete catalog |
 | NIST / FedRAMP | FedRAMP Moderate | 25 controls | ~325 | Subset of 800-53 controls in the Moderate baseline |
 | MITRE | ATLAS | 65 techniques | ~90 | Applicability overlay (not scored): LLM/AI techniques — prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse — that the observed findings make applicable |
 | MITRE | ATT&CK Enterprise | 691 techniques | ~700 | Applicability overlay (not scored): techniques MITRE's CWE → CAPEC → ATT&CK data associates with the weaknesses observed in the estate |
-| Regulatory | EU AI Act | 6 articles | ~113 | Articles 5/6/9/10/15/17 (prohibited practices, high-risk classification, risk mgmt, data governance, accuracy/cybersecurity, QMS) |
+| Regulatory | EU AI Act | 6 articles | ~113 | Articles 9/10/12/14/15/17 (risk mgmt, data governance, record-keeping, human oversight, accuracy/robustness/cybersecurity, QMS); technical evidence only, not a legal classification |
 | Regulatory | ISO/IEC 27001:2022 | 9 Annex A controls | 93 | Supplier, vulnerability, cryptography, secure-dev, evidence collection |
 | Regulatory | SOC 2 TSC | 9 criteria | ~64 | Common Criteria 6.x / 7.x / 8.x / 9.x (access, monitoring, change mgmt, vendor risk) |
 | Regulatory | CIS Controls v8 | 10 safeguards | 153 | Software inventory, vulnerability mgmt, secure-dev (CIS 02 / 07 / 16) |

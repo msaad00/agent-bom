@@ -77,11 +77,11 @@ Review the tools the server exposes. Key risk indicators:
 
 | Tool pattern | Risk | OWASP | Why |
 |-------------|------|-------|-----|
-| `execute_command`, `run_shell`, `bash` | CRITICAL | LLM02 | Arbitrary command execution |
-| `read_file`, `write_file` | HIGH | LLM07 | File system access |
-| `query_database`, `execute_sql` | HIGH | LLM02 | Database access |
-| `send_email`, `send_message` | MEDIUM | LLM08 | Outbound communication |
-| `search`, `read_url` | LOW | LLM07 | Information gathering |
+| `execute_command`, `run_shell`, `bash` | CRITICAL | LLM05 | Arbitrary command execution |
+| `read_file`, `write_file` | HIGH | LLM02 | File system access |
+| `query_database`, `execute_sql` | HIGH | LLM05 | Database access |
+| `send_email`, `send_message` | MEDIUM | LLM06 | Outbound communication |
+| `search`, `read_url` | LOW | LLM02 | Information gathering |
 
 **Decision point**: If the server exposes > 5 tools (excessive agency) or shell/exec tools, consider:
 - Do you actually need all those tools?

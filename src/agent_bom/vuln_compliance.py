@@ -15,7 +15,7 @@ so both taggers agree by construction.
 
 from __future__ import annotations
 
-from agent_bom.constants import AI_PACKAGES, TRAINING_DATA_PACKAGES
+from agent_bom.constants import AI_PACKAGES, TRAINING_DATA_PACKAGES, VECTOR_STORE_PACKAGES
 from agent_bom.evidence.control_modes import finding_taggable_controls
 from agent_bom.framework_mapping import controls_for_cwes, iso_controls_for_cwes_via_nist
 from agent_bom.models import Package, Severity, Vulnerability
@@ -40,14 +40,14 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
 
     tags: dict[str, list[str]] = {}
 
-    # ── OWASP Top 10 for LLM Applications ──────────────────────────────
+    # ── OWASP Top 10 for LLM Applications (2025) ───────────────────────
     owasp_llm: list[str] = []
     if is_ai:
-        owasp_llm.append("LLM05")
+        owasp_llm.append("LLM03")  # Supply Chain
     if is_training:
-        owasp_llm.append("LLM03")
-    if is_ai and is_high:
-        owasp_llm.append("LLM04")
+        owasp_llm.append("LLM04")  # Data and Model Poisoning
+    if pkg_lower in VECTOR_STORE_PACKAGES:
+        owasp_llm.append("LLM08")  # Vector and Embedding Weaknesses
     if cwe_ids:
         for t in controls_for_cwes(cwe_ids, "owasp_llm", normalize=False):
             if t not in owasp_llm:
@@ -68,12 +68,10 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         tags["atlas"] = sorted(set(atlas))
 
     # ── NIST AI RMF ─────────────────────────────────────────────────────
-    nist_rmf: list[str] = ["GOVERN-1.7", "MAP-3.5"]
+    nist_rmf: list[str] = ["GOVERN-6.1", "MAP-4.1"]
     if is_ai and is_high:
-        nist_rmf.append("MEASURE-2.5")
-    if has_fix:
-        nist_rmf.append("MEASURE-2.9")
-    if is_kev:
+        nist_rmf.append("MEASURE-2.7")
+    if has_fix or is_kev:
         nist_rmf.append("MANAGE-1.3")
     tags["nist_ai_rmf"] = sorted(set(nist_rmf))
 
@@ -86,7 +84,7 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if has_fix:
         nist_csf.append("RS.AN-03")
     if is_kev:
-        nist_csf.append("RS.MI-02")
+        nist_csf.append("RS.MI-01")
     if cwe_ids:
         for t in controls_for_cwes(cwe_ids, "nist_csf", normalize=False):
             if t not in nist_csf:
@@ -119,7 +117,7 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     if is_high:
         cis.append("CIS-02.3")
     if is_ai:
-        cis.append("CIS-02.7")
+        cis.append("CIS-02.6")
     if has_fix:
         cis.append("CIS-07.4")
     if is_kev:
@@ -147,11 +145,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     tags["iso_27001"] = sorted(set(iso))
 
     # ── SOC 2 TSC ───────────────────────────────────────────────────────
-    soc2: list[str] = ["CC7.1", "CC9.1", "CC9.2"]
-    if is_high:
+    soc2: list[str] = ["CC9.1", "CC9.2"]
+    if is_malicious:
         soc2.append("CC6.8")
-    if is_ai:
-        soc2.append("CC7.2")
     if is_kev:
         soc2.append("CC7.4")
     if has_fix:
@@ -160,14 +156,14 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
         for t in controls_for_cwes(cwe_ids, "soc2", normalize=False):
             if t not in soc2:
                 soc2.append(t)
-    tags["soc2"] = sorted(set(soc2))
+    tags["soc2"] = sorted(finding_taggable_controls("soc2_tags", soc2))
 
     # ── EU AI Act ───────────────────────────────────────────────────────
     eu: list[str] = ["ART-15", "ART-9"]
-    if is_ai:
-        eu.append("ART-6")
     if has_fix:
         eu.append("ART-17")
+    if cwe_ids:
+        eu.extend(controls_for_cwes(cwe_ids, "eu_ai_act", normalize=False))
     tags["eu_ai_act"] = sorted(set(eu))
 
     # ── OWASP MCP Top 10 ───────────────────────────────────────────────
@@ -180,13 +176,9 @@ def tag_vulnerability(vuln: Vulnerability, package: Package) -> dict[str, list[s
     agentic: list[str] = []
     # ASI04 (Supply Chain) — always relevant for dependency vulns
     agentic.append("ASI04")
-    if is_ai:
-        agentic.append("ASI01")  # Excessive Agency
     if is_malicious:
-        agentic.append("ASI02")  # Tool Misuse
-        agentic.append("ASI10")  # Rogue Agent Persistence
-    if is_kev:
-        agentic.append("ASI09")  # Human-Agent Trust Exploitation
+        agentic.append("ASI02")  # Tool Misuse and Exploitation
+        agentic.append("ASI10")  # Rogue Agents
     if agentic:
         tags["owasp_agentic"] = sorted(set(agentic))
 

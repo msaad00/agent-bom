@@ -16,7 +16,7 @@ Usage::
         line = f"{f['file']}:{f['line']} [{f['severity']}] {f['type']}"
 
 Compliance:
-- OWASP LLM01 — hardcoded credentials enable account takeover
+- OWASP LLM02 (2025) — sensitive information disclosure
 - CIS Controls 16.4 — encrypt or remove hardcoded secrets
 - SOC 2 CC6.1 — logical access security
 """

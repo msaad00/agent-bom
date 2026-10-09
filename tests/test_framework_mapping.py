@@ -94,7 +94,7 @@ def test_cis_tags_unchanged():
     # so a finding no longer fails them (agent_bom.evidence.control_modes).
     assert cis_controls.tag_blast_radius(_representative_br()) == [
         "CIS-02.3",
-        "CIS-02.7",
+        "CIS-02.6",
         "CIS-07.4",
         "CIS-16.1",
         "CIS-16.12",
@@ -141,20 +141,20 @@ def test_iso_27001_tags_use_the_nist_olir_spine():
 
 
 def test_owasp_tags_unchanged():
+    # OWASP LLM Top 10 2025: LLM02 sensitive info (creds / CWE-798), LLM03
+    # supply chain, LLM05 improper output handling (CWE-89).
     assert owasp.tag_blast_radius(_representative_br()) == [
         "LLM02",
-        "LLM04",
+        "LLM03",
         "LLM05",
-        "LLM06",
     ]
 
 
 def test_soc2_tags_unchanged():
+    # CC7.1 is DETECTIVE (evidenced by the scan); CC7.2 needs runtime anomaly
+    # evidence; CC6.8 needs a malicious package, not a severity.
     assert soc2.tag_blast_radius(_representative_br()) == [
         "CC6.1",
-        "CC6.8",
-        "CC7.1",
-        "CC7.2",
         "CC7.4",
         "CC8.1",
         "CC9.1",
@@ -174,7 +174,7 @@ def test_nist_csf_tags_unchanged():
         "PR.AA-01",
         "PR.DS-01",
         "RS.AN-03",
-        "RS.MI-02",
+        "RS.MI-01",
     ]
 
 
@@ -223,9 +223,9 @@ def test_pci_dss_descriptors_are_own_wording_not_copyrighted_text():
 def test_vuln_compliance_tags_unchanged():
     br = _representative_br()
     assert vuln_compliance.tag_vulnerability(br.vulnerability, br.package) == {
-        "owasp_llm": ["LLM02", "LLM04", "LLM05"],
+        "owasp_llm": ["LLM03", "LLM05"],
         "atlas": ["AML.T0010", "AML.T0043"],
-        "nist_ai_rmf": ["GOVERN-1.7", "MANAGE-1.3", "MAP-3.5", "MEASURE-2.5", "MEASURE-2.9"],
+        "nist_ai_rmf": ["GOVERN-6.1", "MANAGE-1.3", "MAP-4.1", "MEASURE-2.7"],
         # The CVE-intrinsic tagger agrees with the blast-radius taggers by
         # construction: both drop the DETECTIVE controls (evidenced by the scan)
         # and the UNEVALUABLE ones (RA-7 / IR-5), and FedRAMP is derived from the
@@ -237,7 +237,7 @@ def test_vuln_compliance_tags_unchanged():
             "ID.RA-05",
             "PR.DS-01",
             "RS.AN-03",
-            "RS.MI-02",
+            "RS.MI-01",
         ],
         "nist_800_53": ["CM-6", "IR-6", "SI-10", "SI-2", "SI-3", "SI-4", "SI-5", "SR-11", "SR-3", "SR-4"],
         "fedramp": [
@@ -250,7 +250,7 @@ def test_vuln_compliance_tags_unchanged():
             "FedRAMP-SI-5",
             "FedRAMP-SR-3",
         ],
-        "cis": ["CIS-02.3", "CIS-02.7", "CIS-07.4", "CIS-16.1", "CIS-16.12"],
+        "cis": ["CIS-02.3", "CIS-02.6", "CIS-07.4", "CIS-16.1", "CIS-16.12"],
         "iso_27001": [
             "A.5.10",
             "A.5.16",
@@ -265,10 +265,10 @@ def test_vuln_compliance_tags_unchanged():
             "A.8.7",
             "A.8.8",
         ],
-        "soc2": ["CC6.8", "CC7.1", "CC7.2", "CC7.4", "CC8.1", "CC9.1", "CC9.2"],
-        "eu_ai_act": ["ART-15", "ART-17", "ART-6", "ART-9"],
+        "soc2": ["CC7.4", "CC8.1", "CC9.1", "CC9.2"],
+        "eu_ai_act": ["ART-15", "ART-17", "ART-9"],
         "owasp_mcp": ["MCP04"],
-        "owasp_agentic": ["ASI01", "ASI04", "ASI09"],
+        "owasp_agentic": ["ASI04"],
     }
 
 
@@ -329,7 +329,7 @@ def test_controls_for_cwe_resolves_per_framework():
     # CWE-89 (SQL injection) evidences these controls per framework.
     assert fm.controls_for_cwe("CWE-89", "cis") == ["CIS-16.1"]
     assert fm.controls_for_cwe("CWE-89", "nist_800_53") == ["SI-10", "SI-3"]
-    assert fm.controls_for_cwe("CWE-89", "owasp_llm") == ["LLM02"]
+    assert fm.controls_for_cwe("CWE-89", "owasp_llm") == ["LLM05"]
     # Unknown CWE / framework -> empty, never KeyError.
     assert fm.controls_for_cwe("CWE-99999", "cis") == []
     assert fm.controls_for_cwe("CWE-89", "no_such_framework") == []
@@ -476,7 +476,7 @@ def test_reference_only_frameworks_carry_no_copyrighted_title():
     assert a_spec is not None and a_spec.reference_only is True and a_spec.title is None
     # A CIS/SOC2 spec resolves and carries our own (non-official) descriptor.
     assert fm.control_spec("cis", "CIS-07.1").title == "Vulnerability-management program"
-    assert fm.control_spec("soc2", "CC7.1").title == "Anomaly and event detection"
+    assert fm.control_spec("soc2", "CC7.1").title == "Vulnerability and configuration-change detection"
 
 
 # ─── PR3: check -> NIST 800-53 control curation (vendor-asserted) ─────────────

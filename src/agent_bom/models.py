@@ -873,6 +873,10 @@ class Agent:
         return sum(len(s.packages) for s in self.mcp_servers)
 
     @property
+    def total_mcp_servers(self) -> int:
+        return sum(1 for server in self.mcp_servers if server.is_mcp_surface)
+
+    @property
     def total_vulnerabilities(self) -> int:
         return sum(s.total_vulnerabilities for s in self.mcp_servers)
 
@@ -898,10 +902,10 @@ class BlastRadius:
     phantom_tools: list[MCPTool] = field(default_factory=list)  # Registry-only, unverified tools (listed, not scored)
     risk_score: float = 0.0  # 0-10
     ai_risk_context: Optional[str] = None  # AI-native risk explanation when relevant
-    owasp_tags: list[str] = field(default_factory=list)  # OWASP LLM Top 10 codes, e.g. ["LLM05", "LLM06"]
+    owasp_tags: list[str] = field(default_factory=list)  # OWASP LLM Top 10 codes, e.g. ["LLM03", "LLM02"]
     atlas_tags: list[str] = field(default_factory=list)  # MITRE ATLAS technique IDs (AI/ML-specific), e.g. ["AML.T0010"]
     attack_tags: list[str] = field(default_factory=list)  # MITRE ATT&CK Enterprise technique IDs, e.g. ["T1059", "T1190"]
-    nist_ai_rmf_tags: list[str] = field(default_factory=list)  # NIST AI RMF subcategories, e.g. ["MAP-3.5"]
+    nist_ai_rmf_tags: list[str] = field(default_factory=list)  # NIST AI RMF subcategories, e.g. ["MAP-4.1"]
     owasp_mcp_tags: list[str] = field(default_factory=list)  # OWASP MCP Top 10 codes, e.g. ["MCP04", "MCP01"]
     owasp_agentic_tags: list[str] = field(default_factory=list)  # OWASP Agentic Top 10, e.g. ["ASI04"]
     eu_ai_act_tags: list[str] = field(default_factory=list)  # EU AI Act articles, e.g. ["ART-15"]
@@ -1350,7 +1354,7 @@ class AIBOMReport:
         # Package manifests, SBOMs, and container layers reuse MCPServer as a
         # dependency-bearing surface model. They are not MCP servers and must
         # not inflate the public MCP inventory count.
-        return sum(1 for agent in self.agents for server in agent.mcp_servers if server.is_mcp_surface)
+        return sum(agent.total_mcp_servers for agent in self.agents)
 
     @property
     def total_packages(self) -> int:

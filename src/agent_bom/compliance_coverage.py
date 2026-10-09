@@ -234,8 +234,8 @@ TAG_MAPPED_FRAMEWORKS: tuple[ComplianceFrameworkMetadata, ...] = (
         bundled_unit="articles",
         source_standard_size="~113",
         coverage=(
-            "Articles 5/6/9/10/15/17 (prohibited practices, high-risk classification, risk mgmt, "
-            "data governance, accuracy/cybersecurity, QMS)"
+            "Articles 9/10/12/14/15/17 (risk mgmt, data governance, record-keeping, human oversight, "
+            "accuracy/robustness/cybersecurity, QMS); technical evidence only, not a legal classification"
         ),
     ),
     ComplianceFrameworkMetadata(

@@ -115,7 +115,7 @@ def _rule_shell_input(tool_name: str, prop_name: str, prop_schema: dict) -> list
             evidence=f"property `{prop_name}` has type=string with no enum, maxLength, or pattern",
             tool_name=tool_name,
             property_name=prop_name,
-            owasp_tags=("LLM02", "LLM06"),
+            owasp_tags=("LLM05", "LLM06"),
             owasp_mcp_tags=("MCP05",),
             cwe_ids=("CWE-78",),  # OS Command Injection
         )
@@ -141,7 +141,7 @@ def _rule_path_traversal(tool_name: str, prop_name: str, prop_schema: dict) -> l
             evidence=f"property `{prop_name}` has type=string with no pattern constraint",
             tool_name=tool_name,
             property_name=prop_name,
-            owasp_tags=("LLM02",),
+            owasp_tags=("LLM05",),
             owasp_mcp_tags=("MCP05",),
             cwe_ids=("CWE-22",),  # Path Traversal
         )
@@ -167,7 +167,7 @@ def _rule_ssrf(tool_name: str, prop_name: str, prop_schema: dict) -> list[MCPRul
             evidence=f"property `{prop_name}` has type=string with no enum or pattern",
             tool_name=tool_name,
             property_name=prop_name,
-            owasp_tags=("LLM02",),
+            owasp_tags=("LLM05",),
             owasp_mcp_tags=("MCP05",),
             cwe_ids=("CWE-918",),  # SSRF
         )
@@ -193,7 +193,7 @@ def _rule_sql_injection(tool_name: str, prop_name: str, prop_schema: dict) -> li
             evidence=f"property `{prop_name}` has type=string with no enum or pattern",
             tool_name=tool_name,
             property_name=prop_name,
-            owasp_tags=("LLM02",),
+            owasp_tags=("LLM05",),
             owasp_mcp_tags=("MCP05",),
             cwe_ids=("CWE-89",),  # SQL Injection
         )
@@ -220,7 +220,7 @@ def _rule_credential_in_input(tool_name: str, prop_name: str, prop_schema: dict)
             evidence=f"property name `{prop_name}` matches credential pattern",
             tool_name=tool_name,
             property_name=prop_name,
-            owasp_tags=("LLM06",),
+            owasp_tags=("LLM02",),
             owasp_mcp_tags=("MCP01",),
             cwe_ids=("CWE-522",),  # Insufficiently Protected Credentials
         )
@@ -276,7 +276,7 @@ def _rule_weak_description(tool_name: str, prop_name: str | None, prop_schema: d
             evidence=f"tool description length is {len(tool_desc.strip()) if tool_desc else 0}",
             tool_name=tool_name,
             property_name=None,
-            owasp_tags=("LLM02",),
+            owasp_tags=("LLM06",),
             owasp_mcp_tags=("MCP07",),
             cwe_ids=(),
         )

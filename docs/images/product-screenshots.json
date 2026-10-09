@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.3",
-  "captured_at": "2026-10-09T04:56:32.650Z",
-  "source_commit": "776319e8a5128ad947f39f0b2e1d990410847009",
+  "captured_at": "2026-10-09T05:21:12.716Z",
+  "source_commit": "ce5e85fb9adaf2e21223658d3a4e1dfb371ced41",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:1a6330871719099a0816259a3c6630ae5b616c1c804219e9f1d4ec0db574279d",
+  "capture_inputs_sha256": "sha256:c3b0f796a75da45b07bd3a2724c5749d1635fd6271252761826cb3d8842e5a86",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -254,7 +254,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:76354ba91348ec1c5d304ea17bbc5e9a50636e26a6864c7f7c8027c3cd85d1a8"
+      "sha256": "sha256:d8945743b870083ef23e0e82cdaea25617d5ea4a2b353bb263a289ed0d4c4701"
     },
     {
       "presentation": "dark mobile",
@@ -281,7 +281,7 @@
       "page": "/security-graph?lens=attack-path&scan=scan-proof-ai-platform&capture=1",
       "scope": "Prioritized attack path at a 390 by 844 viewport",
       "visible_version": "0.108.3",
-      "sha256": "sha256:43bb0406d6cf48907fcb4da3908103ec2fb5b9d465bb1d55b35f05f81ff5684b"
+      "sha256": "sha256:b4f54151714b0bc6f8755c1a486957d38127ac8c8893d7b2dd167483505763dc"
     },
     {
       "presentation": "dark desktop 1512x811",
@@ -321,7 +321,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded neighborhood and selected evidence in the light theme, with bounded expansion and branch focus",
       "visible_version": "0.108.3",
-      "sha256": "sha256:ec478a951f5bea5babc1be1eb5f84b02267090cdc77afa965e094dc3e303ab85"
+      "sha256": "sha256:0a627ba514cc3d85dcbbe272e7c50cb8c4f76a2ec1b001abaae1e3997bc1c0a1"
     },
     {
       "presentation": "dark responsive 1000x900",
@@ -337,7 +337,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Same nine recorded entities and eight relationships arranged left to right using the Horizontal layout control",
       "visible_version": "0.108.3",
-      "sha256": "sha256:29641105d089c8a934c1bae3d722b6ccd378aa4b44e6ea4156b7cdc9cb0b5d58"
+      "sha256": "sha256:ff56e261af0eb90ce401d86937e02c6dd18cbe8e017617576d7ba8d9786a07e6"
     },
     {
       "presentation": "dark desktop",
@@ -377,7 +377,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
       "visible_version": "0.108.3",
-      "sha256": "sha256:a361ab1b34f357a911a7b0ac8dd5b1fa676a485d6571803a6784957d1cb31635"
+      "sha256": "sha256:0626f3b5159bec5616ef5f64a9bd56a91460111c86ee83fc12a004d040a8f234"
     },
     {
       "presentation": "light desktop",
@@ -385,7 +385,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow in the light theme",
       "visible_version": "0.108.3",
-      "sha256": "sha256:5ba46a6f6fc3b8bdfc12f6a9b1edfe04ad7069452dee5b400e07bf91de035ae1"
+      "sha256": "sha256:0e795a04796f609d798678cd82515a6ca9c80cf0bad024a3404056448bf664c7"
     },
     {
       "presentation": "dark mobile",
@@ -393,7 +393,7 @@
       "page": "/remediation?capture=1",
       "scope": "Fix-first remediation workflow at a 390 by 844 viewport",
       "visible_version": "0.108.3",
-      "sha256": "sha256:9b4f3df95195af5fdc2774fb123e93e97977a48c830ddbfb1ced01bf7dfc57fd"
+      "sha256": "sha256:3a3b5ae5b8f3167d9ab10936b69fe17a57dcc1e38d8518dd3d199ea105903867"
     }
   ]
 }

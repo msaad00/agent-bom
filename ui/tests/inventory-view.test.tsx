@@ -78,7 +78,7 @@ function asset(id: string, overrides: Partial<InventoryAsset> = {}): InventoryAs
     first_seen: "2026-08-20T00:00:00Z",
     last_seen: "2026-08-25T00:00:00Z",
     attributes: { license: "Apache-2.0" },
-    compliance_tags: ["LLM05"],
+    compliance_tags: ["LLM03"],
     ecosystem: "pypi",
     version: "2.32.4",
     finding_summary: {
@@ -127,7 +127,7 @@ function detail(row: InventoryAsset = asset("pkg:requests")): InventoryAssetDeta
       entity_type: row.type,
       label: row.name,
       attributes: { license: "Apache-2.0", owner: "platform-security" },
-      compliance_tags: ["LLM05"],
+      compliance_tags: ["LLM03"],
     },
     edges_out: [{ id: "e1", source: row.id, target: "finding:CVE-1", relationship: "vulnerable_to" }],
     edges_in: [],

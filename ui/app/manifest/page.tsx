@@ -40,7 +40,7 @@ import {
   summarizeAiBomEntities,
   type AiBomEvidenceSource,
 } from "@/lib/ai-bom-evidence";
-import { api, formatDate, type AgentBomManifestResponse } from "@/lib/api";
+import { api, formatDate, type AgentBomManifestResponse, type InventorySummaryResponse } from "@/lib/api";
 
 function downloadManifest(manifest: AgentBomManifestResponse) {
   const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
@@ -227,6 +227,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
 export default function AgentBomManifestPage() {
   const { counts } = useDeploymentContext();
   const [manifest, setManifest] = useState<AgentBomManifestResponse | null>(null);
+  const [inventory, setInventory] = useState<InventorySummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ManifestFilters>(DEFAULT_MANIFEST_FILTERS);
@@ -239,6 +240,11 @@ export default function AgentBomManifestPage() {
       .then(setManifest)
       .catch((err) => setError(err instanceof Error ? err.message : "Manifest request failed"))
       .finally(() => setLoading(false));
+    // Optional: the roll-up falls back to manifest-only counts without a snapshot.
+    Promise.resolve()
+      .then(() => api.getInventorySummary())
+      .then(setInventory)
+      .catch(() => setInventory(null));
   };
 
   useEffect(() => {
@@ -250,7 +256,7 @@ export default function AgentBomManifestPage() {
   const options = useMemo(() => manifestFilterOptions(allRows), [allRows]);
   const hasActiveFilters = JSON.stringify(filters) !== JSON.stringify(DEFAULT_MANIFEST_FILTERS);
   const evidenceSources = useMemo(() => deriveAiBomEvidenceSources(counts, manifest), [counts, manifest]);
-  const entityRollup = useMemo(() => summarizeAiBomEntities(manifest), [manifest]);
+  const entityRollup = useMemo(() => summarizeAiBomEntities(manifest, inventory), [manifest, inventory]);
   const activeSources = countActiveEvidenceSources(evidenceSources);
   const scopeLabel = aiBomScopeLabel(counts, manifest);
 
@@ -263,8 +269,8 @@ export default function AgentBomManifestPage() {
     { label: "MCP servers", value: entityRollup.mcpServers, icon: Server },
     { label: "Models", value: entityRollup.models, icon: Sparkles },
     { label: "Frameworks", value: entityRollup.frameworks, icon: Blocks },
-    { label: "Packages", value: entityRollup.packages, icon: Box },
-    { label: "Cloud assets", value: entityRollup.cloudAssets, icon: Cloud, href: "/connections" },
+    { label: "Packages", value: entityRollup.packages, icon: Box, ...(inventory ? { href: "/inventory/packages" } : {}) },
+    { label: "Cloud assets", value: entityRollup.cloudAssets, icon: Cloud, href: inventory ? "/inventory/cloud" : "/connections" },
     { label: "Credential refs", value: entityRollup.credentials, icon: KeyRound },
     { label: "Findings", value: entityRollup.findings, icon: AlertTriangle, href: "/findings" },
     {
@@ -341,7 +347,9 @@ export default function AgentBomManifestPage() {
                 Inventory roll-up
               </p>
               <p className="mt-0.5 text-[11px] text-[color:var(--text-secondary)]">
-                Counts from the current manifest snapshot
+                {inventory
+                  ? "Agents, servers, and credentials from the manifest; packages, cloud assets, and findings from the asset inventory"
+                  : "Counts from the current manifest snapshot"}
               </p>
             </div>
             {manifest ? (

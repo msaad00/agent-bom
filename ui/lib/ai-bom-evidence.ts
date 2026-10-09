@@ -1,5 +1,6 @@
-import type { AgentBomManifestResponse, PostureCountsResponse } from "@/lib/api";
+import type { AgentBomManifestResponse, InventorySummaryResponse, PostureCountsResponse } from "@/lib/api";
 import { deploymentModeLabel } from "@/lib/deployment-context";
+import { ASSET_KIND_BY_ID } from "@/lib/inventory";
 
 export type AiBomEvidenceSource = {
   id: string;
@@ -97,6 +98,7 @@ export function deriveAiBomEvidenceSources(
 
 export function summarizeAiBomEntities(
   manifest: AgentBomManifestResponse | null,
+  inventory: Pick<InventorySummaryResponse, "by_type" | "finding_count"> | null = null,
 ): AiBomEntityRollup {
   if (!manifest) return { agents: null, mcpServers: null, models: null, frameworks: null, packages: null, credentials: null, cloudAssets: null, findings: null };
   const nodes = manifest.graph.nodes;
@@ -105,16 +107,23 @@ export function summarizeAiBomEntities(
     acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
+  // Packages, cloud assets, and findings live in the asset inventory snapshot,
+  // not the manifest graph; read them from the same source the Inventory page
+  // counts so the two views agree.
+  const inventoryTypes = inventory?.by_type;
+  const fromInventory = (types: readonly string[]): number | null =>
+    inventoryTypes ? types.reduce((sum, type) => sum + (inventoryTypes[type] ?? 0), 0) : null;
 
   return {
     agents: manifest?.summary.agents ?? byType.agent ?? 0,
     mcpServers: manifest?.summary.mcp_servers ?? byType.server ?? 0,
-    models: byType.model ?? null,
-    frameworks: byType.framework ?? null,
-    packages: byType.package ?? null,
+    models: inventoryTypes?.model ?? byType.model ?? null,
+    frameworks: inventoryTypes?.framework ?? byType.framework ?? null,
+    packages: fromInventory(ASSET_KIND_BY_ID.packages.entityTypes) ?? byType.package ?? null,
     credentials: manifest?.summary.credential_refs ?? byType.credential ?? 0,
-    cloudAssets: ((byType.cloud_resource ?? 0) + (byType.cloudresource ?? 0) + (byType.container ?? 0)) || null,
-    findings: ((byType.vulnerability ?? 0) + (byType.misconfiguration ?? 0)) || null,
+    cloudAssets: fromInventory(ASSET_KIND_BY_ID.cloud.entityTypes)
+      ?? (((byType.cloud_resource ?? 0) + (byType.cloudresource ?? 0) + (byType.container ?? 0)) || null),
+    findings: inventory ? inventory.finding_count : ((byType.vulnerability ?? 0) + (byType.misconfiguration ?? 0)) || null,
   };
 }
 

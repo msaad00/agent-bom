@@ -134,3 +134,24 @@ it("keeps cluster configuration distinct from a collected cluster scan", () => {
   expect(deriveAiBomEvidenceSources({ has_cluster_scan: true } as never, null).find((source) => source.id === "cluster")?.status).toBe("Configured");
   expect(deriveAiBomEvidenceSources({ has_cluster_scan: true, scan_sources: ["k8s"] } as never, null).find((source) => source.id === "cluster")?.status).toBe("Collected");
 });
+
+it("feeds packages, cloud assets, and findings from the asset inventory snapshot", () => {
+  const inventory = {
+    scan_id: "current-estate:abc",
+    total_assets: 2700,
+    by_type: { package: 781, cloud_resource: 1500, data_store: 300, account: 79, agent: 48, model: 4 },
+    finding_count: 412,
+  } as never;
+  const rollup = summarizeAiBomEntities(manifestFixture, inventory);
+  expect(rollup.packages).toBe(781);
+  expect(rollup.cloudAssets).toBe(1879);
+  expect(rollup.findings).toBe(412);
+  expect(rollup.models).toBe(4);
+  // Manifest-owned counts keep their manifest source.
+  expect(rollup.mcpServers).toBe(9);
+  expect(rollup.credentials).toBe(3);
+});
+
+it("keeps manifest-only counts when the inventory snapshot is unavailable", () => {
+  expect(summarizeAiBomEntities(manifestFixture, null).packages).toBe(1);
+});

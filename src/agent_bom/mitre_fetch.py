@@ -21,11 +21,12 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-
-import httpx
+from typing import TYPE_CHECKING, Optional
 
 from agent_bom.storage import state_home
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -195,9 +196,17 @@ def _load_synced_catalog() -> Optional[dict]:
     return _load_catalog_file(_sync_catalog_path())
 
 
+def _http_client() -> httpx.Client:
+    # httpx costs ~150 ms to import and only network sync needs it; the
+    # bundled catalog is read on every CLI start through compliance coverage.
+    import httpx
+
+    return httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=True)
+
+
 def _fetch_json(url: str) -> Optional[dict]:
     try:
-        with httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=True) as client:
+        with _http_client() as client:
             resp = client.get(url)
             resp.raise_for_status()
             return resp.json()
@@ -208,7 +217,7 @@ def _fetch_json(url: str) -> Optional[dict]:
 
 def _fetch_text(url: str) -> Optional[str]:
     try:
-        with httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=True) as client:
+        with _http_client() as client:
             resp = client.get(url)
             resp.raise_for_status()
             return resp.text

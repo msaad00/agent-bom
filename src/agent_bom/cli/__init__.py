@@ -36,6 +36,7 @@ from agent_bom.cli._grouped_help import GroupedGroup  # noqa: E402 — needed be
 # working in existing tests — although the canonical import path for new
 # code is ``agent_bom.discovery.discover_all``.
 from agent_bom.discovery import discover_all  # noqa: F401
+from agent_bom.entrypoint import version_message
 
 
 def _print_startup_banner() -> None:
@@ -71,12 +72,7 @@ def _print_startup_banner() -> None:
 @click.version_option(
     version=__version__,
     prog_name="agent-bom",
-    message=(
-        f"agent-bom {__version__}\n"
-        "Open security scanner for AI infrastructure\n"
-        f"Python {sys.version.split()[0]} · {sys.platform}\n"
-        "Docs:  https://msaad00.github.io/agent-bom/"
-    ),
+    message=version_message(),
 )
 @click.pass_context
 def main(ctx: click.Context, profile: str | None, agent_mode: bool):

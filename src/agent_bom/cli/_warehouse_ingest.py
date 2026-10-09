@@ -8,8 +8,6 @@ from pathlib import Path
 
 import click
 
-from agent_bom.graph.warehouse_evidence import build_warehouse_graph
-
 _MAX_BYTES = 16 * 1024 * 1024
 
 
@@ -35,6 +33,8 @@ def warehouse_cmd(rows_file: Path, mapping_file: Path, tenant: str, output_file:
     Both inputs are local JSON. Source observations remain recorded evidence;
     the import does not establish collection coverage or successful access.
     """
+    from agent_bom.graph.warehouse_evidence import build_warehouse_graph
+
     try:
         graph = build_warehouse_graph(_load(rows_file), _load(mapping_file), tenant_id=tenant)
         payload = json.dumps(graph.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n"

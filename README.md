@@ -93,8 +93,8 @@ To trace one vulnerable dependency to the affected agents and into remediation, 
 **Your infrastructure, your identity, your database, your audit boundary.** From a [published release checkout](https://github.com/msaad00/agent-bom/releases):
 
 ```bash
-git clone --depth 1 --branch v0.108.2 https://github.com/msaad00/agent-bom.git && cd agent-bom
-AGENT_BOM_IMAGE_TAG=0.108.2 docker compose up -d
+git clone --depth 1 --branch v0.108.3 https://github.com/msaad00/agent-bom.git && cd agent-bom
+AGENT_BOM_IMAGE_TAG=0.108.3 docker compose up -d
 ```
 
 Open **http://localhost:3000**, then **Connections** or **New Scan**. For cloud accounts, add a scoped read-only connection, verify access, then start a scan.
@@ -196,4 +196,4 @@ acts on selected tool calls. Missing evidence stays unavailable or partial. Cont
 
 [Contributing](CONTRIBUTING.md) · [Support](SUPPORT.md) · [Open issues](https://github.com/msaad00/agent-bom/issues) · [Apache-2.0 license](LICENSE)
 
-Source version: **v0.108.3** · Latest release: **v0.108.2** · [Changelog](CHANGELOG.md)
+Source version: **v0.108.3** · Latest release: **v0.108.3** · [Changelog](CHANGELOG.md)

@@ -1,4 +1,4 @@
-# EKS preset — KEDA-driven autoscaling on API and gateway tiers.
+# EKS preset — KEDA-driven autoscaling on the control-plane API.
 #
 # Use this preset when:
 #   * Scanner traffic is bursty (queue-depth / job-completion-rate spikes)
@@ -16,10 +16,12 @@
 #       - rate-limit pressure (saturation precursor)
 #       - API p99 latency (request-servicing health)
 #       - active scan jobs (queue depth)
-#   * Enables the same KEDA path for the gateway when `gateway.enabled=true`,
-#     driven by forwarded relay rate plus relay pressure signals.
-#   * Floors at 3 replicas so a single-AZ blip cannot drop us under quorum.
-#   * Caps at 12 replicas to keep Postgres connection-pool usage bounded.
+#   * Gateway autoscaling remains disabled: durable delivery requires one writer.
+#   * Floors at 3 API replicas; verify placement and failure behavior in the cluster.
+#     API replicas do not form a database consensus quorum.
+#   * Caps at 12 replicas. With the production pool settings, budget up to
+#     336 direct PostgreSQL connections (12 * (20 app + 4 fence + 4 maintenance))
+#     for one API process per pod, plus rollout and other-client headroom.
 #   * 30s poll, 5min cooldown — fast enough for scan-burst patterns,
 #     slow enough to avoid HPA flapping.
 #   * Fallback to 3 replicas when Prometheus is unreachable for >3 polls,

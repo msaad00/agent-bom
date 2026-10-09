@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Helm API shared-state safeguards now account for autoscaler maxima and KEDA fallback replicas, including deployments starting at one replica. API/UI disruption budgets cover configured scale-out, and extra API environment entries cannot override the chart-derived replica safety setting.
+
 - Label CIS benchmark checks separately from cloud inventory in scan pipelines; preserve unknown check outcomes and explain target-dependent scan scope.
 - `serve --demo-estate` and `api --demo-estate` now keep demo scan jobs in the same SQLite file as the demo graph (`<demo dir>/control-plane.db`) unless `--persist` or another backend is configured. A restart no longer shows the 6,803-node graph next to zero jobs and re-runs the curated scan; jobs are available on the first response. Existing demo installs reseed once after upgrading.
 - `/v1/overview`, and `/v1/posture` when it has no data yet, report `demo_estate_seeding` while the startup seed runs, and the dashboard shows a seeding status instead of the first-scan guide.

@@ -326,6 +326,7 @@ def _freshness_report(status):
     [
         ("stale", 2, False),
         ("stale", 47, False),
+        ("stale", 48, True),
         ("stale", 72, True),
         ("unreachable", 2, True),
         ("unmonitored (misconfigured)", 2, True),
@@ -361,3 +362,38 @@ def test_scheduled_publish_workflows_need_a_longer_failure_streak(failures, aler
     )
 
     assert bool(events) is alerts
+
+
+def test_open_freshness_tracker_updates_during_sync_grace_without_repeat_comments():
+    from datetime import datetime, timedelta, timezone
+
+    issue = {
+        "number": 5184,
+        "title": "supply-chain-drift: distribution surfaces out of sync",
+        "state": "open",
+        "body": "Previous release: Glama probe timed out",
+    }
+    report = json.loads(_freshness_report("stale"))
+    report["surfaces"][1]["error"] = "input schema differs for tool: exposure_paths"
+    env = {
+        "REPORT": json.dumps(report),
+        "RELEASE_PUBLISHED_AT": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+    }
+    events = run_monitor("surface-freshness.yml", "freshness", [issue], probe_env=env)
+    assert len(events) == 1
+    update = events[0]
+    assert (update["kind"], update["issue_number"], update["state"]) == ("update", 5184, "open")
+    assert "input schema differs for tool: exposure_paths" in update["body"]
+    assert "0.106.1" in update["body"]
+    assert run_monitor("surface-freshness.yml", "freshness", [{**issue, "body": update["body"]}], probe_env=env) == []
+
+
+def test_closed_freshness_tracker_stays_closed_during_sync_grace():
+    from datetime import datetime, timedelta, timezone
+
+    issue = {"number": 5184, "title": "supply-chain-drift: distribution surfaces out of sync", "state": "closed"}
+    env = {
+        "REPORT": _freshness_report("stale"),
+        "RELEASE_PUBLISHED_AT": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
+    }
+    assert run_monitor("surface-freshness.yml", "freshness", [issue], probe_env=env) == []

@@ -208,7 +208,8 @@ jobs:
               return;
             }
 
-            if (inSyncGrace) return;
+            // Grace suppresses new/reopened alerts, not fresh evidence on an open incident.
+            if (inSyncGrace && match?.state !== "open") return;
 
             if (match) {
               // Preserve the first matching evidence snapshot without daily issue churn.

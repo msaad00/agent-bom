@@ -1903,6 +1903,9 @@ export interface Summary {
   high_findings: number;
   medium_findings: number;
   low_findings: number;
+  /** Unified finding model totals (every domain); critical is a subset of total. */
+  total_findings?: number | undefined;
+  critical_unified_findings?: number | undefined;
 }
 
 export interface ScorecardSummary {

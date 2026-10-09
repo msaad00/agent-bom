@@ -81,7 +81,20 @@ function evidenceSummary(job: JobListItem): string {
   const summary = job.summary;
   if (!summary) return "Evidence metrics unavailable";
   const metric = (value: number | undefined) => value == null ? "Unavailable" : String(value);
-  return `${metric(summary.total_vulnerabilities)} CVEs · ${metric(summary.critical_findings)} critical · ${metric(summary.total_packages)} packages`;
+  const packages = `${metric(summary.total_packages)} packages`;
+  if (typeof summary.total_findings === "number") {
+    const critical = summary.critical_unified_findings;
+    const criticalPart =
+      typeof critical === "number" && critical <= summary.total_findings ? ` · ${critical} critical` : "";
+    return `${summary.total_findings} findings${criticalPart} · ${packages}`;
+  }
+  // Legacy summaries: blast-radius criticals are only shown when they cannot
+  // read as more criticals than the CVE total they sit beside.
+  const vulns = summary.total_vulnerabilities;
+  const critical = summary.critical_findings;
+  const criticalPart =
+    typeof critical === "number" && typeof vulns === "number" && critical <= vulns ? ` · ${critical} critical` : "";
+  return `${metric(vulns)} CVEs${criticalPart} · ${packages}`;
 }
 
 function scanOutcome(job: JobListItem): "complete" | "partial" | "failed" | undefined {

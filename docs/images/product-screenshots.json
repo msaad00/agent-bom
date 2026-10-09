@@ -1,9 +1,9 @@
 {
   "release_version": "0.108.3",
-  "captured_at": "2026-10-09T05:21:12.716Z",
-  "source_commit": "ce5e85fb9adaf2e21223658d3a4e1dfb371ced41",
+  "captured_at": "2026-10-09T15:05:08.217Z",
+  "source_commit": "870deb6ea43a03b1a19907f9f7799e734c4ecd67",
   "source_tree": "clean",
-  "capture_inputs_sha256": "sha256:c3b0f796a75da45b07bd3a2724c5749d1635fd6271252761826cb3d8842e5a86",
+  "capture_inputs_sha256": "sha256:e8668e7b7df090046855bc05ebda606bb4856ee91f267ae66e8f7e0ac83d43b5",
   "capture_note": "Deterministically captured from real Next.js dashboard routes in capture mode. The correlation hero views consume the committed, hash-pinned Reference evidence lab — modeled local infrastructure artifact with CVE-2023-4863 and exact canonical joins. Remaining gallery fixtures are explicitly synthetic UI states. No external, customer, or private infrastructure data is used.",
   "screenshots": [
     {
@@ -254,7 +254,7 @@
       "evidence_sha256": "sha256:f4f8901f412997be7690b50ce8e7468ba8f781dc22b85e7b5f44408e28fe2c5f",
       "correlation_manifest_sha256": "sha256:fe781c82f958c2f9aa4cadfa2289aa767629dc7d6716e11add790e8f3336fc3a",
       "visible_version": "0.108.3",
-      "sha256": "sha256:d8945743b870083ef23e0e82cdaea25617d5ea4a2b353bb263a289ed0d4c4701"
+      "sha256": "sha256:76354ba91348ec1c5d304ea17bbc5e9a50636e26a6864c7f7c8027c3cd85d1a8"
     },
     {
       "presentation": "dark mobile",
@@ -297,7 +297,7 @@
       "page": "/security-graph?lens=estate&scan=scan-proof-ai-platform&rollup=1&scenario=scenario-private-service-endpoint&state=proposed&capture=1",
       "scope": "Modeled proposed-state comparison at 1568 by 780",
       "visible_version": "0.108.3",
-      "sha256": "sha256:5f4b3ca4325bbce222c78e036e0fe21a6e3f1f9ae04bde2c80db3429e594bc28"
+      "sha256": "sha256:4ff2c2c91cccc5b704b30a7e8ed0f1b85529a6791aaf949de6bbce30d8698152"
     },
     {
       "presentation": "dark desktop",
@@ -313,7 +313,7 @@
       "page": "/graph?lens=context&scan=scan-proof-ai-platform&capture=1",
       "scope": "Recorded agent neighborhood with identity, shared infrastructure, tool and package evidence after branch focus and return",
       "visible_version": "0.108.3",
-      "sha256": "sha256:eae64b15ae229bf5d790b5de51b4cfaf23c757e2f66863f301ea8632243e5abc"
+      "sha256": "sha256:6d06e0d05899117d2a1d494b4a2093ea590587a204982e188941ce306eb7f6d0"
     },
     {
       "presentation": "light desktop",

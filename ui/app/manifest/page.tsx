@@ -181,7 +181,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
         </Link>
       </div>
 
-      <div className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
+      <div tabIndex={0} role="region" aria-label="Graph nodes" className="max-h-40 space-y-1.5 overflow-y-auto pr-1">
         {nodes.map((node) => (
           <div
             key={node.id}
@@ -200,7 +200,7 @@ function MiniGraph({ manifest }: { manifest: AgentBomManifestResponse }) {
         ) : null}
       </div>
 
-      <div className="max-h-36 overflow-auto rounded-lg border border-[color:var(--border-subtle)]">
+      <div tabIndex={0} role="region" aria-label="Graph edges" className="max-h-36 overflow-auto rounded-lg border border-[color:var(--border-subtle)]">
         <table className="w-full text-left text-[11px]">
           <thead className="sticky top-0 bg-[color:var(--surface-muted)] text-[color:var(--text-tertiary)]">
             <tr>
@@ -333,7 +333,7 @@ export default function AgentBomManifestPage() {
               <p className="text-[9px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">available</p>
             </div>
           </div>
-          <div className="max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
+          <div tabIndex={0} role="region" aria-label="Evidence sources" className="max-h-52 space-y-1.5 overflow-y-auto pr-0.5">
             {evidenceSources.map((source) => (
               <EvidenceSourceRow key={source.id} source={source} />
             ))}
@@ -361,7 +361,7 @@ export default function AgentBomManifestPage() {
             ) : null}
           </div>
           {manifest ? (
-            <div className="grid max-h-52 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-4">
+            <div tabIndex={0} role="region" aria-label="Inventory metrics" className="grid max-h-52 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-4">
               {metrics.map((metric) => (
                 <MetricChip key={metric.label} {...metric} />
               ))}
@@ -386,7 +386,7 @@ export default function AgentBomManifestPage() {
         <details className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-100">
           <summary className="cursor-pointer text-sm font-semibold">Inventory items needing review · {manifest!.blueprint_drift.signal_count}</summary>
           <p className="mt-2 text-xs">Ownership, registration, and server warnings from the current inventory. These checks do not establish a change against an approved baseline.</p>
-          <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-xs">
+          <ul tabIndex={0} aria-label="Inventory review items" className="mt-3 max-h-52 space-y-2 overflow-y-auto text-xs">
             {(manifest!.blueprint_drift.signals ?? []).map((signal, index) => <li key={`${signal.kind}:${signal.entity_id}:${index}`}>
               <span className="font-medium">{signal.kind.replaceAll("_", " ")}</span> · {signal.message}
             </li>)}
@@ -476,7 +476,7 @@ export default function AgentBomManifestPage() {
                   </div>
                 </div>
 
-                <div className="max-h-[28rem] overflow-auto">
+                <div tabIndex={0} role="region" aria-label="AI BOM components" className="max-h-[28rem] overflow-auto">
                   <table className="w-full min-w-[720px] text-left text-xs">
                     <thead className="sticky top-0 z-10 bg-[color:var(--surface-muted)] text-[10px] uppercase tracking-[0.12em] text-[color:var(--text-tertiary)]">
                       <tr>

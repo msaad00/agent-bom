@@ -49,4 +49,16 @@ describe("AI BOM evidence scope",()=>{
  expect(chip("Findings")).toHaveTextContent("412");
  });
 
+ it("makes every scrollable region keyboard focusable and named", async()=>{
+ getManifest.mockResolvedValue(manifest);
+ const {container}=render(<ManifestPage/>);
+ await screen.findAllByText("claude-desktop");
+ const regions=[...container.querySelectorAll<HTMLElement>("[class*='overflow-auto'],[class*='overflow-y-auto']")];
+ expect(regions.length).toBeGreaterThan(0);
+ for (const region of regions) {
+  expect(region).toHaveAttribute("tabindex","0");
+  expect(region).toHaveAttribute("aria-label");
+ }
+ });
+
 });

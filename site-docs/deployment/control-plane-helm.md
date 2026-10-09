@@ -79,6 +79,96 @@ This page stays focused on the Helm-packaged control-plane shape itself:
 - what defaults are secure by design
 - how to install and operate the packaged API + UI control plane
 
+## Choose the deployment model before scaling
+
+| Model | State and configuration | Availability boundary |
+|---|---|---|
+| Single-instance VM or Kubernetes pilot | One API instance; persistent local state; configured authentication. The shipped SQLite pilot is a demo profile with anonymous viewer access. | Restart recovery depends on its volume; this is not an HA configuration. |
+| On-premises Kubernetes | Customer PostgreSQL, shared session/audit keys, ingress TLS, identity, and artifact storage. Use the BYO PostgreSQL secret layout and operator-owned values. | API/UI replicas require node placement, database failover, and storage recovery to be exercised together. |
+| Customer-cloud Kubernetes | The same shared-state requirements; managed PostgreSQL, object storage, and cloud identity can supply those services. EKS examples include AWS-specific annotations and secret providers. | A provider-compatible connection string is not evidence of tested provider failover or restoration. |
+| Air-gapped deployment | Apply offline images, packages, and vulnerability-data procedures to the selected single-instance or HA model. | Disconnected operation does not supply database HA or shared storage; maintain an explicit data-refresh and upgrade process. |
+
+Render the selected operator values before installing:
+
+```bash
+helm template agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --values ./my-prod-overrides.yaml > rendered.yaml
+```
+
+Review the rendered API environment, Secrets, migration Job, probes, ingress,
+volumes, and disruption budgets. Then exercise authentication, a scan, report
+download from another replica, and a controlled pod restart in the target
+cluster. Rendering validates configuration; it does not prove live failover.
+Use [the shipped profile matrix](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/README.md)
+and [BYO PostgreSQL](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/byo-postgres-values.yaml)
+as configuration references. Preserve the separation between tenant-bound app,
+scoped maintenance, and migration/admin credentials.
+
+### Replica safety and disruption budgets
+
+The chart derives `AGENT_BOM_CONTROL_PLANE_REPLICAS` from the largest configured
+API replica count: initial replicas, an enabled autoscaler's minimum/maximum,
+and its KEDA fallback. A deployment that starts at one but can grow to six
+therefore enables the application's shared-state safeguards from its first
+pod. This is a configuration safety signal, not a live pod-count metric.
+Set `replicas` and `autoscaling` through chart values; overriding this variable
+in `controlPlane.api.env` is rejected.
+
+When `pdb.enabled=true`, the API/UI budget also accounts for autoscaling above
+one replica. A minimum of one replica can still block voluntary eviction of
+that sole healthy pod. Choose an HA floor of at least two and review placement
+across the failure domains available in the customer cluster. Disruption
+budgets constrain supported voluntary evictions; they do not prevent node
+failures or govern Deployment rolling updates. See
+[Kubernetes disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/).
+
+### PostgreSQL connection budget
+
+Budget all pools in `src/agent_bom/api/postgres_common.py`, not only the main
+application pool. Each API process can open:
+
+- Application pool: `max(1, AGENT_BOM_POSTGRES_POOL_MIN_SIZE, AGENT_BOM_POSTGRES_POOL_MAX_SIZE)`.
+- Idempotency fencing pool: `max(1, min(4, AGENT_BOM_POSTGRES_POOL_MAX_SIZE))`.
+- Maintenance pool: the same bound as the fencing pool, with separate credentials.
+
+With the default minimum 5 and maximum 20, that is **28 direct connections per
+API process**. Six replicas with one process each can use 168; the KEDA example's
+12 replicas can use 336. Threads share a process's pools; extra API processes
+multiply this budget. Add gateway/other clients, migrations, backups, and
+operational reserve separately. Reserve capacity for rolling-update surge and
+terminating pods too; the steady-state scaler maximum is not a hard bound on
+all concurrently existing pods. See
+[Kubernetes Deployment updates](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+
+For a connection pooler, budget client slots and database connections
+separately and verify its pooling mode with tenant/RLS and transaction tests.
+Keep consistency-sensitive traffic on the writable PostgreSQL service endpoint.
+The customer database service owns primary election and failover; asynchronous
+standbys can lag and have different durability tradeoffs from synchronous
+replication. See [PostgreSQL standby replication](https://www.postgresql.org/docs/current/warm-standby.html).
+Backup restoration and point-in-time recovery require a separate rehearsal.
+
+All replicas serving report downloads need the same artifacts: configure
+`AGENT_BOM_REPORT_S3_BUCKET`, or a shared mounted directory with
+`AGENT_BOM_REPORT_ARTIFACT_DIR` and `AGENT_BOM_REPORT_ARTIFACT_SHARED=1`.
+A pod-local directory cannot supply cross-pod durability. Configure PVCs and
+storage classes for the customer's storage system; RAID belongs to that layer.
+
+### Gateway writers, partitions, and shards
+
+The gateway remains **one PVC-backed writer**. Its delivery claims and local
+audit state are process-owned; the chart rejects multiple replicas and gateway
+autoscaling. Shared delivery leases, stale-worker fencing, idempotent retry,
+and audit-order recovery must be implemented and tested before that guard can
+be lifted.
+
+PostgreSQL audit-table partitioning divides tables inside one database; it does
+not spread writes across independent database primaries. Automatic database
+sharding is not implemented. Measure concurrent tenants, ingest, graph growth,
+and recovery on a correctly sized primary first. If that becomes the measured
+limit, tenant placement across database clusters needs explicit migration,
+schema-upgrade, and cross-tenant query contracts.
+
 ## Before the first production scan
 
 Refresh vulnerability intelligence inside the customer-controlled environment

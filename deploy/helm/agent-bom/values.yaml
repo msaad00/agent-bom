@@ -589,6 +589,8 @@ controlPlane:
       # IRSA for async findings export to customer S3 (set eks.amazonaws.com/role-arn).
       annotations: {}
       automountServiceAccountToken: true
+    # Shared-state guards use the largest initial/scaler/fallback count, not
+    # merely the number of pods present at installation time.
     replicas: 2
     autoscaling:
       enabled: false

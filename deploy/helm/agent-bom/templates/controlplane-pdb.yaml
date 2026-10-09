@@ -1,5 +1,5 @@
 {{- if and .Values.controlPlane.enabled .Values.pdb.enabled }}
-{{- if and .Values.controlPlane.api.enabled (gt (int .Values.controlPlane.api.replicas) 1) }}
+{{- if and .Values.controlPlane.api.enabled (gt (int (include "agent-bom.controlPlaneReplicaCapacity" .Values.controlPlane.api)) 1) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -20,7 +20,7 @@ spec:
   {{- end }}
 ---
 {{- end }}
-{{- if and .Values.controlPlane.ui.enabled (gt (int .Values.controlPlane.ui.replicas) 1) }}
+{{- if and .Values.controlPlane.ui.enabled (gt (int (include "agent-bom.controlPlaneReplicaCapacity" .Values.controlPlane.ui)) 1) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

@@ -5,6 +5,9 @@
 {{- fail "controlPlane.autoCorrelation.maxAgeHours must be between 1 and 8760" }}
 {{- end }}
 {{- range $entry := .Values.controlPlane.api.env }}
+{{- if eq (get $entry "name") "AGENT_BOM_CONTROL_PLANE_REPLICAS" }}
+{{- fail "controlPlane.api.env cannot override AGENT_BOM_CONTROL_PLANE_REPLICAS; use replicas and autoscaling settings" }}
+{{- end }}
 {{- if has (get $entry "name") (list "AGENT_BOM_GRAPH_AUTO_CORRELATE" "AGENT_BOM_GRAPH_AUTO_CORRELATE_MAX_AGE_HOURS") }}
 {{- fail "controlPlane.api.env cannot override automatic correlation variables; use controlPlane.autoCorrelation" }}
 {{- end }}
@@ -66,10 +69,6 @@ spec:
       {{- include "agent-bom.controlPlaneTopologySpreadConstraints" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
       {{- include "agent-bom.controlPlaneAffinity" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
       containers:
-        {{- $apiReplicaFloor := int .Values.controlPlane.api.replicas }}
-        {{- if and .Values.controlPlane.api.autoscaling.enabled (gt (int .Values.controlPlane.api.autoscaling.minReplicas) $apiReplicaFloor) }}
-        {{- $apiReplicaFloor = int .Values.controlPlane.api.autoscaling.minReplicas }}
-        {{- end }}
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -83,7 +82,7 @@ spec:
               protocol: TCP
           env:
             - name: AGENT_BOM_CONTROL_PLANE_REPLICAS
-              value: {{ $apiReplicaFloor | quote }}
+              value: {{ include "agent-bom.controlPlaneReplicaCapacity" .Values.controlPlane.api | quote }}
             {{- if .Values.controlPlane.connectionsScheduler.enabled }}
             - name: AGENT_BOM_CONNECTIONS_SCHEDULER
               value: "1"

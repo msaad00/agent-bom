@@ -7,11 +7,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.108.4] - 2026-10-09
 
 ### Fixed
 
-- Helm API shared-state safeguards now account for autoscaler maxima and KEDA fallback replicas, including deployments starting at one replica. API/UI disruption budgets cover configured scale-out, and extra API environment entries cannot override the chart-derived replica safety setting.
+- Helm API shared-state safeguards now account for autoscaler maxima and KEDA fallback replicas, including deployments starting at one replica. API/UI disruption budgets cover configured scale-out, and extra API environment entries cannot override the chart-derived replica safety setting. Deployment guidance distinguishes single-replica SQLite, shared-state PostgreSQL API scaling, and single-writer gateways. PostgreSQL table partitioning is not automatic database sharding; live load, failover, and HA need qualification in the target deployment.
 
 - Label CIS benchmark checks separately from cloud inventory in scan pipelines; preserve unknown check outcomes and explain target-dependent scan scope.
 - `serve --demo-estate` and `api --demo-estate` now keep demo scan jobs in the same SQLite file as the demo graph (`<demo dir>/control-plane.db`) unless `--persist` or another backend is configured. A restart no longer shows the 6,803-node graph next to zero jobs and re-runs the curated scan; jobs are available on the first response. Existing demo installs reseed once after upgrading.
@@ -4024,7 +4024,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.108.4...HEAD
+[0.108.4]: https://github.com/msaad00/agent-bom/compare/v0.108.3...v0.108.4
 [0.108.3]: https://github.com/msaad00/agent-bom/compare/v0.108.2...v0.108.3
 [0.108.2]: https://github.com/msaad00/agent-bom/compare/v0.108.1...v0.108.2
 [0.108.1]: https://github.com/msaad00/agent-bom/compare/v0.108.0...v0.108.1

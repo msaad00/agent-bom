@@ -63,4 +63,4 @@ the caller wants to explore or to invoke — not by whether it is human.
 
 ## Version
 
-`0.108.3` — regenerate metrics with `python scripts/product_metrics_snapshot.py --write` and this file with `python scripts/generate_agent_capability_manifest.py --write`.
+`0.108.4` — regenerate metrics with `python scripts/product_metrics_snapshot.py --write` and this file with `python scripts/generate_agent_capability_manifest.py --write`.

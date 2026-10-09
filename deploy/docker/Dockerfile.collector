@@ -66,7 +66,7 @@ FROM python:3.12.15-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7
 
 # Baked app-code version (provenance label). Runtime/base security overlays can
 # refresh independently; SDK version changes remain reviewable lockfile updates.
-ARG VERSION=0.108.3
+ARG VERSION=0.108.4
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

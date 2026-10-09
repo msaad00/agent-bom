@@ -59,13 +59,14 @@ class ClickHouseClient:
     # Core HTTP interface
     # ------------------------------------------------------------------
 
-    def execute(self, query: str) -> str:
+    def execute(self, query: str, *, use_database: bool = True) -> str:
         """Execute a query, return raw response text."""
         headers = {
             "X-ClickHouse-User": self.user,
             "X-ClickHouse-Key": self.access_token,
-            "X-ClickHouse-Database": self.database,
         }
+        if use_database:
+            headers["X-ClickHouse-Database"] = self.database
         data = query.encode("utf-8")
         try:
             from agent_bom.http_client import create_sync_client, sync_request_with_retry
@@ -112,7 +113,9 @@ class ClickHouseClient:
         on the next process start without an operator intervention.
         """
         _validate_identifier(self.database, "database")
-        self.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
+        # The HTTP handler validates the selected database before executing SQL.
+        # Bootstrap without selecting a database that may not exist yet.
+        self.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}", use_database=False)
         for ddl in _TABLE_DDL:
             self.execute(ddl)
         for migration in _TABLE_MIGRATIONS:

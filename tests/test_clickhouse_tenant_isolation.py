@@ -269,7 +269,7 @@ class TestMigrationCoverage:
         client.timeout = 5  # type: ignore[attr-defined]
         executed: list[str] = []
 
-        def _fake_execute(query: str) -> str:
+        def _fake_execute(query: str, *, use_database: bool = True) -> str:
             executed.append(query)
             return "{}"
 

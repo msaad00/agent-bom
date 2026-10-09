@@ -147,7 +147,7 @@ npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 clawhub publish integrations/openclaw/scan \
   --slug agent-bom-scan --name "agent-bom scan" \
-  --version "0.108.3"
+  --version "0.108.4"
 ```
 
 Release automation uses the same official `clawhub` CLI flow, not a custom
@@ -185,7 +185,7 @@ deploy and pass the build test, then create and publish the Glama release.
 
 ```bash
 python scripts/check_glama_listing.py \
-  --expected 0.108.3
+  --expected 0.108.4
 ```
 
 ---
@@ -228,8 +228,8 @@ Images published:
 Tag push triggers the full pipeline automatically:
 
 ```bash
-git tag v0.108.3
-git push origin v0.108.3
+git tag v0.108.4
+git push origin v0.108.4
 ```
 
 This triggers:

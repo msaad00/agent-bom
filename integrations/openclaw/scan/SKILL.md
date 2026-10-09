@@ -5,7 +5,7 @@ description: >-
   image, or SBOM, or inspect a specified CVE. Discover local MCP clients only
   when the user explicitly requests that discovery. Ask for the target when
   a request such as "verify" or "is this safe" does not identify one.
-version: 0.108.3
+version: 0.108.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Native container image
@@ -20,7 +20,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.108.3
+    docker: ghcr.io/msaad00/agent-bom:0.108.4
   openclaw:
     requires:
       bins: []
@@ -260,6 +260,6 @@ agent-bom scan --project . --no-discover
 ## Verification
 
 - **Source**: [github.com/msaad00/agent-bom](https://github.com/msaad00/agent-bom) (Apache-2.0)
-- **Sigstore signed**: `agent-bom verify agent-bom@0.108.3`
+- **Sigstore signed**: `agent-bom verify agent-bom@0.108.4`
 - **Contracts**: `tests/test_bundled_skill_contract.py` checks skill metadata and the default MCP tool list.
 - **Network boundary**: Online scans use vulnerability providers and the explicitly requested repository or image host; use offline mode when those requests are not authorized.

@@ -196,4 +196,4 @@ acts on selected tool calls. Missing evidence stays unavailable or partial. Cont
 
 [Contributing](CONTRIBUTING.md) · [Support](SUPPORT.md) · [Open issues](https://github.com/msaad00/agent-bom/issues) · [Apache-2.0 license](LICENSE)
 
-Source version: **v0.108.3** · Latest release: **v0.108.3** · [Changelog](CHANGELOG.md)
+Source version: **v0.108.4** · Latest release: **v0.108.3** · [Changelog](CHANGELOG.md)

@@ -169,6 +169,38 @@ and recovery on a correctly sized primary first. If that becomes the measured
 limit, tenant placement across database clusters needs explicit migration,
 schema-upgrade, and cross-tenant query contracts.
 
+### Optional ClickHouse analytics
+
+Keep transactional control-plane state in PostgreSQL for shared-state API
+deployments, or SQLite for a single instance. The existing ClickHouse backend
+stores analytics such as vulnerability trends, runtime events, and posture
+history. Self-hosted ClickHouse can provide that destination; it does not
+replace the PostgreSQL jobs, authorization, and graph stores.
+
+With the control-plane database already configured, inject
+`AGENT_BOM_CLICKHOUSE_USER` and `AGENT_BOM_CLICKHOUSE_ACCESS_TOKEN` through the
+deployment's secret mechanism, then start the API with its ClickHouse HTTP
+endpoint:
+
+```bash
+agent-bom serve --analytics-backend clickhouse \
+  --clickhouse-url https://clickhouse.example.com:8443 --no-ui
+```
+
+In Helm, set `AGENT_BOM_ANALYTICS_BACKEND=clickhouse` and
+`AGENT_BOM_CLICKHOUSE_URL` in `controlPlane.api.env`, and inject credentials
+from the existing Secret. After recording scan analytics, query the tenant's
+history with `agent-bom report analytics trends --tenant your-tenant` using
+the same ClickHouse connection settings. Check the analytics tables and API
+logs before enabling higher ingest volume.
+
+Buffered analytics uses a bounded queue and can drop evidence when that queue
+overflows; it is not the authoritative audit ledger. ClickHouse replication
+and shards require separate database configuration and qualification. A
+provider's managed PostgreSQL service is a separate PostgreSQL endpoint and
+must pass the same migrations, permissions, and tenant-isolation checks as
+other PostgreSQL deployments.
+
 ## Before the first production scan
 
 Refresh vulnerability intelligence inside the customer-controlled environment

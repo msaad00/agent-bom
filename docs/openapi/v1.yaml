@@ -8693,6 +8693,9 @@ components:
             $ref: '#/components/schemas/OverviewCoverage'
           title: Coverage
           type: array
+        demo_estate_seeding:
+          title: Demo Estate Seeding
+          type: boolean
         domains:
           additionalProperties:
             $ref: '#/components/schemas/OverviewDomain'
@@ -8720,6 +8723,7 @@ components:
       required:
       - schema_version
       - tenant_id
+      - demo_estate_seeding
       - coverage
       - domains
       - finding_counts
@@ -9166,6 +9170,11 @@ components:
             type: array
           - type: 'null'
           title: Breakdown
+        demo_estate_seeding:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Demo Estate Seeding
         dimensions:
           anyOf:
           - additionalProperties:

@@ -213,6 +213,7 @@ class PostureResponse(ReadResponse):
     score: Num
     summary: str
     no_data: bool
+    demo_estate_seeding: bool | None = None
     dimensions: dict[str, PostureDimension] | None = None
     basis: str | None = None
     breakdown: list[PostureBreakdownItem] | None = None
@@ -350,6 +351,7 @@ class OverviewTopRisk(ReadModel):
 class OverviewResponse(ReadResponse):
     schema_version: str
     tenant_id: str
+    demo_estate_seeding: bool
     coverage: list[OverviewCoverage]
     domains: dict[str, OverviewDomain]
     finding_counts: OverviewFindingCounts

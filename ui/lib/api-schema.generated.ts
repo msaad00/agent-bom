@@ -13123,6 +13123,8 @@ export interface components {
         OverviewResponse: {
             /** Coverage */
             coverage: components["schemas"]["OverviewCoverage"][];
+            /** Demo Estate Seeding */
+            demo_estate_seeding: boolean;
             /** Domains */
             domains: {
                 [key: string]: components["schemas"]["OverviewDomain"];
@@ -13372,6 +13374,8 @@ export interface components {
             basis?: string | null;
             /** Breakdown */
             breakdown?: components["schemas"]["PostureBreakdownItem"][] | null;
+            /** Demo Estate Seeding */
+            demo_estate_seeding?: boolean | null;
             /** Dimensions */
             dimensions?: {
                 [key: string]: components["schemas"]["PostureDimension"];

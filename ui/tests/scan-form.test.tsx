@@ -122,12 +122,18 @@ describe("ScanForm", () => {
     authState.role = "analyst";
     vi.spyOn(api, "listCloudConnections").mockResolvedValue({
       schema_version: "cloud.connections.v1",
+      connections_scheduler_enabled: false,
+      workload_auth_modes: {},
       tenant_id: "default",
       connections: [mockConnection],
       count: 1,
     });
     vi.spyOn(api, "listSources").mockResolvedValue({
+      schema_version: "v1",
       sources: [],
+      total: 0,
+      limit: 1000,
+      offset: 0,
       count: 0,
     });
   });
@@ -334,7 +340,7 @@ describe("ScanForm", () => {
       reason: /governance metadata and cannot execute this source/i,
     },
   ])("does not offer a runnable action for a $name", async ({ source, reason }) => {
-    vi.spyOn(api, "listSources").mockResolvedValue({ sources: [source], count: 1 });
+    vi.spyOn(api, "listSources").mockResolvedValue({ schema_version: "v1", sources: [source], count: 1, total: 1, limit: 1000, offset: 0 });
     const runSource = vi.spyOn(api, "runSource");
     const user = userEvent.setup();
 

@@ -4378,8 +4378,15 @@
             "type": "string"
           },
           "total": {
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
           },
           "total_kind": {
             "title": "Total Kind",
@@ -5851,23 +5858,39 @@
         "additionalProperties": true,
         "properties": {
           "detail": {
-            "title": "Detail",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           },
           "tool_name": {
-            "title": "Tool Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
           },
           "type": {
-            "title": "Type",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
           }
         },
-        "required": [
-          "type",
-          "tool_name",
-          "detail"
-        ],
         "title": "DriftViolation",
         "type": "object"
       },
@@ -7337,18 +7360,32 @@
         "additionalProperties": true,
         "properties": {
           "affected_agents": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Affected Agents",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Agents"
           },
           "affected_servers": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Affected Servers",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Servers"
           },
           "applicable_frameworks": {
             "anyOf": [
@@ -7375,8 +7412,15 @@
             ]
           },
           "canonical_id": {
-            "title": "Canonical Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Id"
           },
           "controls_count": {
             "anyOf": [
@@ -7448,11 +7492,25 @@
             "title": "Ecosystem"
           },
           "effective_reach": {
-            "$ref": "#/components/schemas/EffectiveReach"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EffectiveReach"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "effective_reach_band": {
-            "title": "Effective Reach Band",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Reach Band"
           },
           "effective_reach_score": {
             "anyOf": [
@@ -7461,6 +7519,9 @@
               },
               {
                 "type": "number"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Effective Reach Score"
@@ -7503,8 +7564,15 @@
             "title": "Evidence"
           },
           "finding_class": {
-            "title": "Finding Class",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Class"
           },
           "finding_id": {
             "anyOf": [
@@ -7529,8 +7597,15 @@
             "title": "Finding Node Id"
           },
           "finding_type": {
-            "title": "Finding Type",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Type"
           },
           "first_seen": {
             "anyOf": [
@@ -7591,19 +7666,33 @@
             "title": "Graph Reachable"
           },
           "graph_reachable_from_agents": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Graph Reachable From Agents",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph Reachable From Agents"
           },
           "id": {
             "title": "Id",
             "type": "string"
           },
           "is_kev": {
-            "title": "Is Kev",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Kev"
           },
           "kev_cve_id": {
             "anyOf": [
@@ -7683,8 +7772,15 @@
             "title": "Node Id"
           },
           "observation_status": {
-            "title": "Observation Status",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Status"
           },
           "occurrence_count": {
             "anyOf": [
@@ -7792,11 +7888,18 @@
             "title": "Remediation Guidance"
           },
           "remediation_versions": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Remediation Versions",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remediation Versions"
           },
           "risk_score": {
             "anyOf": [
@@ -7813,15 +7916,29 @@
             "title": "Risk Score"
           },
           "scan_id": {
-            "title": "Scan Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Id"
           },
           "scan_sources": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Scan Sources",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Sources"
           },
           "schema_version": {
             "anyOf": [
@@ -7850,12 +7967,26 @@
             "title": "Sla Due At"
           },
           "sla_due_at_source": {
-            "title": "Sla Due At Source",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Due At Source"
           },
           "source": {
-            "title": "Source",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
           },
           "status": {
             "anyOf": [
@@ -7891,58 +8022,31 @@
             "title": "Suppression Id"
           },
           "title": {
-            "title": "Title",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "vulnerability_id": {
-            "title": "Vulnerability Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vulnerability Id"
           }
         },
         "required": [
           "id",
-          "canonical_id",
-          "cve_id",
-          "vulnerability_id",
-          "title",
-          "severity",
-          "source",
-          "finding_class",
-          "finding_type",
-          "scan_id",
-          "scan_sources",
-          "observation_status",
-          "last_observed",
-          "first_seen",
-          "last_seen",
-          "status",
-          "lifecycle_status",
-          "owner",
-          "sla_due_at",
-          "sla_due_at_source",
-          "cvss_score",
-          "cvss_vector",
-          "cvss_version",
-          "epss_score",
-          "is_kev",
-          "kev_due_date",
-          "fixed_version",
-          "remediation_versions",
-          "remediation_guidance",
-          "effective_reach",
-          "effective_reach_band",
-          "effective_reach_score",
-          "graph_reachable",
-          "graph_min_hop_distance",
-          "graph_reachable_from_agents",
-          "affected_agents",
-          "affected_servers",
-          "occurrence_count",
-          "provenance",
-          "package_integrity_verified",
-          "package_provenance_attested",
-          "package_provenance_source",
-          "package_provenance_status"
+          "severity"
         ],
         "title": "FindingRow",
         "type": "object"
@@ -8202,8 +8306,15 @@
             "type": "string"
           },
           "total": {
-            "title": "Total",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
           },
           "warnings": {
             "items": {
@@ -11127,11 +11238,18 @@
             "title": "Batch Id"
           },
           "child_job_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Child Job Ids",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Job Ids"
           },
           "completed_at": {
             "anyOf": [
@@ -11145,8 +11263,15 @@
             "title": "Completed At"
           },
           "created_at": {
-            "title": "Created At",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           },
           "job_id": {
             "title": "Job Id",
@@ -11175,8 +11300,15 @@
             "title": "Schedule Id"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           },
           "target": {
             "anyOf": [
@@ -11212,8 +11344,15 @@
             "title": "Target Index"
           },
           "tenant_id": {
-            "title": "Tenant Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
           },
           "triggered_by": {
             "anyOf": [
@@ -11228,19 +11367,7 @@
           }
         },
         "required": [
-          "job_id",
-          "tenant_id",
-          "status",
-          "created_at",
-          "completed_at",
-          "triggered_by",
-          "batch_id",
-          "parent_job_id",
-          "child_job_ids",
-          "schedule_id",
-          "target",
-          "target_count",
-          "target_index"
+          "job_id"
         ],
         "title": "JobListItem",
         "type": "object"
@@ -12420,26 +12547,54 @@
         "additionalProperties": true,
         "properties": {
           "affected_agents": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Affected Agents",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Agents"
           },
           "affected_servers": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Affected Servers",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Servers"
           },
           "asset_id": {
-            "title": "Asset Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
           },
           "canonical_id": {
-            "title": "Canonical Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Id"
           },
           "cvss_score": {
             "anyOf": [
@@ -12481,16 +12636,37 @@
             "title": "Fixed Version"
           },
           "impact_category": {
-            "title": "Impact Category",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Category"
           },
           "is_kev": {
-            "title": "Is Kev",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Kev"
           },
           "package": {
-            "title": "Package",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package"
           },
           "risk_score": {
             "anyOf": [
@@ -12499,6 +12675,9 @@
               },
               {
                 "type": "number"
+              },
+              {
+                "type": "null"
               }
             ],
             "title": "Risk Score"
@@ -12514,18 +12693,7 @@
         },
         "required": [
           "vulnerability_id",
-          "package",
-          "severity",
-          "risk_score",
-          "cvss_score",
-          "epss_score",
-          "is_kev",
-          "fixed_version",
-          "impact_category",
-          "asset_id",
-          "canonical_id",
-          "affected_agents",
-          "affected_servers"
+          "severity"
         ],
         "title": "OverviewTopRisk",
         "type": "object"
@@ -13075,11 +13243,18 @@
             "title": "Breakdown"
           },
           "dimensions": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/PostureDimension"
-            },
-            "title": "Dimensions",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/PostureDimension"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions"
           },
           "display": {
             "anyOf": [
@@ -13196,8 +13371,7 @@
           "grade",
           "score",
           "summary",
-          "no_data",
-          "dimensions"
+          "no_data"
         ],
         "title": "PostureResponse",
         "type": "object"
@@ -13536,77 +13710,149 @@
         "additionalProperties": true,
         "properties": {
           "agent_name": {
-            "title": "Agent Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
           },
           "decision": {
-            "title": "Decision",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
           },
           "detector": {
             "title": "Detector",
             "type": "string"
           },
           "event_id": {
-            "title": "Event Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
           },
           "event_type": {
-            "title": "Event Type",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Type"
           },
           "producer_assurance": {
-            "title": "Producer Assurance",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Producer Assurance"
           },
           "reason_code": {
-            "title": "Reason Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
           },
           "session_id": {
-            "title": "Session Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
           },
           "severity": {
             "title": "Severity",
             "type": "string"
           },
           "source_id": {
-            "title": "Source Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
           },
           "tenant_id": {
-            "title": "Tenant Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
           },
           "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
           },
           "tool_name": {
-            "title": "Tool Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
           },
           "ts": {
-            "title": "Ts",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts"
           }
         },
         "required": [
-          "event_id",
-          "tenant_id",
-          "source_id",
-          "session_id",
-          "agent_name",
-          "tool_name",
           "detector",
-          "event_type",
-          "severity",
-          "decision",
-          "reason_code",
-          "producer_assurance",
-          "timestamp",
-          "ts"
+          "severity"
         ],
         "title": "ProxyAlertRow",
         "type": "object"
@@ -16856,8 +17102,15 @@
             "title": "Generated At"
           },
           "note": {
-            "title": "Note",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "report_type": {
             "title": "Report Type",
@@ -16913,7 +17166,6 @@
           "scan_type",
           "run_id",
           "status",
-          "note",
           "created_at",
           "files",
           "summary"

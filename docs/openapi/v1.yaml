@@ -3138,8 +3138,10 @@ components:
           title: Source
           type: string
         total:
+          anyOf:
+          - type: integer
+          - type: 'null'
           title: Total
-          type: integer
         total_kind:
           title: Total Kind
           type: string
@@ -4077,18 +4079,20 @@ components:
       additionalProperties: true
       properties:
         detail:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Detail
-          type: string
         tool_name:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Tool Name
-          type: string
         type:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Type
-          type: string
-      required:
-      - type
-      - tool_name
-      - detail
       title: DriftViolation
       type: object
     EffectiveReach:
@@ -5199,15 +5203,19 @@ components:
       additionalProperties: true
       properties:
         affected_agents:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Affected Agents
-          type: array
         affected_servers:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Affected Servers
-          type: array
         applicable_frameworks:
           anyOf:
           - items:
@@ -5220,8 +5228,10 @@ components:
           - $ref: '#/components/schemas/FindingAsset'
           - type: 'null'
         canonical_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Canonical Id
-          type: string
         controls_count:
           anyOf:
           - type: integer
@@ -5254,14 +5264,19 @@ components:
           - type: 'null'
           title: Ecosystem
         effective_reach:
-          $ref: '#/components/schemas/EffectiveReach'
+          anyOf:
+          - $ref: '#/components/schemas/EffectiveReach'
+          - type: 'null'
         effective_reach_band:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Effective Reach Band
-          type: string
         effective_reach_score:
           anyOf:
           - type: integer
           - type: number
+          - type: 'null'
           title: Effective Reach Score
         entity_type:
           anyOf:
@@ -5281,8 +5296,10 @@ components:
           - type: 'null'
           title: Evidence
         finding_class:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Finding Class
-          type: string
         finding_id:
           anyOf:
           - type: string
@@ -5294,8 +5311,10 @@ components:
           - type: 'null'
           title: Finding Node Id
         finding_type:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Finding Type
-          type: string
         first_seen:
           anyOf:
           - type: string
@@ -5324,16 +5343,20 @@ components:
           - type: 'null'
           title: Graph Reachable
         graph_reachable_from_agents:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Graph Reachable From Agents
-          type: array
         id:
           title: Id
           type: string
         is_kev:
+          anyOf:
+          - type: boolean
+          - type: 'null'
           title: Is Kev
-          type: boolean
         kev_cve_id:
           anyOf:
           - type: string
@@ -5370,8 +5393,10 @@ components:
           - type: 'null'
           title: Node Id
         observation_status:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Observation Status
-          type: string
         occurrence_count:
           anyOf:
           - type: integer
@@ -5422,10 +5447,12 @@ components:
         remediation_guidance:
           title: Remediation Guidance
         remediation_versions:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Remediation Versions
-          type: array
         risk_score:
           anyOf:
           - type: integer
@@ -5433,13 +5460,17 @@ components:
           - type: 'null'
           title: Risk Score
         scan_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Scan Id
-          type: string
         scan_sources:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Scan Sources
-          type: array
         schema_version:
           anyOf:
           - type: string
@@ -5454,11 +5485,15 @@ components:
           - type: 'null'
           title: Sla Due At
         sla_due_at_source:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Sla Due At Source
-          type: string
         source:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Source
-          type: string
         status:
           anyOf:
           - type: string
@@ -5475,55 +5510,18 @@ components:
           - type: 'null'
           title: Suppression Id
         title:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Title
-          type: string
         vulnerability_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Vulnerability Id
-          type: string
       required:
       - id
-      - canonical_id
-      - cve_id
-      - vulnerability_id
-      - title
       - severity
-      - source
-      - finding_class
-      - finding_type
-      - scan_id
-      - scan_sources
-      - observation_status
-      - last_observed
-      - first_seen
-      - last_seen
-      - status
-      - lifecycle_status
-      - owner
-      - sla_due_at
-      - sla_due_at_source
-      - cvss_score
-      - cvss_vector
-      - cvss_version
-      - epss_score
-      - is_kev
-      - kev_due_date
-      - fixed_version
-      - remediation_versions
-      - remediation_guidance
-      - effective_reach
-      - effective_reach_band
-      - effective_reach_score
-      - graph_reachable
-      - graph_min_hop_distance
-      - graph_reachable_from_agents
-      - affected_agents
-      - affected_servers
-      - occurrence_count
-      - provenance
-      - package_integrity_verified
-      - package_provenance_attested
-      - package_provenance_source
-      - package_provenance_status
       title: FindingRow
       type: object
     FindingTriageDecisionRequest:
@@ -5707,8 +5705,10 @@ components:
           title: Sort
           type: string
         total:
+          anyOf:
+          - type: integer
+          - type: 'null'
           title: Total
-          type: integer
         warnings:
           items:
             type: string
@@ -7833,18 +7833,22 @@ components:
           - type: 'null'
           title: Batch Id
         child_job_ids:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Child Job Ids
-          type: array
         completed_at:
           anyOf:
           - type: string
           - type: 'null'
           title: Completed At
         created_at:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Created At
-          type: string
         job_id:
           title: Job Id
           type: string
@@ -7859,8 +7863,10 @@ components:
           - type: 'null'
           title: Schedule Id
         status:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Status
-          type: string
         target:
           anyOf:
           - type: string
@@ -7877,8 +7883,10 @@ components:
           - type: 'null'
           title: Target Index
         tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Tenant Id
-          type: string
         triggered_by:
           anyOf:
           - type: string
@@ -7886,18 +7894,6 @@ components:
           title: Triggered By
       required:
       - job_id
-      - tenant_id
-      - status
-      - created_at
-      - completed_at
-      - triggered_by
-      - batch_id
-      - parent_job_id
-      - child_job_ids
-      - schedule_id
-      - target
-      - target_count
-      - target_index
       title: JobListItem
       type: object
     JobStatus:
@@ -8737,21 +8733,29 @@ components:
       additionalProperties: true
       properties:
         affected_agents:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Affected Agents
-          type: array
         affected_servers:
-          items:
-            type: string
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
           title: Affected Servers
-          type: array
         asset_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Asset Id
-          type: string
         canonical_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Canonical Id
-          type: string
         cvss_score:
           anyOf:
           - type: integer
@@ -8770,18 +8774,25 @@ components:
           - type: 'null'
           title: Fixed Version
         impact_category:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Impact Category
-          type: string
         is_kev:
+          anyOf:
+          - type: boolean
+          - type: 'null'
           title: Is Kev
-          type: boolean
         package:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Package
-          type: string
         risk_score:
           anyOf:
           - type: integer
           - type: number
+          - type: 'null'
           title: Risk Score
         severity:
           title: Severity
@@ -8791,18 +8802,7 @@ components:
           type: string
       required:
       - vulnerability_id
-      - package
       - severity
-      - risk_score
-      - cvss_score
-      - epss_score
-      - is_kev
-      - fixed_version
-      - impact_category
-      - asset_id
-      - canonical_id
-      - affected_agents
-      - affected_servers
       title: OverviewTopRisk
       type: object
     PackageCheckRequest:
@@ -9167,10 +9167,12 @@ components:
           - type: 'null'
           title: Breakdown
         dimensions:
-          additionalProperties:
-            $ref: '#/components/schemas/PostureDimension'
+          anyOf:
+          - additionalProperties:
+              $ref: '#/components/schemas/PostureDimension'
+            type: object
+          - type: 'null'
           title: Dimensions
-          type: object
         display:
           anyOf:
           - type: string
@@ -9229,7 +9231,6 @@ components:
       - score
       - summary
       - no_data
-      - dimensions
       title: PostureResponse
       type: object
     PresetCreate:
@@ -9472,62 +9473,74 @@ components:
       additionalProperties: true
       properties:
         agent_name:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Agent Name
-          type: string
         decision:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Decision
-          type: string
         detector:
           title: Detector
           type: string
         event_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Event Id
-          type: string
         event_type:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Event Type
-          type: string
         producer_assurance:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Producer Assurance
-          type: string
         reason_code:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Reason Code
-          type: string
         session_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Session Id
-          type: string
         severity:
           title: Severity
           type: string
         source_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Source Id
-          type: string
         tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Tenant Id
-          type: string
         timestamp:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Timestamp
-          type: string
         tool_name:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Tool Name
-          type: string
         ts:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Ts
-          type: string
       required:
-      - event_id
-      - tenant_id
-      - source_id
-      - session_id
-      - agent_name
-      - tool_name
       - detector
-      - event_type
       - severity
-      - decision
-      - reason_code
-      - producer_assurance
-      - timestamp
-      - ts
       title: ProxyAlertRow
       type: object
     ProxyAlertSummary:
@@ -11673,8 +11686,10 @@ components:
           - type: 'null'
           title: Generated At
         note:
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Note
-          type: string
         report_type:
           title: Report Type
           type: string
@@ -11706,7 +11721,6 @@ components:
       - scan_type
       - run_id
       - status
-      - note
       - created_at
       - files
       - summary

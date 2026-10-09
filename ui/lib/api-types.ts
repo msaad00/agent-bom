@@ -1,3 +1,9 @@
+import type { components } from "./api-schema.generated";
+
+type ApiSchemas = components["schemas"];
+/** A generated response envelope whose row fields keep the narrower hand-written row types. */
+type ContractEnvelope<T, Rows> = { [K in keyof T as K extends keyof Rows ? never : K]: T[K] } & Rows;
+
 /** Shared API response and request contracts. */
 
 import type {
@@ -297,11 +303,7 @@ export interface GraphScenario {
   updated_at: string;
 }
 
-export interface GraphScenariosResponse {
-  schema: "graph.scenarios.v1" | string;
-  count: number;
-  scenarios: GraphScenario[];
-}
+export type GraphScenariosResponse = ContractEnvelope<ApiSchemas["GraphScenariosResponse"], { scenarios: GraphScenario[] }>;
 
 export interface GraphScenarioResponse {
   schema: "graph.scenarios.v1" | string;
@@ -2376,9 +2378,7 @@ export interface TenantQuotaUpdateRequest {
   schedules?: number | null | undefined;
 }
 
-export interface ConnectorsResponse {
-  connectors: string[];
-}
+export type ConnectorsResponse = ApiSchemas["ConnectorsResponse"];
 
 export interface ConnectorHealthResponse {
   connector: string;
@@ -2429,10 +2429,7 @@ export interface SourceRecord {
   updated_at: string;
 }
 
-export interface SourcesResponse {
-  sources: SourceRecord[];
-  count: number;
-}
+export type SourcesResponse = ContractEnvelope<ApiSchemas["SourcesResponse"], { sources: SourceRecord[] }>;
 
 export interface DiscoveryProviderCapabilities {
   scan_modes: string[];
@@ -2473,13 +2470,7 @@ export interface DiscoveryProviderContract {
   trust_contract: DiscoveryProviderTrustContract;
 }
 
-export interface DiscoveryProvidersResponse {
-  contract_version: string;
-  entrypoints_enabled: boolean;
-  provider_count: number;
-  providers: DiscoveryProviderContract[];
-  warnings: string[];
-}
+export type DiscoveryProvidersResponse = ContractEnvelope<ApiSchemas["DiscoveryProvidersResponse"], { providers: DiscoveryProviderContract[] }>;
 
 export interface SourceCreateRequest {
   display_name: string;
@@ -2525,14 +2516,7 @@ export interface SourceJobsResponse {
   count: number;
 }
 
-export interface JobsResponse {
-  jobs: JobListItem[];
-  count: number;
-  total?: number | undefined;
-  limit?: number | undefined;
-  offset?: number | undefined;
-  status_counts?: Partial<Record<JobStatus, number>> | undefined;
-}
+export type JobsResponse = ContractEnvelope<ApiSchemas["JobsResponse"], { jobs: JobListItem[]; status_counts: Partial<Record<JobStatus, number>> }>;
 
 export interface JobListItem {
   job_id: string;
@@ -2555,15 +2539,7 @@ export interface JobListItem {
 
 export type ScanJobStatus = JobListItem & { graph_scan_id?: string | null | undefined };
 
-export interface AgentsResponse {
-  /** "scanned_estate" (the tenant's scanned agents) or "local_discovery" (an operator-bound API host). */
-  scope?: string;
-  source?: string;
-  count_definition?: string;
-  agents: Agent[];
-  count: number;
-  warnings: string[];
-}
+export type AgentsResponse = ContractEnvelope<ApiSchemas["AgentsResponse"], { agents: Agent[] }>;
 
 export interface RegistryServer {
   id: string;
@@ -2594,11 +2570,7 @@ export interface RegistryMeta {
   schema_version?: string | null;
 }
 
-export interface RegistryResponse {
-  servers: RegistryServer[];
-  count: number;
-  meta?: RegistryMeta;
-}
+export type RegistryResponse = ContractEnvelope<ApiSchemas["RegistryResponse"], { servers: RegistryServer[] }>;
 
 export interface ControlNarrative {
   control_id: string;
@@ -2630,26 +2602,7 @@ export interface RemediationImpact {
   narrative: string;
 }
 
-export interface ComplianceNarrativeResponse {
-  executive_summary: string;
-  framework_narratives: FrameworkNarrative[];
-  remediation_impact: RemediationImpact[];
-  risk_narrative: string;
-  generated_at: string;
-  claim_boundary: string;
-  evidence_snapshot?: {
-    schema_version?: string | null;
-    source: "scan_and_current_ingest_findings" | string;
-    tenant_id?: string | null;
-    scan_ids: string[];
-    completed_scan_count: number;
-    returned: number;
-    total: number | null;
-    completeness: { status: "complete" | "partial" | "unknown"; reason: string } | null;
-    count_metadata: Record<string, unknown>;
-    warnings: string[];
-  } | undefined;
-}
+export type ComplianceNarrativeResponse = ApiSchemas["ComplianceNarrativeResponse"];
 
 export interface ComplianceControl {
   code: string;
@@ -2960,12 +2913,7 @@ export interface MitreAtlasCatalogMetadata {
   path?: string | undefined;
 }
 
-export interface FrameworkCatalogsResponse {
-  frameworks: {
-    mitre_attack: FrameworkCatalogMetadata;
-    mitre_atlas?: MitreAtlasCatalogMetadata;
-  };
-}
+export type FrameworkCatalogsResponse = ContractEnvelope<ApiSchemas["FrameworkCatalogsResponse"], { frameworks: { mitre_attack: FrameworkCatalogMetadata; mitre_atlas?: MitreAtlasCatalogMetadata } }>;
 
 export interface AgentDetailResponse {
   agent: Agent;
@@ -3017,22 +2965,9 @@ export interface FleetAgent {
   notes: string;
 }
 
-export interface FleetResponse {
-  agents: FleetAgent[];
-  count: number;
-  total: number;
-  limit: number;
-  offset: number;
-  has_more: boolean;
-}
+export type FleetResponse = ContractEnvelope<ApiSchemas["FleetResponse"], { agents: FleetAgent[] }>;
 
-export interface FleetStatsResponse {
-  total: number;
-  by_state: Record<string, number>;
-  by_environment: Record<string, number>;
-  avg_trust_score: number;
-  low_trust_count: number;
-}
+export type FleetStatsResponse = ApiSchemas["FleetStatsResponse"];
 
 export interface FleetEndpoint {
   endpoint_id: string;
@@ -3126,10 +3061,7 @@ export interface GatewayPolicy {
   enabled: boolean;
 }
 
-export interface GatewayPolicyResponse {
-  policies: GatewayPolicy[];
-  count: number;
-}
+export type GatewayPolicyResponse = ContractEnvelope<ApiSchemas["GatewayPoliciesResponse"], { policies: GatewayPolicy[] }>;
 
 export interface PolicyAuditEntry {
   entry_id: string;
@@ -3332,17 +3264,7 @@ export interface EvaluateResult {
   policies_evaluated: number;
 }
 
-export interface PostureResponse {
-  grade: string;
-  score: number;
-  summary: string;
-  no_data?: boolean;
-  demo_estate_seeding?: boolean;
-  dimensions: Record<
-    string,
-    { score: number; label: string; details?: string }
-  >;
-}
+export type PostureResponse = ApiSchemas["PostureResponse"];
 
 export interface TrendPointResponse {
   scope_id?: string | null;
@@ -3364,16 +3286,7 @@ export interface TrendPointResponse {
   posture_grade: string;
 }
 
-export interface TrendsResponse {
-  days?: number | null;
-  scope_id?: string | null;
-  available_scopes?: string[];
-  history_limited?: boolean;
-  age_statistic?: "median";
-  freshness_reference?: "scan_completion";
-  data_points: TrendPointResponse[];
-  count: number;
-}
+export type TrendsResponse = ContractEnvelope<ApiSchemas["TrendsResponse"], { data_points: TrendPointResponse[] }>;
 
 // ─── Cross-domain overview (landing page) ────────────────────────────────────
 
@@ -4166,27 +4079,7 @@ export interface ProxyAlert {
   trace_id?: string | undefined;
 }
 
-export interface ProxyAlertsResponse {
-  alerts: ProxyAlert[];
-  /** Alerts on this page (bounded by `filters.limit`). */
-  count: number;
-  /** Alerts matching the filters across the whole tenant, before paging. */
-  matched_total: number;
-  /**
-   * Whole-tenant alert summary, on the same basis as `/v1/proxy/metrics`.
-   * Deliberately NOT scoped to the page or the filters, so the histogram
-   * beside a filtered page never reads as the entire estate.
-   */
-  summary: {
-    total_alerts: number;
-    blocked_alerts: number;
-    alerts_by_severity: Record<string, number>;
-    alerts_by_detector: Record<string, number>;
-    latest_alert_at: string;
-    recent_alerts: { ts: string; detector: string; severity: string; message: string }[];
-  };
-  filters: { severity: string | null; detector: string | null; limit: number };
-}
+export type ProxyAlertsResponse = ContractEnvelope<ApiSchemas["ProxyAlertsResponse"], { alerts: ProxyAlert[] }>;
 
 export interface AuditEntry {
   entry_id: string;
@@ -4211,19 +4104,7 @@ export interface AuditIntegrityResponse {
 
 // ─── Compliance Hub (#1044) ─────────────────────────────────────────────────
 
-export interface HubPostureResponse {
-  totals: {
-    native: number;
-    hub: number;
-    combined: number;
-  };
-  framework_counts: {
-    native: Record<string, number>;
-    hub: Record<string, number>;
-    combined: Record<string, number>;
-  };
-  hub_severity_breakdown: Record<string, number>;
-}
+export type HubPostureResponse = ApiSchemas["HubPostureResponse"];
 
 // ── Runtime governance cockpits: cost, identity, drift ──────────────────────
 
@@ -4356,12 +4237,7 @@ export interface AgentIdentitySummary {
   revoked_reason: string;
 }
 
-export interface IdentitiesResponse {
-  schema_version: string;
-  tenant_id: string;
-  count: number;
-  identities: AgentIdentitySummary[];
-}
+export type IdentitiesResponse = ContractEnvelope<ApiSchemas["IdentitiesResponse"], { identities: AgentIdentitySummary[] }>;
 
 export interface JITGrant {
   grant_id: string;
@@ -4446,13 +4322,7 @@ export interface DriftIncident {
   resolution_note: string;
 }
 
-export interface DriftIncidentsResponse {
-  schema_version: string;
-  tenant_id: string;
-  count: number;
-  open_count: number;
-  incidents: DriftIncident[];
-}
+export type DriftIncidentsResponse = ContractEnvelope<ApiSchemas["DriftIncidentsResponse"], { incidents: DriftIncident[] }>;
 
 /** Summary of a blueprint version promoted from accepted drift (#3905). */
 export interface DriftPromotedVersion {
@@ -4633,14 +4503,7 @@ export interface CloudConnectionRecord {
   verified_capabilities: string[];
 }
 
-export interface CloudConnectionsResponse {
-  schema_version: string;
-  tenant_id: string;
-  connections: CloudConnectionRecord[];
-  count: number;
-  /** True when AGENT_BOM_CONNECTIONS_SCHEDULER is enabled on this control plane. */
-  connections_scheduler_enabled?: boolean;
-}
+export type CloudConnectionsResponse = ContractEnvelope<ApiSchemas["CloudConnectionsResponse"], { connections: CloudConnectionRecord[] }>;
 
 /** Request body for `POST /v1/cloud/connections`. `external_id` is write-only. */
 export interface CloudConnectionCreateRequest {
@@ -5053,13 +4916,9 @@ export interface WebhookOutboxResponse {
   stats: Record<string, number>;
 }
 
-export interface SiemConnectorsResponse {
-  connectors: string[];
-}
+export type SiemConnectorsResponse = ApiSchemas["SiemConnectorsResponse"];
 
-export interface SiemFormatsResponse {
-  formats: string[];
-}
+export type SiemFormatsResponse = ApiSchemas["SiemFormatsResponse"];
 
 export interface SiemTestResponse {
   siem_type: string;
@@ -5091,11 +4950,7 @@ export interface IntelSource {
   feed_run: IntelFeedRun;
 }
 
-export interface IntelSourcesResponse {
-  schema_version: string;
-  sources: IntelSource[];
-  count: number;
-}
+export type IntelSourcesResponse = ContractEnvelope<ApiSchemas["IntelSourcesResponse"], { sources: IntelSource[] }>;
 
 export interface IntelAdvisory {
   id: string;
@@ -5217,12 +5072,7 @@ export interface TicketingConnection {
   has_secret: boolean;
 }
 
-export interface TicketingConnectionsResponse {
-  schema_version: string;
-  tenant_id: string;
-  connections: TicketingConnection[];
-  count: number;
-}
+export type TicketingConnectionsResponse = ContractEnvelope<ApiSchemas["TicketingConnectionsResponse"], { connections: TicketingConnection[] }>;
 
 /** A finding→ticket link (also the idempotency ledger row). */
 export interface TicketLink {

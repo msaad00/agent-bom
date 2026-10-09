@@ -8,6 +8,8 @@ describe("CoverageCockpit", () => {
   it("renders deployment, accounts, and scans pillars with enterprise-console coverage copy", async () => {
     vi.spyOn(api, "listCloudConnections").mockResolvedValue({
       schema_version: "cloud.connections.v1",
+      connections_scheduler_enabled: false,
+      workload_auth_modes: {},
       tenant_id: "default",
       count: 1,
       connections: [

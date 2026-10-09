@@ -1,29 +1,4 @@
-"""Scan API routes.
-
-Endpoints:
-    POST /v1/scan                      start a scan (async, returns job_id)
-    POST /v1/scan/check                check one package before installation
-    GET  /v1/scan/{job_id}             fetch scan status + full results
-    GET  /v1/scan/{job_id}/status      poll lightweight scan status
-    GET  /v1/scan/{job_id}/attack-flow attack flow graph (React Flow)
-    GET  /v1/scan/{job_id}/context-graph context graph with lateral movement
-    GET  /v1/scan/{job_id}/graph-export graph export (json/dot/mermaid/graphml/cypher)
-    GET  /v1/scan/{job_id}/licenses    license compliance report
-    GET  /v1/scan/{job_id}/vex         VEX document
-    GET  /v1/scan/{job_id}/skill-audit skill security audit
-    POST /v1/scan/{job_id}/cancel      cooperative cancel for pending/running jobs
-    DELETE /v1/scan/{job_id}           discard a job record
-    GET  /v1/scan/{job_id}/stream      SSE — real-time scan progress
-    GET  /v1/jobs                      list all scan jobs
-    GET  /v1/findings                  list findings from completed scans
-    GET  /v1/inventory                 list inventory from completed scans
-    POST /v1/scan/dataset-cards        scan dataset cards & DVC files
-    POST /v1/scan/training-pipelines   scan ML training pipeline artifacts
-    POST /v1/scan/browser-extensions   scan browser extensions
-    POST /v1/scan/model-provenance     check HF/Ollama model provenance
-    POST /v1/scan/prompt-scan          scan prompts for injection/secrets
-    POST /v1/scan/model-files          scan model files for unsafe formats
-"""
+"""Scan submission, status, findings, inventory, exports and auxiliary scanner routes."""
 
 from __future__ import annotations
 

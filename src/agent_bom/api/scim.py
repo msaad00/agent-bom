@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any
 
+from agent_bom.api.scim_errors import SCIM_ERROR_SCHEMA as SCIM_ERROR_SCHEMA
+from agent_bom.api.scim_errors import scim_error_body as scim_error_body
 from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
 
 _SCIM_ROLE_VALUES = ("admin", "analyst", "viewer")
@@ -384,18 +386,6 @@ def describe_scim_posture() -> dict[str, object]:
                 "provider, reverse proxy, or manual API-key administration."
             )
         ),
-    }
-
-
-SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error"
-
-
-def scim_error_body(*, status_code: int, detail: str) -> dict[str, Any]:
-    """RFC 7644 Error response body for non-bulk SCIM failures."""
-    return {
-        "schemas": [SCIM_ERROR_SCHEMA],
-        "status": str(status_code),
-        "detail": detail,
     }
 
 

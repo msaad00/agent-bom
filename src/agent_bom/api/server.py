@@ -27,6 +27,7 @@ from agent_bom.api import host_guard as _host_guard
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log, warn_if_ephemeral_hmac_key
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
+from agent_bom.api.error_envelope import ERROR_RESPONSES, install_error_envelope
 from agent_bom.api.foreground_activity import ForegroundActivityMiddleware
 from agent_bom.api.middleware import (
     DEFAULT_SCAN_RATE_LIMIT_RPM,
@@ -37,7 +38,6 @@ from agent_bom.api.middleware import (
     RateLimitMiddleware,
     TrustHeadersMiddleware,
     global_ip_rate_limit_rpm,
-    install_error_envelope,
     register_dashboard_spa_routes,
 )
 
@@ -1149,7 +1149,6 @@ configure_api_from_env()
 
 
 # ─── Scan Pipeline (extracted to api/pipeline.py) ────────────────────────────
-from agent_bom.api.error_envelope import ERROR_RESPONSES  # noqa: E402
 from agent_bom.api.pipeline import (  # noqa: E402
     PIPELINE_DAG_EDGES,  # noqa: F401 — re-exported for tests/artifact consumers
     PIPELINE_DAG_EVENT_SCHEMA,  # noqa: F401 — re-exported for tests/artifact consumers

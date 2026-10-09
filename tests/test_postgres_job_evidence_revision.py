@@ -162,6 +162,7 @@ def test_demo_existence_projection_is_tenant_scoped_and_skips_payload_parsing(re
 
 
 def test_posture_projection_refreshes_after_another_replica_writes(replicas, monkeypatch):
+    from agent_bom.api.findings_current import latest_current_scan_job
     from agent_bom.api.models import JobStatus
     from agent_bom.api.posture_scan_snapshot import scan_posture_inputs
 
@@ -176,7 +177,7 @@ def test_posture_projection_refreshes_after_another_replica_writes(replicas, mon
 
         def load():
             reads.append(1)
-            return a.list_all(tenant_id=tenant)
+            return latest_current_scan_job(a.list_all(tenant_id=tenant), require_authoritative_evidence=True)
 
         assert scan_posture_inputs(a, tenant, load)["posture_scorecard"]["score"] == 75
         assert scan_posture_inputs(a, tenant, load)["posture_scorecard"]["score"] == 75

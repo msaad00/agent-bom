@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob
+from agent_bom.api.tenant_worker import run_tenant_bound
 from agent_bom.core.tenancy import require_explicit_tenant_id
 
 ACTIVE_SCAN_JOB_STATUSES = frozenset({JobStatus.PENDING, JobStatus.RUNNING})
@@ -53,15 +54,11 @@ def _parse_created_at(job: ScanJob) -> datetime | None:
 
 def _put_in_job_tenant(store: Any, job: ScanJob) -> None:
     """Persist a globally discovered job through its own tenant-bound app path."""
-    from agent_bom.api.tenant_worker import run_tenant_bound
-
     run_tenant_bound(job.tenant_id, store.put, job)
 
 
 def _active_jobs(store: Any) -> Any:
     """Materialize only active candidates, through their own tenant scope."""
-    from agent_bom.api.tenant_worker import run_tenant_bound
-
     summaries = getattr(store, "list_summary", None)
     if not callable(summaries):
         yield from store.list_all(all_tenants=True)

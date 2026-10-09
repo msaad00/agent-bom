@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from agent_bom.core.tenancy import require_explicit_tenant_id
+
 _CACHE: OrderedDict[tuple[Any, str, str], tuple[float, dict | None]] = OrderedDict()
 _LOCK = threading.Lock()
 _TTL = 15.0
@@ -19,21 +21,19 @@ _MAX_ENTRIES = 64
 _MAX_BYTES = 256 * 1024
 
 
-def scan_posture_inputs(store: Any, tenant_id: str, load: Callable[[], list[Any]]) -> dict | None:
+def scan_posture_inputs(store: Any, tenant_id: str, load_current: Callable[[], Any]) -> dict | None:
     """Keep only summary/scorecard fields; callers never share mutable job objects.
 
+    The caller selects authoritative evidence; this cache stores only projections.
     Legacy stores without revision tokens compute on every call. Durable stores
     validate the token around reads and reject continuously changing evidence.
     The short TTL also bounds changes to time-dependent scan eligibility.
     """
-    from agent_bom.api.findings_current import latest_current_scan_job
-    from agent_bom.core.tenancy import require_explicit_tenant_id
-
     require_explicit_tenant_id(tenant_id)
     reader = getattr(store, "overview_evidence_revision", None)
 
     def compute() -> dict | None:
-        job = latest_current_scan_job(load(), require_authoritative_evidence=True)
+        job = load_current()
         if job is None or job.result is None:
             return None
         return copy.deepcopy({key: job.result.get(key) for key in ("summary", "posture_scorecard")})

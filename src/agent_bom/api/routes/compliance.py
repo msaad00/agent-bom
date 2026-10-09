@@ -1,19 +1,4 @@
-"""Compliance and posture API routes.
-
-Endpoints:
-    GET  /v1/compliance                      15-framework compliance posture + AISVS benchmark
-    GET  /v1/compliance/summary              aggregate compliance summary
-    GET  /v1/compliance/aisvs                OWASP AISVS benchmark posture
-    GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
-    GET  /v1/compliance/narrative/{framework} single-framework narrative
-    GET  /v1/compliance/nist-800-53          NIST 800-53 catalog drill (per-control + ISO-by-id)
-    GET  /v1/compliance/{framework}          single framework (must be after /narrative)
-    GET  /v1/compliance/{framework}/report   signed evidence bundle for auditors
-    GET  /v1/posture                         enterprise posture scorecard
-    GET  /v1/posture/counts                  severity counts for nav badges
-    GET  /v1/posture/credentials             credential risk ranking
-    GET  /v1/posture/incidents               agent-centric incident correlation
-"""
+"""Compliance narratives, framework evidence and tenant posture read routes."""
 
 from __future__ import annotations
 
@@ -31,20 +16,13 @@ import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
+from agent_bom.api import read_models
 from agent_bom.api.credential_rotation import build_credential_rotation_governance
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_read_context import finding_read_snapshot
 from agent_bom.api.hub_ingest import read_compliance_ingest_body
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.posture_counts_cache import POSTURE_COUNTS_CACHE, cached_posture_block
-from agent_bom.api.read_models import (
-    ComplianceNarrativeResponse,
-    ComplianceResponse,
-    HubPostureResponse,
-    PostureCountsResponse,
-    PostureResponse,
-    documented,
-)
 from agent_bom.api.stores import (
     _get_analytics_store,
     _get_credential_ref_store,
@@ -465,7 +443,7 @@ def _build_cis_foundations_line(agg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@router.get("/compliance", **documented(ComplianceResponse), tags=["compliance"])
+@router.get("/compliance", **read_models.documented(read_models.ComplianceResponse), tags=["compliance"])
 async def get_compliance(
     request: Request,
     scan_id: Annotated[str | None, Query(max_length=200)] = None,
@@ -1195,7 +1173,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative", *, evidence: dict[str, 
     return payload
 
 
-@router.get("/compliance/narrative", **documented(ComplianceNarrativeResponse), tags=["compliance"])
+@router.get("/compliance/narrative", **read_models.documented(read_models.ComplianceNarrativeResponse), tags=["compliance"])
 def get_compliance_narrative(request: Request) -> dict:
     """Generate a review-ready compliance narrative from current tenant evidence.
 
@@ -2267,7 +2245,7 @@ def export_compliance_pack(
 # ─── Posture Scorecard ─────────────────────────────────────────────────────
 
 
-@router.get("/posture", **documented(PostureResponse), tags=["compliance"])
+@router.get("/posture", **read_models.documented(read_models.PostureResponse), tags=["compliance"])
 async def get_posture_scorecard(request: Request) -> dict:
     """Compute enterprise posture scorecard from the latest completed scan.
 
@@ -2281,10 +2259,14 @@ async def get_posture_scorecard(request: Request) -> dict:
 @finding_read_snapshot
 def _posture_scorecard_impl(request: Request) -> dict:
     """Select the latest scan and compose the exec posture over one parse of each job payload."""
+    from agent_bom.api.findings_current import latest_current_scan_job
     from agent_bom.api.posture_scan_snapshot import scan_posture_inputs
-    from agent_bom.api.tenancy import require_request_tenant_id
 
-    latest_result = scan_posture_inputs(_get_store(), require_request_tenant_id(request), lambda: _tenant_jobs(request))
+    latest_result = scan_posture_inputs(
+        _get_store(),
+        require_request_tenant_id(request),
+        lambda: latest_current_scan_job(_tenant_jobs(request), require_authoritative_evidence=True),
+    )
 
     if latest_result is None:
         seeding = demo_estate_seeding()
@@ -2352,7 +2334,7 @@ def get_backpressure_posture() -> dict:
     return describe_backpressure_posture()
 
 
-@router.get("/posture/counts", **documented(PostureCountsResponse), tags=["compliance"])
+@router.get("/posture/counts", **read_models.documented(read_models.PostureCountsResponse), tags=["compliance"])
 async def get_posture_counts(request: Request) -> dict:
     """Aggregate open-finding severity counts across all completed scans.
 
@@ -2887,7 +2869,7 @@ def _list_hub_findings_impl(request: Request, limit: int, offset: int, cursor: s
     )
 
 
-@router.get("/compliance/hub/posture", **documented(HubPostureResponse), tags=["compliance"])
+@router.get("/compliance/hub/posture", **read_models.documented(read_models.HubPostureResponse), tags=["compliance"])
 async def get_hub_posture(request: Request) -> dict:
     """Aggregate compliance posture across native scans + hub-ingested findings.
 

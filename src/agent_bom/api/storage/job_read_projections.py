@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from agent_bom.api.postgres_common import _maintenance_connection, _tenant_connection, bypass_tenant_rls
 from agent_bom.api.storage.jobs import require_job_tenant
 
 DEMO_ESTATE_TRIGGERED_BY = "demo-estate-bootstrap"
@@ -29,8 +30,6 @@ def sqlite_demo_exists(self: Any, tenant_id: str) -> bool:
 
 
 def postgres_demo_exists(self: Any, tenant_id: str) -> bool:
-    from agent_bom.api.postgres_common import _tenant_connection
-
     require_job_tenant(tenant_id)
     with _tenant_connection(self._pool) as conn:
         return (
@@ -50,3 +49,26 @@ def postgres_demo_exists(self: Any, tenant_id: str) -> bool:
             ).fetchone()
             is not None
         )
+
+
+def sqlite_job_revision(self: Any, tenant_id: str) -> str:
+    try:
+        row = self._conn.execute(
+            """SELECT identity, COALESCE((SELECT revision FROM job_overview_revisions
+               WHERE tenant_id=?), 0) FROM job_overview_identity WHERE singleton=1""",
+            (tenant_id,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("Job evidence revision unavailable")
+        return f"{row[0]}:{row[1]}"
+    finally:
+        self._shrink_connection_memory()
+        self._close_thread_connection()
+
+
+def postgres_pending_dispatch_count(self: Any) -> int:
+    """Number of jobs waiting to be claimed (operator/metrics visibility)."""
+    with bypass_tenant_rls(audit=False, warn=False):
+        with _maintenance_connection(self._maintenance_pool) as conn:
+            row = conn.execute("SELECT COUNT(*) FROM scan_dispatch_queue WHERE status = 'pending'").fetchone()
+            return int(row[0]) if row else 0

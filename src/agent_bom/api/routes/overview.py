@@ -24,9 +24,6 @@ Canonicalized blast-radius evidence is included in current scan findings.
 Domain tiles (cloud / vuln / code / runtime / ...) remain scan-scoped by
 design; the posture, headline and security-discipline lanes aggregate scan + ingested
 evidence.
-
-Endpoints:
-    GET /v1/overview   cross-domain posture snapshot for the landing page
 """
 
 from __future__ import annotations

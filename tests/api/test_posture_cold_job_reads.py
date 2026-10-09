@@ -158,17 +158,18 @@ def test_warm_posture_does_not_parse_jobs_and_write_invalidates(sqlite_store, pa
 
 
 def test_posture_projection_is_detached_and_tenant_scoped(sqlite_store):
+    from agent_bom.api.findings_current import latest_current_scan_job
     from agent_bom.api.posture_scan_snapshot import scan_posture_inputs
 
     sqlite_store.put(_job(TENANT))
 
     def load():
-        return sqlite_store.list_all(tenant_id=TENANT)
+        return latest_current_scan_job(sqlite_store.list_all(tenant_id=TENANT), require_authoritative_evidence=True)
 
     projection = scan_posture_inputs(sqlite_store, TENANT, load)
     projection["summary"]["total_packages"] = -1
     assert scan_posture_inputs(sqlite_store, TENANT, load)["summary"]["total_packages"] == 1
-    assert scan_posture_inputs(sqlite_store, TENANT + "-empty", lambda: []) is None
+    assert scan_posture_inputs(sqlite_store, TENANT + "-empty", lambda: None) is None
 
 
 def test_demo_probe_and_orphan_sweep_do_not_parse_done_jobs(sqlite_store, parses, monkeypatch):

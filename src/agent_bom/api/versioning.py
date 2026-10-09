@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from agent_bom.api.error_envelope import ERROR_RESPONSES
+from agent_bom.api.error_models import ERROR_RESPONSES
 
 API_V1_PREFIX = "/v1"
 

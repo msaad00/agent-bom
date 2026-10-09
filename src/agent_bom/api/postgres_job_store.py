@@ -19,7 +19,7 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.storage.job_payload_cache import JobPayloadCache, read_versioned_jobs
-from agent_bom.api.storage.job_read_projections import postgres_demo_exists
+from agent_bom.api.storage.job_read_projections import postgres_demo_exists, postgres_pending_dispatch_count
 from agent_bom.api.storage.job_revisions import POSTGRES_JOB_REVISIONS_V1, read_postgres_job_revision
 from agent_bom.api.storage.jobs import put_job, require_job_tenant
 from agent_bom.api.storage.jobs_schema import JOBS_SCHEMA_VERSION, POSTGRES_TENANT_KEYS
@@ -41,6 +41,7 @@ class PostgresJobStore:
     """PostgreSQL-backed scan job persistence."""
 
     has_usable_demo_job = postgres_demo_exists
+    pending_dispatch_count = postgres_pending_dispatch_count
     retains_job_objects_in_memory = False
 
     def __init__(self, pool: ConnectionPool | None = None, maintenance_pool: ConnectionPool | None = None) -> None:
@@ -727,13 +728,6 @@ class PostgresJobStore:
                 )
                 conn.commit()
                 return int(cursor.rowcount)
-
-    def pending_dispatch_count(self) -> int:
-        """Number of jobs waiting to be claimed (operator/metrics visibility)."""
-        with bypass_tenant_rls(audit=False, warn=False):
-            with _maintenance_connection(self._maintenance_pool) as conn:
-                row = conn.execute("SELECT COUNT(*) FROM scan_dispatch_queue WHERE status = 'pending'").fetchone()
-                return int(row[0]) if row else 0
 
     def _replace_cis_checks(self, conn: Connection, job: ScanJob) -> None:
         result = getattr(job, "result", None)

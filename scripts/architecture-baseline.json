@@ -4606,29 +4606,17 @@
     },
     "proxy.py": {
       "api_imports": 5,
-      "broad_except": 10,
-      "deferred_imports": 27,
-      "file_lines": 2222,
+      "broad_except": 8,
+      "deferred_imports": 20,
+      "file_lines": 1644,
       "raw_env_reads": 11
     },
     "proxy.py::_maybe_block_on_firewall": {
       "function_lines": 89
     },
     "proxy.py::_proxy_sse_server": {
-      "complexity": 40,
-      "function_lines": 365
-    },
-    "proxy.py::run_proxy": {
-      "complexity": 149,
-      "function_lines": 1019
-    },
-    "proxy.py::run_proxy.relay_client_to_server": {
-      "complexity": 39,
-      "function_lines": 297
-    },
-    "proxy.py::run_proxy.relay_server_to_client": {
-      "complexity": 31,
-      "function_lines": 169
+      "complexity": 35,
+      "function_lines": 340
     },
     "proxy_audit.py": {
       "api_imports": 2,
@@ -4661,6 +4649,13 @@
     },
     "proxy_policy.py::evaluate_conditions": {
       "complexity": 17
+    },
+    "proxy_relay.py": {
+      "deferred_imports": 3
+    },
+    "proxy_session.py": {
+      "broad_except": 2,
+      "deferred_imports": 4
     },
     "push.py": {
       "deferred_imports": 8

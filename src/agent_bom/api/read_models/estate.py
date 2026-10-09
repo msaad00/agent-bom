@@ -38,48 +38,48 @@ class FindingAsset(ReadModel):
 
 class FindingRow(ReadModel):
     id: str
-    canonical_id: str
-    cve_id: str | None
-    vulnerability_id: str
-    title: str
+    canonical_id: str | None = None
+    cve_id: str | None = None
+    vulnerability_id: str | None = None
+    title: str | None = None
     severity: str
-    source: str
-    finding_class: str
-    finding_type: str
-    scan_id: str
-    scan_sources: list[str]
-    observation_status: str
-    last_observed: str | None
-    first_seen: str | None
-    last_seen: str | None
-    status: str | None
-    lifecycle_status: str | None
-    owner: str | None
-    sla_due_at: str | None
-    sla_due_at_source: str
-    cvss_score: Num | None
-    cvss_vector: str | None
-    cvss_version: str | None
-    epss_score: Num | None
-    is_kev: bool
-    kev_due_date: str | None
-    fixed_version: str | None
-    remediation_versions: list[str]
-    remediation_guidance: Any
-    effective_reach: EffectiveReach
-    effective_reach_band: str
-    effective_reach_score: Num
-    graph_reachable: bool | None
-    graph_min_hop_distance: int | None
-    graph_reachable_from_agents: list[str]
-    affected_agents: list[str]
-    affected_servers: list[str]
-    occurrence_count: int | None
-    provenance: Any
-    package_integrity_verified: bool | None
-    package_provenance_attested: bool | None
-    package_provenance_source: str | None
-    package_provenance_status: str | None
+    source: str | None = None
+    finding_class: str | None = None
+    finding_type: str | None = None
+    scan_id: str | None = None
+    scan_sources: list[str] | None = None
+    observation_status: str | None = None
+    last_observed: str | None = None
+    first_seen: str | None = None
+    last_seen: str | None = None
+    status: str | None = None
+    lifecycle_status: str | None = None
+    owner: str | None = None
+    sla_due_at: str | None = None
+    sla_due_at_source: str | None = None
+    cvss_score: Num | None = None
+    cvss_vector: str | None = None
+    cvss_version: str | None = None
+    epss_score: Num | None = None
+    is_kev: bool | None = None
+    kev_due_date: str | None = None
+    fixed_version: str | None = None
+    remediation_versions: list[str] | None = None
+    remediation_guidance: Any = None
+    effective_reach: EffectiveReach | None = None
+    effective_reach_band: str | None = None
+    effective_reach_score: Num | None = None
+    graph_reachable: bool | None = None
+    graph_min_hop_distance: int | None = None
+    graph_reachable_from_agents: list[str] | None = None
+    affected_agents: list[str] | None = None
+    affected_servers: list[str] | None = None
+    occurrence_count: int | None = None
+    provenance: Any = None
+    package_integrity_verified: bool | None = None
+    package_provenance_attested: bool | None = None
+    package_provenance_source: str | None = None
+    package_provenance_status: str | None = None
     applicable_frameworks: list[str] | None = None
     asset: FindingAsset | None = None
     controls_count: int | None = None
@@ -105,7 +105,7 @@ class FindingsResponse(ReadResponse):
     schema_version: str
     findings: list[FindingRow]
     count: int
-    total: int
+    total: int | None
     limit: int
     offset: int
     cursor: str | None
@@ -409,9 +409,9 @@ class IdentitiesResponse(ReadResponse):
 
 
 class DriftViolation(ReadModel):
-    type: str
-    tool_name: str
-    detail: str
+    type: str | None = None
+    tool_name: str | None = None
+    detail: str | None = None
 
 
 class DriftIncidentRow(ReadModel):
@@ -495,20 +495,20 @@ class ProxyStatusResponse(ReadResponse):
 
 
 class ProxyAlertRow(ReadModel):
-    event_id: str
-    tenant_id: str
-    source_id: str
-    session_id: str
-    agent_name: str
-    tool_name: str
+    event_id: str | None = None
+    tenant_id: str | None = None
+    source_id: str | None = None
+    session_id: str | None = None
+    agent_name: str | None = None
+    tool_name: str | None = None
     detector: str
-    event_type: str
+    event_type: str | None = None
     severity: str
-    decision: str
-    reason_code: str
-    producer_assurance: str
-    timestamp: str
-    ts: str
+    decision: str | None = None
+    reason_code: str | None = None
+    producer_assurance: str | None = None
+    timestamp: str | None = None
+    ts: str | None = None
 
 
 class ProxyAlertFilters(ReadModel):
@@ -555,7 +555,7 @@ class SkillsScanResponse(ReadResponse):
     run_id: str | None
     status: str
     synthetic: bool | None = None
-    note: str
+    note: str | None = None
     created_at: str | None
     generated_at: str | None = None
     files: list[dict[str, Any]]

@@ -48,6 +48,11 @@ _SKIP_DIR_NAMES = {
 }
 
 
+# Types generated from docs/openapi/v1.json list every documented path, orphans
+# included; they mirror the contract and are not callers.
+_GENERATED_CONTRACT_MIRRORS = {ROOT / "ui" / "lib" / "api-schema.generated.ts"}
+
+
 def _iter_consumer_files() -> list[Path]:
     files: list[Path] = []
     for root in _CONSUMER_ROOTS:
@@ -56,7 +61,7 @@ def _iter_consumer_files() -> list[Path]:
         for path in root.rglob("*"):
             if not path.is_file():
                 continue
-            if any(part in _SKIP_DIR_NAMES for part in path.parts):
+            if any(part in _SKIP_DIR_NAMES for part in path.parts) or path in _GENERATED_CONTRACT_MIRRORS:
                 continue
             if path.suffix.lower() in _CODE_SUFFIXES:
                 files.append(path)

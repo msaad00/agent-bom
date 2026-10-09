@@ -47,10 +47,14 @@ class ReadResponse(ReadModel):
         except ValidationError as exc:
             if not isinstance(data, dict) or (info.context or {}).get(STRICT_CONTRACT):
                 raise
+            # Field paths and error types only: response values never reach the log.
+            errors = exc.errors(include_input=False)
+            fields = sorted({f"{'.'.join(str(part) for part in error['loc'])}:{error['type']}" for error in errors})
             _logger.warning(
-                "response contract drift for %s: %d field error(s); returning the handler body unchanged",
+                "response contract drift for %s: %d field error(s) [%s]; returning the handler body unchanged",
                 cls.__name__,
                 exc.error_count(),
+                ", ".join(fields[:8]),
             )
             return cls.model_construct(**data)
 
@@ -85,7 +89,7 @@ class CountMetadata(ReadModel):
     returned: int
     scope: str
     source: str
-    total: int
+    total: int | None
     total_kind: str
     window: CountWindow | None = None
 

@@ -71,18 +71,18 @@ class AuthMeResponse(ReadResponse):
 
 class JobListItem(ReadModel):
     job_id: str
-    tenant_id: str
-    status: str
-    created_at: str
-    completed_at: str | None
-    triggered_by: str | None
-    batch_id: str | None
-    parent_job_id: str | None
-    child_job_ids: list[str]
-    schedule_id: str | None
-    target: str | None
-    target_count: int | None
-    target_index: int | None
+    tenant_id: str | None = None
+    status: str | None = None
+    created_at: str | None = None
+    completed_at: str | None = None
+    triggered_by: str | None = None
+    batch_id: str | None = None
+    parent_job_id: str | None = None
+    child_job_ids: list[str] | None = None
+    schedule_id: str | None = None
+    target: str | None = None
+    target_count: int | None = None
+    target_index: int | None = None
 
 
 class JobsResponse(ReadResponse):
@@ -213,7 +213,7 @@ class PostureResponse(ReadResponse):
     score: Num
     summary: str
     no_data: bool
-    dimensions: dict[str, PostureDimension]
+    dimensions: dict[str, PostureDimension] | None = None
     basis: str | None = None
     breakdown: list[PostureBreakdownItem] | None = None
     display: str | None = None
@@ -333,18 +333,18 @@ class OverviewPosture(ReadModel):
 
 class OverviewTopRisk(ReadModel):
     vulnerability_id: str
-    package: str
+    package: str | None = None
     severity: str
-    risk_score: Num
-    cvss_score: Num | None
-    epss_score: Num | None
-    is_kev: bool
-    fixed_version: str | None
-    impact_category: str
-    asset_id: str
-    canonical_id: str
-    affected_agents: list[str]
-    affected_servers: list[str]
+    risk_score: Num | None = None
+    cvss_score: Num | None = None
+    epss_score: Num | None = None
+    is_kev: bool | None = None
+    fixed_version: str | None = None
+    impact_category: str | None = None
+    asset_id: str | None = None
+    canonical_id: str | None = None
+    affected_agents: list[str] | None = None
+    affected_servers: list[str] | None = None
 
 
 class OverviewResponse(ReadResponse):

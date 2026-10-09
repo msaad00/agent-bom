@@ -739,14 +739,14 @@ export function Nav() {
                           >
                             <span
                               aria-hidden="true"
-                              className="text-[9px] font-mono font-bold text-red-400 bg-red-950/60 border border-red-800/40 rounded-full px-1.5 py-0 leading-4"
+                              className="text-[9px] font-mono font-bold text-[color:var(--severity-critical)] bg-[color:var(--severity-critical-bg)] border border-[color:var(--severity-critical-border)] dark:text-red-400 dark:bg-red-950/60 dark:border-red-800/40 rounded-full px-1.5 py-0 leading-4"
                             >
                               {openIssues.critical}
                             </span>
                             {openIssues.high > 0 && (
                               <span
                                 aria-hidden="true"
-                                className="text-[9px] font-mono font-bold text-orange-400 bg-orange-950/60 border border-orange-800/40 rounded-full px-1.5 py-0 leading-4"
+                                className="text-[9px] font-mono font-bold text-[color:var(--severity-high)] bg-[color:var(--severity-high-bg)] border border-[color:var(--severity-high-border)] dark:text-orange-400 dark:bg-orange-950/60 dark:border-orange-800/40 rounded-full px-1.5 py-0 leading-4"
                               >
                                 {openIssues.high}
                               </span>

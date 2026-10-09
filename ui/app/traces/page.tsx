@@ -266,8 +266,8 @@ function TracesPageContent() {
                             <span
                               className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium capitalize ${
                                 flagged.severity === "high"
-                                  ? "border-red-800 bg-red-950 text-red-300"
-                                  : "border-yellow-800 bg-yellow-950 text-yellow-300"
+                                  ? "border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] text-[color:var(--severity-critical)]"
+                                  : "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)]"
                               }`}
                             >
                               <ShieldAlert className="h-3 w-3" />

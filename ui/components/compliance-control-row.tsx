@@ -34,8 +34,8 @@ export function ComplianceControlRow({
         control.status === "pass"
           ? "border-emerald-900/40 bg-emerald-950/15"
           : control.status === "warning"
-            ? "border-yellow-900/40 bg-yellow-950/15"
-            : "border-red-900/40 bg-red-950/15"
+            ? "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)]"
+            : "border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)]"
       }`}
     >
       <StatusIcon status={control.status} className="h-4 w-4 shrink-0" />

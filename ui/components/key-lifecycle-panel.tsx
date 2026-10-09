@@ -572,7 +572,7 @@ export function KeyLifecyclePanel({
           Loading auth policy and keys...
         </div>
       ) : error ? (
-        <div className="rounded-2xl border border-amber-900/50 bg-amber-950/20 p-4">
+        <div className="rounded-2xl border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] p-4">
           <div className="flex items-start gap-3">
             <ShieldAlert className="mt-0.5 h-5 w-5 text-amber-300" />
             <div>
@@ -883,7 +883,7 @@ export function KeyLifecyclePanel({
 
           <SsoSetupPresets />
 
-          <section className="rounded-2xl border border-amber-900/40 bg-amber-950/10 p-4">
+          <section className="rounded-2xl border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-amber-200/70">Revocation boundaries</p>
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <BoundaryCard

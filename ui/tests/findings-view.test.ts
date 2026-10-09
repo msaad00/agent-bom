@@ -39,7 +39,7 @@ describe("findings lifecycle helpers", () => {
   it("labels lifecycle status values", () => {
     expect(findingStatusLabel("open")).toBe("open");
     expect(findingStatusLabel("resolved")).toBe("resolved");
-    expect(findingStatusClass("reopened")).toContain("orange");
+    expect(findingStatusClass("reopened")).toContain("var(--severity-high)");
   });
 
   it("detects lifecycle metadata on enriched rows", () => {

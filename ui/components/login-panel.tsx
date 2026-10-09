@@ -74,7 +74,7 @@ export function LoginPanel({
   if (error && isApiReachabilityFailure(error)) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-6">
-        <div className="w-full max-w-xl rounded-3xl border border-amber-900/50 bg-amber-950/20 p-8 text-center shadow-2xl shadow-black/20">
+        <div className="w-full max-w-xl rounded-3xl border border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] p-8 text-center shadow-2xl shadow-black/20">
           <div className="mx-auto mb-4 flex justify-center">
             <BrandLogo />
           </div>

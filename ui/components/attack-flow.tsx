@@ -139,7 +139,7 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
         )}
         {data.nodeType === "package" && <div className="space-y-2">{data.version && <div className="text-xs text-ink-secondary font-mono">Version: {data.version}</div>}{data.ecosystem && <div className="text-xs text-ink-secondary font-mono">Ecosystem: {data.ecosystem}</div>}</div>}
         {data.nodeType === "server" && <div className="text-xs text-ink-secondary">MCP server in the supply chain</div>}
-        {data.nodeType === "agent" && <div className="space-y-2">{data.agent_type && <div className="text-xs text-ink-secondary font-mono">Type: {data.agent_type}</div>}{data.status && <div className={`text-xs px-2 py-1 rounded border font-mono ${data.status === "installed-not-configured" ? "border-yellow-800 bg-yellow-950 text-yellow-400" : "border-emerald-800 bg-emerald-950 text-emerald-400"}`}>{data.status === "installed-not-configured" ? "Not Configured" : "Configured"}</div>}</div>}
+        {data.nodeType === "agent" && <div className="space-y-2">{data.agent_type && <div className="text-xs text-ink-secondary font-mono">Type: {data.agent_type}</div>}{data.status && <div className={`text-xs px-2 py-1 rounded border font-mono ${data.status === "installed-not-configured" ? "border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)] text-[color:var(--severity-medium)]" : "border-emerald-800 bg-emerald-950 text-emerald-400"}`}>{data.status === "installed-not-configured" ? "Not Configured" : "Configured"}</div>}</div>}
         {data.nodeType === "credential" && <div className="space-y-2"><div className="flex items-center gap-1.5 text-xs text-amber-400"><KeyRound className="w-3 h-3" />Exposed credential env var</div><div className="text-xs text-ink-secondary">This credential is accessible through a vulnerable MCP server in the supply chain.</div></div>}
         {data.nodeType === "tool" && <div className="space-y-2"><div className="flex items-center gap-1.5 text-xs text-purple-400"><Wrench className="w-3 h-3" />Reachable MCP tool</div><div className="text-xs text-ink-secondary">This tool is exposed through a vulnerable MCP server and could be invoked by an attacker.</div></div>}
       </div>
@@ -363,11 +363,11 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
         {selectedNode && <DetailPanel data={selectedNode} onClose={() => { setSelectedNode(null); setSelectedNodeId(null); }} />}
       </div>
       <div className="attack-flow-legend">
-        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-red-600 bg-red-950" /> CVE</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)]" /> CVE</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-outline-strong bg-surface" /> Package</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-blue-600 bg-blue-950" /> Server</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-emerald-600 bg-emerald-950" /> Agent</span>
-        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-yellow-600 bg-yellow-950" /> Credential</span>
+        <span className="flex items-center gap-1"><span className="attack-flow-swatch border-[color:var(--severity-medium-border)] bg-[color:var(--severity-medium-bg)]" /> Credential</span>
         <span className="flex items-center gap-1"><span className="attack-flow-swatch border-purple-600 bg-purple-950" /> Tool</span>
       </div>
     </div>

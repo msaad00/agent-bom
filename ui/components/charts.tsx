@@ -558,7 +558,7 @@ export function PipelineFlow({ stats }: { stats: PipelineStats }) {
               <div
                 className={`flex-1 min-w-[72px] flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border transition-colors ${
                   isAlert
-                    ? "bg-red-950/30 border-red-800/50"
+                    ? "bg-[color:var(--severity-critical-bg)] border-[color:var(--severity-critical-border)]"
                     : "bg-surface-muted border-outline"
                 }`}
               >
@@ -627,7 +627,7 @@ function ScatterTooltipContent({
       <div className="font-mono font-semibold mb-1" style={{ color: sevColor }}>
         {d.cve}
         {d.kev && (
-          <span className="ml-1 text-[9px] bg-red-950 border border-red-800 text-red-400 rounded px-1">
+          <span className="ml-1 text-[9px] bg-[color:var(--severity-critical-bg)] border border-[color:var(--severity-critical-border)] text-[color:var(--severity-critical)] rounded px-1">
             KEV
           </span>
         )}

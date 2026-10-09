@@ -34,7 +34,7 @@ function ReachabilityBadge({
     return (
       <span
         title="An agent's USES/DEPENDS_ON closure reaches this package"
-        className="text-xs font-mono bg-amber-950 border border-amber-800 text-amber-300 rounded px-1.5 py-0.5"
+        className="text-xs font-mono bg-[color:var(--severity-medium-bg)] border border-[color:var(--severity-medium-border)] text-[color:var(--severity-medium)] rounded px-1.5 py-0.5"
       >
         Reachable{hopLabel}
       </span>
@@ -55,7 +55,7 @@ function ReachabilityBadge({
 
 function CisaKevBadge() {
   return (
-    <span className="text-xs font-mono bg-red-950 border border-red-800 text-red-400 rounded px-1.5 py-0.5">
+    <span className="text-xs font-mono bg-[color:var(--severity-critical-bg)] border border-[color:var(--severity-critical-border)] text-[color:var(--severity-critical)] rounded px-1.5 py-0.5">
       KEV
     </span>
   );

@@ -247,7 +247,7 @@ function JobsPageContent() {
 
       {loading && <p className="text-[var(--text-tertiary)] text-sm">Loading jobs…</p>}
       {error && (
-        <div className="flex items-center gap-3 p-3 bg-red-950/30 border border-red-800/40 rounded-lg">
+        <div className="flex items-center gap-3 p-3 bg-[color:var(--severity-critical-bg)] border border-[color:var(--severity-critical-border)] rounded-lg">
           <p className="text-red-400 text-sm flex-1">{error}</p>
           <button onClick={loadJobs} className="text-xs text-[var(--text-secondary)] hover:text-[var(--foreground)] px-2 py-1 border border-[var(--border-subtle)] rounded">Retry</button>
         </div>

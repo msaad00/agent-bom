@@ -42,14 +42,15 @@ import { ProxyAlertDrawer } from "@/components/proxy-alert-drawer";
 import { producerEvidenceLabel, PRODUCER_EVIDENCE_HINT } from "@/lib/gateway-feed";
 import { proxyAlertKey, proxyAlertSummary } from "@/lib/proxy-alerts";
 import { useChartTheme } from "@/lib/theme-colors";
+import { severityChipClass } from "@/lib/severity";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "bg-red-950 text-red-300 border-red-800",
-  high: "bg-orange-950 text-orange-300 border-orange-800",
-  medium: "bg-yellow-950 text-yellow-300 border-yellow-800",
-  low: "bg-blue-950 text-blue-300 border-blue-800",
+  critical: severityChipClass("critical"),
+  high: severityChipClass("high"),
+  medium: severityChipClass("medium"),
+  low: severityChipClass("low"),
   info: "bg-[var(--surface-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]",
 };
 

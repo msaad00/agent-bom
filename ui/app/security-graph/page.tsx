@@ -912,7 +912,7 @@ function AttackPathInvestigationContent() {
           />
         </section>
       ) : graphLoadError ? (
-        <section className="rounded-3xl border border-red-900/60 bg-red-950/10 p-4">
+        <section className="rounded-3xl border border-[color:var(--severity-critical-border)] bg-[color:var(--severity-critical-bg)] p-4">
           <GraphEmptyState
             title={graphErrorState.title}
             detail={graphErrorState.detail}

@@ -29,7 +29,7 @@ type Tone = "owasp" | "mcp" | "atlas";
 
 const TONE_CLASS: Record<Tone, string> = {
   owasp: "bg-purple-950 border-purple-800 text-purple-400",
-  mcp: "bg-amber-950 border-amber-800 text-amber-400",
+  mcp: "bg-[color:var(--severity-medium-bg)] border-[color:var(--severity-medium-border)] text-[color:var(--severity-medium)]",
   atlas: "bg-cyan-950 border-cyan-800 text-cyan-400",
 };
 

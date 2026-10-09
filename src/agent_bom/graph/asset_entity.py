@@ -1,17 +1,17 @@
 """Link findings to graph nodes.
 
-The ``asset_type`` -> :class:`~agent_bom.entity_types.EntityType` mapping lives in
-:mod:`agent_bom.asset_types`; it is re-exported here for existing callers.
+The ``asset_type`` -> :class:`~agent_bom.core.entity_types.EntityType` mapping lives in
+:mod:`agent_bom.core.asset_types`; it is re-exported here for existing callers.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from agent_bom.asset_types import _ASSET_TYPE_ALIASES as _ASSET_TYPE_ALIASES
-from agent_bom.asset_types import canonical_asset_type as canonical_asset_type
-from agent_bom.asset_types import entity_type_for_asset_type as entity_type_for_asset_type
-from agent_bom.asset_types import normalize_asset_type as normalize_asset_type
+from agent_bom.core.asset_types import _ASSET_TYPE_ALIASES as _ASSET_TYPE_ALIASES
+from agent_bom.core.asset_types import canonical_asset_type as canonical_asset_type
+from agent_bom.core.asset_types import entity_type_for_asset_type as entity_type_for_asset_type
+from agent_bom.core.asset_types import normalize_asset_type as normalize_asset_type
 from agent_bom.graph.types import EntityType
 
 

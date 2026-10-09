@@ -32,11 +32,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from agent_bom.core.severity import severity_fix_priority
-from agent_bom.remediation_model import REMEDIATION_SCHEMA_VERSION as REMEDIATION_SCHEMA_VERSION
-from agent_bom.remediation_model import Remediation as Remediation
-from agent_bom.remediation_model import RemediationArtifact as RemediationArtifact
-from agent_bom.remediation_model import RemediationFix as RemediationFix
-from agent_bom.remediation_model import RequiredPrivilege as RequiredPrivilege
+from agent_bom.domain.remediation_model import REMEDIATION_SCHEMA_VERSION as REMEDIATION_SCHEMA_VERSION
+from agent_bom.domain.remediation_model import Remediation as Remediation
+from agent_bom.domain.remediation_model import RemediationArtifact as RemediationArtifact
+from agent_bom.domain.remediation_model import RemediationFix as RemediationFix
+from agent_bom.domain.remediation_model import RequiredPrivilege as RequiredPrivilege
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding

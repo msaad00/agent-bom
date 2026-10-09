@@ -8,14 +8,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 from agent_bom.advisory_ids import derive_cve_from_advisory_id, finding_advisory_metadata, vulnerability_enrichment_metadata
-from agent_bom.asset_types import entity_type_for_asset_type
 from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
+from agent_bom.core.asset_types import entity_type_for_asset_type
 from agent_bom.core.exploitability import fused_triage_priority
 from agent_bom.core.packages import synthesize_purl
 from agent_bom.core.sla import finding_owner, finding_sla_fields
 
 if TYPE_CHECKING:
-    from agent_bom.remediation_model import Remediation
+    from agent_bom.domain.remediation_model import Remediation
 
 FINDING_SCHEMA_VERSION = "1"
 # Provenance label prefix for evidence imported from an external scanner report.

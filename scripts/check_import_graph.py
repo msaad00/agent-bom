@@ -21,7 +21,7 @@ number measures the coupling the code wrote, not the package layout.
 
 Gates (enforced from ``check_architecture.py``):
 
-* ``DOMAIN_MODULES`` may not import ``FORBIDDEN_FOR_DOMAIN`` with any edge
+* ``DOMAIN_MODULES`` and the ``agent_bom.domain`` package may not import ``FORBIDDEN_FOR_DOMAIN`` with any edge
   kind: domain code sits below graph, API, cloud, scanners and output, so the
   dependency can only point down (root/domain -> graph -> api).
 * No module-level import cycle, annotation-only imports included.
@@ -41,6 +41,7 @@ from pathlib import Path
 BASELINE = Path("scripts/import-graph-baseline.json")
 PACKAGE = "agent_bom"
 DOMAIN_MODULES = frozenset({"agent_bom.models", "agent_bom.finding"})
+DOMAIN_PACKAGE = "agent_bom.domain"
 FORBIDDEN_FOR_DOMAIN = (
     "agent_bom.api",
     "agent_bom.cloud",
@@ -169,7 +170,8 @@ def cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 
 def domain_errors(edges: Edges) -> list[str]:
     errors = []
-    for module in sorted(DOMAIN_MODULES):
+    domain = sorted(m for m in edges if m in DOMAIN_MODULES or m == DOMAIN_PACKAGE or m.startswith(f"{DOMAIN_PACKAGE}."))
+    for module in domain:
         for target, sites in sorted(edges.get(module, {}).items()):
             if any(target == banned or target.startswith(f"{banned}.") for banned in FORBIDDEN_FOR_DOMAIN):
                 path = module.replace(".", "/") + ".py"
@@ -188,7 +190,7 @@ def measure(root: Path) -> dict:
     }
 
 
-def trusted_max_scc(root: Path, ref: str) -> int | None:
+def base_ref_max_scc(root: Path, ref: str) -> int | None:
     exists = subprocess.run(["git", "cat-file", "-e", f"{ref}:{BASELINE.as_posix()}"], cwd=root, capture_output=True)
     if exists.returncode:
         return None
@@ -206,8 +208,8 @@ def check(root: Path, base_ref: str | None = None, write_baseline: bool = False)
         errors.append(f"import graph: largest strongly connected component {result['max_scc']} exceeds baseline {recorded}")
     if recorded is None and not write_baseline:
         errors.append(f"{BASELINE} missing; initialize with --write-baseline")
-    if base_ref and recorded is not None and (trusted := trusted_max_scc(root, base_ref)) is not None and recorded > trusted:
-        errors.append(f"{BASELINE}: max_scc {recorded} exceeds the trusted base value {trusted}")
+    if base_ref and recorded is not None and (base_value := base_ref_max_scc(root, base_ref)) is not None and recorded > base_value:
+        errors.append(f"{BASELINE}: max_scc {recorded} exceeds the base ref value {base_value}")
     if write_baseline and not errors:
         path.write_text(json.dumps({"max_scc": result["max_scc"]}, indent=2) + "\n")
     return errors, result
@@ -216,7 +218,7 @@ def check(root: Path, base_ref: str | None = None, write_baseline: bool = False)
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--write-baseline", action="store_true", help="record the current largest SCC; never approves growth")
-    parser.add_argument("--base-ref", help="trusted base commit whose baseline may not be exceeded")
+    parser.add_argument("--base-ref", help="base commit whose baseline may not be exceeded")
     parser.add_argument("--json", action="store_true", help="print the measurement as JSON")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]

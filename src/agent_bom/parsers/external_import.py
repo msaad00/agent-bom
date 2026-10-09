@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from agent_bom.finding_merge import merge_external_code_findings as merge_external_code_findings
+from agent_bom.domain.finding_merge import merge_external_code_findings as merge_external_code_findings
 from agent_bom.models import Agent, AgentType, MCPServer, Package, ServerSurface, TransportType, Vulnerability
 
 if TYPE_CHECKING:

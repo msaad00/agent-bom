@@ -23,11 +23,12 @@ from agent_bom.canonical_ids import (
     canonical_package_id,
     legacy_agent_id_v1,
 )
-from agent_bom.codeowners import apply_codeowners
 from agent_bom.core.exploitability import parse_cvss_vector_signals
 from agent_bom.core.package_artifacts import normalize_artifact_version, package_lookup_names
 from agent_bom.core.packages import normalize_package_name as normalize_package_name
+from agent_bom.core.reachability import assess_reachability
 from agent_bom.core.severity import Severity as Severity
+from agent_bom.domain.codeowners import apply_codeowners
 from agent_bom.evidence.scan_run import ScanRun
 from agent_bom.package_utils import (
     host_matches_domain as _host_matches_domain,
@@ -36,7 +37,6 @@ from agent_bom.package_utils import parse_debian_source_name as parse_debian_sou
 from agent_bom.package_utils import (
     reference_host_and_path as _reference_host_and_path,
 )
-from agent_bom.reachability_truth import assess_reachability
 
 
 def _utc_now_iso() -> str:
@@ -1424,7 +1424,7 @@ class AIBOMReport:
         """
         if not self.toxic_combination_findings_data:
             return []
-        from agent_bom.finding_rehydrate import findings_from_dicts
+        from agent_bom.domain.finding_rehydrate import findings_from_dicts
 
         return findings_from_dicts(self.toxic_combination_findings_data)
 
@@ -1480,7 +1480,7 @@ class AIBOMReport:
         """
         if not self.ciem_over_privilege_findings_data:
             return []
-        from agent_bom.finding_rehydrate import findings_from_dicts
+        from agent_bom.domain.finding_rehydrate import findings_from_dicts
 
         return findings_from_dicts(self.ciem_over_privilege_findings_data)
 
@@ -1565,7 +1565,7 @@ class AIBOMReport:
         base.extend(finding for finding in self._cloud_org_architecture_findings() if finding.id not in org_existing)
         malicious_existing = {getattr(f, "id", None) for f in base}
         base.extend(finding for finding in self._malicious_package_findings() if finding.id not in malicious_existing)
-        from agent_bom.finding_merge import merge_external_code_findings
+        from agent_bom.domain.finding_merge import merge_external_code_findings
 
         base = merge_external_code_findings(base)
         if self.codeowners:

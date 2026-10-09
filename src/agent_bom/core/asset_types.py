@@ -2,14 +2,14 @@
 
 ``Asset.asset_type`` has historically been a freeform convention string
 (``mcp_server``, ``identity``, …). Graph nodes use the strict
-:class:`~agent_bom.entity_types.EntityType` enum. This module is the single
+:class:`~agent_bom.core.entity_types.EntityType` enum. This module is the single
 normalization + mapping surface so findings, paths, and the investigation UI
 share one vocabulary without inventing a separate info-id taxonomy.
 """
 
 from __future__ import annotations
 
-from agent_bom.entity_types import EntityType
+from agent_bom.core.entity_types import EntityType
 
 # Freeform / legacy asset_type → canonical EntityType.
 # Unknown values stay unmapped (None) rather than fabricating a type.

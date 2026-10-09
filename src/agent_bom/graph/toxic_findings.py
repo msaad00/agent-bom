@@ -34,8 +34,8 @@ from dataclasses import dataclass, field
 
 from agent_bom.cloud.normalization import coerce_truthy
 from agent_bom.core.severity import severity_rank
+from agent_bom.domain.finding_rehydrate import findings_from_dicts as toxic_combination_findings_from_data
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
-from agent_bom.finding_rehydrate import findings_from_dicts as toxic_combination_findings_from_data
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.types import EntityType, RelationshipType

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from agent_bom.entity_types import EntityType as EntityType
+from agent_bom.core.entity_types import EntityType as EntityType
 
 
 class GraphSemanticLayer(str, Enum):

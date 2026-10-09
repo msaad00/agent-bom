@@ -92,13 +92,13 @@ def test_scc_growth_over_baseline_fails_and_shrink_can_be_recorded(tmp_path):
     assert not errors and json.loads(baseline.read_text())["max_scc"] == 2
 
 
-def test_baseline_cannot_be_raised_above_the_trusted_base(tmp_path, monkeypatch):
+def test_baseline_cannot_be_raised_above_the_base_ref(tmp_path, monkeypatch):
     root = _tree(tmp_path, {"a.py": ""})
     (root / graph.BASELINE).parent.mkdir(parents=True)
     (root / graph.BASELINE).write_text(json.dumps({"max_scc": 9}))
-    monkeypatch.setattr(graph, "trusted_max_scc", lambda _root, _ref: 4)
+    monkeypatch.setattr(graph, "base_ref_max_scc", lambda _root, _ref: 4)
     errors, _ = graph.check(root, base_ref="base")
-    assert errors == [f"{graph.BASELINE}: max_scc 9 exceeds the trusted base value 4"]
+    assert errors == [f"{graph.BASELINE}: max_scc 9 exceeds the base ref value 4"]
 
 
 def test_repository_meets_the_import_contract():

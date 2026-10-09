@@ -1684,13 +1684,23 @@
       "function_lines": 230
     },
     "cli/agents/_discovery.py": {
-      "deferred_imports": 51,
-      "file_lines": 1280,
+      "deferred_imports": 6,
       "raw_env_reads": 2
     },
-    "cli/agents/_discovery.py::run_local_discovery": {
-      "complexity": 149,
-      "function_lines": 1206
+    "cli/agents/_discovery_ai.py": {
+      "deferred_imports": 1
+    },
+    "cli/agents/_discovery_project.py": {
+      "deferred_imports": 1
+    },
+    "cli/agents/_discovery_reports.py": {
+      "deferred_imports": 2
+    },
+    "cli/agents/_discovery_skills.py": {
+      "deferred_imports": 3
+    },
+    "cli/agents/_discovery_sources.py": {
+      "deferred_imports": 15
     },
     "cli/agents/_modes.py": {
       "deferred_imports": 1

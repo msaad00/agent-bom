@@ -220,3 +220,26 @@ def test_project_file_budget_prioritizes_entrypoints_and_records_partial_coverag
             "advisory_rows": 0,
         }
     ]
+
+
+def test_project_file_budget_covers_a_repository_of_this_projects_size(tmp_path: Path) -> None:
+    """A full-repo AST pass over agent-bom itself (about 1,800 eligible files) must not be budget-cut.
+
+    At a 500-file budget the scan of this very repository ended ``partial``.
+    """
+    import agent_bom.ast_analyzer as ast_analyzer
+
+    reset_scan_warnings()
+    for directory in range(20):
+        package = tmp_path / f"pkg_{directory}"
+        package.mkdir()
+        for index in range(100):
+            (package / f"module_{index}.py").write_text(f"def helper_{index}():\n    return {index}\n", encoding="utf-8")
+
+    result = ast_analyzer.analyze_project(tmp_path)
+
+    assert result.files_analyzed == 2000
+    assert result.analysis_coverage.eligible_files == 2000
+    assert result.analysis_coverage.status != "partial"
+    assert not any("AST analysis stopped" in warning for warning in result.warnings)
+    assert not any(warning.get("reason") == "source_file_limit" for warning in consume_coverage_warnings())

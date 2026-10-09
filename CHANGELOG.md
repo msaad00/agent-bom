@@ -52,6 +52,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Project scans no longer stop the secret scan at 1,000 files or AST analysis at 500 source files. The budgets are now 10,000 and 5,000, so `agent-bom scan -p .` on this repository covers all 2,634 secret-scan files and all 1,804 AST source files instead of reporting both as coverage gaps. Findings rise from 739 to 862 (secret/PII 26 to 119, SAST 31 to 61). Full coverage costs more: user CPU goes from 97-105 s to 205-266 s over two runs each, peak RSS from 433-552 MB to 1.17-1.46 GB, and the JSON report from 39 MB to 95 MB. Most of the extra CPU comes from AST analysis running twice per scan (agent prompt discovery and source analysis each call it). The scan outcome on this repository is still `partial` for reasons these budgets do not cover: 12 TypeScript files the bundled tree-sitter grammar cannot fully parse, 7 CloudFormation templates with unresolved values, and 7 packages with unresolved versions.
+
 - The gateway `/mcp/{server}` relay now runs as an ordered pipeline of named, typed stages (request admission, identity, runtime profile, edge/spend/fleet admission, layered tool policy, forward) that pass explicit request state instead of sharing one 1,464-line closure. Status codes, response bodies, headers, audit records and metrics are unchanged.
 
 ### Security

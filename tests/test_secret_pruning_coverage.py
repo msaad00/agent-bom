@@ -89,3 +89,21 @@ def test_focused_cli_discloses_uninspected_scope_without_error(tmp_path, format)
     assert result.exit_code == 0
     assert "No secrets or PII found." not in result.output
     assert "directory" in result.output
+
+
+def test_secret_scan_covers_a_repository_of_this_projects_size(tmp_path):
+    """A full-repo scan of agent-bom itself (about 2,600 eligible files) must not stop early.
+
+    At a 1,000-file budget the scan of this very repository ended ``partial``.
+    """
+    for directory in range(30):
+        package = tmp_path / f"pkg_{directory}"
+        package.mkdir()
+        for index in range(100):
+            (package / f"module_{index}.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    result = scan_secrets(tmp_path)
+
+    assert result.files_scanned == 3000
+    assert not any("Stopped at" in warning for warning in result.warnings)
+    assert result.to_dict()["complete"] is True

@@ -294,7 +294,10 @@ _SKIP_FILE_PATTERNS = frozenset(
 )
 
 _MAX_FILE_SIZE = 512 * 1024  # 512KB
-_MAX_FILES = 500
+# Sized so a full-project AST pass completes instead of ending ``partial``:
+# this project alone has ~1,800 eligible source files. Over budget, entrypoints
+# are still analyzed first and the gap is recorded as a coverage warning.
+_MAX_FILES = 5_000
 _VALIDATION_HINTS = (
     "allow",
     "approve",

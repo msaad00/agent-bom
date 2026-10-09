@@ -495,13 +495,9 @@
       "raw_env_reads": 2
     },
     "api/pipeline.py": {
-      "broad_except": 36,
-      "deferred_imports": 79,
-      "file_lines": 1778
-    },
-    "api/pipeline.py::_run_scan_sync": {
-      "complexity": 134,
-      "function_lines": 1048
+      "broad_except": 17,
+      "deferred_imports": 19,
+      "file_lines": 1061
     },
     "api/postgres_access.py::PostgresKeyStore._init_tables": {
       "function_lines": 92
@@ -1032,12 +1028,20 @@
     "api/saml.py": {
       "raw_env_reads": 10
     },
+    "api/scan_analysis_stages.py": {
+      "broad_except": 10,
+      "deferred_imports": 21
+    },
     "api/scan_batches.py::refresh_batch_parent": {
       "complexity": 17,
       "function_lines": 105
     },
     "api/scan_boundary.py": {
       "raw_env_reads": 3
+    },
+    "api/scan_discovery_stages.py": {
+      "broad_except": 5,
+      "deferred_imports": 30
     },
     "api/scan_job_reconciliation.py": {
       "deferred_imports": 3
@@ -1046,6 +1050,10 @@
       "broad_except": 4,
       "deferred_imports": 2,
       "raw_env_reads": 2
+    },
+    "api/scan_report_support.py": {
+      "broad_except": 3,
+      "deferred_imports": 6
     },
     "api/scheduler.py": {
       "broad_except": 4,

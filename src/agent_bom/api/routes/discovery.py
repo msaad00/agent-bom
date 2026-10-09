@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from agent_bom.api.agent_findings import current_agent_blast_rows, estate_reach_names
 from agent_bom.api.mcp_observation_store import MCPObservation, agent_observation_id, merge_observations
 from agent_bom.api.models import JobStatus
-from agent_bom.api.read_models import AgentsResponse, DiscoveryProvidersResponse
+from agent_bom.api.read_models import AgentsResponse, DiscoveryProvidersResponse, documented
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
@@ -535,7 +535,7 @@ def _build_agents_response(tenant_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/agents", response_model=AgentsResponse, response_model_exclude_unset=True, tags=["discovery"])
+@router.get("/agents", **documented(AgentsResponse), tags=["discovery"])
 async def list_agents(
     request: Request,
     refresh: bool = Query(False, description="Bypass the sidebar cache and perform live local discovery"),
@@ -565,7 +565,7 @@ async def list_agents(
         raise HTTPException(status_code=500, detail=sanitize_error(exc, generic=True)) from exc
 
 
-@router.get("/discovery/providers", response_model=DiscoveryProvidersResponse, response_model_exclude_unset=True, tags=["discovery"])
+@router.get("/discovery/providers", **documented(DiscoveryProvidersResponse), tags=["discovery"])
 def list_discovery_providers() -> dict:
     """Return registered discovery provider capability and trust contracts."""
 

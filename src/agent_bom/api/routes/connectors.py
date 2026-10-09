@@ -19,7 +19,7 @@ from pathlib import Path as _Path
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException
 
-from agent_bom.api.read_models import ConnectorsResponse, RegistryResponse
+from agent_bom.api.read_models import ConnectorsResponse, RegistryResponse, documented
 from agent_bom.api.routes.endpoint_connectors import router as endpoint_router
 
 router = APIRouter()
@@ -96,7 +96,7 @@ def _load_registry() -> list[dict]:
 # ─── Connector endpoints ─────────────────────────────────────────────────────
 
 
-@router.get("/connectors", response_model=ConnectorsResponse, response_model_exclude_unset=True, tags=["connectors"])
+@router.get("/connectors", **documented(ConnectorsResponse), tags=["connectors"])
 def list_available_connectors() -> dict:
     """List available SaaS connectors for AI agent discovery."""
     from agent_bom.connectors import list_connectors
@@ -139,7 +139,7 @@ def _load_registry_meta() -> dict:
     }
 
 
-@router.get("/registry", response_model=RegistryResponse, response_model_exclude_unset=True, tags=["registry"])
+@router.get("/registry", **documented(RegistryResponse), tags=["registry"])
 def list_registry() -> dict:
     """List all known MCP servers from the agent-bom registry."""
     servers = _load_registry()

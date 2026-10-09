@@ -34,7 +34,7 @@ from agent_bom.api.models import (
     SourceStatus,
     SourceUpdate,
 )
-from agent_bom.api.read_models import SourcesResponse
+from agent_bom.api.read_models import SourcesResponse, documented
 from agent_bom.api.routes.scan import (
     _sanitize_scan_request_paths,
     correlation_cohort_id,
@@ -291,7 +291,7 @@ def create_source(request: Request, body: SourceCreate) -> dict:
     return source.model_dump()
 
 
-@router.get("/sources", response_model=SourcesResponse, response_model_exclude_unset=True, tags=["sources"])
+@router.get("/sources", **documented(SourcesResponse), tags=["sources"])
 def list_sources(
     request: Request,
     # cap pagination so hostile callers cannot probe an

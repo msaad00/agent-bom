@@ -50,7 +50,7 @@ from agent_bom.api.demo_refresh import demo_daily_evidence_dependency
 from agent_bom.api.exec_posture import issue_counts_payload, issue_severity_counts, tenant_exec_posture
 from agent_bom.api.finding_read_context import finding_read_snapshot
 from agent_bom.api.models import ExecScoreConfigUpdateRequest, JobStatus
-from agent_bom.api.read_models import OverviewResponse
+from agent_bom.api.read_models import OverviewResponse, documented
 from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -1359,7 +1359,7 @@ def _repo_scan_count(jobs: list[Any]) -> int:
     return count
 
 
-@router.get("/overview", response_model=OverviewResponse, response_model_exclude_unset=True, tags=["overview"])
+@router.get("/overview", **documented(OverviewResponse), tags=["overview"])
 async def get_overview(request: Request) -> dict[str, Any]:
     """Cross-domain posture snapshot for the unified landing page.
 

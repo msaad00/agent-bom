@@ -9,7 +9,7 @@ import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent_bom.api.read_models import IntelSourcesResponse
+from agent_bom.api.read_models import IntelSourcesResponse, documented
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.intel_lookup import build_daily_brief, list_intel_sources, lookup_advisory, match_packages
 from agent_bom.security import sanitize_error
@@ -37,7 +37,7 @@ class IntelDailyBriefRequest(BaseModel):
     limit: int = Field(default=100, ge=1, le=500)
 
 
-@router.get("/intel/sources", response_model=IntelSourcesResponse, response_model_exclude_unset=True, tags=["intel"])
+@router.get("/intel/sources", **documented(IntelSourcesResponse), tags=["intel"])
 async def get_intel_sources() -> dict[str, Any]:
     """Return canonical threat-intel source and feed-run metadata."""
 

@@ -65,7 +65,7 @@ from agent_bom.api.models import (
     SAMLLoginRequest,
     TenantQuotaUpdateRequest,
 )
-from agent_bom.api.read_models import AuthMeResponse, SiemConnectorsResponse, TrendsResponse
+from agent_bom.api.read_models import AuthMeResponse, SiemConnectorsResponse, TrendsResponse, documented
 from agent_bom.api.saml import saml_unavailable_reason
 from agent_bom.api.stores import _get_exception_store, _get_issue_mapping_store, _get_store, _get_trend_store
 from agent_bom.api.suppression_approval import (
@@ -1476,7 +1476,7 @@ def auth_debug(request: Request) -> dict:
     }
 
 
-@router.get("/auth/me", response_model=AuthMeResponse, response_model_exclude_unset=True, tags=["enterprise"])
+@router.get("/auth/me", **documented(AuthMeResponse), tags=["enterprise"])
 def auth_me(request: Request) -> dict:
     """Return the current UI-facing actor/session contract for the active tenant."""
     from agent_bom.api.managed_trial import managed_trial_enabled, managed_trial_envelope
@@ -2514,7 +2514,7 @@ def compare_baseline(
     return diff.to_dict()
 
 
-@router.get("/trends", response_model=TrendsResponse, response_model_exclude_unset=True, tags=["enterprise"])
+@router.get("/trends", **documented(TrendsResponse), tags=["enterprise"])
 def get_trends(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=365)] = 30,
@@ -2563,7 +2563,7 @@ def get_trends(
 # ── SIEM Connectors ─────────────────────────────────────────────────────────
 
 
-@router.get("/siem/connectors", response_model=SiemConnectorsResponse, response_model_exclude_unset=True, tags=["enterprise"])
+@router.get("/siem/connectors", **documented(SiemConnectorsResponse), tags=["enterprise"])
 def list_siem_connectors() -> dict:
     """List available SIEM connector types."""
     from agent_bom.siem import list_connectors

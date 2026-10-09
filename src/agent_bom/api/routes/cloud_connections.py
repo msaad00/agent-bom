@@ -61,7 +61,7 @@ from agent_bom.api.connection_store import (
     connection_org_fanout_enabled,
     get_connection_store,
 )
-from agent_bom.api.read_models import CloudConnectionsResponse
+from agent_bom.api.read_models import CloudConnectionsResponse, documented
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_cloud_connection_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
@@ -413,7 +413,7 @@ def create_connection(request: Request, body: CloudConnectionCreate, _role: Any 
     return record.to_public_dict()
 
 
-@router.get("/cloud/connections", response_model=CloudConnectionsResponse, response_model_exclude_unset=True)
+@router.get("/cloud/connections", **documented(CloudConnectionsResponse))
 def list_connections(request: Request, _role: Any = _READ_DEP) -> dict[str, Any]:
     """List the authenticated tenant's connections (non-secret metadata only)."""
     from agent_bom.api.connection_scheduler import connections_scheduler_enabled

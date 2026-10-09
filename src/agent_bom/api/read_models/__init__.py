@@ -13,6 +13,7 @@ from agent_bom.api.read_models._base import (
     ReadModel,
     ReadResponse,
     SeverityCounts,
+    documented,
 )
 from agent_bom.api.read_models.estate import (
     ActivitySource,

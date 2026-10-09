@@ -81,7 +81,7 @@ from agent_bom.api.models import (
     TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_job
-from agent_bom.api.read_models import FindingsResponse, JobsResponse
+from agent_bom.api.read_models import FindingsResponse, JobsResponse, documented
 from agent_bom.api.remediation_view import CurrentRemediationResponse
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
@@ -2499,7 +2499,7 @@ async def stream_scan(request: Request, job_id: str) -> Response:
     return cast(Response, EventSourceResponse(event_generator()))
 
 
-@router.get("/jobs", response_model=JobsResponse, response_model_exclude_unset=True, tags=["scan"])
+@router.get("/jobs", **documented(JobsResponse), tags=["scan"])
 async def list_jobs(
     request: Request,
     # enforce limit/offset caps via Pydantic so callers
@@ -3275,7 +3275,7 @@ def _merged_scan_bulk_page(
     return MergedScanBulkPage(page, scan_i, next_bulk_cursor, has_more)
 
 
-@router.get("/findings", response_model=FindingsResponse, response_model_exclude_unset=True, tags=["scan"])
+@router.get("/findings", **documented(FindingsResponse), tags=["scan"])
 async def list_findings(
     request: Request,
     q: Annotated[str | None, Query(max_length=256)] = None,

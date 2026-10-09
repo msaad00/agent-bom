@@ -19,9 +19,9 @@ models with undeclared keys forbidden, so drift fails CI rather than production.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError, ValidationInfo, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, ValidationInfo, WithJsonSchema, model_validator
 
 _logger = logging.getLogger(__name__)
 
@@ -112,3 +112,13 @@ class IssueCounts(ReadModel):
     unrated: int
     total: int
     window: CountWindow | None = None
+
+
+def documented(model: type[BaseModel]) -> dict[str, Any]:
+    """Route kwargs that document ``model`` as the 200 body without validating responses.
+
+    The request path keeps FastAPI's plain ``dict`` serialization; the contract
+    tests enforce the model against live bodies in CI instead.
+    """
+    ref = WithJsonSchema({"$ref": f"#/components/schemas/{model.__name__}"})
+    return {"response_model": Annotated[dict[str, Any], ref], "responses": {200: {"model": model}}}

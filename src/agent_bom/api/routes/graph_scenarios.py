@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from agent_bom.api.graph_scenario_store import GraphScenarioConflictError
 from agent_bom.api.neptune_graph import NeptuneGraphStore, NeptuneGraphStoreUnsupportedOperationError
-from agent_bom.api.read_models import GraphScenariosResponse
+from agent_bom.api.read_models import GraphScenariosResponse, documented
 from agent_bom.api.stores import _get_graph_scenario_store, _get_graph_store
 from agent_bom.api.tenancy import require_request_tenant_id
 from agent_bom.graph import EntityType, RelationshipType
@@ -506,7 +506,7 @@ def _observed_references(scenario: dict[str, Any]) -> set[str]:
     return references
 
 
-@router.get("/graph/scenarios", response_model=GraphScenariosResponse, response_model_exclude_unset=True, tags=["graph"])
+@router.get("/graph/scenarios", **documented(GraphScenariosResponse), tags=["graph"])
 async def list_graph_scenarios(request: Request) -> dict[str, Any]:
     _ensure_supported_graph_backend()
     scenarios = await _store_call(_get_graph_scenario_store().list, _tenant(request), limit=100)

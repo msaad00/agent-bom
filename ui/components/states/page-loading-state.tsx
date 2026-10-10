@@ -2,14 +2,16 @@
 export function PageLoadingState({
   title,
   detail,
+  compact = false,
   "data-testid": testId,
 }: {
   title: string;
   detail: string;
+  compact?: boolean;
   "data-testid"?: string | undefined;
 }) {
   return (
-    <div className="flex min-h-[18rem] items-center justify-center px-4 py-10" data-testid={testId} role="status" aria-live="polite">
+    <div className={compact ? "py-2" : "flex min-h-[18rem] items-center justify-center px-4 py-10"} data-testid={testId} role="status" aria-live="polite" aria-busy="true">
       <div className="w-full max-w-3xl rounded-2xl border border-outline bg-surface p-5 elev-2">
         <div className="flex items-start gap-3">
           <div className="rounded-xl border border-outline bg-surface-elevated p-2">
@@ -20,7 +22,7 @@ export function PageLoadingState({
             <p className="mt-2 text-sm leading-6 text-ink-secondary">{detail}</p>
           </div>
         </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        {!compact ? <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[0, 1, 2].map((column) => (
             <div key={column} className="rounded-xl border border-outline bg-surface-muted p-4">
               <div className="h-4 w-24 animate-pulse rounded-full bg-surface-elevated" />
@@ -35,7 +37,7 @@ export function PageLoadingState({
               </div>
             </div>
           ))}
-        </div>
+        </div> : null}
       </div>
     </div>
   );

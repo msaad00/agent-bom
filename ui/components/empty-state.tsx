@@ -67,18 +67,21 @@ export function ContextBanner({
 /** Compact error banner with optional retry */
 export function ErrorBanner({
   message,
+  compact = false,
   hint,
   onRetry,
 }: {
   message: string;
+  compact?: boolean;
   hint?: string;
   onRetry?: () => void;
 }) {
   return (
-    <PageErrorState
+    <div role="alert"><PageErrorState
+      compact={compact}
       title={message}
       detail={hint ?? ""}
       {...(onRetry ? { action: { label: "Retry", onClick: onRetry } } : {})}
-    />
+    /></div>
   );
 }

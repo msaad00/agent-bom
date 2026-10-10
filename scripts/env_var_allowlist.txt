@@ -443,6 +443,8 @@ AGENT_BOM_REQUIRE_BROWSER_SESSION_SIGNING_KEY
 AGENT_BOM_REQUIRE_SCIM
 AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
 AGENT_BOM_REQUIRE_SHARED_SCIM_STORE
+# Strict startup opt-in: refuse experimental storage backends; read at control-plane startup in storage/tiers.py.
+AGENT_BOM_REQUIRE_SUPPORTED_STORAGE
 AGENT_BOM_RESPONSE_SIGN_KEY
 # release-only stdio MCP fixture exits after tools/list for Docker proxy smoke
 AGENT_BOM_RUNTIME_SMOKE_ONESHOT

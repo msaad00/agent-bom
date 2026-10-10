@@ -33,6 +33,7 @@ New here? Read [`START_HERE.md`](START_HERE.md) for role-based paths, then
 
 - [`DEPLOY_PLATFORM.md`](DEPLOY_PLATFORM.md) — deployment hub (Compose, Helm, EKS, hosted)
 - [`DEPLOY_QUICKSTART.md`](DEPLOY_QUICKSTART.md) · [`DEPLOYMENT.md`](DEPLOYMENT.md) — quickstart and scalability architecture
+- [`STORAGE_BACKENDS.md`](STORAGE_BACKENDS.md) — storage backend support tiers, tenant-isolation evidence and migration to Postgres
 - [`EDITIONS.md`](EDITIONS.md) · [`PRODUCT_MAP.md`](PRODUCT_MAP.md) — deployment lanes and surface chooser
 - [`CLOUD_CONNECT.md`](CLOUD_CONNECT.md) · [`DATA_SOURCES.md`](DATA_SOURCES.md) · [`INGEST_PATHS.md`](INGEST_PATHS.md) — cloud connections, intake mechanisms, ingest paths
 - [`ENDPOINT_CONNECTORS.md`](ENDPOINT_CONNECTORS.md) · [`DATABASE_EVIDENCE.md`](DATABASE_EVIDENCE.md) — endpoint and database connectors

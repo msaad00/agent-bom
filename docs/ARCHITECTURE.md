@@ -175,6 +175,9 @@ SQLite and Postgres implement the primary transactional and graph paths.
 Neptune and ClickHouse are specialized options, not interchangeable control-
 plane databases. Snowflake supports selected job/fleet/schedule/exception/policy
 and warehouse-native paths; consult the backend parity matrix before deployment.
+[Storage backends](STORAGE_BACKENDS.md) declares the support tier of each:
+Postgres and SQLite are supported, ClickHouse is an analytics sink only, and the
+Snowflake control-plane stores and Neptune graph backend are experimental.
 
 Pushed-result rollback on SQLite and Postgres checks a server-generated snapshot
 generation under the same database write lock used by persistence. A failed push

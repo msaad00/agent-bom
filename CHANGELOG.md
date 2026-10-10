@@ -7,6 +7,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Storage backends now carry a declared support tier: PostgreSQL (server system of record) and SQLite (local, CLI and pilot) are supported, ClickHouse is an analytics sink only, and the Snowflake control-plane stores and the Neptune graph backend are experimental. When an experimental backend is selected, the API logs one warning at startup that names the backend, its tier and `docs/STORAGE_BACKENDS.md`. In a deployment that looks multi-tenant, the warning states that tenant isolation for that backend is not proven. Startup continues by default. `AGENT_BOM_REQUIRE_SUPPORTED_STORAGE=1` refuses to start with an experimental backend. `agent-bom doctor` lists the tier of each selected store under Platform integrations; experimental rows count as warnings.
+
 ## [0.108.4] - 2026-10-09
 
 ### Fixed

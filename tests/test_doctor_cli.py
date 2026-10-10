@@ -134,6 +134,40 @@ def test_offline_doctor_preserves_local_warnings(monkeypatch):
     assert "private local path" not in result.output
 
 
+@pytest.mark.parametrize(
+    ("configuration", "label", "value", "status"),
+    [
+        (
+            {"AGENT_BOM_POSTGRES_URL": "postgresql://private-user:private-password@private-host/app"},
+            "Control-plane store",
+            "postgres — supported",
+            "ok",
+        ),
+        (
+            {"SNOWFLAKE_ACCOUNT": "synthetic-account"},
+            "Control-plane store",
+            "snowflake — experimental; see docs/STORAGE_BACKENDS.md",
+            "warn",
+        ),
+        ({"AGENT_BOM_GRAPH_BACKEND": "neptune"}, "Graph store", "neptune — experimental; see docs/STORAGE_BACKENDS.md", "warn"),
+        ({"AGENT_BOM_CLICKHOUSE_URL": "http://clickhouse.local:8123"}, "Analytics sink", "clickhouse — analytics sink", "ok"),
+    ],
+)
+def test_offline_doctor_reports_storage_support_tier(monkeypatch, configuration, label, value, status):
+    for name in ("SNOWFLAKE_ACCOUNT", "AGENT_BOM_GRAPH_BACKEND", "AGENT_BOM_CLICKHOUSE_URL", "AGENT_BOM_ANALYTICS_BACKEND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, setting in configuration.items():
+        monkeypatch.setenv(name, setting)
+
+    result = CliRunner().invoke(main, ["--agent-mode", "doctor", "--offline"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert {"label": label, "value": value, "status": status} in data["platform"]
+    assert data["warnings"] == (1 if status == "warn" else 0)
+    assert "private-password" not in result.output
+
+
 def test_doctor_uses_supported_osv_health_probe(monkeypatch):
     captured: dict[str, object] = {}
 

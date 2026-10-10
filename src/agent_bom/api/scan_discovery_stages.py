@@ -233,20 +233,18 @@ def _discover_sbom_and_external(ctx: ScanContext) -> None:
     if not req.external_scan:
         return
     ctx.pipeline.update_step("discovery", f"Ingesting external scan: {req.external_scan}")
-    import json as _json
     from pathlib import Path as _Path
 
     from agent_bom.parsers.external_import import build_external_agent
-    from agent_bom.parsers.external_scanners import ingest_external_report
+    from agent_bom.parsers.external_scanners import load_external_report
 
     try:
-        with open(req.external_scan) as _ext_f:
-            _ext_data = _json.load(_ext_f)
-        _ext_import = ingest_external_report(_ext_data)
+        # JSONDecodeError and the size-limit error are both ValueError.
+        _ext_import = load_external_report(req.external_scan)
         ctx.agents.append(build_external_agent(_ext_import, str(_Path(req.external_scan))))
         ctx.external_findings.extend(_ext_import.findings)
         ctx.warnings_all.extend(_ext_import.notices)
-    except (OSError, ValueError, _json.JSONDecodeError) as ext_exc:
+    except (OSError, ValueError) as ext_exc:
         ctx.record_coverage_warning(f"External scan error: {sanitize_error(ext_exc)}")
 
 

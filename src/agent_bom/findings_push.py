@@ -8,6 +8,7 @@ from typing import Any
 
 from agent_bom.finding import FindingType
 from agent_bom.models import Package, Severity
+from agent_bom.parsers.importers import detect_importer
 
 
 def _severity_value(severity: Severity | str) -> str:
@@ -50,7 +51,7 @@ def packages_to_bulk_findings(
     return findings
 
 
-def parse_push_report(payload: dict[str, Any], *, source: str = "external_scan") -> tuple[list[Package], list[dict[str, Any]]]:
+def parse_push_report(payload: dict[str, Any] | list[Any], *, source: str = "external_scan") -> tuple[list[Package], list[dict[str, Any]]]:
     """Keep dependency inventory and typed file findings separate during push.
 
     There is no native inventory in a push request against which to resolve a
@@ -76,16 +77,16 @@ def parse_push_report(payload: dict[str, Any], *, source: str = "external_scan")
 def load_push_findings(payload: object, *, source: str = "external_scan") -> list[dict[str, Any]]:
     """Normalize a JSON payload into bulk-ingest finding rows."""
 
-    if isinstance(payload, list):
+    if isinstance(payload, list) and detect_importer(payload) is None:
         rows = [row for row in payload if isinstance(row, dict)]
         if rows:
             return rows
         raise ValueError("findings JSON list is empty")
 
-    if not isinstance(payload, dict):
+    if not isinstance(payload, (dict, list)):
         raise ValueError("findings JSON must be an object or list")
 
-    embedded = payload.get("findings")
+    embedded = payload.get("findings") if isinstance(payload, dict) else None
     if isinstance(embedded, list):
         rows = [row for row in embedded if isinstance(row, dict)]
         if rows:

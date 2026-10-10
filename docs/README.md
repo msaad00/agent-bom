@@ -21,7 +21,7 @@ New here? Read [`START_HERE.md`](START_HERE.md) for role-based paths, then
 - [`MCP_WORKFLOWS.md`](MCP_WORKFLOWS.md) · [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md) · [`MCP_ERROR_CODES.md`](MCP_ERROR_CODES.md) · [`MCP_OAUTH.md`](MCP_OAUTH.md) — MCP workflows, clients, errors, remote OAuth
 - [`CLAUDE_INTEGRATION.md`](CLAUDE_INTEGRATION.md) · [`CODEX_CLI.md`](CODEX_CLI.md) · [`CORTEX_CODE.md`](CORTEX_CODE.md) — assistant integrations
 - [`INTEGRATIONS.md`](INTEGRATIONS.md) — integration capability matrix
-- [`PYTHON_API.md`](PYTHON_API.md) · [`PLUGIN_ENTRYPOINTS.md`](PLUGIN_ENTRYPOINTS.md) — Python client and plugin loader
+- [`PYTHON_API.md`](PYTHON_API.md) · [`PLUGIN_ENTRYPOINTS.md`](PLUGIN_ENTRYPOINTS.md) · [`IMPORTERS.md`](IMPORTERS.md) — Python client, plugin loader, scanner importers
 - [`GITHUB_ACTION_SARIF_TROUBLESHOOTING.md`](GITHUB_ACTION_SARIF_TROUBLESHOOTING.md) — SARIF upload troubleshooting
 - [`AI_INFRASTRUCTURE_SCANNING.md`](AI_INFRASTRUCTURE_SCANNING.md) · [`AI_ENRICHMENT.md`](AI_ENRICHMENT.md) — AI infrastructure scanning and enrichment
 - [`AGENT_BOM_PROFILE.md`](AGENT_BOM_PROFILE.md) · [`AGENT_LIFECYCLE.md`](AGENT_LIFECYCLE.md) · [`AGENT_IDENTITY_BINDINGS.md`](AGENT_IDENTITY_BINDINGS.md) — per-agent BOM, retained history, identity

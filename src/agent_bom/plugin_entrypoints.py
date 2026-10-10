@@ -50,6 +50,11 @@ PLUGIN_REGISTRY_GROUPS: tuple[dict[str, str], ...] = (
         "description": "Local manifest and package inventory parser plugins.",
     },
     {
+        "group": "agent_bom.importers",
+        "label": "Scanner importers",
+        "description": "File-based importers for third-party scanner reports (offline, credential-free).",
+    },
+    {
         "group": MCP_TOOLS_ENTRY_POINT_GROUP,
         "label": "MCP tools",
         "description": "Third-party MCP tool registration plugins.",
@@ -282,11 +287,13 @@ def _builtin_registry_counts() -> dict[str, int]:
     from agent_bom.cloud import builtin_provider_registrations
     from agent_bom.connectors import builtin_connector_registrations
     from agent_bom.parsers import builtin_inventory_parser_registrations
+    from agent_bom.parsers.importers import builtin_importers
 
     return {
         "agent_bom.cloud_providers": len(builtin_provider_registrations()),
         "agent_bom.connectors": len(builtin_connector_registrations()),
         "agent_bom.inventory_parsers": len(builtin_inventory_parser_registrations()),
+        "agent_bom.importers": len(builtin_importers()),
         MCP_TOOLS_ENTRY_POINT_GROUP: 0,
         ADVISORY_SOURCES_ENTRY_POINT_GROUP: 0,
         RUNTIME_EMITTERS_ENTRY_POINT_GROUP: 0,

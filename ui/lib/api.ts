@@ -26,6 +26,8 @@ import type {
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   GraphQueryRequest,
+  GraphCompromiseRequest,
+  GraphCompromiseResponse,
   GraphQueryResponse,
   GraphNodeDetailResponse,
   GraphNodeNeighborsResponse,
@@ -210,6 +212,8 @@ export type {
   FixFirstPathCard,
   GraphAttackCampaign,
   GraphQueryRequest,
+  GraphCompromiseRequest,
+  GraphCompromiseResponse,
   GraphQueryResponse,
   GraphImpactResponse,
   GraphFilterPreset,
@@ -1250,6 +1254,10 @@ export const api = {
     if (body.blockRisk != null) payload.blockRisk = body.blockRisk;
     return post<GraphDeployDecisionResponse>("/v1/graph/should-i-deploy", payload);
   },
+
+  /** Assess explicit control assumptions against one pinned graph revision. */
+  assessCompromise: (body: GraphCompromiseRequest, options?: { signal?: AbortSignal }) =>
+    post<GraphCompromiseResponse>("/v1/graph/compromise", body, {}, options?.signal),
 
   /** Run a bounded root-centered graph traversal */
   queryGraph: (body: GraphQueryRequest, options?: { signal?: AbortSignal }) =>

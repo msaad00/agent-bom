@@ -36,7 +36,7 @@ agent-bom scan --demo --offline
 
 `agent-bom scan .` inventories the current project and checks its packages against advisories. `agent-bom scan --demo --offline` runs a bundled sample estate with no network access and exits `1` on purpose, because the sample trips the security gate.
 For CI, write SARIF with `agent-bom scan . -f sarif -o findings.sarif` and [upload it](docs/FIRST_RUN.md#5-gate-ci-on-the-result); check setup with `agent-bom doctor`. [First-run guide](docs/FIRST_RUN.md)
-To give an assistant the same evidence, run `agent-bom mcp server`. Start with eight focused tools, then select a graph, cloud, runtime or audit profile. The full catalog has 88 MCP tools, 7 resources, and 8 workflow prompts. [MCP workflows](docs/MCP_WORKFLOWS.md)
+To give an assistant the same evidence, run `agent-bom mcp server`. Start with eight focused tools, then select a graph, cloud, runtime or audit profile. The full catalog has 89 MCP tools, 7 resources, and 8 workflow prompts. [MCP workflows](docs/MCP_WORKFLOWS.md)
 
 <details>
 <summary>No project handy? Scan the bundled sample estate offline</summary>

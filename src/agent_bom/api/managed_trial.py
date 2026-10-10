@@ -110,7 +110,7 @@ def managed_trial_route_allowed(method: str, path: str) -> bool:
         return normalized_method in {"GET", "POST"}
     if normalized_method == "GET" and (path == _GRAPH_PATH or path.startswith(f"{_GRAPH_PATH}/")):
         return True
-    if normalized_method == "POST" and path in {"/v1/graph/query", "/v1/graph/should-i-deploy"}:
+    if normalized_method == "POST" and path in {"/v1/graph/query", "/v1/graph/should-i-deploy", "/v1/graph/compromise"}:
         return True
     if normalized_method == "GET" and path == "/v1/findings":
         return True

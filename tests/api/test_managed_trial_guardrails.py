@@ -122,6 +122,7 @@ def test_managed_trial_defaults_are_bounded() -> None:
         ("GET", "/v1/findings"),
         ("GET", "/v1/graph/node/node-one"),
         ("POST", "/v1/graph/query"),
+        ("POST", "/v1/graph/compromise"),
     ],
 )
 def test_managed_trial_route_allowlist_is_explicit(method: str, path: str) -> None:

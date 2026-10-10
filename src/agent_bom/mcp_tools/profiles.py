@@ -67,6 +67,7 @@ PROFILES = {
                 "inventory_asset",
                 "context_graph",
                 "exposure_paths",
+                "compromise_assessment",
                 "graph_correlate",
                 "graph_correlation_status",
                 "graph_export",

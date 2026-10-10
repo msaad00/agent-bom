@@ -158,4 +158,63 @@ def exposure_paths_cmd(
         _print_exposure_paths(payload)
 
 
+@graph_paths_cmd.command("compromise")
+@click.option("--node", "root_node_id", required=True, help="Selected graph node ID.")
+@click.option("--scan-id", required=True, help="Persisted graph snapshot to assess.")
+@click.option("--assume-control", is_flag=True, help="Explicitly assume control of the selected node; no exploitation is performed.")
+@click.option("--snapshot-generation", help="Require a previously returned immutable revision.")
+@click.option("--affected-node", "affected_node_id", help="Affected component linked to a finding root.")
+@click.option("--assume-exploitation", is_flag=True, help="Explicit hypothetical exploitation assumption for a finding root.")
+@click.option("--max-relationships", default=128, type=click.IntRange(1, 512), show_default=True)
+@click.option("--max-evidence-age-seconds", default=3600, type=click.IntRange(1, 86400), show_default=True)
+@click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", show_default=True)
+@_common_api_options
+def compromise_cmd(
+    api_url: str | None,
+    api_key: str | None,
+    bearer_token: str | None,
+    tenant_id: str | None,
+    root_node_id: str,
+    scan_id: str,
+    assume_control: bool,
+    snapshot_generation: str | None,
+    affected_node_id: str | None,
+    assume_exploitation: bool,
+    max_relationships: int,
+    max_evidence_age_seconds: int,
+    output_format: str,
+) -> None:
+    """Inspect direct permission receipts under an explicit compromise assumption."""
+    if not assume_control:
+        raise click.UsageError("Pass --assume-control to explicitly acknowledge the hypothetical assumption.")
+    client = _make_client(api_url, api_key, bearer_token, tenant_id)
+    payload = _run_request(
+        client,
+        lambda api: api.compromise_assessment(
+            root_node_id=root_node_id,
+            scan_id=scan_id,
+            assume_control=True,
+            snapshot_generation=snapshot_generation,
+            affected_node_id=affected_node_id,
+            assume_exploitation=assume_exploitation,
+            max_relationships=max_relationships,
+            max_evidence_age_seconds=max_evidence_age_seconds,
+        ),
+    )
+    if output_format == "json":
+        _emit_json(payload)
+        return
+    click.echo(f"Assumed control: {root_node_id} | snapshot {_string(payload.get('scan_id'))}")
+    click.echo(f"Revision: {_string(payload.get('snapshot_generation'))}")
+    click.echo("Historical receipts only; current access not evaluated; execution not established; collection coverage unknown.")
+    if payload.get("truncated"):
+        click.echo("Assessment truncated: some relationships or receipts were omitted.")
+    click.echo("permission\taction\tresource\tobservation")
+    actions = payload.get("actions")
+    for action in actions if isinstance(actions, list) else []:
+        if not isinstance(action, Mapping):
+            continue
+        click.echo("\t".join(_string(action.get(key)) for key in ("permission", "action", "resource", "observation")))
+
+
 __all__ = ["graph_paths_cmd"]

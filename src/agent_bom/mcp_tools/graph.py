@@ -28,6 +28,7 @@ from agent_bom.mcp_errors import (
     mcp_error_json,
 )
 from agent_bom.mcp_tenant import resolve_mcp_tool_tenant_id
+from agent_bom.mcp_tools.storage import default_graph_store
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ async def graph_correlate_impl(
     tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
     try:
         if _service is None:
-            from agent_bom.api.stores import _get_graph_store
+            _get_graph_store = default_graph_store
 
             _service = await get_graph_correlation_service(_get_graph_store(), tenant_id)
         run = await _service.submit(
@@ -149,9 +150,7 @@ async def graph_correlation_status_impl(
     tenant_id = resolve_mcp_tool_tenant_id(tenant_id)
     try:
         if _get_graph_store is None:
-            from agent_bom.api.stores import _get_graph_store as _default_get_graph_store
-
-            _get_graph_store = _default_get_graph_store
+            _get_graph_store = default_graph_store
         run = await asyncio.to_thread(
             _get_graph_store().get_correlation_run,
             tenant_id=tenant_id,
@@ -353,9 +352,7 @@ async def exposure_paths_for_tenant(
 
     try:
         if _get_graph_store is None:
-            from agent_bom.api.stores import _get_graph_store as _default_get_graph_store
-
-            _get_graph_store = _default_get_graph_store
+            _get_graph_store = default_graph_store
 
         store = _get_graph_store()
         try:

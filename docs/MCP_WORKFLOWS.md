@@ -14,7 +14,7 @@ expose different profiles; connect only the entries needed for the task.
 | Profile | Tools | Use it for | Workflow prompts |
 |---|---:|---|---|
 | `scan` (default) | 8 | Package/project scan, exposure and fix planning | quick-audit, pre-install-check, remediation-plan |
-| `graph` | 8 | Inventory rollup, asset drill-down and scoped correlation | Use inventory_summary → inventory_list → inventory_asset, then inspect paths |
+| `graph` | 9 | Inventory rollup, asset drill-down and scoped correlation | Use inventory_summary → inventory_list → inventory_asset, then inspect paths |
 | `cloud` | 6 | Inventory, connection scope and CIS posture | cloud-connection-review |
 | `runtime` | 7 | Gateway policy, alerts and incident evidence | incident-triage, gateway-fleet-live-demo |
 | `audit` | 4 | Scan, framework mapping, policy and audit integrity | compliance-report |
@@ -62,7 +62,7 @@ cannot be invoked. Profiles are not permissions: graph writes still require the
 existing authenticated role, tenant scope and audit reason.
 
 Existing clients that require the complete catalog can explicitly use
-`agent-bom mcp server --profile full`. It retains all 88 tools. The previous
+`agent-bom mcp server --profile full`. It retains all 89 tools. The previous
 25-tool `--profile guided` option remains available for compatibility with all
 eight workflow prompts. Neither is the recommended first-run configuration.
 Third-party tool plugins remain separately opt-in and are exposed only by `full`.
@@ -117,3 +117,46 @@ scripts/demo/gateway-fleet-live-demo.sh
 
 The script uses only read endpoints and exits non-zero if the API is not
 reachable or authentication fails.
+
+## Assess an assumed compromise
+
+Select a persisted graph snapshot and node from inventory. In the graph MCP
+profile, call `compromise_assessment` with `scan_id`, `root_node_id`, and
+`assume_control: true`. The server-bound tenant controls access; a caller's
+`tenant_id` hint cannot change that boundary.
+
+The equivalent CLI command produces an exportable artifact:
+
+```bash
+# Set AGENT_BOM_API_URL and AGENT_BOM_API_TOKEN through your secret manager.
+agent-bom graph-paths compromise --scan-id SCAN_ID --node NODE_ID \
+  --assume-control --format json > compromise-assessment.json
+```
+
+The API is `POST /v1/graph/compromise` with the same request fields. It requires
+an authenticated principal with `graph:read` (viewer role or higher). The
+browser graph entity drawer exposes **Assess assumed compromise**, requires the
+explicit assumption, and can export the same assessment JSON. Finding roots
+also require a linked `affected_node_id` and `assume_exploitation: true`.
+
+Inspect each returned action, resource, permission receipt, timestamp, source
+edge, binding, and reason code. These are historical authorization observations:
+`current_access` remains `not_evaluated`, execution remains `not_established`,
+and collection coverage remains `unknown`. An empty result does not prove
+safety. This contract assesses direct outgoing relationships only; it does not
+propagate compromise across multiple hops or perform exploitation.
+
+The response includes `snapshot_generation`. Pass that revision on subsequent
+requests to reject replacement evidence. Replacement returns HTTP 409; missing
+snapshots or roots return 404; invalid assumptions return 422. Reads exceeding
+the storage traversal budget return 413 instead of assessing partial evidence.
+The traversal selects at most 1,024 nodes and 4,096 edges around the roots, with
+a cooperative deadline; this is not a hard database query timeout. Assessment
+output examines up to `max_relationships` (default 128, maximum 512), reports
+truncation, and uses `max_evidence_age_seconds` (default 3,600, maximum 86,400).
+Generation-pinned reads require SQLite or Postgres; unsupported backends return
+501. No database migration or write is performed by this endpoint.
+
+Next: inspect missing or stale receipts in the source system, collect a new
+snapshot when appropriate, and rerun with that snapshot's identity. Retain the
+original export when comparing assessments.

@@ -42,6 +42,7 @@ from fastapi.routing import APIRoute
 from starlette.responses import JSONResponse, Response
 
 from agent_bom.api.finding_read_context import finding_read_scope
+from agent_bom.api.graph_compromise import GraphCompromiseRequest, GraphCompromiseResponse, assess_snapshot
 from agent_bom.api.graph_contracts import (
     _ATTACK_PATH_ITEM_OPENAPI_SCHEMA as _ATTACK_PATH_ITEM_OPENAPI_SCHEMA,
 )
@@ -208,6 +209,19 @@ class _GraphAdmissionRoute(APIRoute):
 # PostgreSQL text cannot contain NUL; reject identifiers at the API boundary.
 
 router = APIRouter(route_class=_GraphAdmissionRoute)
+
+
+@router.post("/graph/compromise", response_model=GraphCompromiseResponse, tags=["graph"])
+async def post_graph_compromise(request: Request, body: GraphCompromiseRequest) -> GraphCompromiseResponse:
+    """Assess explicit control assumptions against one authorized immutable revision."""
+    try:
+        return await _graph_compute_call(assess_snapshot, _get_graph_store_or_503(), body, tenant_id=_tenant(request))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "Compromise assessment is temporarily unavailable.") from exc
+
+
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 _GRAPH_QUERY_ABSOLUTE_LIMITS = {
     "max_depth": 10,

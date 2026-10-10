@@ -38,8 +38,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, NamedTuple
 
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 from agent_bom.security import sanitize_text
@@ -557,6 +558,159 @@ def _resolve_region_list(
     return ordered
 
 
+_PAYLOAD_META_KEYS = frozenset({"provider", "status", "account_id", "region", "warnings", "missing_permissions", "discovery_envelope"})
+_BOTO3_MISSING_WARNING = "boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"
+
+
+class _ServiceGroups(NamedTuple):
+    """Which service groups a scan enumerates (mirrors the ``include_*`` flags)."""
+
+    s3: bool
+    ec2: bool
+    iam: bool
+    data: bool
+    compute: bool
+    network: bool
+
+
+def _discover_inventory_for(groups: _ServiceGroups, *, region: str, profile: str | None, session: Any) -> dict[str, Any]:
+    """Run :func:`discover_inventory` (resolved at call time) for one region and service-group set."""
+    return discover_inventory(
+        region=region,
+        profile=profile,
+        session=session,
+        include_s3=groups.s3,
+        include_ec2=groups.ec2,
+        include_iam=groups.iam,
+        include_data=groups.data,
+        include_compute=groups.compute,
+        include_network=groups.network,
+        force=True,
+    )
+
+
+def _open_session(boto3: Any, *, region: str | None, profile: str | None) -> tuple[Any, str | None]:
+    """Build a boto3 session from the profile/default chain; ``(None, warning)`` on config errors."""
+    session_kwargs: dict[str, Any] = {}
+    if region:
+        session_kwargs["region_name"] = region
+    if profile:
+        session_kwargs["profile_name"] = profile
+    try:
+        return boto3.Session(**session_kwargs), None
+    except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
+        return None, sanitize_discovery_warning(exc)
+
+
+def _permissions_used(groups: _ServiceGroups, extra: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Sorted, deduped read-only permission set for the enabled service groups."""
+    permissions: list[str] = [*_AWS_BASELINE_PERMISSIONS, *extra]
+    for enabled, group in (
+        (groups.s3, _AWS_S3_PERMISSIONS),
+        (groups.ec2, _AWS_EC2_PERMISSIONS),
+        (groups.iam, _AWS_IAM_PERMISSIONS),
+        (groups.data, _AWS_DATA_PERMISSIONS),
+        (groups.data, _AWS_SECURITY_PERMISSIONS),
+        (groups.compute, _AWS_COMPUTE_PERMISSIONS),
+        (groups.network, _AWS_NETWORK_PERMISSIONS),
+        (groups.network, _AWS_EDGE_PERMISSIONS),
+    ):
+        if enabled:
+            permissions.extend(group)
+    return tuple(sorted(set(permissions)))
+
+
+def _ok_payload(
+    *,
+    account_id: str | None,
+    region: str,
+    scope_regions: list[str],
+    permissions_used: tuple[str, ...],
+    resources: dict[str, list[dict[str, Any]]],
+    warnings: list[str],
+    missing: list[dict[str, str]],
+    regions: list[str] | None = None,
+) -> dict[str, Any]:
+    """Assemble the ``status: ok`` payload (same key order as :func:`_empty_payload`)."""
+    discovery_scope = [f"aws:account/{account_id}"] if account_id else []
+    discovery_scope.extend(f"aws:region/{r}" for r in scope_regions)
+    envelope = DiscoveryEnvelope(
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(discovery_scope),
+        permissions_used=permissions_used,
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
+    payload: dict[str, Any] = {"provider": "aws", "status": "ok", "account_id": account_id, "region": region}
+    if regions is not None:
+        payload["regions"] = regions
+    for key in _empty_payload(region=region):
+        if key not in _PAYLOAD_META_KEYS:
+            payload[key] = resources.get(key, [])
+    payload["warnings"] = warnings
+    payload["missing_permissions"] = dedupe_missing_permissions(missing)
+    payload["discovery_envelope"] = envelope.to_dict()
+    return payload
+
+
+def _scan_regions_concurrently(
+    region_list: list[str], scan: Callable[[str], dict[str, Any]], warnings: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Fan ``scan`` out over every region; a failing region becomes a warning."""
+    region_payloads: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(region_list)))) as executor:
+        future_to_region = {executor.submit(scan, region): region for region in region_list}
+        for future in as_completed(future_to_region):
+            region = future_to_region[future]
+            try:
+                region_payloads[region] = future.result()
+            except Exception as exc:  # noqa: BLE001 — one bad region must not sink the scan
+                warnings.append(f"Region {region} skipped: {sanitize_discovery_warning(exc)}")
+    return region_payloads
+
+
+def _dedupe_inventory_items(items: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for item in items:
+        ident = str(item.get(field, "") or "") or str(item.get("name", "") or "")
+        if ident and ident in seen:
+            continue
+        if ident:
+            seen.add(ident)
+        unique.append(item)
+    return unique
+
+
+def _merge_region_payloads(
+    region_list: list[str],
+    region_payloads: dict[str, dict[str, Any]],
+    *,
+    warnings: list[str],
+    missing: list[dict[str, str]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Concatenate region-scoped resources (in region order) and dedupe CloudFront."""
+    merged: dict[str, list[dict[str, Any]]] = {key: [] for key in _REGION_SCOPED_KEYS}
+    # CloudFront is global but is enumerated by each per-region scan (it rides on
+    # include_network); collect across regions, then dedupe by name below.
+    cloudfront_seen: list[dict[str, Any]] = []
+    for region in region_list:
+        payload = region_payloads.get(region)
+        if payload is None:
+            continue
+        for warning in payload.get("warnings", []):
+            warnings.append(f"[{region}] {warning}")
+        missing.extend(payload.get("missing_permissions", []) or [])
+        if payload.get("status") != "ok":
+            # A degraded region surfaces its warnings (above) but contributes no
+            # resources — it must never abort the merge.
+            continue
+        for key in _REGION_SCOPED_KEYS:
+            merged[key].extend(payload.get(key, []) or [])
+        cloudfront_seen.extend(payload.get("cloudfront_distributions", []) or [])
+    merged["cloudfront_distributions"] = _dedupe_inventory_items(cloudfront_seen, "name")
+    return merged
+
+
 def discover_inventory_all_regions(
     profile: str | None = None,
     *,
@@ -595,187 +749,48 @@ def discover_inventory_all_regions(
     try:
         import boto3  # noqa: F401
     except ImportError:
-        return {
-            **_empty_payload(region=""),
-            "status": "boto3_missing",
-            "warnings": ["boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"],
-        }
+        return {**_empty_payload(region=""), "status": "boto3_missing", "warnings": [_BOTO3_MISSING_WARNING]}
 
-    # A brokered assumed-role session (e.g. a stored cloud-connection scan) is
-    # used as-is; only the standalone path builds one from the profile/default chain.
+    # A brokered assumed-role session (e.g. a stored cloud-connection scan) is used as-is.
     if session is None:
-        session_kwargs: dict[str, Any] = {}
-        if profile:
-            session_kwargs["profile_name"] = profile
-        try:
-            session = boto3.Session(**session_kwargs)
-        except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
-            return {**_empty_payload(region=""), "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
+        session, session_error = _open_session(boto3, region=None, profile=profile)
+        if session_error is not None:
+            return {**_empty_payload(region=""), "status": "no_credentials", "warnings": [session_error]}
 
     default_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-
     warnings: list[str] = []
     region_list = _resolve_region_list(session, default_region, regions=regions, warnings=warnings)
 
-    # Global (region-agnostic) resources are enumerated ONCE against the default
-    # region: S3 buckets + IAM principals. CloudFront is global too but is
-    # enumerated directly below so the global pass doesn't pull regional
-    # ELB/VPC/messaging (those come from the per-region fan-out). Suppressing
-    # ec2/data/compute/network here is what prevents the identity/DSPM graph from
-    # inflating across regions.
+    # Global (region-agnostic) S3 + IAM are enumerated ONCE; suppressing ec2/data/compute/network
+    # here keeps the identity/DSPM graph from inflating across regions. CloudFront rides on the
+    # per-region network pass and is deduped on merge.
+    groups = _ServiceGroups(include_s3, include_ec2, include_iam, include_data, include_compute, include_network)
     global_region = region_list[0] if default_region not in region_list else default_region
-    global_payload = discover_inventory(
-        region=global_region,
-        profile=profile,
-        session=session,
-        include_s3=include_s3,
-        include_ec2=False,
-        include_iam=include_iam,
-        include_data=False,
-        include_compute=False,
-        include_network=False,
-        force=True,
-    )
+    global_groups = groups._replace(ec2=False, data=False, compute=False, network=False)
+    global_payload = _discover_inventory_for(global_groups, region=global_region, profile=profile, session=session)
     if global_payload.get("status") in {"boto3_missing", "no_credentials"}:
         return {**global_payload, "region": global_region}
     warnings.extend(global_payload.get("warnings", []))
-
     missing: list[dict[str, str]] = list(global_payload.get("missing_permissions", []) or [])
 
-    account_id = global_payload.get("account_id")
-
-    merged: dict[str, list[dict[str, Any]]] = {key: [] for key in _REGION_SCOPED_KEYS}
-
-    def _scan(region: str) -> dict[str, Any]:
-        return discover_inventory(
-            region=region,
-            profile=profile,
-            session=session,
-            include_s3=False,
-            include_ec2=include_ec2,
-            include_iam=False,
-            include_data=include_data,
-            include_compute=include_compute,
-            include_network=include_network,
-            force=True,
-        )
-
-    region_payloads: dict[str, dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=min(8, max(1, len(region_list)))) as executor:
-        future_to_region = {executor.submit(_scan, region): region for region in region_list}
-        for future in as_completed(future_to_region):
-            region = future_to_region[future]
-            try:
-                region_payloads[region] = future.result()
-            except Exception as exc:  # noqa: BLE001 — one bad region must not sink the scan
-                warnings.append(f"Region {region} skipped: {sanitize_discovery_warning(exc)}")
-
-    # CloudFront is global but is enumerated by each per-region scan (it rides on
-    # include_network); collect across regions, then dedupe by name below.
-    cloudfront_seen: list[dict[str, Any]] = []
-    for region in region_list:
-        payload = region_payloads.get(region)
-        if payload is None:
-            continue
-        for warning in payload.get("warnings", []):
-            warnings.append(f"[{region}] {warning}")
-        missing.extend(payload.get("missing_permissions", []) or [])
-        if payload.get("status") != "ok":
-            # A degraded region surfaces its warnings (above) but contributes no
-            # resources — it must never abort the merge.
-            continue
-        for key in _REGION_SCOPED_KEYS:
-            merged[key].extend(payload.get(key, []) or [])
-        cloudfront_seen.extend(payload.get("cloudfront_distributions", []) or [])
-
-    def _dedupe(items: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
-        seen: set[str] = set()
-        unique: list[dict[str, Any]] = []
-        for item in items:
-            ident = str(item.get(field, "") or "") or str(item.get("name", "") or "")
-            if ident and ident in seen:
-                continue
-            if ident:
-                seen.add(ident)
-            unique.append(item)
-        return unique
-
-    deduped_globals: dict[str, list[dict[str, Any]]] = {
-        "buckets": _dedupe(global_payload.get("buckets", []) or [], "arn"),
-        "roles": _dedupe(global_payload.get("roles", []) or [], "arn"),
-        "users": _dedupe(global_payload.get("users", []) or [], "arn"),
-        "groups": _dedupe(global_payload.get("groups", []) or [], "arn"),
-        "cloudfront_distributions": _dedupe(cloudfront_seen, "name"),
-    }
-
-    region_label = f"multi:{','.join(region_list)}"
-    discovery_scope: list[str] = []
-    if account_id:
-        discovery_scope.append(f"aws:account/{account_id}")
-    for region in region_list:
-        discovery_scope.append(f"aws:region/{region}")
-
-    permissions_used: list[str] = list(_AWS_BASELINE_PERMISSIONS) + ["ec2:DescribeRegions"]
-    if include_s3:
-        permissions_used.extend(_AWS_S3_PERMISSIONS)
-    if include_ec2:
-        permissions_used.extend(_AWS_EC2_PERMISSIONS)
-    if include_iam:
-        permissions_used.extend(_AWS_IAM_PERMISSIONS)
-    if include_data:
-        permissions_used.extend(_AWS_DATA_PERMISSIONS)
-        permissions_used.extend(_AWS_SECURITY_PERMISSIONS)
-    if include_compute:
-        permissions_used.extend(_AWS_COMPUTE_PERMISSIONS)
-    if include_network:
-        permissions_used.extend(_AWS_NETWORK_PERMISSIONS)
-        permissions_used.extend(_AWS_EDGE_PERMISSIONS)
-
-    envelope = DiscoveryEnvelope(
-        scan_mode=ScanMode.CLOUD_READ_ONLY,
-        discovery_scope=tuple(discovery_scope),
-        permissions_used=tuple(sorted(set(permissions_used))),
-        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    region_groups = groups._replace(s3=False, iam=False)
+    region_payloads = _scan_regions_concurrently(
+        region_list, lambda region: _discover_inventory_for(region_groups, region=region, profile=profile, session=session), warnings
     )
+    resources = _merge_region_payloads(region_list, region_payloads, warnings=warnings, missing=missing)
+    for key in ("buckets", "roles", "users", "groups"):
+        resources[key] = _dedupe_inventory_items(global_payload.get(key, []) or [], "arn")
 
-    return {
-        "provider": "aws",
-        "status": "ok",
-        "account_id": account_id,
-        "region": region_label,
-        "regions": region_list,
-        "buckets": deduped_globals.get("buckets", []),
-        "instances": merged["instances"],
-        "security_groups": merged["security_groups"],
-        "roles": deduped_globals.get("roles", []),
-        "users": deduped_globals.get("users", []),
-        "groups": deduped_globals.get("groups", []),
-        "rds_instances": merged["rds_instances"],
-        "lambda_functions": merged["lambda_functions"],
-        "dynamodb_tables": merged["dynamodb_tables"],
-        "eks_clusters": merged["eks_clusters"],
-        "elb_load_balancers": merged["elb_load_balancers"],
-        "vpcs": merged["vpcs"],
-        "kms_keys": merged["kms_keys"],
-        "secrets": merged["secrets"],
-        "cloudfront_distributions": deduped_globals.get("cloudfront_distributions", []),
-        "ecr_repositories": merged["ecr_repositories"],
-        "redshift_clusters": merged["redshift_clusters"],
-        "messaging": merged["messaging"],
-        "web_acls": merged["web_acls"],
-        "api_gateways": merged["api_gateways"],
-        "network_interfaces": merged["network_interfaces"],
-        "subnets": merged["subnets"],
-        "nat_gateways": merged["nat_gateways"],
-        "internet_gateways": merged["internet_gateways"],
-        "vpc_endpoints": merged["vpc_endpoints"],
-        "route_tables": merged["route_tables"],
-        "network_acls": merged["network_acls"],
-        "ip_addresses": merged["ip_addresses"],
-        "warnings": warnings,
-        "missing_permissions": dedupe_missing_permissions(missing),
-        "discovery_envelope": envelope.to_dict(),
-    }
+    return _ok_payload(
+        account_id=global_payload.get("account_id"),
+        region=f"multi:{','.join(region_list)}",
+        scope_regions=region_list,
+        permissions_used=_permissions_used(groups, extra=("ec2:DescribeRegions",)),
+        resources=resources,
+        warnings=warnings,
+        missing=missing,
+        regions=region_list,
+    )
 
 
 def discover_all_account_inventories(
@@ -886,6 +901,61 @@ def discover_all_account_inventories(
     return payloads
 
 
+def _collect_network_inventory(session: Any, region: str, found: dict[str, list[dict[str, Any]]], ctx: dict[str, Any]) -> None:
+    """Network + edge stage: ELB, VPC, CloudFront, messaging, WAF, API Gateway, VPC plumbing, IPs."""
+    account_id = ctx["account_id"]
+    found["elb_load_balancers"] = _discover_elb(session, region, **ctx)
+    found["vpcs"] = _discover_vpcs(session, region, **ctx)
+    found["cloudfront_distributions"] = _discover_cloudfront(session, **ctx)
+    found["messaging"] = _discover_messaging(session, region, **ctx)
+    found["web_acls"] = _discover_waf(session, region, **ctx)
+    found["api_gateways"] = _discover_api_gateways(session, region, **ctx)
+    edge = _discover_network_edge(session, region, **ctx)
+    for key in ("network_interfaces", "subnets", "nat_gateways", "internet_gateways", "vpc_endpoints", "route_tables", "network_acls"):
+        found[key] = edge[key]
+    found["ip_addresses"] = _discover_ip_addresses(
+        session,
+        region,
+        account_id=account_id,
+        network_interfaces=found["network_interfaces"],
+        warnings=ctx["warnings"],
+        missing=ctx["missing"],
+    )
+
+
+def _collect_inventory(
+    session: Any,
+    region: str,
+    groups: _ServiceGroups,
+    *,
+    account_id: str | None,
+    warnings: list[str],
+    missing: list[dict[str, str]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Run each enabled per-service collector in a fixed order; returns resources by payload key."""
+    ctx: dict[str, Any] = {"account_id": account_id, "warnings": warnings, "missing": missing}
+    found: dict[str, list[dict[str, Any]]] = {}
+    if groups.s3:
+        found["buckets"] = _discover_s3_buckets(session, **ctx)
+    if groups.ec2:
+        found["instances"], found["security_groups"] = _discover_ec2(session, region, **ctx)
+    if groups.iam:
+        found["roles"], found["users"], found["groups"] = _discover_iam(session, **ctx)
+    if groups.data:
+        found["rds_instances"] = _discover_rds(session, region, **ctx)
+        found["dynamodb_tables"] = _discover_dynamodb(session, region, **ctx)
+        found["kms_keys"] = _discover_kms(session, region, **ctx)
+        found["secrets"] = _discover_secrets(session, region, **ctx)
+        found["redshift_clusters"] = _discover_redshift(session, region, **ctx)
+    if groups.compute:
+        found["lambda_functions"] = _discover_lambda(session, region, **ctx)
+        found["eks_clusters"] = _discover_eks(session, region, **ctx)
+        found["ecr_repositories"] = _discover_ecr(session, region, **ctx)
+    if groups.network:
+        _collect_network_inventory(session, region, found, ctx)
+    return found
+
+
 def discover_inventory(
     region: str | None = None,
     profile: str | None = None,
@@ -930,95 +1000,23 @@ def discover_inventory(
         import boto3  # noqa: F401
         from botocore.exceptions import NoCredentialsError
     except ImportError:
-        return {
-            **empty,
-            "status": "boto3_missing",
-            "warnings": ["boto3 is required for AWS inventory. Install with: pip install 'agent-bom[aws]'"],
-        }
+        return {**empty, "status": "boto3_missing", "warnings": [_BOTO3_MISSING_WARNING]}
 
     if session is None:
-        session_kwargs: dict[str, Any] = {}
-        if region:
-            session_kwargs["region_name"] = region
-        if profile:
-            session_kwargs["profile_name"] = profile
-
-        try:
-            session = boto3.Session(**session_kwargs)
-        except Exception as exc:  # noqa: BLE001 — boto profile/config errors must not crash a scan
-            return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
+        session, session_error = _open_session(boto3, region=region, profile=profile)
+        if session_error is not None:
+            return {**empty, "status": "no_credentials", "warnings": [session_error]}
 
     # An explicit region wins even when a session is injected — the multi-region
     # fan-out reuses one brokered session but scans each region's clients in turn.
     resolved_region = region or session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     account_id = _resolve_account_id(session)
 
+    groups = _ServiceGroups(include_s3, include_ec2, include_iam, include_data, include_compute, include_network)
     warnings: list[str] = []
     missing: list[dict[str, str]] = []
-    buckets: list[dict[str, Any]] = []
-    instances: list[dict[str, Any]] = []
-    security_groups: list[dict[str, Any]] = []
-    roles: list[dict[str, Any]] = []
-    users: list[dict[str, Any]] = []
-    groups: list[dict[str, Any]] = []
-    rds_instances: list[dict[str, Any]] = []
-    lambda_functions: list[dict[str, Any]] = []
-    dynamodb_tables: list[dict[str, Any]] = []
-    eks_clusters: list[dict[str, Any]] = []
-    elb_load_balancers: list[dict[str, Any]] = []
-    vpcs: list[dict[str, Any]] = []
-    kms_keys: list[dict[str, Any]] = []
-    secrets: list[dict[str, Any]] = []
-    cloudfront_distributions: list[dict[str, Any]] = []
-    ecr_repositories: list[dict[str, Any]] = []
-    redshift_clusters: list[dict[str, Any]] = []
-    messaging: list[dict[str, Any]] = []
-    web_acls: list[dict[str, Any]] = []
-    api_gateways: list[dict[str, Any]] = []
-    network_interfaces: list[dict[str, Any]] = []
-    subnets: list[dict[str, Any]] = []
-    nat_gateways: list[dict[str, Any]] = []
-    internet_gateways: list[dict[str, Any]] = []
-    vpc_endpoints: list[dict[str, Any]] = []
-    route_tables: list[dict[str, Any]] = []
-    network_acls: list[dict[str, Any]] = []
-    ip_addresses: list[dict[str, Any]] = []
-
     try:
-        if include_s3:
-            buckets = _discover_s3_buckets(session, account_id=account_id, warnings=warnings, missing=missing)
-        if include_ec2:
-            instances, security_groups = _discover_ec2(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-        if include_iam:
-            roles, users, groups = _discover_iam(session, account_id=account_id, warnings=warnings, missing=missing)
-        if include_data:
-            rds_instances = _discover_rds(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            dynamodb_tables = _discover_dynamodb(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            kms_keys = _discover_kms(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            secrets = _discover_secrets(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            redshift_clusters = _discover_redshift(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-        if include_compute:
-            lambda_functions = _discover_lambda(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            eks_clusters = _discover_eks(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            ecr_repositories = _discover_ecr(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-        if include_network:
-            elb_load_balancers = _discover_elb(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            vpcs = _discover_vpcs(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            cloudfront_distributions = _discover_cloudfront(session, account_id=account_id, warnings=warnings, missing=missing)
-            messaging = _discover_messaging(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            web_acls = _discover_waf(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            api_gateways = _discover_api_gateways(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            edge = _discover_network_edge(session, resolved_region, account_id=account_id, warnings=warnings, missing=missing)
-            network_interfaces = edge["network_interfaces"]
-            subnets = edge["subnets"]
-            nat_gateways = edge["nat_gateways"]
-            internet_gateways = edge["internet_gateways"]
-            vpc_endpoints = edge["vpc_endpoints"]
-            route_tables = edge["route_tables"]
-            network_acls = edge["network_acls"]
-            ip_addresses = _discover_ip_addresses(
-                session, resolved_region, account_id=account_id, network_interfaces=network_interfaces, warnings=warnings, missing=missing
-            )
+        resources = _collect_inventory(session, resolved_region, groups, account_id=account_id, warnings=warnings, missing=missing)
     except NoCredentialsError:
         return {
             **empty,
@@ -1026,73 +1024,15 @@ def discover_inventory(
             "warnings": ["AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO."],
         }
 
-    permissions_used: list[str] = list(_AWS_BASELINE_PERMISSIONS)
-    if include_s3:
-        permissions_used.extend(_AWS_S3_PERMISSIONS)
-    if include_ec2:
-        permissions_used.extend(_AWS_EC2_PERMISSIONS)
-    if include_iam:
-        permissions_used.extend(_AWS_IAM_PERMISSIONS)
-    if include_data:
-        permissions_used.extend(_AWS_DATA_PERMISSIONS)
-    if include_compute:
-        permissions_used.extend(_AWS_COMPUTE_PERMISSIONS)
-    if include_data:
-        permissions_used.extend(_AWS_SECURITY_PERMISSIONS)
-    if include_network:
-        permissions_used.extend(_AWS_NETWORK_PERMISSIONS)
-        permissions_used.extend(_AWS_EDGE_PERMISSIONS)
-
-    discovery_scope: list[str] = []
-    if account_id:
-        discovery_scope.append(f"aws:account/{account_id}")
-    if resolved_region:
-        discovery_scope.append(f"aws:region/{resolved_region}")
-
-    envelope = DiscoveryEnvelope(
-        scan_mode=ScanMode.CLOUD_READ_ONLY,
-        discovery_scope=tuple(discovery_scope),
-        permissions_used=tuple(sorted(set(permissions_used))),
-        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    return _ok_payload(
+        account_id=account_id,
+        region=resolved_region,
+        scope_regions=[resolved_region] if resolved_region else [],
+        permissions_used=_permissions_used(groups),
+        resources=resources,
+        warnings=warnings,
+        missing=missing,
     )
-
-    return {
-        "provider": "aws",
-        "status": "ok",
-        "account_id": account_id,
-        "region": resolved_region,
-        "buckets": buckets,
-        "instances": instances,
-        "security_groups": security_groups,
-        "roles": roles,
-        "users": users,
-        "groups": groups,
-        "rds_instances": rds_instances,
-        "lambda_functions": lambda_functions,
-        "dynamodb_tables": dynamodb_tables,
-        "eks_clusters": eks_clusters,
-        "elb_load_balancers": elb_load_balancers,
-        "vpcs": vpcs,
-        "kms_keys": kms_keys,
-        "secrets": secrets,
-        "cloudfront_distributions": cloudfront_distributions,
-        "ecr_repositories": ecr_repositories,
-        "redshift_clusters": redshift_clusters,
-        "messaging": messaging,
-        "web_acls": web_acls,
-        "api_gateways": api_gateways,
-        "network_interfaces": network_interfaces,
-        "subnets": subnets,
-        "nat_gateways": nat_gateways,
-        "internet_gateways": internet_gateways,
-        "vpc_endpoints": vpc_endpoints,
-        "route_tables": route_tables,
-        "network_acls": network_acls,
-        "ip_addresses": ip_addresses,
-        "warnings": warnings,
-        "missing_permissions": dedupe_missing_permissions(missing),
-        "discovery_envelope": envelope.to_dict(),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -2384,6 +2324,276 @@ def _discover_api_gateways(
     return out
 
 
+def _ec2_pages(ec2: Any, operation: str, key: str) -> Iterator[Any]:
+    """Yield every item under ``key`` across the pages of a paginated EC2 describe call."""
+    paginator = ec2.get_paginator(operation)
+    for page in paginator.paginate():
+        yield from page.get(key, []) or []
+
+
+def _ec2_items(ec2: Any, operation: str, key: str) -> Iterator[Any]:
+    """Yield every item under ``key`` from a single (unpaginated) EC2 describe call."""
+    yield from getattr(ec2, operation)().get(key, []) or []
+
+
+def _collect_edge_rows(
+    rows: list[dict[str, Any]],
+    items: Iterator[Any],
+    normalize: Callable[[Any], dict[str, Any] | None],
+    *,
+    resource_type: str,
+    permission: str,
+    warnings: list[str],
+    missing: list[dict[str, str]] | None,
+) -> None:
+    """Append each normalized item to ``rows``; one failing resource type never sinks the others."""
+    try:
+        for item in items:
+            row = normalize(item)
+            if row is not None:
+                rows.append(row)
+    except Exception as exc:  # noqa: BLE001
+        record_discovery_failure(
+            exc=exc, resource_type=resource_type, permission=permission, cloud="aws", warnings=warnings, missing=missing
+        )
+
+
+def _route_table_row(
+    rt: Any, region: str, account_id: str | None, public_subnet_ids: set[str], vpc_default_public: set[str]
+) -> dict[str, Any] | None:
+    rt_id = str(rt.get("RouteTableId", "") or "")
+    if not rt_id:
+        return None
+    vpc_id = str(rt.get("VpcId", "") or "")
+    has_igw_route = any(
+        str(r.get("GatewayId", "") or "").startswith("igw-") and str(r.get("DestinationCidrBlock", "")) in _INTERNET_CIDRS
+        for r in rt.get("Routes", []) or []
+        if isinstance(r, dict)
+    )
+    assocs = rt.get("Associations", []) or []
+    main = any(bool(a.get("Main")) for a in assocs if isinstance(a, dict))
+    if has_igw_route:
+        if main and vpc_id:
+            vpc_default_public.add(vpc_id)
+        for a in assocs:
+            sid = str(a.get("SubnetId", "") or "") if isinstance(a, dict) else ""
+            if sid:
+                public_subnet_ids.add(sid)
+    return {
+        "id": rt_id,
+        "name": rt_id,
+        "vpc_id": vpc_id,
+        "has_internet_route": has_igw_route,
+        "location": region,
+        "account_id": account_id or "",
+    }
+
+
+def _subnet_row(
+    sn: Any, region: str, account_id: str | None, public_subnet_ids: set[str], vpc_default_public: set[str]
+) -> dict[str, Any] | None:
+    sn_id = str(sn.get("SubnetId", "") or "")
+    if not sn_id:
+        return None
+    vpc_id = str(sn.get("VpcId", "") or "")
+    tags = {str(t.get("Key", "")): str(t.get("Value", "")) for t in sn.get("Tags", []) if t.get("Key")}
+    # Explicit public route-table association wins; otherwise a subnet
+    # that auto-assigns public IPs in an internet-routed VPC is public.
+    is_public = sn_id in public_subnet_ids or (bool(sn.get("MapPublicIpOnLaunch")) and vpc_id in vpc_default_public)
+    return {
+        "id": sn_id,
+        "name": tags.get("Name", sn_id),
+        "vpc_id": vpc_id,
+        "cidr": str(sn.get("CidrBlock", "") or ""),
+        "is_public": is_public,
+        "location": str(sn.get("AvailabilityZone", "") or region),
+        "account_id": account_id or "",
+    }
+
+
+def _network_interface_row(eni: Any, region: str, account_id: str | None) -> dict[str, Any] | None:
+    eni_id = str(eni.get("NetworkInterfaceId", "") or "")
+    if not eni_id:
+        return None
+    sg_ids = [str(g.get("GroupId", "")) for g in eni.get("Groups", []) or [] if isinstance(g, dict) and g.get("GroupId")]
+    attachment = eni.get("Attachment") or {}
+    association = eni.get("Association") or {}
+    return {
+        "id": eni_id,
+        "name": eni_id,
+        "instance_id": str(attachment.get("InstanceId", "") or ""),
+        "subnet_id": str(eni.get("SubnetId", "") or ""),
+        "vpc_id": str(eni.get("VpcId", "") or ""),
+        "security_group_ids": sg_ids,
+        "private_ip": str(eni.get("PrivateIpAddress", "") or ""),
+        "public_ip": str(association.get("PublicIp", "") or ""),
+        "location": region,
+        "account_id": account_id or "",
+    }
+
+
+def _nat_gateway_row(nat: Any, region: str, account_id: str | None) -> dict[str, Any] | None:
+    nat_id = str(nat.get("NatGatewayId", "") or "")
+    if not nat_id:
+        return None
+    return {
+        "id": nat_id,
+        "name": nat_id,
+        "vpc_id": str(nat.get("VpcId", "") or ""),
+        "subnet_id": str(nat.get("SubnetId", "") or ""),
+        "connectivity": str(nat.get("ConnectivityType", "") or "public"),
+        "location": region,
+        "account_id": account_id or "",
+    }
+
+
+def _internet_gateway_row(igw: Any, region: str, account_id: str | None, *, id_key: str, kind: str) -> dict[str, Any] | None:
+    igw_id = str(igw.get(id_key, "") or "")
+    if not igw_id:
+        return None
+    vpc_ids = [str(a.get("VpcId", "")) for a in igw.get("Attachments", []) or [] if isinstance(a, dict) and a.get("VpcId")]
+    row: dict[str, Any] = {"id": igw_id, "name": igw_id, "vpc_id": vpc_ids[0] if vpc_ids else "", "kind": kind}
+    if kind == "internet-gateway":
+        row["internet_exposed"] = True
+    row.update(location=region, account_id=account_id or "")
+    return row
+
+
+def _vpc_endpoint_row(vpe: Any, region: str, account_id: str | None) -> dict[str, Any] | None:
+    vpe_id = str(vpe.get("VpcEndpointId", "") or "")
+    if not vpe_id:
+        return None
+    return {
+        "id": vpe_id,
+        "name": str(vpe.get("ServiceName", "") or vpe_id),
+        "vpc_id": str(vpe.get("VpcId", "") or ""),
+        "endpoint_type": str(vpe.get("VpcEndpointType", "") or ""),
+        "location": region,
+        "account_id": account_id or "",
+    }
+
+
+def _network_acl_exposure(acl: Any) -> list[dict[str, Any]]:
+    network_exposure: list[dict[str, Any]] = []
+    for entry in acl.get("Entries", []) or []:
+        if not isinstance(entry, dict) or entry.get("Egress"):
+            continue
+        if str(entry.get("RuleAction", "")).lower() != "allow":
+            continue
+        cidr = str(entry.get("CidrBlock", "") or entry.get("Ipv6CidrBlock", "") or "")
+        if cidr not in ("0.0.0.0/0", "::/0"):
+            continue
+        network_exposure.append(
+            {
+                "cidr": cidr,
+                "from_port": entry.get("PortRange", {}).get("From") if isinstance(entry.get("PortRange"), dict) else None,
+                "to_port": entry.get("PortRange", {}).get("To") if isinstance(entry.get("PortRange"), dict) else None,
+                "protocol": str(entry.get("Protocol", "") or ""),
+                "scope": "internet",
+            }
+        )
+    return network_exposure
+
+
+def _network_acl_row(acl: Any, region: str, account_id: str | None) -> dict[str, Any] | None:
+    acl_id = str(acl.get("NetworkAclId", "") or "")
+    if not acl_id:
+        return None
+    subnet_ids = sorted(
+        {
+            str(assoc.get("SubnetId", "") or "")
+            for assoc in acl.get("Associations", []) or []
+            if isinstance(assoc, dict) and assoc.get("SubnetId")
+        }
+    )
+    network_exposure = _network_acl_exposure(acl)
+    return {
+        "id": acl_id,
+        "name": acl_id,
+        "vpc_id": str(acl.get("VpcId", "") or ""),
+        "is_default": bool(acl.get("IsDefault")),
+        "subnet_ids": subnet_ids,
+        # The AWS default NACL is allow-all inbound by design, so
+        # its permissive rules alone are not internet exposure —
+        # only flag non-default NACLs (downstream public-subnet
+        # gate is the primary guard).
+        "internet_exposed": bool(network_exposure) and not bool(acl.get("IsDefault")),
+        "network_exposure": network_exposure,
+        "location": region,
+        "account_id": account_id or "",
+    }
+
+
+_EdgeStage = tuple[str, Iterator[Any], Callable[[Any], dict[str, Any] | None], str, str]
+
+
+def _network_edge_stages(ec2: Any, region: str, account_id: str | None) -> tuple[_EdgeStage, ...]:
+    """(output key, item source, normalizer, resource type, permission) per edge resource, in run order."""
+    # Route tables first so subnet public/private classification can use them.
+    public_subnet_ids: set[str] = set()
+    vpc_default_public: set[str] = set()
+    return (
+        (
+            "route_tables",
+            _ec2_pages(ec2, "describe_route_tables", "RouteTables"),
+            lambda rt: _route_table_row(rt, region, account_id, public_subnet_ids, vpc_default_public),
+            "route tables",
+            "ec2:DescribeRouteTables",
+        ),
+        (
+            "subnets",
+            _ec2_pages(ec2, "describe_subnets", "Subnets"),
+            lambda sn: _subnet_row(sn, region, account_id, public_subnet_ids, vpc_default_public),
+            "subnets",
+            "ec2:DescribeSubnets",
+        ),
+        (
+            "network_interfaces",
+            _ec2_pages(ec2, "describe_network_interfaces", "NetworkInterfaces"),
+            lambda eni: _network_interface_row(eni, region, account_id),
+            "network interfaces",
+            "ec2:DescribeNetworkInterfaces",
+        ),
+        (
+            "nat_gateways",
+            _ec2_pages(ec2, "describe_nat_gateways", "NatGateways"),
+            lambda nat: _nat_gateway_row(nat, region, account_id),
+            "NAT gateways",
+            "ec2:DescribeNatGateways",
+        ),
+        (
+            "internet_gateways",
+            _ec2_items(ec2, "describe_internet_gateways", "InternetGateways"),
+            lambda igw: _internet_gateway_row(igw, region, account_id, id_key="InternetGatewayId", kind="internet-gateway"),
+            "internet gateways",
+            "ec2:DescribeInternetGateways",
+        ),
+        (
+            "internet_gateways",
+            _ec2_items(ec2, "describe_egress_only_internet_gateways", "EgressOnlyInternetGateways"),
+            lambda eigw: _internet_gateway_row(
+                eigw, region, account_id, id_key="EgressOnlyInternetGatewayId", kind="egress-only-internet-gateway"
+            ),
+            "egress-only internet gateways",
+            "ec2:DescribeEgressOnlyInternetGateways",
+        ),
+        (
+            "vpc_endpoints",
+            _ec2_pages(ec2, "describe_vpc_endpoints", "VpcEndpoints"),
+            lambda vpe: _vpc_endpoint_row(vpe, region, account_id),
+            "VPC endpoints",
+            "ec2:DescribeVpcEndpoints",
+        ),
+        (
+            "network_acls",
+            _ec2_pages(ec2, "describe_network_acls", "NetworkAcls"),
+            lambda acl: _network_acl_row(acl, region, account_id),
+            "network ACLs",
+            "ec2:DescribeNetworkAcls",
+        ),
+    )
+
+
 def _discover_network_edge(
     session: Any, region: str, *, account_id: str | None, warnings: list[str], missing: list[dict[str, str]] | None = None
 ) -> dict[str, list[dict[str, Any]]]:
@@ -2404,261 +2614,11 @@ def _discover_network_edge(
         "network_acls": [],
     }
     ec2 = session.client("ec2", region_name=region)
-
-    # Route tables first so subnet public/private classification can use them.
-    public_subnet_ids: set[str] = set()
-    vpc_default_public: set[str] = set()
-    try:
-        paginator = ec2.get_paginator("describe_route_tables")
-        for page in paginator.paginate():
-            for rt in page.get("RouteTables", []) or []:
-                rt_id = str(rt.get("RouteTableId", "") or "")
-                if not rt_id:
-                    continue
-                vpc_id = str(rt.get("VpcId", "") or "")
-                has_igw_route = any(
-                    str(r.get("GatewayId", "") or "").startswith("igw-") and str(r.get("DestinationCidrBlock", "")) in _INTERNET_CIDRS
-                    for r in rt.get("Routes", []) or []
-                    if isinstance(r, dict)
-                )
-                assocs = rt.get("Associations", []) or []
-                main = any(bool(a.get("Main")) for a in assocs if isinstance(a, dict))
-                if has_igw_route:
-                    if main and vpc_id:
-                        vpc_default_public.add(vpc_id)
-                    for a in assocs:
-                        sid = str(a.get("SubnetId", "") or "") if isinstance(a, dict) else ""
-                        if sid:
-                            public_subnet_ids.add(sid)
-                out["route_tables"].append(
-                    {
-                        "id": rt_id,
-                        "name": rt_id,
-                        "vpc_id": vpc_id,
-                        "has_internet_route": has_igw_route,
-                        "location": region,
-                        "account_id": account_id or "",
-                    }
-                )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc, resource_type="route tables", permission="ec2:DescribeRouteTables", cloud="aws", warnings=warnings, missing=missing
+    # Stages run in order, each isolated so one denied describe call never sinks the others.
+    for key, items, normalize, resource_type, permission in _network_edge_stages(ec2, region, account_id):
+        _collect_edge_rows(
+            out[key], items, normalize, resource_type=resource_type, permission=permission, warnings=warnings, missing=missing
         )
-
-    try:
-        paginator = ec2.get_paginator("describe_subnets")
-        for page in paginator.paginate():
-            for sn in page.get("Subnets", []) or []:
-                sn_id = str(sn.get("SubnetId", "") or "")
-                if not sn_id:
-                    continue
-                vpc_id = str(sn.get("VpcId", "") or "")
-                tags = {str(t.get("Key", "")): str(t.get("Value", "")) for t in sn.get("Tags", []) if t.get("Key")}
-                # Explicit public route-table association wins; otherwise a subnet
-                # that auto-assigns public IPs in an internet-routed VPC is public.
-                is_public = sn_id in public_subnet_ids or (bool(sn.get("MapPublicIpOnLaunch")) and vpc_id in vpc_default_public)
-                out["subnets"].append(
-                    {
-                        "id": sn_id,
-                        "name": tags.get("Name", sn_id),
-                        "vpc_id": vpc_id,
-                        "cidr": str(sn.get("CidrBlock", "") or ""),
-                        "is_public": is_public,
-                        "location": str(sn.get("AvailabilityZone", "") or region),
-                        "account_id": account_id or "",
-                    }
-                )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc, resource_type="subnets", permission="ec2:DescribeSubnets", cloud="aws", warnings=warnings, missing=missing
-        )
-
-    try:
-        paginator = ec2.get_paginator("describe_network_interfaces")
-        for page in paginator.paginate():
-            for eni in page.get("NetworkInterfaces", []) or []:
-                eni_id = str(eni.get("NetworkInterfaceId", "") or "")
-                if not eni_id:
-                    continue
-                sg_ids = [str(g.get("GroupId", "")) for g in eni.get("Groups", []) or [] if isinstance(g, dict) and g.get("GroupId")]
-                attachment = eni.get("Attachment") or {}
-                association = eni.get("Association") or {}
-                out["network_interfaces"].append(
-                    {
-                        "id": eni_id,
-                        "name": eni_id,
-                        "instance_id": str(attachment.get("InstanceId", "") or ""),
-                        "subnet_id": str(eni.get("SubnetId", "") or ""),
-                        "vpc_id": str(eni.get("VpcId", "") or ""),
-                        "security_group_ids": sg_ids,
-                        "private_ip": str(eni.get("PrivateIpAddress", "") or ""),
-                        "public_ip": str(association.get("PublicIp", "") or ""),
-                        "location": region,
-                        "account_id": account_id or "",
-                    }
-                )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc,
-            resource_type="network interfaces",
-            permission="ec2:DescribeNetworkInterfaces",
-            cloud="aws",
-            warnings=warnings,
-            missing=missing,
-        )
-
-    try:
-        paginator = ec2.get_paginator("describe_nat_gateways")
-        for page in paginator.paginate():
-            for nat in page.get("NatGateways", []) or []:
-                nat_id = str(nat.get("NatGatewayId", "") or "")
-                if not nat_id:
-                    continue
-                out["nat_gateways"].append(
-                    {
-                        "id": nat_id,
-                        "name": nat_id,
-                        "vpc_id": str(nat.get("VpcId", "") or ""),
-                        "subnet_id": str(nat.get("SubnetId", "") or ""),
-                        "connectivity": str(nat.get("ConnectivityType", "") or "public"),
-                        "location": region,
-                        "account_id": account_id or "",
-                    }
-                )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc, resource_type="NAT gateways", permission="ec2:DescribeNatGateways", cloud="aws", warnings=warnings, missing=missing
-        )
-
-    try:
-        for igw in ec2.describe_internet_gateways().get("InternetGateways", []) or []:
-            igw_id = str(igw.get("InternetGatewayId", "") or "")
-            if not igw_id:
-                continue
-            vpc_ids = [str(a.get("VpcId", "")) for a in igw.get("Attachments", []) or [] if isinstance(a, dict) and a.get("VpcId")]
-            out["internet_gateways"].append(
-                {
-                    "id": igw_id,
-                    "name": igw_id,
-                    "vpc_id": vpc_ids[0] if vpc_ids else "",
-                    "kind": "internet-gateway",
-                    "internet_exposed": True,
-                    "location": region,
-                    "account_id": account_id or "",
-                }
-            )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc,
-            resource_type="internet gateways",
-            permission="ec2:DescribeInternetGateways",
-            cloud="aws",
-            warnings=warnings,
-            missing=missing,
-        )
-
-    try:
-        for eigw in ec2.describe_egress_only_internet_gateways().get("EgressOnlyInternetGateways", []) or []:
-            eigw_id = str(eigw.get("EgressOnlyInternetGatewayId", "") or "")
-            if not eigw_id:
-                continue
-            vpc_ids = [str(a.get("VpcId", "")) for a in eigw.get("Attachments", []) or [] if isinstance(a, dict) and a.get("VpcId")]
-            out["internet_gateways"].append(
-                {
-                    "id": eigw_id,
-                    "name": eigw_id,
-                    "vpc_id": vpc_ids[0] if vpc_ids else "",
-                    "kind": "egress-only-internet-gateway",
-                    "location": region,
-                    "account_id": account_id or "",
-                }
-            )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc,
-            resource_type="egress-only internet gateways",
-            permission="ec2:DescribeEgressOnlyInternetGateways",
-            cloud="aws",
-            warnings=warnings,
-            missing=missing,
-        )
-
-    try:
-        paginator = ec2.get_paginator("describe_vpc_endpoints")
-        for page in paginator.paginate():
-            for vpe in page.get("VpcEndpoints", []) or []:
-                vpe_id = str(vpe.get("VpcEndpointId", "") or "")
-                if not vpe_id:
-                    continue
-                out["vpc_endpoints"].append(
-                    {
-                        "id": vpe_id,
-                        "name": str(vpe.get("ServiceName", "") or vpe_id),
-                        "vpc_id": str(vpe.get("VpcId", "") or ""),
-                        "endpoint_type": str(vpe.get("VpcEndpointType", "") or ""),
-                        "location": region,
-                        "account_id": account_id or "",
-                    }
-                )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc, resource_type="VPC endpoints", permission="ec2:DescribeVpcEndpoints", cloud="aws", warnings=warnings, missing=missing
-        )
-
-    try:
-        paginator = ec2.get_paginator("describe_network_acls")
-        for page in paginator.paginate():
-            for acl in page.get("NetworkAcls", []) or []:
-                acl_id = str(acl.get("NetworkAclId", "") or "")
-                if not acl_id:
-                    continue
-                subnet_ids = sorted(
-                    {
-                        str(assoc.get("SubnetId", "") or "")
-                        for assoc in acl.get("Associations", []) or []
-                        if isinstance(assoc, dict) and assoc.get("SubnetId")
-                    }
-                )
-                network_exposure: list[dict[str, Any]] = []
-                for entry in acl.get("Entries", []) or []:
-                    if not isinstance(entry, dict) or entry.get("Egress"):
-                        continue
-                    if str(entry.get("RuleAction", "")).lower() != "allow":
-                        continue
-                    cidr = str(entry.get("CidrBlock", "") or entry.get("Ipv6CidrBlock", "") or "")
-                    if cidr not in ("0.0.0.0/0", "::/0"):
-                        continue
-                    network_exposure.append(
-                        {
-                            "cidr": cidr,
-                            "from_port": entry.get("PortRange", {}).get("From") if isinstance(entry.get("PortRange"), dict) else None,
-                            "to_port": entry.get("PortRange", {}).get("To") if isinstance(entry.get("PortRange"), dict) else None,
-                            "protocol": str(entry.get("Protocol", "") or ""),
-                            "scope": "internet",
-                        }
-                    )
-                out["network_acls"].append(
-                    {
-                        "id": acl_id,
-                        "name": acl_id,
-                        "vpc_id": str(acl.get("VpcId", "") or ""),
-                        "is_default": bool(acl.get("IsDefault")),
-                        "subnet_ids": subnet_ids,
-                        # The AWS default NACL is allow-all inbound by design, so
-                        # its permissive rules alone are not internet exposure —
-                        # only flag non-default NACLs (downstream public-subnet
-                        # gate is the primary guard).
-                        "internet_exposed": bool(network_exposure) and not bool(acl.get("IsDefault")),
-                        "network_exposure": network_exposure,
-                        "location": region,
-                        "account_id": account_id or "",
-                    }
-                )
-    except Exception as exc:  # noqa: BLE001
-        record_discovery_failure(
-            exc=exc, resource_type="network ACLs", permission="ec2:DescribeNetworkAcls", cloud="aws", warnings=warnings, missing=missing
-        )
-
     return out
 
 

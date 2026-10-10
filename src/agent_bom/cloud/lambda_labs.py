@@ -51,6 +51,58 @@ def _lambda_get(path: str, api_key: str) -> dict | list:
     return resp.json().get("data", resp.json())
 
 
+def _instance_agent(inst: dict) -> Agent:
+    """Build the agent for one Lambda Cloud GPU instance."""
+    inst_id = inst.get("id", "unknown")
+    inst_name = inst.get("name", inst_id)
+    status = inst.get("status", "unknown")
+    region = inst.get("region", {}).get("name", "unknown")
+    itype = inst.get("instance_type", {}).get("name", "")
+    gpu_label = _GPU_FAMILIES.get(itype, itype or "GPU")
+
+    packages = [
+        Package(
+            name=itype or "lambda-gpu-instance",
+            version=status,
+            ecosystem="lambda-cloud",
+            purl=build_package_purl(
+                ecosystem="lambda-cloud",
+                name=itype or "lambda-gpu-instance",
+                version=status,
+            ),
+        )
+    ]
+
+    server = MCPServer(
+        name=f"lambda:{inst_name}",
+        transport=TransportType.UNKNOWN,
+        packages=packages,
+        tools=[MCPTool(name=inst_name, description=f"Lambda Labs {gpu_label} instance ({region})")],
+    )
+
+    return Agent(
+        name=f"lambda:{inst_name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"lambda://{region}/{inst_id}",
+        source="lambda-cloud",
+        version=status,
+        mcp_servers=[server],
+        metadata={
+            "gpu_type": gpu_label,
+            "region": region,
+            "status": status,
+            "cloud_origin": build_cloud_origin(
+                provider="lambda",
+                service="compute",
+                resource_type="gpu-instance",
+                resource_id=inst_id,
+                resource_name=inst_name,
+                raw_identity={"id": inst_id, "region": region, "type": itype},
+            ),
+        },
+    )
+
+
 def discover(
     api_key: str | None = None,
     **_kwargs: object,
@@ -76,55 +128,7 @@ def discover(
             instances = []
 
         for inst in instances:
-            inst_id = inst.get("id", "unknown")
-            inst_name = inst.get("name", inst_id)
-            status = inst.get("status", "unknown")
-            region = inst.get("region", {}).get("name", "unknown")
-            itype = inst.get("instance_type", {}).get("name", "")
-            gpu_label = _GPU_FAMILIES.get(itype, itype or "GPU")
-
-            packages = [
-                Package(
-                    name=itype or "lambda-gpu-instance",
-                    version=status,
-                    ecosystem="lambda-cloud",
-                    purl=build_package_purl(
-                        ecosystem="lambda-cloud",
-                        name=itype or "lambda-gpu-instance",
-                        version=status,
-                    ),
-                )
-            ]
-
-            server = MCPServer(
-                name=f"lambda:{inst_name}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-                tools=[MCPTool(name=inst_name, description=f"Lambda Labs {gpu_label} instance ({region})")],
-            )
-
-            agent = Agent(
-                name=f"lambda:{inst_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"lambda://{region}/{inst_id}",
-                source="lambda-cloud",
-                version=status,
-                mcp_servers=[server],
-                metadata={
-                    "gpu_type": gpu_label,
-                    "region": region,
-                    "status": status,
-                    "cloud_origin": build_cloud_origin(
-                        provider="lambda",
-                        service="compute",
-                        resource_type="gpu-instance",
-                        resource_id=inst_id,
-                        resource_name=inst_name,
-                        raw_identity={"id": inst_id, "region": region, "type": itype},
-                    ),
-                },
-            )
-            agents.append(agent)
+            agents.append(_instance_agent(inst))
 
     except CloudDiscoveryError as exc:
         warnings.append(str(exc))

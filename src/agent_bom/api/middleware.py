@@ -56,6 +56,7 @@ from agent_bom.api.route_policy import (
     required_scope,
     scope_catalog,
 )
+from agent_bom.api.storage.deployment import _configured_api_replicas, clustered_control_plane_required
 from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
@@ -130,11 +131,6 @@ def _content_security_policy(path: str, content_type: str) -> str:
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def clustered_control_plane_required() -> bool:
-    """Return true when process-local control-plane state is unsafe."""
-    return _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT") or _configured_api_replicas() > 1
 
 
 def static_api_key_allowed() -> bool:
@@ -2091,17 +2087,6 @@ class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
         return await call_next(request)
-
-
-def _configured_api_replicas() -> int:
-    raw = os.environ.get("AGENT_BOM_CONTROL_PLANE_REPLICAS", "").strip()
-    if not raw:
-        return 1
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        _logger.warning("Invalid AGENT_BOM_CONTROL_PLANE_REPLICAS=%r; defaulting to 1", raw)
-        return 1
 
 
 def _shared_rate_limit_required() -> bool:

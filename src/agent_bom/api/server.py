@@ -56,6 +56,7 @@ from agent_bom.api.models import (
     TracingHealth,
     VersionInfo,
 )
+from agent_bom.api.scan_snapshot_store import expire_jobs_and_snapshots
 from agent_bom.api.storage.analytics import peek_analytics_store
 from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.stores import (
@@ -1335,7 +1336,7 @@ async def _cleanup_tick() -> None:
     one item instead of killing the loop.
     """
     store = _get_store()
-    await asyncio.to_thread(store.cleanup_expired, _JOB_TTL_SECONDS)
+    await asyncio.to_thread(expire_jobs_and_snapshots, store, _JOB_TTL_SECONDS)
     # Public demo self-heal: if AGENT_BOM_DEMO_ESTATE is on and the curated
     # scan job is missing/empty (TTL wipe, partial boot, operator reset),
     # reseed without waiting for a container restart. Cheap no-op when a
@@ -1350,8 +1351,7 @@ async def _cleanup_tick() -> None:
             await asyncio.to_thread(maybe_bootstrap_demo_estate)
     except Exception:  # noqa: BLE001
         _logger.warning("demo estate cleanup-loop reseed skipped", exc_info=False)
-    # Tier-B replay-log TTL purge (#2261). Wrapped so a backend hiccup
-    # never takes down the whole cleanup loop.
+    # Tier-B replay-log TTL purge (#2261); wrapped so a backend hiccup never takes down the cleanup loop.
     try:
         from agent_bom.api.proxy_replay_store import get_proxy_replay_store
 

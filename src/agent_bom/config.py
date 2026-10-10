@@ -71,7 +71,6 @@ ACTIVATE_MCP_TOOL_PLUGINS = _bool("AGENT_BOM_ACTIVATE_MCP_TOOL_PLUGINS", False)
 ACTIVATE_ADVISORY_SOURCE_PLUGINS = _bool("AGENT_BOM_ACTIVATE_ADVISORY_SOURCE_PLUGINS", False)
 ACTIVATE_RUNTIME_EMITTER_PLUGINS = _bool("AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLUGINS", False)
 
-
 # ── OS-package reporting ──────────────────────────────────────────────────────
 # When False (default), Debian/Alpine advisories with no fix for the scanned
 # release are suppressed. RPM advisories with unresolved fixes stay visible.
@@ -81,14 +80,12 @@ ACTIVATE_RUNTIME_EMITTER_PLUGINS = _bool("AGENT_BOM_ACTIVATE_RUNTIME_EMITTER_PLU
 
 INCLUDE_UNFIXED_OS_ADVISORIES = _bool("AGENT_BOM_INCLUDE_UNFIXED", False)
 
-
 # ── Image Scanning ────────────────────────────────────────────────────────────
 # Optional Grype fallback for ``agent-bom image --tar`` when native OCI/archive
 # extraction yields no packages. Off by default — enable only when bridging
 # legacy tarballs that Grype handles better than the native parser.
 
 IMAGE_GRYPE_FALLBACK = _bool("AGENT_BOM_IMAGE_GRYPE_FALLBACK", False)
-
 
 # ── EPSS Thresholds ─────────────────────────────────────────────────────────
 # EPSS (Exploit Prediction Scoring System) probability thresholds.
@@ -168,7 +165,6 @@ RISK_SCORECARD_TIER3_BOOST = _float("AGENT_BOM_RISK_SCORECARD_B3", 0.25)
 RISK_REACHABLE_BOOST = _float("AGENT_BOM_RISK_REACHABLE_BOOST", 0.5)
 RISK_UNREACHABLE_PENALTY = _float("AGENT_BOM_RISK_UNREACHABLE_PENALTY", 0.5)
 
-
 # ── Server Risk Scoring ─────────────────────────────────────────────────────
 # Used by risk_analyzer.score_server_risk().
 #
@@ -194,7 +190,6 @@ SERVER_RISK_CRITICAL_THRESHOLD = _float("AGENT_BOM_SERVER_CRITICAL", 9.0)
 SERVER_RISK_HIGH_THRESHOLD = _float("AGENT_BOM_SERVER_HIGH", 7.0)
 SERVER_RISK_MEDIUM_THRESHOLD = _float("AGENT_BOM_SERVER_MEDIUM", 4.0)
 
-
 # ── HTTP Client ───────────────────────────────────────────────────────────
 # Used by http_client.create_client() and request_with_retry().
 #
@@ -214,7 +209,6 @@ HTTP_DEFAULT_TIMEOUT = _float("AGENT_BOM_HTTP_DEFAULT_TIMEOUT", 30.0)
 HTTP_RATE_LIMIT_BREAKER_THRESHOLD = _int("AGENT_BOM_HTTP_RATE_LIMIT_BREAKER_THRESHOLD", 3)
 CLOUD_DISCOVERY_TIMEOUT = _float("AGENT_BOM_CLOUD_DISCOVERY_TIMEOUT", 45.0)
 
-
 # ── Scanner Batching ──────────────────────────────────────────────────────
 # Used by scanners/__init__.py for OSV batch API concurrency.
 #
@@ -233,7 +227,6 @@ SCANNER_BATCH_SIZE = _int("AGENT_BOM_SCANNER_BATCH_SIZE", 1000)  # OSV API max i
 # with partial coverage instead of spending minutes on GitHub rate limits.
 GHSA_UNAUTH_PACKAGE_BUDGET = _int("AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET", 25)
 
-
 # ── Scan Cache ────────────────────────────────────────────────────────────────
 # SQLite-backed OSV result cache (~/.agent-bom/scan_cache.db).
 #
@@ -242,7 +235,6 @@ GHSA_UNAUTH_PACKAGE_BUDGET = _int("AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET", 25)
 # Set to 0 to disable the cap (unbounded growth — not recommended for servers).
 
 SCAN_CACHE_MAX_ENTRIES = _int("AGENT_BOM_SCAN_CACHE_MAX_ENTRIES", 100_000)
-
 
 # ── DSPM content sampling ────────────────────────────────────────────────────
 # Object/row counts were widened (2026-09-22) for deeper classification coverage
@@ -272,7 +264,6 @@ DSPM_DB_MAX_ROWS_PER_TABLE = _int("AGENT_BOM_DSPM_DB_MAX_ROWS_PER_TABLE", 500)
 DSPM_DB_MAX_CELL_CHARS = _int("AGENT_BOM_DSPM_DB_MAX_CELL_CHARS", 4096)
 DSPM_DB_MAX_TABLES = _int("AGENT_BOM_DSPM_DB_MAX_TABLES", 200)
 
-
 # ── Local Analytics ─────────────────────────────────────────────────────────
 # Optional path override for the local scan analytics SQL mirror. Empty string
 # means use ~/.agent-bom/local-analytics.sqlite.
@@ -283,7 +274,6 @@ LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
 # They remain disabled until an operator explicitly opts in.
 ADOPTION_EVENTS_ENABLED = _bool("AGENT_BOM_ADOPTION_EVENTS_ENABLED", False)
 ADOPTION_EVENTS_DB = _str("AGENT_BOM_ADOPTION_EVENTS_DB", "")
-
 
 # ── ClickHouse findings-ingest (opt-in analytics mirror) ─────────────────────
 # When a ClickHouse HTTP URL is configured, the scan-completion history hook
@@ -485,6 +475,16 @@ DEMO_ESTATE = _bool("AGENT_BOM_DEMO_ESTATE", False)
 def demo_story_prewarm_enabled() -> bool:
     """Build the demo story in the background at API startup (read at call time)."""
     return _bool("AGENT_BOM_DEMO_STORY_PREWARM", True)
+
+
+# ── Scan finding snapshots (opt-in, ADR-015) ──────────────────────────────
+# Materialize each completed scan job's intrinsic finding rows once, after the job is durably DONE. Off by default; nothing reads them yet.
+SCAN_SNAPSHOTS_ENABLED = _bool("AGENT_BOM_SCAN_SNAPSHOTS", False)
+
+
+def scan_snapshots_enabled() -> bool:
+    """Whether completed scan jobs are materialized into snapshots (read at call time)."""
+    return _bool("AGENT_BOM_SCAN_SNAPSHOTS", False)
 
 
 # ── Enrichment Cache ──────────────────────────────────────────────────────

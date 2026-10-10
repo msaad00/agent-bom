@@ -83,18 +83,41 @@ _GCP_IAM_PERMISSIONS: tuple[str, ...] = (
     "resourcemanager.projects.getIamPolicy",
     "serviceusage.services.use",
 )
-# Estate-breadth read-only permissions exercised by the extended discoverers
-# (GKE / Cloud Run / Cloud Functions / Cloud SQL / VPC / disks / Pub/Sub). Kept
-# explicit so the discovery envelope's `permissions_used` stays honest.
-_GCP_ESTATE_PERMISSIONS: tuple[str, ...] = (
-    "container.clusters.list",
-    "run.services.list",
-    "cloudfunctions.functions.list",
-    "cloudsql.instances.list",
-    "compute.networks.list",
-    "compute.subnetworks.list",
-    "compute.disks.list",
-    "pubsub.topics.list",
+# Read-only permissions exercised by each discovery stage (``include_<stage>``),
+# so the per-run discovery envelope's ``permissions_used`` lists only what ran.
+_STAGE_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "storage": _GCP_STORAGE_PERMISSIONS,
+    "compute": _GCP_COMPUTE_PERMISSIONS,
+    "iam": _GCP_IAM_PERMISSIONS,
+    "containers": ("container.clusters.list",),
+    "serverless": ("run.services.list", "cloudfunctions.functions.list"),
+    "databases": ("cloudsql.instances.list",),
+    "networks": (
+        "compute.networks.list",
+        "compute.subnetworks.list",
+        "compute.securityPolicies.list",
+        "compute.backendServices.list",
+        "compute.urlMaps.list",
+        "compute.forwardingRules.list",
+        "compute.targetHttpProxies.list",
+        "compute.targetHttpsProxies.list",
+        "compute.routers.list",
+        "compute.addresses.list",
+        "apigateway.gateways.list",
+    ),
+    "disks": ("compute.disks.list",),
+    "messaging": ("pubsub.topics.list",),
+}
+# Authorization-collector keys transported verbatim onto the inventory payload.
+_AUTHORIZATION_KEYS = (
+    "allow_policies",
+    "role_definitions",
+    "deny_policies",
+    "pab_policies",
+    "pab_bindings",
+    "iam_hierarchy",
+    "iam_sources",
+    "iam_observed_at",
 )
 
 # Open-to-the-world source ranges that mark a firewall rule as internet-facing.
@@ -329,8 +352,62 @@ def discover_inventory(
     libraries resolve ADC, which acquires short-lived tokens from env
     service-account JSON, workload identity, or gcloud user / impersonation.
     """
+    empty, derive_note = _inventory_preflight(project_id, force=force)
+    if derive_note is None:
+        return empty
+
+    warnings: list[str] = []
+    if derive_note:
+        warnings.append(derive_note)
+    # Keyless least-privilege connection: when AGENT_BOM_GCP_IMPERSONATE_SA names
+    # a read-only service account, impersonate it (from the ambient ADC) so every
+    # discovery runs AS that SA — the recommended path where SA keys are
+    # org-disabled, matching AWS's read-only profile and Snowflake's role.
+    credentials = _resolve_impersonation(credentials, warnings)
+    missing: list[dict[str, str]] = []
+    include = {
+        "storage": include_storage,
+        "compute": include_compute,
+        "iam": include_iam,
+        "containers": include_containers,
+        "serverless": include_serverless,
+        "databases": include_databases,
+        "networks": include_networks,
+        "disks": include_disks,
+        "messaging": include_messaging,
+    }
+    ctx: dict[str, Any] = {"credentials": credentials, "warnings": warnings, "missing": missing}
+    found, authorization = _collect_inventory_stages(empty["project_id"], ctx, include=include, usage_resolver=usage_resolver)
+    return _inventory_payload(empty, found, authorization, include=include, warnings=warnings, missing=missing)
+
+
+def _inventory_preflight(project_id: str | None, *, force: bool) -> tuple[dict[str, Any], str | None]:
+    """Gate on the flag, the storage SDK, and a project id; a ``None`` note means the payload is final."""
     resolved_project = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-    empty: dict[str, Any] = {
+    empty = _empty_inventory(resolved_project)
+    if not force and not inventory_enabled():
+        return empty, None
+
+    try:
+        from google.cloud import storage  # type: ignore[attr-defined]  # google.cloud namespace package  # noqa: F401
+    except ImportError:
+        warning = "google-cloud-storage is required for GCP inventory. Install with: pip install 'agent-bom[gcp]'"
+        return {**empty, "status": "sdk_missing", "warnings": [warning]}, None
+
+    derive_note = ""
+    if not resolved_project:
+        resolved_project, derive_note = _derive_default_project()
+        if not resolved_project:
+            warning = derive_note or "No GCP project found. Set GOOGLE_CLOUD_PROJECT or provide project_id."
+            return {**empty, "status": "no_project", "warnings": [warning]}, None
+        empty["project_id"] = resolved_project
+        empty["account_id"] = resolved_project
+    return empty, derive_note
+
+
+def _empty_inventory(resolved_project: str) -> dict[str, Any]:
+    """Return the inventory payload shape, in output key order, with nothing enumerated."""
+    return {
         "provider": "gcp",
         "status": "disabled",
         "project_id": resolved_project,
@@ -369,203 +446,102 @@ def discover_inventory(
         "discovery_envelope": None,
     }
 
-    if not force and not inventory_enabled():
-        return empty
 
-    try:
-        from google.cloud import storage  # type: ignore[attr-defined]  # google.cloud namespace package  # noqa: F401
-    except ImportError:
-        return {
-            **empty,
-            "status": "sdk_missing",
-            "warnings": ["google-cloud-storage is required for GCP inventory. Install with: pip install 'agent-bom[gcp]'"],
-        }
+def _collect_inventory_stages(
+    project_id: str, ctx: dict[str, Any], *, include: Mapping[str, bool], usage_resolver: Any
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run each opted-in discovery stage in order; return ``(resources by payload key, authorization)``.
 
-    derive_note = ""
-    if not resolved_project:
-        resolved_project, derive_note = _derive_default_project()
-        if not resolved_project:
-            return {
-                **empty,
-                "status": "no_project",
-                "warnings": [derive_note or "No GCP project found. Set GOOGLE_CLOUD_PROJECT or provide project_id."],
-            }
-        empty["project_id"] = resolved_project
-        empty["account_id"] = resolved_project
-
-    warnings: list[str] = []
-    if derive_note:
-        warnings.append(derive_note)
-    # Keyless least-privilege connection: when AGENT_BOM_GCP_IMPERSONATE_SA names
-    # a read-only service account, impersonate it (from the ambient ADC) so every
-    # discovery runs AS that SA — the recommended path where SA keys are
-    # org-disabled, matching AWS's read-only profile and Snowflake's role.
-    credentials = _resolve_impersonation(credentials, warnings)
-    missing: list[dict[str, str]] = []
-    buckets: list[dict[str, Any]] = []
-    instances: list[dict[str, Any]] = []
-    firewalls: list[dict[str, Any]] = []
-    service_accounts: list[dict[str, Any]] = []
-    iam_groups: list[dict[str, Any]] = []
+    ``ctx`` carries the shared ``credentials`` / ``warnings`` / ``missing`` keyword arguments.
+    """
+    found: dict[str, Any] = {}
     authorization: dict[str, Any] = {}
-    gke_clusters: list[dict[str, Any]] = []
-    cloud_run_services: list[dict[str, Any]] = []
-    cloud_functions: list[dict[str, Any]] = []
-    cloud_sql_instances: list[dict[str, Any]] = []
-    vpc_networks: list[dict[str, Any]] = []
-    subnets: list[dict[str, Any]] = []
-    load_balancers: list[dict[str, Any]] = []
-    web_acls: list[dict[str, Any]] = []
-    api_gateways: list[dict[str, Any]] = []
-    nat_gateways: list[dict[str, Any]] = []
-    route_tables: list[dict[str, Any]] = []
-    ip_addresses: list[dict[str, Any]] = []
-    disks: list[dict[str, Any]] = []
-    pubsub_topics: list[dict[str, Any]] = []
+    if include["storage"]:
+        found["buckets"] = _discover_buckets(project_id, **ctx)
+    if include["compute"]:
+        found["instances"] = _discover_instances(project_id, **ctx)
+        found["firewalls"] = _discover_firewalls(project_id, **ctx)
+    if include["iam"]:
+        authorization = _collect_iam_stage(project_id, found, ctx, usage_resolver)
+    if include["containers"]:
+        found["gke_clusters"] = _discover_gke_clusters(project_id, **ctx)
+    if include["serverless"]:
+        found["cloud_run_services"] = _discover_cloud_run_services(project_id, **ctx)
+        found["cloud_functions"] = _discover_cloud_functions(project_id, **ctx)
+    if include["databases"]:
+        found["cloud_sql_instances"] = _discover_cloud_sql_instances(project_id, **ctx)
+    if include["networks"]:
+        _collect_network_stage(project_id, found, ctx)
+    if include["disks"]:
+        found["disks"] = _discover_disks(project_id, **ctx)
+    if include["messaging"]:
+        found["pubsub_topics"] = _discover_pubsub_topics(project_id, **ctx)
+    return found, authorization
 
-    if include_storage:
-        buckets = _discover_buckets(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-    if include_compute:
-        instances = _discover_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-        firewalls = _discover_firewalls(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-    if include_iam:
-        authorization = collect_gcp_authorization(
-            credentials,
-            resolved_project,
-            warnings=warnings,
-            missing=missing,
-        )
-        iam_bindings, member_kinds = _discover_project_iam_bindings(
-            resolved_project, credentials=credentials, warnings=warnings, missing=missing
-        )
-        role_resolver = _make_role_resolver(credentials=credentials, warnings=warnings)
-        service_accounts = _discover_service_accounts(
-            resolved_project,
-            credentials=credentials,
-            warnings=warnings,
-            iam_bindings=iam_bindings,
-            role_resolver=role_resolver,
-            missing=missing,
-            usage_resolver=usage_resolver,
-        )
-        iam_groups = _build_iam_group_principals(iam_bindings, member_kinds, project_id=resolved_project, role_resolver=role_resolver)
-    if include_containers:
-        gke_clusters = _discover_gke_clusters(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-    if include_serverless:
-        cloud_run_services = _discover_cloud_run_services(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-        cloud_functions = _discover_cloud_functions(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-    if include_databases:
-        cloud_sql_instances = _discover_cloud_sql_instances(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-    if include_networks:
-        subnets_by_network = _discover_subnets_by_network(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-        vpc_networks = _discover_vpc_networks(
-            resolved_project, credentials=credentials, warnings=warnings, missing=missing, subnets_by_network=subnets_by_network
-        )
-        subnets = _discover_subnets(subnets_by_network, project_id=resolved_project)
-        load_balancers, backends_by_policy = _discover_load_balancers(
-            resolved_project, credentials=credentials, warnings=warnings, missing=missing
-        )
-        web_acls = _discover_security_policies(
-            resolved_project, credentials=credentials, warnings=warnings, missing=missing, backends_by_policy=backends_by_policy
-        )
-        api_gateways = _discover_api_gateways(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-        nat_gateways, route_tables = _discover_routers(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-        ip_addresses = _discover_ip_addresses(
-            resolved_project, credentials=credentials, warnings=warnings, missing=missing, instances=instances
-        )
-    if include_disks:
-        disks = _discover_disks(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
-    if include_messaging:
-        pubsub_topics = _discover_pubsub_topics(resolved_project, credentials=credentials, warnings=warnings, missing=missing)
 
-    permissions_used: list[str] = []
-    if include_storage:
-        permissions_used.extend(_GCP_STORAGE_PERMISSIONS)
-    if include_compute:
-        permissions_used.extend(_GCP_COMPUTE_PERMISSIONS)
-    if include_iam:
-        permissions_used.extend(_GCP_IAM_PERMISSIONS)
-    if include_containers:
-        permissions_used.append("container.clusters.list")
-    if include_serverless:
-        permissions_used.extend(("run.services.list", "cloudfunctions.functions.list"))
-    if include_databases:
-        permissions_used.append("cloudsql.instances.list")
-    if include_networks:
-        permissions_used.extend(
-            (
-                "compute.networks.list",
-                "compute.subnetworks.list",
-                "compute.securityPolicies.list",
-                "compute.backendServices.list",
-                "compute.urlMaps.list",
-                "compute.forwardingRules.list",
-                "compute.targetHttpProxies.list",
-                "compute.targetHttpsProxies.list",
-                "compute.routers.list",
-                "compute.addresses.list",
-                "apigateway.gateways.list",
-            )
-        )
-    if include_disks:
-        permissions_used.append("compute.disks.list")
-    if include_messaging:
-        permissions_used.append("pubsub.topics.list")
+def _collect_iam_stage(project_id: str, found: dict[str, Any], ctx: dict[str, Any], usage_resolver: Any) -> dict[str, Any]:
+    """Collect authorization evidence, then service accounts and group principals into ``found``."""
+    credentials, warnings, missing = ctx["credentials"], ctx["warnings"], ctx["missing"]
+    authorization = collect_gcp_authorization(credentials, project_id, warnings=warnings, missing=missing)
+    iam_bindings, member_kinds = _discover_project_iam_bindings(project_id, **ctx)
+    role_resolver = _make_role_resolver(credentials=credentials, warnings=warnings)
+    found["service_accounts"] = _discover_service_accounts(
+        project_id, iam_bindings=iam_bindings, role_resolver=role_resolver, usage_resolver=usage_resolver, **ctx
+    )
+    found["groups"] = _build_iam_group_principals(iam_bindings, member_kinds, project_id=project_id, role_resolver=role_resolver)
+    return authorization
 
+
+def _collect_network_stage(project_id: str, found: dict[str, Any], ctx: dict[str, Any]) -> None:
+    """Collect VPCs, subnets, load balancers, WAF policies, gateways, routers, and IPs into ``found``."""
+    subnets_by_network = _discover_subnets_by_network(project_id, **ctx)
+    found["vpc_networks"] = _discover_vpc_networks(project_id, subnets_by_network=subnets_by_network, **ctx)
+    found["subnets"] = _discover_subnets(subnets_by_network, project_id=project_id)
+    found["load_balancers"], backends_by_policy = _discover_load_balancers(project_id, **ctx)
+    found["web_acls"] = _discover_security_policies(project_id, backends_by_policy=backends_by_policy, **ctx)
+    found["api_gateways"] = _discover_api_gateways(project_id, **ctx)
+    found["nat_gateways"], found["route_tables"] = _discover_routers(project_id, **ctx)
+    found["ip_addresses"] = _discover_ip_addresses(project_id, instances=found.setdefault("instances", []), **ctx)
+
+
+def _inventory_payload(
+    empty: dict[str, Any],
+    found: dict[str, Any],
+    authorization: dict[str, Any],
+    *,
+    include: Mapping[str, bool],
+    warnings: list[str],
+    missing: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Assemble the ``ok`` payload in ``empty``'s key order, plus disk side-scan targets."""
+    resolved_project = empty["project_id"]
     envelope = DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
         discovery_scope=(f"gcp:project/{resolved_project}",),
-        permissions_used=tuple(sorted(set(permissions_used))),
+        permissions_used=tuple(sorted({perm for stage, perms in _STAGE_PERMISSIONS.items() if include[stage] for perm in perms})),
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
-
     authorization_payload = {
-        "status": "ok" if include_iam else "disabled",
+        "status": "ok" if include["iam"] else "disabled",
         "project_id": resolved_project,
         "account_id": resolved_project,
         **authorization,
     }
-    authorization_evidence = normalize_gcp_iam_inventory(authorization_payload).to_dict()
-
-    return {
-        "provider": "gcp",
+    values = {
+        **found,
+        **{key: authorization[key] for key in _AUTHORIZATION_KEYS if key in authorization},
         "status": "ok",
-        "project_id": resolved_project,
-        "account_id": resolved_project,
-        "region": "",
-        "buckets": buckets,
-        "instances": instances,
-        "firewalls": firewalls,
-        "service_accounts": service_accounts,
-        "groups": iam_groups,
-        "allow_policies": authorization.get("allow_policies", []),
-        "role_definitions": authorization.get("role_definitions", []),
-        "deny_policies": authorization.get("deny_policies", []),
-        "pab_policies": authorization.get("pab_policies", []),
-        "pab_bindings": authorization.get("pab_bindings", []),
-        "iam_hierarchy": authorization.get("iam_hierarchy", []),
-        "iam_sources": authorization.get("iam_sources", []),
-        "iam_observed_at": authorization.get("iam_observed_at"),
-        "authorization_evidence": authorization_evidence,
-        "gke_clusters": gke_clusters,
-        "cloud_run_services": cloud_run_services,
-        "cloud_functions": cloud_functions,
-        "cloud_sql_instances": cloud_sql_instances,
-        "vpc_networks": vpc_networks,
-        "subnets": subnets,
-        "load_balancers": load_balancers,
-        "web_acls": web_acls,
-        "api_gateways": api_gateways,
-        "nat_gateways": nat_gateways,
-        "route_tables": route_tables,
-        "ip_addresses": ip_addresses,
-        "disks": disks,
-        "side_scan_targets": gcp_persistent_disk_targets(disks, project_id=resolved_project),
-        "pubsub_topics": pubsub_topics,
+        "authorization_evidence": normalize_gcp_iam_inventory(authorization_payload).to_dict(),
         "warnings": warnings,
-        "missing_permissions": dedupe_missing_permissions(missing),
-        "discovery_envelope": envelope.to_dict(),
     }
+    payload: dict[str, Any] = {}
+    for key, default in empty.items():
+        payload[key] = values.get(key, default)
+        if key == "disks":
+            payload["side_scan_targets"] = gcp_persistent_disk_targets(payload["disks"], project_id=resolved_project)
+    payload["missing_permissions"] = dedupe_missing_permissions(missing)
+    payload["discovery_envelope"] = envelope.to_dict()
+    return payload
 
 
 # ---------------------------------------------------------------------------

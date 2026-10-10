@@ -113,6 +113,13 @@ def inventory_enabled() -> bool:
     return os.environ.get(INVENTORY_ENV_FLAG, "").strip().lower() in _TRUTHY
 
 
+def _record_failure(
+    exc: BaseException, resource_type: str, permission: str, warnings: list[str], missing: list[dict[str, str]] | None
+) -> None:
+    """Record one failed Azure discovery call via the shared cross-cloud translator."""
+    record_discovery_failure(exc=exc, resource_type=resource_type, permission=permission, cloud="azure", warnings=warnings, missing=missing)
+
+
 def _derive_default_subscription(credential: Any) -> tuple[str, str]:
     """Best-effort ``(subscription_id, note)`` from the signed-in credential.
 
@@ -191,17 +198,84 @@ def discover_inventory(
     CLI, or workload identity.
     """
     resolved_sub = subscription_id or os.environ.get("AZURE_SUBSCRIPTION_ID", "")
-    empty: dict[str, Any] = {
+    empty = _empty_inventory(resolved_sub)
+    if not force and not inventory_enabled():
+        return empty
+
+    warnings: list[str] = []
+    credential, resolved_sub, early_exit = _resolve_session(empty, credential, resolved_sub, warnings)
+    if early_exit is not None:
+        return early_exit
+
+    discovery_tasks = _inventory_discovery_tasks(
+        include_storage=include_storage,
+        include_compute=include_compute,
+        include_identity=include_identity,
+        include_data=include_data,
+        include_network=include_network,
+    )
+    collected, missing = _run_discovery_tasks(discovery_tasks, credential, resolved_sub, warnings)
+    management_groups, service_principals, entra_groups, entra_ran = _discover_tenant_scope(
+        credential, include_hierarchy=include_hierarchy, include_identity=include_identity, warnings=warnings, missing=missing
+    )
+    envelope = _discovery_envelope(
+        resolved_sub,
+        include_storage=include_storage,
+        include_compute=include_compute,
+        include_identity=include_identity,
+        include_data=include_data,
+        include_network=include_network,
+        include_hierarchy=include_hierarchy,
+        entra_ran=entra_ran,
+    )
+    return _assemble_inventory(
+        resolved_sub,
+        collected,
+        include_identity=include_identity,
+        management_groups=management_groups,
+        service_principals=service_principals,
+        entra_groups=entra_groups,
+        envelope=envelope,
+        warnings=warnings,
+        missing=missing,
+    )
+
+
+# Service-list keys copied straight from the discovery pool into the payload,
+# in payload order, on either side of the authorization / Entra block.
+_COLLECTED_HEAD_KEYS = ("storage_accounts", "instances", "container_clusters", "security_groups", "managed_identities")
+_COLLECTED_TAIL_KEYS = (
+    "key_vaults",
+    "container_registries",
+    "databases",
+    "virtual_networks",
+    "subnets",
+    "public_ips",
+    "ip_addresses",
+    "network_interfaces",
+    "load_balancers",
+    "application_gateways",
+    "front_doors",
+    "azure_firewalls",
+    "nat_gateways",
+    "route_tables",
+    "private_endpoints",
+    "api_management",
+    "event_hubs",
+    "service_bus_namespaces",
+    "redis_caches",
+)
+
+
+def _empty_inventory(resolved_sub: str) -> dict[str, Any]:
+    """Return the ``"disabled"`` payload skeleton that every early exit derives from."""
+    return {
         "provider": "azure",
         "status": "disabled",
         "subscription_id": resolved_sub,
         "account_id": resolved_sub,
         "region": "",
-        "storage_accounts": [],
-        "instances": [],
-        "container_clusters": [],
-        "security_groups": [],
-        "managed_identities": [],
+        **{key: [] for key in _COLLECTED_HEAD_KEYS},
         "role_assignments": [],
         "role_definitions": [],
         "deny_assignments": [],
@@ -210,25 +284,7 @@ def discover_inventory(
         "authorization_evidence": None,
         "service_principals": [],
         "entra_groups": [],
-        "key_vaults": [],
-        "container_registries": [],
-        "databases": [],
-        "virtual_networks": [],
-        "subnets": [],
-        "public_ips": [],
-        "ip_addresses": [],
-        "network_interfaces": [],
-        "load_balancers": [],
-        "application_gateways": [],
-        "front_doors": [],
-        "azure_firewalls": [],
-        "nat_gateways": [],
-        "route_tables": [],
-        "private_endpoints": [],
-        "api_management": [],
-        "event_hubs": [],
-        "service_bus_namespaces": [],
-        "redis_caches": [],
+        **{key: [] for key in _COLLECTED_TAIL_KEYS},
         "managed_disks": [],
         "app_services": [],
         "management_groups": [],
@@ -237,25 +293,22 @@ def discover_inventory(
         "discovery_envelope": None,
     }
 
-    if not force and not inventory_enabled():
-        return empty
 
+def _resolve_session(
+    empty: dict[str, Any], credential: Any, resolved_sub: str, warnings: list[str]
+) -> tuple[Any, str, dict[str, Any] | None]:
+    """Credential + subscription setup stage: ``(credential, subscription, early_exit_payload)``."""
     try:
         from azure.identity import DefaultAzureCredential  # noqa: F401
     except ImportError:
-        return {
-            **empty,
-            "status": "sdk_missing",
-            "warnings": ["azure-identity is required for Azure inventory. Install with: pip install 'agent-bom[azure]'"],
-        }
+        hint = "azure-identity is required for Azure inventory. Install with: pip install 'agent-bom[azure]'"
+        return credential, resolved_sub, {**empty, "status": "sdk_missing", "warnings": [hint]}
 
     if credential is None:
         try:
             credential = DefaultAzureCredential()
         except Exception as exc:  # noqa: BLE001 — credential chain errors must not crash a scan
-            return {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
-
-    warnings: list[str] = []
+            return credential, resolved_sub, {**empty, "status": "no_credentials", "warnings": [sanitize_discovery_warning(exc)]}
 
     # Auto-derive the subscription from the signed-in credential (e.g. ``az
     # login``) when one was not supplied, so the common single-subscription case
@@ -266,18 +319,21 @@ def discover_inventory(
         if derive_note:
             warnings.append(derive_note)
         if not resolved_sub:
-            return {
-                **empty,
-                "status": "no_subscription",
-                "warnings": ["No Azure subscription found. Run `az login`, set AZURE_SUBSCRIPTION_ID, or pass subscription_id."],
-            }
+            hint = "No Azure subscription found. Run `az login`, set AZURE_SUBSCRIPTION_ID, or pass subscription_id."
+            return credential, resolved_sub, {**empty, "status": "no_subscription", "warnings": [hint]}
         empty["subscription_id"] = resolved_sub
         empty["account_id"] = resolved_sub
+    return credential, resolved_sub, None
 
-    # Discover each service concurrently — the ARM list calls are independent and
-    # IO-bound, so a thread pool collapses the previously-sequential sum-of-latencies
-    # sweep to roughly the slowest single call. Each task gets its own warnings list
-    # (thread-safe) that is merged back in deterministic task order.
+
+def _inventory_discovery_tasks(
+    *, include_storage: bool, include_compute: bool, include_identity: bool, include_data: bool, include_network: bool
+) -> list[tuple[str, Any]]:
+    """Ordered ``(result_key, discoverer)`` pairs for the per-subscription pool.
+
+    Discoverers are resolved as module globals at call time so each stays
+    individually patchable.
+    """
     discovery_tasks: list[tuple[str, Any]] = []
     if include_storage:
         discovery_tasks.append(("storage_accounts", _discover_storage_accounts))
@@ -311,7 +367,19 @@ def discover_inventory(
         discovery_tasks.append(("route_tables", _discover_route_tables))
         discovery_tasks.append(("private_endpoints", _discover_private_endpoints))
         discovery_tasks.append(("api_management", _discover_api_management))
+    return discovery_tasks
 
+
+def _run_discovery_tasks(
+    discovery_tasks: list[tuple[str, Any]], credential: Any, resolved_sub: str, warnings: list[str]
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Run the per-subscription discoverers concurrently; return ``(collected, missing)``.
+
+    The ARM list calls are independent and IO-bound, so a thread pool collapses
+    the previously-sequential sum-of-latencies sweep to roughly the slowest
+    single call. Each task gets its own warnings list (thread-safe) that is
+    merged back into ``warnings`` in deterministic task order.
+    """
     collected: dict[str, Any] = {}
     task_warnings: dict[str, list[str]] = {key: [] for key, _ in discovery_tasks}
     # Parallel per-task accumulator so one discoverer's missing-permission entries
@@ -333,53 +401,17 @@ def discover_inventory(
                     # Translate the abort into the same actionable guidance a
                     # discoverer-local failure would have produced, so a crash at
                     # the future boundary is never a silent empty result.
-                    record_discovery_failure(
-                        exc=exc,
-                        resource_type=key.replace("_", " "),
-                        permission=f"Microsoft.*/{key}/read",
-                        cloud="azure",
-                        warnings=task_warnings[key],
-                        missing=task_missing[key],
-                    )
+                    _record_failure(exc, key.replace("_", " "), f"Microsoft.*/{key}/read", task_warnings[key], task_missing[key])
     for key, _ in discovery_tasks:
         warnings.extend(task_warnings[key])
         missing.extend(task_missing[key])
+    return collected, missing
 
-    storage_accounts = collected.get("storage_accounts", [])
-    instances = collected.get("instances", [])
-    container_clusters = collected.get("container_clusters", [])
-    security_groups = collected.get("security_groups", [])
-    managed_identities = collected.get("managed_identities", [])
-    authorization = collected.get("authorization", {})
-    if not isinstance(authorization, dict):
-        authorization = {}
-    role_assignments = authorization.get("role_assignments", [])
-    role_definitions = authorization.get("role_definitions", [])
-    deny_assignments = authorization.get("deny_assignments", [])
-    authorization_sources = authorization.get("authorization_sources", [])
-    authorization_observed_at = authorization.get("authorization_observed_at")
-    key_vaults = collected.get("key_vaults", [])
-    container_registries = collected.get("container_registries", [])
-    databases = collected.get("databases", [])
-    virtual_networks = collected.get("virtual_networks", [])
-    subnets = collected.get("subnets", [])
-    public_ips = collected.get("public_ips", [])
-    ip_addresses = collected.get("ip_addresses", [])
-    network_interfaces = collected.get("network_interfaces", [])
-    load_balancers = collected.get("load_balancers", [])
-    application_gateways = collected.get("application_gateways", [])
-    front_doors = collected.get("front_doors", [])
-    azure_firewalls = collected.get("azure_firewalls", [])
-    nat_gateways = collected.get("nat_gateways", [])
-    route_tables = collected.get("route_tables", [])
-    private_endpoints = collected.get("private_endpoints", [])
-    api_management = collected.get("api_management", [])
-    event_hubs = collected.get("event_hubs", [])
-    service_bus_namespaces = collected.get("service_bus_namespaces", [])
-    redis_caches = collected.get("redis_caches", [])
-    managed_disks = collected.get("managed_disks", [])
-    app_services = collected.get("app_services", [])
 
+def _discover_tenant_scope(
+    credential: Any, *, include_hierarchy: bool, include_identity: bool, warnings: list[str], missing: list[dict[str, str]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool]:
+    """Tenant-scoped stage: ``(management_groups, service_principals, entra_groups, entra_ran)``."""
     # Management groups are tenant-scoped (above the subscription), so they are
     # discovered with a single call rather than the per-subscription thread pool.
     management_groups: list[dict[str, Any]] = []
@@ -399,7 +431,21 @@ def discover_inventory(
         service_principals, entra_groups = _discover_entra_directory(warnings=warnings, missing=entra_missing)
         missing.extend(entra_missing)
         entra_ran = bool(service_principals or entra_groups or entra_missing)
+    return management_groups, service_principals, entra_groups, entra_ran
 
+
+def _discovery_envelope(
+    resolved_sub: str,
+    *,
+    include_storage: bool,
+    include_compute: bool,
+    include_identity: bool,
+    include_data: bool,
+    include_network: bool,
+    include_hierarchy: bool,
+    entra_ran: bool,
+) -> DiscoveryEnvelope:
+    """Build the per-run discovery envelope from the read actions actually exercised."""
     permissions_used: list[str] = []
     if include_storage:
         permissions_used.extend(_AZURE_STORAGE_PERMISSIONS)
@@ -419,25 +465,46 @@ def discover_inventory(
 
         permissions_used.extend(ENTRA_READ_PERMISSIONS)
 
-    envelope = DiscoveryEnvelope(
+    return DiscoveryEnvelope(
         scan_mode=ScanMode.CLOUD_READ_ONLY,
         discovery_scope=(f"azure:subscription/{resolved_sub}",),
         permissions_used=tuple(sorted(set(permissions_used))),
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
 
+
+def _assemble_inventory(
+    resolved_sub: str,
+    collected: dict[str, Any],
+    *,
+    include_identity: bool,
+    management_groups: list[dict[str, Any]],
+    service_principals: list[dict[str, Any]],
+    entra_groups: list[dict[str, Any]],
+    envelope: DiscoveryEnvelope,
+    warnings: list[str],
+    missing: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Result-assembly stage: shape the collected service lists into the ``"ok"`` payload."""
+    authorization = collected.get("authorization", {})
+    if not isinstance(authorization, dict):
+        authorization = {}
+    authorization_fields = {
+        "role_assignments": authorization.get("role_assignments", []),
+        "role_definitions": authorization.get("role_definitions", []),
+        "deny_assignments": authorization.get("deny_assignments", []),
+        "authorization_sources": authorization.get("authorization_sources", []),
+        "authorization_observed_at": authorization.get("authorization_observed_at"),
+    }
     authorization_payload = {
         "status": "ok" if include_identity else "disabled",
         "subscription_id": resolved_sub,
         "account_id": resolved_sub,
-        "role_assignments": role_assignments,
-        "role_definitions": role_definitions,
-        "deny_assignments": deny_assignments,
-        "authorization_sources": authorization_sources,
-        "authorization_observed_at": authorization_observed_at,
+        **authorization_fields,
         "entra_groups": entra_groups,
     }
     authorization_evidence = normalize_azure_rbac_inventory(authorization_payload).to_dict()
+    managed_disks = collected.get("managed_disks", [])
 
     return {
         "provider": "azure",
@@ -445,41 +512,15 @@ def discover_inventory(
         "subscription_id": resolved_sub,
         "account_id": resolved_sub,
         "region": "",
-        "storage_accounts": storage_accounts,
-        "instances": instances,
-        "container_clusters": container_clusters,
-        "security_groups": security_groups,
-        "managed_identities": managed_identities,
-        "role_assignments": role_assignments,
-        "role_definitions": role_definitions,
-        "deny_assignments": deny_assignments,
-        "authorization_sources": authorization_sources,
-        "authorization_observed_at": authorization_observed_at,
+        **{key: collected.get(key, []) for key in _COLLECTED_HEAD_KEYS},
+        **authorization_fields,
         "authorization_evidence": authorization_evidence,
         "service_principals": service_principals,
         "entra_groups": entra_groups,
-        "key_vaults": key_vaults,
-        "container_registries": container_registries,
-        "databases": databases,
-        "virtual_networks": virtual_networks,
-        "subnets": subnets,
-        "public_ips": public_ips,
-        "ip_addresses": ip_addresses,
-        "network_interfaces": network_interfaces,
-        "load_balancers": load_balancers,
-        "application_gateways": application_gateways,
-        "front_doors": front_doors,
-        "azure_firewalls": azure_firewalls,
-        "nat_gateways": nat_gateways,
-        "route_tables": route_tables,
-        "private_endpoints": private_endpoints,
-        "api_management": api_management,
-        "event_hubs": event_hubs,
-        "service_bus_namespaces": service_bus_namespaces,
-        "redis_caches": redis_caches,
+        **{key: collected.get(key, []) for key in _COLLECTED_TAIL_KEYS},
         "managed_disks": managed_disks,
         "side_scan_targets": azure_managed_disk_targets(managed_disks, subscription_id=resolved_sub),
-        "app_services": app_services,
+        "app_services": collected.get("app_services", []),
         "management_groups": management_groups,
         "warnings": warnings,
         "missing_permissions": dedupe_missing_permissions(missing),
@@ -635,14 +676,7 @@ def _discover_storage_accounts(
             _classify_storage_account_blobs(credential, account_record, warnings=warnings)
             accounts.append(account_record)
     except Exception as exc:  # noqa: BLE001 — one failed Azure Storage Accounts list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Storage Accounts",
-            permission="Microsoft.Storage/storageAccounts/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Storage Accounts", "Microsoft.Storage/storageAccounts/read", warnings, missing)
     return accounts
 
 
@@ -715,14 +749,7 @@ def _discover_vms(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure virtual machines list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure virtual machines",
-            permission="Microsoft.Compute/virtualMachines/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure virtual machines", "Microsoft.Compute/virtualMachines/read", warnings, missing)
     return instances
 
 
@@ -770,14 +797,7 @@ def _discover_aks_clusters(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure AKS clusters list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure AKS clusters",
-            permission="Microsoft.ContainerService/managedClusters/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure AKS clusters", "Microsoft.ContainerService/managedClusters/read", warnings, missing)
     return clusters
 
 
@@ -801,14 +821,7 @@ def _discover_nsgs(
                 continue
             groups.append(_normalize_nsg(nsg, nsg_id=nsg_id, name=name, subscription_id=subscription_id))
     except Exception as exc:  # noqa: BLE001 — one failed Azure network security groups list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure network security groups",
-            permission="Microsoft.Network/networkSecurityGroups/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure network security groups", "Microsoft.Network/networkSecurityGroups/read", warnings, missing)
     return groups
 
 
@@ -932,14 +945,7 @@ def _discover_managed_identities(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure managed identities list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure managed identities",
-            permission="Microsoft.ManagedIdentity/userAssignedIdentities/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure managed identities", "Microsoft.ManagedIdentity/userAssignedIdentities/read", warnings, missing)
     return identities
 
 
@@ -1019,6 +1025,16 @@ def _discover_entra_directory(
     missing, or the Graph permission is denied, it warns and returns empty so the
     rest of the ARM scan proceeds unaffected.
     """
+    client = _entra_directory_client(client, force=force, warnings=warnings)
+    if client is None:
+        return [], []
+    service_principals = _collect_entra_service_principals(client, warnings=warnings, missing=missing)
+    entra_groups = _collect_entra_groups(client, warnings=warnings, missing=missing)
+    return service_principals, entra_groups
+
+
+def _entra_directory_client(client: Any, *, force: bool, warnings: list[str]) -> Any:
+    """Gate + Graph client setup stage; ``None`` means skip directory discovery."""
     from agent_bom.identity import entra_nhi
 
     gate_on = force or client is not None or entra_directory_enabled()
@@ -1026,22 +1042,24 @@ def _discover_entra_directory(
         # Opt-in feature, default OFF: stay silent so a normal ARM-only scan is not
         # spammed with a note every run. The grant requirement is documented; a
         # warning is reserved for "enabled but the token/permission is missing".
-        return [], []
+        return None
 
     if client is None:
         token = (os.environ.get(entra_nhi._TOKEN_ENV) or "").strip()
         if not token:
             warnings.append(f"Entra directory discovery enabled but {entra_nhi._TOKEN_ENV} is not set; skipping (ARM scan continues).")
-            return [], []
+            return None
         try:
             client = entra_nhi.EntraClient(token)
         except Exception as exc:  # noqa: BLE001 — client init failure must not sink the scan
             warnings.append(f"Could not initialise the Microsoft Graph client for directory discovery: {sanitize_discovery_warning(exc)}")
-            return [], []
+            return None
+    return client
 
+
+def _collect_entra_service_principals(client: Any, *, warnings: list[str], missing: list[dict[str, str]] | None) -> list[dict[str, Any]]:
+    """List Entra service principals as principal records (failure degrades to a warning)."""
     service_principals: list[dict[str, Any]] = []
-    entra_groups: list[dict[str, Any]] = []
-
     try:
         for sp in client.list_service_principals() or []:
             if not isinstance(sp, dict):
@@ -1063,28 +1081,19 @@ def _discover_entra_directory(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — Graph SP listing failure degrades to a warning
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Entra service principals",
-            permission="Directory.Read.All",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Entra service principals", "Directory.Read.All", warnings, missing)
+    return service_principals
 
+
+def _collect_entra_groups(client: Any, *, warnings: list[str], missing: list[dict[str, str]] | None) -> list[dict[str, Any]]:
+    """List Entra groups, expanding members for the first ``_ENTRA_MAX_GROUPS_EXPANDED``."""
     try:
         raw_groups = list(client.list_groups() or [])
     except Exception as exc:  # noqa: BLE001 — Graph group listing failure degrades to a warning
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Entra groups",
-            permission="Directory.Read.All",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Entra groups", "Directory.Read.All", warnings, missing)
         raw_groups = []
 
+    entra_groups: list[dict[str, Any]] = []
     expanded = 0
     for group in raw_groups:
         if not isinstance(group, dict):
@@ -1095,23 +1104,7 @@ def _discover_entra_directory(
         members: list[dict[str, str]] = []
         if expanded < _ENTRA_MAX_GROUPS_EXPANDED:
             expanded += 1
-            try:
-                for member in client.list_group_members(group_id) or []:
-                    if not isinstance(member, dict):
-                        continue
-                    member_id = str(member.get("id") or "").strip()
-                    if not member_id:
-                        continue
-                    odata = str(member.get("@odata.type") or "").strip().lower()
-                    members.append(
-                        {
-                            "id": member_id,
-                            "name": str(member.get("displayName") or member_id),
-                            "type": _ENTRA_MEMBER_TYPE.get(odata, "user"),
-                        }
-                    )
-            except Exception as exc:  # noqa: BLE001 — one group's member read must not sink the rest
-                warnings.append(f"Entra group-member read skipped for {group_id}: {sanitize_discovery_warning(exc)}")
+            members = _entra_group_members(client, group_id, warnings=warnings)
         entra_groups.append(
             {
                 "principal_type": "group",
@@ -1123,8 +1116,30 @@ def _discover_entra_directory(
                 "privilege_level": "unknown",
             }
         )
+    return entra_groups
 
-    return service_principals, entra_groups
+
+def _entra_group_members(client: Any, group_id: str, *, warnings: list[str]) -> list[dict[str, str]]:
+    """Read one group's members; a failure keeps members read so far and warns."""
+    members: list[dict[str, str]] = []
+    try:
+        for member in client.list_group_members(group_id) or []:
+            if not isinstance(member, dict):
+                continue
+            member_id = str(member.get("id") or "").strip()
+            if not member_id:
+                continue
+            odata = str(member.get("@odata.type") or "").strip().lower()
+            members.append(
+                {
+                    "id": member_id,
+                    "name": str(member.get("displayName") or member_id),
+                    "type": _ENTRA_MEMBER_TYPE.get(odata, "user"),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — one group's member read must not sink the rest
+        warnings.append(f"Entra group-member read skipped for {group_id}: {sanitize_discovery_warning(exc)}")
+    return members
 
 
 # ---------------------------------------------------------------------------
@@ -1168,14 +1183,7 @@ def _discover_key_vaults(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Key Vaults list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Key Vaults",
-            permission="Microsoft.KeyVault/vaults/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Key Vaults", "Microsoft.KeyVault/vaults/read", warnings, missing)
     return vaults
 
 
@@ -1212,14 +1220,7 @@ def _discover_container_registries(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Container Registries list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Container Registries",
-            permission="Microsoft.ContainerRegistry/registries/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Container Registries", "Microsoft.ContainerRegistry/registries/read", warnings, missing)
     return registries
 
 
@@ -1290,14 +1291,7 @@ def _discover_databases(
     except ImportError:
         warnings.append("azure-mgmt-cosmosdb not installed. Skipping Cosmos DB inventory.")
     except Exception as exc:  # noqa: BLE001 — one failed Azure Cosmos DB accounts list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Cosmos DB accounts",
-            permission="Microsoft.DocumentDB/databaseAccounts/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Cosmos DB accounts", "Microsoft.DocumentDB/databaseAccounts/read", warnings, missing)
 
     try:
         from azure.mgmt.sql import SqlManagementClient
@@ -1307,14 +1301,7 @@ def _discover_databases(
     except ImportError:
         warnings.append("azure-mgmt-sql not installed. Skipping Azure SQL inventory.")
     except Exception as exc:  # noqa: BLE001 — one failed Azure SQL servers list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure SQL servers",
-            permission="Microsoft.Sql/servers/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure SQL servers", "Microsoft.Sql/servers/read", warnings, missing)
 
     try:
         from azure.mgmt.rdbms.postgresql_flexibleservers import PostgreSQLManagementClient
@@ -1329,14 +1316,7 @@ def _discover_databases(
     except ImportError:
         warnings.append("azure-mgmt-rdbms not installed. Skipping PostgreSQL inventory.")
     except Exception as exc:  # noqa: BLE001 — one failed Azure PostgreSQL servers list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure PostgreSQL servers",
-            permission="Microsoft.DBforPostgreSQL/flexibleServers/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure PostgreSQL servers", "Microsoft.DBforPostgreSQL/flexibleServers/read", warnings, missing)
 
     try:
         from azure.mgmt.rdbms.mysql_flexibleservers import MySQLManagementClient
@@ -1346,14 +1326,7 @@ def _discover_databases(
     except ImportError:
         warnings.append("azure-mgmt-rdbms not installed. Skipping MySQL inventory.")
     except Exception as exc:  # noqa: BLE001 — one failed Azure MySQL servers list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure MySQL servers",
-            permission="Microsoft.DBforMySQL/flexibleServers/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure MySQL servers", "Microsoft.DBforMySQL/flexibleServers/read", warnings, missing)
 
     return databases
 
@@ -1396,14 +1369,7 @@ def _discover_virtual_networks(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure virtual networks list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure virtual networks",
-            permission="Microsoft.Network/virtualNetworks/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure virtual networks", "Microsoft.Network/virtualNetworks/read", warnings, missing)
     return vnets
 
 
@@ -1437,14 +1403,7 @@ def _discover_public_ips(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure public IPs list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure public IPs",
-            permission="Microsoft.Network/publicIPAddresses/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure public IPs", "Microsoft.Network/publicIPAddresses/read", warnings, missing)
     return public_ips
 
 
@@ -1481,14 +1440,7 @@ def _discover_ip_addresses(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure public IPs list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure IP addresses",
-            permission="Microsoft.Network/publicIPAddresses/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure IP addresses", "Microsoft.Network/publicIPAddresses/read", warnings, missing)
     return addresses
 
 
@@ -1536,14 +1488,7 @@ def _discover_subnets(
                     }
                 )
     except Exception as exc:  # noqa: BLE001 — one failed Azure subnets list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure subnets",
-            permission="Microsoft.Network/virtualNetworks/subnets/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure subnets", "Microsoft.Network/virtualNetworks/subnets/read", warnings, missing)
     return subnets
 
 
@@ -1572,14 +1517,7 @@ def _discover_network_interfaces(
                 continue
             nics.append(_normalize_network_interface(nic, nic_id=nic_id, name=name, subscription_id=subscription_id))
     except Exception as exc:  # noqa: BLE001 — one failed Azure network interfaces list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure network interfaces",
-            permission="Microsoft.Network/networkInterfaces/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure network interfaces", "Microsoft.Network/networkInterfaces/read", warnings, missing)
     return nics
 
 
@@ -1654,14 +1592,7 @@ def _discover_azure_firewalls(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Firewalls list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Firewalls",
-            permission="Microsoft.Network/azureFirewalls/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Firewalls", "Microsoft.Network/azureFirewalls/read", warnings, missing)
     return firewalls
 
 
@@ -1704,14 +1635,7 @@ def _discover_nat_gateways(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure NAT gateways list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure NAT gateways",
-            permission="Microsoft.Network/natGateways/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure NAT gateways", "Microsoft.Network/natGateways/read", warnings, missing)
     return gateways
 
 
@@ -1754,14 +1678,7 @@ def _discover_route_tables(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure route tables list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure route tables",
-            permission="Microsoft.Network/routeTables/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure route tables", "Microsoft.Network/routeTables/read", warnings, missing)
     return tables
 
 
@@ -1818,14 +1735,7 @@ def _discover_private_endpoints(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure private endpoints list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure private endpoints",
-            permission="Microsoft.Network/privateEndpoints/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure private endpoints", "Microsoft.Network/privateEndpoints/read", warnings, missing)
     return endpoints
 
 
@@ -1868,14 +1778,7 @@ def _discover_load_balancers(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure load balancers list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure load balancers",
-            permission="Microsoft.Network/loadBalancers/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure load balancers", "Microsoft.Network/loadBalancers/read", warnings, missing)
     return load_balancers
 
 
@@ -1934,14 +1837,7 @@ def _discover_application_gateways(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Application Gateways list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Application Gateways",
-            permission="Microsoft.Network/applicationGateways/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Application Gateways", "Microsoft.Network/applicationGateways/read", warnings, missing)
     return gateways
 
 
@@ -1977,14 +1873,7 @@ def _discover_front_doors(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Front Doors list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Front Doors",
-            permission="Microsoft.Network/frontDoors/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Front Doors", "Microsoft.Network/frontDoors/read", warnings, missing)
     return front_doors
 
 
@@ -2030,14 +1919,7 @@ def _discover_api_management(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure API Management services list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure API Management services",
-            permission="Microsoft.ApiManagement/service/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure API Management services", "Microsoft.ApiManagement/service/read", warnings, missing)
     return services
 
 
@@ -2082,14 +1964,7 @@ def _discover_event_hubs(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Event Hub namespaces list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Event Hub namespaces",
-            permission="Microsoft.EventHub/namespaces/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Event Hub namespaces", "Microsoft.EventHub/namespaces/read", warnings, missing)
     return namespaces
 
 
@@ -2129,14 +2004,7 @@ def _discover_service_bus(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Service Bus namespaces list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Service Bus namespaces",
-            permission="Microsoft.ServiceBus/namespaces/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Service Bus namespaces", "Microsoft.ServiceBus/namespaces/read", warnings, missing)
     return namespaces
 
 
@@ -2177,14 +2045,7 @@ def _discover_redis_caches(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Cache for Redis instances list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Cache for Redis instances",
-            permission="Microsoft.Cache/redis/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Cache for Redis instances", "Microsoft.Cache/redis/read", warnings, missing)
     return caches
 
 
@@ -2225,14 +2086,7 @@ def _discover_managed_disks(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure Managed Disks list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure Managed Disks",
-            permission="Microsoft.Compute/disks/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure Managed Disks", "Microsoft.Compute/disks/read", warnings, missing)
     return disks
 
 
@@ -2280,14 +2134,7 @@ def _discover_app_services(
                 }
             )
     except Exception as exc:  # noqa: BLE001 — one failed Azure App Services list must not sink the scan
-        record_discovery_failure(
-            exc=exc,
-            resource_type="Azure App Services",
-            permission="Microsoft.Web/sites/read",
-            cloud="azure",
-            warnings=warnings,
-            missing=missing,
-        )
+        _record_failure(exc, "Azure App Services", "Microsoft.Web/sites/read", warnings, missing)
     return sites
 
 

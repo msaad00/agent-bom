@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from agent_bom.api.audit_log import get_audit_log, log_action
 from agent_bom.api.auth import get_key_store
 from agent_bom.api.connection_store import get_connection_store
+from agent_bom.api.scan_snapshot_store import purge_tenant_snapshots
 from agent_bom.api.stores import (
     _get_credential_ref_store,
     _get_exception_store,
@@ -216,6 +217,7 @@ def _delete_records(tenant_id: str) -> dict[str, int]:
     credentials = _get_credential_ref_store().list_all(tenant_id=tenant_id)
 
     deleted = {
+        "scan_snapshots": purge_tenant_snapshots(tenant_id),
         "jobs": sum(1 for record in jobs if _get_store().delete(str(record["job_id"]), tenant_id=tenant_id)),
         "fleet_agents": sum(1 for record in fleet if _get_fleet_store().delete(record.agent_id, tenant_id=tenant_id)),
         "fleet_endpoints": sum(

@@ -373,6 +373,11 @@ so they cannot regress silently, but they are not part of this reference.
 |---|---|---|---|
 | `AGENT_BOM_SCAN_CACHE_MAX_ENTRIES` | `int` | `100000` | SQLite-backed OSV result cache (~/.agent-bom/scan_cache.db).  100,000 entries covers ~5-10 large enterprise scans before eviction kicks in. Oldest entries are removed first (LRU by insertion time) when the limit is hit. Set to 0 to disable  |
 
+## Scan finding snapshots (opt-in, ADR-015)
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_SCAN_SNAPSHOTS` | `bool` | `False` | Materialize each completed scan job's intrinsic finding rows once, after the job is durably DONE. Off by default; nothing reads them yet. |
+
 ## Scanner Batching
 | Env var | Type | Default | Description |
 |---|---|---|---|

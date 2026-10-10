@@ -33,29 +33,22 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import functools
 import logging
 import os
 import re
 import warnings
+from collections.abc import Callable
 from typing import Any
 
 from agent_bom.cloud.snowflake_spcs_auth import apply_spcs_workload_identity
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode, attach_envelope_to_agents
-from agent_bom.governance import (
-    AccessRecord,
-    GovernanceCategory,
-    GovernanceFinding,
-    GovernanceReport,
-    GovernanceSeverity,
-)
+from agent_bom.governance import GovernanceReport
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
-from .normalization import (
-    build_cloud_origin,
-    build_package_purl,
-)
+from .normalization import build_cloud_origin
 from .snowflake_ai_surfaces import (
     _describe_mcp_server_tools as _describe_mcp_server_tools,
 )
@@ -171,6 +164,9 @@ from .snowflake_governance_findings import (
     _derive_findings as _derive_findings,
 )
 from .snowflake_governance_findings import (
+    _find_agent_usage_anomalies as _find_agent_usage_anomalies,
+)
+from .snowflake_governance_findings import (
     _find_elevated_privilege_risks as _find_elevated_privilege_risks,
 )
 from .snowflake_governance_findings import (
@@ -189,6 +185,9 @@ from .snowflake_governance_mining import (
     _classify_agent_query as _classify_agent_query,
 )
 from .snowflake_governance_mining import (
+    _mine_access_history as _mine_access_history,
+)
+from .snowflake_governance_mining import (
     _mine_cortex_agent_usage as _mine_cortex_agent_usage,
 )
 from .snowflake_governance_mining import (
@@ -205,6 +204,9 @@ from .snowflake_governance_mining import (
 )
 from .snowflake_governance_mining import (
     discover_activity as discover_activity,
+)
+from .snowflake_notebooks import (
+    _discover_snowflake_notebooks as _discover_snowflake_notebooks,
 )
 from .snowflake_object_graph import (
     _LIVE_GRANT_OBJECT_TYPES as _LIVE_GRANT_OBJECT_TYPES,
@@ -436,6 +438,31 @@ def _active_borrowed_connection() -> Any | None:
     return _BorrowedConnection(active) if active is not None else None
 
 
+def _base_connect_kwargs(
+    account: str | None,
+    user: str | None,
+    authenticator: str | None,
+    database: str | None,
+    schema: str | None,
+) -> dict[str, Any]:
+    """Connector kwargs for *account*/*user* plus the optional authenticator/database/schema context.
+
+    Callers resolve auth themselves (``_resolve_snowflake_auth``) so its deprecation
+    warning keeps the same ``stacklevel`` attribution.
+    """
+    conn_kwargs: dict[str, Any] = {
+        "account": account,
+        "user": user,
+    }
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+    if database:
+        conn_kwargs["database"] = database
+    if schema:
+        conn_kwargs["schema"] = schema
+    return conn_kwargs
+
+
 def _get_connection(
     account: str | None = None,
     user: str | None = None,
@@ -459,17 +486,7 @@ def _get_connection(
     if not resolved_account:
         raise CloudDiscoveryError("SNOWFLAKE_ACCOUNT not set.")
 
-    conn_kwargs: dict[str, Any] = {
-        "account": resolved_account,
-        "user": resolved_user,
-    }
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    if database:
-        conn_kwargs["database"] = database
-    if schema:
-        conn_kwargs["schema"] = schema
-
+    conn_kwargs = _base_connect_kwargs(resolved_account, resolved_user, authenticator, database, schema)
     _resolve_snowflake_auth(conn_kwargs, authenticator)
     return snowflake.connector.connect(**conn_kwargs)
 
@@ -521,16 +538,7 @@ def discover(
         resolved_account = "connection"
 
     if conn is None:
-        conn_kwargs: dict[str, Any] = {
-            "account": resolved_account,
-            "user": resolved_user,
-        }
-        if authenticator:
-            conn_kwargs["authenticator"] = authenticator
-        if database:
-            conn_kwargs["database"] = database
-        if schema:
-            conn_kwargs["schema"] = schema
+        conn_kwargs = _base_connect_kwargs(resolved_account, resolved_user, authenticator, database, schema)
 
         _resolve_snowflake_auth(conn_kwargs, authenticator)
 
@@ -541,111 +549,137 @@ def discover(
             return agents, warnings
 
     try:
-        # ── Cortex Search Services ────────────────────────────────────────
-        cortex_agents, cortex_warns = _discover_cortex_services(conn, resolved_account, database, schema)
-        agents.extend(cortex_agents)
-        warnings.extend(cortex_warns)
-
-        # ── Cortex Agents (v2025 Agent framework) ─────────────────────────
-        cortex_agent_list, ca_warns = _discover_cortex_agents(conn, resolved_account)
-        agents.extend(cortex_agent_list)
-        warnings.extend(ca_warns)
-
-        # ── Snowflake MCP Servers (GA Nov 2025) ───────────────────────────
-        mcp_agents, mcp_warns = _discover_mcp_servers(conn, resolved_account)
-        agents.extend(mcp_agents)
-        warnings.extend(mcp_warns)
-
-        # ── Query History audit (supplementary) ───────────────────────────
-        qh_agents, qh_warns = _discover_from_query_history(conn, resolved_account)
-        agents.extend(qh_agents)
-        warnings.extend(qh_warns)
-
-        # ── Custom Tools (functions & procedures) ─────────────────────────
-        custom_tools, ct_warns = _discover_custom_tools(conn, resolved_account)
-        warnings.extend(ct_warns)
-        # Attach to cortex agents if any, otherwise create a standalone agent
-        if custom_tools and cortex_agent_list:
-            for a in cortex_agent_list:
-                for srv in a.mcp_servers:
-                    srv.tools.extend(custom_tools)
-        elif custom_tools:
-            tool_server = MCPServer(
-                name="snowflake-custom-tools",
-                transport=TransportType.UNKNOWN,
-                tools=custom_tools,
-            )
-            agents.append(
-                Agent(
-                    name=f"snowflake-tools:{resolved_account}",
-                    agent_type=AgentType.CUSTOM,
-                    config_path=f"snowflake://{resolved_account}/custom-tools",
-                    source="snowflake-tools",
-                    mcp_servers=[tool_server],
-                    metadata={
-                        "cloud_origin": _snowflake_cloud_origin(
-                            account=resolved_account,
-                            service="custom-tools",
-                            resource_type="tool-collection",
-                            resource_id=f"{resolved_account}/custom-tools",
-                            resource_name="custom-tools",
-                        )
-                    },
-                )
-            )
-
-        # ── Snowpark packages ─────────────────────────────────────────────
-        snowpark_pkgs, sp_warns = _discover_snowpark_packages(conn, resolved_account)
-        warnings.extend(sp_warns)
-
-        # If we found Snowpark packages but no Cortex agents, create a generic agent
-        all_cortex = cortex_agents + cortex_agent_list
-        if snowpark_pkgs and not all_cortex:
-            server = MCPServer(
-                name="snowpark-packages",
-                transport=TransportType.UNKNOWN,
-                packages=snowpark_pkgs,
-            )
-            agent = Agent(
-                name=f"snowflake:{resolved_account}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"snowflake://{resolved_account}",
-                source="snowflake",
-                mcp_servers=[server],
-                metadata={
-                    "cloud_origin": _snowflake_cloud_origin(
-                        account=resolved_account,
-                        service="snowpark",
-                        resource_type="package-environment",
-                        resource_id=resolved_account,
-                        resource_name=resolved_account,
-                    )
-                },
-            )
-            agents.append(agent)
-
-        # ── Streamlit apps ────────────────────────────────────────────────
-        streamlit_agents, st_warns = _discover_streamlit_apps(conn, resolved_account)
-        agents.extend(streamlit_agents)
-        warnings.extend(st_warns)
-
-        # ── Snowflake Notebooks ─────────────────────────────────────────
-        notebook_agents, nb_warns = _discover_snowflake_notebooks(conn, resolved_account)
-        agents.extend(notebook_agents)
-        warnings.extend(nb_warns)
-
+        _discover_ai_surfaces(conn, resolved_account, database, schema, agents, warnings)
     finally:
         # Only close a connection we opened; an injected (brokered) connection is
         # the caller's to close.
         if owns_conn:
             conn.close()
 
-    # Per-run discovery envelope (#2083 PR B). Snowflake reads through the
-    # SQL surface using the user's role. We expose the role as a scope
-    # qualifier so operators can see which Snowflake role this run used.
+    _attach_discover_envelope(agents, resolved_account, database, schema)
+    return agents, warnings
+
+
+def _discover_ai_surfaces(
+    conn: Any,
+    account: str,
+    database: str | None,
+    schema: str | None,
+    agents: list[Agent],
+    warnings: list[str],
+) -> None:
+    """Run each AI-surface discoverer in order, folding agents and warnings into the caller's lists."""
+    # ── Cortex Search Services ────────────────────────────────────────
+    cortex_agents, cortex_warns = _discover_cortex_services(conn, account, database, schema)
+    agents.extend(cortex_agents)
+    warnings.extend(cortex_warns)
+
+    # ── Cortex Agents (v2025 Agent framework) ─────────────────────────
+    cortex_agent_list, ca_warns = _discover_cortex_agents(conn, account)
+    agents.extend(cortex_agent_list)
+    warnings.extend(ca_warns)
+
+    # ── Snowflake MCP Servers (GA Nov 2025) ───────────────────────────
+    mcp_agents, mcp_warns = _discover_mcp_servers(conn, account)
+    agents.extend(mcp_agents)
+    warnings.extend(mcp_warns)
+
+    # ── Query History audit (supplementary) ───────────────────────────
+    qh_agents, qh_warns = _discover_from_query_history(conn, account)
+    agents.extend(qh_agents)
+    warnings.extend(qh_warns)
+
+    # ── Custom Tools (functions & procedures) ─────────────────────────
+    custom_tools, ct_warns = _discover_custom_tools(conn, account)
+    warnings.extend(ct_warns)
+    _attach_custom_tools(agents, cortex_agent_list, custom_tools, account)
+
+    # ── Snowpark packages ─────────────────────────────────────────────
+    snowpark_pkgs, sp_warns = _discover_snowpark_packages(conn, account)
+    warnings.extend(sp_warns)
+
+    # If we found Snowpark packages but no Cortex agents, create a generic agent
+    all_cortex = cortex_agents + cortex_agent_list
+    if snowpark_pkgs and not all_cortex:
+        agents.append(_snowpark_agent(snowpark_pkgs, account))
+
+    # ── Streamlit apps ────────────────────────────────────────────────
+    streamlit_agents, st_warns = _discover_streamlit_apps(conn, account)
+    agents.extend(streamlit_agents)
+    warnings.extend(st_warns)
+
+    # ── Snowflake Notebooks ─────────────────────────────────────────
+    notebook_agents, nb_warns = _discover_snowflake_notebooks(conn, account)
+    agents.extend(notebook_agents)
+    warnings.extend(nb_warns)
+
+
+def _attach_custom_tools(agents: list[Agent], cortex_agent_list: list[Agent], custom_tools: list[MCPTool], account: str) -> None:
+    """Attach custom tools to cortex agents if any, otherwise create a standalone agent."""
+    if custom_tools and cortex_agent_list:
+        for a in cortex_agent_list:
+            for srv in a.mcp_servers:
+                srv.tools.extend(custom_tools)
+    elif custom_tools:
+        tool_server = MCPServer(
+            name="snowflake-custom-tools",
+            transport=TransportType.UNKNOWN,
+            tools=custom_tools,
+        )
+        agents.append(
+            Agent(
+                name=f"snowflake-tools:{account}",
+                agent_type=AgentType.CUSTOM,
+                config_path=f"snowflake://{account}/custom-tools",
+                source="snowflake-tools",
+                mcp_servers=[tool_server],
+                metadata={
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=account,
+                        service="custom-tools",
+                        resource_type="tool-collection",
+                        resource_id=f"{account}/custom-tools",
+                        resource_name="custom-tools",
+                    )
+                },
+            )
+        )
+
+
+def _snowpark_agent(snowpark_pkgs: list[Package], account: str) -> Agent:
+    """Generic agent carrying Snowpark packages when no Cortex agent was found."""
+    server = MCPServer(
+        name="snowpark-packages",
+        transport=TransportType.UNKNOWN,
+        packages=snowpark_pkgs,
+    )
+    return Agent(
+        name=f"snowflake:{account}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"snowflake://{account}",
+        source="snowflake",
+        mcp_servers=[server],
+        metadata={
+            "cloud_origin": _snowflake_cloud_origin(
+                account=account,
+                service="snowpark",
+                resource_type="package-environment",
+                resource_id=account,
+                resource_name=account,
+            )
+        },
+    )
+
+
+def _attach_discover_envelope(agents: list[Agent], account: str, database: str | None, schema: str | None) -> None:
+    """Per-run discovery envelope (#2083 PR B).
+
+    Snowflake reads through the SQL surface using the user's role. We expose the
+    role as a scope qualifier so operators can see which Snowflake role this run used.
+    """
     scope: list[str] = []
-    if resolved_account:
-        scope.append(f"snowflake:account/{resolved_account}")
+    if account:
+        scope.append(f"snowflake:account/{account}")
     if database:
         scope.append(f"snowflake:database/{database}")
     if schema:
@@ -664,173 +698,6 @@ def discover(
         ),
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
     )
-    return agents, warnings
-
-
-def _discover_snowflake_notebooks(
-    conn: Any,
-    account: str,
-) -> tuple[list[Agent], list[str]]:
-    """Discover Snowflake Notebooks and extract AI/ML package usage.
-
-    Snowflake Notebooks run Python/SQL cells in a managed Snowpark environment.
-    They can import AI/ML libraries, call Cortex functions, and access external
-    stages — all supply chain vectors we need to inventory.
-    """
-    agents: list[Agent] = []
-    warnings: list[str] = []
-    cursor = conn.cursor()
-
-    # Known AI/ML packages to flag when found in notebook imports
-    _ai_ml_packages = {
-        "openai",
-        "anthropic",
-        "langchain",
-        "transformers",
-        "torch",
-        "tensorflow",
-        "keras",
-        "huggingface_hub",
-        "sentence_transformers",
-        "llama_index",
-        "vllm",
-        "triton",
-        "bitsandbytes",
-        "peft",
-        "trl",
-        "diffusers",
-        "autogen",
-        "crewai",
-        "dspy",
-        "guidance",
-        "promptflow",
-        "snowflake-ml-python",
-        "snowflake-snowpark-python",
-        "snowflake-cortex",
-    }
-
-    try:
-        cursor.execute("SHOW NOTEBOOKS IN ACCOUNT")
-        rows = cursor.fetchall()
-        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
-
-        for row in rows:
-            row_dict = dict(zip(columns, row)) if columns else {}
-            nb_name = row_dict.get("name", str(row[0]) if row else "unknown")
-            nb_db = row_dict.get("database_name", "")
-            nb_schema = row_dict.get("schema_name", "")
-            nb_owner = row_dict.get("owner", "")
-            nb_comment = row_dict.get("comment", "")
-
-            packages: list[Package] = []
-            tools: list[MCPTool] = []
-
-            # Try to extract notebook package dependencies from metadata
-            # Snowflake stores notebook runtime packages in INFORMATION_SCHEMA
-            try:
-                fqn = ".".join(_quote_sf_identifier(part) for part in (nb_db, nb_schema, nb_name))
-                cursor.execute(
-                    f"DESCRIBE NOTEBOOK {fqn}"  # noqa: S608
-                )
-                desc_rows = cursor.fetchall()
-                desc_cols = [d[0].lower() for d in cursor.description] if cursor.description else []
-                for d_row in desc_rows:
-                    d_dict = dict(zip(desc_cols, d_row)) if desc_cols else {}
-                    prop_name = str(d_dict.get("property", d_dict.get("name", ""))).lower()
-                    prop_val = str(d_dict.get("value", d_dict.get("property_value", "")))
-
-                    # Extract packages from PACKAGES property
-                    if "package" in prop_name and prop_val:
-                        for pkg_spec in prop_val.split(","):
-                            pkg_spec = pkg_spec.strip()
-                            if not pkg_spec:
-                                continue
-                            parts = pkg_spec.split("==") if "==" in pkg_spec else pkg_spec.split("=")
-                            pkg_name = parts[0].strip()
-                            pkg_version = parts[1].strip() if len(parts) > 1 else "unknown"
-                            packages.append(
-                                Package(
-                                    name=pkg_name,
-                                    version=pkg_version,
-                                    ecosystem="pypi",
-                                    purl=build_package_purl(ecosystem="pypi", name=pkg_name, version=pkg_version),
-                                )
-                            )
-                            # Flag AI/ML packages as tools for visibility
-                            if pkg_name.lower().replace("-", "_") in _ai_ml_packages:
-                                tools.append(
-                                    MCPTool(
-                                        name=f"ai-pkg:{pkg_name}",
-                                        description=f"AI/ML package {pkg_name}@{pkg_version} used in notebook",
-                                    )
-                                )
-
-                    # Check for Cortex function usage in notebook queries
-                    if "query" in prop_name and prop_val:
-                        cortex_funcs = [
-                            "cortex.complete",
-                            "cortex.embed",
-                            "cortex.sentiment",
-                            "cortex.summarize",
-                            "cortex.translate",
-                            "cortex.extract_answer",
-                        ]
-                        for func in cortex_funcs:
-                            if func.lower() in prop_val.lower():
-                                tools.append(
-                                    MCPTool(
-                                        name=f"cortex:{func.split('.')[-1]}",
-                                        description=f"Cortex AI function {func} called in notebook",
-                                    )
-                                )
-
-            except ValueError as exc:
-                warnings.append(f"Skipping Snowflake notebook with unsafe identifier: {sanitize_error(exc)}")
-            except Exception as exc:
-                warnings.append(f"Could not describe Snowflake notebook {nb_name!r}: {sanitize_error(exc)}")
-
-            server = MCPServer(
-                name=f"sf-notebook:{nb_name}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-                tools=tools,
-            )
-            agent = Agent(
-                name=f"sf-notebook:{nb_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"snowflake://{account}/{nb_db}/{nb_schema}/notebooks/{nb_name}",
-                source="snowflake-notebook",
-                metadata={
-                    "database": nb_db,
-                    "schema": nb_schema,
-                    "owner": nb_owner,
-                    "comment": nb_comment,
-                    "cloud_origin": _snowflake_cloud_origin(
-                        account=account,
-                        service="notebooks",
-                        resource_type="notebook",
-                        resource_id=f"{account}/{nb_db}/{nb_schema}/{nb_name}",
-                        resource_name=nb_name,
-                        database=nb_db,
-                        schema=nb_schema,
-                    ),
-                },
-                mcp_servers=[server],
-            )
-            agents.append(agent)
-
-    except Exception as exc:
-        msg = str(exc)
-        if "does not exist" in msg.lower() or "syntax error" in msg.lower():
-            # SHOW NOTEBOOKS not available on this Snowflake edition/version
-            warnings.append("Snowflake Notebooks discovery not available (requires Snowflake 2024.3+)")
-        else:
-            warnings.append(f"Could not list Snowflake Notebooks: {sanitize_error(exc)}")
-
-    finally:
-        cursor.close()
-
-    return agents, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -886,16 +753,7 @@ def discover_governance(
             "snowflake-connector-python is required for Snowflake governance. Install with: pip install 'agent-bom[snowflake]'"
         )
 
-    conn_kwargs: dict[str, Any] = {
-        "account": resolved_account,
-        "user": resolved_user,
-    }
-    if authenticator:
-        conn_kwargs["authenticator"] = authenticator
-    if database:
-        conn_kwargs["database"] = database
-    if schema:
-        conn_kwargs["schema"] = schema
+    conn_kwargs = _base_connect_kwargs(resolved_account, resolved_user, authenticator, database, schema)
 
     _resolve_snowflake_auth(conn_kwargs, authenticator)
 
@@ -910,249 +768,65 @@ def discover_governance(
             return report
 
     try:
-        # 1. ACCESS_HISTORY — who accessed what tables/columns
-        access_records, access_warns = _mine_access_history(conn, days)
-        report.access_records = access_records
-        report.warnings.extend(access_warns)
-
-        # 2. GRANTS_TO_ROLES — privilege grants
-        grants, grant_warns = _mine_grants_to_roles(conn)
-        report.privilege_grants = grants
-        report.warnings.extend(grant_warns)
-
-        # 3. TAG_REFERENCES — data classification tags
-        tags, tag_warns = _mine_tag_references(conn)
-        report.data_classifications = tags
-        report.warnings.extend(tag_warns)
-
-        # 4. CORTEX_AGENT_USAGE_HISTORY — agent telemetry
-        usage, usage_warns = _mine_cortex_agent_usage(conn, days)
-        report.agent_usage = usage
-        report.warnings.extend(usage_warns)
-
-        # 5. Derive governance findings from raw data
-        report.findings = _derive_findings(report)
-
+        _mine_governance_report(conn, days, report)
     finally:
         conn.close()
 
     return report
 
 
-def _mine_access_history(
+def _mine_governance_report(conn: Any, days: int, report: GovernanceReport) -> None:
+    """Mine the governance ACCOUNT_USAGE views into *report*, then derive its findings."""
+    # 1. ACCESS_HISTORY — who accessed what tables/columns
+    access_records, access_warns = _mine_access_history(conn, days)
+    report.access_records = access_records
+    report.warnings.extend(access_warns)
+
+    # 2. GRANTS_TO_ROLES — privilege grants
+    grants, grant_warns = _mine_grants_to_roles(conn)
+    report.privilege_grants = grants
+    report.warnings.extend(grant_warns)
+
+    # 3. TAG_REFERENCES — data classification tags
+    tags, tag_warns = _mine_tag_references(conn)
+    report.data_classifications = tags
+    report.warnings.extend(tag_warns)
+
+    # 4. CORTEX_AGENT_USAGE_HISTORY — agent telemetry
+    usage, usage_warns = _mine_cortex_agent_usage(conn, days)
+    report.agent_usage = usage
+    report.warnings.extend(usage_warns)
+
+    # 5. Derive governance findings from raw data
+    report.findings = _derive_findings(report)
+
+
+def _for_each_row(
     conn: Any,
-    days: int,
-) -> tuple[list[AccessRecord], list[str]]:
-    """Mine SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY for table/column access patterns.
+    sql: str,
+    handle: Callable[[dict[str, Any]], object],
+    on_error: Callable[[Exception], object],
+) -> None:
+    """Run *sql* on its own cursor and feed each row (lower-cased column keys) to *handle*.
 
-    Enterprise edition required. Returns up to 1000 most recent records.
+    A failure is handed to *on_error* so one query never aborts the discovery;
+    the cursor is always closed.
     """
-    records: list[AccessRecord] = []
-    warnings: list[str] = []
     cursor = conn.cursor()
-    days = _coerce_snowflake_days(days)
-
     try:
-        # ACCESS_HISTORY has no ROLE_NAME column; the executing role lives on
-        # QUERY_HISTORY, joined via query_id. The accessed/modified objects are
-        # VARIANT arrays (objectName/objectDomain/columns) parsed in Python below.
-        cursor.execute(
-            "SELECT ah.query_id, ah.user_name, qh.role_name, ah.query_start_time, "
-            "       ah.direct_objects_accessed, ah.base_objects_accessed, "
-            "       ah.objects_modified "
-            "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY ah "
-            "LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY qh "
-            "       ON ah.query_id = qh.query_id "
-            f"WHERE ah.query_start_time >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — days is int
-            "ORDER BY ah.query_start_time DESC "
-            "LIMIT 1000"
-        )
-        columns = [desc[0].lower() for desc in cursor.description] if cursor.description else []
-
+        cursor.execute(sql)
+        keys = [d[0].lower() for d in cursor.description] if cursor.description else []
         for row in cursor.fetchall():
-            row_dict = dict(zip(columns, row))
-
-            query_id = str(row_dict.get("query_id", ""))
-            user_name = str(row_dict.get("user_name", ""))
-            role_name = str(row_dict.get("role_name") or "")
-            query_start = str(row_dict.get("query_start_time", ""))
-
-            # Each is a JSON array of objects with objectName/objectDomain/columns.
-            direct_objects = _parse_json_field(row_dict.get("direct_objects_accessed", "[]"))
-            base_objects = _parse_json_field(row_dict.get("base_objects_accessed", "[]"))
-            objects_modified = _parse_json_field(row_dict.get("objects_modified", "[]"))
-
-            base_names = [b.get("objectName", "") for b in base_objects if b.get("objectName")]
-
-            for obj in direct_objects:
-                obj_name = obj.get("objectName", "")
-                obj_type = obj.get("objectDomain", "")
-                col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
-                if not obj_name:
-                    continue
-
-                records.append(
-                    AccessRecord(
-                        query_id=query_id,
-                        user_name=user_name,
-                        role_name=role_name,
-                        query_start=query_start,
-                        object_name=obj_name,
-                        object_type=obj_type,
-                        columns=col_list,
-                        operation="READ",
-                        is_write=False,
-                        base_objects=base_names,
-                        source_field="direct_objects_accessed",
-                    )
-                )
-
-            # A query can read and write the same object. Keep those observations
-            # separate, including their distinct column lists. These arrays do
-            # not establish the SQL verb, rows changed, or current authorization.
-            for obj in objects_modified:
-                obj_name = obj.get("objectName", "")
-                if not obj_name:
-                    continue
-                col_list = [c.get("columnName", "") for c in obj.get("columns", []) if c.get("columnName")]
-                records.append(
-                    AccessRecord(
-                        query_id=query_id,
-                        user_name=user_name,
-                        role_name=role_name,
-                        query_start=query_start,
-                        object_name=obj_name,
-                        object_type=obj.get("objectDomain", ""),
-                        columns=col_list,
-                        operation="WRITE",
-                        is_write=True,
-                        base_objects=base_names,
-                        source_field="objects_modified",
-                    )
-                )
-
-    except Exception as exc:
-        msg = str(exc)
-        if "access_history" in msg.lower() or "enterprise" in msg.lower():
-            warnings.append("ACCESS_HISTORY requires Enterprise edition or higher. Skipping access pattern analysis.")
-        else:
-            warnings.append(f"Could not query ACCESS_HISTORY: {sanitize_error(exc)}")
-
+            handle(dict(zip(keys, row)))
+    except Exception as exc:  # noqa: BLE001
+        on_error(exc)
     finally:
         cursor.close()
 
-    return records, warnings
 
-
-def _find_agent_usage_anomalies(report: GovernanceReport) -> list[GovernanceFinding]:
-    """Analyze CORTEX_AGENT_USAGE_HISTORY for anomalies."""
-    findings: list[GovernanceFinding] = []
-
-    if not report.agent_usage:
-        return findings
-
-    # Aggregate per agent
-    agent_stats: dict[str, dict] = {}
-    for rec in report.agent_usage:
-        stats = agent_stats.setdefault(
-            rec.agent_name,
-            {
-                "total_calls": 0,
-                "total_tokens": 0,
-                "total_credits": 0.0,
-                "total_tool_calls": 0,
-                "failures": 0,
-                "roles": set(),
-            },
-        )
-        stats["total_calls"] += 1
-        stats["total_tokens"] += rec.total_tokens
-        stats["total_credits"] += rec.credits_used
-        stats["total_tool_calls"] += rec.tool_calls
-        if rec.status and rec.status.upper() != "SUCCESS":
-            stats["failures"] += 1
-        stats["roles"].add(rec.role_name)
-
-    for agent_name, stats in agent_stats.items():
-        # High token usage
-        if stats["total_tokens"] > 1_000_000:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.AGENT_USAGE,
-                    severity=GovernanceSeverity.MEDIUM,
-                    title=f"High token usage: {agent_name}",
-                    description=(
-                        f"Agent '{agent_name}' consumed {stats['total_tokens']:,} tokens "
-                        f"across {stats['total_calls']} calls "
-                        f"({stats['total_credits']:.2f} credits)."
-                    ),
-                    agent_or_role=agent_name,
-                    details={
-                        "total_calls": stats["total_calls"],
-                        "total_tokens": stats["total_tokens"],
-                        "total_credits": stats["total_credits"],
-                    },
-                )
-            )
-
-        # Multi-role usage (agent running under multiple roles)
-        roles = stats["roles"] - {""}
-        if len(roles) > 1:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.AGENT_USAGE,
-                    severity=GovernanceSeverity.HIGH,
-                    title=f"Multi-role agent: {agent_name}",
-                    description=(
-                        f"Agent '{agent_name}' ran under {len(roles)} different roles: "
-                        f"{', '.join(sorted(roles))}. This increases blast radius."
-                    ),
-                    agent_or_role=agent_name,
-                    details={"roles": sorted(roles)},
-                )
-            )
-
-        # High tool call rate
-        if stats["total_tool_calls"] > 500:
-            findings.append(
-                GovernanceFinding(
-                    category=GovernanceCategory.AGENT_USAGE,
-                    severity=GovernanceSeverity.MEDIUM,
-                    title=f"High tool usage: {agent_name}",
-                    description=(
-                        f"Agent '{agent_name}' made {stats['total_tool_calls']} tool calls across {stats['total_calls']} invocations."
-                    ),
-                    agent_or_role=agent_name,
-                    details={
-                        "total_tool_calls": stats["total_tool_calls"],
-                        "total_calls": stats["total_calls"],
-                    },
-                )
-            )
-
-        # High failure rate
-        if stats["failures"] > 0 and stats["total_calls"] > 5:
-            failure_rate = stats["failures"] / stats["total_calls"]
-            if failure_rate > 0.3:
-                findings.append(
-                    GovernanceFinding(
-                        category=GovernanceCategory.AGENT_USAGE,
-                        severity=GovernanceSeverity.MEDIUM,
-                        title=f"High failure rate: {agent_name}",
-                        description=(
-                            f"Agent '{agent_name}' has a {failure_rate:.0%} failure rate "
-                            f"({stats['failures']}/{stats['total_calls']} calls)."
-                        ),
-                        agent_or_role=agent_name,
-                        details={
-                            "failures": stats["failures"],
-                            "total_calls": stats["total_calls"],
-                            "failure_rate": round(failure_rate, 3),
-                        },
-                    )
-                )
-
-    return findings
+def _warn_with(warnings: list[str], prefix: str) -> Callable[[Exception], None]:
+    """``on_error`` for :func:`_for_each_row` recording ``"<prefix>: <sanitized error>"``."""
+    return lambda exc: warnings.append(f"{prefix}: {sanitize_error(exc)}")
 
 
 def _live_show_roles(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]]:
@@ -1187,6 +861,80 @@ def _live_show_roles(conn: Any, warnings_list: list[str]) -> list[dict[str, Any]
     return roles
 
 
+class _LiveRoleGraph:
+    """Deduping accumulator for live ``SHOW GRANTS TO/OF ROLE`` rows."""
+
+    def __init__(self) -> None:
+        self.grants: list[dict[str, Any]] = []
+        self.memberships: list[dict[str, Any]] = []
+        # Dedupe so the two SHOW directions don't double-emit the same role→role edge.
+        self.seen_member: set[tuple[str, str]] = set()
+        self.seen_user: set[tuple[str, str]] = set()
+        self.seen_grant: set[tuple[str, str, str]] = set()
+
+    def add_role_membership(self, child: str, parent: str) -> None:
+        if not child or not parent or child == parent:
+            return
+        key = (child, parent)
+        if key in self.seen_member:
+            return
+        self.seen_member.add(key)
+        self.memberships.append({"role": child, "parent": parent, "member_type": "role"})
+
+    def add_user_membership(self, user_name: str, role: str) -> None:
+        if not user_name or not role:
+            return
+        key = (user_name, role)
+        if key in self.seen_user:
+            return
+        self.seen_user.add(key)
+        self.memberships.append({"user": user_name, "role": role, "member_type": "user"})
+
+    def add_grant_to(self, role_name: str, r: dict[str, Any]) -> None:
+        """One ``SHOW GRANTS TO ROLE`` row: an object grant or a role→role parent."""
+        granted_on = str(r.get("granted_on", "") or "").upper()
+        privilege = str(r.get("privilege", "") or "")
+        obj_name = str(r.get("name", "") or "")
+        if granted_on == "ROLE" and privilege.upper() == "USAGE" and obj_name:
+            # This role USAGE-on another role => member of that parent role.
+            self.add_role_membership(role_name, obj_name)
+        elif granted_on in _LIVE_GRANT_OBJECT_TYPES and obj_name:
+            gkey = (role_name, privilege, obj_name)
+            if gkey in self.seen_grant:
+                return
+            self.seen_grant.add(gkey)
+            self.grants.append(
+                {
+                    "role": role_name,
+                    "privilege": privilege,
+                    "object_fqn": obj_name,
+                    "object_type": granted_on.lower(),
+                }
+            )
+
+    def add_grant_of(self, role_name: str, r: dict[str, Any]) -> None:
+        """One ``SHOW GRANTS OF ROLE`` row: a user membership or a child role."""
+        granted_to = str(r.get("granted_to", "") or "").upper()
+        grantee = str(r.get("grantee_name", "") or "")
+        if not grantee:
+            return
+        if granted_to == "USER":
+            self.add_user_membership(grantee, role_name)
+        elif granted_to == "ROLE":
+            # The grantee role is a member of this role (grantee → role_name).
+            self.add_role_membership(grantee, role_name)
+
+
+def _role_grants_failure(resource_type: str, warnings_list: list[str]) -> Callable[[Exception], None]:
+    """``on_error`` recording a failed live role-grant read as inventory coverage evidence."""
+    return lambda exc: _record_snowflake_inventory_failure(
+        exc=exc,
+        resource_type=resource_type,
+        inventory_key="live_role_grants",
+        warnings=warnings_list,
+    )
+
+
 def _live_role_grants(conn: Any, role_names: list[str], warnings_list: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Per-role ``SHOW GRANTS TO/OF ROLE`` → object grants + memberships.
 
@@ -1196,31 +944,7 @@ def _live_role_grants(conn: Any, role_names: list[str], warnings_list: list[str]
     member of the granted parent role). ``SHOW GRANTS OF ROLE "<role>"`` yields
     who the role is granted to (users → ``{user, role}``; roles → role→role).
     """
-    grants: list[dict[str, Any]] = []
-    memberships: list[dict[str, Any]] = []
-    # Dedupe so the two SHOW directions don't double-emit the same role→role edge.
-    seen_member: set[tuple[str, str]] = set()
-    seen_user: set[tuple[str, str]] = set()
-    seen_grant: set[tuple[str, str, str]] = set()
-
-    def _add_role_membership(child: str, parent: str) -> None:
-        if not child or not parent or child == parent:
-            return
-        key = (child, parent)
-        if key in seen_member:
-            return
-        seen_member.add(key)
-        memberships.append({"role": child, "parent": parent, "member_type": "role"})
-
-    def _add_user_membership(user_name: str, role: str) -> None:
-        if not user_name or not role:
-            return
-        key = (user_name, role)
-        if key in seen_user:
-            return
-        seen_user.add(key)
-        memberships.append({"user": user_name, "role": role, "member_type": "user"})
-
+    graph = _LiveRoleGraph()
     for role_name in role_names:
         try:
             quoted = _quote_sf_identifier(role_name)
@@ -1229,68 +953,44 @@ def _live_role_grants(conn: Any, role_names: list[str], warnings_list: list[str]
             continue
 
         # Privileges this role holds: object grants + role→role parents.
-        cursor = conn.cursor()
-        try:
-            cursor.execute(f"SHOW GRANTS TO ROLE {quoted}")
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                granted_on = str(r.get("granted_on", "") or "").upper()
-                privilege = str(r.get("privilege", "") or "")
-                obj_name = str(r.get("name", "") or "")
-                if granted_on == "ROLE" and privilege.upper() == "USAGE" and obj_name:
-                    # This role USAGE-on another role => member of that parent role.
-                    _add_role_membership(role_name, obj_name)
-                elif granted_on in _LIVE_GRANT_OBJECT_TYPES and obj_name:
-                    gkey = (role_name, privilege, obj_name)
-                    if gkey in seen_grant:
-                        continue
-                    seen_grant.add(gkey)
-                    grants.append(
-                        {
-                            "role": role_name,
-                            "privilege": privilege,
-                            "object_fqn": obj_name,
-                            "object_type": granted_on.lower(),
-                        }
-                    )
-        except Exception as exc:  # noqa: BLE001
-            _record_snowflake_inventory_failure(
-                exc=exc,
-                resource_type=f"grants TO role {role_name!r}",
-                inventory_key="live_role_grants",
-                warnings=warnings_list,
-            )
-        finally:
-            cursor.close()
+        _for_each_row(
+            conn,
+            f"SHOW GRANTS TO ROLE {quoted}",
+            functools.partial(graph.add_grant_to, role_name),
+            _role_grants_failure(f"grants TO role {role_name!r}", warnings_list),
+        )
 
         # Who this role is granted to: users (memberships) + child roles.
-        cursor = conn.cursor()
-        try:
-            cursor.execute(f"SHOW GRANTS OF ROLE {quoted}")
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                granted_to = str(r.get("granted_to", "") or "").upper()
-                grantee = str(r.get("grantee_name", "") or "")
-                if not grantee:
-                    continue
-                if granted_to == "USER":
-                    _add_user_membership(grantee, role_name)
-                elif granted_to == "ROLE":
-                    # The grantee role is a member of this role (grantee → role_name).
-                    _add_role_membership(grantee, role_name)
-        except Exception as exc:  # noqa: BLE001
-            _record_snowflake_inventory_failure(
-                exc=exc,
-                resource_type=f"grants OF role {role_name!r}",
-                inventory_key="live_role_grants",
-                warnings=warnings_list,
-            )
-        finally:
-            cursor.close()
+        _for_each_row(
+            conn,
+            f"SHOW GRANTS OF ROLE {quoted}",
+            functools.partial(graph.add_grant_of, role_name),
+            _role_grants_failure(f"grants OF role {role_name!r}", warnings_list),
+        )
 
-    return grants, memberships
+    return graph.grants, graph.memberships
+
+
+def _live_grant_key(g: dict[str, Any]) -> tuple[str, str, str]:
+    """Grants keyed by (role, privilege, object_fqn)."""
+    return (str(g.get("role", "")), str(g.get("privilege", "")), str(g.get("object_fqn", "")))
+
+
+def _live_membership_key(m: dict[str, Any]) -> tuple[str, str, str]:
+    """Memberships: user→role keyed (user, role); role→role keyed (role, parent)."""
+    if m.get("member_type") == "role" or m.get("parent"):
+        return ("role", str(m.get("role", "")), str(m.get("parent", "")))
+    return ("user", str(m.get("user", "")), str(m.get("role", "")))
+
+
+def _merge_live_rows(lagged: Any, live: Any, key: Callable[[dict[str, Any]], tuple[str, str, str]]) -> list[dict[str, Any]]:
+    """Union lagged then live dict rows by *key*; live overwrites lagged on collision."""
+    merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for rows in (lagged, live):
+        for row in rows or []:
+            if isinstance(row, dict):
+                merged[key(row)] = row
+    return list(merged.values())
 
 
 def merge_live_identity_into_object_graph(object_graph: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
@@ -1307,33 +1007,10 @@ def merge_live_identity_into_object_graph(object_graph: dict[str, Any], live: di
     if not isinstance(live, dict) or live.get("status") != "ok":
         return object_graph
 
-    # Grants keyed by (role, privilege, object_fqn); live wins on collision.
-    def _grant_key(g: dict[str, Any]) -> tuple[str, str, str]:
-        return (str(g.get("role", "")), str(g.get("privilege", "")), str(g.get("object_fqn", "")))
-
-    merged_grants: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for g in object_graph.get("grants", []) or []:
-        if isinstance(g, dict):
-            merged_grants[_grant_key(g)] = g
-    for g in live.get("grants", []) or []:
-        if isinstance(g, dict):
-            merged_grants[_grant_key(g)] = g  # live overwrites lagged
-    object_graph["grants"] = list(merged_grants.values())
-
-    # Memberships: user→role keyed (user, role); role→role keyed (role, parent).
-    def _mem_key(m: dict[str, Any]) -> tuple[str, str, str]:
-        if m.get("member_type") == "role" or m.get("parent"):
-            return ("role", str(m.get("role", "")), str(m.get("parent", "")))
-        return ("user", str(m.get("user", "")), str(m.get("role", "")))
-
-    merged_mem: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for m in object_graph.get("role_memberships", []) or []:
-        if isinstance(m, dict):
-            merged_mem[_mem_key(m)] = m
-    for m in live.get("role_memberships", []) or []:
-        if isinstance(m, dict):
-            merged_mem[_mem_key(m)] = m  # live overwrites lagged
-    object_graph["role_memberships"] = list(merged_mem.values())
+    object_graph["grants"] = _merge_live_rows(object_graph.get("grants", []), live.get("grants", []), _live_grant_key)
+    object_graph["role_memberships"] = _merge_live_rows(
+        object_graph.get("role_memberships", []), live.get("role_memberships", []), _live_membership_key
+    )
 
     # Users are live-only (object graph never had them); carry through, deduped.
     if live.get("users"):
@@ -1410,136 +1087,128 @@ def discover_data_exfil(
         return result
 
     try:
-        # Outbound shares.
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SHOW SHARES")
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                if str(r.get("kind", "")).upper() != "OUTBOUND":
-                    continue
-                consumers = [c.strip() for c in re.split(r"[,\s]+", str(r.get("to", "") or "")) if c.strip()]
-                result["outbound_shares"].append(
-                    {
-                        "share_name": str(r.get("name", "")),
-                        "database_name": str(r.get("database_name", "")),
-                        "consumers": consumers,
-                        "is_marketplace": bool(str(r.get("listing_global_name", "") or "")),
-                    }
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not list outbound shares: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        # External stages.
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SHOW STAGES IN ACCOUNT")
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                url = str(r.get("url", "") or "")
-                if "://" not in url:
-                    continue
-                scheme = url.split("://", 1)[0].lower()
-                cloud = _EXTERNAL_STAGE_SCHEMES.get(scheme, "")
-                if not cloud:
-                    continue
-                bucket = url.split("://", 1)[1].split("/", 1)[0]
-                result["external_stages"].append(
-                    {
-                        "stage_name": str(r.get("name", "")),
-                        "database_name": str(r.get("database_name", "")),
-                        "schema_name": str(r.get("schema_name", "")),
-                        "url": url,
-                        "cloud_provider": cloud,
-                        "bucket": bucket,
-                    }
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not list external stages: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        # Sensitive objects (tagged) + masking/row-access coverage.
-        protected: set[str] = set()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT ref_database_name, ref_schema_name, ref_entity_name "
-                "FROM SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES "
-                "WHERE policy_kind IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY') LIMIT 5000"
-            )
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                protected.add(".".join(str(r.get(k, "")) for k in ("ref_database_name", "ref_schema_name", "ref_entity_name")).upper())
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not query POLICY_REFERENCES: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT object_database, object_schema, object_name, "
-                "       COUNT(DISTINCT tag_name) AS tags, COUNT(DISTINCT column_name) AS cols "
-                "FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES "
-                "WHERE tag_name ILIKE ANY ('%PII%', '%PHI%', '%SENSITIVE%', '%CONFIDENTIAL%', "
-                "      '%FINANCIAL%', '%CLASSIFICATION%', '%PRIVACY%', '%SEMANTIC_CATEGORY%') "
-                "GROUP BY 1, 2, 3 LIMIT 5000"
-            )
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                fqn = ".".join(str(r.get(k, "")) for k in ("object_database", "object_schema", "object_name"))
-                result["sensitive_objects"].append(
-                    {
-                        "fqn": fqn,
-                        "tagged_columns": int(r.get("cols", 0) or 0),
-                        "tag_count": int(r.get("tags", 0) or 0),
-                        "is_protected": fqn.upper() in protected,
-                        "sensitivity": "sensitive",
-                    }
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not query TAG_REFERENCES: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        for s in result["outbound_shares"]:
-            result["findings"].append(
-                {
-                    "severity": "high" if s["is_marketplace"] else "medium",
-                    "title": "Outbound data share",
-                    "detail": f"Share {s['share_name']} exposes data to {len(s['consumers'])} consumer account(s)"
-                    + (" via a public Marketplace listing" if s["is_marketplace"] else "")
-                    + ".",
-                }
-            )
-        for st in result["external_stages"]:
-            result["findings"].append(
-                {
-                    "severity": "medium",
-                    "title": "External stage (exfil destination)",
-                    "detail": f"Stage {st['stage_name']} writes to {st['cloud_provider']} bucket '{st['bucket']}'.",
-                }
-            )
-        unprotected = [s["fqn"] for s in result["sensitive_objects"] if not s["is_protected"]]
-        if unprotected:
-            result["findings"].append(
-                {
-                    "severity": "high",
-                    "title": "Unprotected sensitive data",
-                    "detail": f"{len(unprotected)} sensitivity-tagged object(s) have no masking/row-access policy.",
-                }
-            )
+        _collect_exfil_surfaces(conn, result)
+        result["findings"].extend(_exfil_findings(result))
         result["status"] = "ok"
     finally:
         conn.close()
     return result
+
+
+def _add_outbound_share(result: dict[str, Any], r: dict[str, Any]) -> None:
+    if str(r.get("kind", "")).upper() != "OUTBOUND":
+        return
+    consumers = [c.strip() for c in re.split(r"[,\s]+", str(r.get("to", "") or "")) if c.strip()]
+    result["outbound_shares"].append(
+        {
+            "share_name": str(r.get("name", "")),
+            "database_name": str(r.get("database_name", "")),
+            "consumers": consumers,
+            "is_marketplace": bool(str(r.get("listing_global_name", "") or "")),
+        }
+    )
+
+
+def _add_external_stage(result: dict[str, Any], r: dict[str, Any]) -> None:
+    url = str(r.get("url", "") or "")
+    if "://" not in url:
+        return
+    scheme = url.split("://", 1)[0].lower()
+    cloud = _EXTERNAL_STAGE_SCHEMES.get(scheme, "")
+    if not cloud:
+        return
+    bucket = url.split("://", 1)[1].split("/", 1)[0]
+    result["external_stages"].append(
+        {
+            "stage_name": str(r.get("name", "")),
+            "database_name": str(r.get("database_name", "")),
+            "schema_name": str(r.get("schema_name", "")),
+            "url": url,
+            "cloud_provider": cloud,
+            "bucket": bucket,
+        }
+    )
+
+
+def _add_sensitive_object(result: dict[str, Any], protected: set[str], r: dict[str, Any]) -> None:
+    fqn = ".".join(str(r.get(k, "")) for k in ("object_database", "object_schema", "object_name"))
+    result["sensitive_objects"].append(
+        {
+            "fqn": fqn,
+            "tagged_columns": int(r.get("cols", 0) or 0),
+            "tag_count": int(r.get("tags", 0) or 0),
+            "is_protected": fqn.upper() in protected,
+            "sensitivity": "sensitive",
+        }
+    )
+
+
+def _collect_exfil_surfaces(conn: Any, result: dict[str, Any]) -> None:
+    """Outbound shares, external stages, then sensitive objects + their masking/row-access coverage."""
+    warnings: list[str] = result["warnings"]
+    _for_each_row(
+        conn, "SHOW SHARES", functools.partial(_add_outbound_share, result), _warn_with(warnings, "Could not list outbound shares")
+    )
+    _for_each_row(
+        conn,
+        "SHOW STAGES IN ACCOUNT",
+        functools.partial(_add_external_stage, result),
+        _warn_with(warnings, "Could not list external stages"),
+    )
+
+    # Sensitive objects (tagged) + masking/row-access coverage.
+    protected: set[str] = set()
+    _for_each_row(
+        conn,
+        "SELECT ref_database_name, ref_schema_name, ref_entity_name "
+        "FROM SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES "
+        "WHERE policy_kind IN ('MASKING_POLICY', 'ROW_ACCESS_POLICY') LIMIT 5000",
+        lambda r: protected.add(".".join(str(r.get(k, "")) for k in ("ref_database_name", "ref_schema_name", "ref_entity_name")).upper()),
+        _warn_with(warnings, "Could not query POLICY_REFERENCES"),
+    )
+    _for_each_row(
+        conn,
+        "SELECT object_database, object_schema, object_name, "
+        "       COUNT(DISTINCT tag_name) AS tags, COUNT(DISTINCT column_name) AS cols "
+        "FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES "
+        "WHERE tag_name ILIKE ANY ('%PII%', '%PHI%', '%SENSITIVE%', '%CONFIDENTIAL%', "
+        "      '%FINANCIAL%', '%CLASSIFICATION%', '%PRIVACY%', '%SEMANTIC_CATEGORY%') "
+        "GROUP BY 1, 2, 3 LIMIT 5000",
+        functools.partial(_add_sensitive_object, result, protected),
+        _warn_with(warnings, "Could not query TAG_REFERENCES"),
+    )
+
+
+def _exfil_findings(result: dict[str, Any]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for s in result["outbound_shares"]:
+        findings.append(
+            {
+                "severity": "high" if s["is_marketplace"] else "medium",
+                "title": "Outbound data share",
+                "detail": f"Share {s['share_name']} exposes data to {len(s['consumers'])} consumer account(s)"
+                + (" via a public Marketplace listing" if s["is_marketplace"] else "")
+                + ".",
+            }
+        )
+    for st in result["external_stages"]:
+        findings.append(
+            {
+                "severity": "medium",
+                "title": "External stage (exfil destination)",
+                "detail": f"Stage {st['stage_name']} writes to {st['cloud_provider']} bucket '{st['bucket']}'.",
+            }
+        )
+    unprotected = [s["fqn"] for s in result["sensitive_objects"] if not s["is_protected"]]
+    if unprotected:
+        findings.append(
+            {
+                "severity": "high",
+                "title": "Unprotected sensitive data",
+                "detail": f"{len(unprotected)} sensitivity-tagged object(s) have no masking/row-access policy.",
+            }
+        )
+    return findings
 
 
 def discover_login_anomalies(
@@ -1608,93 +1277,94 @@ def discover_login_anomalies(
         return result
 
     try:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT user_name, COUNT(DISTINCT client_ip) AS distinct_ips, COUNT(*) AS logins, "
-                "       SUM(IFF(is_success = 'NO', 1, 0)) AS failed "
-                "FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY "
-                f"WHERE event_timestamp >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — int day window
-                "GROUP BY user_name ORDER BY distinct_ips DESC LIMIT 1000"
-            )
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                distinct_ips = int(r.get("distinct_ips", 0) or 0)
-                failed = int(r.get("failed", 0) or 0)
-                entry = {
-                    "user": str(r.get("user_name", "")),
-                    "distinct_ips": distinct_ips,
-                    "logins": int(r.get("logins", 0) or 0),
-                    "failed": failed,
-                }
-                result["per_user"].append(entry)
-                if failed >= failed_burst_threshold:
-                    result["failed_bursts"].append({"user": entry["user"], "failed": failed})
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not summarize LOGIN_HISTORY: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        # Impossible travel: consecutive successful logins from a different IP
-        # within rapid_switch_minutes (computed server-side via LAG).
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "WITH ordered AS ( "
-                "  SELECT user_name, client_ip, event_timestamp, "
-                "         LAG(client_ip) OVER (PARTITION BY user_name ORDER BY event_timestamp) AS prev_ip, "
-                "         LAG(event_timestamp) OVER (PARTITION BY user_name ORDER BY event_timestamp) AS prev_ts "
-                "  FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY "
-                f"  WHERE is_success = 'YES' AND event_timestamp >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608
-                ") "
-                "SELECT user_name, COUNT(*) AS rapid_switches "
-                "FROM ordered "
-                "WHERE prev_ip IS NOT NULL AND client_ip != prev_ip "
-                f"  AND TIMESTAMPDIFF(minute, prev_ts, event_timestamp) <= {rapid_switch_minutes} "  # nosec B608
-                "GROUP BY user_name HAVING COUNT(*) > 0 ORDER BY rapid_switches DESC LIMIT 1000"
-            )
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                result["impossible_travel"].append(
-                    {"user": str(r.get("user_name", "")), "rapid_switches": int(r.get("rapid_switches", 0) or 0)}
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not compute impossible-travel signal: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        for it in result["impossible_travel"]:
-            result["findings"].append(
-                {
-                    "severity": "high",
-                    "title": "Possible impossible travel",
-                    "detail": f"User {it['user']} switched source IP within {rapid_switch_minutes} min "
-                    f"{it['rapid_switches']} time(s) — faster than physical travel.",
-                }
-            )
-        for u in result["per_user"]:
-            if u["distinct_ips"] > max_distinct_ips:
-                result["findings"].append(
-                    {
-                        "severity": "medium",
-                        "title": "High distinct source-IP count",
-                        "detail": f"User {u['user']} logged in from {u['distinct_ips']} distinct IPs in {days} days.",
-                    }
-                )
-        for b in result["failed_bursts"]:
-            result["findings"].append(
-                {
-                    "severity": "medium",
-                    "title": "Failed-login burst",
-                    "detail": f"User {b['user']} had {b['failed']} failed logins (brute-force / stuffing pressure).",
-                }
-            )
+        _collect_login_signals(conn, result, days, rapid_switch_minutes, failed_burst_threshold)
+        result["findings"].extend(_login_findings(result, days, rapid_switch_minutes, max_distinct_ips))
         result["status"] = "ok"
     finally:
         conn.close()
     return result
+
+
+def _add_login_summary(result: dict[str, Any], failed_burst_threshold: int, r: dict[str, Any]) -> None:
+    distinct_ips = int(r.get("distinct_ips", 0) or 0)
+    failed = int(r.get("failed", 0) or 0)
+    entry = {
+        "user": str(r.get("user_name", "")),
+        "distinct_ips": distinct_ips,
+        "logins": int(r.get("logins", 0) or 0),
+        "failed": failed,
+    }
+    result["per_user"].append(entry)
+    if failed >= failed_burst_threshold:
+        result["failed_bursts"].append({"user": entry["user"], "failed": failed})
+
+
+def _collect_login_signals(conn: Any, result: dict[str, Any], days: int, rapid_switch_minutes: int, failed_burst_threshold: int) -> None:
+    """Per-user LOGIN_HISTORY summary, then the impossible-travel signal."""
+    warnings: list[str] = result["warnings"]
+    _for_each_row(
+        conn,
+        "SELECT user_name, COUNT(DISTINCT client_ip) AS distinct_ips, COUNT(*) AS logins, "
+        "       SUM(IFF(is_success = 'NO', 1, 0)) AS failed "
+        "FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY "
+        f"WHERE event_timestamp >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608 — int day window
+        "GROUP BY user_name ORDER BY distinct_ips DESC LIMIT 1000",
+        functools.partial(_add_login_summary, result, failed_burst_threshold),
+        _warn_with(warnings, "Could not summarize LOGIN_HISTORY"),
+    )
+
+    # Impossible travel: consecutive successful logins from a different IP
+    # within rapid_switch_minutes (computed server-side via LAG).
+    _for_each_row(
+        conn,
+        "WITH ordered AS ( "
+        "  SELECT user_name, client_ip, event_timestamp, "
+        "         LAG(client_ip) OVER (PARTITION BY user_name ORDER BY event_timestamp) AS prev_ip, "
+        "         LAG(event_timestamp) OVER (PARTITION BY user_name ORDER BY event_timestamp) AS prev_ts "
+        "  FROM SNOWFLAKE.ACCOUNT_USAGE.LOGIN_HISTORY "
+        f"  WHERE is_success = 'YES' AND event_timestamp >= DATEADD(day, -{days}, CURRENT_TIMESTAMP()) "  # nosec B608
+        ") "
+        "SELECT user_name, COUNT(*) AS rapid_switches "
+        "FROM ordered "
+        "WHERE prev_ip IS NOT NULL AND client_ip != prev_ip "
+        f"  AND TIMESTAMPDIFF(minute, prev_ts, event_timestamp) <= {rapid_switch_minutes} "  # nosec B608
+        "GROUP BY user_name HAVING COUNT(*) > 0 ORDER BY rapid_switches DESC LIMIT 1000",
+        lambda r: result["impossible_travel"].append(
+            {"user": str(r.get("user_name", "")), "rapid_switches": int(r.get("rapid_switches", 0) or 0)}
+        ),
+        _warn_with(warnings, "Could not compute impossible-travel signal"),
+    )
+
+
+def _login_findings(result: dict[str, Any], days: int, rapid_switch_minutes: int, max_distinct_ips: int) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for it in result["impossible_travel"]:
+        findings.append(
+            {
+                "severity": "high",
+                "title": "Possible impossible travel",
+                "detail": f"User {it['user']} switched source IP within {rapid_switch_minutes} min "
+                f"{it['rapid_switches']} time(s) — faster than physical travel.",
+            }
+        )
+    for u in result["per_user"]:
+        if u["distinct_ips"] > max_distinct_ips:
+            findings.append(
+                {
+                    "severity": "medium",
+                    "title": "High distinct source-IP count",
+                    "detail": f"User {u['user']} logged in from {u['distinct_ips']} distinct IPs in {days} days.",
+                }
+            )
+    for b in result["failed_bursts"]:
+        findings.append(
+            {
+                "severity": "medium",
+                "title": "Failed-login burst",
+                "detail": f"User {b['user']} had {b['failed']} failed logins (brute-force / stuffing pressure).",
+            }
+        )
+    return findings
 
 
 def discover_auth_posture(
@@ -1759,111 +1429,226 @@ def discover_auth_posture(
         return result
 
     try:
-        # Account-level default network policy.
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT")
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                val = str(r.get("value", "") or "")
-                if val:
-                    result["account_network_policy"] = val
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not read account network policy: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        # Network policies (allow/block IP ranges).
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SHOW NETWORK POLICIES")
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                result["network_policies"].append(
-                    {
-                        "name": str(r.get("name", "")),
-                        "allowed_ip_count": int(r.get("entries_in_allowed_ip_list", 0) or 0),
-                        "blocked_ip_count": int(r.get("entries_in_blocked_ip_list", 0) or 0),
-                    }
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not list network policies: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        # Per-user auth matrix.
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT name, disabled, has_password, has_rsa_public_key, ext_authn_duo, "
-                "       default_role, type, has_mfa "
-                "FROM SNOWFLAKE.ACCOUNT_USAGE.USERS "
-                "WHERE deleted_on IS NULL LIMIT 10000"
-            )
-            keys = [d[0].lower() for d in cursor.description] if cursor.description else []
-            for row in cursor.fetchall():
-                r = dict(zip(keys, row))
-                name = str(r.get("name", ""))
-                if not name:
-                    continue
-                disabled = _sf_truthy(r.get("disabled"))
-                has_password = _sf_truthy(r.get("has_password"))
-                has_key_pair = _sf_truthy(r.get("has_rsa_public_key"))
-                # MFA: ext_authn_duo (Duo) or the newer has_mfa column when present.
-                has_mfa = _sf_truthy(r.get("ext_authn_duo")) or _sf_truthy(r.get("has_mfa"))
-                user_type = str(r.get("type", "") or "").upper()  # PERSON / SERVICE / LEGACY_SERVICE / NULL
-                auth_methods = []
-                if has_password:
-                    auth_methods.append("password")
-                if has_key_pair:
-                    auth_methods.append("key_pair")
-                if not auth_methods:
-                    auth_methods.append("federated_or_none")
-                result["users"].append(
-                    {
-                        "name": name,
-                        "disabled": disabled,
-                        "auth_methods": auth_methods,
-                        "has_mfa": has_mfa,
-                        "user_type": user_type or "UNKNOWN",
-                        "default_role": str(r.get("default_role", "") or ""),
-                    }
-                )
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not query USERS auth matrix: {sanitize_error(exc)}")
-        finally:
-            cursor.close()
-
-        # Findings.
-        if result["users"] and not result["account_network_policy"]:
-            result["findings"].append(
-                {
-                    "severity": "medium",
-                    "title": "No account-level network policy",
-                    "detail": "No default NETWORK_POLICY is set at the account level; logins are not IP-restricted by default.",
-                }
-            )
-        # Password users without MFA (skip disabled + non-person service identities,
-        # which legitimately use key-pair/OAuth and cannot enroll interactive MFA).
-        weak = [
-            u["name"]
-            for u in result["users"]
-            if not u["disabled"] and "password" in u["auth_methods"] and not u["has_mfa"] and u["user_type"] in ("PERSON", "UNKNOWN", "")
-        ]
-        if weak:
-            result["findings"].append(
-                {
-                    "severity": "high",
-                    "title": "Password users without MFA",
-                    "detail": f"{len(weak)} enabled human user(s) authenticate with a password and have no MFA enrolled.",
-                }
-            )
+        _collect_auth_posture(conn, result)
+        result["findings"].extend(_auth_posture_findings(result))
         result["status"] = "ok"
     finally:
         conn.close()
     return result
+
+
+def _set_account_network_policy(result: dict[str, Any], r: dict[str, Any]) -> None:
+    val = str(r.get("value", "") or "")
+    if val:
+        result["account_network_policy"] = val
+
+
+def _add_network_policy(result: dict[str, Any], r: dict[str, Any]) -> None:
+    result["network_policies"].append(
+        {
+            "name": str(r.get("name", "")),
+            "allowed_ip_count": int(r.get("entries_in_allowed_ip_list", 0) or 0),
+            "blocked_ip_count": int(r.get("entries_in_blocked_ip_list", 0) or 0),
+        }
+    )
+
+
+def _add_auth_user(result: dict[str, Any], r: dict[str, Any]) -> None:
+    name = str(r.get("name", ""))
+    if not name:
+        return
+    disabled = _sf_truthy(r.get("disabled"))
+    has_password = _sf_truthy(r.get("has_password"))
+    has_key_pair = _sf_truthy(r.get("has_rsa_public_key"))
+    # MFA: ext_authn_duo (Duo) or the newer has_mfa column when present.
+    has_mfa = _sf_truthy(r.get("ext_authn_duo")) or _sf_truthy(r.get("has_mfa"))
+    user_type = str(r.get("type", "") or "").upper()  # PERSON / SERVICE / LEGACY_SERVICE / NULL
+    auth_methods = []
+    if has_password:
+        auth_methods.append("password")
+    if has_key_pair:
+        auth_methods.append("key_pair")
+    if not auth_methods:
+        auth_methods.append("federated_or_none")
+    result["users"].append(
+        {
+            "name": name,
+            "disabled": disabled,
+            "auth_methods": auth_methods,
+            "has_mfa": has_mfa,
+            "user_type": user_type or "UNKNOWN",
+            "default_role": str(r.get("default_role", "") or ""),
+        }
+    )
+
+
+def _collect_auth_posture(conn: Any, result: dict[str, Any]) -> None:
+    """Account default network policy, network policies, then the per-user auth matrix."""
+    warnings: list[str] = result["warnings"]
+    # Account-level default network policy.
+    _for_each_row(
+        conn,
+        "SHOW PARAMETERS LIKE 'NETWORK_POLICY' IN ACCOUNT",
+        functools.partial(_set_account_network_policy, result),
+        _warn_with(warnings, "Could not read account network policy"),
+    )
+    # Network policies (allow/block IP ranges).
+    _for_each_row(
+        conn,
+        "SHOW NETWORK POLICIES",
+        functools.partial(_add_network_policy, result),
+        _warn_with(warnings, "Could not list network policies"),
+    )
+    # Per-user auth matrix.
+    _for_each_row(
+        conn,
+        "SELECT name, disabled, has_password, has_rsa_public_key, ext_authn_duo, "
+        "       default_role, type, has_mfa "
+        "FROM SNOWFLAKE.ACCOUNT_USAGE.USERS "
+        "WHERE deleted_on IS NULL LIMIT 10000",
+        functools.partial(_add_auth_user, result),
+        _warn_with(warnings, "Could not query USERS auth matrix"),
+    )
+
+
+def _auth_posture_findings(result: dict[str, Any]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    if result["users"] and not result["account_network_policy"]:
+        findings.append(
+            {
+                "severity": "medium",
+                "title": "No account-level network policy",
+                "detail": "No default NETWORK_POLICY is set at the account level; logins are not IP-restricted by default.",
+            }
+        )
+    # Password users without MFA (skip disabled + non-person service identities,
+    # which legitimately use key-pair/OAuth and cannot enroll interactive MFA).
+    weak = [
+        u["name"]
+        for u in result["users"]
+        if not u["disabled"] and "password" in u["auth_methods"] and not u["has_mfa"] and u["user_type"] in ("PERSON", "UNKNOWN", "")
+    ]
+    if weak:
+        findings.append(
+            {
+                "severity": "high",
+                "title": "Password users without MFA",
+                "detail": f"{len(weak)} enabled human user(s) authenticate with a password and have no MFA enrolled.",
+            }
+        )
+    return findings
+
+
+def _has_any(payload: dict[str, Any], *keys: str) -> bool:
+    """``status == "ok"`` and at least one of *keys* is non-empty."""
+    return payload.get("status") == "ok" and any(payload.get(key) for key in keys)
+
+
+def _estate_object_graph(report: Any, account: str | None) -> None:
+    # Object + dependency graph: tables/views → DATA_STORE nodes,
+    # OBJECT_DEPENDENCIES → DEPENDS_ON lineage edges.
+    #
+    # The object graph's grants/memberships come from ACCOUNT_USAGE, which lags
+    # 45min–2h, so a freshly-created role hierarchy is invisible. Overlay
+    # zero-latency SHOW-based identity (current state) and prefer it over the
+    # lagged rows so new users/roles/grants graph immediately. Best-effort.
+    _sf_object_graph = discover_object_dependencies(account=account)
+    try:
+        _sf_live_identity = discover_identity_live(account=account)
+        _sf_object_graph = merge_live_identity_into_object_graph(_sf_object_graph, _sf_live_identity)
+    except Exception:  # noqa: BLE001 — live overlay is supplementary; never fail the object graph
+        pass
+    if _has_any(_sf_object_graph, "objects", "dependencies", "grants", "role_memberships", "users"):
+        report.snowflake_object_graph_data = _sf_object_graph
+
+
+def _estate_login_anomalies(report: Any, account: str | None) -> None:
+    # Login anomalies: impossible travel, high distinct-IP, failed-login bursts.
+    _sf_login_anomalies = discover_login_anomalies(account=account)
+    if _has_any(_sf_login_anomalies, "findings"):
+        report.snowflake_login_anomalies_data = _sf_login_anomalies
+
+
+def _estate_exfil(report: Any, account: str | None) -> None:
+    # Exfil graph: outbound shares, external stages, sensitivity-tagged objects.
+    _sf_exfil = discover_data_exfil(account=account)
+    if _has_any(_sf_exfil, "outbound_shares", "external_stages", "sensitive_objects"):
+        report.snowflake_exfil_graph_data = _sf_exfil
+
+
+def _estate_auth_posture(report: Any, account: str | None) -> None:
+    # Auth posture: per-user MFA/key-pair/password matrix + network policies.
+    _sf_auth = discover_auth_posture(account=account)
+    if _has_any(_sf_auth, "users", "network_policies"):
+        report.snowflake_auth_posture_data = _sf_auth
+
+
+def _estate_services(report: Any, account: str | None) -> None:
+    # Services: warehouses (compute) + database/schema containment hierarchy.
+    _sf_services = discover_snowflake_services(account=account)
+    # Organization → Accounts roll-up (opt-in, ORGADMIN-gated). Carried on the
+    # services payload under ``organization`` so the graph builder can parent
+    # the account node(s) under the org without a new top-level report field.
+    # A single account / missing ORGADMIN no-ops cleanly (non-ok status).
+    try:
+        _sf_org = discover_organization(account=account)
+        if isinstance(_sf_org, dict) and _has_any(_sf_org, "accounts"):
+            _sf_services["organization"] = _sf_org
+    except Exception:  # noqa: BLE001 — org roll-up is supplementary; never fail the scan
+        pass
+    if _has_any(_sf_services, "warehouses", "databases", "schemas"):
+        report.snowflake_services_data = _sf_services
+
+
+def _estate_pipeline(report: Any, account: str | None) -> None:
+    # Pipeline objects: tasks (automation), streams (CDC), pipes (ingestion).
+    _sf_pipeline = discover_snowflake_pipeline(account=account)
+    if _has_any(_sf_pipeline, "tasks", "streams", "pipes"):
+        report.snowflake_pipeline_data = _sf_pipeline
+
+
+def _estate_integrations(report: Any, account: str | None) -> None:
+    # Integrations: storage/API/external-access/security/notification/catalog.
+    _sf_integrations = discover_snowflake_integrations(account=account)
+    if _has_any(_sf_integrations, "integrations"):
+        report.snowflake_integrations_data = _sf_integrations
+
+
+def _estate_external_data(report: Any, account: str | None) -> None:
+    # External data: iceberg + external tables (open-table-format / query-in-place).
+    _sf_external = discover_snowflake_external_data(account=account)
+    if _has_any(_sf_external, "iceberg_tables", "external_tables"):
+        report.snowflake_external_data_data = _sf_external
+
+
+def _estate_governance(report: Any, account: str | None) -> None:
+    # Governance: ACCESS_HISTORY reads + Cortex agent telemetry + derived risk
+    # findings. De-duplicated against object-dependency and exfil discoveries.
+    _sf_governance = discover_governance(account=account).to_dict()
+    if _sf_governance.get("access_records") or _sf_governance.get("agent_usage") or _sf_governance.get("findings"):
+        report.snowflake_governance_data = {
+            "status": "ok",
+            "account": _sf_governance.get("account", ""),
+            "discovered_at": _sf_governance.get("discovered_at", ""),
+            "summary": _sf_governance.get("summary", {}),
+            "access_records": _sf_governance.get("access_records", []),
+            "agent_usage": _sf_governance.get("agent_usage", []),
+            "findings": _sf_governance.get("findings", []),
+            "warnings": _sf_governance.get("warnings", []),
+        }
+
+
+def _estate_activity(report: Any, account: str | None) -> None:
+    # Activity timeline: QUERY_HISTORY (365-day lookback) + AI observability
+    # events. Summarized onto the account node.
+    _sf_activity = discover_activity(account=account).to_dict()
+    if (
+        (_sf_activity.get("summary") or {}).get("total_queries")
+        or _sf_activity.get("query_history")
+        or _sf_activity.get("observability_events")
+    ):
+        _sf_activity["status"] = "ok"
+        report.snowflake_activity_data = _sf_activity
 
 
 def enrich_report_with_snowflake_estate(report: Any, *, conn: Any = None, account: str | None = None) -> None:
@@ -1899,123 +1684,19 @@ def enrich_report_with_snowflake_estate(report: Any, *, conn: Any = None, accoun
     with contextlib.ExitStack() as _estate_stack:
         if conn is not None:
             _estate_stack.enter_context(_borrowed_connection(conn))
-        # Object + dependency graph: tables/views → DATA_STORE nodes,
-        # OBJECT_DEPENDENCIES → DEPENDS_ON lineage edges. Best-effort.
-        #
-        # The object graph's grants/memberships come from ACCOUNT_USAGE, which lags
-        # 45min–2h, so a freshly-created role hierarchy is invisible. Overlay
-        # zero-latency SHOW-based identity (current state) and prefer it over the
-        # lagged rows so new users/roles/grants graph immediately. Best-effort.
-        try:
-            _sf_object_graph = discover_object_dependencies(account=account)
+        for stage in (
+            _estate_object_graph,
+            _estate_login_anomalies,
+            _estate_exfil,
+            _estate_auth_posture,
+            _estate_services,
+            _estate_pipeline,
+            _estate_integrations,
+            _estate_external_data,
+            _estate_governance,
+            _estate_activity,
+        ):
             try:
-                _sf_live_identity = discover_identity_live(account=account)
-                _sf_object_graph = merge_live_identity_into_object_graph(_sf_object_graph, _sf_live_identity)
-            except Exception:  # noqa: BLE001 — live overlay is supplementary; never fail the object graph
+                stage(report, account)
+            except Exception:  # noqa: BLE001 — each estate block is supplementary; never fail the scan
                 pass
-            if _sf_object_graph.get("status") == "ok" and (
-                _sf_object_graph.get("objects")
-                or _sf_object_graph.get("dependencies")
-                or _sf_object_graph.get("grants")
-                or _sf_object_graph.get("role_memberships")
-                or _sf_object_graph.get("users")
-            ):
-                report.snowflake_object_graph_data = _sf_object_graph
-        except Exception:  # noqa: BLE001 — object graph is supplementary; never fail the scan
-            pass
-        # Login anomalies: impossible travel, high distinct-IP, failed-login bursts. Best-effort.
-        try:
-            _sf_login_anomalies = discover_login_anomalies(account=account)
-            if _sf_login_anomalies.get("status") == "ok" and _sf_login_anomalies.get("findings"):
-                report.snowflake_login_anomalies_data = _sf_login_anomalies
-        except Exception:  # noqa: BLE001 — anomaly detection is supplementary; never fail the scan
-            pass
-        # Exfil graph: outbound shares, external stages, sensitivity-tagged objects. Best-effort.
-        try:
-            _sf_exfil = discover_data_exfil(account=account)
-            if _sf_exfil.get("status") == "ok" and (
-                _sf_exfil.get("outbound_shares") or _sf_exfil.get("external_stages") or _sf_exfil.get("sensitive_objects")
-            ):
-                report.snowflake_exfil_graph_data = _sf_exfil
-        except Exception:  # noqa: BLE001 — exfil graph is supplementary; never fail the scan
-            pass
-        # Auth posture: per-user MFA/key-pair/password matrix + network policies. Best-effort.
-        try:
-            _sf_auth = discover_auth_posture(account=account)
-            if _sf_auth.get("status") == "ok" and (_sf_auth.get("users") or _sf_auth.get("network_policies")):
-                report.snowflake_auth_posture_data = _sf_auth
-        except Exception:  # noqa: BLE001 — auth posture is supplementary; never fail the scan
-            pass
-        # Services: warehouses (compute) + database/schema containment hierarchy. Best-effort.
-        try:
-            _sf_services = discover_snowflake_services(account=account)
-            # Organization → Accounts roll-up (opt-in, ORGADMIN-gated). Carried on the
-            # services payload under ``organization`` so the graph builder can parent
-            # the account node(s) under the org without a new top-level report field.
-            # A single account / missing ORGADMIN no-ops cleanly (non-ok status).
-            try:
-                _sf_org = discover_organization(account=account)
-                if isinstance(_sf_org, dict) and _sf_org.get("status") == "ok" and _sf_org.get("accounts"):
-                    _sf_services["organization"] = _sf_org
-            except Exception:  # noqa: BLE001 — org roll-up is supplementary; never fail the scan
-                pass
-            if _sf_services.get("status") == "ok" and (
-                _sf_services.get("warehouses") or _sf_services.get("databases") or _sf_services.get("schemas")
-            ):
-                report.snowflake_services_data = _sf_services
-        except Exception:  # noqa: BLE001 — service inventory is supplementary; never fail the scan
-            pass
-        # Pipeline objects: tasks (automation), streams (CDC), pipes (ingestion). Best-effort.
-        try:
-            _sf_pipeline = discover_snowflake_pipeline(account=account)
-            if _sf_pipeline.get("status") == "ok" and (
-                _sf_pipeline.get("tasks") or _sf_pipeline.get("streams") or _sf_pipeline.get("pipes")
-            ):
-                report.snowflake_pipeline_data = _sf_pipeline
-        except Exception:  # noqa: BLE001 — pipeline inventory is supplementary; never fail the scan
-            pass
-        # Integrations: storage/API/external-access/security/notification/catalog. Best-effort.
-        try:
-            _sf_integrations = discover_snowflake_integrations(account=account)
-            if _sf_integrations.get("status") == "ok" and _sf_integrations.get("integrations"):
-                report.snowflake_integrations_data = _sf_integrations
-        except Exception:  # noqa: BLE001 — integration inventory is supplementary; never fail the scan
-            pass
-        # External data: iceberg + external tables (open-table-format / query-in-place). Best-effort.
-        try:
-            _sf_external = discover_snowflake_external_data(account=account)
-            if _sf_external.get("status") == "ok" and (_sf_external.get("iceberg_tables") or _sf_external.get("external_tables")):
-                report.snowflake_external_data_data = _sf_external
-        except Exception:  # noqa: BLE001 — external-data inventory is supplementary; never fail the scan
-            pass
-        # Governance: ACCESS_HISTORY reads + Cortex agent telemetry + derived risk
-        # findings. De-duplicated against object-dependency and exfil discoveries.
-        # Best-effort.
-        try:
-            _sf_governance = discover_governance(account=account).to_dict()
-            if _sf_governance.get("access_records") or _sf_governance.get("agent_usage") or _sf_governance.get("findings"):
-                report.snowflake_governance_data = {
-                    "status": "ok",
-                    "account": _sf_governance.get("account", ""),
-                    "discovered_at": _sf_governance.get("discovered_at", ""),
-                    "summary": _sf_governance.get("summary", {}),
-                    "access_records": _sf_governance.get("access_records", []),
-                    "agent_usage": _sf_governance.get("agent_usage", []),
-                    "findings": _sf_governance.get("findings", []),
-                    "warnings": _sf_governance.get("warnings", []),
-                }
-        except Exception:  # noqa: BLE001 — governance is supplementary; never fail the scan
-            pass
-        # Activity timeline: QUERY_HISTORY (365-day lookback) + AI observability
-        # events. Summarized onto the account node. Best-effort.
-        try:
-            _sf_activity = discover_activity(account=account).to_dict()
-            if (
-                (_sf_activity.get("summary") or {}).get("total_queries")
-                or _sf_activity.get("query_history")
-                or _sf_activity.get("observability_events")
-            ):
-                _sf_activity["status"] = "ok"
-                report.snowflake_activity_data = _sf_activity
-        except Exception:  # noqa: BLE001 — activity timeline is supplementary; never fail the scan
-            pass

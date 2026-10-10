@@ -55,7 +55,7 @@ _FORK_GUARD_INDEX_CANON = "createuniqueindexifnotexistsaudit_log_team_prevsig_un
 
 # The newest migration. One place to update when a revision lands, so the
 # single-head property and the head's identity do not drift apart.
-ALEMBIC_HEAD = "20261007_03"
+ALEMBIC_HEAD = "20261010_01"
 
 
 def _canonical_sql(text: str) -> str:
@@ -1005,3 +1005,25 @@ def test_preprovisioned_maintenance_roles_are_validated_without_privileged_alter
         assert f"CREATE ROLE {role} {login} NOSUPERUSER NOBYPASSRLS" in block
         assert f"{invalid_login} OR rolsuper OR rolbypassrls" in block
         assert f"RAISE EXCEPTION '{role} must be {login} NOSUPERUSER NOBYPASSRLS'" in block
+
+
+def test_scan_snapshot_migration_is_chained_tenant_isolated_and_matches_runtime_schema(monkeypatch) -> None:
+    import pytest
+
+    from agent_bom.api.postgres_scan_snapshot import POSTGRES_SCAN_SNAPSHOTS_V1
+
+    monkeypatch.setitem(sys.modules, "alembic", SimpleNamespace(op=SimpleNamespace()))
+    migration = _load_module(VERSIONS_DIR / "20261010_01_scan_snapshots.py", "scan_snapshots_upgrade")
+    assert (migration.revision, migration.down_revision) == ("20261010_01", "20261007_03")
+    assert migration.POSTGRES_SCAN_SNAPSHOTS_V1 is POSTGRES_SCAN_SNAPSHOTS_V1
+    assert POSTGRES_SCAN_SNAPSHOTS_V1 in RUNTIME_SCHEMA_SQL.read_text()
+    for table in ("scan_snapshot_jobs", "scan_snapshot_rows"):
+        assert f"CREATE TABLE IF NOT EXISTS {table} (" in POSTGRES_SCAN_SNAPSHOTS_V1
+        assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in POSTGRES_SCAN_SNAPSHOTS_V1
+        assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in POSTGRES_SCAN_SNAPSHOTS_V1
+    assert "VALUES ('scan_snapshots',1,now())" in POSTGRES_SCAN_SNAPSHOTS_V1
+    assert "WHERE canonical_id <> ''" in POSTGRES_SCAN_SNAPSHOTS_V1
+    # op.execute wraps the DDL in SQLAlchemy text(); a colon would become a bind parameter.
+    assert ":" not in POSTGRES_SCAN_SNAPSHOTS_V1
+    with pytest.raises(NotImplementedError):
+        migration.downgrade()

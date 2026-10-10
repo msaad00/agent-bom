@@ -717,3 +717,44 @@ BEGIN
 END $$;
 INSERT INTO control_plane_schema_versions(component,version,updated_at)
     VALUES ('campaign_evidence_state',1,now()) ON CONFLICT(component) DO NOTHING;
+
+-- Materialized scan finding snapshots (ADR-015, migration 20261010_01).
+CREATE TABLE IF NOT EXISTS scan_snapshot_jobs (
+    tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0),
+    job_id TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    authority_evidence_at TEXT NOT NULL,
+    authority_completed_at TEXT NOT NULL,
+    authoritative BOOLEAN NOT NULL,
+    incomplete_reasons TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    row_schema_version INTEGER NOT NULL,
+    row_count INTEGER NOT NULL,
+    materialized_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_scan_snapshot_jobs_completed ON scan_snapshot_jobs (completed_at);
+CREATE TABLE IF NOT EXISTS scan_snapshot_rows (
+    tenant_id TEXT NOT NULL CHECK (length(btrim(tenant_id)) > 0),
+    job_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    finding_identity TEXT NOT NULL,
+    canonical_id TEXT NOT NULL DEFAULT '',
+    severity TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, job_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_scan_snapshot_rows_job ON scan_snapshot_rows (tenant_id, job_id);
+CREATE INDEX IF NOT EXISTS idx_scan_snapshot_rows_canonical ON scan_snapshot_rows (tenant_id, canonical_id) WHERE canonical_id <> '';
+ALTER TABLE scan_snapshot_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_snapshot_jobs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS scan_snapshot_jobs_tenant_isolation ON scan_snapshot_jobs;
+CREATE POLICY scan_snapshot_jobs_tenant_isolation ON scan_snapshot_jobs USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON scan_snapshot_jobs TO agent_bom_app, agent_bom_rls_maintenance;
+ALTER TABLE scan_snapshot_rows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scan_snapshot_rows FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS scan_snapshot_rows_tenant_isolation ON scan_snapshot_rows;
+CREATE POLICY scan_snapshot_rows_tenant_isolation ON scan_snapshot_rows USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant()) WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON scan_snapshot_rows TO agent_bom_app, agent_bom_rls_maintenance;
+INSERT INTO control_plane_schema_versions(component,version,updated_at) VALUES ('scan_snapshots',1,now()) ON CONFLICT(component) DO UPDATE SET version=GREATEST(control_plane_schema_versions.version,1);

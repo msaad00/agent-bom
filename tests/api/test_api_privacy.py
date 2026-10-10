@@ -282,6 +282,23 @@ def test_tenant_data_delete_removes_only_authenticated_tenant(tenant_stores) -> 
     assert len(tenant_stores["keys"].list_keys(tenant_id="tenant-b")) == 1
 
 
+def test_tenant_data_delete_purges_only_the_tenants_scan_snapshots(tenant_stores) -> None:
+    from agent_bom.api.scan_snapshot_store import InMemoryScanSnapshotStore, set_scan_snapshot_store
+
+    snapshots = InMemoryScanSnapshotStore()
+    for tenant in ("tenant-a", "tenant-b"):
+        snapshots.put_snapshot(tenant, f"job-{tenant}", {"completed_at": "2026-10-01T00:00:00+00:00"}, [{"finding_identity": "f"}])
+    set_scan_snapshot_store(snapshots)
+    try:
+        response = delete_tenant_data("tenant-a", _request("tenant-a"), dry_run=False, confirm_tenant_id="tenant-a")
+    finally:
+        set_scan_snapshot_store(None)
+
+    assert response["deleted"]["scan_snapshots"] == 1
+    assert snapshots.get_meta("tenant-a") == {}
+    assert set(snapshots.get_meta("tenant-b")) == {"job-tenant-b"}
+
+
 def test_postgres_key_purge_is_bound_to_current_tenant() -> None:
     class _Connection:
         def __init__(self) -> None:

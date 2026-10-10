@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-10-09",
+  "generated_on": "2026-10-10",
   "version": "0.108.4",
   "metrics": [
     {
@@ -28,7 +28,7 @@
     },
     {
       "name": "GitHub workflow files",
-      "value": 40,
+      "value": 41,
       "source": ".github/workflows",
       "notes": "Counts .yml and .yaml workflow definitions."
     },

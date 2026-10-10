@@ -1333,11 +1333,14 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
-        # Services pull before steps run. Forks and Dependabot keep anonymous
-        # pulls; trusted runs use the same registry credentials as releases.
-        credentials:
-          username: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && secrets.DOCKERHUB_USERNAME || '' }}
-          password: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && secrets.DOCKERHUB_TOKEN || '' }}
+        # Services pull before steps run. Anonymous pulls need an empty mapping:
+        # the runner rejects present username/password keys with blank values.
+        credentials: >-
+          ${{ fromJSON(
+            github.actor != 'dependabot[bot]' &&
+            (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+            secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN &&
+            format('{{"username":{0},"password":{1}}}', toJSON(secrets.DOCKERHUB_USERNAME), toJSON(secrets.DOCKERHUB_TOKEN)) || '{}') }}
         env:
           POSTGRES_PASSWORD: testpass
           POSTGRES_DB: agentbom_test

@@ -1167,6 +1167,7 @@ from agent_bom.api.pipeline import (  # noqa: E402
 from agent_bom.api.routes.adoption import router as _adoption_router  # noqa: E402
 from agent_bom.api.routes.agent_lifecycle import router as _agent_lifecycle_router  # noqa: E402
 from agent_bom.api.routes.agent_manifest import router as _agent_manifest_router  # noqa: E402
+from agent_bom.api.routes.ai_scans import router as _ai_scans_router  # noqa: E402
 from agent_bom.api.routes.assets import router as _assets_router  # noqa: E402
 from agent_bom.api.routes.blueprints import router as _blueprints_router  # noqa: E402
 from agent_bom.api.routes.campaigns import router as _campaigns_router  # noqa: E402
@@ -1264,6 +1265,7 @@ for _router in (
     _reports_router,
     _runtime_blueprints_router,
     _scan_router,
+    _ai_scans_router,
     _schedules_router,
     _self_posture_router,
     _skills_router,
@@ -1287,12 +1289,9 @@ from agent_bom.api.agent_identity_store import register_local_identity_verifier 
 
 register_local_identity_verifier()
 
-# Re-export proxy push functions for backward compatibility
-# Re-export connectors helpers for backward compatibility
+# Re-export proxy, connectors and scan helpers for backward compatibility
 from agent_bom.api.routes.connectors import _load_registry  # noqa: E402, F401
 from agent_bom.api.routes.proxy import push_proxy_alert, push_proxy_metrics  # noqa: E402, F401
-
-# Re-export scan helpers for backward compatibility
 from agent_bom.api.routes.scan import _dataclass_to_dict, _sanitize_api_path  # noqa: E402, F401
 
 _cleanup_task: asyncio.Task | None = None

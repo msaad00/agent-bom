@@ -9,10 +9,10 @@ that family's security posture verbatim by reusing its helpers:
 
 * Local-path scans are **disabled by default** and, when enabled, confined to a
   configured scan root (``AGENT_BOM_API_SCAN_ROOT``) via
-  :func:`agent_bom.api.routes.scan._api_scan_path_or_400` — no absolute paths,
+  :func:`agent_bom.api.scan_path_jail._api_scan_path_or_400` — no absolute paths,
   no ``..`` traversal, no symlink escape, owner-checked.
 * The blocking scan runs **off the event loop** under shared backpressure via
-  :func:`agent_bom.api.routes.scan._ai_scan_call`.
+  :func:`agent_bom.api.ai_scan_runtime._ai_scan_call`.
 
 Endpoints:
     POST /v1/skills/scan   scan skill/instruction targets, persist, return verdicts
@@ -118,7 +118,8 @@ async def run_skills_scan(
     """
     # Reuse the sibling scan family's confinement + offload helpers verbatim so
     # the skills scan inherits the exact same security posture and backpressure.
-    from agent_bom.api.routes.scan import _ai_scan_call, _api_scan_path_or_400
+    from agent_bom.api.ai_scan_runtime import _ai_scan_call
+    from agent_bom.api.scan_path_jail import _api_scan_path_or_400
     from agent_bom.api.skills_scan_store import SkillsScanRun
     from agent_bom.skills_service import scan_skill_targets
 

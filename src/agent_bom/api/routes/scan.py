@@ -7,30 +7,66 @@ import contextlib
 import hashlib
 import json
 import logging
-import math
-import os
-import sys
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Mapping
 from datetime import datetime, timezone
 from functools import partial
-from pathlib import Path
 from typing import Annotated, Any, Literal, NamedTuple, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from werkzeug.security import safe_join
 
 from agent_bom.api import findings_current, job_status_count_cache
+from agent_bom.api.ai_scan_runtime import (  # noqa: F401 - re-exported route-module API
+    _ai_scan_call,
+    _dataclass_to_dict,
+)
+from agent_bom.api.bulk_findings_ingest import (  # noqa: F401 - re-exported route-module API
+    _BULK_FINDINGS_MAX_ITEMS,
+    _BULK_FINDINGS_SOURCE_MAX_LENGTH,
+    BulkFindingsRequest,
+    PackageCheckRequest,
+    _coerce_bulk_cvss,
+    _coerce_bulk_severity,
+    _derive_bulk_finding_id,
+    _normalized_bulk_finding,
+)
 from agent_bom.api.finding_collection import collect_scan_findings
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
+from agent_bom.api.finding_list_helpers import (  # noqa: F401 - re-exported route-module API
+    _ALLOWED_FINDING_SEVERITIES,
+    _ALLOWED_FINDING_SORTS,
+    _ALLOWED_FINDING_STATUSES,
+    _DEFAULT_FINDING_STATUS,
+    _FACET_LITERAL_SEVERITY_BANDS,
+    _FACET_PAYLOAD_SCOPE_KEYS,
+    _FINDING_GROUP_MAX_OCCURRENCES,
+    _FINDING_GROUP_OCCURRENCE_SAMPLE,
+    _FRESHNESS_BUCKETS,
+    _finding_occurrence_summary,
+    _freshness_bucket,
+    _normalize_facet_severity,
+    _normalize_finding_sort,
+    _serialize_finding_group,
+)
 from agent_bom.api.finding_list_projection import FindingListInclude, finding_list_projection, list_include_or_422, project_list_row
 from agent_bom.api.finding_reachability import project_persisted_graph_reachability
 from agent_bom.api.finding_read_context import finding_read_snapshot, read_once
+from agent_bom.api.finding_row_shapes import (  # noqa: F401 - re-exported route-module API
+    _EMPTY_FIELD_VALUES,
+    _SUPPLEMENTARY_BACKFILL_FIELDS,
+    _backfill_supplementary_fields,
+    _finding_key,
+    _iter_package_findings,
+    _normalize_finding_identifiers,
+    _package_base_name,
+    _package_identity,
+    _row_vuln_id,
+    _scan_source_labels,
+)
 from agent_bom.api.finding_snapshot_metadata import snapshot_metadata
 from agent_bom.api.finding_suppression import project_current_suppressions
 from agent_bom.api.findings_current import _finding_snapshot_jobs, current_scan_jobs
@@ -44,22 +80,35 @@ from agent_bom.api.idempotency_store import (
     idempotency_reservation_lease_seconds,
 )
 from agent_bom.api.models import (
-    BrowserExtensionsRequest,
-    DatasetCardsRequest,
     InventoryResponse,
     JobStatus,
-    ModelFilesRequest,
-    ModelProvenanceRequest,
-    PromptScanRequest,
     ScanJob,
     ScanRequest,
-    TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_job
 from agent_bom.api.read_models import FindingsResponse, JobsResponse, documented
 from agent_bom.api.remediation_view import CurrentRemediationResponse
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
+from agent_bom.api.scan_cohorts import (  # noqa: F401 - re-exported route-module API
+    _CORRELATION_COHORT_NAMESPACE,
+    correlation_cohort_id,
+    correlation_cohort_parent_job_id,
+)
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
+from agent_bom.api.scan_job_views import (  # noqa: F401 - re-exported route-module API
+    _inventory_packages_from_agents,
+    _job_response_payload,
+    _job_summary_payload,
+    _redact_scan_result_for_response,
+)
+from agent_bom.api.scan_path_jail import (  # noqa: F401 - re-exported route-module API
+    _LOCAL_SCAN_DISABLE_VALUES,
+    _api_local_scans_enabled,
+    _api_scan_path_or_400,
+    _api_scan_root,
+    _enforce_api_scan_path_owner,
+    _sanitize_api_path,
+)
 from agent_bom.api.stores import (
     _get_graph_store,
     _get_idempotency_store,
@@ -73,7 +122,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.canonical_ids import canonical_finding_id, canonical_id
+from agent_bom.canonical_ids import canonical_id
 from agent_bom.evidence.agent_bom import AgentBomDocument
 from agent_bom.evidence.scan_agent_bom import AgentSelectionError, build_scan_agent_bom
 from agent_bom.finding_runtime_evidence import (
@@ -83,7 +132,6 @@ from agent_bom.finding_runtime_evidence import (
     compliance_tags_from_finding_row,
 )
 from agent_bom.finding_scope import (
-    FINDING_SEVERITY_FILTERS,
     FindingClass,
     canonical_finding_severity_filter,
 )
@@ -92,11 +140,7 @@ from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
 
-_CORRELATION_COHORT_NAMESPACE = uuid.UUID("4ed03a68-3d20-5e02-971f-66f17c235c91")
 _logger = logging.getLogger(__name__)
-_LOCAL_SCAN_DISABLE_VALUES = {"0", "false", "no", "off", "disabled"}
-_BULK_FINDINGS_MAX_ITEMS = 1000
-_BULK_FINDINGS_SOURCE_MAX_LENGTH = 128
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -109,158 +153,15 @@ def _require_json_content_type(request: Request) -> None:
         raise HTTPException(status_code=422, detail="Content-Type must be application/json")
 
 
-def _api_local_scans_enabled() -> bool:
-    configured = os.getenv("AGENT_BOM_API_LOCAL_PATH_SCANS", os.getenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", "disabled"))
-    return configured.strip().lower() not in _LOCAL_SCAN_DISABLE_VALUES
-
-
 async def _scan_graph_compute_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     """Run graph rendering/derivation for scan subresources off the event loop."""
     return await asyncio.to_thread(fn, *args, **kwargs)
-
-
-async def _ai_scan_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
-    """Run blocking dedicated AI-scan work off-loop under shared backpressure."""
-    try:
-        async with adaptive_backpressure("ai_scan"):
-            return await anyio.to_thread.run_sync(partial(fn, *args, **kwargs))
-    except BackpressureRejectedError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail=exc.to_dict(),
-            headers={"Retry-After": str(exc.retry_after_seconds)},
-        ) from exc
 
 
 # Shared off-loop hub ingest write path (also used by /v1/compliance/ingest).
 # Aliased here so existing references / monkeypatch targets keep working.
 _hub_store_call = hub_store_call
 _bulk_ingest_store_writes = hub_ingest_store_writes
-
-
-def _api_scan_root() -> Path:
-    """Return the configured API filesystem scan root.
-
-    API-local path scans are disabled unless explicitly enabled. Workstation
-    pilots can set ``AGENT_BOM_API_LOCAL_PATH_SCANS=enabled`` and optionally
-    scope ``AGENT_BOM_API_SCAN_ROOT`` to a tenant workspace mount.
-    """
-    configured = os.getenv("AGENT_BOM_API_SCAN_ROOT", "").strip()
-    root = Path(configured).expanduser() if configured else Path.home()
-    try:
-        resolved = root.resolve()
-    except (OSError, RuntimeError) as exc:
-        from agent_bom.security import SecurityError
-
-        raise SecurityError("Configured scan root is not available") from exc
-    if not resolved.exists() or not resolved.is_dir():
-        from agent_bom.security import SecurityError
-
-        raise SecurityError("Configured scan root is not available")
-    return resolved
-
-
-def _enforce_api_scan_path_owner(resolved: Path, root: Path) -> None:
-    """Reject paths not owned by the API process unless explicitly allowed."""
-    if os.getenv("AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER", "").strip().lower() in {"1", "true", "yes", "on"}:
-        return
-    if os.name == "nt":
-        return
-    from agent_bom.security import SecurityError
-
-    try:
-        uid = os.getuid()
-        root_stat = root.stat()
-        path_stat = resolved.stat()
-    except OSError as exc:
-        raise SecurityError("Path is not available") from exc
-    if root_stat.st_uid != uid or path_stat.st_uid != uid:
-        raise SecurityError("Path owner is outside the API scan boundary")
-
-
-def _sanitize_api_path(user_path: str) -> str:
-    """Validate and sanitize a user-supplied path from an API request.
-
-    Interprets ``user_path`` as relative to the configured API scan root
-    (absolute paths are rejected). The resolved path is normalised, has any
-    symlinks resolved, and is verified to remain within the scan root
-    using ``os.path.commonpath`` before being returned.
-    """
-    from agent_bom.security import SecurityError
-
-    if not _api_local_scans_enabled():
-        raise SecurityError("Local filesystem scans are disabled")
-
-    # Normalise basic whitespace
-    user_path = (user_path or "").strip()
-    if not user_path:
-        raise SecurityError("Empty paths are not allowed")
-
-    # 1. Reject absolute paths — API callers must use paths relative to the scan root.
-    if os.path.isabs(user_path):
-        raise SecurityError(f"Absolute paths are not allowed: {user_path}")
-
-    # 2. Reject path traversal in raw input (../ segments)
-    if ".." in user_path.split(os.sep):
-        raise SecurityError(f"Path traversal not allowed: {user_path}")
-
-    # 3. Compute fixed root and join user path under it
-    scan_root = _api_scan_root()
-    root = os.path.realpath(str(scan_root))
-    candidate = safe_join(root, user_path)
-    if candidate is None:
-        raise SecurityError("Path resolves outside configured scan root")
-
-    # 4. Resolve to real absolute path (follows symlinks)
-    try:
-        resolved_path = Path(candidate).resolve(strict=True)
-    except OSError as exc:
-        raise SecurityError("Path does not exist inside configured scan root") from exc
-
-    # 5. Containment check — ensure resolved path stays within the configured root.
-    if os.path.commonpath([root, os.path.realpath(str(resolved_path))]) != root:
-        raise SecurityError("Path resolves outside configured scan root")
-
-    current = Path(root)
-    for part in Path(user_path).parts:
-        current = current / part
-        try:
-            if current.is_symlink():
-                raise SecurityError("Symlink path components are not allowed for API local scans")
-        except OSError as exc:
-            raise SecurityError("Path does not exist inside configured scan root") from exc
-
-    flags = os.O_RDONLY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = -1
-    try:
-        fd = os.open(candidate, flags)
-        opened = os.fstat(fd)
-        resolved_stat = resolved_path.stat()
-        if (opened.st_dev, opened.st_ino) != (resolved_stat.st_dev, resolved_stat.st_ino):
-            raise SecurityError("Path changed during validation")
-    except OSError as exc:
-        raise SecurityError("Path cannot be opened safely inside configured scan root") from exc
-    finally:
-        if fd >= 0:
-            os.close(fd)
-
-    _enforce_api_scan_path_owner(resolved_path, scan_root)
-
-    return str(resolved_path)
-
-
-def _api_scan_path_or_400(user_path: str) -> str:
-    from agent_bom.security import SecurityError, sanitize_text
-
-    try:
-        return _sanitize_api_path(user_path)
-    except SecurityError as exc:
-        _logger.warning("blocked local API scan path: %s", sanitize_text(exc))
-        if str(exc) == "Local filesystem scans are disabled":
-            raise HTTPException(status_code=400, detail="Local filesystem scans are disabled") from exc
-        raise HTTPException(status_code=400, detail="Invalid scan path") from exc
 
 
 # Local-path fields on a ScanRequest that must be confined to the API scan jail
@@ -303,17 +204,6 @@ def _sanitize_scan_request_paths(body: ScanRequest, *, tenant_id: str = "") -> S
     if not updates:
         return body
     return body.model_copy(update=updates)
-
-
-def _dataclass_to_dict(obj: object) -> object:
-    """Convert a dataclass to dict, handling nested dataclasses."""
-    import dataclasses
-
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _dataclass_to_dict(v) for k, v in dataclasses.asdict(obj).items()}
-    if isinstance(obj, list):
-        return [_dataclass_to_dict(i) for i in obj]
-    return obj
 
 
 def _request_header(request: Request, key: str) -> str:
@@ -440,197 +330,16 @@ def persisted_finding_evidence(
     }
 
 
-class BulkFindingsRequest(BaseModel):
-    """Normalized finding ingest for headless clients and agent runtimes."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    findings: list[dict[str, Any]] = Field(min_length=1, max_length=_BULK_FINDINGS_MAX_ITEMS)
-    source: str = Field(default="api", min_length=1, max_length=_BULK_FINDINGS_SOURCE_MAX_LENGTH)
-    schema_version: str = Field(default="v1", min_length=1, max_length=32)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    tenant_id: str | None = Field(default=None, description="Deprecated compatibility field; request tenant scope is authoritative.")
-    observed_at: str | None = Field(
-        default=None,
-        description="Observation timestamp from scan completion; defaults to ingest time when omitted.",
-    )
-    reconcile_absent: bool = Field(
-        default=False,
-        description=("When true, mark open findings in the same source scope that are absent from this batch as resolved at observed_at."),
-    )
-
-    @field_validator("findings")
-    @classmethod
-    def _findings_must_be_objects(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        for item in value:
-            if not item:
-                raise ValueError("findings must contain non-empty objects")
-        return value
-
-    @field_validator("source")
-    @classmethod
-    def _source_must_be_stable_label(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("source is required")
-        return normalized
-
-
-class PackageCheckRequest(BaseModel):
-    """Pinned package check shared with the CLI and MCP surfaces."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    package: str = Field(min_length=1, max_length=512)
-    ecosystem: str = Field(default="npm", min_length=1, max_length=32)
-    version: str | None = Field(default=None, max_length=256)
-    offline: bool = False
-
-    @field_validator("package")
-    @classmethod
-    def _package_must_not_be_blank(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("package is required")
-        return normalized
-
-    @field_validator("ecosystem")
-    @classmethod
-    def _ecosystem_must_be_supported(cls, value: str) -> str:
-        from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
-        from agent_bom.mcp_server_runtime import validate_ecosystem
-
-        return validate_ecosystem(value, SUPPORTED_PACKAGE_ECOSYSTEM_SET)
-
-
 def _bulk_ingested_findings_for_tenant(tenant_id: str) -> list[dict[str, Any]]:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     return [item for item in get_compliance_hub_store().list(tenant_id) if isinstance(item, dict) and item.get("origin") == "bulk_ingest"]
 
 
-def _derive_bulk_finding_id(row: dict[str, Any], *, source: str) -> str:
-    """Return a deterministic identity key for a bulk finding lacking an ``id``.
-
-    Idempotency requires the identity key to be a pure function of finding
-    content — never the per-attempt ``batch_id`` or wall clock. We fold in the
-    stable discriminators (source, rule/vuln, location, package) via the shared
-    ``uuid5`` canonicaliser so a resent identical batch collapses onto the same
-    rows instead of appending duplicates.
-    """
-    raw_asset = row.get("asset")
-    asset = raw_asset if isinstance(raw_asset, dict) else {}
-    rule = row.get("vulnerability_id") or row.get("cve_id") or row.get("rule_id") or row.get("title") or ""
-    location = row.get("location") or row.get("file_path") or asset.get("location") or ""
-    package = row.get("package") or row.get("package_name") or asset.get("name") or asset.get("identifier") or ""
-    return canonical_finding_id(source, str(rule), str(location), str(package))
-
-
-def _coerce_bulk_severity(value: Any, *, ordinal: int) -> str:
-    """Validate/normalise a bulk finding's severity, failing closed on bad types.
-
-    A non-string severity (nested object, number, list) cannot be honestly
-    mapped to a severity bucket — accepting it materialised a row that leaked the
-    value verbatim and never matched the severity filter. Reject it with a 422.
-    A string severity is normalised to the canonical enum; an unrecognised label
-    maps to ``unknown`` explicitly (never leaked as-is).
-    """
-    if value is None:
-        return "unknown"
-    if not isinstance(value, str):
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: severity must be a string severity label, not {type(value).__name__}",
-        )
-    from agent_bom.core.severity import normalize_severity
-
-    return normalize_severity(value)
-
-
-def _coerce_bulk_cvss(value: Any, *, ordinal: int) -> float | None:
-    """Validate/coerce a bulk finding's cvss_score to a 0.0-10.0 float or null.
-
-    A non-numeric string (``"NaNstring"``), a nested object, NaN/inf, or an
-    out-of-range number cannot be an honest CVSS base score — accepting it left a
-    value that never matched a cvss filter. Reject it with a 422. ``None`` /
-    absent is allowed (no score); a numeric string that parses cleanly in range
-    is coerced to float.
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: cvss_score must be a number in 0.0-10.0 or null, not bool",
-        )
-    if isinstance(value, (int, float)):
-        score = float(value)
-    elif isinstance(value, str):
-        try:
-            score = float(value)
-        except ValueError:
-            raise HTTPException(
-                status_code=422,
-                detail=f"finding {ordinal}: cvss_score {value!r} is not a number in 0.0-10.0",
-            ) from None
-    else:
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: cvss_score must be a number in 0.0-10.0 or null, not {type(value).__name__}",
-        )
-    if not math.isfinite(score) or not (0.0 <= score <= 10.0):
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: cvss_score must be a finite number within 0.0-10.0",
-        )
-    return score
-
-
-def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str, ordinal: int) -> dict[str, Any]:
-    payload = dict(row)
-    client_id = row.get("id")
-    # Client-stable ids win; otherwise derive a content-deterministic id so
-    # resends collapse (idempotent) rather than mint a fresh batch_id:ordinal.
-    payload["id"] = str(client_id) if client_id else _derive_bulk_finding_id(row, source=source)
-    payload.setdefault("source", source)
-    # Fail closed on garbage severity/cvss types instead of materialising a row
-    # that leaks the value verbatim and never matches the severity/cvss filter.
-    payload["severity"] = _coerce_bulk_severity(row.get("severity"), ordinal=ordinal)
-    cvss = _coerce_bulk_cvss(row.get("cvss_score"), ordinal=ordinal)
-    if cvss is None:
-        payload.pop("cvss_score", None)
-    else:
-        payload["cvss_score"] = cvss
-    payload["origin"] = "bulk_ingest"
-    payload["batch_id"] = batch_id
-    payload["bulk_ordinal"] = ordinal
-    return payload
-
-
 def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from agent_bom.finding_scope import safe_finding_response_payload
 
     return [safe_finding_response_payload(project_list_row(row)) for row in rows]
-
-
-def _scan_source_labels(job: ScanJob) -> list[str]:
-    labels: list[str] = []
-    req = job.request
-    labels.extend(req.images)
-    if req.inventory:
-        labels.append("inventory")
-    if req.k8s:
-        labels.append("kubernetes")
-    if req.sbom:
-        labels.append("sbom-import")
-    if req.external_scan:
-        labels.append("external_scan")
-    if req.repo_url and str(req.repo_url).strip():
-        labels.append(str(req.repo_url).strip())
-    labels.extend(req.connectors)
-    labels.extend(req.filesystem_paths)
-    labels.extend(req.agent_projects)
-    return labels or ["local-agents"]
 
 
 def _finding_identity(finding: dict[str, Any]) -> str:
@@ -642,46 +351,6 @@ def _finding_identity(finding: dict[str, Any]) -> str:
     from agent_bom.api.findings_current import finding_identity
 
     return finding_identity(finding)
-
-
-def _finding_key(finding: dict[str, Any]) -> str:
-    vuln_id = finding.get("vulnerability_id") or finding.get("cve_id") or finding.get("id") or finding.get("title") or ""
-    raw_asset = finding.get("asset")
-    asset = raw_asset if isinstance(raw_asset, dict) else {}
-    package = finding.get("package") or finding.get("package_name") or asset.get("name", "")
-    return f"{vuln_id}:{package}"
-
-
-def _row_vuln_id(finding: dict[str, Any]) -> str:
-    """Return the CVE/advisory identifier for a finding, source-agnostic.
-
-    The unified stream carries it under ``cve_id`` while the blast-radius and
-    package-vulnerability representations carry the same value under
-    ``vulnerability_id`` — normalizing here lets the three collapse together.
-    """
-    return str(finding.get("cve_id") or finding.get("vulnerability_id") or "").strip()
-
-
-def _package_identity(finding: dict[str, Any]) -> tuple[str, str, str]:
-    """Read package identity across unified, blast-radius and nested projections."""
-    evidence = finding.get("evidence")
-    evidence = evidence if isinstance(evidence, dict) else {}
-    package = str(finding.get("package") or finding.get("package_name") or evidence.get("package_name") or "").strip()
-    if not package:
-        title = str(finding.get("title") or "")
-        if ": " in title:
-            package = title.split(": ", 1)[1].strip()
-    version = str(finding.get("package_version") or evidence.get("package_version") or "").strip()
-    # npm scoped names start with @; only a later @ separates the version.
-    if "@" in package[1:]:
-        package, suffix = package.rsplit("@", 1)
-        version = version or suffix
-    ecosystem = str(finding.get("ecosystem") or evidence.get("ecosystem") or "").strip().lower()
-    return package.lower(), version, ecosystem
-
-
-def _package_base_name(finding: dict[str, Any]) -> str:
-    return _package_identity(finding)[0]
 
 
 def _canonical_group_key(finding: dict[str, Any]) -> str:
@@ -732,87 +401,6 @@ def _row_asset_key(finding: dict[str, Any]) -> str:
         if text:
             return text.lower()
     return ""
-
-
-_EMPTY_FIELD_VALUES: tuple[Any, ...] = (None, "", [], {})
-
-# Descriptive/structural fields safe to backfill from the supplementary
-# (blast-radius / package-vulnerability) representations onto the authoritative
-# unified finding. Reachability and VEX verdicts are deliberately excluded: the
-# unified stream is the source of truth for those and must not be overridden by
-# a coarser blast-radius projection (see the unified-stream-wins contract).
-_SUPPLEMENTARY_BACKFILL_FIELDS: tuple[str, ...] = (
-    "package",
-    "package_name",
-    "package_version",
-    "ecosystem",
-    "summary",
-    "description",
-    "cvss_score",
-    "cvss_vector",
-    "attack_vector",
-    "attack_complexity",
-    "privileges_required",
-    "user_interaction",
-    "network_exploitable",
-    "references",
-    "fixed_version",
-    "epss_score",
-    "upstream_ids",
-    "epss_cve_id",
-    "kev_cve_id",
-    "affected_agents",
-    "affected_servers",
-    "exposed_credentials",
-    "exposed_tools",
-    "phantom_tools",
-)
-
-
-def _backfill_supplementary_fields(base: dict[str, Any], incoming: dict[str, Any]) -> None:
-    """Fill only empty descriptive fields on ``base`` from ``incoming``.
-
-    Never overrides a value the authoritative row already carries, so the
-    unified finding's identifiers and reachability stay intact while
-    package/CVE metadata from the supplementary representations is preserved.
-    """
-    for field in _SUPPLEMENTARY_BACKFILL_FIELDS:
-        value = incoming.get(field)
-        if value in _EMPTY_FIELD_VALUES:
-            continue
-        if base.get(field) in _EMPTY_FIELD_VALUES:
-            base[field] = value
-
-
-def _normalize_finding_identifiers(finding: dict[str, Any]) -> dict[str, Any]:
-    """Guarantee every list row carries ``cve_id``/``title``/``finding_type``.
-
-    Blast-radius and package-vulnerability rows carry the identifier only under
-    ``vulnerability_id`` and omit ``title``/``finding_type``; normalize those so
-    no row surfaces null identifiers regardless of which representation seeded it.
-    """
-    vuln = finding.get("cve_id") or finding.get("vulnerability_id")
-    if vuln:
-        if not finding.get("cve_id"):
-            finding["cve_id"] = vuln
-        if not finding.get("vulnerability_id"):
-            finding["vulnerability_id"] = vuln
-    if not finding.get("title"):
-        package = finding.get("package") or finding.get("package_name") or ""
-        # Never fall back to summary/description here: those are replay-only,
-        # redacted-on-read fields, and the title is not redacted — deriving it
-        # from them would leak sensitive free-text past _redact_finding_page.
-        if vuln and package:
-            finding["title"] = f"{vuln}: {package}"
-        elif vuln:
-            finding["title"] = str(vuln)
-        elif package:
-            finding["title"] = f"Vulnerability in {package}"
-        else:
-            finding["title"] = str(finding.get("finding_type") or "Finding")
-    if not finding.get("finding_type"):
-        finding["finding_type"] = "CVE" if vuln else "VULNERABILITY"
-    return finding
 
 
 def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, Any]:
@@ -884,59 +472,6 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
 
     row["framework_tags"] = compliance_tags_from_finding_row(row)
     return row
-
-
-def _iter_package_findings(job: ScanJob) -> list[dict[str, Any]]:
-    result = job.result or {}
-    findings: list[dict[str, Any]] = []
-    scan_sources = _scan_source_labels(job)
-    for agent in result.get("agents", []) or []:
-        if not isinstance(agent, dict):
-            continue
-        agent_name = str(agent.get("name") or "")
-        for server in agent.get("mcp_servers", []) or []:
-            if not isinstance(server, dict):
-                continue
-            server_name = str(server.get("name") or "")
-            for package in server.get("packages", []) or []:
-                if not isinstance(package, dict):
-                    continue
-                package_name = str(package.get("name") or "")
-                for vuln in package.get("vulnerabilities", []) or []:
-                    if not isinstance(vuln, dict):
-                        continue
-                    vuln_id = str(vuln.get("id") or vuln.get("vulnerability_id") or "")
-                    findings.append(
-                        {
-                            "id": vuln_id,
-                            "vulnerability_id": vuln_id,
-                            "package": package_name,
-                            "package_version": package.get("version"),
-                            "ecosystem": package.get("ecosystem"),
-                            "severity": str(vuln.get("severity") or "unknown").lower(),
-                            "summary": vuln.get("summary") or vuln.get("description"),
-                            "source": "package_vulnerability",
-                            "scan_id": str((job.result or {}).get("scan_id") or job.job_id),
-                            "scan_sources": scan_sources,
-                            "affected_agents": [agent_name] if agent_name else [],
-                            "affected_servers": [server_name] if server_name else [],
-                            "cvss_score": vuln.get("cvss_score"),
-                            "cvss_vector": vuln.get("cvss_vector"),
-                            "attack_vector": vuln.get("attack_vector"),
-                            "attack_complexity": vuln.get("attack_complexity"),
-                            "privileges_required": vuln.get("privileges_required"),
-                            "user_interaction": vuln.get("user_interaction"),
-                            "network_exploitable": bool(vuln.get("network_exploitable")),
-                            "epss_score": vuln.get("epss_score"),
-                            "upstream_ids": vuln.get("upstream_ids"),
-                            "epss_cve_id": vuln.get("epss_cve_id"),
-                            "kev_cve_id": vuln.get("kev_cve_id"),
-                            "fixed_version": vuln.get("fixed_version"),
-                            "is_kev": bool(vuln.get("is_kev")),
-                            "references": vuln.get("references", []),
-                        }
-                    )
-    return findings
 
 
 def _effective_reach_lookup(job: ScanJob) -> dict[str, dict[str, Any]]:
@@ -1181,94 +716,6 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     return project_current_suppressions(findings, tenant_id)
 
 
-def _inventory_packages_from_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Retain package occurrences; display names are not asset identities."""
-    packages: list[dict[str, Any]] = []
-    seen: set[tuple[str, ...]] = set()
-    for agent_index, agent in enumerate(agents):
-        agent_name = str(agent.get("name") or "")
-        agent_id = str(agent.get("canonical_id") or agent.get("stable_id") or agent.get("agent_id") or "")
-        environment = str(agent.get("environment") or "")
-        for server_index, server in enumerate(agent.get("mcp_servers", []) or []):
-            if not isinstance(server, dict):
-                continue
-            server_name = str(server.get("name") or "")
-            server_id = str(server.get("canonical_id") or server.get("stable_id") or server.get("server_id") or "")
-            # Missing identity stays scoped to this observed row; never merge
-            # otherwise distinct runtime occurrences by their display labels.
-            agent_key = agent_id or f"unidentified-agent-row:{agent_index}"
-            server_key = server_id or f"unidentified-server-row:{agent_index}:{server_index}"
-            for package in server.get("packages", []) or []:
-                if not isinstance(package, dict):
-                    continue
-                row = {
-                    "name": str(package.get("name") or ""),
-                    "version": str(package.get("version") or ""),
-                    "ecosystem": str(package.get("ecosystem") or ""),
-                    "agent": agent_name,
-                    "server": server_name,
-                    "agent_id": agent_id,
-                    "server_id": server_id,
-                    "environment": environment,
-                }
-                key = (str(row["name"]), str(row["version"]), str(row["ecosystem"]), agent_key, server_key, environment)
-                if key in seen:
-                    continue
-                seen.add(key)
-                packages.append(row)
-    return packages
-
-
-def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
-    """Build a lightweight summary payload for list surfaces."""
-    from agent_bom.security import sanitize_sensitive_payload, sanitize_text
-
-    result = job.result if isinstance(job.result, dict) else {}
-    summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
-    aggregation = result.get("aggregation") if isinstance(result.get("aggregation"), dict) else None
-    scan_run = result.get("scan_run") if isinstance(result.get("scan_run"), dict) else None
-    warnings_value = result.get("warnings")
-    warnings: list[Any] = warnings_value if isinstance(warnings_value, list) else []
-    raw_warning_count = (scan_run or {}).get("warning_count")
-    warning_count = max(0, min(100, raw_warning_count)) if isinstance(raw_warning_count, int) else len(warnings)
-    generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
-    scan_timestamp = result.get("scan_timestamp") or generated_at
-    auto_correlation = sanitize_sensitive_payload(result.get("auto_correlation"))
-    request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
-    return {
-        "job_id": job.job_id,
-        # Locator only: graph persistence may still be unavailable or incomplete.
-        "graph_scan_id": str(result.get("scan_id") or job.job_id) if job.status == JobStatus.DONE else None,
-        "tenant_id": job.tenant_id,
-        "batch_id": job.batch_id,
-        "correlation_cohort_id": job.correlation_cohort_id,
-        "correlation_cohort_manifest_hash": job.correlation_cohort_manifest_hash,
-        "correlation_max_age_hours": job.correlation_max_age_hours,
-        "parent_job_id": job.parent_job_id,
-        "child_job_ids": list(job.child_job_ids),
-        "target": job.target,
-        "target_index": job.target_index,
-        "target_count": job.target_count,
-        "source_id": job.source_id,
-        "schedule_id": job.schedule_id,
-        "status": job.status,
-        "created_at": job.created_at,
-        "completed_at": job.completed_at,
-        "request": request_payload if isinstance(request_payload, dict) else {},
-        "summary": sanitize_sensitive_payload(summary),
-        "aggregation": sanitize_sensitive_payload(aggregation),
-        **({"auto_correlation": auto_correlation} if isinstance(auto_correlation, dict) else {}),
-        "scan_timestamp": scan_timestamp,
-        "generated_at": generated_at,
-        "scan_run": sanitize_sensitive_payload(scan_run),
-        "scan_outcome": (scan_run or {}).get("outcome"),
-        "warning_count": warning_count,
-        "warnings_preview": sanitize_sensitive_payload(warnings[:3]),
-        "pushed": bool(result.get("pushed")),
-        "error": sanitize_text(job.error, max_len=1_000) if job.error else None,
-    }
-
-
 def _job_for_request(request: Request, job_id: str) -> ScanJob:
     tenant_id = _tenant_id(request)
     in_mem = _jobs_get(job_id, tenant_id=tenant_id)
@@ -1301,63 +748,11 @@ async def _load_job_for_request(request: Request, job_id: str) -> ScanJob:
     )
 
 
-def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Redact the complete scan envelope and drop replay-only finding fields."""
-    if not isinstance(result, dict):
-        return result
-    from agent_bom.cloud.cis_remediation import fail_closed_cis_result
-    from agent_bom.security import sanitize_sensitive_payload
-
-    findings = result.get("findings")
-    envelope = {key: value for key, value in result.items() if key != "findings"}
-    # This is the explicit full-result endpoint.  Redact sensitive content but
-    # do not silently truncate legitimate evidence; callers that only need a
-    # bounded polling envelope use ``/{job_id}/status`` instead.
-    sanitized = sanitize_sensitive_payload(envelope, max_str_len=sys.maxsize)
-    if not isinstance(sanitized, dict):
-        return {"document_type": "AI-BOM", "redaction_error": "scan result sanitizer returned a non-object payload"}
-    redacted = cast(dict[str, Any], fail_closed_cis_result(sanitized))
-    if not isinstance(findings, list):
-        return redacted
-    from agent_bom.finding_scope import safe_finding_response_payload
-
-    redacted["findings"] = [safe_finding_response_payload(item) for item in findings if isinstance(item, Mapping)]
-    return redacted
-
-
-def _job_response_payload(job: ScanJob) -> ScanJob:
-    redacted_result = _redact_scan_result_for_response(job.result)
-    if redacted_result is job.result:
-        return job
-    return job.model_copy(update={"result": redacted_result})
-
-
 async def _job_response_payload_off_loop(job: ScanJob) -> ScanJob:
     """Sanitize a potentially large full result in the bounded worker pool."""
     return cast(
         ScanJob,
         await anyio.to_thread.run_sync(partial(_job_response_payload, job)),
-    )
-
-
-def correlation_cohort_id(*, tenant_id: str, idempotency_key: str) -> str:
-    """Return an immutable tenant-bound cohort id from an explicit request key."""
-
-    tenant = tenant_id.strip()
-    key = idempotency_key.strip()
-    if not tenant or not key or len(key) > 200:
-        raise ValueError("tenant_id and idempotency_key are required for a correlation cohort")
-    return str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant}\x00{key}"))
-
-
-def correlation_cohort_parent_job_id(*, tenant_id: str, correlation_cohort_id: str) -> str:
-    """Return the stable parent job id reserved for one tenant-bound cohort."""
-
-    return str(
-        uuid.uuid5(
-            _CORRELATION_COHORT_NAMESPACE,
-            f"{tenant_id}\x00{correlation_cohort_id}\x00parent",
-        )
     )
 
 
@@ -1398,7 +793,7 @@ def enqueue_correlation_cohort(
     *,
     tenant_id: str,
     triggered_by: str,
-    correlation_cohort_id: str,
+    correlation_cohort_id: str,  # noqa: F811 - parameter shadows the re-exported id helper
     source_requests: list[tuple[str, ScanRequest]],
     external_sources: list[tuple[str, str]] | None = None,
     max_age_hours: int,
@@ -2594,74 +1989,8 @@ def _list_jobs_impl(
     }
 
 
-_ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
-# Lifecycle-status filter (default ``open`` = live posture). ``open`` maps to
-# status IN (open, reopened) in the store; ``resolved`` to status = resolved;
-# ``all`` applies no lifecycle predicate.
-_ALLOWED_FINDING_STATUSES = ("open", "resolved", "all")
-_DEFAULT_FINDING_STATUS = "open"
-_ALLOWED_FINDING_SEVERITIES = FINDING_SEVERITY_FILTERS
-
-
-def _normalize_finding_sort(sort: str) -> str:
-    sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
-    if sort_key not in _ALLOWED_FINDING_SORTS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"invalid sort '{sort}'; accepted values: {', '.join(_ALLOWED_FINDING_SORTS)}",
-        )
-    return sort_key
-
-
-_FRESHNESS_BUCKETS = ("last_24_hours", "last_7_days", "last_30_days", "older", "unavailable")
 _FACET_SCAN_BUDGET = 50_000
 _FACET_DEADLINE_SECONDS = 1.5
-
-
-def _freshness_bucket(row: Mapping[str, Any], *, now: datetime | None = None) -> str:
-    """Classify only an observed timestamp; missing/invalid evidence is unavailable."""
-    raw = row.get("last_observed") or row.get("last_seen")
-    if not isinstance(raw, str) or not raw.strip():
-        return "unavailable"
-    try:
-        observed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return "unavailable"
-    if observed.tzinfo is None:
-        observed = observed.replace(tzinfo=timezone.utc)
-    current = now or datetime.now(timezone.utc)
-    age_seconds = max(0.0, (current.astimezone(timezone.utc) - observed.astimezone(timezone.utc)).total_seconds())
-    if age_seconds <= 24 * 60 * 60:
-        return "last_24_hours"
-    if age_seconds <= 7 * 24 * 60 * 60:
-        return "last_7_days"
-    if age_seconds <= 30 * 24 * 60 * 60:
-        return "last_30_days"
-    return "older"
-
-
-def _normalize_facet_severity(raw: Any) -> str:
-    """Fold a stored severity string into the facet histogram's bands."""
-    value = str(raw or "unknown").strip().lower()
-    if value == "informational":
-        value = "info"
-    if value not in ("critical", "high", "medium", "low", "info", "unknown"):
-        value = "unknown"
-    return value
-
-
-# Scope keys that live in the finding payload (or are computed from it) and so
-# cannot be expressed as a predicate on the current-state table's materialised
-# columns. Their presence disables the severity aggregate below.
-_FACET_PAYLOAD_SCOPE_KEYS = ("provider", "account_ref", "environment", "domain", "finding_class", "q")
-
-# Bands whose filter value equals the persisted string exactly, so the store's
-# ``LOWER(severity) = %s`` predicate selects the same rows the Python walk keeps.
-# ``info`` is excluded because it also folds the persisted ``informational``
-# alias, and ``unknown`` because it also absorbs blank/unrecognised severities —
-# for those two the store predicate is narrower than the walk, so pushing them
-# down would silently drop rows.
-_FACET_LITERAL_SEVERITY_BANDS = frozenset({"critical", "high", "medium", "low"})
 
 
 def _facet_severity_histogram(
@@ -4060,10 +3389,6 @@ def _list_findings_view_impl(
     return envelope
 
 
-_FINDING_GROUP_MAX_OCCURRENCES = 50_000
-_FINDING_GROUP_OCCURRENCE_SAMPLE = 25
-
-
 def _finding_group_identity(row: dict[str, Any]) -> tuple[str, str]:
     """Return the canonical aggregate identity without changing occurrence IDs."""
     supplied_id = str(row.get("finding_group_id") or "").strip()
@@ -4079,57 +3404,6 @@ def _finding_group_identity(row: dict[str, Any]) -> tuple[str, str]:
     if supplied_id and supplied_key == group_key:
         return supplied_id, group_key
     return canonical_id("finding-group", group_key), group_key
-
-
-def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
-    """Project the bounded fields needed to expand a grouped issue row."""
-    return {
-        key: row.get(key)
-        for key in (
-            "finding_id",
-            "occurrence_id",
-            "canonical_id",
-            "asset",
-            "severity",
-            "package_version",
-            "scan_id",
-            "status",
-            "owner",
-            "sla_due_at",
-            "sla_due_at_source",
-            "last_seen",
-            "last_observed",
-            "observation_status",
-            "reconfirmation",
-            "graph_reachable",
-            "graph_min_hop_distance",
-        )
-        if row.get(key) is not None
-    }
-
-
-def _serialize_finding_group(group: dict[str, Any]) -> dict[str, Any]:
-    """Sanitize one selected group and its bounded occurrence sample.
-
-    Grouping may inspect tens of thousands of canonical rows, but only the
-    selected page crosses the API boundary. Raw rows stay private until this
-    point so response redaction runs once for data the caller can receive.
-    """
-    from agent_bom.finding_scope import safe_finding_response_payload
-
-    public = safe_finding_response_payload(project_list_row(group))
-    public["finding_group_id"] = str(group.get("finding_group_id") or "")
-    public["finding_group_key"] = str(group.get("finding_group_key") or "")
-    public["occurrence_count"] = int(group.get("occurrence_count") or 0)
-    public["unreconfirmed_occurrence_count"] = int(group.get("unreconfirmed_occurrence_count") or 0)
-    public["occurrences_truncated"] = bool(group.get("occurrences_truncated"))
-    samples = group.get("_occurrence_rows")
-    public["occurrences"] = [
-        _finding_occurrence_summary(safe_finding_response_payload(row))
-        for row in (samples if isinstance(samples, list) else [])
-        if isinstance(row, dict)
-    ]
-    return public
 
 
 @finding_read_snapshot
@@ -4637,158 +3911,3 @@ def list_inventory(
 # ─── Dedicated Scan Endpoints ─────────────────────────────────────────────────
 # Lightweight, synchronous scans for specific asset types.
 # Each returns results directly (no job queue — these are fast local scans).
-
-
-@router.post("/scan/dataset-cards", tags=["scan"], status_code=200)
-async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
-    """Scan directories for HuggingFace dataset cards, DVC files, and data lineage.
-
-    Returns dataset metadata, license info, and security flags
-    (unlicensed data, missing cards, unversioned data, remote sources).
-    """
-    from agent_bom.parsers.dataset_cards import scan_dataset_directory
-
-    results = []
-    safe_dirs = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        safe_dirs.append(resolved)
-        result = await _ai_scan_call(scan_dataset_directory, resolved)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-
-    return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
-
-
-@router.post("/scan/training-pipelines", tags=["scan"], status_code=200)
-async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
-    """Scan directories for ML training pipeline artifacts.
-
-    Detects MLflow runs, W&B metadata, Kubeflow pipeline definitions.
-    Flags unsafe serialization (pickle), missing provenance, exposed credentials.
-    """
-    from agent_bom.parsers.training_pipeline import scan_training_directory
-
-    results = []
-    safe_dirs = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        safe_dirs.append(resolved)
-        result = await _ai_scan_call(scan_training_directory, resolved)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-
-    return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
-
-
-@router.post("/scan/browser-extensions", tags=["scan"], status_code=200)
-async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) -> dict:
-    """Scan installed browser extensions (Chrome, Chromium, Brave, Edge, Firefox).
-
-    Detects dangerous permissions (debugger, nativeMessaging, cookies),
-    AI assistant domain access, and broad host permissions.
-    """
-    from agent_bom.parsers.browser_extensions import discover_browser_extensions
-
-    extensions = await _ai_scan_call(
-        discover_browser_extensions,
-        include_low_risk=request.include_low_risk,
-    )
-    ext_dicts: list[Any] = [e.to_dict() if hasattr(e, "to_dict") else _dataclass_to_dict(e) for e in extensions]
-
-    return {
-        "scan_type": "browser-extensions",
-        "total": len(ext_dicts),
-        "critical": sum(1 for e in ext_dicts if e.get("risk_level") == "critical"),
-        "high": sum(1 for e in ext_dicts if e.get("risk_level") == "high"),
-        "extensions": ext_dicts,
-    }
-
-
-@router.post("/scan/model-provenance", tags=["scan"], status_code=200)
-async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
-    """Check model provenance for HuggingFace and Ollama models.
-
-    Verifies serialization safety (safetensors vs pickle), digest integrity,
-    model card presence, gating status, and public exposure risk.
-    """
-    from agent_bom.cloud.model_provenance import check_hf_models, check_ollama_models
-
-    results: list[Any] = []
-    if request.hf_models:
-        hf_results = await _ai_scan_call(check_hf_models, request.hf_models)
-        results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in hf_results)
-    if request.ollama_models:
-        ollama_results = await _ai_scan_call(check_ollama_models, request.ollama_models)
-        results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in ollama_results)
-
-    return {
-        "scan_type": "model-provenance",
-        "total": len(results),
-        "unsafe_format": sum(1 for r in results if not r.get("is_safe_format", True)),
-        "results": results,
-    }
-
-
-@router.post("/scan/prompt-scan", tags=["scan"], status_code=200)
-async def scan_prompts(request: PromptScanRequest) -> dict:
-    """Scan prompt files for injection patterns, hardcoded secrets, and unsafe instructions.
-
-    Detects prompt injection, jailbreak patterns, hardcoded API keys,
-    shell execution instructions, and data exfiltration patterns.
-    """
-    from agent_bom.parsers.prompt_scanner import scan_prompt_files
-
-    safe_dirs: list[Path] = []
-    all_paths: list[Path] = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        safe_dirs.append(Path(resolved))
-    for f in request.files:
-        resolved = _api_scan_path_or_400(f)
-        all_paths.append(Path(resolved))
-
-    results = []
-    for safe in safe_dirs:
-        result = await _ai_scan_call(scan_prompt_files, root=safe)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-    if all_paths:
-        result = await _ai_scan_call(scan_prompt_files, paths=all_paths)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-
-    return {"scan_type": "prompt-scan", "results": results}
-
-
-@router.post("/scan/model-files", tags=["scan"], status_code=200)
-async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
-    """Scan directories for ML model files and assess serialization safety.
-
-    Detects pickle deserialization risks (.pkl, .pt), verifies file integrity,
-    and flags unsafe model formats.
-    """
-    from agent_bom.model_files import scan_model_files, scan_model_manifests, verify_model_hash
-
-    all_files = []
-    all_manifests = []
-    all_warnings = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        files, warnings = await _ai_scan_call(scan_model_files, resolved)
-        manifests, manifest_warnings = await _ai_scan_call(scan_model_manifests, resolved)
-        all_files.extend(files)
-        all_manifests.extend(manifests)
-        all_warnings.extend(warnings)
-        all_warnings.extend(manifest_warnings)
-
-    if request.verify_hashes:
-        for f in all_files:
-            hash_result = await _ai_scan_call(verify_model_hash, f["path"])
-            f["sha256"] = hash_result.get("sha256")
-
-    return {
-        "scan_type": "model-files",
-        "total": len(all_files),
-        "manifest_total": len(all_manifests),
-        "unsafe": sum(1 for f in all_files if f.get("security_flags")),
-        "files": all_files,
-        "manifests": all_manifests,
-        "warnings": all_warnings,
-    }

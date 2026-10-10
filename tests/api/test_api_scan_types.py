@@ -16,7 +16,7 @@ from starlette.testclient import TestClient
 from agent_bom.api.server import _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 
-_SANITIZE = "agent_bom.api.routes.scan._sanitize_api_path"
+_SANITIZE = "agent_bom.api.scan_path_jail._sanitize_api_path"
 
 # Path under $HOME so the inline commonpath guard in endpoints passes.
 _HOME = os.path.realpath(os.path.expanduser("~"))
@@ -544,6 +544,7 @@ async def test_ai_scan_sheds_work_with_retry_after_under_saturation(monkeypatch)
 
     from fastapi import HTTPException
 
+    from agent_bom.api import ai_scan_runtime
     from agent_bom.api.routes import scan as scan_routes
     from agent_bom.backpressure import BackpressureRejectedError
 
@@ -552,7 +553,7 @@ async def test_ai_scan_sheds_work_with_retry_after_under_saturation(monkeypatch)
         raise BackpressureRejectedError("ai_scan", "concurrency_limit", 3)
         yield
 
-    monkeypatch.setattr(scan_routes, "adaptive_backpressure", reject)
+    monkeypatch.setattr(ai_scan_runtime, "adaptive_backpressure", reject)
 
     with pytest.raises(HTTPException) as exc_info:
         await scan_routes._ai_scan_call(lambda: None)

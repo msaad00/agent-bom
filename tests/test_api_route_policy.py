@@ -151,6 +151,7 @@ def test_unclassified_operation_denied_after_every_authentication_path(monkeypat
     "path,scope",
     [
         ("/v1/graph/query", "graph:read"),
+        ("/v1/graph/compromise", "graph:read"),
         ("/v1/graph/should-i-deploy", "graph:read"),
         ("/v1/runtime/profiles/evaluate", "runtime:read"),
         ("/v1/audit/export/verify", "audit:read"),

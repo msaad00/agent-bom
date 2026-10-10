@@ -2,7 +2,7 @@
 
 `docs/` holds the engineering and operator reference. The onboarding site is
 built from [`../site-docs/`](../site-docs/index.md) and published at
-<https://msaad00.github.io/agent-bom/>. When a topic appears in both, `docs/`
+<https://koda-ai-studio.github.io/agent-bom/>. When a topic appears in both, `docs/`
 owns the reference detail and `site-docs/` owns the walkthrough.
 
 New here? Read [`START_HERE.md`](START_HERE.md) for role-based paths, then

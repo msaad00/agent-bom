@@ -44,6 +44,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Align documentation-site links, package metadata and Action examples with the transferred repository; accept release signatures from its current and historical owners while rejecting unrelated workflows.
+
 - Managed PostgreSQL initialization validates existing maintenance-role attributes without reapplying superuser-only flags. Unsafe existing roles fail initialization; pre-provisioned safe roles remain usable on RDS.
 
 - ClickHouse analytics now creates its database before selecting it for HTTP queries. Connecting to a fresh server no longer fails with `UNKNOWN_DATABASE`; bootstrap retains credentials and stops on authorization errors.

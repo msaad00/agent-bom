@@ -27,7 +27,7 @@ const STARTS: PersonaStart[] = [
   {
     label: "GitHub Action",
     persona: "AppSec / SecOps",
-    command: `uses: msaad00/agent-bom@v${version}`,
+    command: `uses: koda-ai-studio/agent-bom@v${version}`,
     artifact: "SARIF, pull-request summary, and policy exit code",
     href: "/findings",
   },

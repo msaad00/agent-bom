@@ -165,7 +165,7 @@ which is the source of truth for what:
 | Tree | Source of truth for | Format |
 |---|---|---|
 | `docs/` | Engineering + operator reference (architecture, threat model, MCP server, deployment, graph contract, this structure map). | Markdown, read on GitHub. |
-| `site-docs/` | The **published docs site** ([msaad00.github.io/agent-bom](https://msaad00.github.io/agent-bom/)) — getting-started, tutorials, narrative walkthroughs. | MkDocs. |
+| `site-docs/` | The **published docs site** ([koda-ai-studio.github.io/agent-bom](https://koda-ai-studio.github.io/agent-bom/)) — getting-started, tutorials, narrative walkthroughs. | MkDocs. |
 | `README.md` (root) | The repository front door. | Markdown. |
 | `docs/registry/` (`PYPI_README.md`, `DOCKER_HUB*.md`) | Per-channel front doors, kept consistent by the release-consistency gate. | Markdown. |
 

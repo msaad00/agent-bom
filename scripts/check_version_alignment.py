@@ -92,12 +92,12 @@ MANAGED_PATTERNS: tuple[ManagedPattern, ...] = (
     ),
     ManagedPattern(
         "GitHub Action ref",
-        re.compile(r"(msaad00/agent-bom@v)(\d+\.\d+\.\d+)"),
+        re.compile(r"((?:msaad00|koda-ai-studio)/agent-bom@v)(\d+\.\d+\.\d+)"),
         "published",
     ),
     ManagedPattern(
         "consumer pre-commit rev",
-        re.compile(r"(repo: https://github\.com/msaad00/agent-bom\n[#\s]*rev:[ \t]+v)(\d+\.\d+\.\d+)"),
+        re.compile(r"(repo: https://github\.com/(?:msaad00|koda-ai-studio)/agent-bom\n[#\s]*rev:[ \t]+v)(\d+\.\d+\.\d+)"),
         "published",
     ),
     ManagedPattern(

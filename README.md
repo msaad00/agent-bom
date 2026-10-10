@@ -21,7 +21,7 @@
   <a href="#self-host-in-your-environment"><b>Self-host</b></a> ·
   <a href="#deployment-models">Deployment models</a> ·
   <a href="#product-tour">Product tour</a> ·
-  <a href="https://msaad00.github.io/agent-bom/">Docs</a>
+  <a href="https://koda-ai-studio.github.io/agent-bom/">Docs</a>
 </p>
 
 For security, AppSec and GRC teams, agent-bom inventories the AI agents, MCP servers, packages, credential references and infrastructure in a repository, container image, Kubernetes cluster or cloud account. It checks packages against vulnerability advisories and IaC and cloud configuration against security benchmarks, imports findings from the scanners you already run, and traces each finding to the agents, tools and credentials it can reach. The self-hosted control plane centralizes those findings, maps them to compliance frameworks and enforces policy on live MCP traffic.

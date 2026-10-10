@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from agent_bom.integrity import (
+    _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP,
     InstructionFileVerification,
     _compute_sha256,
     _find_sigstore_bundle,
@@ -292,7 +294,7 @@ class TestVerifyInstructionFile:
         cmd = calls[0]
         assert "--certificate-identity-regexp" in cmd
         assert cmd[cmd.index("--certificate-identity-regexp") + 1] == (
-            r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*"
+            r"^https://github\.com/(msaad00|koda-ai-studio)/agent-bom/\.github/workflows/release\.yml@.*$"
         )
         assert "--certificate-oidc-issuer" in cmd
         assert cmd[cmd.index("--certificate-oidc-issuer") + 1] == "https://token.actions.githubusercontent.com"
@@ -461,3 +463,16 @@ class TestDataclass:
         assert v.verified is True
         assert v.rekor_log_index == 42
         assert v.signer_identity == "user@example.com"
+
+
+def test_release_identity_accepts_current_and_legacy_owners_only():
+    pattern = _DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP
+    for owner in ("koda-ai-studio", "msaad00"):
+        assert re.search(pattern, f"https://github.com/{owner}/agent-bom/.github/workflows/release.yml@refs/tags/v0.108.4")
+    for identity in (
+        "https://github.com/other-owner/agent-bom/.github/workflows/release.yml@refs/tags/v0.108.4",
+        "https://github.com/koda-ai-studio/other-repo/.github/workflows/release.yml@refs/tags/v0.108.4",
+        "https://github.com/koda-ai-studio/agent-bom/.github/workflows/other.yml@refs/tags/v0.108.4",
+        "https://attacker.example/https://github.com/msaad00/agent-bom/.github/workflows/release.yml@refs/tags/v0.108.4",
+    ):
+        assert re.search(pattern, identity) is None

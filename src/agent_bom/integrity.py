@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # npm registry provides shasum (SHA-1) and integrity (SHA-512 SRI) in dist metadata
 # PyPI provides sha256 digests in the JSON API
-_DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP = r"https://github\.com/msaad00/agent-bom/\.github/workflows/release\.yml@.*"
+_DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP = r"^https://github\.com/(msaad00|koda-ai-studio)/agent-bom/\.github/workflows/release\.yml@.*$"
 _DEFAULT_COSIGN_CERTIFICATE_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 _COSIGN_CERTIFICATE_IDENTITY_REGEXP_ENV = "AGENT_BOM_COSIGN_CERTIFICATE_IDENTITY_REGEXP"
 _COSIGN_CERTIFICATE_OIDC_ISSUER_ENV = "AGENT_BOM_COSIGN_CERTIFICATE_OIDC_ISSUER"

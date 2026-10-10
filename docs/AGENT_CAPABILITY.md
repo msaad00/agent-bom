@@ -54,7 +54,7 @@ the caller wants to explore or to invoke — not by whether it is human.
 
 | Resource | Location |
 |---|---|
-| Docs site | https://msaad00.github.io/agent-bom/ |
+| Docs site | https://koda-ai-studio.github.io/agent-bom/ |
 | OpenAPI | `docs/openapi/v1.json` |
 | MCP server | `agent-bom mcp server` |
 | First run | `docs/FIRST_RUN.md` |

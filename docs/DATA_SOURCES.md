@@ -26,7 +26,7 @@ cloud grants: [CLOUD_CONNECT.md](CLOUD_CONNECT.md)
 | Source | Mechanism | Enable / first command | Permission boundary |
 |---|---|---|---|
 | **Repo** | Direct scan (filesystem + lockfiles) | `agent-bom agents -p .` | Local read-only; no network unless enrichment enabled |
-| **CI** | Direct scan in pipeline + optional push | `uses: msaad00/agent-bom@v…` or `agent-bom agents … --push-url …/v1/results/push` | CI runner filesystem; push uses API key to *your* control plane |
+| **CI** | Direct scan in pipeline + optional push | `uses: koda-ai-studio/agent-bom@v…` or `agent-bom agents … --push-url …/v1/results/push` | CI runner filesystem; push uses API key to *your* control plane |
 | **MCP** | Config discovery + optional live introspection | `agent-bom agents -p .` or `agent-bom mcp introspect` | Reads MCP configs; no credential values |
 | **Image** | Container image scanner driver | `agent-bom image <ref>` | Local daemon/registry/tarball read |
 | **IaC** | Terraform/K8s/Helm scanner drivers | `agent-bom iac -p .` | Local/IaC tree read-only |

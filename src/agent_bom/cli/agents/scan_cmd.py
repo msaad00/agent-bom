@@ -61,7 +61,7 @@ def scan(**options: Any) -> None:
       2  Usage error — an option or input is invalid.
       3  Stale vulnerability database while --require-fresh-db is enabled.
     \b
-    Full contract: https://msaad00.github.io/agent-bom/reference/exit-codes/
+    Full contract: https://koda-ai-studio.github.io/agent-bom/reference/exit-codes/
     """
 
     run_scan(ScanOptions(**options))

@@ -420,3 +420,12 @@ def test_release_checkout_docs_set_the_image_tag_for_the_tag_they_clone() -> Non
         branches = set(re.findall(r"--branch v(\d+\.\d+\.\d+)", text))
         tags = set(re.findall(r"AGENT_BOM_IMAGE_TAG=(\d+\.\d+\.\d+)", text))
         assert branches == tags == {published}, (rel, branches, tags)
+
+
+def test_current_owner_action_and_precommit_pins_remain_managed() -> None:
+    cva = _load_script("check_version_alignment.py")
+    for text in (
+        "uses: koda-ai-studio/agent-bom@v0.90.0\n",
+        "repo: https://github.com/koda-ai-studio/agent-bom\n  rev: v0.90.0\n",
+    ):
+        assert len(cva.scan_text("docs/example.md", text, "0.108.4")) == 1

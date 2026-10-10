@@ -663,7 +663,7 @@ def main() -> int:
             _fail(f"{skill.relative_to(ROOT)} has stale OpenClaw verify pin(s): {sorted(verify_versions)} != {version}")
     for path in MANAGED_ACTION_REFS:
         text = path.read_text()
-        action_versions = set(re.findall(r"msaad00/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)", text))
+        action_versions = set(re.findall(r"(?:msaad00|koda-ai-studio)/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)", text))
         if action_versions and action_versions != {published}:
             _fail(f"{path.relative_to(ROOT)} has stale GitHub Action ref(s): {sorted(action_versions)} != published {published}")
 

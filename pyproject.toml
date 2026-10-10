@@ -64,7 +64,7 @@ dependencies = [
     "pyjwt>=2.15.0",  # CVE-2026-101918 (nested JWT payload error handling)
     "tornado>=6.5.10",  # Static-file symlink, response-size and cookie-parser security fixes
     # NOTE: stale pyopenssl suppressions were retired after snowflake-connector-python moved to a compatible range.
-    # Tracked: https://github.com/msaad00/agent-bom/issues/930
+    # Tracked: https://github.com/koda-ai-studio/agent-bom/issues/930
     "cryptography>=50.0.0",  # CVE-2026-69247; required by audit chain, proxy response signing, and OIDC.
     # JS/TS source analysis is part of the default scan path. Keep the parser
     # runtime in the base package so clean PyPI installs do not silently fall
@@ -298,13 +298,13 @@ agent_bom_builtin = "agent_bom.connectors:builtin_connector_registrations"
 agent_bom_builtin = "agent_bom.parsers:builtin_inventory_parser_registrations"
 
 [project.urls]
-Homepage = "https://github.com/msaad00/agent-bom"
-Repository = "https://github.com/msaad00/agent-bom"
-Issues = "https://github.com/msaad00/agent-bom/issues"
-Changelog = "https://github.com/msaad00/agent-bom/releases"
-Documentation = "https://github.com/msaad00/agent-bom#readme"
-"Security Policy" = "https://github.com/msaad00/agent-bom/blob/main/SECURITY.md"
-"Trust & Permissions" = "https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md"
+Homepage = "https://github.com/koda-ai-studio/agent-bom"
+Repository = "https://github.com/koda-ai-studio/agent-bom"
+Issues = "https://github.com/koda-ai-studio/agent-bom/issues"
+Changelog = "https://github.com/koda-ai-studio/agent-bom/releases"
+Documentation = "https://github.com/koda-ai-studio/agent-bom#readme"
+"Security Policy" = "https://github.com/koda-ai-studio/agent-bom/blob/main/SECURITY.md"
+"Trust & Permissions" = "https://github.com/koda-ai-studio/agent-bom/blob/main/PERMISSIONS.md"
 
 [tool.uv]
 # Only install core deps by default — extras (cloud, dev) must be explicit.

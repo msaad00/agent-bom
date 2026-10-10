@@ -477,9 +477,9 @@ def demo_story_prewarm_enabled() -> bool:
 
 
 # ── Scan finding snapshots (opt-in, ADR-015) ──────────────────────────────
-# Opt-in writes and differential-verified reads. Reads compare with the current collector before returning a snapshot candidate.
 SCAN_SNAPSHOTS_ENABLED = _bool("AGENT_BOM_SCAN_SNAPSHOTS", False)
 SCAN_SNAPSHOT_READS_ENABLED = _bool("AGENT_BOM_SCAN_SNAPSHOT_READS", False)
+SCAN_SNAPSHOT_FAST_READS_ENABLED = _bool("AGENT_BOM_SCAN_SNAPSHOT_FAST_READS", False)
 
 
 def scan_snapshots_enabled() -> bool:

@@ -25,7 +25,8 @@ def fold(jobs, *, since=None, scan_id=None, require_authoritative_evidence=False
 
 @pytest.mark.parametrize("scenario", ["history", "partial", "empty", "parent", "window", "scan_id", "failed", "alias", "scope"])
 @pytest.mark.parametrize("authoritative", [False, True])
-def test_snapshot_fold_matches_current_selection_lifecycle_and_history(snapshots, monkeypatch, scenario, authoritative):
+@pytest.mark.parametrize("mode", ["qualify", "fast"])
+def test_snapshot_fold_matches_current_selection_lifecycle_and_history(snapshots, monkeypatch, scenario, authoritative, mode):
     old, new = job(8), job(9)
     old.result["findings"][0].update(sla_due_at="2026-12-01T00:00:00+00:00", sla_due_at_source="explicit")
     kwargs = {"require_authoritative_evidence": authoritative}
@@ -54,13 +55,14 @@ def test_snapshot_fold_matches_current_selection_lifecycle_and_history(snapshots
     monkeypatch.setattr(snapshots, "get_rows", spy)
     monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_READS", "0")
     expected = fold(jobs, **kwargs)
-    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_READS", "1")
+    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_READS", "1" if mode == "qualify" else "0")
+    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_FAST_READS", "1" if mode == "fast" else "0")
     assert fold(jobs, **kwargs) == expected
     assert spy.called
     assert [row.model_dump(mode="json") for row in jobs] == before
 
 
-def test_mixed_representations_keep_enrichment_order_via_mismatch_fallback(snapshots, monkeypatch, caplog):
+def test_mixed_representations_preserve_enrichment_order_without_fallback(snapshots, monkeypatch, caplog):
     row = job(9)
     base = {"id": "one", "canonical_id": "one", "title": "one", "source": "secret_scan"}
     row.result["findings"] = [base, {**base, "affected_servers": ["server-a"]}]
@@ -76,7 +78,7 @@ def test_mixed_representations_keep_enrichment_order_via_mismatch_fallback(snaps
     assert scan._iter_scan_findings(row) == expected
     assert expected[0]["affected_servers"] == ["server-a"]
     assert expected[0]["runtime_evidence"] == {"servers_seen": []}
-    assert "outcome=mismatch" in caplog.text
+    assert "outcome=mismatch" not in caplog.text
 
 
 def test_real_report_keeps_nested_packages_blast_radius_and_reach(snapshots, monkeypatch):

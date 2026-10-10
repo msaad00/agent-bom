@@ -27,15 +27,16 @@ def put(store, job):
 
 
 def read(job, legacy, attach=lambda row: row):
+    from agent_bom.api.finding_collection import merge_finding_representations
     from agent_bom.api.scan_snapshot_read import verified_snapshot_findings
 
-    return verified_snapshot_findings(job, lambda: legacy, attach)
+    return verified_snapshot_findings(job, lambda: legacy, attach, merge=merge_finding_representations)
 
 
 def test_matching_snapshot_is_read_and_returned_without_mutating_storage(snapshots, monkeypatch):
     job = _job()
     _, rows = put(snapshots, job)
-    legacy = [{**row["payload"], "live_owner": "new-owner"} for row in rows]
+    legacy = [{**row["payload"], "live_owner": "new-owner"} for row in rows[1:]]
     spy = Mock(wraps=snapshots.get_rows)
     monkeypatch.setattr(snapshots, "get_rows", spy)
     result = read(job, legacy, lambda row: {**row, "live_owner": "new-owner"})
@@ -56,20 +57,20 @@ def test_reads_default_off_and_disabled_never_access_snapshot_storage(snapshots,
 def test_unusable_or_different_snapshot_returns_current_rows(snapshots, reason, caplog):
     job = _job()
     meta, rows = materialize_job_snapshot(job)
-    legacy = deepcopy([row["payload"] for row in rows])
+    legacy = deepcopy([row["payload"] for row in rows[1:]])
     if reason == "version":
         meta["row_schema_version"] += 1
     elif reason == "count":
         meta["row_count"] += 1
     elif reason == "stale":
-        rows[0]["payload"]["title"] = "old value"
+        rows[1]["payload"]["title"] = "old value"
     elif reason == "order":
         rows.reverse()
     if reason != "missing":
         snapshots.put_snapshot("other-tenant" if reason == "tenant" else job.tenant_id, job.job_id, meta, rows)
     assert read(job, legacy) is legacy
     if reason in {"stale", "order"}:
-        assert "outcome=mismatch" in caplog.text
+        assert "outcome=invalid" in caplog.text
 
 
 def test_snapshot_error_falls_back_without_logging_exception_or_payload(snapshots, monkeypatch, caplog):
@@ -81,12 +82,15 @@ def test_snapshot_error_falls_back_without_logging_exception_or_payload(snapshot
 
 
 def test_legacy_failure_is_never_hidden_by_a_snapshot(snapshots):
+    from agent_bom.api.finding_collection import merge_finding_representations
     from agent_bom.api.scan_snapshot_read import verified_snapshot_findings
 
     job = _job()
     put(snapshots, job)
     with pytest.raises(RuntimeError, match="authoritative read failed"):
-        verified_snapshot_findings(job, Mock(side_effect=RuntimeError("authoritative read failed")), lambda row: row)
+        verified_snapshot_findings(
+            job, Mock(side_effect=RuntimeError("authoritative read failed")), lambda row: row, merge=merge_finding_representations
+        )
 
 
 def test_empty_snapshot_matches_empty_scan(snapshots):
@@ -117,7 +121,7 @@ def test_incomplete_snapshot_read_cannot_change_current_rows(snapshots, monkeypa
     job = _job()
     put(snapshots, job)
     stored = snapshots.get_rows(job.tenant_id, job.job_id)
-    legacy = deepcopy([row["payload"] for row in stored])
+    legacy = deepcopy([row["payload"] for row in stored[1:]])
     if damage == "count":
         stored.pop()
     elif damage == "ordinal":
@@ -136,7 +140,7 @@ def test_parity_preserves_json_value_types(snapshots, replacement):
     job = _job()
     job.result["findings"][0]["confidence"] = 1
     meta, rows = put(snapshots, job)
-    legacy = deepcopy([row["payload"] for row in rows])
-    rows[0]["payload"]["confidence"] = replacement
+    legacy = deepcopy([row["payload"] for row in rows[1:]])
+    rows[1]["payload"]["confidence"] = replacement
     snapshots.put_snapshot(job.tenant_id, job.job_id, meta, rows)
     assert read(job, legacy) is legacy

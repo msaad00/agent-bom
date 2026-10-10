@@ -92,9 +92,11 @@ def test_postgres_job_deletion_cleans_snapshots_after_opt_out(monkeypatch, all_t
         pool.close()
 
 
-def test_postgres_verified_snapshot_reads_preserve_tenant_scope(monkeypatch):
+@pytest.mark.parametrize("fast", [False, True])
+def test_postgres_verified_snapshot_reads_preserve_tenant_scope(monkeypatch, fast):
     from copy import deepcopy
 
+    from agent_bom.api.finding_collection import merge_finding_representations
     from agent_bom.api.postgres_common import _new_application_pool
     from agent_bom.api.postgres_scan_snapshot import PostgresScanSnapshotStore
     from agent_bom.api.scan_snapshot import materialize_job_snapshot
@@ -107,14 +109,15 @@ def test_postgres_verified_snapshot_reads_preserve_tenant_scope(monkeypatch):
     pool = _new_application_pool(min_size=1, max_size=2)
     store = PostgresScanSnapshotStore(pool=pool)
     set_scan_snapshot_store(store)
-    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_READS", "1")
+    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_READS", "0" if fast else "1")
+    monkeypatch.setenv("AGENT_BOM_SCAN_SNAPSHOT_FAST_READS", "1" if fast else "0")
     try:
         meta, rows = materialize_job_snapshot(job)
-        expected = deepcopy([row["payload"] for row in rows])
+        expected = deepcopy([row["payload"] for row in rows[1:]])
         store.put_snapshot(tenant, job.job_id, meta, rows)
-        rows[0]["payload"]["title"] = "other tenant"
+        rows[1]["payload"]["title"] = "other tenant"
         store.put_snapshot(other, job.job_id, meta, rows)
-        actual = verified_snapshot_findings(job, lambda: expected, lambda row: row)
+        actual = verified_snapshot_findings(job, lambda: expected, lambda row: row, merge=merge_finding_representations)
         assert actual == expected and actual is not expected
         assert actual[0]["title"] != "other tenant"
     finally:

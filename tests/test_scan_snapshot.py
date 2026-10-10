@@ -149,7 +149,7 @@ def test_store_rejects_blank_tenant(snapshot_store) -> None:
 
 
 def test_materializer_uses_fold_metadata_and_intrinsic_rows() -> None:
-    from agent_bom.api.finding_collection import collect_scan_findings
+    from agent_bom.api.finding_collection import finding_representations
     from agent_bom.api.findings_current import finding_identity, scan_evidence_authority_key, scan_scope_key
 
     job = _job()
@@ -161,11 +161,11 @@ def test_materializer_uses_fold_metadata_and_intrinsic_rows() -> None:
     assert meta["authoritative"] is True
     assert meta["incomplete_reasons"] == []
     assert meta["row_schema_version"] == SCAN_SNAPSHOT_ROW_SCHEMA_VERSION
-    assert meta["row_count"] == len(rows) == 2
-    expected = collect_scan_findings(job)
-    assert [row["payload"] for row in rows] == expected
-    assert [row["finding_identity"] for row in rows] == [finding_identity(item) for item in expected]
-    assert rows[0]["canonical_id"] == "canon-1" and rows[0]["severity"] == "high"
+    assert meta["row_count"] == len(rows) == 3
+    expected = finding_representations(job)
+    assert [row["payload"] for row in rows[1:]] == expected
+    assert [row["finding_identity"] for row in rows[1:]] == [finding_identity(item) for item in expected]
+    assert rows[1]["canonical_id"] == "canon-1" and rows[1]["severity"] == "high"
 
 
 def test_materializer_never_reads_mutable_tenant_state(monkeypatch) -> None:
@@ -210,8 +210,8 @@ def test_completion_snapshots_a_durably_done_job_from_the_persisted_result(activ
     _, status = finalize_with_scan_snapshot(_ctx(job), _persist_and_compact(JobStatus.DONE))
 
     assert status is JobStatus.DONE
-    assert active_store.get_meta("tenant-a")["job-1"]["row_count"] == 2
-    assert len(active_store.get_rows("tenant-a", "job-1")) == 2
+    assert active_store.get_meta("tenant-a")["job-1"]["row_count"] == 3
+    assert len(active_store.get_rows("tenant-a", "job-1")) == 3
 
 
 @pytest.mark.parametrize(
@@ -264,7 +264,7 @@ def test_pipeline_finalize_writes_snapshot_after_the_job_store_write(active_stor
     pipeline._finalize(ScanContext(job=job, lock=threading.Lock(), pipeline=SimpleNamespace(), repo_stack=ExitStack()))
 
     assert order == ["snapshot"]
-    assert active_store.get_meta("tenant-a")["job-1"]["row_count"] == 2
+    assert active_store.get_meta("tenant-a")["job-1"]["row_count"] == 3
 
 
 # ── retention ───────────────────────────────────────────────────────────────
@@ -322,7 +322,7 @@ def test_backfill_materializes_only_the_tenants_done_jobs(active_store) -> None:
 
     assert counts == {"materialized": 2, "skipped": 0, "failed": 0}
     assert set(active_store.get_meta("tenant-a")) == {"done-1", "done-2"}
-    assert active_store.get_meta("tenant-a")["done-2"]["row_count"] == 0
+    assert active_store.get_meta("tenant-a")["done-2"]["row_count"] == 1
     assert active_store.get_meta("tenant-b") == {}
 
 

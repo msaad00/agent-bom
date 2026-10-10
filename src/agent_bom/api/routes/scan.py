@@ -33,7 +33,7 @@ from agent_bom.api.bulk_findings_ingest import (  # noqa: F401 - re-exported rou
     _derive_bulk_finding_id,
     _normalized_bulk_finding,
 )
-from agent_bom.api.finding_collection import collect_scan_findings
+from agent_bom.api.finding_collection import collect_scan_findings, merge_finding_representations
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
 from agent_bom.api.finding_list_helpers import (  # noqa: F401 - re-exported route-module API
@@ -632,7 +632,11 @@ def current_open_scan_findings(jobs: list[Any]) -> list[dict[str, Any]]:
 
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     result = job.result or {}
-    reach = _effective_reach_lookup(job)
+    reach: dict[str, dict[str, Any]] | None = None
+
+    def use_reach(value: dict[str, dict[str, Any]] | None) -> None:
+        nonlocal reach
+        reach = value
 
     tenant_id = str(getattr(job, "tenant_id", None) or "default")
     runtime_index = read_once(("runtime_events", tenant_id), lambda: build_tenant_runtime_evidence_index(tenant_id))
@@ -662,6 +666,9 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         workload_runtime_index = None
 
     def _attach_reach(row: dict[str, Any]) -> dict[str, Any]:
+        nonlocal reach
+        if reach is None:
+            reach = _effective_reach_lookup(job)
         from agent_bom.symbol_reach_triage import adjust_effective_reach_breakdown, symbol_reachability_from_payload
 
         vuln_id = row.get("vulnerability_id") or row.get("cve_id") or row.get("id") or ""
@@ -694,7 +701,13 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)
         return row
 
-    findings = verified_snapshot_findings(job, lambda: collect_scan_findings(job, _attach_reach), _attach_reach)
+    findings = verified_snapshot_findings(
+        job, lambda: collect_scan_findings(job, _attach_reach), _attach_reach, merge=merge_finding_representations, use_reach=use_reach
+    )
+    return _project_finding_owners_and_suppressions(findings, tenant_id)
+
+
+def _project_finding_owners_and_suppressions(findings: list[dict[str, Any]], tenant_id: str) -> list[dict[str, Any]]:
     # Surface the triage assignee as the finding owner (the simple ownership cut).
     # Built once per tenant and matched per row; rows with no triage assignee keep
     # whatever owner the scan spine already set (an explicit None when unassigned,

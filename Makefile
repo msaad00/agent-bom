@@ -67,6 +67,7 @@ preflight:  ## Run the drift gates that CI's "Version Alignment" job runs — do
 	@echo "→ CI pipefail policy";                   python scripts/check_ci_pipefail.py
 	@echo "→ default MCP argument inventory";       python scripts/generate_mcp_profile_catalog.py --check
 	@echo "→ product metrics snapshot";             python scripts/product_metrics_snapshot.py --check
+	@echo "→ vendor coverage matrix";               python scripts/generate_vendor_coverage.py --check
 	@echo "→ CVE matching accuracy";                python scripts/cve_matching_accuracy.py --check
 	@echo "→ env-var reference";                    python scripts/generate_env_var_reference.py --check
 	@echo "→ SDK patterns.json";                    python sdks/shared/generate-patterns.py --check
@@ -81,6 +82,7 @@ preflight-fix:  ## Regenerate every drift artifact so you never push stale OpenA
 	python scripts/generate_env_var_reference.py
 	python sdks/shared/generate-patterns.py
 	python scripts/product_metrics_snapshot.py --write
+	python scripts/generate_vendor_coverage.py --write
 	python scripts/generate_mcp_profile_catalog.py
 	python scripts/generate_reference_evidence_lab.py
 	@echo "✓ regenerated — run 'git status', review, and commit the artifacts"

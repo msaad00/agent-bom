@@ -20,10 +20,11 @@ import shutil
 import subprocess
 
 from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
-from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_package_purl, parse_container_image_package
+from .k8s_gpu_common import build_training_agent, container_image_packages, iter_gpu_containers, iter_infiniband_pods
+from .normalization import build_cloud_origin
 
 logger = logging.getLogger(__name__)
 
@@ -85,53 +86,24 @@ def discover(
     agents: list[Agent] = []
     warnings: list[str] = []
 
-    # ── VirtualServer CRDs ────────────────────────────────────────────
-    try:
-        vs_agents, vs_warns = _discover_virtual_servers(context, namespace)
-        agents.extend(vs_agents)
-        warnings.extend(vs_warns)
-    except CloudDiscoveryError as exc:
-        warnings.append(f"CoreWeave VirtualServer discovery: {exc}")
-    except subprocess.TimeoutExpired:
-        warnings.append("kubectl timed out during VirtualServer discovery")
-    except Exception as exc:
-        warnings.append(f"CoreWeave VirtualServer error: {exc}")
-
-    # ── InferenceService CRDs ─────────────────────────────────────────
-    try:
-        is_agents, is_warns = _discover_inference_services(context, namespace)
-        agents.extend(is_agents)
-        warnings.extend(is_warns)
-    except CloudDiscoveryError as exc:
-        warnings.append(f"CoreWeave InferenceService discovery: {exc}")
-    except subprocess.TimeoutExpired:
-        warnings.append("kubectl timed out during InferenceService discovery")
-    except Exception as exc:
-        warnings.append(f"CoreWeave InferenceService error: {exc}")
-
-    # ── GPU pods + NIM detection ──────────────────────────────────────
-    try:
-        gpu_agents, gpu_warns = _discover_gpu_pods(context, namespace)
-        agents.extend(gpu_agents)
-        warnings.extend(gpu_warns)
-    except CloudDiscoveryError as exc:
-        warnings.append(f"CoreWeave GPU pod discovery: {exc}")
-    except subprocess.TimeoutExpired:
-        warnings.append("kubectl timed out during GPU pod discovery")
-    except Exception as exc:
-        warnings.append(f"CoreWeave GPU pod error: {exc}")
-
-    # ── InfiniBand training jobs ──────────────────────────────────────
-    try:
-        ib_agents, ib_warns = _discover_infiniband_jobs(context, namespace)
-        agents.extend(ib_agents)
-        warnings.extend(ib_warns)
-    except CloudDiscoveryError as exc:
-        warnings.append(f"CoreWeave InfiniBand discovery: {exc}")
-    except subprocess.TimeoutExpired:
-        warnings.append("kubectl timed out during InfiniBand discovery")
-    except Exception as exc:
-        warnings.append(f"CoreWeave InfiniBand error: {exc}")
+    # Each pass is isolated: a failure becomes a warning and the next pass runs.
+    stages = (
+        ("VirtualServer", _discover_virtual_servers),
+        ("InferenceService", _discover_inference_services),
+        ("GPU pod", _discover_gpu_pods),
+        ("InfiniBand", _discover_infiniband_jobs),
+    )
+    for label, stage in stages:
+        try:
+            stage_agents, stage_warns = stage(context, namespace)
+            agents.extend(stage_agents)
+            warnings.extend(stage_warns)
+        except CloudDiscoveryError as exc:
+            warnings.append(f"CoreWeave {label} discovery: {exc}")
+        except subprocess.TimeoutExpired:
+            warnings.append(f"kubectl timed out during {label} discovery")
+        except Exception as exc:
+            warnings.append(f"CoreWeave {label} error: {exc}")
 
     # Per-run discovery envelope (#2083 PR B). CoreWeave reads through kubectl
     # against the user's kubeconfig context; the kube RBAC verbs we exercise
@@ -243,82 +215,73 @@ def _discover_inference_services(
         return agents, warnings
 
     for item in data.get("items", []):
-        meta = item.get("metadata", {})
-        spec = item.get("spec", {})
-        name = meta.get("name", "unknown")
-        ns = meta.get("namespace", "default")
-
-        # Extract predictor container info
-        predictor = spec.get("predictor", {})
-        containers = predictor.get("containers", [])
-        runtime_image = ""
-        runtime_name = ""
-        if containers:
-            runtime_image = containers[0].get("image", "")
-            runtime_name = containers[0].get("name", "")
-
-        # Detect serving runtime (vLLM, Triton, TGI)
-        runtime = _detect_serving_runtime(runtime_image, runtime_name)
-
-        # Check if it's an NVIDIA NIM image
-        is_nim = runtime_image.startswith(_NIM_IMAGE_PREFIX)
-        nim_model = ""
-        if is_nim:
-            nim_model = runtime_image.removeprefix(_NIM_IMAGE_PREFIX).split(":")[0]
-
-        # Extract serving URL from status
-        status = item.get("status", {})
-        serving_url = status.get("url", "")
-
-        packages: list[Package] = []
-        if runtime_image:
-            image_parts = parse_container_image_package(runtime_image)
-            if image_parts:
-                packages.append(
-                    Package(
-                        name=image_parts[0],
-                        version=image_parts[1],
-                        ecosystem="container-image",
-                        purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
-                    )
-                )
-
-        server = MCPServer(
-            name=f"coreweave-inference:{ns}/{name}",
-            transport=TransportType.UNKNOWN,
-            url=serving_url,
-            packages=packages,
-        )
-
-        metadata: dict = {
-            "runtime": runtime,
-            "serving_url": serving_url,
-            "kind": "InferenceService",
-            "cloud_origin": build_cloud_origin(
-                provider="coreweave",
-                service="kubernetes",
-                resource_type="inference-service",
-                resource_id=f"{ns}/{name}",
-                resource_name=name,
-                raw_identity={"namespace": ns, "name": name, "kind": "InferenceService", "image": runtime_image},
-            ),
-        }
-        if is_nim:
-            metadata["is_nim"] = True
-            metadata["nim_model"] = nim_model
-
-        agent = Agent(
-            name=f"coreweave-inference:{ns}/{name}",
-            agent_type=AgentType.CUSTOM,
-            config_path=f"coreweave://inferenceservice/{ns}/{name}",
-            source="coreweave-inference",
-            version=runtime or "inference",
-            mcp_servers=[server],
-            metadata=metadata,
-        )
-        agents.append(agent)
+        agents.append(_inference_service_agent(item))
 
     return agents, warnings
+
+
+def _inference_service_agent(item: dict) -> Agent:
+    """Build the agent for one KServe InferenceService item."""
+    meta = item.get("metadata", {})
+    spec = item.get("spec", {})
+    name = meta.get("name", "unknown")
+    ns = meta.get("namespace", "default")
+
+    # Extract predictor container info
+    predictor = spec.get("predictor", {})
+    containers = predictor.get("containers", [])
+    runtime_image = ""
+    runtime_name = ""
+    if containers:
+        runtime_image = containers[0].get("image", "")
+        runtime_name = containers[0].get("name", "")
+
+    # Detect serving runtime (vLLM, Triton, TGI)
+    runtime = _detect_serving_runtime(runtime_image, runtime_name)
+
+    # Check if it's an NVIDIA NIM image
+    is_nim = runtime_image.startswith(_NIM_IMAGE_PREFIX)
+    nim_model = ""
+    if is_nim:
+        nim_model = runtime_image.removeprefix(_NIM_IMAGE_PREFIX).split(":")[0]
+
+    # Extract serving URL from status
+    status = item.get("status", {})
+    serving_url = status.get("url", "")
+
+    server = MCPServer(
+        name=f"coreweave-inference:{ns}/{name}",
+        transport=TransportType.UNKNOWN,
+        url=serving_url,
+        packages=container_image_packages(runtime_image),
+    )
+
+    metadata: dict = {
+        "runtime": runtime,
+        "serving_url": serving_url,
+        "kind": "InferenceService",
+        "cloud_origin": build_cloud_origin(
+            provider="coreweave",
+            service="kubernetes",
+            resource_type="inference-service",
+            resource_id=f"{ns}/{name}",
+            resource_name=name,
+            raw_identity={"namespace": ns, "name": name, "kind": "InferenceService", "image": runtime_image},
+        ),
+    }
+    if is_nim:
+        metadata["is_nim"] = True
+        metadata["nim_model"] = nim_model
+
+    return Agent(
+        name=f"coreweave-inference:{ns}/{name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"coreweave://inferenceservice/{ns}/{name}",
+        source="coreweave-inference",
+        version=runtime or "inference",
+        mcp_servers=[server],
+        metadata=metadata,
+    )
 
 
 # ── GPU Pods + NIM Detection ──────────────────────────────────────────────
@@ -335,86 +298,54 @@ def _discover_gpu_pods(
     ns_args = ["-n", namespace] if namespace else ["-A"]
     data = _kubectl(["get", "pods", *ns_args], context=context)
 
-    seen_images: set[str] = set()
-
-    for pod in data.get("items", []):
-        meta = pod.get("metadata", {})
-        pod_name = meta.get("name", "unknown")
-        pod_ns = meta.get("namespace", "default")
-
-        for container in pod.get("spec", {}).get("containers", []):
-            resources = container.get("resources", {})
-            limits = resources.get("limits", {})
-            requests_res = resources.get("requests", {})
-
-            gpu_limit = str(limits.get("nvidia.com/gpu", "0"))
-            gpu_request = str(requests_res.get("nvidia.com/gpu", "0"))
-
-            if gpu_limit == "0" and gpu_request == "0":
-                continue
-
-            image_ref = container.get("image", "").strip()
-            if not image_ref or image_ref in seen_images:
-                continue
-            seen_images.add(image_ref)
-
-            gpu_count = int(gpu_limit) if gpu_limit != "0" else int(gpu_request)
-            is_nim = image_ref.startswith(_NIM_IMAGE_PREFIX)
-            nim_model = ""
-            if is_nim:
-                nim_model = image_ref.removeprefix(_NIM_IMAGE_PREFIX).split(":")[0]
-
-            image_parts = parse_container_image_package(image_ref)
-            packages = (
-                [
-                    Package(
-                        name=image_parts[0],
-                        version=image_parts[1],
-                        ecosystem="container-image",
-                        purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
-                    )
-                ]
-                if image_parts
-                else []
-            )
-
-            server = MCPServer(
-                name=f"coreweave-gpu-pod:{pod_ns}/{pod_name}",
-                command="docker",
-                args=["run", image_ref],
-                transport=TransportType.STDIO,
-                packages=packages,
-            )
-
-            metadata: dict = {
-                "gpu_count": gpu_count,
-                "image": image_ref,
-                "kind": "Pod",
-                "cloud_origin": build_cloud_origin(
-                    provider="coreweave",
-                    service="kubernetes",
-                    resource_type="gpu-pod",
-                    resource_id=f"{pod_ns}/{pod_name}",
-                    resource_name=pod_name,
-                    raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
-                ),
-            }
-            if is_nim:
-                metadata["is_nim"] = True
-                metadata["nim_model"] = nim_model
-
-            agent = Agent(
-                name=f"coreweave-gpu-pod:{pod_ns}/{pod_name}",
-                agent_type=AgentType.CUSTOM,
-                config_path=f"coreweave://pod/{pod_ns}/{pod_name}",
-                source="coreweave-gpu",
-                version=f"nim:{nim_model}" if is_nim else f"gpu:{gpu_count}",
-                mcp_servers=[server],
-                metadata=metadata,
-            )
-            agents.append(agent)
+    for pod_ns, pod_name, _container, image_ref, gpu_limit, gpu_request in iter_gpu_containers(data.get("items", [])):
+        agents.append(_gpu_pod_agent(pod_ns, pod_name, image_ref, str(gpu_limit), str(gpu_request)))
 
     return agents, warnings
+
+
+def _gpu_pod_agent(pod_ns: str, pod_name: str, image_ref: str, gpu_limit: str, gpu_request: str) -> Agent:
+    """Build the agent for one GPU container, flagging NVIDIA NIM images."""
+    gpu_count = int(gpu_limit) if gpu_limit != "0" else int(gpu_request)
+    is_nim = image_ref.startswith(_NIM_IMAGE_PREFIX)
+    nim_model = ""
+    if is_nim:
+        nim_model = image_ref.removeprefix(_NIM_IMAGE_PREFIX).split(":")[0]
+
+    server = MCPServer(
+        name=f"coreweave-gpu-pod:{pod_ns}/{pod_name}",
+        command="docker",
+        args=["run", image_ref],
+        transport=TransportType.STDIO,
+        packages=container_image_packages(image_ref),
+    )
+
+    metadata: dict = {
+        "gpu_count": gpu_count,
+        "image": image_ref,
+        "kind": "Pod",
+        "cloud_origin": build_cloud_origin(
+            provider="coreweave",
+            service="kubernetes",
+            resource_type="gpu-pod",
+            resource_id=f"{pod_ns}/{pod_name}",
+            resource_name=pod_name,
+            raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
+        ),
+    }
+    if is_nim:
+        metadata["is_nim"] = True
+        metadata["nim_model"] = nim_model
+
+    return Agent(
+        name=f"coreweave-gpu-pod:{pod_ns}/{pod_name}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"coreweave://pod/{pod_ns}/{pod_name}",
+        source="coreweave-gpu",
+        version=f"nim:{nim_model}" if is_nim else f"gpu:{gpu_count}",
+        mcp_servers=[server],
+        metadata=metadata,
+    )
 
 
 # ── InfiniBand Training Jobs ─────────────────────────────────────────────
@@ -431,76 +362,17 @@ def _discover_infiniband_jobs(
     ns_args = ["-n", namespace] if namespace else ["-A"]
     data = _kubectl(["get", "pods", *ns_args], context=context)
 
-    seen_jobs: set[str] = set()
-
-    for pod in data.get("items", []):
-        meta = pod.get("metadata", {})
-        pod_name = meta.get("name", "unknown")
-        pod_ns = meta.get("namespace", "default")
-
-        for container in pod.get("spec", {}).get("containers", []):
-            resources = container.get("resources", {})
-            limits = resources.get("limits", {})
-            requests_res = resources.get("requests", {})
-
-            ib_limit = str(limits.get("rdma/ib", "0"))
-            ib_request = str(requests_res.get("rdma/ib", "0"))
-
-            if ib_limit == "0" and ib_request == "0":
-                continue
-
-            # Deduplicate by pod (multi-container training pods)
-            job_key = f"{pod_ns}/{pod_name}"
-            if job_key in seen_jobs:
-                continue
-            seen_jobs.add(job_key)
-
-            image_ref = container.get("image", "").strip()
-            gpu_limits = str(limits.get("nvidia.com/gpu", "0"))
-
-            packages: list[Package] = []
-            if image_ref:
-                image_parts = parse_container_image_package(image_ref)
-                if image_parts:
-                    packages.append(
-                        Package(
-                            name=image_parts[0],
-                            version=image_parts[1],
-                            ecosystem="container-image",
-                            purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
-                        )
-                    )
-
-            server = MCPServer(
-                name=f"coreweave-training:{pod_ns}/{pod_name}",
-                transport=TransportType.UNKNOWN,
-                packages=packages,
-            )
-
-            agent = Agent(
-                name=f"coreweave-training:{pod_ns}/{pod_name}",
-                agent_type=AgentType.CUSTOM,
+    for pod_ns, pod_name, image_ref, gpu_limits in iter_infiniband_pods(data.get("items", [])):
+        agents.append(
+            build_training_agent(
+                provider="coreweave",
+                pod_ns=pod_ns,
+                pod_name=pod_name,
+                image_ref=image_ref,
+                gpu_limits=gpu_limits,
                 config_path=f"coreweave://training/{pod_ns}/{pod_name}",
-                source="coreweave-training",
-                version=f"infiniband+gpu:{gpu_limits}" if gpu_limits != "0" else "infiniband",
-                mcp_servers=[server],
-                metadata={
-                    "training_job": True,
-                    "infiniband": True,
-                    "gpu_count": int(gpu_limits) if gpu_limits != "0" else 0,
-                    "image": image_ref,
-                    "kind": "Pod",
-                    "cloud_origin": build_cloud_origin(
-                        provider="coreweave",
-                        service="kubernetes",
-                        resource_type="training-pod",
-                        resource_id=f"{pod_ns}/{pod_name}",
-                        resource_name=pod_name,
-                        raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
-                    ),
-                },
             )
-            agents.append(agent)
+        )
 
     return agents, warnings
 

@@ -18,6 +18,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - The top-level module guard (`scripts/check_package_layout.py`) now names a likely subpackage for each new `src/agent_bom/*.py` file and points to the new `docs/CODE_MAP.md`, which maps common changes to their owning packages, canonical models and layering rules. The guard has its own regression test.
 - `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
 - The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
+- The scan API route module is split into focused modules with no change to routes or responses: the local-path scan jail (`api/scan_path_jail.py`), AI-scan execution (`api/ai_scan_runtime.py`), bulk-ingest request models (`api/bulk_findings_ingest.py`), finding row identity and legacy row builders (`api/finding_row_shapes.py`), job response payloads (`api/scan_job_views.py`), correlation cohort ids (`api/scan_cohorts.py`) and findings list helpers (`api/finding_list_helpers.py`). The dedicated AI-asset scan endpoints (`/v1/scan/dataset-cards`, `training-pipelines`, `browser-extensions`, `model-provenance`, `prompt-scan`, `model-files`) move to `api/routes/ai_scans.py`. Existing imports from `agent_bom.api.routes.scan` keep working.
+
+### Security
+
+- API local-path scans: a set-but-blank `AGENT_BOM_API_LOCAL_PATH_SCANS` no longer enables local filesystem scans. A blank value is treated as unset and falls through to `AGENT_BOM_ENABLE_LOCAL_PATH_SCANS`, then to the disabled default.
 
 ## [0.108.4] - 2026-10-09
 

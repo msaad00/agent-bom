@@ -7,6 +7,7 @@ from tests.test_platform_eks_secret_wiring import MAIN, README, _balanced_hcl_bl
 
 def test_managed_nodes_do_not_request_auto_mode_or_standalone_encryption_policies():
     cluster = _balanced_hcl_block(MAIN, 'module "eks"')
+    assert 'version = "~> 20.37"' in cluster  # supports the Auto Mode policy switch
     assert re.search(r"enable_auto_mode_custom_tags\s*=\s*false", cluster)
     assert re.search(r"attach_cluster_encryption_policy\s*=\s*false", cluster)
     # Keep the module's customer-managed KMS key and secrets encryption enabled.

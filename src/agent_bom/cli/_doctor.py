@@ -14,6 +14,7 @@ from rich.markup import escape
 from agent_bom.core.settings import env_raw, env_str
 from agent_bom.scan_cache import CACHE_KEY_PREFIX
 from agent_bom.storage import state_home
+from agent_bom.storage.tiers import StorageTier, classify_storage, storage_selection_from_env
 
 
 @click.command("doctor")
@@ -23,7 +24,7 @@ def doctor_cmd(offline: bool = False) -> None:
 
     \b
     Verifies:  Python, agent-bom version, local vuln DB, network,
-               Docker, kubectl, MCP configs, API keys.
+               Docker, kubectl, MCP configs, API keys, storage support tiers.
 
     Use --offline for local diagnostics without OSV or Postgres connections.
     Skipped probes do not establish network or database readiness.
@@ -126,6 +127,7 @@ def doctor_cmd(offline: bool = False) -> None:
             platform_checks.append((label, "configured", "ok"))
         else:
             platform_checks.append((label, "not set", "info"))
+    platform_checks.extend(_storage_tier_checks())
 
     # Cloud SDK freshness — the tool's own provider SDK layer, checked against
     # the version floor the connectors are built against. A stale SDK can
@@ -148,10 +150,9 @@ def doctor_cmd(offline: bool = False) -> None:
     except Exception:
         cloud_sdk_checks.append(("Cloud SDKs", "freshness check unavailable", "info"))
 
-    # Provider-API deprecation posture — a legacy-SDK exposure guard for
-    # retired/deprecating provider APIs (Azure AD Graph, oauth2client, …).
-    # Honest default is "clear": agent-bom uses the modern replacements, so this
-    # only lights up if a legacy SDK is dragged into the environment.
+    # Provider-API deprecation posture — a legacy-SDK exposure guard for retired/deprecating provider APIs (Azure AD Graph,
+    # oauth2client, …). Honest default is "clear": agent-bom uses the modern replacements, so this only lights up if a
+    # legacy SDK is dragged into the environment.
     try:
         from agent_bom.cloud_sdk_freshness import cloud_api_deprecation_posture
 
@@ -298,6 +299,23 @@ def _print_section(console: Console, title: str, checks: list[tuple[str, str, st
             icon = "[dim]○[/dim]"
         console.print(f"    {icon}  {escape(label + ':'):<20s} {escape(value)}")
     console.print()
+
+
+_STORAGE_COMPONENT_LABELS = {"control_plane": "Control-plane store", "graph": "Graph store", "analytics": "Analytics sink"}
+
+
+def _storage_tier_checks() -> list[tuple[str, str, str]]:
+    """One row per selected storage component with its support tier (see docs/STORAGE_BACKENDS.md)."""
+    rows: list[tuple[str, str, str]] = []
+    for item in classify_storage(storage_selection_from_env()).components:
+        label = _STORAGE_COMPONENT_LABELS.get(item.component, item.component)
+        if item.tier is StorageTier.EXPERIMENTAL:
+            rows.append((label, f"{item.backend} — experimental; see docs/STORAGE_BACKENDS.md", "warn"))
+        elif item.backend == "memory":
+            rows.append((label, "memory — local only, not durable", "info"))
+        else:
+            rows.append((label, f"{item.backend} — {item.tier.value.replace('_', ' ')}", "ok"))
+    return rows
 
 
 def _vuln_db_check() -> tuple[str, str, str]:

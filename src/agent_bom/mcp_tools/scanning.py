@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -279,39 +280,9 @@ async def _scan_impl_inner(
         from agent_bom.models import AIBOMReport
         from agent_bom.output import to_json
 
-        pre_warnings: list[str] = []
-        if offline and enrich:
-            enrich = False
-            pre_warnings.append("Enrichment skipped because offline mode was requested")
-        if offline and scorecard:
-            scorecard = False
-            pre_warnings.append("OpenSSF Scorecard enrichment skipped because offline mode was requested")
-        if offline and verify_integrity:
-            verify_integrity = False
-            pre_warnings.append("Package integrity verification skipped because offline mode was requested")
-        if package is not None:
-            package = package.strip()
-            if not package:
-                raise ToolError("package must not be empty")
-            if len(package) > 256:
-                raise ToolError("package must be 256 characters or fewer")
-
-        # Auto-refresh stale DB before scanning only when explicitly requested.
-        if auto_update_db and not offline:
-            try:
-                from agent_bom.db.schema import db_freshness_days
-                from agent_bom.db.sync import sync_db
-
-                freshness = db_freshness_days()
-                source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
-                if freshness is None or freshness >= 1 or source_list:
-                    sync_db(sources=source_list)
-            except Exception as exc:
-                logger.warning("Auto DB refresh failed: %s", exc)
-                pre_warnings.append(f"Auto DB refresh skipped: {sanitize_error(exc)}")
-        elif auto_update_db and offline:
-            pre_warnings.append("Auto DB refresh skipped because offline mode was requested")
-
+        enrich, scorecard, verify_integrity, pre_warnings = _apply_offline_overrides(offline, enrich, scorecard, verify_integrity)
+        package = _normalize_scan_package(package)
+        _maybe_refresh_vuln_db(auto_update_db, offline, db_sources, pre_warnings)
         agents, blast_radii, scan_warnings, scan_sources = await _run_scan_pipeline(
             config_path,
             image,
@@ -324,216 +295,243 @@ async def _scan_impl_inner(
             no_discover=no_discover,
         )
         scan_warnings = [*pre_warnings, *scan_warnings]
-        # Fail closed: a package spec that resolved to zero packages produced no
-        # evidence at all, so the empty finding list must not read as "clean".
-        package_spec_unresolved = False
-        if package:
-            from agent_bom.mcp_server_scan import (
-                package_spec_extracted_count,
-                unresolved_package_spec_warning,
-            )
-
-            package_spec_unresolved = package_spec_extracted_count(agents) == 0
-            if package_spec_unresolved:
-                warning = unresolved_package_spec_warning(package)
-                if warning not in scan_warnings:
-                    scan_warnings.append(warning)
+        package_spec_unresolved = _flag_unresolved_package_spec(package, agents, scan_warnings)
         if not agents:
-            result: dict[str, object] = {
-                "status": "no_agents_found",
-                "agents": [],
-                "vulnerabilities": [],
-                "blast_radius": [],
-                "blast_radii": [],
-                "warnings": scan_warnings,
-            }
-            return _truncate_response(json.dumps(result))
+            return _truncate_response(json.dumps(_empty_envelope("no_agents_found", warnings=scan_warnings)))
         from agent_bom.vex import active_blast_radii
 
         active_findings = active_blast_radii(blast_radii)
-
-        # Integrity + provenance verification. Shares the CLI's helper so the
-        # verdict lands on the model fields every emitter reads, instead of an
-        # ad-hoc attribute nothing consumes.
         if verify_integrity:
-            from agent_bom.http_client import create_client
-            from agent_bom.integrity import verify_packages
-
-            all_pkgs = [pkg for agent in agents for server in agent.mcp_servers for pkg in server.packages]
-            if all_pkgs:
-                try:
-                    async with create_client(timeout=15.0) as client:
-                        await verify_packages(all_pkgs, client)
-                except Exception as exc:
-                    logger.debug("Integrity verification failed: %s", exc)
-                    scan_warnings.append(f"Package integrity verification failed: {sanitize_error(exc)}")
-
-        # OpenSSF Scorecard enrichment
+            await _verify_scanned_packages(agents, scan_warnings)
         if scorecard:
-            try:
-                from agent_bom.http_client import create_client
-                from agent_bom.resolver import enrich_supply_chain_metadata
-                from agent_bom.scorecard import enrich_packages_with_scorecard
-
-                all_pkgs = [p for a in agents for s in a.mcp_servers for p in s.packages]
-                if all_pkgs:
-                    async with create_client(timeout=15.0) as client:
-                        await enrich_supply_chain_metadata(all_pkgs, client)
-                    await enrich_packages_with_scorecard(all_pkgs)
-            except Exception as exc:
-                logger.debug("Scorecard enrichment failed: %s", exc)
-
+            await _enrich_scanned_packages_with_scorecard(agents)
         report = AIBOMReport(agents, blast_radii, cloud_inventory_data=imported_cloud_inventory(agents), scan_sources=scan_sources)
-
-        # Share CLI/API graph-derived findings; offload the best-effort build
-        # so graph analysis does not block the event loop.
         if agents:
-            import asyncio
-
-            from agent_bom.graph.scan_findings import surface_graph_derived_findings
-
-            await asyncio.to_thread(
-                surface_graph_derived_findings,
-                report,
-                scan_id=report.scan_id or "mcp-scan",
-                tenant_id="default",
-            )
-
+            await _surface_graph_findings(report)
         if package_spec_unresolved:
-            # Fail closed ahead of format selection: an empty SARIF/CycloneDX/SPDX
-            # document reads as an audited clean result, so the structured
-            # incomplete envelope is returned for every requested format.
-            return IncompleteScanPayload(
-                _truncate_response(
-                    json.dumps(
-                        {
-                            "status": "incomplete_scan",
-                            "requested_package": package,
-                            "requested_ecosystem": ecosystem,
-                            "agents": [],
-                            "vulnerabilities": [],
-                            "blast_radius": [],
-                            "blast_radii": [],
-                            "warnings": scan_warnings,
-                        },
-                        indent=2,
-                    )
-                )
-            )
-
-        # Format selection
-        if output_format == "sarif":
-            from agent_bom.output.sarif import to_sarif
-
-            sarif_result = to_sarif(report)
-            return _truncate_response(json.dumps(sarif_result, indent=2, default=str))
-        if output_format == "cyclonedx":
-            from agent_bom.output import to_cyclonedx
-
-            return _truncate_response(json.dumps(to_cyclonedx(report), indent=2, default=str))
-        if output_format == "spdx":
-            from agent_bom.output import to_spdx
-
-            return _truncate_response(json.dumps(to_spdx(report), indent=2, default=str))
-        if output_format == "junit":
-            from agent_bom.output import to_junit
-
-            return _truncate_response(to_junit(report, blast_radii))
-        if output_format == "csv":
-            from agent_bom.output import to_csv
-
-            return _truncate_response(to_csv(report, blast_radii))
-        if output_format == "markdown":
-            from agent_bom.output import to_markdown
-
-            return _truncate_response(to_markdown(report, blast_radii))
-
+            # Fail closed for every format: an empty SARIF/CycloneDX/SPDX document reads as an audited clean result.
+            envelope = _empty_envelope("incomplete_scan", requested_package=package, requested_ecosystem=ecosystem, warnings=scan_warnings)
+            return IncompleteScanPayload(_truncate_response(json.dumps(envelope, indent=2)))
+        rendered = _render_report_format(output_format, report, blast_radii, _truncate_response)
+        if rendered is not None:
+            return rendered
         result = to_json(report)
-
-        # Policy evaluation
-        if policy:
-            from agent_bom.policy import _validate_policy, evaluate_policy
-
-            _validate_policy(policy)
-            result["policy_results"] = evaluate_policy(policy, active_findings)
-
-        # Severity gate (fail)
-        if fail_severity:
-            from agent_bom.models import Severity
-
-            try:
-                threshold = Severity(fail_severity.lower())
-            except (ValueError, KeyError):
-                raise ToolError(f"Invalid severity: {fail_severity}. Use: critical, high, medium, low")
-            gate_fail = any(
-                severity_at_or_above(sev, threshold.value)
-                for br in active_findings
-                if (sev := normalize_severity(br.vulnerability.severity.value)) in {"critical", "high", "medium", "low"}
-            )
-            result["gate_status"] = "fail" if gate_fail else "pass"
-            result["gate_severity"] = fail_severity.lower()
-
-        # Warn severity gate (two-tier: only fires when fail gate did not trigger)
-        if warn_severity and result.get("gate_status") != "fail":
-            from agent_bom.models import Severity
-
-            try:
-                warn_threshold = Severity(warn_severity.lower())
-            except (ValueError, KeyError):
-                raise ToolError(f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low")
-            warn_matches = [
-                br
-                for br in active_findings
-                if normalize_severity(br.vulnerability.severity.value) in {"critical", "high", "medium", "low"}
-                and severity_at_or_above(br.vulnerability.severity.value, warn_threshold.value)
-            ]
-            result["warn_gate_status"] = "warn" if warn_matches else "pass"
-            result["warn_gate_severity"] = warn_severity.lower()
-            result["warn_gate_count"] = len(warn_matches)
-
+        _apply_policy_and_severity_gates(result, active_findings, policy, fail_severity, warn_severity)
         if scan_warnings:
             result["warnings"] = scan_warnings
-        from agent_bom.output.json_fmt import redact_json_payload
-
-        def _render_json_result() -> str:
-            redacted = redact_json_payload(result)
-            try:
-                result_id = store.put(_result_owner, {"report": redacted, "offline": offline})
-            except Exception as exc:
-                raise ToolError("MCP result storage unavailable; retry after storage recovery") from exc
-            if detail == "full":
-                full = {"result_id": result_id, **redacted}
-                return _truncate_response(json.dumps(full, indent=2, default=str))
-            summary = build_scan_summary(redacted, result_id=result_id, ttl_seconds=store.ttl_seconds, offline=offline)
-            return _truncate_response(json.dumps(summary, indent=2, default=str))
-
-        # Multi-MB reports: serialize, store, and bound off the event loop.
-        import asyncio
-
-        return await asyncio.to_thread(_render_json_result)
+        return await _store_and_render_json(result, store, _result_owner, offline, detail, _truncate_response)
     except ToolError:
         raise
     except Exception as exc:
-        from agent_bom.scanners import IncompleteScanError
-
-        if isinstance(exc, IncompleteScanError):
-            return IncompleteScanPayload(
-                _truncate_response(
-                    json.dumps(
-                        {
-                            "status": "incomplete_scan",
-                            "vulnerability_lookup": "offline" if offline else "online",
-                            "agents": [],
-                            "vulnerabilities": [],
-                            "blast_radius": [],
-                            "blast_radii": [],
-                            "warnings": [sanitize_error(exc)],
-                        }
-                    )
-                )
-            )
+        incomplete = _incomplete_scan_response(exc, offline, _truncate_response)
+        if incomplete is not None:
+            return incomplete
         logger.exception("MCP tool error")
         raise ToolError(sanitize_error(exc)) from exc
+
+
+def _empty_envelope(status: str, *, warnings: list[str], **extra: object) -> dict[str, object]:
+    """Findings-free scan envelope; ``extra`` keys sit between status and the empty lists."""
+    return {"status": status, **extra, "agents": [], "vulnerabilities": [], "blast_radius": [], "blast_radii": [], "warnings": warnings}
+
+
+def _apply_offline_overrides(offline: bool, enrich: bool, scorecard: bool, verify_integrity: bool) -> tuple[bool, bool, bool, list[str]]:
+    """Disable network-only options in offline mode, recording why."""
+    pre_warnings: list[str] = []
+    if offline and enrich:
+        enrich = False
+        pre_warnings.append("Enrichment skipped because offline mode was requested")
+    if offline and scorecard:
+        scorecard = False
+        pre_warnings.append("OpenSSF Scorecard enrichment skipped because offline mode was requested")
+    if offline and verify_integrity:
+        verify_integrity = False
+        pre_warnings.append("Package integrity verification skipped because offline mode was requested")
+    return enrich, scorecard, verify_integrity, pre_warnings
+
+
+def _normalize_scan_package(package: str | None) -> str | None:
+    if package is not None:
+        package = package.strip()
+        if not package:
+            raise ToolError("package must not be empty")
+        if len(package) > 256:
+            raise ToolError("package must be 256 characters or fewer")
+    return package
+
+
+def _maybe_refresh_vuln_db(auto_update_db: bool, offline: bool, db_sources: str | None, pre_warnings: list[str]) -> None:
+    """Auto-refresh stale DB before scanning only when explicitly requested."""
+    if auto_update_db and not offline:
+        try:
+            from agent_bom.db.schema import db_freshness_days
+            from agent_bom.db.sync import sync_db
+
+            freshness = db_freshness_days()
+            source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
+            if freshness is None or freshness >= 1 or source_list:
+                sync_db(sources=source_list)
+        except Exception as exc:
+            logger.warning("Auto DB refresh failed: %s", exc)
+            pre_warnings.append(f"Auto DB refresh skipped: {sanitize_error(exc)}")
+    elif auto_update_db and offline:
+        pre_warnings.append("Auto DB refresh skipped because offline mode was requested")
+
+
+def _flag_unresolved_package_spec(package: str | None, agents, scan_warnings: list[str]) -> bool:
+    """Fail closed: a package spec that resolved to zero packages produced no
+    evidence at all, so the empty finding list must not read as "clean"."""
+    package_spec_unresolved = False
+    if package:
+        from agent_bom.mcp_server_scan import package_spec_extracted_count, unresolved_package_spec_warning
+
+        package_spec_unresolved = package_spec_extracted_count(agents) == 0
+        if package_spec_unresolved:
+            warning = unresolved_package_spec_warning(package)
+            if warning not in scan_warnings:
+                scan_warnings.append(warning)
+    return package_spec_unresolved
+
+
+async def _verify_scanned_packages(agents, scan_warnings: list[str]) -> None:
+    """Integrity + provenance verification. Shares the CLI's helper so the
+    verdict lands on the model fields every emitter reads, instead of an
+    ad-hoc attribute nothing consumes."""
+    from agent_bom.http_client import create_client
+    from agent_bom.integrity import verify_packages
+
+    all_pkgs = [pkg for agent in agents for server in agent.mcp_servers for pkg in server.packages]
+    if all_pkgs:
+        try:
+            async with create_client(timeout=15.0) as client:
+                await verify_packages(all_pkgs, client)
+        except Exception as exc:
+            logger.debug("Integrity verification failed: %s", exc)
+            scan_warnings.append(f"Package integrity verification failed: {sanitize_error(exc)}")
+
+
+async def _enrich_scanned_packages_with_scorecard(agents) -> None:
+    """OpenSSF Scorecard enrichment."""
+    try:
+        from agent_bom.http_client import create_client
+        from agent_bom.resolver import enrich_supply_chain_metadata
+        from agent_bom.scorecard import enrich_packages_with_scorecard
+
+        all_pkgs = [p for a in agents for s in a.mcp_servers for p in s.packages]
+        if all_pkgs:
+            async with create_client(timeout=15.0) as client:
+                await enrich_supply_chain_metadata(all_pkgs, client)
+            await enrich_packages_with_scorecard(all_pkgs)
+    except Exception as exc:
+        logger.debug("Scorecard enrichment failed: %s", exc)
+
+
+async def _surface_graph_findings(report) -> None:
+    """Share CLI/API graph-derived findings; offload the best-effort build
+    so graph analysis does not block the event loop."""
+    from agent_bom.graph.scan_findings import surface_graph_derived_findings
+
+    await asyncio.to_thread(surface_graph_derived_findings, report, scan_id=report.scan_id or "mcp-scan", tenant_id="default")
+
+
+def _render_report_format(output_format: str, report, blast_radii, _truncate_response) -> str | None:
+    """Render a non-JSON output format; ``None`` means the JSON path applies."""
+    if output_format == "sarif":
+        from agent_bom.output.sarif import to_sarif
+
+        sarif_result = to_sarif(report)
+        return _truncate_response(json.dumps(sarif_result, indent=2, default=str))
+    if output_format == "cyclonedx":
+        from agent_bom.output import to_cyclonedx
+
+        return _truncate_response(json.dumps(to_cyclonedx(report), indent=2, default=str))
+    if output_format == "spdx":
+        from agent_bom.output import to_spdx
+
+        return _truncate_response(json.dumps(to_spdx(report), indent=2, default=str))
+    if output_format == "junit":
+        from agent_bom.output import to_junit
+
+        return _truncate_response(to_junit(report, blast_radii))
+    if output_format == "csv":
+        from agent_bom.output import to_csv
+
+        return _truncate_response(to_csv(report, blast_radii))
+    if output_format == "markdown":
+        from agent_bom.output import to_markdown
+
+        return _truncate_response(to_markdown(report, blast_radii))
+    return None
+
+
+def _apply_policy_and_severity_gates(result: dict, active_findings, policy, fail_severity, warn_severity) -> None:
+    """Policy evaluation, then the fail gate, then the warn gate (two-tier:
+    only fires when the fail gate did not trigger)."""
+    if policy:
+        from agent_bom.policy import _validate_policy, evaluate_policy
+
+        _validate_policy(policy)
+        result["policy_results"] = evaluate_policy(policy, active_findings)
+    if fail_severity:
+        from agent_bom.models import Severity
+
+        try:
+            threshold = Severity(fail_severity.lower())
+        except (ValueError, KeyError):
+            raise ToolError(f"Invalid severity: {fail_severity}. Use: critical, high, medium, low")
+        gate_fail = any(
+            severity_at_or_above(sev, threshold.value)
+            for br in active_findings
+            if (sev := normalize_severity(br.vulnerability.severity.value)) in {"critical", "high", "medium", "low"}
+        )
+        result["gate_status"] = "fail" if gate_fail else "pass"
+        result["gate_severity"] = fail_severity.lower()
+    if warn_severity and result.get("gate_status") != "fail":
+        from agent_bom.models import Severity
+
+        try:
+            warn_threshold = Severity(warn_severity.lower())
+        except (ValueError, KeyError):
+            raise ToolError(f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low")
+        warn_matches = [
+            br
+            for br in active_findings
+            if normalize_severity(br.vulnerability.severity.value) in {"critical", "high", "medium", "low"}
+            and severity_at_or_above(br.vulnerability.severity.value, warn_threshold.value)
+        ]
+        result["warn_gate_status"] = "warn" if warn_matches else "pass"
+        result["warn_gate_severity"] = warn_severity.lower()
+        result["warn_gate_count"] = len(warn_matches)
+
+
+async def _store_and_render_json(result: dict, store: ResultStore, owner: str, offline: bool, detail: str, _truncate_response) -> str:
+    """Redact and store the JSON report, then render the requested detail level."""
+    from agent_bom.output.json_fmt import redact_json_payload
+
+    def _render_json_result() -> str:
+        redacted = redact_json_payload(result)
+        try:
+            result_id = store.put(owner, {"report": redacted, "offline": offline})
+        except Exception as exc:
+            raise ToolError("MCP result storage unavailable; retry after storage recovery") from exc
+        if detail == "full":
+            full = {"result_id": result_id, **redacted}
+            return _truncate_response(json.dumps(full, indent=2, default=str))
+        summary = build_scan_summary(redacted, result_id=result_id, ttl_seconds=store.ttl_seconds, offline=offline)
+        return _truncate_response(json.dumps(summary, indent=2, default=str))
+
+    # Multi-MB reports: serialize, store, and bound off the event loop.
+    return await asyncio.to_thread(_render_json_result)
+
+
+def _incomplete_scan_response(exc: Exception, offline: bool, _truncate_response) -> str | None:
+    """Structured incomplete envelope for ``IncompleteScanError``; ``None`` otherwise."""
+    from agent_bom.scanners import IncompleteScanError
+
+    if not isinstance(exc, IncompleteScanError):
+        return None
+    envelope = _empty_envelope("incomplete_scan", vulnerability_lookup="offline" if offline else "online", warnings=[sanitize_error(exc)])
+    return IncompleteScanPayload(_truncate_response(json.dumps(envelope)))
 
 
 async def check_impl(

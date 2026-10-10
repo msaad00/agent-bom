@@ -376,7 +376,8 @@ so they cannot regress silently, but they are not part of this reference.
 ## Scan finding snapshots (opt-in, ADR-015)
 | Env var | Type | Default | Description |
 |---|---|---|---|
-| `AGENT_BOM_SCAN_SNAPSHOTS` | `bool` | `False` | Opt-in writes and differential-verified reads. Reads compare with the current collector before returning a snapshot candidate. |
+| `AGENT_BOM_SCAN_SNAPSHOTS` | `bool` | `False` | — |
+| `AGENT_BOM_SCAN_SNAPSHOT_FAST_READS` | `bool` | `False` | — |
 | `AGENT_BOM_SCAN_SNAPSHOT_READS` | `bool` | `False` | — |
 
 ## Scanner Batching

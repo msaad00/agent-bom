@@ -60,12 +60,38 @@ def _matching_key(scan: ModuleType, row: dict, key: str, grouped: dict, package_
     return key
 
 
-def collect_scan_findings(job: ScanJob, attach: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+def finding_representations(job: ScanJob) -> list[dict[str, Any]]:
+    """Preserve source order and duplicates so enrichment precedes merging."""
+    from agent_bom.api.routes import scan
+
+    result = job.result or {}
+    rows: list[dict[str, Any]] = []
+    for item in result.get("findings", []) or []:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row.setdefault("scan_id", str(result.get("scan_id") or job.job_id))
+        row.setdefault("scan_sources", scan._scan_source_labels(job))
+        rows.append(row)
+
+    for item in result.get("blast_radius", []) or result.get("blast_radii", []) or []:
+        if not isinstance(item, dict):
+            continue
+        rows.append(scan._finding_from_blast_radius(item, job))
+
+    for row in scan._iter_package_findings(job):
+        rows.append(row)
+
+    return rows
+
+
+def merge_finding_representations(
+    rows: list[dict[str, Any]], attach: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     # The route owns legacy identity adapters; import at call time to avoid a
     # cycle while preserving the API's established canonical merge semantics.
     from agent_bom.api.routes import scan
 
-    result = job.result or {}
     attach = attach or (lambda row: row)
     # Collapse the three per-vulnerability representations (unified ``findings``
     # stream, ``blast_radius`` projection, nested ``package_vulnerability``) onto
@@ -101,20 +127,11 @@ def collect_scan_findings(job: ScanJob, attach: Callable[[dict[str, Any]], dict[
             return
         scan._backfill_supplementary_fields(existing, row)
 
-    for item in result.get("findings", []) or []:
-        if not isinstance(item, dict):
-            continue
-        row = dict(item)
-        row.setdefault("scan_id", str(result.get("scan_id") or job.job_id))
-        row.setdefault("scan_sources", scan._scan_source_labels(job))
-        _absorb(attach(row))
-
-    for item in result.get("blast_radius", []) or result.get("blast_radii", []) or []:
-        if not isinstance(item, dict):
-            continue
-        _absorb(attach(scan._finding_from_blast_radius(item, job)))
-
-    for row in scan._iter_package_findings(job):
+    for row in rows:
         _absorb(attach(row))
 
     return [_with_occurrence_identity(scan, grouped[key]) for key in order]
+
+
+def collect_scan_findings(job: ScanJob, attach: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    return merge_finding_representations(finding_representations(job), attach)

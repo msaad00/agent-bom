@@ -1,6 +1,6 @@
 # ADR-015: Materialized Scan Finding Snapshots
 
-**Status:** Write path and guarded read qualification implemented; optimized reads and default-on proposed
+**Status:** Opt-in per-job fast reads and differential qualification implemented; metadata-only history and default-on remain proposed
 **Date:** 2026-10-10
 
 ## Context
@@ -113,36 +113,54 @@ available for rebuilding. These are operator commands with access to the configu
 database; the tenant argument is explicit scope, not caller authentication.
 
 
-## Guarded read qualification
+## Read modes and version 2 inputs
 
-Set `AGENT_BOM_SCAN_SNAPSHOT_READS=1` on the API to qualify snapshot-backed
-finding rows. This flag is independent of the write flag and defaults off.
-With snapshots already populated, request `GET /v1/findings?origin=scan` using
-the deployment's normal authentication. The response contract is unchanged.
+Write and backfill commands now store version 2: a private context envelope
+followed by ordered, **unmerged** source representations. Readers enrich each
+representation before the shared merge, preserving the authoritative unified
+row, runtime evidence, framework tags, identities and supplementary backfill.
+The envelope contains intrinsic effective reach, a SHA-256 digest of the entire
+retained job (including JSON value types), and a digest of reach and ordered
+representation payloads. It is never returned as a finding. Old versions need
+backfill; storage-table migrations are unchanged.
 
-For each selected retained job, the reader collects the current rows, loads
-that tenant's snapshot, reapplies live enrichment, and compares the complete
-ordered JSON row values (including value types) before the shared identifier, owner and suppression
-projection. It returns the snapshot candidate only on exact equality. Missing
-or old-schema snapshots, invalid row counts or ordinals, read errors and
-mismatches use the current collector's rows. A current-collector error still
-propagates; derived snapshots never conceal an authoritative read failure.
-No snapshot payload or backend exception is written to qualification logs.
+Set `AGENT_BOM_SCAN_SNAPSHOT_FAST_READS=1` to use valid snapshots without running
+the legacy collector or rebuilding its context graph. Runtime/workload evidence,
+triage ownership and current suppressions are still evaluated at read time.
+Two tenant-scoped store reads load metadata and the selected job's rows; no
+per-finding database calls are added. The content digest and count/ordinal checks
+reject incomplete or mixed replacements. A source digest mismatch, stale version,
+missing rows, malformed payload or derived-store error rebuilds from the retained
+job. Digests detect accidental damage and stale inputs, not an attacker controlling
+both content and digest. Unsetting the fast flag restores legacy reads immediately.
 
-The `agent_bom.api.scan_snapshot_read` logger emits debug outcomes `match` and
-`missing_or_stale`; warning outcomes `mismatch`, `invalid` and `unavailable`
-identify fallback. These signals describe parity or availability, not a clean
-security result. Inspect them while exercising findings, posture and exports;
-unset the read flag to disable the extra work immediately. Writes and cleanup
-continue according to their existing contracts.
+Set `AGENT_BOM_SCAN_SNAPSHOT_READS=1` for explicit differential qualification.
+This mode takes precedence over fast mode, collects the legacy result first,
+and compares ordered canonical JSON including value types. A mismatch falls back
+to the legacy result. Authoritative collector errors propagate. Both read flags
+and the independent write flag default off. No finding payloads or exception
+messages are written to the qualification logger.
 
-This qualification mode adds a snapshot lookup and a second enrichment pass.
-It still loads retained job results, uses their original history for first-seen
-and SLA semantics, and builds effective reach from the retained report. It does
-not establish lower read latency or history-independent memory use. Differential
-coverage includes incomplete rescans, empty replacement, parent exclusion,
-explicit and alternate scan IDs, history outside the display window, changed
-runtime evidence and mixed representations. Enriching before versus after a
-representation merge can differ; the parity gate preserves existing behavior
-instead of serving that difference. Metadata-only selection and removing the
-reference comparison require a later validated optimization.
+With writes enabled, run the backfill command, then exercise authenticated
+`GET /v1/findings?origin=scan`, exports and posture with qualification enabled.
+Inspect `scan_snapshot_read` outcomes (`match`, `missing_or_stale`, `invalid`,
+`mismatch`, `unavailable`). Disable qualification before measuring fast reads.
+These signals describe parity and availability, not a clean security result.
+
+## Remaining metadata-only history blocker
+
+This fast path avoids per-selected-job reconstruction. It still loads full
+retained job results and hashes the selected source. It does **not** make memory
+or read cost independent of retained history. The current fold reads original
+unified rows across retained history for first-seen dates and manual SLA policy,
+including observations outside the display window. The current snapshot metadata
+has neither that history projection nor a source revision tied atomically to the
+authoritative job commit. Selecting only snapshot rows would lose history and
+could accept stale inputs after same-ID updates or deletion.
+
+A metadata-only rollout therefore requires a versioned, deletion-aware history
+projection plus authoritative job revision/invalidation, and bounded queries for
+selected identities. Until those gates are implemented and differentially tested,
+the existing retained-history fold remains authoritative. Partial rescans, scope
+selection, aggregate-parent exclusion and alternate IDs retain their current
+behavior; no hidden snapshot-table history scan substitutes for it.

@@ -167,6 +167,8 @@ def run_worker(store, tenant, size, kind, stop):
     stage = "start"
     revisions = set()
     read_samples = []
+    operation_samples = []
+    progress_by_second = {}
     try:
         with tenant_scope(tenant):
             while not stop.is_set():
@@ -219,6 +221,11 @@ def run_worker(store, tenant, size, kind, stop):
                         if "snapshot" not in str(exc).lower():
                             raise
                         result["generation_restarts"] += 1
+                operation_samples.append((time.monotonic() - operation_started) * 1000)
+                second = int(time.monotonic() - began)
+                progress_by_second[second] = progress_by_second.get(second, 0) + 1
+                if len(operation_samples) > 1_000_000:
+                    raise RuntimeError("Qualification sample bound exceeded")
                 result["operations"] += 1
                 result["max_operation_ms"] = max(result["max_operation_ms"], (time.monotonic() - operation_started) * 1000)
             stage = "shutdown"
@@ -228,6 +235,15 @@ def run_worker(store, tenant, size, kind, stop):
         stop.set()
     result["elapsed_s"] = round(time.monotonic() - began, 3)
     result["max_operation_ms"] = round(result["max_operation_ms"], 3)
+    ordered_operations = sorted(operation_samples)
+    result["operation_measurements"] = {
+        "samples": len(ordered_operations),
+        "sampling": "all completed operations including generation restarts and serialization; bounded to 1000000",
+        "p50_ms": statistics.median(ordered_operations) if ordered_operations else None,
+        "p95_ms": ordered_operations[min(len(ordered_operations) - 1, int(len(ordered_operations) * 0.95))] if ordered_operations else None,
+        "max_ms": max(ordered_operations) if ordered_operations else None,
+        "progress_by_second": progress_by_second,
+    }
     if kind == "reader":
         ordered = sorted(value[0] for value in read_samples)
         sizes = [value[1] for value in read_samples]

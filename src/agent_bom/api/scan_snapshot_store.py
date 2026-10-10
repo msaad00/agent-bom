@@ -29,7 +29,7 @@ from agent_bom.security import sanitize_text
 _logger = logging.getLogger(__name__)
 
 SCAN_SNAPSHOT_COMPONENT = "scan_snapshots"
-SCAN_SNAPSHOT_ROW_SCHEMA_VERSION = 1
+SCAN_SNAPSHOT_ROW_SCHEMA_VERSION = 2
 META_FIELDS = (
     "scope_key",
     "authority_evidence_at",

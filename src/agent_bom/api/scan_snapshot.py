@@ -1,18 +1,10 @@
-"""Materialize completed scan jobs into finding snapshots (ADR-015).
+"""Materialize versioned retained scan inputs (ADR-015).
 
-Completed jobs are materialized behind the opt-in ``AGENT_BOM_SCAN_SNAPSHOTS``
-setting. Independently opted-in reads verify parity before using a snapshot. A
-snapshot holds only what is intrinsic to the job — its fold metadata from
-``findings_current`` and the rows ``collect_scan_findings`` derives from the
-retained result. Runtime evidence, triage owners, suppressions and other
-mutable tenant state stay read-time.
-
-Rows are persisted as the collection produces them, exactly as the job store
-already persists the full result; the public response projection
-(``safe_finding_response_payload``) is applied when findings are served, so the
-snapshot never widens what an API caller can see.
-
-Backfill or purge retained jobs for one tenant::
+Version 2 stores an integrity context followed by ordered, unmerged finding
+representations. Intrinsic effective reach is derived once; mutable runtime,
+owner and suppression evidence remains read-time. Backfill replaces older
+versions. The digest detects stale or damaged derived data, not a malicious
+actor who controls both stored payload and digest.
 
     python -m agent_bom.api.scan_snapshot backfill --tenant <tenant_id>
     python -m agent_bom.api.scan_snapshot purge --tenant <tenant_id>
@@ -29,7 +21,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from agent_bom.api.finding_collection import collect_scan_findings
+from agent_bom.api.finding_collection import finding_representations
 from agent_bom.api.findings_current import (
     finding_identity,
     job_has_authoritative_scan_evidence,
@@ -38,6 +30,7 @@ from agent_bom.api.findings_current import (
     scan_scope_key,
 )
 from agent_bom.api.models import JobStatus, ScanJob
+from agent_bom.api.scan_snapshot_integrity import snapshot_content_digest, snapshot_source_digest
 from agent_bom.api.scan_snapshot_store import (
     SCAN_SNAPSHOT_ROW_SCHEMA_VERSION,
     ScanSnapshotStore,
@@ -72,13 +65,13 @@ def _utc(value: Any) -> str:
 def materialize_job_snapshot(job: ScanJob) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Derive one job's snapshot metadata and intrinsic finding rows.
 
-    Uses the fold's own derivations so a later reader selects jobs exactly as
-    ``current_scan_findings`` does. ``collect_scan_findings`` runs without an
-    enrichment callback: nothing here reads mutable tenant state.
+    Uses the fold's derivations and preserves pre-merge source representations.
+    Nothing here reads mutable tenant state. The first row is a private versioned
+    context envelope; it is never a public finding.
     """
     evidence_at, authority_completed_at, _ = scan_evidence_authority_key(job)
     rows: list[dict[str, Any]] = []
-    for finding in collect_scan_findings(job):
+    for finding in finding_representations(job):
         payload = json.loads(json.dumps(finding, default=str))
         rows.append(
             {
@@ -88,6 +81,11 @@ def materialize_job_snapshot(job: ScanJob) -> tuple[dict[str, Any], list[dict[st
                 "payload": payload,
             }
         )
+    from agent_bom.api.routes.scan import _effective_reach_lookup
+
+    context = {"source_digest": snapshot_source_digest(job), "reach": _effective_reach_lookup(job)}
+    context["content_digest"] = snapshot_content_digest(context["reach"], rows)
+    rows.insert(0, {"finding_identity": "", "canonical_id": "", "severity": "", "payload": context})
     meta = {
         "scope_key": scan_scope_key(job),
         "authority_evidence_at": evidence_at,

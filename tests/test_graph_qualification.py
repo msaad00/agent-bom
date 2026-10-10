@@ -24,6 +24,11 @@ def test_process_qualification_and_content_verified_restart(tmp_path):
     assert result["executor"] == "processes"
     assert len({worker["pid"] for worker in result["outcomes"]}) == 4
     assert all(worker["operations"] > 0 for worker in result["outcomes"])
+    for worker in result["outcomes"]:
+        measurements = worker["operation_measurements"]
+        assert measurements["samples"] == worker["operations"]
+        assert sum(measurements["progress_by_second"].values()) == worker["operations"]
+        assert 0 <= measurements["p50_ms"] <= measurements["p95_ms"] <= measurements["max_ms"]
     assert all(value["content_sha256"] for value in result["checkpoint"].values())
     verified = subprocess.run(
         command + ["--verify-checkpoint", str(report), "--output", str(restart)], capture_output=True, text=True, timeout=30

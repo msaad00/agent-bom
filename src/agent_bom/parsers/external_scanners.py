@@ -417,6 +417,10 @@ def parse_sarif_json(data: dict[str, Any]) -> list[Package]:
 
 # ── Structured import (scan path) ─────────────────────────────────────────
 
+# Formats ``ingest_external_report`` parses directly (the ``format`` it records).
+# Prowler, Security Hub and plugin importers are listed by the importer registry.
+BUILTIN_REPORT_FORMATS: tuple[str, ...] = ("sarif", "cyclonedx", "spdx", "trivy", "grype", "syft")
+
 SUPPORTED_FORMATS_HINT = (
     "SARIF 2.x, CycloneDX JSON, SPDX JSON, Trivy JSON, Grype JSON, Syft JSON, Prowler JSON-OCSF, or AWS Security Hub ASFF"
 )

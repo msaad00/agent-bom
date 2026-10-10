@@ -1,0 +1,2707 @@
+{
+  "cloud_matrix": {
+    "gap_count": 143,
+    "lanes": [
+      {
+        "id": "connect",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/cli/_entry_points.py",
+          "symbol": "_CONNECT_SOURCES"
+        },
+        "title": "Connect (CLI)"
+      },
+      {
+        "id": "api_connection",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/api/connection_store.py",
+          "symbol": "SUPPORTED_PROVIDERS"
+        },
+        "title": "API connection"
+      },
+      {
+        "id": "scheduled",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/api/connection_scheduler.py",
+          "symbol": "_SCHEDULABLE_PROVIDERS"
+        },
+        "title": "Scheduled scans"
+      },
+      {
+        "id": "ai_discovery",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/cloud/__init__.py",
+          "symbol": "_PROVIDERS"
+        },
+        "title": "AI/agent discovery"
+      },
+      {
+        "id": "deep_inventory",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/api/routes/cloud.py",
+          "symbol": "_INVENTORY_PROVIDERS"
+        },
+        "title": "Deep inventory"
+      },
+      {
+        "id": "cis_posture",
+        "source": {
+          "method": "json",
+          "path": "src/agent_bom/cloud/benchmark_inventory.json",
+          "symbol": "providers"
+        },
+        "title": "Benchmark posture"
+      },
+      {
+        "id": "identity_ciem",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/cloud/authorization_evidence.py",
+          "symbol": "AuthorizationProvider"
+        },
+        "title": "Identity/CIEM"
+      },
+      {
+        "id": "data_dspm",
+        "source": {
+          "method": "glob",
+          "path": "src/agent_bom/cloud/*_data_classifier.py",
+          "symbol": "module files"
+        },
+        "title": "Data/DSPM"
+      },
+      {
+        "id": "side_scan",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+          "symbol": "side_scan_provider_capabilities"
+        },
+        "title": "Side-scan"
+      },
+      {
+        "id": "change_events",
+        "source": {
+          "method": "glob",
+          "path": "src/agent_bom/cloud/*event_ingest.py",
+          "symbol": "module files"
+        },
+        "title": "Change-event ingest"
+      },
+      {
+        "id": "runtime_workload",
+        "source": {
+          "method": "ast",
+          "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+          "symbol": "_VALID_PROVIDERS"
+        },
+        "title": "Runtime workload evidence"
+      }
+    ],
+    "rows": [
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": true
+          },
+          "change_events": {
+            "display": "✓",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/event_ingest.py",
+              "symbol": "module file"
+            },
+            "value": true
+          },
+          "cis_posture": {
+            "display": "59/n/a",
+            "source": {
+              "method": "json+ast",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json; src/agent_bom/cloud/benchmark_provenance.py",
+              "symbol": "providers.aws; BENCHMARK_PROVENANCE['aws']"
+            },
+            "value": {
+              "benchmark_name": "CIS AWS Foundations",
+              "benchmark_version": "3.0",
+              "implemented_control_count": 59,
+              "official_control_count": null
+            }
+          },
+          "connect": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": true
+          },
+          "data_dspm": {
+            "display": "s3",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/s3_data_classifier.py",
+              "symbol": "module file"
+            },
+            "value": [
+              "s3"
+            ]
+          },
+          "deep_inventory": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": true
+          },
+          "identity_ciem": {
+            "display": "✓ (module)",
+            "source": {
+              "method": "file-exists",
+              "path": "src/agent_bom/cloud/aws_iam_evaluator.py",
+              "symbol": "module file"
+            },
+            "value": "module"
+          },
+          "runtime_workload": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": true
+          },
+          "scheduled": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": true
+          },
+          "side_scan": {
+            "display": "shipped (no live smoke)",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": {
+              "credentialed_smoke": false,
+              "executor": "shipped"
+            }
+          }
+        },
+        "provider": "aws"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": true
+          },
+          "change_events": {
+            "display": "✓",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/azure_event_ingest.py",
+              "symbol": "module file"
+            },
+            "value": true
+          },
+          "cis_posture": {
+            "display": "94/n/a",
+            "source": {
+              "method": "json+ast",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json; src/agent_bom/cloud/benchmark_provenance.py",
+              "symbol": "providers.azure; BENCHMARK_PROVENANCE['azure']"
+            },
+            "value": {
+              "benchmark_name": "CIS Microsoft Azure Foundations",
+              "benchmark_version": "3.0",
+              "implemented_control_count": 94,
+              "official_control_count": null
+            }
+          },
+          "connect": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": true
+          },
+          "data_dspm": {
+            "display": "azure_blob",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/azure_blob_data_classifier.py",
+              "symbol": "module file"
+            },
+            "value": [
+              "azure_blob"
+            ]
+          },
+          "deep_inventory": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": true
+          },
+          "identity_ciem": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": "authorization_evidence"
+          },
+          "runtime_workload": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": true
+          },
+          "scheduled": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": true
+          },
+          "side_scan": {
+            "display": "shipped (no live smoke)",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": {
+              "credentialed_smoke": false,
+              "executor": "shipped"
+            }
+          }
+        },
+        "provider": "azure"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "coreweave"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "crusoe"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": false
+          },
+          "api_connection": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": true
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "db",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/db_data_classifier.py",
+              "symbol": "module file"
+            },
+            "value": [
+              "db"
+            ]
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "database"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "12/n/a",
+            "source": {
+              "method": "json+ast",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json; src/agent_bom/cloud/benchmark_provenance.py",
+              "symbol": "providers.databricks; BENCHMARK_PROVENANCE['databricks']"
+            },
+            "value": {
+              "benchmark_name": "Databricks Security Best Practices",
+              "benchmark_version": "1.0",
+              "implemented_control_count": 12,
+              "official_control_count": null
+            }
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "databricks"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": true
+          },
+          "change_events": {
+            "display": "✓",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/gcp_event_ingest.py",
+              "symbol": "module file"
+            },
+            "value": true
+          },
+          "cis_posture": {
+            "display": "59/n/a",
+            "source": {
+              "method": "json+ast",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json; src/agent_bom/cloud/benchmark_provenance.py",
+              "symbol": "providers.gcp; BENCHMARK_PROVENANCE['gcp']"
+            },
+            "value": {
+              "benchmark_name": "CIS Google Cloud Platform Foundation",
+              "benchmark_version": "3.0",
+              "implemented_control_count": 59,
+              "official_control_count": null
+            }
+          },
+          "connect": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": true
+          },
+          "data_dspm": {
+            "display": "gcs",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/gcs_data_classifier.py",
+              "symbol": "module file"
+            },
+            "value": [
+              "gcs"
+            ]
+          },
+          "deep_inventory": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": true
+          },
+          "identity_ciem": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": "authorization_evidence"
+          },
+          "runtime_workload": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": true
+          },
+          "scheduled": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": true
+          },
+          "side_scan": {
+            "display": "shipped (no live smoke)",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": {
+              "credentialed_smoke": false,
+              "executor": "shipped"
+            }
+          }
+        },
+        "provider": "gcp"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "huggingface"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": false
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "provenance; count n/a",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/benchmark_provenance.py",
+              "symbol": "KUBERNETES_BENCHMARK_PROVENANCE"
+            },
+            "value": {
+              "benchmark_name": "CIS Kubernetes Benchmark",
+              "benchmark_version": "1.10.0",
+              "implemented_control_count": null,
+              "official_control_count": null
+            }
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "kubernetes"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "lambda"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "mlflow"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "nebius"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "ollama"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "openai"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "runpod"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": true
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "14/n/a",
+            "source": {
+              "method": "json+ast",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json; src/agent_bom/cloud/benchmark_provenance.py",
+              "symbol": "providers.snowflake; BENCHMARK_PROVENANCE['snowflake']"
+            },
+            "value": {
+              "benchmark_name": "CIS Snowflake Foundations",
+              "benchmark_version": "1.0",
+              "implemented_control_count": 14,
+              "official_control_count": null
+            }
+          },
+          "connect": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": true
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": true
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": true
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "snowflake"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "vastai"
+      },
+      {
+        "cells": {
+          "ai_discovery": {
+            "display": "✓",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/__init__.py",
+              "symbol": "_PROVIDERS"
+            },
+            "value": true
+          },
+          "api_connection": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_store.py",
+              "symbol": "SUPPORTED_PROVIDERS"
+            },
+            "value": false
+          },
+          "change_events": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*event_ingest.py",
+              "symbol": "module files"
+            },
+            "value": false
+          },
+          "cis_posture": {
+            "display": "—",
+            "source": {
+              "method": "json",
+              "path": "src/agent_bom/cloud/benchmark_inventory.json",
+              "symbol": "providers"
+            },
+            "value": null
+          },
+          "connect": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cli/_entry_points.py",
+              "symbol": "_CONNECT_SOURCES"
+            },
+            "value": false
+          },
+          "data_dspm": {
+            "display": "—",
+            "source": {
+              "method": "glob",
+              "path": "src/agent_bom/cloud/*_data_classifier.py",
+              "symbol": "module files"
+            },
+            "value": null
+          },
+          "deep_inventory": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/routes/cloud.py",
+              "symbol": "_INVENTORY_PROVIDERS"
+            },
+            "value": false
+          },
+          "identity_ciem": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/authorization_evidence.py",
+              "symbol": "AuthorizationProvider"
+            },
+            "value": null
+          },
+          "runtime_workload": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/runtime_workload_evidence.py",
+              "symbol": "_VALID_PROVIDERS"
+            },
+            "value": false
+          },
+          "scheduled": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/api/connection_scheduler.py",
+              "symbol": "_SCHEDULABLE_PROVIDERS"
+            },
+            "value": false
+          },
+          "side_scan": {
+            "display": "—",
+            "source": {
+              "method": "ast",
+              "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+              "symbol": "side_scan_provider_capabilities"
+            },
+            "value": null
+          }
+        },
+        "provider": "wandb"
+      }
+    ]
+  },
+  "disagreements": [
+    {
+      "id": "onboarding",
+      "lists": [
+        {
+          "members": [
+            "aws",
+            "azure",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "connect",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/cli/_entry_points.py",
+            "symbol": "_CONNECT_SOURCES"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "database",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "api_connection",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/connection_store.py",
+            "symbol": "SUPPORTED_PROVIDERS"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "scheduler",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/connection_scheduler.py",
+            "symbol": "_SCHEDULABLE_PROVIDERS"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "databricks",
+            "gcp",
+            "oci",
+            "snowflake"
+          ],
+          "name": "scan_scopes",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/cloud_scan_scopes.py",
+            "symbol": "CLOUD_PROVIDERS"
+          }
+        }
+      ],
+      "providers_not_in_every_list": [
+        "database",
+        "databricks",
+        "oci"
+      ],
+      "title": "Connection onboarding and scan scope"
+    },
+    {
+      "id": "inventory",
+      "lists": [
+        {
+          "members": [
+            "aws",
+            "azure",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "deep_inventory_api",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/routes/cloud.py",
+            "symbol": "_INVENTORY_PROVIDERS"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "database",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "api_connection",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/connection_store.py",
+            "symbol": "SUPPORTED_PROVIDERS"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "databricks",
+            "gcp",
+            "oci",
+            "snowflake"
+          ],
+          "name": "scan_scopes",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/cloud_scan_scopes.py",
+            "symbol": "CLOUD_PROVIDERS"
+          }
+        }
+      ],
+      "providers_not_in_every_list": [
+        "database",
+        "databricks",
+        "oci"
+      ],
+      "title": "Deep inventory vs connection lists"
+    },
+    {
+      "id": "benchmarks",
+      "lists": [
+        {
+          "members": [
+            "aws",
+            "azure",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "cis_api",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/routes/cloud.py",
+            "symbol": "_CIS_PROVIDERS"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "databricks",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "benchmark_inventory",
+          "source": {
+            "method": "json",
+            "path": "src/agent_bom/cloud/benchmark_inventory.json",
+            "symbol": "providers"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "databricks",
+            "gcp",
+            "snowflake"
+          ],
+          "name": "benchmark_provenance",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/cloud/benchmark_provenance.py",
+            "symbol": "BENCHMARK_PROVENANCE"
+          }
+        }
+      ],
+      "providers_not_in_every_list": [
+        "databricks"
+      ],
+      "title": "Benchmark posture"
+    },
+    {
+      "id": "side_scan",
+      "lists": [
+        {
+          "members": [
+            "aws",
+            "azure",
+            "gcp"
+          ],
+          "name": "side_scan_capabilities",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/cloud/side_scan_lifecycle_status.py",
+            "symbol": "side_scan_provider_capabilities"
+          }
+        },
+        {
+          "members": [
+            "azure",
+            "gcp"
+          ],
+          "name": "side_scan_api",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/routes/cloud.py",
+            "symbol": "_SIDESCAN_PROVIDERS"
+          }
+        }
+      ],
+      "providers_not_in_every_list": [
+        "aws"
+      ],
+      "title": "Side-scan"
+    },
+    {
+      "id": "discovery",
+      "lists": [
+        {
+          "members": [
+            "aws",
+            "azure",
+            "databricks",
+            "gcp",
+            "oci",
+            "snowflake"
+          ],
+          "name": "scan_scopes",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/api/cloud_scan_scopes.py",
+            "symbol": "CLOUD_PROVIDERS"
+          }
+        },
+        {
+          "members": [
+            "aws",
+            "azure",
+            "coreweave",
+            "crusoe",
+            "databricks",
+            "gcp",
+            "huggingface",
+            "lambda",
+            "mlflow",
+            "nebius",
+            "ollama",
+            "openai",
+            "runpod",
+            "snowflake",
+            "vastai",
+            "wandb"
+          ],
+          "name": "discovery_registry",
+          "source": {
+            "method": "ast",
+            "path": "src/agent_bom/cloud/__init__.py",
+            "symbol": "_PROVIDERS"
+          }
+        }
+      ],
+      "providers_not_in_every_list": [
+        "coreweave",
+        "crusoe",
+        "huggingface",
+        "lambda",
+        "mlflow",
+        "nebius",
+        "oci",
+        "ollama",
+        "openai",
+        "runpod",
+        "vastai",
+        "wandb"
+      ],
+      "title": "Scan scope vs AI/agent discovery registry"
+    }
+  ],
+  "generator": "scripts/generate_vendor_coverage.py",
+  "integrations": [
+    {
+      "id": "third_party_importers",
+      "items": [
+        {
+          "formats": [
+            "json-ocsf"
+          ],
+          "name": "prowler",
+          "tool": "prowler"
+        },
+        {
+          "formats": [
+            "asff"
+          ],
+          "name": "securityhub",
+          "tool": "aws-securityhub"
+        }
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/parsers/importers/prowler.py",
+          "symbol": "ImporterManifest(...)"
+        },
+        {
+          "method": "ast",
+          "path": "src/agent_bom/parsers/importers/securityhub.py",
+          "symbol": "ImporterManifest(...)"
+        }
+      ],
+      "title": "Third-party report importers"
+    },
+    {
+      "id": "builtin_report_formats",
+      "items": [
+        "cyclonedx",
+        "grype",
+        "sarif",
+        "spdx",
+        "syft",
+        "trivy"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/parsers/external_scanners.py",
+          "symbol": "BUILTIN_REPORT_FORMATS"
+        }
+      ],
+      "title": "Built-in report formats"
+    },
+    {
+      "id": "ticketing",
+      "items": [
+        "generic",
+        "jira",
+        "servicenow"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/ticketing/models.py",
+          "symbol": "SUPPORTED_TICKETING_PROVIDERS"
+        }
+      ],
+      "title": "Ticketing providers"
+    },
+    {
+      "id": "saas_connectors",
+      "items": [
+        "jira",
+        "servicenow",
+        "slack"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/connectors/__init__.py",
+          "symbol": "_CONNECTORS"
+        }
+      ],
+      "title": "SaaS connectors"
+    },
+    {
+      "id": "siem",
+      "items": [
+        "datadog",
+        "elasticsearch",
+        "opensearch",
+        "splunk",
+        "syslog"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/siem/__init__.py",
+          "symbol": "_CONNECTORS"
+        },
+        {
+          "method": "ast",
+          "path": "src/agent_bom/siem/__init__.py",
+          "symbol": "list_connectors"
+        }
+      ],
+      "title": "SIEM connectors"
+    },
+    {
+      "id": "export_destinations",
+      "items": [
+        "azure-blob",
+        "bigquery",
+        "clickhouse",
+        "databricks",
+        "gcs",
+        "s3",
+        "snowflake"
+      ],
+      "note": "DEFERRED_EXPORT_KINDS is empty.",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/export/destinations.py",
+          "symbol": "SUPPORTED_EXPORT_KINDS"
+        },
+        {
+          "method": "ast",
+          "path": "src/agent_bom/export/destinations.py",
+          "symbol": "DEFERRED_EXPORT_KINDS"
+        }
+      ],
+      "title": "Export destinations"
+    },
+    {
+      "id": "endpoint_inventory",
+      "items": [
+        "crowdstrike",
+        "jamf"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/connectors/endpoints/models.py",
+          "symbol": "ConnectionSpec.provider"
+        }
+      ],
+      "title": "Endpoint inventory (EDR/MDM)"
+    },
+    {
+      "id": "device_posture",
+      "items": [
+        "crowdstrike",
+        "generic",
+        "intune"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/device_posture.py",
+          "symbol": "_CONNECTORS"
+        }
+      ],
+      "title": "Device posture connectors"
+    },
+    {
+      "id": "identity_nhi",
+      "items": [
+        "entra",
+        "okta"
+      ],
+      "note": "The `all` choice is excluded.",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/cli/_identity_group.py",
+          "symbol": "discover_cmd --provider click.Choice"
+        }
+      ],
+      "title": "Identity / NHI discovery"
+    },
+    {
+      "id": "advisory_sources",
+      "items": [
+        "osv (primary)",
+        "ghsa (primary)",
+        "nvidia_csaf (primary)",
+        "amd_psirt (primary)",
+        "intel_psirt (primary)",
+        "nvd (enrichment)",
+        "epss (enrichment)",
+        "cisa_kev (enrichment)"
+      ],
+      "note": "",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/advisory_sources.py",
+          "symbol": "PRIMARY_ADVISORY_SOURCES"
+        },
+        {
+          "method": "ast",
+          "path": "src/agent_bom/advisory_sources.py",
+          "symbol": "ENRICHMENT_ADVISORY_SOURCES"
+        }
+      ],
+      "title": "Advisory sources"
+    },
+    {
+      "id": "iac_rule_families",
+      "items": [
+        {
+          "family": "CFN",
+          "rule_count": 20
+        },
+        {
+          "family": "DBT-SEC",
+          "rule_count": 18
+        },
+        {
+          "family": "DOCKER",
+          "rule_count": 21
+        },
+        {
+          "family": "HELM",
+          "rule_count": 15
+        },
+        {
+          "family": "IAM",
+          "rule_count": 3
+        },
+        {
+          "family": "K8S",
+          "rule_count": 32
+        },
+        {
+          "family": "TF-AI",
+          "rule_count": 10
+        },
+        {
+          "family": "TF-SEC",
+          "rule_count": 50
+        }
+      ],
+      "note": "Distinct rule-id literals per prefix.",
+      "sources": [
+        {
+          "method": "ast-scan",
+          "path": "src/agent_bom/iac/**/*.py",
+          "symbol": "rule_id=\"PREFIX-NNN\" / \"rule_id\": \"PREFIX-NNN\" literals"
+        }
+      ],
+      "title": "IaC rule families"
+    },
+    {
+      "id": "agent_clients",
+      "items": [
+        {
+          "agent_type": "aide",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "aider",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "amazon-q",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "claude-code",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "claude-desktop",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "cline",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "codex-cli",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "continue",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "copilot-cli",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "cortex-code",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "cursor",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "gemini-cli",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "goose",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "jetbrains-ai",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "junie",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "mcp-cli",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "openclaw",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "pieces",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "roo-code",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "snowflake-cli",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "sourcegraph-cody",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "tabnine",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "trae",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "void",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "vscode-copilot",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "windsurf",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "zed",
+          "support_level": "config_paths"
+        },
+        {
+          "agent_type": "docker-mcp",
+          "support_level": "dynamic_or_workspace"
+        },
+        {
+          "agent_type": "replit-agent",
+          "support_level": "dynamic_or_workspace"
+        }
+      ],
+      "note": "support_level follows discovery/coverage.py: config_paths when CONFIG_LOCATIONS lists a path for any platform; AgentType.CUSTOM is excluded.",
+      "sources": [
+        {
+          "method": "ast",
+          "path": "src/agent_bom/models.py",
+          "symbol": "AgentType"
+        },
+        {
+          "method": "ast",
+          "path": "src/agent_bom/discovery/__init__.py",
+          "symbol": "CONFIG_LOCATIONS"
+        },
+        {
+          "method": "logic-mirrored",
+          "path": "src/agent_bom/discovery/coverage.py",
+          "symbol": "supported_clients"
+        }
+      ],
+      "title": "Agent / MCP clients"
+    }
+  ],
+  "schema_version": 1
+}

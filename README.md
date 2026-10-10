@@ -24,7 +24,7 @@
   <a href="https://msaad00.github.io/agent-bom/">Docs</a>
 </p>
 
-For security, AppSec and GRC teams, agent-bom finds the AI agents, MCP servers, packages and credentials in a repository, container image or cloud account, checks the packages against vulnerability advisories, and traces each finding to the agents, tools and credentials it can reach.
+For security, AppSec and GRC teams, agent-bom inventories the AI agents, MCP servers, packages, credential references and infrastructure in a repository, container image, Kubernetes cluster or cloud account. It checks packages against vulnerability advisories and IaC and cloud configuration against security benchmarks, imports findings from the scanners you already run, and traces each finding to the agents, tools and credentials it can reach. The self-hosted control plane centralizes those findings, maps them to compliance frameworks and enforces policy on live MCP traffic.
 
 ## Quick start
 

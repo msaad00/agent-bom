@@ -105,13 +105,11 @@ def ingest_external_scan(run: DiscoveryRun) -> None:
     if run.skill_only or not run.external_scan_path:
         return
     from agent_bom.parsers.external_import import build_external_agent
-    from agent_bom.parsers.external_scanners import ingest_external_report
+    from agent_bom.parsers.external_scanners import load_external_report
 
     con, ctx = run.con, run.ctx
     try:
-        with open(run.external_scan_path) as _ext_f:
-            _ext_data = json.load(_ext_f)
-        _ext_import = ingest_external_report(_ext_data)
+        _ext_import = load_external_report(run.external_scan_path)
         con.print(
             f"\n  [green]✓[/green] Ingested external {_ext_import.format} report: "
             f"{len(_ext_import.packages)} package(s), {len(_ext_import.findings)} code/unresolved finding(s)\n"

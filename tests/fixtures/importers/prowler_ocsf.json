@@ -1,0 +1,80 @@
+[
+  {
+    "metadata": {
+      "event_code": "s3_bucket_public_access",
+      "product": {"name": "Prowler", "vendor_name": "Prowler", "version": "5.4.0"},
+      "version": "1.4.0"
+    },
+    "severity_id": 5,
+    "severity": "Critical",
+    "status": "New",
+    "status_code": "FAIL",
+    "status_detail": "S3 Bucket example-data is publicly readable.",
+    "class_uid": 2004,
+    "type_uid": 200401,
+    "finding_info": {
+      "uid": "prowler-aws-s3_bucket_public_access-123456789012-us-east-1-example-data",
+      "title": "Ensure S3 buckets are not publicly accessible",
+      "desc": "Public S3 buckets expose stored objects to anyone on the internet."
+    },
+    "resources": [
+      {
+        "uid": "arn:aws:s3:::example-data",
+        "name": "example-data",
+        "type": "AwsS3Bucket",
+        "region": "us-east-1",
+        "group": {"name": "s3"}
+      }
+    ],
+    "cloud": {"provider": "aws", "account": {"uid": "123456789012"}, "region": "us-east-1"},
+    "remediation": {
+      "desc": "Enable S3 Block Public Access on the bucket and account.",
+      "references": ["https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html"]
+    },
+    "risk_details": "Data exposure.",
+    "unmapped": {"compliance": {"CIS-3.0": ["2.1.4"], "SOC2": ["cc_6_1"]}}
+  },
+  {
+    "metadata": {
+      "event_code": "iam_root_mfa_enabled",
+      "product": {"name": "Prowler", "vendor_name": "Prowler", "version": "5.4.0"}
+    },
+    "severity_id": 4,
+    "severity": "High",
+    "status": "New",
+    "status_code": "PASS",
+    "status_detail": "Root account has MFA enabled.",
+    "class_uid": 2004,
+    "finding_info": {"uid": "prowler-aws-iam_root_mfa_enabled-123456789012-us-east-1-root", "title": "Ensure MFA is enabled for the root account"},
+    "resources": [{"uid": "arn:aws:iam::123456789012:root", "type": "AwsIamUser", "region": "us-east-1"}],
+    "cloud": {"provider": "aws", "account": {"uid": "123456789012"}}
+  },
+  {
+    "metadata": {
+      "event_code": "account_security_contact_information_is_registered",
+      "product": {"name": "Prowler", "vendor_name": "Prowler", "version": "5.4.0"}
+    },
+    "severity_id": 3,
+    "severity": "Medium",
+    "status": "New",
+    "status_code": "MANUAL",
+    "status_detail": "Login to the AWS Console and check the security contact.",
+    "class_uid": 2004,
+    "finding_info": {"uid": "prowler-aws-account_security_contact-123456789012-us-east-1-123456789012", "title": "Maintain current security contact details"},
+    "resources": [{"uid": "arn:aws:iam::123456789012:root", "type": "AwsAccount", "region": "us-east-1"}],
+    "cloud": {"provider": "aws", "account": {"uid": "123456789012"}}
+  },
+  {
+    "metadata": {
+      "event_code": "ec2_instance_public_ip",
+      "product": {"name": "Prowler", "vendor_name": "Prowler", "version": "5.4.0"}
+    },
+    "severity": "Medium",
+    "status": "Suppressed",
+    "status_code": "FAIL",
+    "class_uid": 2004,
+    "finding_info": {"uid": "prowler-aws-ec2_instance_public_ip-123456789012-us-east-1-i-0abc", "title": "EC2 instance has a public IP"},
+    "resources": [{"uid": "arn:aws:ec2:us-east-1:123456789012:instance/i-0abc", "type": "AwsEc2Instance", "region": "us-east-1"}],
+    "cloud": {"provider": "aws", "account": {"uid": "123456789012"}}
+  }
+]

@@ -1,0 +1,83 @@
+{
+  "Findings": [
+    {
+      "SchemaVersion": "2018-10-08",
+      "Id": "arn:aws:securityhub:us-east-1:123456789012:security-control/S3.8/finding/1a2b3c",
+      "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+      "ProductName": "Security Hub",
+      "CompanyName": "AWS",
+      "GeneratorId": "security-control/S3.8",
+      "AwsAccountId": "123456789012",
+      "Region": "us-east-1",
+      "Types": ["Software and Configuration Checks/Industry and Regulatory Standards"],
+      "Title": "S3 general purpose buckets should block public access",
+      "Description": "This control checks whether an S3 bucket has bucket-level Block Public Access settings.",
+      "Severity": {"Label": "HIGH", "Normalized": 70, "Original": "HIGH"},
+      "Remediation": {"Recommendation": {"Text": "Enable Block Public Access.", "Url": "https://docs.aws.amazon.com/console/securityhub/S3.8/remediation"}},
+      "Resources": [{"Type": "AwsS3Bucket", "Id": "arn:aws:s3:::example-data", "Partition": "aws", "Region": "us-east-1"}],
+      "Compliance": {"Status": "FAILED", "SecurityControlId": "S3.8", "RelatedRequirements": ["NIST.800-53.r5 AC-21", "CIS AWS Foundations Benchmark v3.0.0/2.1.4"]},
+      "Workflow": {"Status": "NEW"},
+      "RecordState": "ACTIVE"
+    },
+    {
+      "SchemaVersion": "2018-10-08",
+      "Id": "arn:aws:inspector2:us-east-1:123456789012:finding/abc123",
+      "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/inspector",
+      "ProductName": "Inspector",
+      "CompanyName": "Amazon",
+      "GeneratorId": "AWSInspector",
+      "AwsAccountId": "123456789012",
+      "Title": "CVE-2023-38545 - curl",
+      "Description": "SOCKS5 heap buffer overflow in curl.",
+      "Severity": {"Label": "CRITICAL", "Normalized": 90},
+      "Resources": [{"Type": "AwsEcrContainerImage", "Id": "arn:aws:ecr:us-east-1:123456789012:repository/app/sha256:deadbeef", "Region": "us-east-1"}],
+      "Vulnerabilities": [
+        {
+          "Id": "CVE-2023-38545",
+          "VulnerablePackages": [{"Name": "curl", "Version": "7.88.1", "PackageManager": "OS", "FixedInVersion": "8.4.0"}],
+          "Cvss": [{"Version": "3.1", "BaseScore": 9.8, "BaseVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+          "FixAvailable": "YES"
+        }
+      ],
+      "Workflow": {"Status": "NOTIFIED"},
+      "RecordState": "ACTIVE"
+    },
+    {
+      "SchemaVersion": "2018-10-08",
+      "Id": "arn:aws:securityhub:us-east-1:123456789012:security-control/IAM.6/finding/passed",
+      "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+      "ProductName": "Security Hub",
+      "AwsAccountId": "123456789012",
+      "Title": "Hardware MFA should be enabled for the root user",
+      "Severity": {"Label": "INFORMATIONAL"},
+      "Resources": [{"Type": "AwsAccount", "Id": "AWS::::Account:123456789012"}],
+      "Compliance": {"Status": "PASSED"},
+      "Workflow": {"Status": "RESOLVED"},
+      "RecordState": "ACTIVE"
+    },
+    {
+      "SchemaVersion": "2018-10-08",
+      "Id": "arn:aws:securityhub:us-east-1:123456789012:security-control/EC2.2/finding/archived",
+      "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+      "AwsAccountId": "123456789012",
+      "Title": "VPC default security groups should not allow traffic",
+      "Severity": {"Label": "HIGH"},
+      "Resources": [{"Type": "AwsEc2SecurityGroup", "Id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"}],
+      "Compliance": {"Status": "FAILED"},
+      "Workflow": {"Status": "NEW"},
+      "RecordState": "ARCHIVED"
+    },
+    {
+      "SchemaVersion": "2018-10-08",
+      "Id": "arn:aws:securityhub:us-east-1:123456789012:security-control/EC2.19/finding/suppressed",
+      "ProductArn": "arn:aws:securityhub:us-east-1::product/aws/securityhub",
+      "AwsAccountId": "123456789012",
+      "Title": "Security groups should not allow unrestricted access to high-risk ports",
+      "Severity": {"Label": "CRITICAL"},
+      "Resources": [{"Type": "AwsEc2SecurityGroup", "Id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-2"}],
+      "Compliance": {"Status": "FAILED"},
+      "Workflow": {"Status": "SUPPRESSED"},
+      "RecordState": "ACTIVE"
+    }
+  ]
+}

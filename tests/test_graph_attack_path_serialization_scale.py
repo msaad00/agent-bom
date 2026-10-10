@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_bom.api.routes import graph as graph_routes
+from agent_bom.api import graph_presentation
 from agent_bom.graph import AttackPath, EntityType, RelationshipType, UnifiedEdge, UnifiedNode
 
 
@@ -32,15 +32,15 @@ def test_attack_path_page_builds_one_edge_lookup(monkeypatch) -> None:
     }
 
     calls = 0
-    real_builder = graph_routes._build_edge_lookup
+    real_builder = graph_presentation._build_edge_lookup
 
     def recording_builder(topology):
         nonlocal calls
         calls += 1
         return real_builder(topology)
 
-    monkeypatch.setattr(graph_routes, "_build_edge_lookup", recording_builder)
-    serialized = graph_routes._serialize_attack_path_batch(
+    monkeypatch.setattr(graph_presentation, "_build_edge_lookup", recording_builder)
+    serialized = graph_presentation._serialize_attack_path_batch(
         paths,
         edges,
         nodes_by_id=nodes,

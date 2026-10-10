@@ -1868,3 +1868,41 @@ def test_postgres_schedule_store_keeps_schedule_identity_bound_to_tenant():
         assert store.delete(schedule_id, tenant_id=tenant_a) is True
     finally:
         reset_current_tenant(token)
+
+
+def test_maintenance_bootstrap_is_repeatable_under_a_non_superuser_role():
+    """Managed-Postgres migrations must validate safe roles without altering SUPERUSER."""
+    from pathlib import Path
+
+    import psycopg
+    from psycopg import sql
+
+    admin_dsn = os.environ.get("AGENT_BOM_POSTGRES_ADMIN_URL", "").strip()
+    if not admin_dsn:
+        pytest.skip("AGENT_BOM_POSTGRES_ADMIN_URL is required for role-bootstrap isolation")
+    bootstrap = (Path(__file__).parents[1] / "deploy/supabase/postgres/init.sql").read_text()
+    block = bootstrap.split("-- TENANT RLS HELPERS + POLICIES", 1)[1].split("CREATE OR REPLACE FUNCTION", 1)[0]
+    suffix = uuid4().hex[:16]
+    owner, marker, login = (f"bootstrap_{kind}_{suffix}" for kind in ("owner", "marker", "login"))
+    block = block.replace("agent_bom_rls_maintenance", marker).replace("agent_bom_maintenance", login)
+    block = block.replace("agent_bom_app", f"bootstrap_absent_app_{suffix}")
+    with psycopg.connect(admin_dsn) as conn:
+        try:
+            conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN CREATEROLE NOSUPERUSER NOBYPASSRLS").format(sql.Identifier(owner)))
+            session_user = conn.execute("SELECT session_user").fetchone()[0]
+            conn.execute(sql.SQL("GRANT {} TO {}").format(sql.Identifier(owner), sql.Identifier(session_user)))
+            conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(owner)))
+            conn.execute(block)
+            conn.execute(block)
+            assert conn.execute("SELECT rolcanlogin, rolsuper, rolbypassrls FROM pg_roles WHERE rolname=%s", (login,)).fetchone() == (
+                True,
+                False,
+                False,
+            )
+            conn.execute(sql.SQL("ALTER ROLE {} NOLOGIN").format(sql.Identifier(login)))
+            with pytest.raises(psycopg.errors.RaiseException, match="must be LOGIN NOSUPERUSER NOBYPASSRLS"):
+                with conn.transaction():
+                    conn.execute(block)
+        finally:
+            # Roles and grants are transactional: no cluster-global test roles remain.
+            conn.rollback()

@@ -13,6 +13,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - Storage backends now carry a declared support tier: PostgreSQL (server system of record) and SQLite (local, CLI and pilot) are supported, ClickHouse is an analytics sink only, and the Snowflake control-plane stores and the Neptune graph backend are experimental. When an experimental backend is selected, the API logs one warning at startup that names the backend, its tier and `docs/STORAGE_BACKENDS.md`. In a deployment that looks multi-tenant, the warning states that tenant isolation for that backend is not proven. Startup continues by default. `AGENT_BOM_REQUIRE_SUPPORTED_STORAGE=1` refuses to start with an experimental backend. `agent-bom doctor` lists the tier of each selected store under Platform integrations; experimental rows count as warnings.
 - `--external-scan`, `findings push` and the MCP `ingest_external_scan` tool now import Prowler v4/v5 JSON-OCSF and AWS Security Hub ASFF reports. FAIL and MANUAL Prowler results and active Security Hub findings become cloud posture findings with account, region, resource ARN, vendor compliance references and tool provenance; Security Hub vulnerability records become CVE findings. PASS, muted, archived, suppressed and resolved records are skipped and counted in a scan notice. Imports are file-based: no credentials, network access or tool execution.
+- `docs/VENDOR_COVERAGE.md` and `docs/VENDOR_COVERAGE.json` give a generated provider × capability matrix (connect, API connection, scheduling, discovery, inventory, benchmark posture, identity, data, side-scan, change events, runtime evidence), integrations by category, and a list of provider lists that disagree. Each cell cites its source constant. `scripts/generate_vendor_coverage.py --check` runs in `make preflight`.
 - Scanner importer contract (`agent_bom.parsers.importers`) with a published transparency manifest per importer and an opt-in `agent_bom.importers` entry-point group for third-party importers. See `docs/IMPORTERS.md`.
 
 ### Changed
@@ -21,6 +22,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `CONTRIBUTING.md` adds a "first PR in 30 minutes" path, good first contribution areas and maintainer response expectations. A maintainer-facing `Good First Issue` template is added.
 - The deployment overview classifies each `deploy/` target as Supported, Preview, Reference or Community. No deployment files changed.
 - `--external-scan` reports are now read with the shared parser size limit (`AGENT_BOM_MAX_MANIFEST_BYTES`) in the CLI and API scan paths.
+- The scan API route module is split into focused modules with no change to routes or responses: the local-path scan jail (`api/scan_path_jail.py`), AI-scan execution (`api/ai_scan_runtime.py`), bulk-ingest request models (`api/bulk_findings_ingest.py`), finding row identity and legacy row builders (`api/finding_row_shapes.py`), job response payloads (`api/scan_job_views.py`), correlation cohort ids (`api/scan_cohorts.py`) and findings list helpers (`api/finding_list_helpers.py`). The dedicated AI-asset scan endpoints (`/v1/scan/dataset-cards`, `training-pipelines`, `browser-extensions`, `model-provenance`, `prompt-scan`, `model-files`) move to `api/routes/ai_scans.py`. Existing imports from `agent_bom.api.routes.scan` keep working.
+- The `/v1/findings` read path is decomposed into named stages with no change to responses: query validation, the scan-findings half, page strategy (scoped keyset, merged scan + hub keyset, hub-only, in-memory), facets and envelope assembly. The view-filter and issue-grouping handlers, the bounded facet walk and the scan + hub merge walk get the same treatment. A read that pages through many rows (view filters, issue grouping) now folds, filters and sorts the scan-findings half once per read instead of once per internal page.
+
+- The largest scanner engines are decomposed into named stages with no change to results: package vulnerability scanning (`scan_packages`), the cloned repository tree scan, the MCP `scan` tool body and the live Kubernetes posture scan. Each now reads as a short orchestrator over input preparation, version resolution, advisory lookups, enrichment and result assembly.
+
+### Security
+
+- API local-path scans: a set-but-blank `AGENT_BOM_API_LOCAL_PATH_SCANS` no longer enables local filesystem scans. A blank value is treated as unset and falls through to `AGENT_BOM_ENABLE_LOCAL_PATH_SCANS`, then to the disabled default.
 
 ## [0.108.4] - 2026-10-09
 

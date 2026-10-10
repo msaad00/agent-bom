@@ -41,8 +41,18 @@ def test_postgres_registry_credentials_exclude_forks_and_dependabot() -> None:
         "github.actor != 'dependabot[bot]' && "
         "(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)"
     )
-    for field, secret in (("username", "DOCKERHUB_USERNAME"), ("password", "DOCKERHUB_TOKEN")):
-        assert service["credentials"][field] == "${{ " + trusted + " && secrets." + secret + " || '' }}"
+    credentials = service["credentials"]
+    # The runner requires non-empty strings whenever these keys are present.
+    # Anonymous pulls must receive an empty mapping, never blank key values.
+    assert isinstance(credentials, str)
+    expression = " ".join(credentials.split())
+    assert expression.startswith("${{ fromJSON(")
+    assert trusted in expression
+    assert "&& secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN &&" in expression
+    assert "toJSON(secrets.DOCKERHUB_USERNAME)" in expression
+    assert "toJSON(secrets.DOCKERHUB_TOKEN)" in expression
+    assert 'format(\'{{"username":{0},"password":{1}}}\',' in expression
+    assert expression.endswith("|| '{}') }}")
 
 
 def test_native_image_registry_login_excludes_forks_and_dependabot() -> None:

@@ -7,30 +7,66 @@ import contextlib
 import hashlib
 import json
 import logging
-import math
-import os
-import sys
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from datetime import datetime, timezone
 from functools import partial
-from pathlib import Path
 from typing import Annotated, Any, Literal, NamedTuple, cast
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from werkzeug.security import safe_join
 
-from agent_bom.api import findings_current, job_status_count_cache
+from agent_bom.api import compliance_hub_store, finding_cursor, findings_count_cache, findings_current, job_status_count_cache, time_window
+from agent_bom.api.ai_scan_runtime import (  # noqa: F401 - re-exported route-module API
+    _ai_scan_call,
+    _dataclass_to_dict,
+)
+from agent_bom.api.bulk_findings_ingest import (  # noqa: F401 - re-exported route-module API
+    _BULK_FINDINGS_MAX_ITEMS,
+    _BULK_FINDINGS_SOURCE_MAX_LENGTH,
+    BulkFindingsRequest,
+    PackageCheckRequest,
+    _coerce_bulk_cvss,
+    _coerce_bulk_severity,
+    _derive_bulk_finding_id,
+    _normalized_bulk_finding,
+)
 from agent_bom.api.finding_collection import collect_scan_findings
 from agent_bom.api.finding_list_envelope import HUB_LIST_OFFSET_CEILING as _HUB_LIST_OFFSET_CEILING
 from agent_bom.api.finding_list_envelope import finding_list_envelope
+from agent_bom.api.finding_list_helpers import (  # noqa: F401 - re-exported route-module API
+    _ALLOWED_FINDING_SEVERITIES,
+    _ALLOWED_FINDING_SORTS,
+    _ALLOWED_FINDING_STATUSES,
+    _DEFAULT_FINDING_STATUS,
+    _FACET_LITERAL_SEVERITY_BANDS,
+    _FACET_PAYLOAD_SCOPE_KEYS,
+    _FINDING_GROUP_MAX_OCCURRENCES,
+    _FINDING_GROUP_OCCURRENCE_SAMPLE,
+    _FRESHNESS_BUCKETS,
+    _finding_occurrence_summary,
+    _freshness_bucket,
+    _normalize_facet_severity,
+    _normalize_finding_sort,
+    _serialize_finding_group,
+)
 from agent_bom.api.finding_list_projection import FindingListInclude, finding_list_projection, list_include_or_422, project_list_row
 from agent_bom.api.finding_reachability import project_persisted_graph_reachability
 from agent_bom.api.finding_read_context import finding_read_snapshot, read_once
+from agent_bom.api.finding_row_shapes import (  # noqa: F401 - re-exported route-module API
+    _EMPTY_FIELD_VALUES,
+    _SUPPLEMENTARY_BACKFILL_FIELDS,
+    _backfill_supplementary_fields,
+    _finding_key,
+    _iter_package_findings,
+    _normalize_finding_identifiers,
+    _package_base_name,
+    _package_identity,
+    _row_vuln_id,
+    _scan_source_labels,
+)
 from agent_bom.api.finding_snapshot_metadata import snapshot_metadata
 from agent_bom.api.finding_suppression import project_current_suppressions
 from agent_bom.api.findings_current import _finding_snapshot_jobs, current_scan_jobs
@@ -44,22 +80,35 @@ from agent_bom.api.idempotency_store import (
     idempotency_reservation_lease_seconds,
 )
 from agent_bom.api.models import (
-    BrowserExtensionsRequest,
-    DatasetCardsRequest,
     InventoryResponse,
     JobStatus,
-    ModelFilesRequest,
-    ModelProvenanceRequest,
-    PromptScanRequest,
     ScanJob,
     ScanRequest,
-    TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, request_scan_cancellation, submit_scan_job
 from agent_bom.api.read_models import FindingsResponse, JobsResponse, documented
 from agent_bom.api.remediation_view import CurrentRemediationResponse
 from agent_bom.api.scan_batches import child_request_for_target, refresh_batch_parent, scan_request_targets
+from agent_bom.api.scan_cohorts import (  # noqa: F401 - re-exported route-module API
+    _CORRELATION_COHORT_NAMESPACE,
+    correlation_cohort_id,
+    correlation_cohort_parent_job_id,
+)
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
+from agent_bom.api.scan_job_views import (  # noqa: F401 - re-exported route-module API
+    _inventory_packages_from_agents,
+    _job_response_payload,
+    _job_summary_payload,
+    _redact_scan_result_for_response,
+)
+from agent_bom.api.scan_path_jail import (  # noqa: F401 - re-exported route-module API
+    _LOCAL_SCAN_DISABLE_VALUES,
+    _api_local_scans_enabled,
+    _api_scan_path_or_400,
+    _api_scan_root,
+    _enforce_api_scan_path_owner,
+    _sanitize_api_path,
+)
 from agent_bom.api.stores import (
     _get_graph_store,
     _get_idempotency_store,
@@ -73,7 +122,7 @@ from agent_bom.api.stores import (
 from agent_bom.api.tenancy import require_body_tenant_match, require_request_tenant_id
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.canonical_ids import canonical_finding_id, canonical_id
+from agent_bom.canonical_ids import canonical_id
 from agent_bom.evidence.agent_bom import AgentBomDocument
 from agent_bom.evidence.scan_agent_bom import AgentSelectionError, build_scan_agent_bom
 from agent_bom.finding_runtime_evidence import (
@@ -83,20 +132,19 @@ from agent_bom.finding_runtime_evidence import (
     compliance_tags_from_finding_row,
 )
 from agent_bom.finding_scope import (
-    FINDING_SEVERITY_FILTERS,
+    FINDING_CLASSES,
+    SECURITY_DOMAINS,
     FindingClass,
     canonical_finding_severity_filter,
+    finding_class_for_row,
+    lenses_for_row,
 )
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error, sanitize_text
 
 router = APIRouter()
 
-_CORRELATION_COHORT_NAMESPACE = uuid.UUID("4ed03a68-3d20-5e02-971f-66f17c235c91")
 _logger = logging.getLogger(__name__)
-_LOCAL_SCAN_DISABLE_VALUES = {"0", "false", "no", "off", "disabled"}
-_BULK_FINDINGS_MAX_ITEMS = 1000
-_BULK_FINDINGS_SOURCE_MAX_LENGTH = 128
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -109,158 +157,15 @@ def _require_json_content_type(request: Request) -> None:
         raise HTTPException(status_code=422, detail="Content-Type must be application/json")
 
 
-def _api_local_scans_enabled() -> bool:
-    configured = os.getenv("AGENT_BOM_API_LOCAL_PATH_SCANS", os.getenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", "disabled"))
-    return configured.strip().lower() not in _LOCAL_SCAN_DISABLE_VALUES
-
-
 async def _scan_graph_compute_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
     """Run graph rendering/derivation for scan subresources off the event loop."""
     return await asyncio.to_thread(fn, *args, **kwargs)
-
-
-async def _ai_scan_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
-    """Run blocking dedicated AI-scan work off-loop under shared backpressure."""
-    try:
-        async with adaptive_backpressure("ai_scan"):
-            return await anyio.to_thread.run_sync(partial(fn, *args, **kwargs))
-    except BackpressureRejectedError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail=exc.to_dict(),
-            headers={"Retry-After": str(exc.retry_after_seconds)},
-        ) from exc
 
 
 # Shared off-loop hub ingest write path (also used by /v1/compliance/ingest).
 # Aliased here so existing references / monkeypatch targets keep working.
 _hub_store_call = hub_store_call
 _bulk_ingest_store_writes = hub_ingest_store_writes
-
-
-def _api_scan_root() -> Path:
-    """Return the configured API filesystem scan root.
-
-    API-local path scans are disabled unless explicitly enabled. Workstation
-    pilots can set ``AGENT_BOM_API_LOCAL_PATH_SCANS=enabled`` and optionally
-    scope ``AGENT_BOM_API_SCAN_ROOT`` to a tenant workspace mount.
-    """
-    configured = os.getenv("AGENT_BOM_API_SCAN_ROOT", "").strip()
-    root = Path(configured).expanduser() if configured else Path.home()
-    try:
-        resolved = root.resolve()
-    except (OSError, RuntimeError) as exc:
-        from agent_bom.security import SecurityError
-
-        raise SecurityError("Configured scan root is not available") from exc
-    if not resolved.exists() or not resolved.is_dir():
-        from agent_bom.security import SecurityError
-
-        raise SecurityError("Configured scan root is not available")
-    return resolved
-
-
-def _enforce_api_scan_path_owner(resolved: Path, root: Path) -> None:
-    """Reject paths not owned by the API process unless explicitly allowed."""
-    if os.getenv("AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER", "").strip().lower() in {"1", "true", "yes", "on"}:
-        return
-    if os.name == "nt":
-        return
-    from agent_bom.security import SecurityError
-
-    try:
-        uid = os.getuid()
-        root_stat = root.stat()
-        path_stat = resolved.stat()
-    except OSError as exc:
-        raise SecurityError("Path is not available") from exc
-    if root_stat.st_uid != uid or path_stat.st_uid != uid:
-        raise SecurityError("Path owner is outside the API scan boundary")
-
-
-def _sanitize_api_path(user_path: str) -> str:
-    """Validate and sanitize a user-supplied path from an API request.
-
-    Interprets ``user_path`` as relative to the configured API scan root
-    (absolute paths are rejected). The resolved path is normalised, has any
-    symlinks resolved, and is verified to remain within the scan root
-    using ``os.path.commonpath`` before being returned.
-    """
-    from agent_bom.security import SecurityError
-
-    if not _api_local_scans_enabled():
-        raise SecurityError("Local filesystem scans are disabled")
-
-    # Normalise basic whitespace
-    user_path = (user_path or "").strip()
-    if not user_path:
-        raise SecurityError("Empty paths are not allowed")
-
-    # 1. Reject absolute paths — API callers must use paths relative to the scan root.
-    if os.path.isabs(user_path):
-        raise SecurityError(f"Absolute paths are not allowed: {user_path}")
-
-    # 2. Reject path traversal in raw input (../ segments)
-    if ".." in user_path.split(os.sep):
-        raise SecurityError(f"Path traversal not allowed: {user_path}")
-
-    # 3. Compute fixed root and join user path under it
-    scan_root = _api_scan_root()
-    root = os.path.realpath(str(scan_root))
-    candidate = safe_join(root, user_path)
-    if candidate is None:
-        raise SecurityError("Path resolves outside configured scan root")
-
-    # 4. Resolve to real absolute path (follows symlinks)
-    try:
-        resolved_path = Path(candidate).resolve(strict=True)
-    except OSError as exc:
-        raise SecurityError("Path does not exist inside configured scan root") from exc
-
-    # 5. Containment check — ensure resolved path stays within the configured root.
-    if os.path.commonpath([root, os.path.realpath(str(resolved_path))]) != root:
-        raise SecurityError("Path resolves outside configured scan root")
-
-    current = Path(root)
-    for part in Path(user_path).parts:
-        current = current / part
-        try:
-            if current.is_symlink():
-                raise SecurityError("Symlink path components are not allowed for API local scans")
-        except OSError as exc:
-            raise SecurityError("Path does not exist inside configured scan root") from exc
-
-    flags = os.O_RDONLY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = -1
-    try:
-        fd = os.open(candidate, flags)
-        opened = os.fstat(fd)
-        resolved_stat = resolved_path.stat()
-        if (opened.st_dev, opened.st_ino) != (resolved_stat.st_dev, resolved_stat.st_ino):
-            raise SecurityError("Path changed during validation")
-    except OSError as exc:
-        raise SecurityError("Path cannot be opened safely inside configured scan root") from exc
-    finally:
-        if fd >= 0:
-            os.close(fd)
-
-    _enforce_api_scan_path_owner(resolved_path, scan_root)
-
-    return str(resolved_path)
-
-
-def _api_scan_path_or_400(user_path: str) -> str:
-    from agent_bom.security import SecurityError, sanitize_text
-
-    try:
-        return _sanitize_api_path(user_path)
-    except SecurityError as exc:
-        _logger.warning("blocked local API scan path: %s", sanitize_text(exc))
-        if str(exc) == "Local filesystem scans are disabled":
-            raise HTTPException(status_code=400, detail="Local filesystem scans are disabled") from exc
-        raise HTTPException(status_code=400, detail="Invalid scan path") from exc
 
 
 # Local-path fields on a ScanRequest that must be confined to the API scan jail
@@ -303,17 +208,6 @@ def _sanitize_scan_request_paths(body: ScanRequest, *, tenant_id: str = "") -> S
     if not updates:
         return body
     return body.model_copy(update=updates)
-
-
-def _dataclass_to_dict(obj: object) -> object:
-    """Convert a dataclass to dict, handling nested dataclasses."""
-    import dataclasses
-
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _dataclass_to_dict(v) for k, v in dataclasses.asdict(obj).items()}
-    if isinstance(obj, list):
-        return [_dataclass_to_dict(i) for i in obj]
-    return obj
 
 
 def _request_header(request: Request, key: str) -> str:
@@ -440,197 +334,16 @@ def persisted_finding_evidence(
     }
 
 
-class BulkFindingsRequest(BaseModel):
-    """Normalized finding ingest for headless clients and agent runtimes."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    findings: list[dict[str, Any]] = Field(min_length=1, max_length=_BULK_FINDINGS_MAX_ITEMS)
-    source: str = Field(default="api", min_length=1, max_length=_BULK_FINDINGS_SOURCE_MAX_LENGTH)
-    schema_version: str = Field(default="v1", min_length=1, max_length=32)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    tenant_id: str | None = Field(default=None, description="Deprecated compatibility field; request tenant scope is authoritative.")
-    observed_at: str | None = Field(
-        default=None,
-        description="Observation timestamp from scan completion; defaults to ingest time when omitted.",
-    )
-    reconcile_absent: bool = Field(
-        default=False,
-        description=("When true, mark open findings in the same source scope that are absent from this batch as resolved at observed_at."),
-    )
-
-    @field_validator("findings")
-    @classmethod
-    def _findings_must_be_objects(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        for item in value:
-            if not item:
-                raise ValueError("findings must contain non-empty objects")
-        return value
-
-    @field_validator("source")
-    @classmethod
-    def _source_must_be_stable_label(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("source is required")
-        return normalized
-
-
-class PackageCheckRequest(BaseModel):
-    """Pinned package check shared with the CLI and MCP surfaces."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    package: str = Field(min_length=1, max_length=512)
-    ecosystem: str = Field(default="npm", min_length=1, max_length=32)
-    version: str | None = Field(default=None, max_length=256)
-    offline: bool = False
-
-    @field_validator("package")
-    @classmethod
-    def _package_must_not_be_blank(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("package is required")
-        return normalized
-
-    @field_validator("ecosystem")
-    @classmethod
-    def _ecosystem_must_be_supported(cls, value: str) -> str:
-        from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
-        from agent_bom.mcp_server_runtime import validate_ecosystem
-
-        return validate_ecosystem(value, SUPPORTED_PACKAGE_ECOSYSTEM_SET)
-
-
 def _bulk_ingested_findings_for_tenant(tenant_id: str) -> list[dict[str, Any]]:
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
     return [item for item in get_compliance_hub_store().list(tenant_id) if isinstance(item, dict) and item.get("origin") == "bulk_ingest"]
 
 
-def _derive_bulk_finding_id(row: dict[str, Any], *, source: str) -> str:
-    """Return a deterministic identity key for a bulk finding lacking an ``id``.
-
-    Idempotency requires the identity key to be a pure function of finding
-    content — never the per-attempt ``batch_id`` or wall clock. We fold in the
-    stable discriminators (source, rule/vuln, location, package) via the shared
-    ``uuid5`` canonicaliser so a resent identical batch collapses onto the same
-    rows instead of appending duplicates.
-    """
-    raw_asset = row.get("asset")
-    asset = raw_asset if isinstance(raw_asset, dict) else {}
-    rule = row.get("vulnerability_id") or row.get("cve_id") or row.get("rule_id") or row.get("title") or ""
-    location = row.get("location") or row.get("file_path") or asset.get("location") or ""
-    package = row.get("package") or row.get("package_name") or asset.get("name") or asset.get("identifier") or ""
-    return canonical_finding_id(source, str(rule), str(location), str(package))
-
-
-def _coerce_bulk_severity(value: Any, *, ordinal: int) -> str:
-    """Validate/normalise a bulk finding's severity, failing closed on bad types.
-
-    A non-string severity (nested object, number, list) cannot be honestly
-    mapped to a severity bucket — accepting it materialised a row that leaked the
-    value verbatim and never matched the severity filter. Reject it with a 422.
-    A string severity is normalised to the canonical enum; an unrecognised label
-    maps to ``unknown`` explicitly (never leaked as-is).
-    """
-    if value is None:
-        return "unknown"
-    if not isinstance(value, str):
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: severity must be a string severity label, not {type(value).__name__}",
-        )
-    from agent_bom.core.severity import normalize_severity
-
-    return normalize_severity(value)
-
-
-def _coerce_bulk_cvss(value: Any, *, ordinal: int) -> float | None:
-    """Validate/coerce a bulk finding's cvss_score to a 0.0-10.0 float or null.
-
-    A non-numeric string (``"NaNstring"``), a nested object, NaN/inf, or an
-    out-of-range number cannot be an honest CVSS base score — accepting it left a
-    value that never matched a cvss filter. Reject it with a 422. ``None`` /
-    absent is allowed (no score); a numeric string that parses cleanly in range
-    is coerced to float.
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: cvss_score must be a number in 0.0-10.0 or null, not bool",
-        )
-    if isinstance(value, (int, float)):
-        score = float(value)
-    elif isinstance(value, str):
-        try:
-            score = float(value)
-        except ValueError:
-            raise HTTPException(
-                status_code=422,
-                detail=f"finding {ordinal}: cvss_score {value!r} is not a number in 0.0-10.0",
-            ) from None
-    else:
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: cvss_score must be a number in 0.0-10.0 or null, not {type(value).__name__}",
-        )
-    if not math.isfinite(score) or not (0.0 <= score <= 10.0):
-        raise HTTPException(
-            status_code=422,
-            detail=f"finding {ordinal}: cvss_score must be a finite number within 0.0-10.0",
-        )
-    return score
-
-
-def _normalized_bulk_finding(row: dict[str, Any], *, source: str, batch_id: str, ordinal: int) -> dict[str, Any]:
-    payload = dict(row)
-    client_id = row.get("id")
-    # Client-stable ids win; otherwise derive a content-deterministic id so
-    # resends collapse (idempotent) rather than mint a fresh batch_id:ordinal.
-    payload["id"] = str(client_id) if client_id else _derive_bulk_finding_id(row, source=source)
-    payload.setdefault("source", source)
-    # Fail closed on garbage severity/cvss types instead of materialising a row
-    # that leaks the value verbatim and never matches the severity/cvss filter.
-    payload["severity"] = _coerce_bulk_severity(row.get("severity"), ordinal=ordinal)
-    cvss = _coerce_bulk_cvss(row.get("cvss_score"), ordinal=ordinal)
-    if cvss is None:
-        payload.pop("cvss_score", None)
-    else:
-        payload["cvss_score"] = cvss
-    payload["origin"] = "bulk_ingest"
-    payload["batch_id"] = batch_id
-    payload["bulk_ordinal"] = ordinal
-    return payload
-
-
 def _redact_finding_page(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from agent_bom.finding_scope import safe_finding_response_payload
 
     return [safe_finding_response_payload(project_list_row(row)) for row in rows]
-
-
-def _scan_source_labels(job: ScanJob) -> list[str]:
-    labels: list[str] = []
-    req = job.request
-    labels.extend(req.images)
-    if req.inventory:
-        labels.append("inventory")
-    if req.k8s:
-        labels.append("kubernetes")
-    if req.sbom:
-        labels.append("sbom-import")
-    if req.external_scan:
-        labels.append("external_scan")
-    if req.repo_url and str(req.repo_url).strip():
-        labels.append(str(req.repo_url).strip())
-    labels.extend(req.connectors)
-    labels.extend(req.filesystem_paths)
-    labels.extend(req.agent_projects)
-    return labels or ["local-agents"]
 
 
 def _finding_identity(finding: dict[str, Any]) -> str:
@@ -642,46 +355,6 @@ def _finding_identity(finding: dict[str, Any]) -> str:
     from agent_bom.api.findings_current import finding_identity
 
     return finding_identity(finding)
-
-
-def _finding_key(finding: dict[str, Any]) -> str:
-    vuln_id = finding.get("vulnerability_id") or finding.get("cve_id") or finding.get("id") or finding.get("title") or ""
-    raw_asset = finding.get("asset")
-    asset = raw_asset if isinstance(raw_asset, dict) else {}
-    package = finding.get("package") or finding.get("package_name") or asset.get("name", "")
-    return f"{vuln_id}:{package}"
-
-
-def _row_vuln_id(finding: dict[str, Any]) -> str:
-    """Return the CVE/advisory identifier for a finding, source-agnostic.
-
-    The unified stream carries it under ``cve_id`` while the blast-radius and
-    package-vulnerability representations carry the same value under
-    ``vulnerability_id`` — normalizing here lets the three collapse together.
-    """
-    return str(finding.get("cve_id") or finding.get("vulnerability_id") or "").strip()
-
-
-def _package_identity(finding: dict[str, Any]) -> tuple[str, str, str]:
-    """Read package identity across unified, blast-radius and nested projections."""
-    evidence = finding.get("evidence")
-    evidence = evidence if isinstance(evidence, dict) else {}
-    package = str(finding.get("package") or finding.get("package_name") or evidence.get("package_name") or "").strip()
-    if not package:
-        title = str(finding.get("title") or "")
-        if ": " in title:
-            package = title.split(": ", 1)[1].strip()
-    version = str(finding.get("package_version") or evidence.get("package_version") or "").strip()
-    # npm scoped names start with @; only a later @ separates the version.
-    if "@" in package[1:]:
-        package, suffix = package.rsplit("@", 1)
-        version = version or suffix
-    ecosystem = str(finding.get("ecosystem") or evidence.get("ecosystem") or "").strip().lower()
-    return package.lower(), version, ecosystem
-
-
-def _package_base_name(finding: dict[str, Any]) -> str:
-    return _package_identity(finding)[0]
 
 
 def _canonical_group_key(finding: dict[str, Any]) -> str:
@@ -732,87 +405,6 @@ def _row_asset_key(finding: dict[str, Any]) -> str:
         if text:
             return text.lower()
     return ""
-
-
-_EMPTY_FIELD_VALUES: tuple[Any, ...] = (None, "", [], {})
-
-# Descriptive/structural fields safe to backfill from the supplementary
-# (blast-radius / package-vulnerability) representations onto the authoritative
-# unified finding. Reachability and VEX verdicts are deliberately excluded: the
-# unified stream is the source of truth for those and must not be overridden by
-# a coarser blast-radius projection (see the unified-stream-wins contract).
-_SUPPLEMENTARY_BACKFILL_FIELDS: tuple[str, ...] = (
-    "package",
-    "package_name",
-    "package_version",
-    "ecosystem",
-    "summary",
-    "description",
-    "cvss_score",
-    "cvss_vector",
-    "attack_vector",
-    "attack_complexity",
-    "privileges_required",
-    "user_interaction",
-    "network_exploitable",
-    "references",
-    "fixed_version",
-    "epss_score",
-    "upstream_ids",
-    "epss_cve_id",
-    "kev_cve_id",
-    "affected_agents",
-    "affected_servers",
-    "exposed_credentials",
-    "exposed_tools",
-    "phantom_tools",
-)
-
-
-def _backfill_supplementary_fields(base: dict[str, Any], incoming: dict[str, Any]) -> None:
-    """Fill only empty descriptive fields on ``base`` from ``incoming``.
-
-    Never overrides a value the authoritative row already carries, so the
-    unified finding's identifiers and reachability stay intact while
-    package/CVE metadata from the supplementary representations is preserved.
-    """
-    for field in _SUPPLEMENTARY_BACKFILL_FIELDS:
-        value = incoming.get(field)
-        if value in _EMPTY_FIELD_VALUES:
-            continue
-        if base.get(field) in _EMPTY_FIELD_VALUES:
-            base[field] = value
-
-
-def _normalize_finding_identifiers(finding: dict[str, Any]) -> dict[str, Any]:
-    """Guarantee every list row carries ``cve_id``/``title``/``finding_type``.
-
-    Blast-radius and package-vulnerability rows carry the identifier only under
-    ``vulnerability_id`` and omit ``title``/``finding_type``; normalize those so
-    no row surfaces null identifiers regardless of which representation seeded it.
-    """
-    vuln = finding.get("cve_id") or finding.get("vulnerability_id")
-    if vuln:
-        if not finding.get("cve_id"):
-            finding["cve_id"] = vuln
-        if not finding.get("vulnerability_id"):
-            finding["vulnerability_id"] = vuln
-    if not finding.get("title"):
-        package = finding.get("package") or finding.get("package_name") or ""
-        # Never fall back to summary/description here: those are replay-only,
-        # redacted-on-read fields, and the title is not redacted — deriving it
-        # from them would leak sensitive free-text past _redact_finding_page.
-        if vuln and package:
-            finding["title"] = f"{vuln}: {package}"
-        elif vuln:
-            finding["title"] = str(vuln)
-        elif package:
-            finding["title"] = f"Vulnerability in {package}"
-        else:
-            finding["title"] = str(finding.get("finding_type") or "Finding")
-    if not finding.get("finding_type"):
-        finding["finding_type"] = "CVE" if vuln else "VULNERABILITY"
-    return finding
 
 
 def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, Any]:
@@ -884,59 +476,6 @@ def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, 
 
     row["framework_tags"] = compliance_tags_from_finding_row(row)
     return row
-
-
-def _iter_package_findings(job: ScanJob) -> list[dict[str, Any]]:
-    result = job.result or {}
-    findings: list[dict[str, Any]] = []
-    scan_sources = _scan_source_labels(job)
-    for agent in result.get("agents", []) or []:
-        if not isinstance(agent, dict):
-            continue
-        agent_name = str(agent.get("name") or "")
-        for server in agent.get("mcp_servers", []) or []:
-            if not isinstance(server, dict):
-                continue
-            server_name = str(server.get("name") or "")
-            for package in server.get("packages", []) or []:
-                if not isinstance(package, dict):
-                    continue
-                package_name = str(package.get("name") or "")
-                for vuln in package.get("vulnerabilities", []) or []:
-                    if not isinstance(vuln, dict):
-                        continue
-                    vuln_id = str(vuln.get("id") or vuln.get("vulnerability_id") or "")
-                    findings.append(
-                        {
-                            "id": vuln_id,
-                            "vulnerability_id": vuln_id,
-                            "package": package_name,
-                            "package_version": package.get("version"),
-                            "ecosystem": package.get("ecosystem"),
-                            "severity": str(vuln.get("severity") or "unknown").lower(),
-                            "summary": vuln.get("summary") or vuln.get("description"),
-                            "source": "package_vulnerability",
-                            "scan_id": str((job.result or {}).get("scan_id") or job.job_id),
-                            "scan_sources": scan_sources,
-                            "affected_agents": [agent_name] if agent_name else [],
-                            "affected_servers": [server_name] if server_name else [],
-                            "cvss_score": vuln.get("cvss_score"),
-                            "cvss_vector": vuln.get("cvss_vector"),
-                            "attack_vector": vuln.get("attack_vector"),
-                            "attack_complexity": vuln.get("attack_complexity"),
-                            "privileges_required": vuln.get("privileges_required"),
-                            "user_interaction": vuln.get("user_interaction"),
-                            "network_exploitable": bool(vuln.get("network_exploitable")),
-                            "epss_score": vuln.get("epss_score"),
-                            "upstream_ids": vuln.get("upstream_ids"),
-                            "epss_cve_id": vuln.get("epss_cve_id"),
-                            "kev_cve_id": vuln.get("kev_cve_id"),
-                            "fixed_version": vuln.get("fixed_version"),
-                            "is_kev": bool(vuln.get("is_kev")),
-                            "references": vuln.get("references", []),
-                        }
-                    )
-    return findings
 
 
 def _effective_reach_lookup(job: ScanJob) -> dict[str, dict[str, Any]]:
@@ -1181,94 +720,6 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     return project_current_suppressions(findings, tenant_id)
 
 
-def _inventory_packages_from_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Retain package occurrences; display names are not asset identities."""
-    packages: list[dict[str, Any]] = []
-    seen: set[tuple[str, ...]] = set()
-    for agent_index, agent in enumerate(agents):
-        agent_name = str(agent.get("name") or "")
-        agent_id = str(agent.get("canonical_id") or agent.get("stable_id") or agent.get("agent_id") or "")
-        environment = str(agent.get("environment") or "")
-        for server_index, server in enumerate(agent.get("mcp_servers", []) or []):
-            if not isinstance(server, dict):
-                continue
-            server_name = str(server.get("name") or "")
-            server_id = str(server.get("canonical_id") or server.get("stable_id") or server.get("server_id") or "")
-            # Missing identity stays scoped to this observed row; never merge
-            # otherwise distinct runtime occurrences by their display labels.
-            agent_key = agent_id or f"unidentified-agent-row:{agent_index}"
-            server_key = server_id or f"unidentified-server-row:{agent_index}:{server_index}"
-            for package in server.get("packages", []) or []:
-                if not isinstance(package, dict):
-                    continue
-                row = {
-                    "name": str(package.get("name") or ""),
-                    "version": str(package.get("version") or ""),
-                    "ecosystem": str(package.get("ecosystem") or ""),
-                    "agent": agent_name,
-                    "server": server_name,
-                    "agent_id": agent_id,
-                    "server_id": server_id,
-                    "environment": environment,
-                }
-                key = (str(row["name"]), str(row["version"]), str(row["ecosystem"]), agent_key, server_key, environment)
-                if key in seen:
-                    continue
-                seen.add(key)
-                packages.append(row)
-    return packages
-
-
-def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
-    """Build a lightweight summary payload for list surfaces."""
-    from agent_bom.security import sanitize_sensitive_payload, sanitize_text
-
-    result = job.result if isinstance(job.result, dict) else {}
-    summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
-    aggregation = result.get("aggregation") if isinstance(result.get("aggregation"), dict) else None
-    scan_run = result.get("scan_run") if isinstance(result.get("scan_run"), dict) else None
-    warnings_value = result.get("warnings")
-    warnings: list[Any] = warnings_value if isinstance(warnings_value, list) else []
-    raw_warning_count = (scan_run or {}).get("warning_count")
-    warning_count = max(0, min(100, raw_warning_count)) if isinstance(raw_warning_count, int) else len(warnings)
-    generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
-    scan_timestamp = result.get("scan_timestamp") or generated_at
-    auto_correlation = sanitize_sensitive_payload(result.get("auto_correlation"))
-    request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
-    return {
-        "job_id": job.job_id,
-        # Locator only: graph persistence may still be unavailable or incomplete.
-        "graph_scan_id": str(result.get("scan_id") or job.job_id) if job.status == JobStatus.DONE else None,
-        "tenant_id": job.tenant_id,
-        "batch_id": job.batch_id,
-        "correlation_cohort_id": job.correlation_cohort_id,
-        "correlation_cohort_manifest_hash": job.correlation_cohort_manifest_hash,
-        "correlation_max_age_hours": job.correlation_max_age_hours,
-        "parent_job_id": job.parent_job_id,
-        "child_job_ids": list(job.child_job_ids),
-        "target": job.target,
-        "target_index": job.target_index,
-        "target_count": job.target_count,
-        "source_id": job.source_id,
-        "schedule_id": job.schedule_id,
-        "status": job.status,
-        "created_at": job.created_at,
-        "completed_at": job.completed_at,
-        "request": request_payload if isinstance(request_payload, dict) else {},
-        "summary": sanitize_sensitive_payload(summary),
-        "aggregation": sanitize_sensitive_payload(aggregation),
-        **({"auto_correlation": auto_correlation} if isinstance(auto_correlation, dict) else {}),
-        "scan_timestamp": scan_timestamp,
-        "generated_at": generated_at,
-        "scan_run": sanitize_sensitive_payload(scan_run),
-        "scan_outcome": (scan_run or {}).get("outcome"),
-        "warning_count": warning_count,
-        "warnings_preview": sanitize_sensitive_payload(warnings[:3]),
-        "pushed": bool(result.get("pushed")),
-        "error": sanitize_text(job.error, max_len=1_000) if job.error else None,
-    }
-
-
 def _job_for_request(request: Request, job_id: str) -> ScanJob:
     tenant_id = _tenant_id(request)
     in_mem = _jobs_get(job_id, tenant_id=tenant_id)
@@ -1301,63 +752,11 @@ async def _load_job_for_request(request: Request, job_id: str) -> ScanJob:
     )
 
 
-def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Redact the complete scan envelope and drop replay-only finding fields."""
-    if not isinstance(result, dict):
-        return result
-    from agent_bom.cloud.cis_remediation import fail_closed_cis_result
-    from agent_bom.security import sanitize_sensitive_payload
-
-    findings = result.get("findings")
-    envelope = {key: value for key, value in result.items() if key != "findings"}
-    # This is the explicit full-result endpoint.  Redact sensitive content but
-    # do not silently truncate legitimate evidence; callers that only need a
-    # bounded polling envelope use ``/{job_id}/status`` instead.
-    sanitized = sanitize_sensitive_payload(envelope, max_str_len=sys.maxsize)
-    if not isinstance(sanitized, dict):
-        return {"document_type": "AI-BOM", "redaction_error": "scan result sanitizer returned a non-object payload"}
-    redacted = cast(dict[str, Any], fail_closed_cis_result(sanitized))
-    if not isinstance(findings, list):
-        return redacted
-    from agent_bom.finding_scope import safe_finding_response_payload
-
-    redacted["findings"] = [safe_finding_response_payload(item) for item in findings if isinstance(item, Mapping)]
-    return redacted
-
-
-def _job_response_payload(job: ScanJob) -> ScanJob:
-    redacted_result = _redact_scan_result_for_response(job.result)
-    if redacted_result is job.result:
-        return job
-    return job.model_copy(update={"result": redacted_result})
-
-
 async def _job_response_payload_off_loop(job: ScanJob) -> ScanJob:
     """Sanitize a potentially large full result in the bounded worker pool."""
     return cast(
         ScanJob,
         await anyio.to_thread.run_sync(partial(_job_response_payload, job)),
-    )
-
-
-def correlation_cohort_id(*, tenant_id: str, idempotency_key: str) -> str:
-    """Return an immutable tenant-bound cohort id from an explicit request key."""
-
-    tenant = tenant_id.strip()
-    key = idempotency_key.strip()
-    if not tenant or not key or len(key) > 200:
-        raise ValueError("tenant_id and idempotency_key are required for a correlation cohort")
-    return str(uuid.uuid5(_CORRELATION_COHORT_NAMESPACE, f"{tenant}\x00{key}"))
-
-
-def correlation_cohort_parent_job_id(*, tenant_id: str, correlation_cohort_id: str) -> str:
-    """Return the stable parent job id reserved for one tenant-bound cohort."""
-
-    return str(
-        uuid.uuid5(
-            _CORRELATION_COHORT_NAMESPACE,
-            f"{tenant_id}\x00{correlation_cohort_id}\x00parent",
-        )
     )
 
 
@@ -1398,7 +797,7 @@ def enqueue_correlation_cohort(
     *,
     tenant_id: str,
     triggered_by: str,
-    correlation_cohort_id: str,
+    correlation_cohort_id: str,  # noqa: F811 - parameter shadows the re-exported id helper
     source_requests: list[tuple[str, ScanRequest]],
     external_sources: list[tuple[str, str]] | None = None,
     max_age_hours: int,
@@ -2594,74 +1993,8 @@ def _list_jobs_impl(
     }
 
 
-_ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
-# Lifecycle-status filter (default ``open`` = live posture). ``open`` maps to
-# status IN (open, reopened) in the store; ``resolved`` to status = resolved;
-# ``all`` applies no lifecycle predicate.
-_ALLOWED_FINDING_STATUSES = ("open", "resolved", "all")
-_DEFAULT_FINDING_STATUS = "open"
-_ALLOWED_FINDING_SEVERITIES = FINDING_SEVERITY_FILTERS
-
-
-def _normalize_finding_sort(sort: str) -> str:
-    sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
-    if sort_key not in _ALLOWED_FINDING_SORTS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"invalid sort '{sort}'; accepted values: {', '.join(_ALLOWED_FINDING_SORTS)}",
-        )
-    return sort_key
-
-
-_FRESHNESS_BUCKETS = ("last_24_hours", "last_7_days", "last_30_days", "older", "unavailable")
 _FACET_SCAN_BUDGET = 50_000
 _FACET_DEADLINE_SECONDS = 1.5
-
-
-def _freshness_bucket(row: Mapping[str, Any], *, now: datetime | None = None) -> str:
-    """Classify only an observed timestamp; missing/invalid evidence is unavailable."""
-    raw = row.get("last_observed") or row.get("last_seen")
-    if not isinstance(raw, str) or not raw.strip():
-        return "unavailable"
-    try:
-        observed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return "unavailable"
-    if observed.tzinfo is None:
-        observed = observed.replace(tzinfo=timezone.utc)
-    current = now or datetime.now(timezone.utc)
-    age_seconds = max(0.0, (current.astimezone(timezone.utc) - observed.astimezone(timezone.utc)).total_seconds())
-    if age_seconds <= 24 * 60 * 60:
-        return "last_24_hours"
-    if age_seconds <= 7 * 24 * 60 * 60:
-        return "last_7_days"
-    if age_seconds <= 30 * 24 * 60 * 60:
-        return "last_30_days"
-    return "older"
-
-
-def _normalize_facet_severity(raw: Any) -> str:
-    """Fold a stored severity string into the facet histogram's bands."""
-    value = str(raw or "unknown").strip().lower()
-    if value == "informational":
-        value = "info"
-    if value not in ("critical", "high", "medium", "low", "info", "unknown"):
-        value = "unknown"
-    return value
-
-
-# Scope keys that live in the finding payload (or are computed from it) and so
-# cannot be expressed as a predicate on the current-state table's materialised
-# columns. Their presence disables the severity aggregate below.
-_FACET_PAYLOAD_SCOPE_KEYS = ("provider", "account_ref", "environment", "domain", "finding_class", "q")
-
-# Bands whose filter value equals the persisted string exactly, so the store's
-# ``LOWER(severity) = %s`` predicate selects the same rows the Python walk keeps.
-# ``info`` is excluded because it also folds the persisted ``informational``
-# alias, and ``unknown`` because it also absorbs blank/unrecognised severities —
-# for those two the store predicate is narrower than the walk, so pushing them
-# down would silently drop rows.
-_FACET_LITERAL_SEVERITY_BANDS = frozenset({"critical", "high", "medium", "low"})
 
 
 def _facet_severity_histogram(
@@ -2748,6 +2081,172 @@ def _finding_facets(
     return facets, total
 
 
+_FACET_SEVERITY_BANDS = ("critical", "high", "medium", "low", "info", "unknown")
+_TRIAGE_DISPOSITIONS = frozenset({"affected", "not_affected", "under_investigation"})
+
+
+class _FacetScopes(NamedTuple):
+    """Self-excluding scope variants: each dimension ignores its own filter."""
+
+    full: dict[str, str]
+    finding_class: dict[str, str]
+    domain: dict[str, str]
+    base: dict[str, str]
+
+    @classmethod
+    def from_scope(cls, scope: Mapping[str, str]) -> _FacetScopes:
+        full = dict(scope)
+        class_scope = {key: value for key, value in full.items() if key != "finding_class"}
+        domain_scope = {key: value for key, value in full.items() if key != "domain"}
+        base = {key: value for key, value in full.items() if key not in ("finding_class", "domain")}
+        return cls(full=full, finding_class=class_scope, domain=domain_scope, base=base)
+
+
+def _facet_reachability_bucket(row: Mapping[str, Any]) -> str:
+    reachable = row.get("graph_reachable")
+    return "reachable" if reachable is True else "unreachable" if reachable is False else "unassessed"
+
+
+def _facet_exploit_bucket(row: Mapping[str, Any]) -> str:
+    is_kev = row.get("is_kev") is True
+    epss = row.get("epss_score")
+    has_epss = isinstance(epss, (int, float)) and not isinstance(epss, bool)
+    if is_kev:
+        return "kev_and_epss" if has_epss else "kev_only"
+    return "epss_only" if has_epss else "unavailable"
+
+
+def _facet_has_fix(row: Mapping[str, Any]) -> bool:
+    versions = row.get("remediation_versions")
+    has_remediation_version = isinstance(versions, (list, tuple)) and any(str(value).strip() for value in versions)
+    return bool(str(row.get("fixed_version") or "").strip()) or has_remediation_version
+
+
+class _FacetCounts:
+    """Mutable counters for one bounded facet walk."""
+
+    def __init__(self) -> None:
+        self.finding_class: dict[str, int] = {key: 0 for key in FINDING_CLASSES}
+        self.severity: dict[str, int] = {key: 0 for key in _FACET_SEVERITY_BANDS}
+        self.status: dict[str, int] = {key: 0 for key in ("open", "resolved")}
+        self.domain: dict[str, int] = {key: 0 for key in SECURITY_DOMAINS}
+        self.freshness: dict[str, int] = {key: 0 for key in _FRESHNESS_BUCKETS}
+        self.reachability = {key: 0 for key in ("reachable", "unreachable", "unassessed")}
+        self.exploit_intelligence = {key: 0 for key in ("kev_and_epss", "kev_only", "epss_only", "unavailable")}
+        self.fixability = {key: 0 for key in ("fix_available", "no_fix_available")}
+        self.ownership = {key: 0 for key in ("owned", "unowned")}
+        self.disposition = {key: 0 for key in ("affected", "not_affected", "under_investigation", "untriaged")}
+        self.total = 0
+
+    def add_in_scope_row(self, row: dict[str, Any], triage_index: Any) -> None:
+        """Count a row that matches every active filter."""
+        self.total += 1
+        self.freshness[_freshness_bucket(row)] += 1
+        self.reachability[_facet_reachability_bucket(row)] += 1
+        self.exploit_intelligence[_facet_exploit_bucket(row)] += 1
+        self.fixability["fix_available" if _facet_has_fix(row) else "no_fix_available"] += 1
+        triage_state = _finding_triage_state(row, triage_index)
+        owner = str(row.get("owner") or "").strip() or str((triage_state or {}).get("assignee") or "").strip()
+        self.ownership["owned" if owner else "unowned"] += 1
+        decision = str((triage_state or {}).get("decision") or "").strip()
+        self.disposition[decision if decision in _TRIAGE_DISPOSITIONS else "untriaged"] += 1
+
+    def as_dict(self, pushed_severity: dict[str, int] | None) -> dict[str, dict[str, int]]:
+        return {
+            "finding_class": self.finding_class,
+            "severity": pushed_severity if pushed_severity is not None else self.severity,
+            "status": self.status,
+            "domain": self.domain,
+            "freshness": self.freshness,
+            "reachability": self.reachability,
+            "exploit_intelligence": self.exploit_intelligence,
+            "fixability": self.fixability,
+            "ownership": self.ownership,
+            "disposition": self.disposition,
+        }
+
+
+def _count_facet_row(
+    row: dict[str, Any],
+    counts: _FacetCounts,
+    *,
+    severity: str | None,
+    status: str,
+    scopes: _FacetScopes,
+    count_severity: bool,
+    triage_index: Any,
+) -> None:
+    """Test one resident row against every dimension's self-excluding predicate."""
+    finding_class = finding_class_for_row(row)
+    row_severity = _normalize_facet_severity(row.get("severity"))
+    # Re-checked in Python even when the predicate was pushed down, so a store
+    # that ignores the kwarg degrades to slow, never to wrong.
+    severity_matches = severity is None or row_severity == severity.lower()
+    status_ok = compliance_hub_store.status_matches(row, status)
+    full_scope_ok = _row_matches_scope(row, scopes.full)
+    if severity_matches and status_ok and _row_matches_scope(row, scopes.finding_class):
+        counts.finding_class[finding_class] += 1
+    if count_severity and status_ok and full_scope_ok:
+        # Only on the unfiltered walk: once ``severity`` is a store-side
+        # predicate this stream no longer carries the other bands.
+        counts.severity[row_severity] += 1
+    if severity_matches and full_scope_ok:
+        counts.status["resolved" if str(row.get("status") or "").strip().lower() == "resolved" else "open"] += 1
+    if severity_matches and status_ok and _row_matches_scope(row, scopes.domain):
+        for value in lenses_for_row(row):
+            if value in counts.domain:
+                counts.domain[value] += 1
+    if severity_matches and status_ok and full_scope_ok:
+        counts.add_in_scope_row(row, triage_index)
+
+
+def _walk_facet_rows(
+    rows: Iterable[dict[str, Any]],
+    count_row: Callable[[dict[str, Any]], None],
+    *,
+    scan_budget: int,
+    deadline_seconds: float,
+) -> tuple[int, bool, str]:
+    """Count rows until the row budget or the processing deadline is reached."""
+    scanned_rows = 0
+    deadline: float | None = None
+    for row in rows:
+        if scanned_rows >= scan_budget:
+            return scanned_rows, True, "scan_budget"
+        if deadline is None:
+            # Bound facet processing, not the iterator's time-to-first-row: a
+            # slow cursor setup must not turn a non-empty tenant into zero counts.
+            deadline = time.monotonic() + max(0.001, deadline_seconds)
+        elif time.monotonic() >= deadline:
+            return scanned_rows, True, "deadline"
+        scanned_rows += 1
+        count_row(row)
+    return scanned_rows, False, ""
+
+
+def _facet_completeness(
+    *, truncated: bool, reason: str, scanned_rows: int, scan_budget: int, deadline_seconds: float, total_exact: bool, severity_exact: bool
+) -> dict[str, Any]:
+    # Walk-derived dimensions stay lower bounds after a truncated walk; say per
+    # dimension which is which so severity can be exact while others are not.
+    walk_state = "bounded" if truncated else "exact"
+    dimensions = {
+        name: walk_state
+        for name in ("finding_class", "severity", "status", "domain", "freshness", "reachability")
+        + ("exploit_intelligence", "fixability", "ownership", "disposition")
+    }
+    dimensions["severity"] = "exact" if severity_exact else "bounded"
+    return {
+        "status": "partial" if truncated else "complete",
+        "reason": reason,
+        "scanned_rows": scanned_rows,
+        "scan_budget": scan_budget,
+        "deadline_ms": int(deadline_seconds * 1000),
+        "total_exact": total_exact,
+        "dimensions": dimensions,
+    }
+
+
 def _finding_facets_bounded(
     tenant_id: str,
     *,
@@ -2772,171 +2271,53 @@ def _finding_facets_bounded(
     scan_budget = _FACET_SCAN_BUDGET if scan_budget is None else scan_budget
     deadline_seconds = _FACET_DEADLINE_SECONDS if deadline_seconds is None else deadline_seconds
 
-    from agent_bom.api.compliance_hub_store import status_matches
-    from agent_bom.export.runner import iter_current_findings
-    from agent_bom.finding_scope import FINDING_CLASSES, SECURITY_DOMAINS, finding_class_for_row, lenses_for_row
-
-    class_counts: dict[str, int] = {key: 0 for key in FINDING_CLASSES}
-    severity_counts: dict[str, int] = {key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")}
-    status_counts: dict[str, int] = {key: 0 for key in ("open", "resolved")}
-    domain_counts: dict[str, int] = {key: 0 for key in SECURITY_DOMAINS}
-    freshness_counts: dict[str, int] = {key: 0 for key in _FRESHNESS_BUCKETS}
-    reachability_counts = {key: 0 for key in ("reachable", "unreachable", "unassessed")}
-    exploit_counts = {key: 0 for key in ("kev_and_epss", "kev_only", "epss_only", "unavailable")}
-    fixability_counts = {key: 0 for key in ("fix_available", "no_fix_available")}
-    ownership_counts = {key: 0 for key in ("owned", "unowned")}
-    disposition_counts = {key: 0 for key in ("affected", "not_affected", "under_investigation", "untriaged")}
-
     from agent_bom.api.routes.enterprise import build_tenant_triage_state_index
+    from agent_bom.export.runner import iter_current_findings
 
+    counts = _FacetCounts()
     triage_index = build_tenant_triage_state_index(tenant_id)
-
-    class_scope = dict(scope)
-    class_scope.pop("finding_class", None)
-    domain_scope = dict(scope)
-    domain_scope.pop("domain", None)
-    full_scope = dict(scope)
-    base_scope = dict(full_scope)
-    base_scope.pop("finding_class", None)
-    base_scope.pop("domain", None)
-    total = 0
-    scanned_rows = 0
-    truncated = False
-    reason = ""
-    deadline: float | None = None
-
-    # The severity histogram is the only dimension that excludes its own filter;
-    # when the store can answer it directly, ``severity`` becomes a store-side
-    # predicate and the walk stops paying for non-matching rows (#4588 follow-up).
-    pushed_severity_counts = _facet_severity_histogram(
+    scopes = _FacetScopes.from_scope(scope)
+    # Severity is the only dimension that excludes its own filter; when the
+    # store can answer it directly, ``severity`` becomes a store-side predicate
+    # and the walk stops paying for non-matching rows.
+    pushed = _facet_severity_histogram(tenant_id, severity=severity, scan_id=scan_id, since=since, scope=scopes.full, status=status)
+    rows = iter_current_findings(
         tenant_id,
-        severity=severity,
-        scan_id=scan_id,
-        since=since,
-        scope=full_scope,
-        status=status,
-    )
-    walk_severity = severity if pushed_severity_counts is not None else None
-
-    for row in iter_current_findings(
-        tenant_id,
-        severity=walk_severity,
+        severity=severity if pushed is not None else None,
         since=since,
         scan_id=scan_id,
-        scope=base_scope,
+        scope=scopes.base,
         status="all",
         sanitize=False,
-    ):
-        if scanned_rows >= scan_budget:
-            truncated = True
-            reason = "scan_budget"
-            break
-        if deadline is None:
-            # Bound facet processing, not the backing iterator's time-to-first
-            # row. A slow cursor setup must not turn a non-empty tenant into a
-            # zero-count Findings response.
-            deadline = time.monotonic() + max(0.001, deadline_seconds)
-        elif time.monotonic() >= deadline:
-            truncated = True
-            reason = "deadline"
-            break
-        scanned_rows += 1
-        finding_class = finding_class_for_row(row)
-        row_severity = _normalize_facet_severity(row.get("severity"))
-        # Re-checked in Python even when the predicate was pushed down, so a
-        # store that ignores the kwarg degrades to slow, never to wrong.
-        severity_matches = severity is None or row_severity == severity.lower()
-        status_matches_active = status_matches(row, status)
-        full_scope_matches = _row_matches_scope(row, full_scope)
-
-        if severity_matches and status_matches_active and _row_matches_scope(row, class_scope):
-            class_counts[finding_class] += 1
-        if pushed_severity_counts is None and status_matches_active and full_scope_matches:
-            # Only meaningful on the unfiltered walk: once ``severity`` is a
-            # store-side predicate this stream no longer carries the other bands.
-            severity_counts[row_severity] += 1
-        if severity_matches and full_scope_matches:
-            row_status = "resolved" if str(row.get("status") or "").strip().lower() == "resolved" else "open"
-            status_counts[row_status] += 1
-        if severity_matches and status_matches_active and _row_matches_scope(row, domain_scope):
-            for value in lenses_for_row(row):
-                if value in domain_counts:
-                    domain_counts[value] += 1
-        if severity_matches and status_matches_active and full_scope_matches:
-            total += 1
-            freshness_counts[_freshness_bucket(row)] += 1
-            reachable = row.get("graph_reachable")
-            reachability_counts["reachable" if reachable is True else "unreachable" if reachable is False else "unassessed"] += 1
-            is_kev = row.get("is_kev") is True
-            epss = row.get("epss_score")
-            has_epss = isinstance(epss, (int, float)) and not isinstance(epss, bool)
-            exploit_counts[
-                "kev_and_epss" if is_kev and has_epss else "kev_only" if is_kev else "epss_only" if has_epss else "unavailable"
-            ] += 1
-            remediation_versions = row.get("remediation_versions")
-            has_remediation_version = isinstance(remediation_versions, (list, tuple)) and any(
-                str(value).strip() for value in remediation_versions
-            )
-            has_fix = bool(str(row.get("fixed_version") or "").strip()) or has_remediation_version
-            fixability_counts["fix_available" if has_fix else "no_fix_available"] += 1
-            triage_state = _finding_triage_state(row, triage_index)
-            owner = str(row.get("owner") or "").strip() or str((triage_state or {}).get("assignee") or "").strip()
-            ownership_counts["owned" if owner else "unowned"] += 1
-            decision = str((triage_state or {}).get("decision") or "").strip()
-            disposition_counts[decision if decision in {"affected", "not_affected", "under_investigation"} else "untriaged"] += 1
-
-    # ``total`` and the severity histogram have to answer the same question on
-    # the same basis. Under pushdown the histogram is the store's unbounded
-    # aggregate while the walk is row-budgeted, so a truncated walk would put an
-    # exact facet next to a lower-bound total and the two would contradict.
-    # The aggregate applies the identical predicates here (pushdown is refused
-    # whenever a scan_id or a payload-side scope key is present, so the walk's
-    # scope test is vacuous), which makes its count for the filtered band the
-    # exact total — take it, and both numbers come from one derivation again.
-    total_exact = not truncated
-    if truncated and pushed_severity_counts is not None and severity is not None:
-        total = pushed_severity_counts.get(_normalize_facet_severity(severity), total)
-        total_exact = True
-    # The walk-derived dimensions stay lower bounds after that substitution, so
-    # say per dimension which is which — "approximate" alone cannot tell a
-    # consumer that severity is exact while finding_class is not.
-    walk_state = "bounded" if truncated else "exact"
-    dimensions = {
-        "finding_class": walk_state,
-        "severity": "exact" if (pushed_severity_counts is not None or not truncated) else "bounded",
-        "status": walk_state,
-        "domain": walk_state,
-        "freshness": walk_state,
-        "reachability": walk_state,
-        "exploit_intelligence": walk_state,
-        "fixability": walk_state,
-        "ownership": walk_state,
-        "disposition": walk_state,
-    }
-    return (
-        {
-            "finding_class": class_counts,
-            "severity": pushed_severity_counts if pushed_severity_counts is not None else severity_counts,
-            "status": status_counts,
-            "domain": domain_counts,
-            "freshness": freshness_counts,
-            "reachability": reachability_counts,
-            "exploit_intelligence": exploit_counts,
-            "fixability": fixability_counts,
-            "ownership": ownership_counts,
-            "disposition": disposition_counts,
-        },
-        total,
-        {
-            "status": "partial" if truncated else "complete",
-            "reason": reason,
-            "scanned_rows": scanned_rows,
-            "scan_budget": scan_budget,
-            "deadline_ms": int(deadline_seconds * 1000),
-            "total_exact": total_exact,
-            "dimensions": dimensions,
-        },
     )
+    count_row = partial(
+        _count_facet_row,
+        counts=counts,
+        severity=severity,
+        status=status,
+        scopes=scopes,
+        count_severity=pushed is None,
+        triage_index=triage_index,
+    )
+    scanned_rows, truncated, reason = _walk_facet_rows(rows, count_row, scan_budget=scan_budget, deadline_seconds=deadline_seconds)
+    # ``total`` and the severity histogram must answer the same question on the
+    # same basis. Under pushdown the histogram is the store's unbounded aggregate
+    # with identical predicates, so its count for the filtered band is the exact
+    # total even when the row-budgeted walk was truncated.
+    total, total_exact = counts.total, not truncated
+    if truncated and pushed is not None and severity is not None:
+        total = pushed.get(_normalize_facet_severity(severity), total)
+        total_exact = True
+    completeness = _facet_completeness(
+        truncated=truncated,
+        reason=reason,
+        scanned_rows=scanned_rows,
+        scan_budget=scan_budget,
+        deadline_seconds=deadline_seconds,
+        total_exact=total_exact,
+        severity_exact=pushed is not None or not truncated,
+    )
+    return counts.as_dict(pushed), total, completeness
 
 
 def _canonical_scope_filters(
@@ -3114,6 +2495,98 @@ class MergedScanBulkPage(NamedTuple):
     has_more: bool
 
 
+class _ScanBulkMerge:
+    """Two-pointer walk over pre-sorted scan findings and keyset-refilled hub pages.
+
+    Each source is consumed strictly in order, so a page consumes a contiguous
+    prefix of each source after its resume point.
+    """
+
+    def __init__(
+        self,
+        scan_findings: list[dict[str, Any]],
+        fetch_bulk: Callable[[str | None], Any],
+        *,
+        sort_key: str,
+        scan_start: int,
+        bulk_cursor: str | None,
+    ) -> None:
+        self.scan_findings = scan_findings
+        self.sort_key = sort_key
+        self.scan_i = scan_start
+        self.bulk_buf: list[dict[str, Any]] = []
+        self.bulk_i = 0
+        self.last_bulk_consumed: dict[str, Any] | None = None
+        self._fetch_bulk = fetch_bulk
+        self._fetch_cursor: str | None = bulk_cursor or None
+        self._bulk_exhausted = False
+
+    def _refill_bulk(self) -> bool:
+        if self._bulk_exhausted:
+            self.bulk_buf = []
+            self.bulk_i = 0
+            return False
+        result = self._fetch_bulk(self._fetch_cursor)
+        self.bulk_buf = result[0]
+        self._fetch_cursor = result[2] if len(result) > 2 else None
+        if not self._fetch_cursor:
+            self._bulk_exhausted = True
+        self.bulk_i = 0
+        return bool(self.bulk_buf)
+
+    def bulk_head(self) -> dict[str, Any] | None:
+        if self.bulk_i >= len(self.bulk_buf) and not self._refill_bulk():
+            return None
+        return self.bulk_buf[self.bulk_i]
+
+    def scan_head(self) -> dict[str, Any] | None:
+        return self.scan_findings[self.scan_i] if self.scan_i < len(self.scan_findings) else None
+
+    def _take_scan(self) -> dict[str, Any]:
+        row = self.scan_findings[self.scan_i]
+        self.scan_i += 1
+        return row
+
+    def _take_bulk(self) -> dict[str, Any]:
+        row = self.bulk_buf[self.bulk_i]
+        self.bulk_i += 1
+        self.last_bulk_consumed = row
+        return row
+
+    def pick_next(self) -> dict[str, Any] | None:
+        scan_row = self.scan_head()
+        bulk_row = self.bulk_head()
+        if scan_row is None and bulk_row is None:
+            return None
+        if bulk_row is None:
+            return self._take_scan()
+        if scan_row is None:
+            return self._take_bulk()
+        if _finding_sort_key(scan_row, self.sort_key) <= _finding_sort_key(bulk_row, self.sort_key):
+            return self._take_scan()
+        return self._take_bulk()
+
+    def has_more(self) -> bool:
+        return self.scan_head() is not None or self.bulk_head() is not None
+
+
+def _merge_bulk_kwargs(
+    since: str | None, status: str | None, scope: Mapping[str, str] | None, scope_metadata: dict[str, Any] | None
+) -> dict[str, Any]:
+    extra: dict[str, Any] = {}
+    if since:
+        extra["since"] = since
+    if status is not None:
+        extra["status"] = status
+    if scope:
+        extra["scope"] = dict(scope)
+        if scope_metadata is not None:
+            # One dict across every refill: the store accumulates, so the merged
+            # page reports the combined walk.
+            extra["scope_metadata"] = scope_metadata
+    return extra
+
+
 def _merged_scan_bulk_page(
     scan_findings: list[dict[str, Any]],
     *,
@@ -3148,34 +2621,10 @@ def _merged_scan_bulk_page(
     source after its resume point — that is what makes the walk drop-free and
     dup-free regardless of the merge comparator's tiebreakers.
     """
-    from agent_bom.api.finding_cursor import cursor_from_current_row
+    extra_kwargs = _merge_bulk_kwargs(since, status, scope, scope_metadata)
 
-    scan_i = scan_start
-    bulk_buf: list[dict[str, Any]] = []
-    bulk_i = 0
-    fetch_cursor: str | None = bulk_cursor or None
-    bulk_exhausted = False
-    last_bulk_consumed: dict[str, Any] | None = None
-
-    extra_kwargs: dict[str, Any] = {}
-    if since:
-        extra_kwargs["since"] = since
-    if status is not None:
-        extra_kwargs["status"] = status
-    if scope:
-        extra_kwargs["scope"] = dict(scope)
-        if scope_metadata is not None:
-            # One dict across every refill: ``collect_scope_filtered_page``
-            # accumulates, so the merged page reports the combined walk.
-            extra_kwargs["scope_metadata"] = scope_metadata
-
-    def _refill_bulk() -> bool:
-        nonlocal bulk_buf, bulk_i, fetch_cursor, bulk_exhausted
-        if bulk_exhausted:
-            bulk_buf = []
-            bulk_i = 0
-            return False
-        bulk_result = bulk_list(
+    def fetch_bulk(cursor: str | None) -> Any:
+        return bulk_list(
             tenant_id,
             limit=_BULK_MERGE_CHUNK,
             sort=sort_key,
@@ -3183,71 +2632,23 @@ def _merged_scan_bulk_page(
             scan_id=scan_id,
             origin="bulk_ingest",
             include_total=False,
-            cursor=fetch_cursor,
+            cursor=cursor,
             **extra_kwargs,
         )
-        bulk_buf = bulk_result[0]
-        fetch_cursor = bulk_result[2] if len(bulk_result) > 2 else None
-        if not fetch_cursor:
-            bulk_exhausted = True
-        bulk_i = 0
-        return bool(bulk_buf)
 
-    def bulk_head() -> dict[str, Any] | None:
-        if bulk_i >= len(bulk_buf) and not _refill_bulk():
-            return None
-        return bulk_buf[bulk_i]
-
-    def scan_head() -> dict[str, Any] | None:
-        if scan_i >= len(scan_findings):
-            return None
-        return scan_findings[scan_i]
-
-    def take_scan() -> dict[str, Any]:
-        nonlocal scan_i
-        row = scan_findings[scan_i]
-        scan_i += 1
-        return row
-
-    def take_bulk() -> dict[str, Any]:
-        nonlocal bulk_i, last_bulk_consumed
-        row = bulk_buf[bulk_i]
-        bulk_i += 1
-        last_bulk_consumed = row
-        return row
-
-    def pick_next() -> dict[str, Any] | None:
-        scan_row = scan_head()
-        bulk_row = bulk_head()
-        if scan_row is None and bulk_row is None:
-            return None
-        if bulk_row is None:
-            return take_scan()
-        if scan_row is None:
-            return take_bulk()
-        if _finding_sort_key(scan_row, sort_key) <= _finding_sort_key(bulk_row, sort_key):
-            return take_scan()
-        return take_bulk()
-
+    walk = _ScanBulkMerge(scan_findings, fetch_bulk, sort_key=sort_key, scan_start=scan_start, bulk_cursor=bulk_cursor)
     skipped = 0
-    while skipped < offset:
-        if pick_next() is None:
-            break
+    while skipped < offset and walk.pick_next() is not None:
         skipped += 1
-
     page: list[dict[str, Any]] = []
-    for _ in range(limit):
-        row = pick_next()
-        if row is None:
-            break
+    while len(page) < limit and (row := walk.pick_next()) is not None:
         page.append(row)
-
-    has_more = scan_head() is not None or bulk_head() is not None
-    if last_bulk_consumed is not None:
-        next_bulk_cursor = cursor_from_current_row(last_bulk_consumed, sort=sort_key)
+    has_more = walk.has_more()
+    if walk.last_bulk_consumed is not None:
+        next_bulk_cursor = finding_cursor.cursor_from_current_row(walk.last_bulk_consumed, sort=sort_key)
     else:
         next_bulk_cursor = bulk_cursor or ""
-    return MergedScanBulkPage(page, scan_i, next_bulk_cursor, has_more)
+    return MergedScanBulkPage(page, walk.scan_i, next_bulk_cursor, has_more)
 
 
 @router.get("/findings", **documented(FindingsResponse), tags=["scan"])
@@ -3378,6 +2779,445 @@ def _project_findings_reachability(
         return rows, warnings
 
 
+class _FindingListQuery(NamedTuple):
+    """Validated, tenant-scoped parameters for one ``/v1/findings`` page."""
+
+    tenant_id: str
+    sort_key: str
+    severity: str | None
+    status_key: str
+    scan_id: str | None
+    limit: int
+    offset: int
+    cursor: str | None
+    merged_cursor: tuple[int, str] | None
+    window_days: int
+    window_since: str | None
+    scope_filters: dict[str, str]
+    approximate_total: bool
+    cached_bulk_total: int | None
+    include_bulk_total: bool
+
+    @property
+    def scan_start(self) -> int:
+        return self.merged_cursor[0] if self.merged_cursor is not None else 0
+
+    @property
+    def bulk_cursor_in(self) -> str | None:
+        # A compound merged cursor carries the hub keyset position; a plain
+        # cursor carries only the hub position (the scan half was delivered).
+        return (self.merged_cursor[1] or None) if self.merged_cursor is not None else self.cursor
+
+
+class _FindingListPage(NamedTuple):
+    rows: list[dict[str, Any]]
+    total: int | None
+    total_approximate: bool
+    next_cursor: str | None
+
+
+def _validated_finding_list_params(
+    sort: str, severity: str | None, status: str, cursor: str | None, offset: int
+) -> tuple[str, str | None, str, tuple[int, str] | None]:
+    """Reject bad list parameters with explicit 4xx errors.
+
+    Silently falling back made typos read as "no findings" or "wrong order".
+    """
+    sort_key = _normalize_finding_sort(sort)
+    try:
+        severity = canonical_finding_severity_filter(severity)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid severity; accepted values: {', '.join(_ALLOWED_FINDING_SEVERITIES)}",
+        ) from None
+    status_key = status.strip().lower() if isinstance(status, str) else _DEFAULT_FINDING_STATUS
+    if status_key not in _ALLOWED_FINDING_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid status '{status}'; accepted values: {', '.join(_ALLOWED_FINDING_STATUSES)}",
+        )
+    if cursor and offset:
+        raise HTTPException(status_code=400, detail="cursor and offset are mutually exclusive")
+    if offset > _HUB_LIST_OFFSET_CEILING:
+        # Deep OFFSET scans linearly; cursor pagination is the unbounded-depth contract.
+        raise HTTPException(
+            status_code=400,
+            detail=f"offset exceeds ceiling {_HUB_LIST_OFFSET_CEILING}; use cursor pagination for deeper walks",
+        )
+    # A cursor is either a compound merged token (scan + hub frontier) or a plain
+    # hub keyset cursor. Decode the compound form first so a keyset caller
+    # resuming the scan half is routed to the merged walk.
+    merged_cursor: tuple[int, str] | None = None
+    if cursor:
+        try:
+            merged_cursor = finding_cursor.decode_merged_scan_cursor(cursor, expected_sort=sort_key)
+            if merged_cursor is None:
+                finding_cursor.decode_finding_cursor(cursor, expected_sort=sort_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
+    return sort_key, severity, status_key, merged_cursor
+
+
+def _finding_list_query(
+    request: Request,
+    *,
+    sort: str,
+    severity: str | None,
+    status: str,
+    scan_id: str | None,
+    limit: int,
+    offset: int,
+    cursor: str | None,
+    approximate_total: bool,
+    window_days: int | None,
+) -> _FindingListQuery:
+    tenant_id = _tenant_id(request)
+    # Default read-window (~90d) bounds counts at scale; ``window_days=0`` widens to all history.
+    resolved_window = time_window.normalize_window_days(window_days)
+    window_since = time_window.window_since_iso(resolved_window)
+    sort_key, severity, status_key, merged_cursor = _validated_finding_list_params(sort, severity, status, cursor, offset)
+    effective_approximate_total = findings_count_cache.resolve_effective_approximate_total(
+        requested=approximate_total,
+        tenant_id=tenant_id,
+        severity=severity,
+        scan_id=scan_id,
+        window_days=resolved_window,
+        status=status_key,
+    )
+    cached_bulk_total = findings_count_cache.get_cached_total(
+        findings_count_cache.cache_key(
+            tenant_id=tenant_id,
+            severity=severity,
+            scan_id=scan_id,
+            origin="bulk_ingest",
+            window_days=resolved_window,
+            status=status_key,
+        )
+    )
+    approximate = bool(approximate_total or effective_approximate_total)
+    # Approximate reads reuse cached totals; warm the cache with one exact count
+    # only when it is cold on the first page.
+    include_bulk_total = not cursor and cached_bulk_total is None and (offset == 0 or not approximate)
+    return _FindingListQuery(
+        tenant_id=tenant_id,
+        sort_key=sort_key,
+        severity=severity,
+        status_key=status_key,
+        scan_id=scan_id,
+        limit=limit,
+        offset=offset,
+        cursor=cursor,
+        merged_cursor=merged_cursor,
+        window_days=resolved_window,
+        window_since=window_since,
+        scope_filters={},
+        approximate_total=approximate,
+        cached_bulk_total=cached_bulk_total,
+        include_bulk_total=include_bulk_total,
+    )
+
+
+def _filter_finding_rows(rows: list[dict[str, Any]], query: _FindingListQuery) -> list[dict[str, Any]]:
+    """Apply severity, lifecycle status and scope filters to in-memory rows."""
+    if query.severity:
+        normalized = query.severity.lower()
+        rows = [item for item in rows if str(item.get("severity", "")).lower() == normalized]
+    # Scan findings carry no lifecycle status, so they count as ``open``.
+    rows = [item for item in rows if compliance_hub_store.status_matches(item, query.status_key)]
+    if query.scope_filters:
+        rows = [item for item in rows if _row_matches_scope(item, query.scope_filters)]
+    return rows
+
+
+def _scan_half_rows(query: _FindingListQuery, store: Any, warnings: list[str]) -> list[dict[str, Any]]:
+    """Current-state scan findings for the page, sorted for the merged walk.
+
+    The default view collapses re-scans to the current state per finding;
+    ``?scan_id=`` returns that scan's rows verbatim.
+    """
+    if query.cursor and query.merged_cursor is None:
+        # A plain hub keyset cursor: the scan half was delivered on earlier
+        # merged pages, so skip the O(all-completed-jobs) fold entirely.
+        if _completed_jobs_for_tenant(query.tenant_id):
+            warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
+        return []
+
+    def load() -> list[dict[str, Any]]:
+        rows = _current_scan_rows(query.tenant_id, query.window_since, query.scan_id)
+        rows = findings_current.scan_only_findings(rows, query.tenant_id, hub=store, scan_id=query.scan_id)
+        rows = _filter_finding_rows(rows, query)
+        rows.sort(key=lambda row: _finding_sort_key(row, query.sort_key))
+        return rows
+
+    # View filters and issue grouping page through up to 50k rows in one read;
+    # fold, filter and sort the scan half once per read instead of once per page.
+    # Callers only index into or copy the returned list.
+    key = [query.tenant_id, query.window_since, query.scan_id, query.severity, query.status_key, query.sort_key]
+    return read_once(("scan_half_rows", json.dumps([*key, sorted(query.scope_filters.items())])), load)
+
+
+def _merged_page_next_cursor(query: _FindingListQuery, page: MergedScanBulkPage) -> str | None:
+    if not page.has_more:
+        return None
+    return finding_cursor.encode_merged_scan_cursor(sort=query.sort_key, scan_index=page.next_scan_index, bulk_cursor=page.next_bulk_cursor)
+
+
+def _merged_page(
+    query: _FindingListQuery,
+    scan_findings: list[dict[str, Any]],
+    bulk_list: Callable[..., Any],
+    **scope_kwargs: Any,
+) -> tuple[list[dict[str, Any]], str | None]:
+    merged = _merged_scan_bulk_page(
+        scan_findings,
+        bulk_list=bulk_list,
+        tenant_id=query.tenant_id,
+        sort_key=query.sort_key,
+        severity=query.severity,
+        scan_id=query.scan_id,
+        offset=query.offset,
+        limit=query.limit,
+        scan_start=query.scan_start,
+        bulk_cursor=query.bulk_cursor_in,
+        since=query.window_since,
+        status=query.status_key,
+        **scope_kwargs,
+    )
+    return merged.rows, _merged_page_next_cursor(query, merged)
+
+
+def _bulk_page(query: _FindingListQuery, bulk_list: Callable[..., Any], **kwargs: Any) -> tuple[list[dict[str, Any]], Any, str | None]:
+    """One keyset/offset page from the hub's bulk-ingest source."""
+    result = bulk_list(
+        query.tenant_id,
+        limit=query.limit,
+        offset=0 if query.cursor else query.offset,
+        sort=query.sort_key,
+        severity=query.severity,
+        scan_id=query.scan_id,
+        origin="bulk_ingest",
+        cursor=query.bulk_cursor_in,
+        since=query.window_since,
+        status=query.status_key,
+        **kwargs,
+    )
+    return result[0], result[1], (result[2] if len(result) > 2 else None)
+
+
+def _scoped_findings_page(
+    query: _FindingListQuery,
+    scan_findings: list[dict[str, Any]],
+    bulk_list: Callable[..., Any],
+    *,
+    use_merged: bool,
+    scope_metadata: dict[str, Any],
+) -> _FindingListPage:
+    """Scope filters run inside the store, batched and keyset-paged.
+
+    Scope keys live in the payload or are computed, so they cannot be one SQL
+    predicate; the walk stays on the keyset path and ``total`` is approximate.
+    """
+    scope_kwargs = {"scope": dict(query.scope_filters), "scope_metadata": scope_metadata}
+    if use_merged:
+        rows, next_cursor = _merged_page(query, scan_findings, bulk_list, **scope_kwargs)
+    else:
+        rows, _total, next_cursor = _bulk_page(query, bulk_list, include_total=False, **scope_kwargs)
+    return _FindingListPage(rows=rows, total=None, total_approximate=True, next_cursor=next_cursor)
+
+
+def _merged_unscoped_page(query: _FindingListQuery, scan_findings: list[dict[str, Any]], bulk_list: Callable[..., Any]) -> _FindingListPage:
+    if query.merged_cursor is not None:
+        # Resume pages stay approximate to avoid an O(table) count per page.
+        rows, next_cursor = _merged_page(query, scan_findings, bulk_list)
+        return _FindingListPage(rows=rows, total=None, total_approximate=True, next_cursor=next_cursor)
+    probe = bulk_list(
+        query.tenant_id,
+        limit=1,
+        offset=0,
+        sort=query.sort_key,
+        severity=query.severity,
+        scan_id=query.scan_id,
+        origin="bulk_ingest",
+        include_total=query.include_bulk_total,
+        since=query.window_since,
+        status=query.status_key,
+    )
+    rows, next_cursor = _merged_page(query, scan_findings, bulk_list)
+    resolved_bulk, total_approximate = _resolve_bulk_findings_total(
+        tenant_id=query.tenant_id,
+        severity=query.severity,
+        scan_id=query.scan_id,
+        approximate_total=query.approximate_total,
+        offset=query.offset,
+        bulk_total=probe[1],
+        request_cached_total=query.cached_bulk_total,
+        page_len=len(rows),
+        limit=query.limit,
+        window_days=query.window_days,
+        status=query.status_key,
+    )
+    total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
+    return _FindingListPage(rows=rows, total=total, total_approximate=total_approximate, next_cursor=next_cursor)
+
+
+def _bulk_only_page(query: _FindingListQuery, bulk_list: Callable[..., Any]) -> _FindingListPage:
+    rows, bulk_total, next_cursor = _bulk_page(query, bulk_list, include_total=query.include_bulk_total)
+    total, total_approximate = _resolve_bulk_findings_total(
+        tenant_id=query.tenant_id,
+        severity=query.severity,
+        scan_id=query.scan_id,
+        approximate_total=query.approximate_total,
+        offset=0 if query.cursor else query.offset,
+        bulk_total=bulk_total,
+        request_cached_total=query.cached_bulk_total,
+        page_len=len(rows),
+        limit=query.limit,
+        window_days=query.window_days,
+        status=query.status_key,
+    )
+    return _FindingListPage(rows=rows, total=total, total_approximate=total_approximate, next_cursor=next_cursor)
+
+
+def _in_memory_findings_page(query: _FindingListQuery, scan_findings: list[dict[str, Any]]) -> _FindingListPage:
+    """Store without keyset paging: materialize, sort and walk by index.
+
+    The merged cursor's ``scan_index`` slot doubles as the index so
+    ``has_more`` stays honest and the rest is retrievable.
+    """
+    bulk_findings = _bulk_ingested_findings_for_tenant(query.tenant_id)
+    if query.scan_id:
+        bulk_findings = [item for item in bulk_findings if str(item.get("scan_id") or "") == query.scan_id]
+    combined = scan_findings + _filter_finding_rows(bulk_findings, query)
+    combined.sort(key=lambda row: _finding_sort_key(row, query.sort_key))
+    start = query.scan_start if query.merged_cursor is not None else query.offset
+    rows = combined[start : start + query.limit]
+    end = start + len(rows)
+    next_cursor = (
+        finding_cursor.encode_merged_scan_cursor(sort=query.sort_key, scan_index=end, bulk_cursor="") if end < len(combined) else None
+    )
+    return _FindingListPage(rows=rows, total=len(combined), total_approximate=False, next_cursor=next_cursor)
+
+
+def _findings_page(
+    query: _FindingListQuery,
+    scan_findings: list[dict[str, Any]],
+    store: Any,
+    scope_metadata: dict[str, Any],
+) -> _FindingListPage:
+    """Pick the page strategy the store supports for this query."""
+    bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
+    has_current_page = callable(getattr(store, "list_current_page", None))
+    # Take the merged (scan + hub) keyset walk whenever the scan half is in play.
+    use_merged = has_current_page and (query.merged_cursor is not None or (not query.cursor and bool(scan_findings)))
+    if query.scope_filters and has_current_page and callable(bulk_list):
+        return _scoped_findings_page(query, scan_findings, bulk_list, use_merged=use_merged, scope_metadata=scope_metadata)
+    if callable(bulk_list) and not query.scope_filters:
+        if use_merged:
+            return _merged_unscoped_page(query, scan_findings, bulk_list)
+        return _bulk_only_page(query, bulk_list)
+    return _in_memory_findings_page(query, scan_findings)
+
+
+def _apply_finding_facets(query: _FindingListQuery, page: _FindingListPage, warnings: list[str]) -> tuple[_FindingListPage, dict, dict]:
+    facets, facet_total, completeness = _finding_facets_bounded(
+        query.tenant_id,
+        severity=query.severity,
+        scan_id=query.scan_id,
+        since=query.window_since,
+        scope=query.scope_filters,
+        status=query.status_key,
+    )
+    # A bounded walk is a lower bound; only a complete walk or an
+    # aggregate-derived exact total may replace the list path's total.
+    if completeness["status"] == "complete" or completeness["total_exact"]:
+        page = page._replace(total=facet_total, total_approximate=not completeness["total_exact"])
+    if completeness["status"] != "complete":
+        bounded = sorted(name for name, state in completeness["dimensions"].items() if state == "bounded")
+        warnings.append(
+            "Facet counting stopped after "
+            f"{completeness['scanned_rows']} scanned rows ({completeness['reason']}); "
+            f"these facet counts are lower bounds, not totals: {', '.join(bounded)}."
+        )
+    return page, facets, completeness
+
+
+def _scope_completeness(scope_metadata: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
+    truncated = bool(scope_metadata.get("truncated"))
+    completeness = {
+        "status": "partial" if truncated else "complete",
+        "reason": str(scope_metadata.get("reason") or ""),
+        "scanned_rows": int(scope_metadata.get("scanned_rows") or 0),
+        "scan_budget": int(scope_metadata.get("scan_budget") or 0),
+    }
+    if truncated:
+        warnings.append(
+            "Scope filter matching stopped after "
+            f"{completeness['scanned_rows']} scanned rows ({completeness['reason']}); "
+            "this page is partial — continue with next_cursor for the rest."
+        )
+    return completeness
+
+
+def _finding_list_filters(
+    finding_class: str | None, q: str | None, framework: str | None, control: str | None, owner: str | None, sla: str | None
+) -> dict[str, Any]:
+    def _clean(value: str | None) -> str | None:
+        return value.strip() if value and value.strip() else None
+
+    filters = {
+        "finding_class": finding_class,
+        "q": _clean(q),
+        "framework": _clean(framework),
+        "control": _clean(control),
+        "owner": cleaned_owner.lower() if (cleaned_owner := _clean(owner)) else None,
+        "sla": sla,
+    }
+    return {key: value for key, value in filters.items() if value is not None}
+
+
+def _attach_facets(envelope: dict[str, Any], facets: dict, completeness: dict) -> None:
+    envelope["facets"] = facets
+    envelope["facets_approximate"] = completeness["status"] != "complete"
+    envelope["facet_metadata"] = {
+        "freshness": {
+            "basis": ["last_observed", "last_seen"],
+            "thresholds_hours": [24, 168, 720],
+            "missing_or_invalid": "unavailable",
+        },
+        "completeness": completeness,
+    }
+
+
+def _findings_page_envelope(
+    query: _FindingListQuery,
+    page: _FindingListPage,
+    rows: list[dict[str, Any]],
+    *,
+    filters: dict[str, Any],
+    warnings: list[str],
+) -> dict[str, Any]:
+    envelope = finding_list_envelope(
+        findings=rows,
+        total=page.total,
+        limit=query.limit,
+        offset=0 if query.cursor else query.offset,
+        sort=query.sort_key,
+        scan_id=query.scan_id,
+        cursor=query.cursor or "",
+        next_cursor=page.next_cursor or "",
+        filters=filters,
+        warnings=warnings,
+        total_approximate=page.total_approximate,
+        source="scan_and_current_ingest_findings",
+        scope="tenant current-state findings",
+    )
+    # Echo the applied read-window so clients label counts as "last Nd", not "all".
+    envelope["window"] = time_window.window_metadata(query.window_days)
+    envelope["count_metadata"]["window"] = envelope["window"]
+    return envelope
+
+
 def _list_findings_impl(
     request: Request,
     q: str | None,
@@ -3406,451 +3246,55 @@ def _list_findings_impl(
 ) -> dict:
     """Synchronous body of :func:`list_findings` (runs in a worker thread).
 
-    Default sort is ``effective_reach`` — the composite triage signal that
-    combines CVSS / EPSS / KEV with reachable-tool capability, credential
-    visibility and agent breadth.  Pass ``?sort=cvss`` for the legacy
-    CVSS-only ordering, or ``?sort=severity`` for severity-band ordering.
-
-    Pass ``?approximate_total=true`` to skip ``COUNT(*)`` on deep pages.
-    Tenants above ``AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD`` (default
-    50000) automatically reuse cached totals and skip ``COUNT(*)`` once a warm
-    cache entry exists. The first page (``offset=0``) still computes an exact
-    total and caches it when the cache is cold and the tenant is below the
-    threshold. Later pages reuse the cached count; when the cache is cold the
-    response carries a conservative lower bound and ``total_approximate: true``.
-
-    Pass ``?cursor=`` with the ``next_cursor`` from a prior response for
-    keyset pagination through bulk-ingested hub findings (avoids deep
-    ``OFFSET`` cost). ``cursor`` and non-zero ``offset`` cannot be combined.
+    Default sort is ``effective_reach``; ``?sort=cvss`` and ``?sort=severity``
+    give CVSS-only and severity-band ordering. ``?approximate_total=true`` (and
+    tenants above ``AGENT_BOM_FINDINGS_APPROXIMATE_TOTAL_THRESHOLD``) reuse
+    cached totals instead of ``COUNT(*)``. ``?cursor=`` resumes the keyset walk
+    from a prior ``next_cursor`` and cannot be combined with ``offset``.
     """
-    from agent_bom.api import time_window
-    from agent_bom.api.compliance_hub_store import get_compliance_hub_store, status_matches
-    from agent_bom.api.finding_cursor import decode_finding_cursor, decode_merged_scan_cursor
-
-    tenant_id = _tenant_id(request)
-    # Default read-window (≈90d): bound counts to a recent, honestly-labelled
-    # window at scale. ``window_days=0`` widens to all history (#4009).
-    resolved_window = time_window.normalize_window_days(window_days)
-    window_since = time_window.window_since_iso(resolved_window)
-    # Silently falling back masked typos as "wrong order"; reject clearly.
-    sort_key = _normalize_finding_sort(sort)
-    try:
-        severity = canonical_finding_severity_filter(severity)
-    except ValueError:
-        # A bogus severity previously returned an empty 200 that reads as
-        # "no findings" — reject using the same contract as report exports.
-        raise HTTPException(
-            status_code=422,
-            detail=f"invalid severity; accepted values: {', '.join(_ALLOWED_FINDING_SEVERITIES)}",
-        ) from None
-    status_key = status.strip().lower() if isinstance(status, str) else _DEFAULT_FINDING_STATUS
-    if status_key not in _ALLOWED_FINDING_STATUSES:
-        # A bogus status previously returned an empty 200 that reads as "no
-        # findings" — a trap, and worse hid the live posture. Reject clearly,
-        # mirroring the severity contract.
-        raise HTTPException(
-            status_code=422,
-            detail=f"invalid status '{status}'; accepted values: {', '.join(_ALLOWED_FINDING_STATUSES)}",
-        )
-    if cursor and offset:
-        raise HTTPException(status_code=400, detail="cursor and offset are mutually exclusive")
-    if offset > _HUB_LIST_OFFSET_CEILING:
-        # Deep OFFSET scans linearly; mirror the sibling hub list route and cap
-        # the compatibility offset path. Cursor pagination is the unbounded-depth
-        # contract, so steer deep walks there instead of degrading the read path.
-        raise HTTPException(
-            status_code=400,
-            detail=f"offset exceeds ceiling {_HUB_LIST_OFFSET_CEILING}; use cursor pagination for deeper walks",
-        )
-    # A ``/v1/findings`` cursor is either a compound merged token (scan + hub
-    # frontier) or a plain hub keyset cursor. Decode the compound form first so a
-    # keyset caller resuming the scan half is routed to the merged walk rather
-    # than 400-ing against the plain decoder.
-    merged_cursor: tuple[int, str] | None = None
-    if cursor:
-        try:
-            merged_cursor = decode_merged_scan_cursor(cursor, expected_sort=sort_key)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
-        if merged_cursor is None:
-            try:
-                decode_finding_cursor(cursor, expected_sort=sort_key)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
-
-    from agent_bom.api.findings_count_cache import (
-        cache_key,
-        get_cached_total,
-        resolve_effective_approximate_total,
-    )
-
-    effective_approximate_total = resolve_effective_approximate_total(
-        requested=approximate_total,
-        tenant_id=tenant_id,
+    query = _finding_list_query(
+        request,
+        sort=sort,
         severity=severity,
+        status=status,
         scan_id=scan_id,
-        window_days=resolved_window,
-        status=status_key,
-    )
-    cached_bulk_total = get_cached_total(
-        cache_key(
-            tenant_id=tenant_id,
-            severity=severity,
-            scan_id=scan_id,
-            origin="bulk_ingest",
-            window_days=resolved_window,
-            status=status_key,
-        )
-    )
-    if approximate_total or effective_approximate_total:
-        # Explicit ``approximate_total=true`` (and the auto-threshold path) must
-        # NOT force the O(table) exact COUNT — reuse the cached/approximate total
-        # and surface ``total_approximate: true`` instead. The prior
-        # ``offset == 0`` override paid the full count on every first page even
-        # when a warm cache was present (~10x slower than the default path) and
-        # returned an exact total with no flag (#3641). Warm the cache with one
-        # exact count only when it is cold on the first page.
-        include_bulk_total = not cursor and cached_bulk_total is None and offset == 0
-    else:
-        include_bulk_total = not cursor and cached_bulk_total is None
-
-    # Default (no ``scan_id``) view collapses to the current state per finding:
-    # re-scanning a project emits the same finding ``id`` under a fresh
-    # ``scan_id``, and the in-memory store retains every completed job. Without
-    # deduping, ``total`` inflated by one full copy per re-scan (Postgres reads
-    # ``hub_findings_current`` which already dedupes). The shared current-scan
-    # selector preserves earlier findings across explicitly incomplete attempts
-    # and qualifies them as unreconfirmed. Replacement snapshots retire absent
-    # findings; cross-scope identity overlap is resolved by evidence time.
-    # ``?scan_id=`` still returns that scan's rows verbatim.
-    from agent_bom.api.findings_current import scan_only_findings
-
-    scope_filters = _canonical_scope_filters(
-        provider,
-        account,
-        environment,
-        domain,
-        finding_class,
-        q,
-        kev=kev,
-        framework=framework,
-        control=control,
-        owner=owner,
-        sla=sla,
-    )
-
-    store = get_compliance_hub_store()
-    bulk_list = getattr(store, "list_current_page", None) or getattr(store, "list_page", None)
-    has_current_page = callable(getattr(store, "list_current_page", None))
-    total_approximate = False
-    next_cursor: str | None = None
-    warnings: list[str] = []
-
-    # Resume frontiers. A compound merged cursor carries both a scan-findings
-    # index and the hub keyset position; a plain cursor carries only the hub
-    # position (scan half was already fully delivered on earlier pages). The
-    # merged walk (with ``list_current_page``) is what keeps the scan half from
-    # being dropped after page 1.
-    scan_start = merged_cursor[0] if merged_cursor is not None else 0
-    bulk_cursor_in: str | None = (merged_cursor[1] or None) if merged_cursor is not None else cursor
-
-    if cursor and merged_cursor is None:
-        # Plain hub keyset cursor: the in-memory scan findings were delivered on
-        # earlier (merged) pages, so their full current-state fold is discarded
-        # here. Skip that O(all-completed-jobs) fold entirely.
-        scan_findings: list[dict[str, Any]] = []
-        if _completed_jobs_for_tenant(tenant_id):
-            warnings.append("cursor pagination applies to bulk-ingested findings only; in-memory scan findings appear on the first page")
-    else:
-        scan_findings = _current_scan_rows(tenant_id, window_since, scan_id)
-        scan_findings = scan_only_findings(scan_findings, tenant_id, hub=store, scan_id=scan_id)
-        if severity:
-            normalized = severity.lower()
-            scan_findings = [item for item in scan_findings if str(item.get("severity", "")).lower() == normalized]
-        # In-memory scan findings carry no lifecycle status, so they are treated
-        # as ``open`` (live by construction): the default + ``all`` include them,
-        # ``status=resolved`` excludes them. Reconciles with the hub store's
-        # sargable status predicate for a single open-only basis by default.
-        scan_findings = [item for item in scan_findings if status_matches(item, status_key)]
-        if scope_filters:
-            scan_findings = [item for item in scan_findings if _row_matches_scope(item, scope_filters)]
-        scan_findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
-
-    from agent_bom.api.finding_cursor import encode_merged_scan_cursor
-
-    # Take the merged (scan + hub) keyset walk whenever the scan half is in play:
-    # a page-1 request that has scan findings, or any resume of a compound merged
-    # cursor. Pure-bulk reads (no scan findings, plain cursor) keep the simpler
-    # hub-only keyset path and its plain cursors — unchanged. ``_merged_scan_bulk_page``
-    # requires the cursor-capable ``list_current_page``, hence ``has_current_page``.
-    use_merged = has_current_page and (merged_cursor is not None or (not cursor and bool(scan_findings)))
-
-    def _encode_merged_next(page: MergedScanBulkPage) -> str | None:
-        if not page.has_more:
-            return None
-        return encode_merged_scan_cursor(sort=sort_key, scan_index=page.next_scan_index, bulk_cursor=page.next_bulk_cursor)
-
-    # Scope/domain filters run INSIDE the store on pre-enrichment current rows,
-    # batched + keyset-paged (provider/account/environment live in the JSON
-    # payload and ``domain`` is a computed overlapping-lens SET, so neither can be
-    # a single SQL predicate). This keeps the fast keyset path — a scoped page
-    # never materializes the whole tenant and ``next_cursor`` is emitted — while
-    # ``total`` is honestly approximate (no O(table) COUNT under a scope filter).
-    # Completeness of the store-internal scope walk. The walk is bounded by a
-    # row budget + wall-clock deadline, so a sparse filter can return an empty
-    # page with a resume cursor; that must be labelled partial, never presented
-    # as an honest "no results".
-    scope_metadata: dict[str, Any] = {}
-    if scope_filters and has_current_page and callable(bulk_list):
-        scope_arg = dict(scope_filters)
-        if use_merged:
-            # scan findings (already scope-filtered) merge with the scope-filtered
-            # bulk source under one keyset frontier so later pages keep both halves.
-            merged = _merged_scan_bulk_page(
-                scan_findings,
-                bulk_list=bulk_list,
-                tenant_id=tenant_id,
-                sort_key=sort_key,
-                severity=severity,
-                scan_id=scan_id,
-                offset=offset,
-                limit=limit,
-                scan_start=scan_start,
-                bulk_cursor=bulk_cursor_in,
-                since=window_since,
-                scope=scope_arg,
-                status=status_key,
-                scope_metadata=scope_metadata,
-            )
-            page_rows = merged.rows
-            next_cursor = _encode_merged_next(merged)
-        else:
-            bulk_result = bulk_list(
-                tenant_id,
-                limit=limit,
-                offset=0 if cursor else offset,
-                sort=sort_key,
-                severity=severity,
-                scan_id=scan_id,
-                origin="bulk_ingest",
-                include_total=False,
-                cursor=bulk_cursor_in,
-                since=window_since,
-                scope=scope_arg,
-                status=status_key,
-                scope_metadata=scope_metadata,
-            )
-            page_rows = bulk_result[0]
-            next_cursor = bulk_result[2] if len(bulk_result) > 2 else None
-        total = None
-        total_approximate = True
-    elif callable(bulk_list) and not scope_filters:
-        if use_merged:
-            # A COUNT probe is only worth paying on page 1 (no incoming cursor);
-            # resume pages stay approximate to avoid an O(table) count per page.
-            if merged_cursor is None:
-                bulk_result = bulk_list(
-                    tenant_id,
-                    limit=1,
-                    offset=0,
-                    sort=sort_key,
-                    severity=severity,
-                    scan_id=scan_id,
-                    origin="bulk_ingest",
-                    include_total=include_bulk_total,
-                    since=window_since,
-                    status=status_key,
-                )
-                bulk_total = bulk_result[1]
-            else:
-                bulk_total = None
-            merged = _merged_scan_bulk_page(
-                scan_findings,
-                bulk_list=bulk_list,
-                tenant_id=tenant_id,
-                sort_key=sort_key,
-                severity=severity,
-                scan_id=scan_id,
-                offset=offset,
-                limit=limit,
-                scan_start=scan_start,
-                bulk_cursor=bulk_cursor_in,
-                since=window_since,
-                status=status_key,
-            )
-            page_rows = merged.rows
-            next_cursor = _encode_merged_next(merged)
-            if merged_cursor is None:
-                resolved_bulk, total_approximate = _resolve_bulk_findings_total(
-                    tenant_id=tenant_id,
-                    severity=severity,
-                    scan_id=scan_id,
-                    approximate_total=approximate_total or effective_approximate_total,
-                    offset=offset,
-                    bulk_total=bulk_total,
-                    request_cached_total=cached_bulk_total,
-                    page_len=len(page_rows),
-                    limit=limit,
-                    window_days=resolved_window,
-                    status=status_key,
-                )
-                total = None if resolved_bulk is None else len(scan_findings) + resolved_bulk
-            else:
-                total = None
-                total_approximate = True
-        else:
-            bulk_result = bulk_list(
-                tenant_id,
-                limit=limit,
-                offset=0 if cursor else offset,
-                sort=sort_key,
-                severity=severity,
-                scan_id=scan_id,
-                origin="bulk_ingest",
-                include_total=include_bulk_total,
-                cursor=bulk_cursor_in,
-                since=window_since,
-                status=status_key,
-            )
-            page_rows = bulk_result[0]
-            bulk_total = bulk_result[1]
-            next_cursor = bulk_result[2] if len(bulk_result) > 2 else None
-            total, total_approximate = _resolve_bulk_findings_total(
-                tenant_id=tenant_id,
-                severity=severity,
-                scan_id=scan_id,
-                approximate_total=approximate_total or effective_approximate_total,
-                offset=0 if cursor else offset,
-                bulk_total=bulk_total,
-                request_cached_total=cached_bulk_total,
-                page_len=len(page_rows),
-                limit=limit,
-                window_days=resolved_window,
-                status=status_key,
-            )
-    else:
-        bulk_findings = _bulk_ingested_findings_for_tenant(tenant_id)
-        if scan_id:
-            bulk_findings = [item for item in bulk_findings if str(item.get("scan_id") or "") == scan_id]
-        if severity:
-            normalized = severity.lower()
-            bulk_findings = [item for item in bulk_findings if str(item.get("severity", "")).lower() == normalized]
-        bulk_findings = [item for item in bulk_findings if status_matches(item, status_key)]
-        if scope_filters:
-            bulk_findings = [item for item in bulk_findings if _row_matches_scope(item, scope_filters)]
-        combined = scan_findings + bulk_findings
-        combined.sort(key=lambda row: _finding_sort_key(row, sort_key))
-        total = len(combined)
-        # No keyset store here (store exposes neither list_page nor
-        # list_current_page): ``combined`` is fully materialized in memory, so walk
-        # it by index. The merged cursor's ``scan_index`` slot doubles as that
-        # index so ``has_more`` stays honest and the rest is retrievable (0 drops).
-        start = scan_start if merged_cursor is not None else offset
-        page_rows = combined[start : start + limit]
-        end = start + len(page_rows)
-        if end < len(combined):
-            next_cursor = encode_merged_scan_cursor(sort=sort_key, scan_index=end, bulk_cursor="")
-
-    facets: dict[str, dict[str, int]] | None = None
-    facet_completeness: dict[str, Any] | None = None
-    if include_facets:
-        facets, facet_total, facet_completeness = _finding_facets_bounded(
-            tenant_id,
-            severity=severity,
-            scan_id=scan_id,
-            since=window_since,
-            scope=scope_filters,
-            status=status_key,
-        )
-        # A bounded facet walk is a lower bound regardless of whether it
-        # processed zero rows or thousands. Never replace the list path's
-        # exact total with that partial count; only a complete walk or an
-        # aggregate-derived exact total is authoritative.
-        if facet_completeness["status"] == "complete" or facet_completeness["total_exact"]:
-            total = facet_total
-            # A truncated walk does not always mean an approximate total: when
-            # the store aggregate answered the filtered band, that count *is*
-            # the total. Facet approximation is reported independently below.
-            total_approximate = not facet_completeness["total_exact"]
-        if facet_completeness["status"] != "complete":
-            bounded = sorted(name for name, state in facet_completeness["dimensions"].items() if state == "bounded")
-            warnings.append(
-                "Facet counting stopped after "
-                f"{facet_completeness['scanned_rows']} scanned rows ({facet_completeness['reason']}); "
-                f"these facet counts are lower bounds, not totals: {', '.join(bounded)}."
-            )
-
-    if project_graph_reachability:
-        page_rows, reachability_warnings = _project_findings_reachability(
-            page_rows,
-            tenant_id=tenant_id,
-            scan_id=scan_id,
-        )
-        warnings.extend(reachability_warnings)
-
-    scope_completeness: dict[str, Any] | None = None
-    if scope_filters and scope_metadata:
-        scope_truncated = bool(scope_metadata.get("truncated"))
-        scope_completeness = {
-            "status": "partial" if scope_truncated else "complete",
-            "reason": str(scope_metadata.get("reason") or ""),
-            "scanned_rows": int(scope_metadata.get("scanned_rows") or 0),
-            "scan_budget": int(scope_metadata.get("scan_budget") or 0),
-        }
-        if scope_truncated:
-            warnings.append(
-                "Scope filter matching stopped after "
-                f"{scope_completeness['scanned_rows']} scanned rows ({scope_completeness['reason']}); "
-                "this page is partial — continue with next_cursor for the rest."
-            )
-
-    # Internal aggregate callers may defer the expensive default-deny
-    # projection until after reducing to one page; public callers keep the safe default.
-    page = project_current_suppressions(page_rows, tenant_id)
-    page = _redact_finding_page(page) if redact_page else page
-    envelope = finding_list_envelope(
-        findings=page,
-        total=total,
         limit=limit,
-        offset=0 if cursor else offset,
-        sort=sort_key,
-        scan_id=scan_id,
-        cursor=cursor or "",
-        next_cursor=next_cursor or "",
-        filters={
-            key: value
-            for key, value in {
-                "finding_class": finding_class,
-                "q": q.strip() if q and q.strip() else None,
-                "framework": framework.strip() if framework and framework.strip() else None,
-                "control": control.strip() if control and control.strip() else None,
-                "owner": owner.strip().lower() if owner and owner.strip() else None,
-                "sla": sla,
-            }.items()
-            if value is not None
-        },
-        warnings=warnings,
-        total_approximate=total_approximate,
-        source="scan_and_current_ingest_findings",
-        scope="tenant current-state findings",
+        offset=offset,
+        cursor=cursor,
+        approximate_total=approximate_total,
+        window_days=window_days,
     )
-    # Echo the applied read-window so clients label counts honestly as
-    # "last Nd" rather than "all" (#4009).
-    envelope["window"] = time_window.window_metadata(resolved_window)
-    envelope["count_metadata"]["window"] = envelope["window"]
+    scope_filters = _canonical_scope_filters(
+        provider, account, environment, domain, finding_class, q, kev=kev, framework=framework, control=control, owner=owner, sla=sla
+    )
+    query = query._replace(scope_filters=scope_filters)
+    store = compliance_hub_store.get_compliance_hub_store()
+    warnings: list[str] = []
+    scope_metadata: dict[str, Any] = {}
+    scan_findings = _scan_half_rows(query, store, warnings)
+    page = _findings_page(query, scan_findings, store, scope_metadata)
+    facet_result: tuple[dict, dict] | None = None
+    if include_facets:
+        page, facets, completeness = _apply_finding_facets(query, page, warnings)
+        facet_result = (facets, completeness)
+    rows = page.rows
+    if project_graph_reachability:
+        rows, reachability_warnings = _project_findings_reachability(rows, tenant_id=query.tenant_id, scan_id=scan_id)
+        warnings.extend(reachability_warnings)
+    scope_completeness = _scope_completeness(scope_metadata, warnings) if scope_filters and scope_metadata else None
+    # Internal aggregate callers may defer the default-deny projection; public callers keep it.
+    rows = project_current_suppressions(rows, query.tenant_id)
+    envelope = _findings_page_envelope(
+        query,
+        page,
+        _redact_finding_page(rows) if redact_page else rows,
+        filters=_finding_list_filters(finding_class, q, framework, control, owner, sla),
+        warnings=warnings,
+    )
     if scope_completeness is not None:
         envelope["scope_completeness"] = scope_completeness
-    if facets is not None:
-        envelope["facets"] = facets
-        envelope["facets_approximate"] = bool(facet_completeness and facet_completeness["status"] != "complete")
-        envelope["facet_metadata"] = {
-            "freshness": {
-                "basis": ["last_observed", "last_seen"],
-                "thresholds_hours": [24, 168, 720],
-                "missing_or_invalid": "unavailable",
-            },
-            "completeness": facet_completeness,
-        }
+    if facet_result is not None:
+        _attach_facets(envelope, *facet_result)
     return envelope
 
 
@@ -3889,6 +3333,120 @@ def _matches_reachability(reachable: Any, requested: str | None) -> bool:
     )
 
 
+def _view_filtered_row(
+    source_row: dict[str, Any],
+    *,
+    triage_index: Any,
+    reachability: str | None,
+    triage: str | None,
+    suppressed_only: bool,
+) -> dict[str, Any] | None:
+    """Annotate one occurrence with triage state; return it only when it matches."""
+    row = dict(source_row)
+    triage_state = _finding_triage_state(row, triage_index) if triage_index is not None else None
+    if triage_index is not None:
+        row["triage_id"] = triage_state.get("id") if triage_state else None
+        row["triage_decision"] = triage_state.get("decision") if triage_state else None
+        row["triage_queue_state"] = triage_state.get("queue_state") if triage_state else None
+    decision = triage_state.get("decision") if triage_state else None
+    triage_matches = triage is None or decision == triage or (triage == "untriaged" and decision is None)
+    if not (_matches_reachability(row.get("graph_reachable"), reachability) and triage_matches):
+        return None
+    if suppressed_only and row.get("suppressed") is not True:
+        return None
+    return row
+
+
+class _ViewWalk(NamedTuple):
+    matches: list[dict[str, Any]]
+    first_page: dict[str, Any] | None
+    warnings: list[str]
+    next_cursor: str | None
+    exhausted: bool
+    truncated: bool
+
+
+def _walk_view_filtered_findings(
+    fetch_page: Callable[[int, str | None], dict[str, Any]],
+    row_filter: Callable[[dict[str, Any]], dict[str, Any] | None],
+    *,
+    target: int,
+    cursor: str | None,
+) -> _ViewWalk:
+    """Walk the canonical keyset stream until ``target`` rows match or the budget is spent."""
+    source_cursor = cursor
+    rows_seen = 0
+    matches: list[dict[str, Any]] = []
+    first_page: dict[str, Any] | None = None
+    warnings: list[str] = []
+    exhausted = False
+    while rows_seen < _FINDINGS_VIEW_FILTER_MAX_ROWS and len(matches) < target:
+        page_limit = min(1000, _FINDINGS_VIEW_FILTER_MAX_ROWS - rows_seen, max(1, target - len(matches)))
+        page = fetch_page(page_limit, source_cursor)
+        if first_page is None:
+            first_page = page
+        warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
+        raw_rows = page.get("findings")
+        page_rows = [row for row in raw_rows if isinstance(row, dict)] if isinstance(raw_rows, list) else []
+        rows_seen += len(page_rows)
+        matches.extend(row for row in map(row_filter, page_rows) if row is not None)
+        source_cursor = str(page.get("next_cursor") or "") or None
+        if not source_cursor:
+            exhausted = True
+            break
+    truncated = not exhausted and rows_seen >= _FINDINGS_VIEW_FILTER_MAX_ROWS
+    if truncated:
+        warnings.append(f"Finding view filters inspected {_FINDINGS_VIEW_FILTER_MAX_ROWS} rows; additional occurrences remain.")
+    return _ViewWalk(matches, first_page, warnings, source_cursor, exhausted, truncated)
+
+
+def _copy_first_page_metadata(envelope: dict[str, Any], first_page: dict[str, Any] | None, keys: tuple[str, ...]) -> None:
+    if not first_page:
+        return
+    if "window" in first_page:
+        envelope["window"] = first_page["window"]
+        envelope["count_metadata"]["window"] = first_page["window"]
+    for key in keys:
+        if key in first_page:
+            envelope[key] = first_page[key]
+
+
+def _view_filters(
+    first_page: dict[str, Any] | None, *, suppressed_only: bool, reachability: str | None, triage: str | None
+) -> dict[str, Any]:
+    filters = dict(first_page.get("filters") or {}) if first_page else {}
+    if suppressed_only:
+        filters["status"] = "suppressed"
+    if reachability is not None:
+        filters["reachability"] = reachability
+    if triage is not None:
+        filters["triage"] = triage
+    return filters
+
+
+def _view_envelope(
+    walk: _ViewWalk, *, limit: int, offset: int, cursor: str | None, sort: str, scan_id: str | None, filters: dict[str, Any]
+) -> dict[str, Any]:
+    total = len(walk.matches) if walk.exhausted and cursor is None else None
+    envelope = finding_list_envelope(
+        findings=walk.matches[:limit] if cursor else walk.matches[offset : offset + limit],
+        total=total,
+        limit=limit,
+        offset=0 if cursor else offset,
+        sort=sort,
+        scan_id=scan_id,
+        cursor=cursor or "",
+        next_cursor=walk.next_cursor or "",
+        filters=filters,
+        warnings=list(dict.fromkeys(walk.warnings)),
+        total_approximate=total is None,
+        source="scan_and_current_ingest_findings",
+        scope="tenant current-state findings with graph and triage view filters",
+    )
+    _copy_first_page_metadata(envelope, walk.first_page, ("scope_completeness",))
+    return envelope
+
+
 @finding_read_snapshot
 def _list_findings_view_impl(
     request: Request,
@@ -3925,211 +3483,176 @@ def _list_findings_view_impl(
     canonical keyset stream instead; this preserves occurrence IDs and avoids
     the dishonest client-side filtering of an already-selected page.
     """
+    query_kw = dict(q=q, severity=severity, scan_id=scan_id, sort=sort, window_days=window_days, finding_class=finding_class, kev=kev)
+    scope_kw = dict(provider=provider, account=account, environment=environment, domain=domain, framework=framework, control=control)
+    tail_kw = dict(owner=owner, sla=sla, project_graph_reachability=project_graph_reachability, redact_page=redact_page)
+    common: dict[str, Any] = {**query_kw, **scope_kw, **tail_kw}
     suppressed_only = status.strip().lower() == "suppressed"
     if reachability is None and triage is None and not suppressed_only:
         return _list_findings_impl(
             request,
-            q=q,
-            severity=severity,
-            scan_id=scan_id,
-            sort=sort,
             limit=limit,
             offset=offset,
             cursor=cursor,
             approximate_total=approximate_total,
-            provider=provider,
-            account=account,
-            environment=environment,
-            domain=domain,
-            window_days=window_days,
             status=status,
-            finding_class=finding_class,
-            kev=kev,
             include_facets=include_facets,
-            framework=framework,
-            control=control,
-            owner=owner,
-            sla=sla,
-            project_graph_reachability=project_graph_reachability,
-            redact_page=redact_page,
+            **common,
         )
 
     from agent_bom.api.routes.enterprise import build_tenant_triage_state_index
 
-    target = limit if cursor else offset + limit
-    source_cursor = cursor
-    rows_seen = 0
-    matches: list[dict[str, Any]] = []
-    first_page: dict[str, Any] | None = None
-    warnings: list[str] = []
-    triage_index = build_tenant_triage_state_index(_tenant_id(request)) if triage is not None else None
-    exhausted = False
-
-    while rows_seen < _FINDINGS_VIEW_FILTER_MAX_ROWS and len(matches) < target:
-        page_limit = min(
-            1000,
-            _FINDINGS_VIEW_FILTER_MAX_ROWS - rows_seen,
-            max(1, target - len(matches)),
-        )
-        page = _list_findings_impl(
+    def fetch_page(page_limit: int, source_cursor: str | None) -> dict[str, Any]:
+        page_status = "open" if suppressed_only else status
+        return _list_findings_impl(
             request,
-            q=q,
-            severity=severity,
-            scan_id=scan_id,
-            sort=sort,
             limit=page_limit,
             offset=0,
             cursor=source_cursor,
             approximate_total=True,
-            provider=provider,
-            account=account,
-            environment=environment,
-            domain=domain,
-            window_days=window_days,
-            status="open" if suppressed_only else status,
-            finding_class=finding_class,
-            kev=kev,
+            status=page_status,
             include_facets=False,
-            framework=framework,
-            control=control,
-            owner=owner,
-            sla=sla,
-            project_graph_reachability=project_graph_reachability,
-            redact_page=redact_page,
+            **common,
         )
+
+    triage_index = build_tenant_triage_state_index(_tenant_id(request)) if triage is not None else None
+    row_filter = partial(
+        _view_filtered_row, triage_index=triage_index, reachability=reachability, triage=triage, suppressed_only=suppressed_only
+    )
+    walk = _walk_view_filtered_findings(fetch_page, row_filter, target=limit if cursor else offset + limit, cursor=cursor)
+    filters = _view_filters(walk.first_page, suppressed_only=suppressed_only, reachability=reachability, triage=triage)
+    return _view_envelope(walk, limit=limit, offset=offset, cursor=cursor, sort=sort, scan_id=scan_id, filters=filters)
+
+
+def _finding_group_offset(cursor: str | None, offset: int, sort_key: str) -> int:
+    if not cursor:
+        return offset
+    try:
+        group_offset = finding_cursor.decode_finding_group_cursor(cursor, expected_sort=sort_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid grouped findings cursor") from exc
+    if group_offset is None:
+        raise HTTPException(status_code=400, detail="Cursor is not valid for grouped findings")
+    return group_offset
+
+
+def _collect_group_occurrences(
+    fetch_page: Callable[[int, str | None, bool], dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[str], str | None]:
+    """Read the hard-bounded occurrence window in keyset-backed batches.
+
+    Grouping already materializes at most 50k occurrences; small internal
+    pages made the scan spine deserialize and enrich again for every page.
+    """
+    rows: list[dict[str, Any]] = []
+    source_cursor: str | None = None
+    first_page: dict[str, Any] | None = None
+    warnings: list[str] = []
+    while len(rows) < _FINDING_GROUP_MAX_OCCURRENCES:
+        page = fetch_page(_FINDING_GROUP_MAX_OCCURRENCES - len(rows), source_cursor, first_page is None)
         if first_page is None:
             first_page = page
+        page_rows = page.get("findings")
+        if isinstance(page_rows, list):
+            rows.extend(row for row in page_rows if isinstance(row, dict))
         warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
-        raw_rows = page.get("findings")
-        page_rows = [row for row in raw_rows if isinstance(row, dict)] if isinstance(raw_rows, list) else []
-        rows_seen += len(page_rows)
-
-        for source_row in page_rows:
-            row = dict(source_row)
-            triage_state = _finding_triage_state(row, triage_index) if triage_index is not None else None
-            if triage_index is not None:
-                row["triage_id"] = triage_state.get("id") if triage_state else None
-                row["triage_decision"] = triage_state.get("decision") if triage_state else None
-                row["triage_queue_state"] = triage_state.get("queue_state") if triage_state else None
-
-            reachability_matches = _matches_reachability(row.get("graph_reachable"), reachability)
-            decision = triage_state.get("decision") if triage_state else None
-            triage_matches = triage is None or decision == triage or (triage == "untriaged" and decision is None)
-            if reachability_matches and triage_matches and (not suppressed_only or row.get("suppressed") is True):
-                matches.append(row)
-
         source_cursor = str(page.get("next_cursor") or "") or None
         if not source_cursor:
-            exhausted = True
             break
+    return rows, first_page, warnings, source_cursor
 
-    truncated = not exhausted and rows_seen >= _FINDINGS_VIEW_FILTER_MAX_ROWS
-    if truncated:
-        warnings.append(f"Finding view filters inspected {_FINDINGS_VIEW_FILTER_MAX_ROWS} rows; additional occurrences remain.")
-    selected = matches[:limit] if cursor else matches[offset : offset + limit]
-    total = len(matches) if exhausted and cursor is None else None
-    total_approximate = total is None
+
+def _group_occurrence_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold occurrences onto their canonical issue identity with a bounded sample."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        group_id, group_key = _finding_group_identity(row)
+        group = grouped.get(group_id)
+        if group is None:
+            group = dict(row)
+            group.update(
+                finding_group_id=group_id,
+                finding_group_key=group_key,
+                occurrence_count=0,
+                unreconfirmed_occurrence_count=0,
+                _occurrence_rows=[],
+                occurrences_truncated=False,
+            )
+            grouped[group_id] = group
+        group["occurrence_count"] = int(group["occurrence_count"]) + 1
+        if row.get("observation_status") == "unreconfirmed":
+            group["unreconfirmed_occurrence_count"] = int(group["unreconfirmed_occurrence_count"]) + 1
+        occurrences = group["_occurrence_rows"]
+        if isinstance(occurrences, list) and len(occurrences) < _FINDING_GROUP_OCCURRENCE_SAMPLE:
+            occurrences.append(row)
+        else:
+            group["occurrences_truncated"] = True
+    return list(grouped.values())
+
+
+def _grouped_severity_counts(groups: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")}
+    for group in groups:
+        counts[_normalize_facet_severity(group.get("severity"))] += 1
+    return counts
+
+
+def _attach_grouping_metadata(
+    envelope: dict[str, Any],
+    *,
+    first_page: dict[str, Any] | None,
+    groups: list[dict[str, Any]],
+    scanned: int,
+    truncated: bool,
+    severity_counts: dict[str, int] | None,
+) -> None:
+    envelope["grouping"] = {
+        "status": "partial" if truncated else "complete",
+        "scanned_occurrences": scanned,
+        "scan_budget": _FINDING_GROUP_MAX_OCCURRENCES,
+        "occurrence_total": sum(int(group.get("occurrence_count") or 0) for group in groups),
+        "occurrence_sample_limit": _FINDING_GROUP_OCCURRENCE_SAMPLE,
+    }
+    _copy_first_page_metadata(envelope, first_page, ("facets", "facets_approximate", "facet_metadata", "scope_completeness"))
+    if first_page and severity_counts is not None:
+        envelope.setdefault("facets", {})["severity"] = severity_counts
+        envelope["facet_metadata"]["severity_basis"] = "canonical issue groups"
+
+
+def _groups_envelope(
+    page_groups: list[dict[str, Any]],
+    *,
+    first_page: dict[str, Any] | None,
+    total: int,
+    limit: int,
+    offset: int,
+    sort: str,
+    scan_id: str | None,
+    cursor: str | None,
+    next_cursor: str,
+    warnings: list[str],
+    severity: str | None,
+    truncated: bool,
+) -> dict[str, Any]:
     filters = dict(first_page.get("filters") or {}) if first_page else {}
-    if suppressed_only:
-        filters["status"] = "suppressed"
-    if reachability is not None:
-        filters["reachability"] = reachability
-    if triage is not None:
-        filters["triage"] = triage
-    envelope = finding_list_envelope(
-        findings=selected,
+    filters["group_occurrences"] = True
+    if severity is not None:
+        filters["severity"] = severity
+    return finding_list_envelope(
+        findings=page_groups,
         total=total,
         limit=limit,
-        offset=0 if cursor else offset,
+        offset=offset,
         sort=sort,
         scan_id=scan_id,
         cursor=cursor or "",
-        next_cursor=source_cursor or "",
+        next_cursor=next_cursor,
         filters=filters,
         warnings=list(dict.fromkeys(warnings)),
-        total_approximate=total_approximate,
-        source="scan_and_current_ingest_findings",
-        scope="tenant current-state findings with graph and triage view filters",
+        total_approximate=truncated,
+        source="scan_and_current_ingest_finding_groups",
+        scope="tenant current-state issue groups over asset-scoped occurrences",
     )
-    if first_page:
-        if "window" in first_page:
-            envelope["window"] = first_page["window"]
-            envelope["count_metadata"]["window"] = first_page["window"]
-        if "scope_completeness" in first_page:
-            envelope["scope_completeness"] = first_page["scope_completeness"]
-    return envelope
-
-
-_FINDING_GROUP_MAX_OCCURRENCES = 50_000
-_FINDING_GROUP_OCCURRENCE_SAMPLE = 25
-
-
-def _finding_group_identity(row: dict[str, Any]) -> tuple[str, str]:
-    """Return the canonical aggregate identity without changing occurrence IDs."""
-    supplied_id = str(row.get("finding_group_id") or "").strip()
-    supplied_key = str(row.get("finding_group_key") or "").strip()
-    vulnerability_id = _row_vuln_id(row).lower()
-    if vulnerability_id:
-        group_key = f"vulnerability:{vulnerability_id}:{_package_base_name(row).lower()}"
-    else:
-        group_key = f"occurrence:{_finding_identity(row)}"
-    # Persisted metadata is an optimization, not authority. A row can be
-    # reclassified/enriched after ingest; stale group metadata must not collapse
-    # two distinct advisories. Reuse it only when its semantic key still agrees.
-    if supplied_id and supplied_key == group_key:
-        return supplied_id, group_key
-    return canonical_id("finding-group", group_key), group_key
-
-
-def _finding_occurrence_summary(row: dict[str, Any]) -> dict[str, Any]:
-    """Project the bounded fields needed to expand a grouped issue row."""
-    return {
-        key: row.get(key)
-        for key in (
-            "finding_id",
-            "occurrence_id",
-            "canonical_id",
-            "asset",
-            "severity",
-            "package_version",
-            "scan_id",
-            "status",
-            "owner",
-            "sla_due_at",
-            "sla_due_at_source",
-            "last_seen",
-            "last_observed",
-            "observation_status",
-            "reconfirmation",
-            "graph_reachable",
-            "graph_min_hop_distance",
-        )
-        if row.get(key) is not None
-    }
-
-
-def _serialize_finding_group(group: dict[str, Any]) -> dict[str, Any]:
-    """Sanitize one selected group and its bounded occurrence sample.
-
-    Grouping may inspect tens of thousands of canonical rows, but only the
-    selected page crosses the API boundary. Raw rows stay private until this
-    point so response redaction runs once for data the caller can receive.
-    """
-    from agent_bom.finding_scope import safe_finding_response_payload
-
-    public = safe_finding_response_payload(project_list_row(group))
-    public["finding_group_id"] = str(group.get("finding_group_id") or "")
-    public["finding_group_key"] = str(group.get("finding_group_key") or "")
-    public["occurrence_count"] = int(group.get("occurrence_count") or 0)
-    public["unreconfirmed_occurrence_count"] = int(group.get("unreconfirmed_occurrence_count") or 0)
-    public["occurrences_truncated"] = bool(group.get("occurrences_truncated"))
-    samples = group.get("_occurrence_rows")
-    public["occurrences"] = [
-        _finding_occurrence_summary(safe_finding_response_payload(row))
-        for row in (samples if isinstance(samples, list) else [])
-        if isinstance(row, dict)
-    ]
-    return public
 
 
 @finding_read_snapshot
@@ -4167,156 +3690,66 @@ def _list_finding_groups_impl(
     occurrence summaries for expansion. A row-budget hit is explicit partial
     evidence; it is never described as a complete group count.
     """
-    from agent_bom.api.finding_cursor import decode_finding_group_cursor, encode_finding_group_cursor
-
     sort_key = _normalize_finding_sort(sort)
-    if cursor:
-        try:
-            group_offset = decode_finding_group_cursor(cursor, expected_sort=sort_key)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid grouped findings cursor") from exc
-        if group_offset is None:
-            raise HTTPException(status_code=400, detail="Cursor is not valid for grouped findings")
-    else:
-        group_offset = offset
+    group_offset = _finding_group_offset(cursor, offset, sort_key)
 
-    rows: list[dict[str, Any]] = []
-    source_cursor: str | None = None
-    first_page: dict[str, Any] | None = None
-    warnings: list[str] = []
-    while len(rows) < _FINDING_GROUP_MAX_OCCURRENCES:
-        # Grouping already materializes a hard-bounded 50k occurrence window.
-        # Read that window in one keyset-backed batch: 1k internal pages caused
-        # the scan spine to be deserialized and enriched from scratch for every
-        # page, adding seconds without reducing this function's memory bound.
-        remaining_budget = _FINDING_GROUP_MAX_OCCURRENCES - len(rows)
-        page = _list_findings_view_impl(
-            request,
-            q,
-            # Severity is applied after grouping so the issue histogram remains
-            # self-excluding. Otherwise two asset occurrences of one advisory
-            # would be presented as two separate severity-filter counts.
-            None,
-            scan_id,
-            sort_key,
-            remaining_budget,
-            0,
-            source_cursor,
-            True,
-            provider,
-            account,
-            environment,
-            domain,
-            window_days,
-            status,
-            finding_class,
-            kev,
-            include_facets and first_page is None,
-            framework,
-            control,
-            owner,
-            sla,
-            reachability,
-            triage,
-            False,
-            False,
-        )
-        if first_page is None:
-            first_page = page
-        page_rows = page.get("findings")
-        if isinstance(page_rows, list):
-            rows.extend(row for row in page_rows if isinstance(row, dict))
-        warnings.extend(str(item) for item in page.get("warnings", []) if str(item))
-        source_cursor = str(page.get("next_cursor") or "") or None
-        if not source_cursor:
-            break
+    def fetch_page(budget: int, source_cursor: str | None, first: bool) -> dict[str, Any]:
+        # Severity applies after grouping so the issue histogram stays
+        # self-excluding: two occurrences of one advisory are one issue.
+        head = (q, None, scan_id, sort_key, budget, 0, source_cursor, True, provider, account, environment, domain, window_days, status)
+        tail = (finding_class, kev, include_facets and first, framework, control, owner, sla, reachability, triage, False, False)
+        return _list_findings_view_impl(request, *head, *tail)
 
-    grouped: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        group_id, group_key = _finding_group_identity(row)
-        group = grouped.get(group_id)
-        if group is None:
-            representative = dict(row)
-            representative["finding_group_id"] = group_id
-            representative["finding_group_key"] = group_key
-            representative["occurrence_count"] = 0
-            representative["unreconfirmed_occurrence_count"] = 0
-            representative["_occurrence_rows"] = []
-            representative["occurrences_truncated"] = False
-            grouped[group_id] = representative
-            group = representative
-        group["occurrence_count"] = int(group["occurrence_count"]) + 1
-        if row.get("observation_status") == "unreconfirmed":
-            group["unreconfirmed_occurrence_count"] = int(group["unreconfirmed_occurrence_count"]) + 1
-        occurrences = group["_occurrence_rows"]
-        if isinstance(occurrences, list) and len(occurrences) < _FINDING_GROUP_OCCURRENCE_SAMPLE:
-            occurrences.append(row)
-        else:
-            group["occurrences_truncated"] = True
-
-    all_groups = list(grouped.values())
-    grouped_severity_counts = {key: 0 for key in ("critical", "high", "medium", "low", "info", "unknown")}
-    for group in all_groups:
-        grouped_severity_counts[_normalize_facet_severity(group.get("severity"))] += 1
+    rows, first_page, warnings, source_cursor = _collect_group_occurrences(fetch_page)
+    all_groups = _group_occurrence_rows(rows)
     normalized_severity = severity.strip().lower() if severity and severity.strip() else None
-    groups = [
-        group
-        for group in all_groups
-        if normalized_severity is None or _normalize_facet_severity(group.get("severity")) == normalized_severity
-    ]
+    groups = [g for g in all_groups if normalized_severity is None or _normalize_facet_severity(g.get("severity")) == normalized_severity]
     truncated = source_cursor is not None
     if truncated:
         warnings.append("Issue grouping stopped after 50,000 occurrence rows; group and occurrence counts are lower bounds.")
-    page_groups = groups[group_offset : group_offset + limit]
     page_groups, reachability_warnings = _project_findings_reachability(
-        page_groups,
-        tenant_id=_tenant_id(request),
-        scan_id=scan_id,
+        groups[group_offset : group_offset + limit], tenant_id=_tenant_id(request), scan_id=scan_id
     )
     page_groups = [_serialize_finding_group(group) for group in page_groups]
     warnings.extend(reachability_warnings)
     next_offset = group_offset + len(page_groups)
-    next_cursor = ""
-    if next_offset < len(groups):
-        next_cursor = encode_finding_group_cursor(sort=sort_key, offset=next_offset)
-
-    filters = dict(first_page.get("filters") or {}) if first_page else {}
-    filters["group_occurrences"] = True
-    if normalized_severity is not None:
-        filters["severity"] = normalized_severity
-    envelope = finding_list_envelope(
-        findings=page_groups,
+    next_cursor = finding_cursor.encode_finding_group_cursor(sort=sort_key, offset=next_offset) if next_offset < len(groups) else ""
+    envelope = _groups_envelope(
+        page_groups,
+        first_page=first_page,
         total=len(groups),
         limit=limit,
         offset=0 if cursor else offset,
         sort=sort_key,
         scan_id=scan_id,
-        cursor=cursor or "",
+        cursor=cursor,
         next_cursor=next_cursor,
-        filters=filters,
-        warnings=list(dict.fromkeys(warnings)),
-        total_approximate=truncated,
-        source="scan_and_current_ingest_finding_groups",
-        scope="tenant current-state issue groups over asset-scoped occurrences",
+        warnings=warnings,
+        severity=normalized_severity,
+        truncated=truncated,
     )
-    envelope["grouping"] = {
-        "status": "partial" if truncated else "complete",
-        "scanned_occurrences": len(rows),
-        "scan_budget": _FINDING_GROUP_MAX_OCCURRENCES,
-        "occurrence_total": sum(int(group.get("occurrence_count") or 0) for group in groups),
-        "occurrence_sample_limit": _FINDING_GROUP_OCCURRENCE_SAMPLE,
-    }
-    if first_page:
-        if "window" in first_page:
-            envelope["window"] = first_page["window"]
-            envelope["count_metadata"]["window"] = first_page["window"]
-        for key in ("facets", "facets_approximate", "facet_metadata", "scope_completeness"):
-            if key in first_page:
-                envelope[key] = first_page[key]
-        if include_facets:
-            envelope.setdefault("facets", {})["severity"] = grouped_severity_counts
-            envelope["facet_metadata"]["severity_basis"] = "canonical issue groups"
+    severity_counts = _grouped_severity_counts(all_groups) if include_facets else None
+    _attach_grouping_metadata(
+        envelope, first_page=first_page, groups=groups, scanned=len(rows), truncated=truncated, severity_counts=severity_counts
+    )
     return envelope
+
+
+def _finding_group_identity(row: dict[str, Any]) -> tuple[str, str]:
+    """Return the canonical aggregate identity without changing occurrence IDs."""
+    supplied_id = str(row.get("finding_group_id") or "").strip()
+    supplied_key = str(row.get("finding_group_key") or "").strip()
+    vulnerability_id = _row_vuln_id(row).lower()
+    if vulnerability_id:
+        group_key = f"vulnerability:{vulnerability_id}:{_package_base_name(row).lower()}"
+    else:
+        group_key = f"occurrence:{_finding_identity(row)}"
+    # Persisted metadata is an optimization, not authority. A row can be
+    # reclassified/enriched after ingest; stale group metadata must not collapse
+    # two distinct advisories. Reuse it only when its semantic key still agrees.
+    if supplied_id and supplied_key == group_key:
+        return supplied_id, group_key
+    return canonical_id("finding-group", group_key), group_key
 
 
 def issue_severity_counts(request: Request) -> dict[str, Any]:
@@ -4637,158 +4070,3 @@ def list_inventory(
 # ─── Dedicated Scan Endpoints ─────────────────────────────────────────────────
 # Lightweight, synchronous scans for specific asset types.
 # Each returns results directly (no job queue — these are fast local scans).
-
-
-@router.post("/scan/dataset-cards", tags=["scan"], status_code=200)
-async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
-    """Scan directories for HuggingFace dataset cards, DVC files, and data lineage.
-
-    Returns dataset metadata, license info, and security flags
-    (unlicensed data, missing cards, unversioned data, remote sources).
-    """
-    from agent_bom.parsers.dataset_cards import scan_dataset_directory
-
-    results = []
-    safe_dirs = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        safe_dirs.append(resolved)
-        result = await _ai_scan_call(scan_dataset_directory, resolved)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-
-    return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
-
-
-@router.post("/scan/training-pipelines", tags=["scan"], status_code=200)
-async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
-    """Scan directories for ML training pipeline artifacts.
-
-    Detects MLflow runs, W&B metadata, Kubeflow pipeline definitions.
-    Flags unsafe serialization (pickle), missing provenance, exposed credentials.
-    """
-    from agent_bom.parsers.training_pipeline import scan_training_directory
-
-    results = []
-    safe_dirs = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        safe_dirs.append(resolved)
-        result = await _ai_scan_call(scan_training_directory, resolved)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-
-    return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
-
-
-@router.post("/scan/browser-extensions", tags=["scan"], status_code=200)
-async def scan_browser_extensions_endpoint(request: BrowserExtensionsRequest) -> dict:
-    """Scan installed browser extensions (Chrome, Chromium, Brave, Edge, Firefox).
-
-    Detects dangerous permissions (debugger, nativeMessaging, cookies),
-    AI assistant domain access, and broad host permissions.
-    """
-    from agent_bom.parsers.browser_extensions import discover_browser_extensions
-
-    extensions = await _ai_scan_call(
-        discover_browser_extensions,
-        include_low_risk=request.include_low_risk,
-    )
-    ext_dicts: list[Any] = [e.to_dict() if hasattr(e, "to_dict") else _dataclass_to_dict(e) for e in extensions]
-
-    return {
-        "scan_type": "browser-extensions",
-        "total": len(ext_dicts),
-        "critical": sum(1 for e in ext_dicts if e.get("risk_level") == "critical"),
-        "high": sum(1 for e in ext_dicts if e.get("risk_level") == "high"),
-        "extensions": ext_dicts,
-    }
-
-
-@router.post("/scan/model-provenance", tags=["scan"], status_code=200)
-async def scan_model_provenance(request: ModelProvenanceRequest) -> dict:
-    """Check model provenance for HuggingFace and Ollama models.
-
-    Verifies serialization safety (safetensors vs pickle), digest integrity,
-    model card presence, gating status, and public exposure risk.
-    """
-    from agent_bom.cloud.model_provenance import check_hf_models, check_ollama_models
-
-    results: list[Any] = []
-    if request.hf_models:
-        hf_results = await _ai_scan_call(check_hf_models, request.hf_models)
-        results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in hf_results)
-    if request.ollama_models:
-        ollama_results = await _ai_scan_call(check_ollama_models, request.ollama_models)
-        results.extend(r.to_dict() if hasattr(r, "to_dict") else _dataclass_to_dict(r) for r in ollama_results)
-
-    return {
-        "scan_type": "model-provenance",
-        "total": len(results),
-        "unsafe_format": sum(1 for r in results if not r.get("is_safe_format", True)),
-        "results": results,
-    }
-
-
-@router.post("/scan/prompt-scan", tags=["scan"], status_code=200)
-async def scan_prompts(request: PromptScanRequest) -> dict:
-    """Scan prompt files for injection patterns, hardcoded secrets, and unsafe instructions.
-
-    Detects prompt injection, jailbreak patterns, hardcoded API keys,
-    shell execution instructions, and data exfiltration patterns.
-    """
-    from agent_bom.parsers.prompt_scanner import scan_prompt_files
-
-    safe_dirs: list[Path] = []
-    all_paths: list[Path] = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        safe_dirs.append(Path(resolved))
-    for f in request.files:
-        resolved = _api_scan_path_or_400(f)
-        all_paths.append(Path(resolved))
-
-    results = []
-    for safe in safe_dirs:
-        result = await _ai_scan_call(scan_prompt_files, root=safe)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-    if all_paths:
-        result = await _ai_scan_call(scan_prompt_files, paths=all_paths)
-        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-
-    return {"scan_type": "prompt-scan", "results": results}
-
-
-@router.post("/scan/model-files", tags=["scan"], status_code=200)
-async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
-    """Scan directories for ML model files and assess serialization safety.
-
-    Detects pickle deserialization risks (.pkl, .pt), verifies file integrity,
-    and flags unsafe model formats.
-    """
-    from agent_bom.model_files import scan_model_files, scan_model_manifests, verify_model_hash
-
-    all_files = []
-    all_manifests = []
-    all_warnings = []
-    for d in request.directories:
-        resolved = _api_scan_path_or_400(d)
-        files, warnings = await _ai_scan_call(scan_model_files, resolved)
-        manifests, manifest_warnings = await _ai_scan_call(scan_model_manifests, resolved)
-        all_files.extend(files)
-        all_manifests.extend(manifests)
-        all_warnings.extend(warnings)
-        all_warnings.extend(manifest_warnings)
-
-    if request.verify_hashes:
-        for f in all_files:
-            hash_result = await _ai_scan_call(verify_model_hash, f["path"])
-            f["sha256"] = hash_result.get("sha256")
-
-    return {
-        "scan_type": "model-files",
-        "total": len(all_files),
-        "manifest_total": len(all_manifests),
-        "unsafe": sum(1 for f in all_files if f.get("security_flags")),
-        "files": all_files,
-        "manifests": all_manifests,
-        "warnings": all_warnings,
-    }

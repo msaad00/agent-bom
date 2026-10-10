@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol, cast
 
 from agent_bom.api.posture_counts_cache import announce_scan_evidence
+from agent_bom.api.scan_snapshot_store import discard_job_snapshot
 from agent_bom.api.storage.campaign_revisions import initialize_sqlite_campaign_evidence
 from agent_bom.api.storage.job_read_projections import sqlite_demo_exists, sqlite_job_revision
 from agent_bom.api.storage.jobs import get_job, parse_job_payload, put_job, require_job_tenant
@@ -211,7 +212,7 @@ class InMemoryJobStore:
         _require_tenant_scope(tenant_id, all_tenants, "InMemoryJobStore.delete()")
         with self._lock:
             if tenant_id is not None:
-                return self._jobs.pop((tenant_id, job_id), None) is not None
+                return discard_job_snapshot(tenant_id, job_id, deleted=self._jobs.pop((tenant_id, job_id), None) is not None)
             matches = [key for key in self._jobs if key[1] == job_id]
             for key in matches:
                 del self._jobs[key]
@@ -533,7 +534,7 @@ class SQLiteJobStore:
                     (job_id, tenant_id),
                 )
             self._conn.commit()
-            return cursor.rowcount > 0
+            return discard_job_snapshot(tenant_id, job_id, deleted=cursor.rowcount > 0)
         finally:
             self._shrink_connection_memory()
             self._close_thread_connection()

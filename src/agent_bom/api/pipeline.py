@@ -61,6 +61,7 @@ from agent_bom.api.scan_report_support import _project_paths_for_symbol_reach as
 from agent_bom.api.scan_report_support import _promote_repo_dependency_inventory as _promote_repo_dependency_inventory
 from agent_bom.api.scan_report_support import _rendered_result_document as _rendered_result_document
 from agent_bom.api.scan_report_support import _surface_graph_derived_findings as _surface_graph_derived_findings
+from agent_bom.api.scan_snapshot import finalize_with_scan_snapshot
 from agent_bom.api.stores import (
     _compact_terminal_job_in_place,
     _get_analytics_store,
@@ -1011,8 +1012,7 @@ def _record_completion_metrics(store: Any, terminal_status: JobStatus) -> None:
 
         reconcile_scan_jobs_active(store)
         _api_metrics.record_scan_completion(str(terminal_status))
-    except Exception:  # noqa: BLE001
-        # Metrics must never break the scan path. Swallow all errors.
+    except Exception:  # noqa: BLE001  - metrics must never break the scan path
         pass
 
 
@@ -1034,7 +1034,7 @@ def _record_adoption(job: ScanJob, terminal_status: JobStatus) -> None:
 
 def _finalize(ctx: ScanContext) -> None:
     ctx.repo_stack.close()
-    store, terminal_status = _persist_final_state(ctx.job, ctx.lock)
+    store, terminal_status = finalize_with_scan_snapshot(ctx, _persist_final_state)
     _refresh_batch_parent(ctx.job)
     _release_scan_memory()
     _record_completion_metrics(store, terminal_status)

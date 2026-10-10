@@ -39,6 +39,7 @@ jobs:
           --with mkdocs-material==9.7.5
           --with mkdocstrings==1.0.3
           --with mkdocstrings-python==2.0.3
+          --with pymdown-extensions==11.0.2
           mkdocs build --strict
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

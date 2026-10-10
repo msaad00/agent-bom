@@ -9,10 +9,10 @@ from urllib.parse import quote
 import httpx
 
 from agent_bom.connectors.endpoints.client import EndpointClientMixin
+from agent_bom.connectors.graph_client import GraphClientMixin
 from agent_bom.core.json_types import JsonObject as JsonObject
 from agent_bom.core.json_types import JsonValue as JsonValue
 from agent_bom.core.json_types import QueryValue as QueryValue
-from agent_bom.graph.client import GraphClientMixin
 
 
 class AgentBomApiError(RuntimeError):

@@ -11,7 +11,7 @@ from agent_bom.api.server import app
 def test_python_control_plane_client_paths_exist_in_api() -> None:
     source = "\n".join(
         Path(path).read_text(encoding="utf-8")
-        for path in ("src/agent_bom/client.py", "src/agent_bom/graph/client.py", "src/agent_bom/connectors/endpoints/client.py")
+        for path in ("src/agent_bom/client.py", "src/agent_bom/connectors/graph_client.py", "src/agent_bom/connectors/endpoints/client.py")
     )
     tree = ast.parse(source)
     client_paths = {

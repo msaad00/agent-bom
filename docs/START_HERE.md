@@ -109,7 +109,7 @@ agent-bom mcp server                      # stdio MCP server: 8 tools, 4 resourc
 - MCP server setup + client guides: [`MCP_SERVER.md`](MCP_SERVER.md),
   [`MCP_CLIENT_GUIDES.md`](MCP_CLIENT_GUIDES.md)
 - Choose `--profile graph`, `cloud`, `runtime`, or `audit` for specialized tasks.
-- Explicit `--profile full` catalog (88 tools; sensitive writes remain admin-gated): see the
+- Explicit `--profile full` catalog (89 tools; sensitive writes remain admin-gated): see the
   `Tools (77)` block in
   [`../src/agent_bom/mcp_server.py`](../src/agent_bom/mcp_server.py)
 - Typed control-plane clients: [`PYTHON_API.md`](PYTHON_API.md),

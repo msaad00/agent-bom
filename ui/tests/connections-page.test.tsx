@@ -963,7 +963,7 @@ describe("ConnectionsPage — Connect segment", () => {
 
     const drawer = await screen.findByRole("dialog", { name: /Connect a coding agent/ });
     expect(within(drawer).getByText("agent-bom mcp-server")).toBeInTheDocument();
-    expect(within(drawer).getByText(/88 MCP tools/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/89 MCP tools/)).toBeInTheDocument();
     expect(within(drawer).getByText(/Collection uses read-only source access/)).toHaveTextContent(
       /Scan evidence and connection settings are stored in the control plane/,
     );

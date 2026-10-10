@@ -11,7 +11,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Opt-in scan finding snapshots persist completed job evidence in tenant-scoped memory, SQLite or PostgreSQL stores. Backfill and purge commands manage retained jobs; deletion and expiry remove snapshots even after writes are disabled. Snapshot-backed findings reads remain a separate phase.
+- Add opt-in snapshot finding reads with per-read differential verification and fallback to current findings on mismatch or unavailable snapshots. Qualification preserves live enrichment and retention semantics; optimized metadata-only reads remain deferred.
+
+- Opt-in scan finding snapshots persist completed job evidence in tenant-scoped memory, SQLite or PostgreSQL stores. Backfill and purge commands manage retained jobs; deletion and expiry remove snapshots even after writes are disabled. Reads require the independent, default-off qualification flag.
 
 - Direct compromise assessment is available through the authenticated graph API, `graph-paths compromise`, the graph-profile MCP tool, and the graph entity drawer. Requests require explicit assumptions and return a pinned snapshot revision with action-scoped historical permission receipts, denials, and unknowns. Partial storage reads fail closed; this does not establish current access, successful execution, or multi-hop compromise.
 

@@ -146,7 +146,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## Demo Estate
 | Env var | Type | Default | Description |
 |---|---|---|---|
-| `AGENT_BOM_DEMO_ESTATE` | `bool` | `False` | Enables curated demo-estate bootstrap on loopback / hosted proof paths. Off by default so production deployments never seed synthetic estate data unless an operator explicitly opts in. |
+| `AGENT_BOM_DEMO_ESTATE` | `bool` | `False` | Enables curated demo-estate bootstrap on loopback / hosted proof paths. Off by default; production deployments seed synthetic data only with explicit opt-in. |
 
 ## Deployment / integration env aliases
 | Env var | Type | Default | Description |
@@ -376,7 +376,8 @@ so they cannot regress silently, but they are not part of this reference.
 ## Scan finding snapshots (opt-in, ADR-015)
 | Env var | Type | Default | Description |
 |---|---|---|---|
-| `AGENT_BOM_SCAN_SNAPSHOTS` | `bool` | `False` | Materialize each completed scan job's intrinsic finding rows once, after the job is durably DONE. Off by default; nothing reads them yet. |
+| `AGENT_BOM_SCAN_SNAPSHOTS` | `bool` | `False` | Opt-in writes and differential-verified reads. Reads compare with the current collector before returning a snapshot candidate. |
+| `AGENT_BOM_SCAN_SNAPSHOT_READS` | `bool` | `False` | — |
 
 ## Scanner Batching
 | Env var | Type | Default | Description |

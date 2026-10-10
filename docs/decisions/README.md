@@ -36,7 +36,7 @@ the two logs merged; the original OSV record was folded into 002.
 | 012 | [Subprocess CLI over Vendor SDKs](012-subprocess-over-sdk.md) | Superseded in part (cloud SDK extras) | 2025-06 |
 | 013 | [API Auth without RBAC Framework](013-no-rbac-custom-auth.md) | Superseded (RBAC in `rbac.py`, see 014) | 2025-11 |
 | 014 | [UI Authentication Model](014-ui-auth-model.md) | Accepted | 2026-04-20 |
-| 015 | [Materialized Scan Finding Snapshots](015-materialized-scan-finding-snapshots.md) | Proposed | 2026-10-10 |
+| 015 | [Materialized Scan Finding Snapshots](015-materialized-scan-finding-snapshots.md) | Partially implemented | 2026-10-10 |
 
 ## Adding a New ADR
 

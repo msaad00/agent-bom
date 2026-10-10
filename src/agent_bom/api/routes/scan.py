@@ -109,6 +109,7 @@ from agent_bom.api.scan_path_jail import (  # noqa: F401 - re-exported route-mod
     _enforce_api_scan_path_owner,
     _sanitize_api_path,
 )
+from agent_bom.api.scan_snapshot_read import verified_snapshot_findings
 from agent_bom.api.stores import (
     _get_graph_store,
     _get_idempotency_store,
@@ -693,7 +694,7 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
             attach_workload_runtime_evidence_to_finding(row, workload_runtime_index)
         return row
 
-    findings = collect_scan_findings(job, _attach_reach)
+    findings = verified_snapshot_findings(job, lambda: collect_scan_findings(job, _attach_reach), _attach_reach)
     # Surface the triage assignee as the finding owner (the simple ownership cut).
     # Built once per tenant and matched per row; rows with no triage assignee keep
     # whatever owner the scan spine already set (an explicit None when unassigned,

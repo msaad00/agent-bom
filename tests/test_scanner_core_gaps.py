@@ -89,7 +89,7 @@ def test_conda_in_auto_resolve_filter():
     # Verify the filter string is present in scanners code
     import inspect
 
-    from agent_bom.scanners import scan_packages
+    from agent_bom.scanners.package_scan import _resolve_registry_versions
 
-    source = inspect.getsource(scan_packages)
+    source = inspect.getsource(_resolve_registry_versions)
     assert "conda" in source, "conda must be in the auto-resolve ecosystem filter"

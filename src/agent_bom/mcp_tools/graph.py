@@ -11,12 +11,13 @@ import sqlite3
 import uuid
 from typing import Any
 
+from agent_bom.cloud.runtime_graph_evidence import _enrich_loaded_graph_runtime_evidence
 from agent_bom.config import GRAPH_INVESTIGATION_NODE_BUDGET, MCP_MAX_RESPONSE_CHARS
 from agent_bom.graph.completeness import graph_completeness
 from agent_bom.graph.edge_lookup import _build_edge_lookup, _EdgeLookup
 from agent_bom.graph.exposure import _exposure_path_for_attack_path, _exposure_ref_for_node, _exposure_relationships_for_path
 from agent_bom.graph.exposure_cursor import decode_exposure_cursor
-from agent_bom.graph.path_derivation import _derived_attack_paths, _enrich_loaded_graph_runtime_evidence
+from agent_bom.graph.path_derivation import _derived_attack_paths
 from agent_bom.mcp_errors import (
     CODE_INTERNAL_UNEXPECTED,
     CODE_NOT_FOUND_RESOURCE,

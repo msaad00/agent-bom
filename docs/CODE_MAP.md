@@ -61,6 +61,12 @@ the PR. Maintainers would rather discuss placement early than move code later.
   enums live in `graph/types.py`; `graph/builder.py` builds the graph from a
   report. `context_graph.py` is a legacy bridge, so new graph features belong in
   `graph/` ([`GRAPH_MIGRATION.md`](GRAPH_MIGRATION.md)).
+  HTTP graph contracts and OpenAPI evidence schemas live in
+  `api/graph_contracts.py`; pure path cards, finding/identity links and path
+  serialization live in `api/graph_presentation.py`. The route module retains
+  authentication context, tenant scope, admission, generation checks and store
+  calls. These presentation modules consume the canonical graph entities; they
+  do not define parallel asset or identity models.
 
 ## Layering rules in plain language
 

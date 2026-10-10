@@ -27,7 +27,7 @@ import pytest
         ("stores", "_get_trend_store", "_trend_store", "postgres_store", "PostgresTrendStore"),
         ("stores", "_get_graph_store", "_graph_store", "postgres_store", "PostgresGraphStore"),
         ("auth", "get_key_store", "_key_store", "postgres_access", "PostgresKeyStore"),
-        ("audit_log", "get_audit_log", "_audit_log", "postgres_store", "PostgresAuditLog"),
+        ("audit_log", "get_audit_log", "_audit_log", "postgres_audit", "PostgresAuditLog"),
     ],
 )
 def test_db_alias_selects_existing_postgres_store(monkeypatch, owner, getter, slot, adapter, class_name):

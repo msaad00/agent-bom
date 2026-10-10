@@ -15,6 +15,7 @@ import multiprocessing
 import os
 import queue
 import sqlite3
+import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -165,6 +166,7 @@ def run_worker(store, tenant, size, kind, stop):
     }
     stage = "start"
     revisions = set()
+    read_samples = []
     try:
         with tenant_scope(tenant):
             while not stop.is_set():
@@ -198,6 +200,21 @@ def run_worker(store, tenant, size, kind, stop):
                         assert len({n.label.rsplit(":", 1)[0] for n in nodes}) == 1, "Mixed evidence content"
                         assert not ({e.id for e in first["edges"]} & {e.id for e in second["edges"]}), "Repeated page edges"
                         result["completed_read_pairs"] += 1
+                        read_ms = (time.monotonic() - operation_started) * 1000
+                        if len(read_samples) < 512:
+                            payload = [
+                                {
+                                    key: [item.to_dict() for item in value]
+                                    if key in {"nodes", "edges"}
+                                    else value.to_dict()
+                                    if key == "node"
+                                    else value
+                                    for key, value in page.items()
+                                }
+                                for page in (first, second)
+                            ]
+                            payload_bytes = len(json.dumps(payload, separators=(",", ":")).encode())
+                            read_samples.append((read_ms, payload_bytes))
                     except ValueError as exc:
                         if "snapshot" not in str(exc).lower():
                             raise
@@ -211,6 +228,19 @@ def run_worker(store, tenant, size, kind, stop):
         stop.set()
     result["elapsed_s"] = round(time.monotonic() - began, 3)
     result["max_operation_ms"] = round(result["max_operation_ms"], 3)
+    if kind == "reader":
+        ordered = sorted(value[0] for value in read_samples)
+        sizes = [value[1] for value in read_samples]
+        result["read_measurements"] = {
+            "samples": len(ordered),
+            "sample_limit": 512,
+            "sampling": "first completed read pairs; latency excludes payload serialization",
+            "p50_ms": round(statistics.median(ordered), 3) if ordered else None,
+            "p95_ms": round(ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))], 3) if ordered else None,
+            "mean_payload_bytes": round(statistics.fmean(sizes), 1) if sizes else None,
+            "max_payload_bytes": max(sizes) if sizes else None,
+            "representation": "two incident-edge pages serialized as compact JSON; not HTTP wire bytes",
+        }
     # Retain the original thread receipt counters for existing consumers.
     result["writes" if kind == "writer" else "read_pairs"] = result["operations"] if kind == "writer" else result["completed_read_pairs"]
     return result

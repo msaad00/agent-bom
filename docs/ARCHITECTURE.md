@@ -614,6 +614,22 @@ Graph services depend on the typed `graph/ports.py` contract
 (`api/postgres_graph.py`) adapters implement the same snapshot, paging, tenant
 and generation contract.
 
+### Audit and analytics boundary
+
+Durable audit writes use the audit backend directly and obtain tenant context
+from the PostgreSQL session module. They do not initialize graph or job stores.
+`api/storage/analytics.py` owns the optional analytics sink, shared by API
+startup and audit writers. The API store facade retains its getter/setter
+contracts; lifecycle inspection does not create a default sink. Primary audit
+write failures still propagate, while optional analytics synchronization remains
+best effort. This boundary does not add protection against an actor controlling
+both audit records and their signing/checkpoint material.
+
+Read-only POST operations have exact authorization policies. Adding a child
+operation requires its own policy or an applicable stronger family policy;
+read scope alone does not grant a future mutation. API-key and browser-session
+requests enforce the same table before invoking handlers.
+
 ### MCP operator tools
 
 Operator registrations live in `mcp_tools/operator/` (findings, scanning,

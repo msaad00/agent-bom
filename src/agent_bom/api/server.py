@@ -56,6 +56,7 @@ from agent_bom.api.models import (
     TracingHealth,
     VersionInfo,
 )
+from agent_bom.api.storage.analytics import peek_analytics_store
 from agent_bom.api.storage_schema import postgres_deployment_configured
 from agent_bom.api.stores import (
     _get_credential_ref_store,
@@ -147,7 +148,7 @@ def _analytics_backend_config() -> tuple[str, str | None]:
 def _analytics_health() -> AnalyticsHealth:
     """Return the active analytics backend contract for operators."""
     backend, clickhouse_url = _analytics_backend_config()
-    active_store = _stores._analytics_store
+    active_store = peek_analytics_store()
     if active_store is None:
         return AnalyticsHealth(
             backend=backend if backend != "disabled" else "disabled",
@@ -638,7 +639,7 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
 
     # ── Analytics store (ClickHouse OLAP — optional) ──
     analytics_backend, clickhouse_url = _analytics_backend_config()
-    if analytics_backend == "clickhouse" and _stores._analytics_store is None:
+    if analytics_backend == "clickhouse" and peek_analytics_store() is None:
         try:
             from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
 
@@ -855,8 +856,8 @@ async def _lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     except Exception:
         _logger.debug("Postgres pool close skipped")
     try:
-        if _stores._analytics_store is not None and hasattr(_stores._analytics_store, "close"):
-            _stores._analytics_store.close()
+        if (active_analytics := peek_analytics_store()) is not None and hasattr(active_analytics, "close"):
+            active_analytics.close()
     except Exception:
         _logger.debug("Analytics store close skipped", exc_info=False)
 

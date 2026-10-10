@@ -65,11 +65,25 @@ For `create_cluster=true`, bootstrap the cluster before the full apply because
 those prerequisites cannot exist until EKS exists:
 
 ```bash
-terraform apply -target=module.vpc -target=module.eks
+terraform apply -target=module.vpc -target=module.eks -target=aws_iam_role_policy.cluster_encryption
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 # Install External Secrets Operator and the aws-secrets-manager
 # ClusterSecretStore using your platform team's maintained manifests.
 ```
+
+Managed node groups do not require EKS Auto Mode's custom-tag policy. Cluster
+secrets remain encrypted with the dedicated KMS key; the cluster role receives
+the key-scoped encryption permissions through an inline policy. The bootstrap
+identity needs `iam:PutRolePolicy`, `iam:GetRolePolicy` and `iam:DeleteRolePolicy`
+alongside the cluster, network, role, managed-policy attachment and KMS lifecycle
+permissions. These cluster resources do not require `iam:CreatePolicy`.
+Other optional platform resources can still require managed-policy creation;
+this is not a complete IAM permission list for the full platform.
+
+If an apply fails, retain its state and logs, correct the reported permission
+or input, and review a new plan before retrying. For a disposable environment,
+destroy its resources and verify deletion; a failed apply can leave billable
+infrastructure running. Existing clusters retain their externally managed IAM.
 
 For an existing cluster, install or verify the same prerequisites before the
 first apply. In either mode, set

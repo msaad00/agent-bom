@@ -121,7 +121,7 @@ reachable or authentication fails.
 ## Assess an assumed compromise
 
 Select a persisted graph snapshot and node from inventory. In the graph MCP
-profile, call `compromise_assessment` with `scan_id`, `root_node_id`, and
+profile with the `api` extra installed, call `compromise_assessment` with `scan_id`, `root_node_id`, and
 `assume_control: true`. The server-bound tenant controls access; a caller's
 `tenant_id` hint cannot change that boundary.
 

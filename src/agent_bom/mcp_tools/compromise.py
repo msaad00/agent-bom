@@ -5,10 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import HTTPException
 from pydantic import Field, ValidationError
 
-from agent_bom.api.graph_compromise import GraphCompromiseRequest, assess_snapshot
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.mcp_errors import (
     CODE_NOT_FOUND_RESOURCE,
@@ -34,6 +32,12 @@ async def compromise_assessment_impl(
     _get_graph_store=None,
     _truncate_response=None,
 ) -> str:
+    try:
+        from fastapi import HTTPException
+
+        from agent_bom.api.graph_compromise import GraphCompromiseRequest, assess_snapshot
+    except ImportError:
+        return mcp_error_json(CODE_UNSUPPORTED_BACKEND, "Install agent-bom[api] to assess persisted graph snapshots.")
     try:
         request = GraphCompromiseRequest.model_validate(
             {

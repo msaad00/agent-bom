@@ -76,3 +76,23 @@ def test_mcp_compromise_never_coerces_control_assumptions(assumption):
     server = create_mcp_server(profile="graph")
     with pytest.raises(Exception, match="valid boolean"):
         asyncio.run(server.call_tool("compromise_assessment", {"root_node_id": "node", "scan_id": "s", "assume_control": assumption}))
+
+
+def test_scan_profile_starts_without_the_optional_api_dependency():
+    import subprocess
+    import sys
+
+    script = """
+import asyncio
+import importlib.abc
+import sys
+class NoAPI(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "fastapi" or fullname.startswith("fastapi."):
+            raise ModuleNotFoundError("optional API dependency unavailable")
+sys.meta_path.insert(0, NoAPI())
+from agent_bom.mcp_server import create_mcp_server
+assert len(asyncio.run(create_mcp_server(profile="scan").list_tools())) == 8
+"""
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr

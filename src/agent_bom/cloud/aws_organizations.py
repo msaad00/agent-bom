@@ -109,6 +109,32 @@ def discover_organization(
         return result
 
     warnings: list[str] = result["warnings"]
+    opened, org = _open_org_client(result, warnings, profile, session)
+    if not opened or not _describe_org(org, result, warnings):
+        return result
+
+    # Roots + OU tree (recursive).
+    for rid in _collect_org_roots(org, result, warnings):
+        _walk_org_units(org, result, warnings, rid, 0)
+
+    _collect_org_accounts(org, result, warnings)
+    _collect_org_scps(org, result, warnings)
+
+    # Findings.
+    _derive_findings(result)
+
+    result["status"] = "ok"
+    result["discovery_envelope"] = DiscoveryEnvelope(
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=(f"aws:organization/{result['org_id']}",) if result["org_id"] else (),
+        permissions_used=_AWS_ORG_PERMISSIONS,
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    ).to_dict()
+    return result
+
+
+def _open_org_client(result: dict[str, Any], warnings: list[str], profile: str | None, session: Any) -> tuple[bool, Any]:
+    """Build the Organizations client; ``(False, None)`` means *result* is final."""
     try:
         # Brokered Connections sessions are used as-is; only the ambient path
         # needs boto3 to build a Session from profile / default credentials.
@@ -118,14 +144,17 @@ def discover_organization(
             except ImportError:
                 result["status"] = "boto3_missing"
                 result["warnings"] = ["boto3 is required for AWS org inventory. Install with: pip install 'agent-bom[aws]'"]
-                return result
+                return False, None
             session = boto3.Session(profile_name=profile) if profile else boto3.Session()
-        org = session.client("organizations")
+        return True, session.client("organizations")
     except Exception as exc:  # noqa: BLE001
         result["status"] = "no_credentials"
         warnings.append(sanitize_discovery_warning(exc))
-        return result
+        return False, None
 
+
+def _describe_org(org: Any, result: dict[str, Any], warnings: list[str]) -> bool:
+    """Record org identity; ``False`` means *result* is final (no creds / not in org / partial)."""
     try:
         desc = org.describe_organization().get("Organization", {})
         result["org_id"] = str(desc.get("Id", "") or "")
@@ -137,7 +166,7 @@ def discover_organization(
         if type(exc).__name__ == "NoCredentialsError":
             result["status"] = "no_credentials"
             warnings.append("AWS credentials not found.")
-            return result
+            return False
         # AWSOrganizationsNotInUseException → a standalone account, not an error.
         if "NotInUse" in type(exc).__name__ or "AWSOrganizationsNotInUse" in str(exc):
             result["status"] = "not_in_org"
@@ -145,9 +174,11 @@ def discover_organization(
         else:
             result["status"] = "ok"  # partial; record what we can
             warnings.append(f"Could not describe organization: {sanitize_discovery_warning(exc)}")
-        return result
+        return False
+    return True
 
-    # Roots + OU tree (recursive).
+
+def _collect_org_roots(org: Any, result: dict[str, Any], warnings: list[str]) -> list[str]:
     root_ids: list[str] = []
     try:
         for root in org.list_roots().get("Roots", []):
@@ -159,27 +190,28 @@ def discover_organization(
                 )
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list roots: {sanitize_discovery_warning(exc)}")
+    return root_ids
 
-    def _walk_ous(parent_id: str, depth: int) -> None:
-        if depth > _MAX_OU_DEPTH:
-            return
-        try:
-            paginator = org.get_paginator("list_organizational_units_for_parent")
-            for page in paginator.paginate(ParentId=parent_id):
-                for ou in page.get("OrganizationalUnits", []):
-                    oid = str(ou.get("Id", "") or "")
-                    if not oid:
-                        continue
-                    result["organizational_units"].append(
-                        {"id": oid, "name": str(ou.get("Name", "") or ""), "parent_id": parent_id, "is_root": False}
-                    )
-                    _walk_ous(oid, depth + 1)
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Could not list OUs under {parent_id}: {sanitize_discovery_warning(exc)}")
 
-    for rid in root_ids:
-        _walk_ous(rid, 0)
+def _walk_org_units(org: Any, result: dict[str, Any], warnings: list[str], parent_id: str, depth: int) -> None:
+    if depth > _MAX_OU_DEPTH:
+        return
+    try:
+        paginator = org.get_paginator("list_organizational_units_for_parent")
+        for page in paginator.paginate(ParentId=parent_id):
+            for ou in page.get("OrganizationalUnits", []):
+                oid = str(ou.get("Id", "") or "")
+                if not oid:
+                    continue
+                result["organizational_units"].append(
+                    {"id": oid, "name": str(ou.get("Name", "") or ""), "parent_id": parent_id, "is_root": False}
+                )
+                _walk_org_units(org, result, warnings, oid, depth + 1)
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"Could not list OUs under {parent_id}: {sanitize_discovery_warning(exc)}")
 
+
+def _collect_org_accounts(org: Any, result: dict[str, Any], warnings: list[str]) -> None:
     # Member accounts, placed under their OU/root (list per-parent so each account
     # carries its parent for the CONTAINS hierarchy; scales via pagination).
     seen_accounts: set[str] = set()
@@ -205,6 +237,8 @@ def discover_organization(
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"Could not list accounts under {parent_id}: {sanitize_discovery_warning(exc)}")
 
+
+def _collect_org_scps(org: Any, result: dict[str, Any], warnings: list[str]) -> None:
     # Service Control Policies + their attachment targets.
     try:
         paginator = org.get_paginator("list_policies")
@@ -230,18 +264,6 @@ def discover_organization(
                 )
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"Could not list SCPs: {sanitize_discovery_warning(exc)}")
-
-    # Findings.
-    _derive_findings(result)
-
-    result["status"] = "ok"
-    result["discovery_envelope"] = DiscoveryEnvelope(
-        scan_mode=ScanMode.CLOUD_READ_ONLY,
-        discovery_scope=(f"aws:organization/{result['org_id']}",) if result["org_id"] else (),
-        permissions_used=_AWS_ORG_PERMISSIONS,
-        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
-    ).to_dict()
-    return result
 
 
 def _derive_findings(result: dict[str, Any]) -> None:
